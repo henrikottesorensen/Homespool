@@ -29,8 +29,11 @@ public static class ForwardedHeaderScope
     /// </summary>
     /// <param name="localPort">The port the connection arrived on.</param>
     /// <param name="printerPort">The printer listener's port.</param>
-    /// <param name="printerListenerIsProxied">
-    /// Whether nginx terminates printer TLS in front of that listener — <c>PrusaConnect:PrinterTls</c>.
+    /// <param name="legacyPrinterPort">
+    /// The legacy plaintext printer listener's port, or null when no such listener is open.
+    /// </param>
+    /// <param name="printerListenersAreProxied">
+    /// Whether nginx stands in front of the printer listeners — <c>PrusaConnect:PrinterTls</c>.
     /// </param>
     /// <remarks>
     /// <para>
@@ -39,23 +42,33 @@ public static class ForwardedHeaderScope
     /// <c>XForwarded:KnownNetworks</c> is the second lock on that door.
     /// </para>
     /// <para>
-    /// <b>The printer listener only when nginx stands in front of it</b>, which reverses what decision
-    /// 3a recorded and does so because the fact under it changed. Printers used to connect to Kestrel
-    /// directly, so an <c>X-Real-IP</c> on that listener was written by whoever connected and honouring
-    /// it would have let a printer — or anything holding a stolen printer token — claim any address it
-    /// liked in the logs and in anything keyed on address. Once the proxy terminates printer TLS the
-    /// port is unpublished and the proxy is the only thing that can reach it, so the header is the
-    /// proxy's word exactly as it is for users. <c>PrusaConnect:PrinterTls=false</c> puts printers back
-    /// on the wire directly and this back to refusing them.
+    /// <b>The printer listeners only when nginx stands in front of them</b>, which reverses what
+    /// decision 3a recorded and does so because the fact under it changed. Printers used to connect to
+    /// Kestrel directly, so an <c>X-Real-IP</c> on that listener was written by whoever connected and
+    /// honouring it would have let a printer — or anything holding a stolen printer token — claim any
+    /// address it liked in the logs and in anything keyed on address. Once the proxy terminates printer
+    /// TLS the port is unpublished and the proxy is the only thing that can reach it, so the header is
+    /// the proxy's word exactly as it is for users. <c>PrusaConnect:PrinterTls=false</c> puts printers
+    /// back on the wire directly and this back to refusing them.
+    /// </para>
+    /// <para>
+    /// <b>The legacy listener is a printer listener for this purpose, and follows the same flag.</b> It
+    /// carries no TLS, but the shape around it is the one the flag describes: in the compose stack the
+    /// proxy publishes its port and relays to Kestrel over the container network, setting
+    /// <c>X-Real-IP</c> exactly as on the TLS printer port; run without the proxy, it is dialled
+    /// directly and the header is the caller's own. A separate flag would be a second setting that can
+    /// disagree with the first about what is in front of this process.
     /// </para>
     /// <para>
     /// Refusing costs a printer's real address in the logs, which is the diagnostic that finds a
     /// misbehaving printer on a LAN — worth having, and not worth inventing.
     /// </para>
     /// </remarks>
-    public static bool AppliesTo(int localPort, int printerPort, bool printerListenerIsProxied)
+    public static bool AppliesTo(int localPort, int printerPort, int? legacyPrinterPort, bool printerListenersAreProxied)
     {
-        return localPort != printerPort || printerListenerIsProxied;
+        bool isPrinterListener = localPort == printerPort || localPort == legacyPrinterPort;
+
+        return !isPrinterListener || printerListenersAreProxied;
     }
 
     /// <summary>
@@ -63,14 +76,14 @@ public static class ForwardedHeaderScope
     /// </summary>
     /// <remarks>
     /// <b>This exists so that "which property of the connection decides it" is covered by a test.</b>
-    /// Written inline at the call site it was not: <see cref="AppliesTo(int, int, bool)"/> takes an
-    /// <c>int</c>, so every one of its tests passes just as happily whether the caller reads
+    /// Written inline at the call site it was not: <see cref="AppliesTo(int, int, int?, bool)"/> takes
+    /// an <c>int</c>, so every one of its tests passes just as happily whether the caller reads
     /// <see cref="ConnectionInfo.LocalPort"/> or <see cref="ConnectionInfo.RemotePort"/> — and reading
     /// the remote port would hand the decision to the client, which is the whole thing this guards
     /// against. Moving one line out of the pipeline puts it somewhere a test can reach.
     /// </remarks>
-    public static Func<HttpContext, bool> Predicate(int printerPort, bool printerListenerIsProxied)
+    public static Func<HttpContext, bool> Predicate(int printerPort, int? legacyPrinterPort, bool printerListenersAreProxied)
     {
-        return context => AppliesTo(context.Connection.LocalPort, printerPort, printerListenerIsProxied);
+        return context => AppliesTo(context.Connection.LocalPort, printerPort, legacyPrinterPort, printerListenersAreProxied);
     }
 }

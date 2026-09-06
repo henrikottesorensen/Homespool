@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
+using System.Threading;
 using System.Threading.Tasks;
 
 using Duende.IdentityModel;
@@ -11,6 +12,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Accounts;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -29,6 +32,14 @@ namespace Homespool.Host.Authentication;
 /// is worth.
 /// </para>
 /// <para>
+/// <b>A step-up has its own counter.</b> A wrong password or code typed inside a session backs off
+/// the account's step-ups through <see cref="AttemptLimiter"/> under <see cref="LimitedAction.StepUp"/>,
+/// exponentially and self-healing, and never touches the account lockout: a session holder guessing
+/// at a step-up must not be able to lock the owner out of signing in, which is how the owner takes
+/// the session back. The account lockout is the login page's, where a wrong credential is a guess
+/// from outside.
+/// </para>
+/// <para>
 /// <b>The pending and remembered cookies carry the account as <see cref="JwtClaimTypes.Subject"/></b>
 /// and the pending one its provider as <see cref="JwtClaimTypes.IdentityProvider"/>, the house's JWT
 /// spelling rather than the framework's <c>ClaimTypes.Name</c>. <see cref="LocalSignIn"/> writes both,
@@ -39,18 +50,49 @@ public sealed class LocalSignInRules
 {
     private readonly UserManager<HSUser> _users;
     private readonly IUserConfirmation<HSUser> _confirmation;
+    private readonly AttemptLimiter _stepUps;
     private readonly IdentityOptions _options;
     private readonly TimeProvider _time;
 
     public LocalSignInRules(UserManager<HSUser> users,
                             IUserConfirmation<HSUser> confirmation,
+                            AttemptLimiter stepUps,
                             IOptions<IdentityOptions> options,
                             TimeProvider? time = null)
     {
         _users = users;
         _confirmation = confirmation;
+        _stepUps = stepUps;
         _options = options.Value;
         _time = time ?? TimeProvider.System;
+    }
+
+    /// <summary>
+    /// How much longer the account's step-ups are backed off, or <see langword="null"/> when they are
+    /// not: the <see cref="LimitedAction.StepUp"/> counter, checked before a step-up's credential is
+    /// compared so a backed-off session cannot learn whether its guesses were close.
+    /// </summary>
+    public Task<TimeSpan?> StepUpBackoffAsync(HSUser user, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return _stepUps.RemainingLockoutAsync(user.Id, LimitedAction.StepUp, _time.GetUtcNow(), cancellationToken);
+    }
+
+    /// <summary>Counts a wrong step-up credential against the account's step-up backoff - and nothing else.</summary>
+    public Task RecordStepUpFailureAsync(HSUser user, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return _stepUps.RecordFailedAttemptAsync(user.Id, LimitedAction.StepUp, _time.GetUtcNow(), cancellationToken);
+    }
+
+    /// <summary>A right step-up credential clears the step-up backoff.</summary>
+    public Task ResetStepUpAsync(HSUser user, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return _stepUps.ResetAsync(user.Id, LimitedAction.StepUp, cancellationToken);
     }
 
     /// <summary>

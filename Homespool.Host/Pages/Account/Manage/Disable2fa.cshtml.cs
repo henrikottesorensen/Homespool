@@ -29,7 +29,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// it, the walk-up on an unlocked browser that the second factor exists to stop could simply switch
 /// the second factor off first. Requiring a current code means weakening the account takes the same
 /// credential the account is protected by - the shape the printer-removal confirmation set, through
-/// the same code scheme, so a wrong code counts toward the account lockout: six digits with
+/// the same code scheme, which backs a wrong code off with every other step-up: six digits with
 /// unlimited attempts is not a control.
 /// </remarks>
 [Authorize]
@@ -85,13 +85,14 @@ public class Disable2faModel : PageModel
         // Authenticator codes only, as on the printer-removal confirmation: a recovery code is for
         // getting back into an account, and spending one here would widen what an unattended session
         // can do to exactly what this exists to stop. The code scheme verifies it for the signed-in
-        // account, counts a wrong one toward the lockout, and refuses a locked-out account first.
+        // account, backs a wrong one off with every other step-up, and refuses a backed-off or
+        // locked-out account first.
         AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(code));
 
         if (!stepUp.Succeeded)
         {
             StatusMessage = stepUp.Refusal() == SignInRefusal.LockedOut
-                ? _localiser["TwoFactor_DisableLockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]
+                ? _localiser["TwoFactor_DisableLockedOut", BackoffWait.Format(_localiser, stepUp.RetryAfter() ?? TimeSpan.Zero)]
                 : _localiser["TwoFactor_DisableCodeInvalid"];
 
             return RedirectToPage();

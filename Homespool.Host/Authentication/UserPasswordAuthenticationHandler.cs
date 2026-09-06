@@ -39,9 +39,10 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>On a step-up the account is the session's.</b> A <see cref="PasswordCredential"/> carries only
 /// the password, and it is checked against the signed-in account; with nobody signed in it is refused
-/// unread. A wrong one counts toward the lockout as at login, and a right one resets the count - a
-/// step-up owes no second factor, so the quirk below does not apply. A page that wants to confirm an
-/// act asks for this and never for a login.
+/// unread. A wrong one backs off the account's step-ups (<see cref="LocalSignInRules.StepUpBackoffAsync"/>)
+/// and never touches the account lockout, which is the login page's: a session holder guessing here
+/// must not be able to lock the owner out of signing in. A page that wants to confirm an act asks for
+/// this and never for a login.
 /// </para>
 /// <para>
 /// <b>Nothing here reads the form, signs anyone in, sets a cookie or reads one</b>, beyond the
@@ -182,28 +183,28 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
         {
             Logger.LogInformation("Password step-up refused for user {UserId}: {Refusal}.", user.Id, refusal);
 
-            return SignInRefusals.Fail(refusal, "The account may not sign in.");
+            return SignInRefusals.Fail(refusal, "The account may not sign in.", await _rules.RemainingLockoutAsync(user));
+        }
+
+        // The step-up's own backoff, checked before the password is compared and counted instead
+        // of the account lockout: a session holder guessing here must not lock the owner out.
+        if (await _rules.StepUpBackoffAsync(user, Context.RequestAborted) is { } backedOff)
+        {
+            Logger.LogInformation("Password step-up refused for user {UserId}: backed off for {Remaining}.", user.Id, backedOff);
+
+            return SignInRefusals.Fail(SignInRefusal.LockedOut, "Too many wrong step-ups.", backedOff);
         }
 
         if (!await _users.CheckPasswordAsync(user, password))
         {
-            bool lockedOut = await _rules.RecordFailureAsync(user);
+            await _rules.RecordStepUpFailureAsync(user, Context.RequestAborted);
 
-            Logger.LogInformation("Password step-up refused for user {UserId}: wrong password{LockedOut}.",
-                                  user.Id,
-                                  lockedOut ? ", now locked out" : string.Empty);
-
-            return SignInRefusals.Fail(lockedOut ? SignInRefusal.LockedOut : SignInRefusal.Invalid, "Invalid password.");
-        }
-
-        IdentityResult reset = await _users.ResetAccessFailedCountAsync(user);
-
-        if (!reset.Succeeded)
-        {
-            Logger.LogWarning("Password step-up refused for user {UserId}: the failed count could not be reset.", user.Id);
+            Logger.LogInformation("Password step-up refused for user {UserId}: wrong password.", user.Id);
 
             return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid password.");
         }
+
+        await _rules.ResetStepUpAsync(user, Context.RequestAborted);
 
         ClaimsPrincipal principal = await _claimsFactory.CreateAsync(user);
 

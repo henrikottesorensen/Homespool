@@ -18,17 +18,14 @@
 # Every variable in compose.yaml carries its own default, so .env only ever needs to hold what
 # differs. That is what makes this safe to run on a file somebody has already edited: it patches the
 # keys it asked about, line by line, and every other byte - comments, blank lines, keys it has never
-# heard of, a hand-set PRINTER_TLS=false - survives untouched. It never regenerates the file.
+# heard of, a hand-set port moved off its default - survives untouched. It never regenerates the
+# file.
 #
-# PRINTER_TLS is deliberately not offered. Its purpose is reading the printer protocol in the clear,
-# so everyone who wants it is already editing this file by hand, and a wizard that offered it would
-# mostly succeed at turning it off by accident.
-#
-# LEGACY_PRINTER_PORT IS offered, and the distinction is worth stating because the two look alike.
-# PRINTER_TLS=false downgrades the whole fleet the moment it is set; LEGACY_PRINTER_PORT opens a
-# second listener that stays inert until somebody separately downloads a legacy bundle for one named
-# printer, and leaves TLS standing for every other. It exists for firmware that cannot verify a
-# certificate at all, which no amount of configuring at this end can fix.
+# LEGACY_PRINTER_PORT is offered even though it opens a plaintext door, because of what it does not
+# do: it opens a second listener that stays inert until somebody separately downloads a legacy bundle
+# for one named printer, and leaves TLS standing for every other. It exists for firmware that cannot
+# verify a certificate at all, which no amount of configuring at this end can fix. There is no
+# fleet-wide TLS switch for a wizard to offer or to turn off by accident.
 #
 # The questions are the small part. The checks are the point: an address inside a Docker network is
 # an address no printer can reach, and it is frozen into a certificate on the first start.
@@ -1282,11 +1279,10 @@ acme_host_suggestion() {
 # The one question here that makes a deployment less safe, which is why it is shaped the way it is:
 # default no, the cost stated before the question rather than after it, and a second confirmation.
 #
-# It is offered at all - where PRINTER_TLS deliberately is not - because the two are different acts.
-# PRINTER_TLS=false is an immediate fleet-wide downgrade one keystroke away, and a wizard offering it
-# would mostly succeed at turning it off by accident. This opens a listener that stays INERT until
-# somebody separately downloads a legacy bundle for one named printer, and it leaves TLS standing for
-# every other. A wrong answer here costs an open port; a wrong answer there costs every token.
+# It is offered at all, plaintext door though it is, because of what it does not do: it opens a
+# listener that stays INERT until somebody separately downloads a legacy bundle for one named
+# printer, and it leaves TLS standing for every other. A wrong answer here costs an open port that
+# refuses connections; nothing offered here can cost a token.
 ask_legacy_printer_port() {
     local current
     current="$(env_get LEGACY_PRINTER_PORT)"

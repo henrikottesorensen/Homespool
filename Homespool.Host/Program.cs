@@ -564,8 +564,10 @@ public static class Program
             // socket and no header changes it. It also has to be the port here, because this runs
             // before routing and there is no endpoint to ask yet.
             //
-            // The exception is PrinterTls=false, where printers connect to that port directly again and the
-            // header goes back to being written by whoever connected. One setting, both ends.
+            // The exception is PrinterTls=false, where printers connect to the printer ports directly again
+            // and the header goes back to being written by whoever connected. One setting, both ends -
+            // and both printer listeners: the legacy one carries no TLS, but the same proxy stands in
+            // front of it in the same configuration, so it follows the same flag rather than a second one.
             //
             // Registered ONLY when something is actually trusted. Clearing the framework's known
             // networks and adding nothing does not mean "trust nobody" - ASP.NET skips the peer check
@@ -575,11 +577,13 @@ public static class Program
             if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Middleware.XForwardedOptions>>().Value
                    .TrustsAnything)
             {
-                int printerPort = Listeners.ListenerOptions.ReadFrom(builder.Configuration).PrinterPort;
-                bool printerListenerIsProxied = PrinterCertificateStartup.PrinterTransportIsSecure(app.Services);
+                Listeners.ListenerOptions listeners = Listeners.ListenerOptions.ReadFrom(builder.Configuration);
+                bool printerListenersAreProxied = PrinterCertificateStartup.PrinterTransportIsSecure(app.Services);
 
                 app.UseWhen(
-                    Listeners.ForwardedHeaderScope.Predicate(printerPort, printerListenerIsProxied),
+                    Listeners.ForwardedHeaderScope.Predicate(listeners.PrinterPort,
+                                                             listeners.LegacyPrinterPort,
+                                                             printerListenersAreProxied),
                     branch => branch.UseForwardedHeaders());
             }
 

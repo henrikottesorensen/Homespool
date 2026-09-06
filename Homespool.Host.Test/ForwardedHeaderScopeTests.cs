@@ -19,12 +19,14 @@ namespace Homespool.Host.Test;
 /// <remarks>
 /// The rule moved when nginx took over printer TLS, and it moved in the direction that trusts more
 /// rather than less — so it is worth asserting in both configurations rather than only in the one
-/// that ships. <c>ListenerSegregationTests</c> is the companion for the routing half of the same
-/// boundary.
+/// that ships. The legacy listener is asserted in both as well, and separately: it arrived after the
+/// rule was written, when "any port that is not the printer port" quietly included it.
+/// <c>ListenerSegregationTests</c> is the companion for the routing half of the same boundary.
 /// </remarks>
 public class ForwardedHeaderScopeTests
 {
     private const int PrinterPort = 15443;
+    private const int LegacyPrinterPort = 15800;
     private const int UserPort = 8080;
 
     /// <summary>
@@ -34,9 +36,9 @@ public class ForwardedHeaderScopeTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void TheUserListenerIsAlwaysTrusted(bool printerListenerIsProxied)
+    public void TheUserListenerIsAlwaysTrusted(bool printerListenersAreProxied)
     {
-        ForwardedHeaderScope.AppliesTo(UserPort, PrinterPort, printerListenerIsProxied)
+        ForwardedHeaderScope.AppliesTo(UserPort, PrinterPort, LegacyPrinterPort, printerListenersAreProxied)
                             .Should().BeTrue();
     }
 
@@ -47,7 +49,7 @@ public class ForwardedHeaderScopeTests
     [Fact]
     public void ThePrinterListenerIsTrustedWhenTheProxyTerminatesItsTls()
     {
-        ForwardedHeaderScope.AppliesTo(PrinterPort, PrinterPort, printerListenerIsProxied: true)
+        ForwardedHeaderScope.AppliesTo(PrinterPort, PrinterPort, LegacyPrinterPort, printerListenersAreProxied: true)
                             .Should().BeTrue();
     }
 
@@ -60,22 +62,51 @@ public class ForwardedHeaderScopeTests
     [Fact]
     public void ThePrinterListenerIsNotTrustedWhenPrintersDialItDirectly()
     {
-        ForwardedHeaderScope.AppliesTo(PrinterPort, PrinterPort, printerListenerIsProxied: false)
+        ForwardedHeaderScope.AppliesTo(PrinterPort, PrinterPort, LegacyPrinterPort, printerListenersAreProxied: false)
                             .Should().BeFalse();
     }
 
     /// <summary>
-    /// A port that is neither is treated as the user listener rather than the printer one, which is
-    /// the safe direction here and the opposite of the one
-    /// <see cref="ListenerSegregationMiddleware"/> takes. The two are not inconsistent: an
-    /// unidentifiable port must never serve printer <i>routes</i>, and it also cannot be the
-    /// unpublished printer listener — so there is nothing about it that argues for refusing the
-    /// header the proxy sends.
+    /// The legacy listener with nginx in front, which is where the compose stack puts it: the proxy
+    /// publishes 15800 and relays to Kestrel's over the container network, so the header is the
+    /// proxy's word here exactly as on the TLS printer port.
     /// </summary>
     [Fact]
-    public void AnyOtherPortIsTreatedAsProxied()
+    public void TheLegacyListenerIsTrustedWhenTheProxyStandsInFrontOfIt()
     {
-        ForwardedHeaderScope.AppliesTo(9999, PrinterPort, printerListenerIsProxied: false)
+        ForwardedHeaderScope.AppliesTo(LegacyPrinterPort, PrinterPort, LegacyPrinterPort, printerListenersAreProxied: true)
+                            .Should().BeTrue();
+    }
+
+    /// <summary>
+    /// <b>The legacy listener's twin of the refusal, and the case the rule used to get wrong</b>: it
+    /// treated every port that was not the printer port as the user listener, which was true when it
+    /// was written and stopped being true when the legacy listener opened. Run without the proxy, that
+    /// port is dialled directly and the header is the caller's own.
+    /// </summary>
+    [Fact]
+    public void TheLegacyListenerIsNotTrustedWhenPrintersDialItDirectly()
+    {
+        ForwardedHeaderScope.AppliesTo(LegacyPrinterPort, PrinterPort, LegacyPrinterPort, printerListenersAreProxied: false)
+                            .Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A port that is neither is treated as the user listener rather than a printer one, which is
+    /// the safe direction here and the opposite of the one
+    /// <see cref="ListenerSegregationMiddleware"/> takes. The two are not inconsistent: an
+    /// unidentifiable port must never serve printer <i>routes</i>, and it also cannot be an
+    /// unpublished printer listener — so there is nothing about it that argues for refusing the
+    /// header the proxy sends. With no legacy listener configured, its usual number is just such a
+    /// port: the socket does not exist, so nothing arrives on it to be believed or refused.
+    /// </summary>
+    [Theory]
+    [InlineData(9999, LegacyPrinterPort)]
+    [InlineData(9999, null)]
+    [InlineData(LegacyPrinterPort, null)]
+    public void AnyOtherPortIsTreatedAsProxied(int arrivedOnPort, int? legacyPrinterPort)
+    {
+        ForwardedHeaderScope.AppliesTo(arrivedOnPort, PrinterPort, legacyPrinterPort, printerListenersAreProxied: false)
                             .Should().BeTrue();
     }
 
@@ -87,19 +118,22 @@ public class ForwardedHeaderScopeTests
     /// reads <c>LocalPort</c> or <c>RemotePort</c> — and reading the remote port would let a client
     /// pick its own answer by choosing a source port, handing away the whole protection. This is the
     /// case that tells the two apart, which is why the predicate takes an <c>HttpContext</c> rather
-    /// than being written inline at the call site.
+    /// than being written inline at the call site. Both printer listeners, since either could be the
+    /// one a future edit reads the wrong port for.
     /// </remarks>
-    [Fact]
-    public void ThePredicateReadsTheLocalPortRatherThanTheRemoteOne()
+    [Theory]
+    [InlineData(PrinterPort)]
+    [InlineData(LegacyPrinterPort)]
+    public void ThePredicateReadsTheLocalPortRatherThanTheRemoteOne(int printerListenerPort)
     {
-        // Arrange - arrived on the printer listener, which is not proxied, so it must be refused.
+        // Arrange - arrived on a printer listener, which is not proxied, so it must be refused.
         // The remote port is the user port, so anything reading that instead would allow it.
         DefaultHttpContext context = new();
-        context.Connection.LocalPort = PrinterPort;
+        context.Connection.LocalPort = printerListenerPort;
         context.Connection.RemotePort = UserPort;
 
         // Act
-        bool applies = ForwardedHeaderScope.Predicate(PrinterPort, printerListenerIsProxied: false)(context);
+        bool applies = ForwardedHeaderScope.Predicate(PrinterPort, LegacyPrinterPort, printerListenersAreProxied: false)(context);
 
         // Assert
         applies.Should().BeFalse(
@@ -121,8 +155,10 @@ public class ForwardedHeaderScopeTests
     [InlineData(UserPort, false, "192.168.13.110", "the user listener is only reachable through the proxy")]
     [InlineData(PrinterPort, true, "192.168.13.110", "nginx terminates printer TLS, so X-Real-IP is its word")]
     [InlineData(PrinterPort, false, "10.9.9.9", "printers connect to this port directly, so the header is the caller's own")]
+    [InlineData(LegacyPrinterPort, true, "192.168.13.110", "nginx publishes the legacy port and relays it, so X-Real-IP is its word")]
+    [InlineData(LegacyPrinterPort, false, "10.9.9.9", "printers connect to the legacy port directly, so the header is the caller's own")]
     public async Task TheBranchDecidesWhetherTheStatedAddressIsBelieved(int arrivedOnPort,
-                                                                        bool printerListenerIsProxied,
+                                                                        bool printerListenersAreProxied,
                                                                         string expectedAddress,
                                                                         string because)
     {
@@ -138,7 +174,7 @@ public class ForwardedHeaderScopeTests
 
         ApplicationBuilder app = new(provider);
         app.UseWhen(
-            ForwardedHeaderScope.Predicate(PrinterPort, printerListenerIsProxied),
+            ForwardedHeaderScope.Predicate(PrinterPort, LegacyPrinterPort, printerListenersAreProxied),
             branch => branch.UseForwardedHeaders());
         app.Run(_ => Task.CompletedTask);
 

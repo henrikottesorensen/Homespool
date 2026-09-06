@@ -698,7 +698,7 @@ fi
 if test_case "apply leaves everything it was not asked about"; then
     use_temp_env "PRINTER_HOST=
 TZ=UTC" "# My own notes at the top, do not delete.
-PRINTER_TLS=false          # hand-edited: I read the wire in the clear
+TRANSFER_PORT=15081        # hand-edited: moved off the default
 PRINTER_HOST=old.lan
 
 # A key the wizard has never heard of
@@ -707,7 +707,7 @@ MY_CUSTOM_THING=keepme"
     apply >/dev/null 2>&1
 
     assert_eq "# My own notes at the top, do not delete.
-PRINTER_TLS=false          # hand-edited: I read the wire in the clear
+TRANSFER_PORT=15081        # hand-edited: moved off the default
 PRINTER_HOST=192.168.13.238
 
 # A key the wizard has never heard of

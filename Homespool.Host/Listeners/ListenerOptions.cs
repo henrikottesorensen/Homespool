@@ -112,11 +112,13 @@ public class ListenerOptions
     /// either, so a publicly-trusted certificate would not help.
     /// </para>
     /// <para>
-    /// <b>The same routes as <see cref="PrinterPort"/>, with nothing in front of them.</b> It is a
+    /// <b>The same routes as <see cref="PrinterPort"/>, and the same shape around them.</b> It is a
     /// second listener onto one protocol rather than a second protocol, so everything downstream —
-    /// authentication, the actor, enrolment — is reached identically. What separates the two is the
-    /// port a connection arrived on, which is also how anything that wants to warn about this can
-    /// tell that it happened.
+    /// authentication, the actor, enrolment — is reached identically; and in the compose stack the
+    /// same proxy publishes it and sets <c>X-Real-IP</c>, plain HTTP on both legs, so
+    /// <see cref="ForwardedHeaderScope"/> treats the two listeners alike under one flag. What
+    /// separates the two is the port a connection arrived on, which is also how anything that wants
+    /// to warn about this can tell that it happened.
     /// </para>
     /// <para>
     /// <b>Everything such a printer sends is readable and modifiable.</b> Its token in both

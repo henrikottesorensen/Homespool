@@ -30,8 +30,9 @@ services:
     # limit the printer never advertises - and file transfers fail. nginx (OpenSSL) can be capped;
     # see nginx/homespool-printer.conf.
     #
-    # To read the printer wire in the clear, use the plaintext override rather than adding a port
-    # here: `docker compose -f compose.yaml -f compose.plaintext.yaml up`.
+    # To read the printer wire in the clear, set LEGACY_PRINTER_PORT and provision ONE printer with a
+    # legacy bundle rather than adding a port here: the protocol then crosses port 15800 in plain
+    # HTTP for that printer alone, and every other keeps TLS.
 
     # So that a mail server on the HOST is addressable the same way everywhere: Docker Desktop
     # resolves host.docker.internal on its own, plain Linux Docker does not - without this line
@@ -134,13 +135,13 @@ services:
       # printer page refuses to produce an ini snippet without it - and should be one of the names
       # in the certificate, which it is by construction if set before the first start. PrinterPort
       # must match the proxy's published printer port below - it is the number written into every
-      # provisioning bundle. PrinterTls is one switch for both ends - the tls line written into
-      # every ini, and whether a leaf is issued for the proxy to present - so the two cannot
-      # disagree. Setting it false is a testing tool, never a deployment choice; startup says so,
-      # and compose.plaintext.yaml is how it is meant to be done.
+      # provisioning bundle. PrusaConnect__PrinterTls is deliberately NOT set here and takes the
+      # application's default, true: false is the mode for running the application with nothing in
+      # front of it (the test factory, the rigs), and in this stack it would leave the proxy
+      # publishing a printer port it has no leaf to serve. To read the wire in the clear, use
+      # LEGACY_PRINTER_PORT below.
       PrusaConnect__PrinterHost: "${PRINTER_HOST:-}"
       PrusaConnect__PrinterPort: "${PRINTER_PORT:-15443}"
-      PrusaConnect__PrinterTls: "${PRINTER_TLS:-true}"
 
       # The legacy plaintext printer listener, and EMPTY BY DEFAULT - which binds to null and means the
       # socket is never opened. Set LEGACY_PRINTER_PORT only if you own a printer whose firmware
@@ -148,8 +149,9 @@ services:
       # files, and the WiFi SSID and PrusaLink password it reports in its own INFO, across the
       # network in clear - and plain HTTP has no integrity, so gcode and commands can be altered in
       # flight rather than only read.
-      # Unlike PRINTER_TLS this leaves TLS standing for every other printer, which is the whole
-      # reason it exists as a second listener rather than a switch.
+      # It leaves TLS standing for every other printer, which is the whole reason it exists as a
+      # second listener rather than a switch - and it is also how to read the printer wire in the
+      # clear: one printer on a legacy bundle, captured on this port.
       #
       # ONE VARIABLE, read three times here, so the listener, the number written into a legacy ini
       # and the proxy's server block cannot disagree about whether the listener exists or where it is.
@@ -164,8 +166,9 @@ services:
 
       # The port written into START_ENCRYPTED_DOWNLOAD - what a printer on the pre-websocket transport
       # fetches a file from. Plain HTTP by design (the printer opens it with a raw socket; see
-      # nginx/homespool-transfer.conf), so it is proxied without TLS and stays plain whatever
-      # PRINTER_TLS says. Same variable as the proxy's published port below, so they cannot drift.
+      # nginx/homespool-transfer.conf), so it is proxied without TLS and stays plain whichever
+      # printer listener the printer came in on. Same variable as the proxy's published port below,
+      # so they cannot drift.
       PrusaConnect__TransferPort: "${TRANSFER_PORT:-15080}"
 
 
@@ -383,10 +386,12 @@ services:
       # The legacy plaintext printer listener. PUBLISHED UNCONDITIONALLY AND CLOSED UNLESS ASKED FOR:
       # with LEGACY_PRINTER_PORT unset the application opens no such listener and the proxy installs
       # no server block, so this port refuses connections. That is deliberate - making the
-      # publication itself conditional would mean two things that must agree, which is exactly the
-      # trap compose.plaintext.yaml documents, where a variable set and an override file forgotten
-      # leaves printers reaching a port nothing serves.
-      - "${LEGACY_PRINTER_PORT:-15800}:15800"
+      # publication itself conditional would mean two things that must agree, and a variable set
+      # with the publication forgotten leaves printers reaching a port nothing serves, with nothing
+      # at either end to say why. IPv4 only, like the four above and for the
+      # same reason - and it matters more here, where the token crosses in clear and the rate limits
+      # key on the address nginx reports.
+      - "0.0.0.0:${LEGACY_PRINTER_PORT:-15800}:15800"
 
     environment:
       # The same zone the application uses, so the two logs can be read side by side without

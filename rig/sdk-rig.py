@@ -37,7 +37,8 @@ expected to behave the same today. That is a reason to pin, not a reason not to.
 
 Point it at the PRINTER listener (15443), not the people-facing one. With PrusaConnect__PrinterTls
 false that listener is plain HTTP, which is what makes this runnable without teaching the SDK to
-trust a private CA - see .env.example on PRINTER_TLS, and note it is a testing setting.
+trust a private CA. That option is for running the application directly, as the rigs do; the compose
+stack fixes it to true, and its plaintext path is LEGACY_PRINTER_PORT.
 """
 import sys
 import threading

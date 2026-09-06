@@ -8,4 +8,11 @@
         <ProjectReference Include="..\Homespool.FakePrinter\Homespool.FakePrinter.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Update="UsingLayoutAnalyser" Version="0.4.0">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageReference>
+    </ItemGroup>
+
 </Project>

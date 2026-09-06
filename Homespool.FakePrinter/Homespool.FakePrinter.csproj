@@ -1,6 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
-
-    <!--
+<Project Sdk="Microsoft.NET.Sdk"><!--
         Deliberately references neither Homespool.Host nor Homespool.Model. The fake encodes the
         *firmware's* model of the wire - JSON built the way render.cpp builds it, command frames
         parsed the way connect.cpp parses them - so that where this library and the server disagree,
@@ -8,4 +6,11 @@
         carries is that it agrees with us.
     -->
 
+
+  <ItemGroup>
+    <PackageReference Update="UsingLayoutAnalyser" Version="0.4.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>

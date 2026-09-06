@@ -51,14 +51,11 @@ csharp_keep_existing_linebreaks = true
 
 # Stylecop settings
 ## Using Directives
-dotnet_sort_system_directives_first = true
-
 # UsingLayoutAnalyser owns the layout: System, then third party, then Homespool, as blocks separated
 # by a blank line. Nothing built in can express that - dotnet_separate_import_directive_groups splits
 # on the first-level namespace, so third party becomes a block per vendor and "ours" is not a concept
 # it has. It has to be off as well as unused: with it on, IDE0055 reports the layout below as a
 # formatting error, and EnforceCodeStyleInBuild makes that a build failure.
-dotnet_separate_import_directive_groups = false
 usinglayout.first_party_prefixes = Homespool
 
 # And one vendor per block inside third party, so Microsoft's dozen do not bleed into NSubstitute's

@@ -33,6 +33,10 @@
              carries the swagger-ui assets and nothing else, so it renders whatever document it is
              pointed at without bringing SwaggerGen's own schema generator into the build. -->
         <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
+        <PackageReference Update="UsingLayoutAnalyser" Version="0.4.0">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
     </ItemGroup>
 
     <ItemGroup>

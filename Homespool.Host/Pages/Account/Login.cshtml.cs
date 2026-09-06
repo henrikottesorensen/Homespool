@@ -154,10 +154,12 @@ public class LoginModel : PageModel
     /// that is a rule about the account rather than about this sign-in.
     /// </para>
     /// <para>
-    /// <b>The checks the password path runs still run</b>, in the order <c>PasswordSignInAsync</c>
-    /// runs them: lockout first, then whether the account may sign in at all, which is where the
-    /// confirmed-account rule lives. A refused assertion gets the wrong-password message, so the
-    /// form is no more of an oracle for passkeys than it is for passwords.
+    /// <b>The checks the password path runs still run</b>, in the scheme, the moment the assertion
+    /// has named the account - nobody knows who is signing in before that - and before anything is
+    /// stored or minted: whether the account is locked out, and whether it may sign in at all, which
+    /// is where the confirmed-account rule lives. This page routes on the refusal as it does for a
+    /// password. Any other refused assertion gets the wrong-password message, so the form is no more
+    /// of an oracle for passkeys than it is for passwords.
     /// </para>
     /// </remarks>
     public async Task<IActionResult> OnPostPasskeyAsync(string credential = null, bool rememberMe = false, string returnUrl = null)
@@ -185,35 +187,18 @@ public class LoginModel : PageModel
 
         if (!assertion.Succeeded)
         {
-            ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
-
-            return Page();
-        }
-
-        HSUser user = await _userManager.GetUserAsync(assertion.Principal);
-
-        if (user is null)
-        {
-            _logger.LogWarning("A verified passkey assertion resolved to no account.");
-            ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
-
-            return Page();
-        }
-
-        switch (await _rules.PreSignInCheckAsync(user))
-        {
-            case SignInRefusal.LockedOut:
+            if (assertion.Refusal() == SignInRefusal.LockedOut)
+            {
                 _logger.LogWarning("User account locked out.");
 
                 return RedirectToPage("./Lockout");
+            }
 
-            case SignInRefusal.NotAllowed:
-                ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
+            ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
-                return Page();
+            return Page();
         }
 
-        await _userManager.ResetAccessFailedCountAsync(user);
         await _signIn.SignInAsync(HttpContext, assertion.Principal, rememberMe);
 
         _logger.LogInformation("User logged in with a passkey.");

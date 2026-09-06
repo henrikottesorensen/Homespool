@@ -41,6 +41,7 @@ namespace Homespool.Host.Pages.Account;
 public class RegisterModel : PageModel
 {
     private readonly LocalSignIn _signIn;
+    private readonly LocalSignInRules _rules;
     private readonly ExternalSignIn _externalSignIn;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserStore<HSUser> _userStore;
@@ -56,6 +57,7 @@ public class RegisterModel : PageModel
     public RegisterModel(UserManager<HSUser> userManager,
                          IUserStore<HSUser> userStore,
                          LocalSignIn signIn,
+                         LocalSignInRules rules,
                          ExternalSignIn externalSignIn,
                          ILogger<RegisterModel> logger,
                          IEmailSender emailSender,
@@ -69,6 +71,7 @@ public class RegisterModel : PageModel
         _userStore = userStore;
         _emailStore = GetEmailStore();
         _signIn = signIn;
+        _rules = rules;
         _externalSignIn = externalSignIn;
         _logger = logger;
         _emailSender = emailSender;
@@ -322,25 +325,7 @@ public class RegisterModel : PageModel
         // already confirmed and we can sign straight in.
         if (!user.EmailConfirmed)
         {
-            string userId = await _userManager.GetUserIdAsync(user);
-            string confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            confirmToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmToken));
-            string callbackUrl = Url.Page(
-                "/Account/ConfirmEmail",
-                pageHandler: null,
-                values: new { userId, code = confirmToken, returnUrl },
-                protocol: Request.Scheme);
-
-            // The request's culture, and correct: whoever accepted the invitation is whoever reads
-            // this. The account exists by now but has chosen no language yet.
-            EmailSendResult sendResult = await _emailSender.SendEmailAsync(
-                invitation.Email,
-                _localiser["Email_ConfirmSubject"],
-                _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
-
-            bool emailFailed = sendResult == EmailSendResult.Failed;
-
-            return RedirectToPage("RegisterConfirmation", new { email = invitation.Email, returnUrl, emailFailed });
+            return await HoldForConfirmationAsync(user, invitation.Email, returnUrl);
         }
 
         await _signIn.SignInAsync(HttpContext, user, isPersistent: false);
@@ -367,8 +352,14 @@ public class RegisterModel : PageModel
     /// <para>
     /// <b>Nothing here touches teams or the confirmation flag.</b> The account already has its default
     /// team, so creating a second would be the bug; and an unconfirmed address stays unconfirmed,
-    /// since <c>ResendEmailConfirmation</c> is the page for that and redeeming an invite is not the
-    /// same proof as answering mail sent to the address.
+    /// since redeeming an invite is not the same proof as answering mail sent to the address - the
+    /// account is sent that mail and held at confirmation, as a new account is.
+    /// </para>
+    /// <para>
+    /// <b>Then what follows a proved password.</b> The account existed before it was orphaned, so it
+    /// may be locked out, unconfirmed, or holding an authenticator, and the reactivation runs the
+    /// same checks and the same second-factor step as the login page before anything becomes a
+    /// session. (Until 2026-09-06 it signed straight in; a review caught it.)
     /// </para>
     /// </remarks>
     private async Task<IActionResult> ReactivateAsync(HSUser existing, Invitation invitation, string returnUrl,
@@ -415,9 +406,63 @@ public class RegisterModel : PageModel
         _logger.LogInformation("Invitation {InviteId} reactivated an existing account for {Email}.", InviteId,
                                invitation.Email);
 
+        // The invite token and the new password are this path's proof; what follows is what follows
+        // a proved password anywhere else. The account existed before, so it may be locked out, may
+        // still be unconfirmed, and may hold an authenticator from before it was orphaned - none of
+        // which a reactivation is a way around.
+        switch (await _rules.PreSignInCheckAsync(existing))
+        {
+            case SignInRefusal.LockedOut:
+                _logger.LogWarning("Reactivated account {UserId} is locked out.", existing.Id);
+
+                return RedirectToPage("./Lockout");
+
+            case SignInRefusal.NotAllowed when !existing.EmailConfirmed:
+                return await HoldForConfirmationAsync(existing, invitation.Email, returnUrl);
+
+            case SignInRefusal.NotAllowed:
+                ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
+
+                return Page();
+        }
+
+        if (await _signIn.OwesSecondFactorAsync(HttpContext, existing))
+        {
+            await _signIn.BeginSecondFactorAsync(HttpContext, existing);
+
+            return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, RememberMe = false });
+        }
+
         await _signIn.SignInAsync(HttpContext, existing, isPersistent: false);
 
         return LocalRedirect(returnUrl);
+    }
+
+    /// <summary>
+    /// Sends <paramref name="user"/> the confirmation mail and holds at <c>RegisterConfirmation</c>:
+    /// the account is not signed in until the address answers.
+    /// </summary>
+    private async Task<IActionResult> HoldForConfirmationAsync(HSUser user, string email, string returnUrl)
+    {
+        string userId = await _userManager.GetUserIdAsync(user);
+        string confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        confirmToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmToken));
+        string callbackUrl = Url.Page(
+            "/Account/ConfirmEmail",
+            pageHandler: null,
+            values: new { userId, code = confirmToken, returnUrl },
+            protocol: Request.Scheme);
+
+        // The request's culture, and correct: whoever accepted the invitation is whoever reads this.
+        // The account exists by now but has chosen no language yet.
+        EmailSendResult sendResult = await _emailSender.SendEmailAsync(
+            email,
+            _localiser["Email_ConfirmSubject"],
+            _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
+
+        bool emailFailed = sendResult == EmailSendResult.Failed;
+
+        return RedirectToPage("RegisterConfirmation", new { email, returnUrl, emailFailed });
     }
 
     /// <summary>Reverses the Base64Url encoding the accept link uses. Null/invalid input yields null.</summary>

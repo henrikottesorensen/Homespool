@@ -94,6 +94,7 @@ public sealed class RegisterModelTests : IDisposable
             users,
             provider.GetRequiredService<IUserStore<HSUser>>(),
             signIn,
+            provider.GetRequiredService<LocalSignInRules>(),
             provider.GetRequiredService<ExternalSignIn>(),
             NullLogger<RegisterModel>.Instance,
             emailSender,

@@ -114,9 +114,10 @@ public static class Registration
             if (listeners.LegacyPrinterPort is int legacyPrinterPort)
             {
                 Log.Warning("A PLAINTEXT printer listener is open on port {Port} for firmware that cannot load a "
-                            + "custom certificate. Every printer provisioned onto it sends its token, its files and "
-                            + "the PrusaLink password in its own INFO across the network in clear, and plain HTTP has "
-                            + "no integrity, so gcode and commands can be altered in flight rather than only read. "
+                            + "custom certificate. Every printer provisioned onto it sends its token, its files, and "
+                            + "the WiFi SSID and PrusaLink password it reports in its own INFO, across the network in "
+                            + "clear - and plain HTTP has no integrity, so gcode and commands can be altered in flight "
+                            + "rather than only read. "
                             + "Printers that can load a custom certificate should use Listeners:PrinterPort instead; "
                             + "unset Listeners:LegacyPrinterPort to close it.",
                             legacyPrinterPort);

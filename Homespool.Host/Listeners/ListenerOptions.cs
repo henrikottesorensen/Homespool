@@ -120,8 +120,8 @@ public class ListenerOptions
     /// </para>
     /// <para>
     /// <b>Everything such a printer sends is readable and modifiable.</b> Its token in both
-    /// directions, every file it is sent, and the PrusaLink password it reports in its own
-    /// <c>INFO</c> — and plain HTTP has no integrity, so gcode and commands can be altered in flight
+    /// directions, every file it is sent, and the WiFi SSID and PrusaLink password it reports in its
+    /// own <c>INFO</c> — and plain HTTP has no integrity, so gcode and commands can be altered in flight
     /// rather than merely read. That makes this a LAN proposition on the same terms as
     /// <see cref="TransferPort"/>: publish it to the internet knowingly or not at all.
     /// </para>

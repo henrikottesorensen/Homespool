@@ -30,18 +30,18 @@ namespace Homespool.Host.PrusaConnect.Commands;
 public class SetToken : ISendableCommand
 {
     /// <summary>
-    /// Firmware's own ceiling, <c>Printer::Config::CONNECT_TOKEN_LEN</c> (<c>printer.hpp:173</c>).
-    /// Longer and the printer answers <c>BrokenCommand{"Token too long"}</c> rather than failing
-    /// quietly; <c>TokenService.PrinterTokenLength</c> is 20 for exactly this reason.
-    /// </summary>
-    public const int MaxTokenLength = 20;
-
-    /// <summary>
     /// The replacement token, as text. <b>A string on the wire, not bytes</b> — firmware parses it
     /// with <c>is_arg("token", Type::String)</c> (<c>command.cpp:313</c>) and <c>strlcpy</c>s it into
     /// a fixed buffer. This property was <c>byte[]</c> while the class was an unsent marker, which
     /// would have serialised as base64 and been rejected on arrival.
     /// </summary>
+    /// <remarks>
+    /// <b>It may not exceed <see cref="PrusaConnectConstants.PrinterTokenLength"/></b> — firmware
+    /// answers <c>BrokenCommand{"Token too long"}</c> rather than failing quietly. Nothing here
+    /// checks that, and the bound is honoured by construction instead: every token this sends comes
+    /// from <c>TokenService</c>, which generates exactly that length from the same constant. A
+    /// caller assembling one by hand is the case that would need a guard.
+    /// </remarks>
     public required string Token { get; set; }
 
     public string WireName => "SET_TOKEN";

@@ -4,6 +4,7 @@ using System.Text.Json;
 
 using AwesomeAssertions;
 
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 
 namespace Homespool.Host.Test;
@@ -125,7 +126,8 @@ public class CommandWireEncoderTests
     /// </summary>
     /// <remarks>
     /// Its sibling tests at <c>:161</c> and <c>:165</c> prove firmware answers <c>BrokenCommand</c>
-    /// for a missing token and for one longer than <see cref="SetToken.MaxTokenLength"/>, so the key
+    /// for a missing token and for one longer than
+    /// <see cref="PrusaConnectConstants.PrinterTokenLength"/>, so the key
     /// name and the type are both load-bearing. The class carried <c>byte[]</c> while it was an unsent
     /// marker; that would have serialised as base64 and been refused on arrival, which no test could
     /// have caught while nothing sent it.

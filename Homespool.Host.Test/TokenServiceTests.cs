@@ -31,14 +31,14 @@ public class TokenServiceTests
 
         // Assert
         token.Should().NotBeNullOrWhiteSpace();
-        token.Length.Should().Be(TokenService.PrinterTokenLength);
+        token.Length.Should().Be(PrusaConnectConstants.PrinterTokenLength);
         token.Should().MatchRegex("^[A-Za-z0-9_-]+$");
         decode.Should().NotThrow();
     }
 
     /// <summary>
     /// <see cref="TokenService.GenerateToken(int)"/> honors the requested byte count rather than always
-    /// generating <see cref="TokenService.PrinterTokenLength"/>-derived bytes.
+    /// generating <see cref="PrusaConnectConstants.PrinterTokenLength"/>-derived bytes.
     /// </summary>
     /// <remarks>
     /// <see cref="Homespool.Host.Accounts.InvitationService.CreateAsync"/> calls this overload with
@@ -179,7 +179,7 @@ public class TokenServiceTests
     /// </summary>
     /// <remarks>
     /// The exact byte size is no longer re-checked at decode; the guard is the
-    /// [<see cref="TokenService.PrinterTokenLength"/>, MaximumTokenLength] character bound, which keeps
+    /// [<see cref="PrusaConnectConstants.PrinterTokenLength"/>, MaximumTokenLength] character bound, which keeps
     /// an undersized or oversized token off PBKDF2. An in-range token of the wrong length still fails,
     /// just later, at the constant-time compare.
     /// </remarks>

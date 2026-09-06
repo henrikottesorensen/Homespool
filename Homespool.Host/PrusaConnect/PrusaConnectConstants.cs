@@ -64,6 +64,33 @@ public static class PrusaConnectConstants
     /// <summary>Longest printer type accepted, e.g. <c>1.3.5</c>.</summary>
     public const int PrinterTypeMaxLength = 32;
 
+    /// <summary>
+    /// How long a printer's own token is - firmware's <c>Printer::Config::CONNECT_TOKEN_LEN</c>
+    /// (<c>src/connect/printer.hpp:173</c> at the pinned ref).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An exact length here and a ceiling on the wire, which is why one number does three jobs.</b>
+    /// <c>TokenService</c> generates exactly this many characters (15 bytes of CSPRNG, Base64) and
+    /// refuses anything shorter as a presented token; <c>SetToken</c> may not exceed it, because a
+    /// longer one is refused by the printer.
+    /// </para>
+    /// <para>
+    /// <b>Firmware enforces it two different ways, and neither is a reason to keep two constants.</b>
+    /// <c>SET_TOKEN</c> rejects outright - <c>command.cpp:316</c> tests <c>len - 1 &lt;= </c> the
+    /// length and answers <c>BrokenCommand{"Token too long"}</c> - while the registration response
+    /// header is copied character by character <i>while</i> the index is below it
+    /// (<c>registrator.cpp:133</c>, into a buffer one byte longer for the terminator), so an
+    /// over-long one there is silently truncated rather than refused. Twenty is accepted whole on
+    /// both paths; the strict <c>&lt;</c> bounds a write index, not the acceptable length.
+    /// </para>
+    /// <para>
+    /// <b>Do not merge this with <c>PrusaConnectOptions.PrinterHostMaxLength</c>.</b> That is also 20
+    /// and is a different firmware buffer entirely - the Connect hostname. They agree by coincidence.
+    /// </para>
+    /// </remarks>
+    public const int PrinterTokenLength = 20;
+
     /// <summary>Longest firmware string accepted, e.g. <c>6.4.0+11974</c>.</summary>
     public const int FirmwareMaxLength = 64;
 }

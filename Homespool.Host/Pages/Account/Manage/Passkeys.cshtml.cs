@@ -21,11 +21,9 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -46,9 +44,10 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// <b>Adding one takes the current password.</b> A session is not enough: a cookie somebody else got
 /// hold of, or a browser left unlocked, would otherwise mint a durable, phishing-resistant sign-in
 /// that a later password change does not touch. So the challenge is issued only after the password
-/// is proved, under a backoff of its own (<see cref="LimitedAction.AddPasskey"/>) because a password
-/// check on an authenticated path is otherwise unlimited guesses. The five-minute ceremony is what the
-/// password unlocks; the answer needs no second proof. <b>An account created through an external
+/// is proved - demanded of the <see cref="Schemes.UserPassword"/> scheme as a step-up on the signed-in
+/// account, so a wrong guess counts toward the same lockout a wrong login does and this page holds no
+/// password check of its own. The five-minute ceremony is what the password unlocks; the answer needs
+/// no second proof. <b>An account created through an external
 /// provider has no password to prove, and re-authenticates at the provider instead</b>: a challenge
 /// to the provider's scheme with <c>max_age=0</c> and <c>prompt=login</c>, a callback that checks the
 /// subject is the one this account already signs in with and that any <c>auth_time</c> the provider
@@ -90,7 +89,6 @@ public class PasskeysModel : PageModel
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly PasskeyCeremonies _ceremonies;
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _options;
-    private readonly AttemptLimiter _attemptLimiter;
     private readonly TimeProvider _timeProvider;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<PasskeysModel> _logger;
@@ -100,7 +98,6 @@ public class PasskeysModel : PageModel
                          IPasskeyHandler<HSUser> engine,
                          PasskeyCeremonies ceremonies,
                          IOptionsMonitor<PasskeyAuthenticationOptions> options,
-                         AttemptLimiter attemptLimiter,
                          TimeProvider timeProvider,
                          IStringLocalizer<SharedResource> localiser,
                          ILogger<PasskeysModel> logger)
@@ -110,7 +107,6 @@ public class PasskeysModel : PageModel
         _engine = engine;
         _ceremonies = ceremonies;
         _options = options;
-        _attemptLimiter = attemptLimiter;
         _timeProvider = timeProvider;
         _localiser = localiser;
         _logger = logger;
@@ -191,8 +187,8 @@ public class PasskeysModel : PageModel
     /// <summary>
     /// The first half of adding a passkey: the password proved, creation options for the browser, and
     /// a ceremony started. A POST so the antiforgery token guards it; 404 where passkeys are withheld;
-    /// 401 with a message for a wrong password and 429 with one while backed off, which the script
-    /// shows in place of the generic cancelled text.
+    /// 401 with a message for a wrong password and 429 with one while the account is locked out, which
+    /// the script shows in place of the generic cancelled text.
     /// </summary>
     public async Task<IActionResult> OnPostBeginRegistrationAsync(CancellationToken cancellationToken)
     {
@@ -231,27 +227,25 @@ public class PasskeysModel : PageModel
         }
         else
         {
-            // The backoff is checked before the password is compared, so a backed-off session cannot
-            // learn whether its guesses were close by watching which refusal comes back.
-            DateTimeOffset now = _timeProvider.GetUtcNow();
+            // The scheme checks the password against the signed-in account and counts a wrong one
+            // toward the lockout; a locked-out account is refused before its password is compared.
+            AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.UserPassword, new PasswordCredential(Input.Password));
 
-            if (await _attemptLimiter.RemainingLockoutAsync(user.Id, LimitedAction.AddPasskey, now, cancellationToken)
-                    is { } remaining)
+            if (!stepUp.Succeeded)
             {
-                return Refusal(StatusCodes.Status429TooManyRequests,
-                               _localiser["Passkeys_PasswordLockedOut", BackoffWait.Format(_localiser, remaining)]);
-            }
+                if (stepUp.Refusal() == SignInRefusal.LockedOut)
+                {
+                    DateTimeOffset? lockedUntil = await _users.GetLockoutEndDateAsync(user);
+                    TimeSpan remaining = lockedUntil is null ? TimeSpan.Zero : lockedUntil.Value - _timeProvider.GetUtcNow();
 
-            if (!await _users.CheckPasswordAsync(user, Input.Password ?? string.Empty))
-            {
-                await _attemptLimiter.RecordFailedAttemptAsync(user.Id, LimitedAction.AddPasskey, now, cancellationToken);
+                    return Refusal(StatusCodes.Status429TooManyRequests,
+                                   _localiser["Passkeys_PasswordLockedOut", BackoffWait.Format(_localiser, remaining)]);
+                }
 
-                _logger.LogInformation("Passkey registration refused for user {UserId}: wrong password.", user.Id);
+                _logger.LogInformation("Passkey registration refused for user {UserId}: the password step-up failed.", user.Id);
 
                 return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_PasswordWrong"]);
             }
-
-            await _attemptLimiter.ResetAsync(user.Id, LimitedAction.AddPasskey, cancellationToken);
         }
 
         PasskeyCreationOptionsResult creation = await _engine.MakeCreationOptionsAsync(

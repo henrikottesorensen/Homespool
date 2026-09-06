@@ -23,10 +23,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
 using Homespool.Data;
-using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -227,21 +225,24 @@ public sealed class PasskeysPageTests : IDisposable
         request.Response.Headers.SetCookie.ToString().Should().BeEmpty("no ceremony starts on a wrong password");
     }
 
+    /// <summary>
+    /// The step-up goes through the password scheme, so wrong guesses count toward the account's own
+    /// lockout - not a backoff of the page's - and even the right password is refused while it lasts.
+    /// </summary>
     [Fact]
-    public async Task RepeatedWrongPasswordsBackOff()
+    public async Task RepeatedWrongPasswordsLockTheAccountOut()
     {
         // Arrange
         await using Rig rig = await Rig.CreateAsync(this);
         HSUser user = await rig.AddUserAsync("owner@example.com");
-        int threshold = new AttemptLimitOptions().MaxFailedAttempts;
+        int threshold = rig.Users.Options.Lockout.MaxFailedAccessAttempts;
 
-        for (int i = 0; i <= threshold; i += 1)
+        for (int i = 0; i < threshold; i += 1)
         {
             (PasskeysModel wrong, _) = rig.NewModel(user, password: "not it"); // betterleaks:allow
             await wrong.OnPostBeginRegistrationAsync(CancellationToken.None);
         }
 
-        // Even the right password is refused while backed off, and the refusal says so.
         (PasskeysModel model, _) = rig.NewModel(user);
 
         // Act
@@ -249,8 +250,7 @@ public sealed class PasskeysPageTests : IDisposable
 
         // Assert
         result.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(429);
-        (await rig.Limiter.RemainingLockoutAsync(user.Id, LimitedAction.AddPasskey, DateTimeOffset.UtcNow, CancellationToken.None))
-            .Should().NotBeNull();
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeTrue("the guesses counted against the account, as at login");
     }
 
     /// <summary>
@@ -531,6 +531,7 @@ public sealed class PasskeysPageTests : IDisposable
     {
         private readonly HomespoolDbContext _context;
         private readonly IServiceProvider _provider;
+        private readonly List<IServiceScope> _scopes = [];
 
         private Rig(HomespoolDbContext context, IServiceProvider provider)
         {
@@ -543,8 +544,6 @@ public sealed class PasskeysPageTests : IDisposable
         public IPasskeyHandler<HSUser> Engine => _provider.GetRequiredService<IPasskeyHandler<HSUser>>();
 
         public PasskeyCeremonies Ceremonies => _provider.GetRequiredService<PasskeyCeremonies>();
-
-        public AttemptLimiter Limiter => new(_context, TestOptions.Snapshot(new AttemptLimitOptions()), NullLogger<AttemptLimiter>.Instance);
 
         public static async Task<Rig> CreateAsync(PasskeysPageTests owner)
         {
@@ -568,7 +567,13 @@ public sealed class PasskeysPageTests : IDisposable
         /// </summary>
         public (PasskeysModel model, DefaultHttpContext request) NewModel(HSUser user, string? cookie = null, string host = RelyingPartyId, string? password = Password)
         {
-            DefaultHttpContext request = new() { RequestServices = _provider };
+            // A scope per request, as a real request has: the handler provider and the handlers it
+            // caches are scoped, and a handler answers a second request with its first, memoised
+            // result. Every request here gets its own.
+            IServiceScope scope = _provider.CreateScope();
+            _scopes.Add(scope);
+
+            DefaultHttpContext request = new() { RequestServices = scope.ServiceProvider };
             request.Request.Scheme = "https";
             request.Request.Host = new HostString(host);
             request.Request.Path = PagePath;
@@ -583,11 +588,10 @@ public sealed class PasskeysPageTests : IDisposable
             IdentityTestHarness.SignInAsPrincipal(request, user);
 
             PasskeysModel model = new(Users,
-                                      _provider.GetRequiredService<ExternalSignIn>(),
+                                      scope.ServiceProvider.GetRequiredService<ExternalSignIn>(),
                                       Engine,
                                       Ceremonies,
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),
-                                      Limiter,
                                       TimeProvider.System,
                                       TestLocaliser.Shared(),
                                       NullLogger<PasskeysModel>.Instance)
@@ -663,6 +667,11 @@ public sealed class PasskeysPageTests : IDisposable
 
         public async ValueTask DisposeAsync()
         {
+            foreach (IServiceScope scope in _scopes)
+            {
+                scope.Dispose();
+            }
+
             await _context.DisposeAsync();
         }
     }

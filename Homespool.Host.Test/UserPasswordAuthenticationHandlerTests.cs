@@ -182,4 +182,50 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
         request.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
         request.Response.Headers.Location.ToString().Should().BeEmpty("the login page is where a password is asked for, and nothing routes there through this scheme");
     }
+
+    // ---------- the step-up ----------
+    [Fact]
+    public async Task AStepUpChecksThePasswordAgainstTheSignedInAccount()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        string session = await rig.SessionCookieAsync(user);
+
+        AuthenticateResult right = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.UserPassword, new PasswordCredential(LocalSchemeRig.Password));
+        AuthenticateResult wrong = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.UserPassword, new PasswordCredential("not it")); // betterleaks:allow
+
+        right.Succeeded.Should().BeTrue(right.Failure?.Message);
+        right.Principal!.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
+        wrong.Succeeded.Should().BeFalse();
+        wrong.Refusal().Should().Be(SignInRefusal.Invalid);
+        (await rig.Users.GetAccessFailedCountAsync(user)).Should().Be(1, "a wrong step-up counts as a wrong login does");
+    }
+
+    [Fact]
+    public async Task AStepUpWithNobodySignedInIsRefusedUnread()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        await rig.AddUserAsync("owner@example.com");
+
+        AuthenticateResult result = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, new PasswordCredential(LocalSchemeRig.Password));
+
+        result.Succeeded.Should().BeFalse("a password alone names nobody, and no session does either");
+        result.None.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ALoginAndAStepUpTogetherAreRefused()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        HSUser other = await rig.AddUserAsync("other@example.com");
+
+        AuthenticateResult result = await LocalSchemeRig.AuthenticateAsync(
+            rig.NewRequest(await rig.SessionCookieAsync(user)),
+            Schemes.UserPassword,
+            Credential(other.UserName, LocalSchemeRig.Password),
+            new PasswordCredential(LocalSchemeRig.Password));
+
+        result.Succeeded.Should().BeFalse("one call, one account: another account's login has no place in a step-up");
+    }
 }

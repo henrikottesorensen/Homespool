@@ -14,7 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Homespool.Host.Authentication;
 
 /// <summary>
-/// The four cookie authentication schemes Identity's <see cref="SignInManager{TUser}"/> signs into and
+/// The four cookie authentication schemes Identity's sign-in signs into and
 /// reads back, registered here rather than inside the framework's <c>AddIdentity</c> so that every
 /// handler this application authenticates with is declared in code it owns.
 /// </summary>
@@ -118,8 +118,8 @@ public static class IdentityCookieSchemes
     /// </summary>
     /// <remarks>
     /// The return-URL redirect is disabled because nothing signs into this scheme through a challenge:
-    /// <see cref="SignInManager{TUser}"/> writes it directly on the way to the two-factor page, and a
-    /// redirect issued by the handler would fight that navigation.
+    /// <see cref="LocalSignIn"/> writes it directly on the way to the two-factor page, and a redirect
+    /// issued by the handler would fight that navigation.
     /// </remarks>
     public static AuthenticationBuilder AddTwoFactorUserIdCookieScheme(this AuthenticationBuilder builder)
     {

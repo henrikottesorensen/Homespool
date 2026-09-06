@@ -7,6 +7,7 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
@@ -23,15 +24,15 @@ namespace Homespool.Host.Pages.Account.Manage;
 public class IndexModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public IndexModel(UserManager<HSUser> userManager,
-                      SignInManager<HSUser> signInManager,
+                      LocalSignIn signIn,
                       IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _signIn = signIn;
         _localiser = localiser;
     }
 
@@ -125,7 +126,7 @@ public class IndexModel : PageModel
         // Re-issues the cookie, which is where the username lives for rendering. Without this the
         // header - and every other reader of the sign-in identity - keeps the old name until the next
         // sign-in.
-        await _signInManager.RefreshSignInAsync(user);
+        await _signIn.RefreshSignInAsync(HttpContext, user);
         StatusMessage = _localiser["Manage_ProfileUpdated"];
         return RedirectToPage();
     }

@@ -9,7 +9,7 @@
    User.Identity.IsAuthenticated: this application authenticates printers and API clients under their
    own schemes as well, and this is asking specifically whether a person is signed in. Same call
    _LoginPartial makes. *@
-@inject SignInManager<HSUser> SignInManager
+@using Homespool.Host.Authentication
 <!DOCTYPE html>
 @* CurrentUICulture, not CurrentCulture: this attribute describes the language of the text, which is
    the resource half. The two carry the same value here - Localisation/Registration.cs sets both from
@@ -132,7 +132,7 @@
     a placeholder would only invite making it precise again later.
 
     Not localised: a version and a commit are machine text, and there is no word here to translate. *@
-            @if (SignInManager.IsSignedIn(User))
+            @if (LocalSignInRules.IsSignedIn(User))
             {
 @*  One flex item, not two: the parent uses justify-content-between, which would otherwise treat
     the build stamp and the admin mark below as separate children and spread the leftover width

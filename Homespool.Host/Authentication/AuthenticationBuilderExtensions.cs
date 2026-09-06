@@ -100,6 +100,7 @@ public static class AuthenticationBuilderExtensions
 
         builder.Services.AddScoped<LocalSignInRules>();
         builder.Services.AddScoped<LocalSignIn>();
+        builder.Services.AddScoped<ExternalSignIn>();
 
         builder.AddScheme<AuthenticationSchemeOptions, UserPasswordAuthenticationHandler>(Schemes.UserPassword, options => { });
         builder.AddScheme<AuthenticationSchemeOptions, TotpAuthenticationHandler>(Schemes.Totp, options => { });

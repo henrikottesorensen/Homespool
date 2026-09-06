@@ -86,7 +86,7 @@ public class PasskeysModel : PageModel
     public static readonly TimeSpan MaxProviderProofAge = TimeSpan.FromMinutes(2);
 
     private readonly UserManager<HSUser> _users;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly ExternalSignIn _externalSignIn;
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly PasskeyCeremonies _ceremonies;
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _options;
@@ -96,7 +96,7 @@ public class PasskeysModel : PageModel
     private readonly ILogger<PasskeysModel> _logger;
 
     public PasskeysModel(UserManager<HSUser> users,
-                         SignInManager<HSUser> signInManager,
+                         ExternalSignIn externalSignIn,
                          IPasskeyHandler<HSUser> engine,
                          PasskeyCeremonies ceremonies,
                          IOptionsMonitor<PasskeyAuthenticationOptions> options,
@@ -106,7 +106,7 @@ public class PasskeysModel : PageModel
                          ILogger<PasskeysModel> logger)
     {
         _users = users;
-        _signInManager = signInManager;
+        _externalSignIn = externalSignIn;
         _engine = engine;
         _ceremonies = ceremonies;
         _options = options;
@@ -305,7 +305,7 @@ public class PasskeysModel : PageModel
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
         string redirectUrl = Url.Page("/Account/Manage/Passkeys", pageHandler: "Reauthenticated")!;
-        AuthenticationProperties external = _signInManager.ConfigureExternalAuthenticationProperties(
+        AuthenticationProperties external = ExternalSignIn.ChallengeProperties(
             provider, redirectUrl, user.Id.ToString(CultureInfo.InvariantCulture));
 
         OpenIdConnectChallengeProperties challenge = new(external.Items, external.Parameters)
@@ -333,7 +333,7 @@ public class PasskeysModel : PageModel
 
         // Keyed on the signed-in account, as the account-linking callback is, so a callback carrying
         // somebody else's external cookie is not read as this account's.
-        ExternalLoginInfo? info = await _signInManager.GetExternalLoginInfoAsync(user.Id.ToString(CultureInfo.InvariantCulture));
+        ExternalLoginInfo? info = await _externalSignIn.InfoAsync(HttpContext, user.Id.ToString(CultureInfo.InvariantCulture));
 
         // Consumed either way: a provider identity is not left lying around for another page to find.
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
@@ -613,7 +613,7 @@ public class PasskeysModel : PageModel
         {
             IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
 
-            Providers = (await _signInManager.GetExternalAuthenticationSchemesAsync())
+            Providers = (await _externalSignIn.ProvidersAsync())
                         .Where(scheme => logins.Any(login => string.Equals(login.LoginProvider, scheme.Name, StringComparison.Ordinal)))
                         .ToList();
         }

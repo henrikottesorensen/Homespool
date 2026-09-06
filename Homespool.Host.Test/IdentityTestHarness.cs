@@ -33,7 +33,7 @@ internal static class IdentityTestHarness
     /// against) and returns the pieces a PageModel constructor needs, plus the <see cref="DefaultHttpContext"/>
     /// backing them so the test can set <c>HttpContext.User</c> before calling into the model.
     /// </summary>
-    public static (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider
+    public static (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, IServiceProvider
         provider) BuildIdentityServices(HomespoolDbContext context, Action<IServiceCollection>? configure = null)
     {
         DefaultHttpContext httpContext = new();
@@ -49,7 +49,7 @@ internal static class IdentityTestHarness
         services.AddSingleton(context);
         services.AddSingleton<IHttpContextAccessor>(new HttpContextAccessor { HttpContext = httpContext });
 
-        // The Identity.Application cookie scheme is what SignInManager.SignInAsync writes to, and
+        // The Identity.Application cookie scheme is what LocalSignIn.SignInAsync writes to, and
         // nothing in AddHomespoolIdentity registers it: in the application it is the head of the
         // AddAuthentication chain in Program, and this is that head, without the printer, token and
         // OpenID Connect schemes no page model under test reaches.
@@ -81,7 +81,7 @@ internal static class IdentityTestHarness
         httpContext.RequestServices = provider;
 
         return (provider.GetRequiredService<UserManager<HSUser>>(),
-            provider.GetRequiredService<SignInManager<HSUser>>(),
+            provider.GetRequiredService<LocalSignIn>(),
             httpContext,
             provider);
     }

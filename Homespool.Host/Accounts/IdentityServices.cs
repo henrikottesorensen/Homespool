@@ -22,7 +22,8 @@ namespace Homespool.Host.Accounts;
 /// What the framework's <c>AddIdentity</c>, <c>AddEntityFrameworkStores</c> and
 /// <c>AddDefaultTokenProviders</c> register, written out for <see cref="HSUser"/> and
 /// <see cref="IdentityRole{TKey}"/> so that every scoped service behind <see cref="UserManager{TUser}"/>
-/// and <see cref="SignInManager{TUser}"/> can be read here rather than decompiled.
+/// can be read here rather than decompiled. The framework's <c>SignInManager</c> is not registered at
+/// all: its sign-ins are the schemes and helpers in <c>Homespool.Host.Authentication</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,8 +31,8 @@ namespace Homespool.Host.Accounts;
 /// also sets the default authenticate, challenge and sign-in schemes and registers the four cookie
 /// schemes; this application does both at the head of its own <c>AddAuthentication</c> chain, beside
 /// the printer, token and OpenID Connect schemes, through <see cref="IdentityCookieSchemes"/>. Nothing
-/// below registers a scheme, and <see cref="SignInManager{TUser}"/> will throw at the first sign-in
-/// if that chain is missing - which is what the unit-test harness has to replicate.
+/// below registers a scheme, and the first sign-in will throw if that chain is missing - which is
+/// what the unit-test harness has to replicate.
 /// </para>
 /// <para>
 /// <b>Same registrations, same order, same lifetimes, with one marked departure</b>:
@@ -52,8 +53,8 @@ namespace Homespool.Host.Accounts;
 public static class IdentityServices
 {
     /// <summary>
-    /// The scoped services <see cref="UserManager{TUser}"/>, <see cref="SignInManager{TUser}"/> and
-    /// <see cref="RoleManager{TRole}"/> are built from: the service half of the framework's
+    /// The scoped services <see cref="UserManager{TUser}"/> and <see cref="RoleManager{TRole}"/> are
+    /// built from: the service half of the framework's
     /// <c>AddIdentity</c>, resolved to <see cref="HSUser"/> and <see cref="IdentityRole{TKey}"/> over
     /// <see langword="long"/>.
     /// </summary>
@@ -65,8 +66,10 @@ public static class IdentityServices
     /// <returns>An <see cref="IdentityBuilder"/> for the stores, describer and token providers.</returns>
     /// <remarks>
     /// <para>
-    /// <b>The security stamp validator takes its clock from the container.</b> The framework falls
-    /// back to the system clock when none is registered; the post-configure step below hands it
+    /// <b>The security stamp validators are this application's own</b> - <see cref="SessionStampValidator"/>
+    /// and <see cref="RememberedBrowserStampValidator"/>, registered for the framework's two interfaces
+    /// because the cookie schemes resolve them through those. They take their clock from the
+    /// container: the post-configure step below hands <see cref="SecurityStampValidatorOptions"/>
     /// whatever <see cref="TimeProvider"/> the container holds, which is what lets a test move time.
     /// </para>
     /// </remarks>
@@ -75,8 +78,6 @@ public static class IdentityServices
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
 
-        // Hosting does not add IHttpContextAccessor by default, and SignInManager needs one.
-        services.AddHttpContextAccessor();
         services.AddMetrics();
 
         services.TryAddScoped<IUserValidator<HSUser>, UserValidator<HSUser>>();
@@ -93,18 +94,15 @@ public static class IdentityServices
         // can HSIdentityErrorDescriber, which AddErrorDescriber registers over this afterwards.
         services.TryAddScoped<IdentityErrorDescriber>();
 
-        services.TryAddScoped<ISecurityStampValidator, SecurityStampValidator<HSUser>>();
+        services.TryAddScoped<ISecurityStampValidator, SessionStampValidator>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<SecurityStampValidatorOptions>, PostConfigureSecurityStampValidatorOptions>());
-        services.TryAddScoped<ITwoFactorSecurityStampValidator, TwoFactorSecurityStampValidator<HSUser>>();
+        services.TryAddScoped<ITwoFactorSecurityStampValidator, RememberedBrowserStampValidator>();
         services.TryAddScoped<IUserClaimsPrincipalFactory<HSUser>, UserClaimsPrincipalFactory<HSUser, IdentityRole<long>>>();
         services.TryAddScoped<IUserConfirmation<HSUser>, DefaultUserConfirmation<HSUser>>();
 
-        // The WebAuthn engine behind the Passkey scheme, which drives it directly. SignInManager
-        // resolves it too and would hold a ceremony's state in the two-factor cookie; nothing here
-        // asks it to, and a test pins that nothing does.
+        // The WebAuthn engine behind the Passkey scheme, which drives it directly.
         services.TryAddScoped<IPasskeyHandler<HSUser>, PasskeyHandler<HSUser>>();
         services.TryAddScoped<UserManager<HSUser>>();
-        services.TryAddScoped<SignInManager<HSUser>>();
         services.TryAddScoped<RoleManager<IdentityRole<long>>>();
 
         services.Configure(configure);
@@ -174,8 +172,8 @@ public static class IdentityServices
     private sealed class PostConfigureSecurityStampValidatorOptions(TimeProvider? timeProvider = null)
         : IPostConfigureOptions<SecurityStampValidatorOptions>
     {
-        // Left null rather than defaulted to TimeProvider.System: SecurityStampValidator already falls
-        // back to the system clock itself.
+        // Left null rather than defaulted to TimeProvider.System: StampValidator already falls back to
+        // the system clock itself.
         private readonly TimeProvider? _timeProvider = timeProvider;
 
         public void PostConfigure(string? name, SecurityStampValidatorOptions options)

@@ -5,6 +5,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
@@ -33,7 +34,7 @@ public class SetupModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserStore<HSUser> _userStore;
     private readonly IUserEmailStore<HSUser> _emailStore;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
     private readonly SetupState _setupState;
     private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
     private readonly TeamService _teamService;
@@ -43,7 +44,7 @@ public class SetupModel : PageModel
 
     public SetupModel(UserManager<HSUser> userManager,
                       IUserStore<HSUser> userStore,
-                      SignInManager<HSUser> signInManager,
+                      LocalSignIn signIn,
                       SetupState setupState,
                       AccountConfirmationPolicy accountConfirmationPolicy,
                       TeamService teamService,
@@ -54,7 +55,7 @@ public class SetupModel : PageModel
         _userManager = userManager;
         _userStore = userStore;
         _emailStore = GetEmailStore();
-        _signInManager = signInManager;
+        _signIn = signIn;
         _setupState = setupState;
         _accountConfirmationPolicy = accountConfirmationPolicy;
         _teamService = teamService;
@@ -184,7 +185,7 @@ public class SetupModel : PageModel
 
         _logger.LogInformation("First-time setup completed; administrator account created for {Email}.", Input.Email);
 
-        await _signInManager.SignInAsync(user, isPersistent: false);
+        await _signIn.SignInAsync(HttpContext, user, isPersistent: false);
 
         return LocalRedirect("~/");
     }

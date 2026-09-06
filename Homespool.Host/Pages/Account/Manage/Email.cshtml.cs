@@ -25,17 +25,14 @@ namespace Homespool.Host.Pages.Account.Manage;
 public class EmailModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
     private readonly IEmailSender _emailSender;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public EmailModel(UserManager<HSUser> userManager,
-                      SignInManager<HSUser> signInManager,
                       IEmailSender emailSender,
                       IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
         _emailSender = emailSender;
         _localiser = localiser;
     }

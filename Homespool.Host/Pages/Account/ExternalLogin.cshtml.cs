@@ -36,8 +36,6 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-using SignInResult = Microsoft.AspNetCore.Identity.SignInResult;
-
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous]
@@ -53,7 +51,9 @@ public class ExternalLoginModel : PageModel
     /// <summary><see cref="InviteIdKey"/>'s companion, the Base64Url token from the accept link.</summary>
     private const string InviteTokenKey = "homespool.invite_token";
 
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
+
+    private readonly ExternalSignIn _externalSignIn;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserStore<HSUser> _userStore;
     private readonly IUserEmailStore<HSUser> _emailStore;
@@ -66,7 +66,8 @@ public class ExternalLoginModel : PageModel
     private readonly OidcOptions _oidc;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
-    public ExternalLoginModel(SignInManager<HSUser> signInManager,
+    public ExternalLoginModel(LocalSignIn signIn,
+                              ExternalSignIn externalSignIn,
                               UserManager<HSUser> userManager,
                               IUserStore<HSUser> userStore,
                               ILogger<ExternalLoginModel> logger,
@@ -80,7 +81,9 @@ public class ExternalLoginModel : PageModel
     {
         ArgumentNullException.ThrowIfNull(oidc);
 
-        _signInManager = signInManager;
+        _signIn = signIn;
+
+        _externalSignIn = externalSignIn;
         _userManager = userManager;
         _userStore = userStore;
         _emailStore = GetEmailStore();
@@ -186,7 +189,7 @@ public class ExternalLoginModel : PageModel
     public async Task<IActionResult> OnPostAsync(string provider, string returnUrl = null, int? inviteId = null,
                                                  string code = null)
     {
-        IEnumerable<AuthenticationScheme> external = await _signInManager.GetExternalAuthenticationSchemesAsync();
+        IEnumerable<AuthenticationScheme> external = await _externalSignIn.ProvidersAsync();
 
         if (!external.Any(scheme => string.Equals(scheme.Name, provider, StringComparison.Ordinal)))
         {
@@ -195,7 +198,7 @@ public class ExternalLoginModel : PageModel
 
         // Request a redirect to the external login provider.
         string redirectUrl = Url.Page("./ExternalLogin", pageHandler: "Callback", values: new { returnUrl });
-        AuthenticationProperties properties = _signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
+        AuthenticationProperties properties = ExternalSignIn.ChallengeProperties(provider, redirectUrl);
 
         // An invite presented here rides through the provider and back, so the callback can spend it
         // without trusting anything the provider says about who this is. Not validated yet - the round
@@ -219,7 +222,7 @@ public class ExternalLoginModel : PageModel
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 
-        ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync();
+        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext);
         if (info == null)
         {
             ErrorMessage = _localiser["Account_ExternalLoginError"];
@@ -227,10 +230,8 @@ public class ExternalLoginModel : PageModel
         }
 
         // Sign in the user with this external login provider if the user already has a login.
-        SignInResult result =
-            await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false,
-                                                          bypassTwoFactor: false);
-        if (result.Succeeded)
+        ExternalSignInResult result = await _externalSignIn.SignInAsync(HttpContext, info, isPersistent: false);
+        if (result == ExternalSignInResult.Succeeded)
         {
             // Null-conditional because ClaimsPrincipal.Identity is IIdentity? - but the reachable
             // half is Name rather than Identity: it is the name claim, which plenty of providers
@@ -253,12 +254,12 @@ public class ExternalLoginModel : PageModel
         // Without this arm the fall-through is worse than wrong, it is confusing: a RequiresTwoFactor
         // result is neither Succeeded nor IsLockedOut, so an account with an authenticator would drop
         // into the invite gate below and be told there is no invitation for it.
-        if (result.RequiresTwoFactor)
+        if (result == ExternalSignInResult.RequiresSecondFactor)
         {
             return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, RememberMe = false });
         }
 
-        if (result.IsLockedOut)
+        if (result == ExternalSignInResult.LockedOut)
         {
             return RedirectToPage("./Lockout");
         }
@@ -355,7 +356,7 @@ public class ExternalLoginModel : PageModel
         returnUrl = returnUrl ?? Url.Content("~/");
 
         // Get the information about the user from the external login provider
-        ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync();
+        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext);
         if (info == null)
         {
             ErrorMessage = _localiser["Account_ExternalLoginConfirmError"];
@@ -474,7 +475,7 @@ public class ExternalLoginModel : PageModel
                                   new { Email = invitation.Email, returnUrl, emailFailed });
         }
 
-        await _signInManager.SignInAsync(user, isPersistent: false, info.LoginProvider);
+        await _signIn.SignInAsync(HttpContext, user, isPersistent: false, info.LoginProvider);
 
         return LocalRedirect(returnUrl);
     }

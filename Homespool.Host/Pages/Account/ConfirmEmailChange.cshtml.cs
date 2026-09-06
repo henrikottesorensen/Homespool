@@ -2,6 +2,7 @@
 
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
@@ -35,17 +36,17 @@ namespace Homespool.Host.Pages.Account;
 public class ConfirmEmailChangeModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
     private readonly IOptions<Mail.SmtpOptions> _smtp;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
-                                   SignInManager<HSUser> signInManager,
+                                   LocalSignIn signIn,
                                    IOptions<Mail.SmtpOptions> smtp,
                                    IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _signIn = signIn;
         _smtp = smtp;
         _localiser = localiser;
     }
@@ -108,7 +109,7 @@ public class ConfirmEmailChangeModel : PageModel
 
         // Refreshes the cookie so the session reflects the new address rather than going stale
         // against a principal that no longer matches the user.
-        await _signInManager.RefreshSignInAsync(user);
+        await _signIn.RefreshSignInAsync(HttpContext, user);
 
         StatusMessage = _localiser["Account_EmailChangeThanks"].Value + AlertRecipientNotice(await IsAlertRecipientAsync(user));
 

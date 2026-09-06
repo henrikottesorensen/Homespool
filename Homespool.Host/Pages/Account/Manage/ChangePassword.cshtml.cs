@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
@@ -26,21 +27,21 @@ namespace Homespool.Host.Pages.Account.Manage;
 public class ChangePasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
     private readonly ApiTokenService _apiTokens;
     private readonly UnitOfWork _unitOfWork;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ChangePasswordModel> _logger;
 
     public ChangePasswordModel(UserManager<HSUser> userManager,
-                               SignInManager<HSUser> signInManager,
+                               LocalSignIn signIn,
                                ApiTokenService apiTokens,
                                UnitOfWork unitOfWork,
                                IStringLocalizer<SharedResource> localiser,
                                ILogger<ChangePasswordModel> logger)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _signIn = signIn;
         _apiTokens = apiTokens;
         _unitOfWork = unitOfWork;
         _localiser = localiser;
@@ -192,7 +193,7 @@ public class ChangePasswordModel : PageModel
 
         // Outside the transaction: re-issuing the cookie is not part of the atomic write, and it is
         // the one step that must not happen if the commit failed.
-        await _signInManager.RefreshSignInAsync(user);
+        await _signIn.RefreshSignInAsync(HttpContext, user);
 
         _logger.LogInformation("User changed their password successfully. {RevokedTokenCount} API tokens revoked.", revoked);
 

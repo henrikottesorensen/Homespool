@@ -1,4 +1,6 @@
+using System;
 using System.Globalization;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
@@ -46,6 +48,16 @@ public sealed class LocalSignInRules
         _users = users;
         _confirmation = confirmation;
         _options = options.Value;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="principal"/> is a signed-in person: an identity authenticated by the
+    /// application cookie, as distinct from a printer or an API client under its own scheme.
+    /// </summary>
+    /// <remarks>The framework's <c>SignInManager.IsSignedIn</c>, unchanged: the claims factory names every session identity after the application scheme.</remarks>
+    public static bool IsSignedIn(ClaimsPrincipal? principal)
+    {
+        return principal?.Identities.Any(identity => string.Equals(identity.AuthenticationType, IdentityConstants.ApplicationScheme, StringComparison.Ordinal)) == true;
     }
 
     /// <summary>

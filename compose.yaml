@@ -385,8 +385,10 @@ services:
       # no server block, so this port refuses connections. That is deliberate - making the
       # publication itself conditional would mean two things that must agree, which is exactly the
       # trap compose.plaintext.yaml documents, where a variable set and an override file forgotten
-      # leaves printers reaching a port nothing serves.
-      - "${LEGACY_PRINTER_PORT:-15800}:15800"
+      # leaves printers reaching a port nothing serves. IPv4 only, like the four above and for the
+      # same reason - and it matters more here, where the token crosses in clear and the rate limits
+      # key on the address nginx reports.
+      - "0.0.0.0:${LEGACY_PRINTER_PORT:-15800}:15800"
 
     environment:
       # The same zone the application uses, so the two logs can be read side by side without

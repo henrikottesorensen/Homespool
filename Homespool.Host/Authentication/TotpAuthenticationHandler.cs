@@ -22,11 +22,14 @@ namespace Homespool.Host.Authentication;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Whose code, in this order.</b> The pending two-factor cookie, which exists only because the
-/// password scheme just succeeded and the account owes a second factor; otherwise the signed-in
-/// session, for a step-up on a page the person already reached. Neither present, the code is refused
-/// unread. The ticket says which it was, under <see cref="SourceProperty"/>, so the page that
-/// composed the two factors knows whether it is completing a sign-in or confirming an act.
+/// <b>Whose code, said by the credential.</b> A <see cref="TotpCredential"/> completes a sign-in and
+/// is verified against the account the pending two-factor cookie names, which exists only because
+/// the password scheme just succeeded and the account owes a second factor. A
+/// <see cref="TotpStepUpCredential"/> confirms an act and is verified against the signed-in session's
+/// account. Neither falls back to the other: a browser can hold a session for one account and a
+/// pending sign-in for another at once, and a step-up that took the pending account's code would let
+/// whoever holds that account pass the signed-in account's check. The account a credential names
+/// being absent, the code is refused unread; both credentials presented together are refused.
 /// </para>
 /// <para>
 /// <b>The framework's authenticator check, as a scheme.</b>
@@ -40,15 +43,6 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
 {
     /// <summary>The <see cref="JwtClaimTypes.AuthenticationMethod"/> a code-authenticated principal carries: the framework's own word.</summary>
     public const string AuthenticationMethod = "mfa";
-
-    /// <summary>The ticket property naming where the account came from: <see cref="PendingSource"/> or <see cref="SessionSource"/>.</summary>
-    public const string SourceProperty = "Homespool.Totp.Source";
-
-    /// <summary>The account was the one owing a second factor after a password.</summary>
-    public const string PendingSource = "pending";
-
-    /// <summary>The account was the signed-in session's.</summary>
-    public const string SessionSource = "session";
 
     private readonly UserManager<HSUser> _users;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
@@ -70,18 +64,34 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
     /// <inheritdoc/>
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        string? code = Normalise(Context.Features.Get<TotpCredential>()?.Code);
+        TotpCredential? signIn = Context.Features.Get<TotpCredential>();
+        TotpStepUpCredential? stepUp = Context.Features.Get<TotpStepUpCredential>();
 
-        if (code is null)
+        if (signIn is null && stepUp is null)
         {
             return AuthenticateResult.NoResult();
         }
 
-        (HSUser? user, string source) = await AccountAsync();
+        if (signIn is not null && stepUp is not null)
+        {
+            return SignInRefusals.Fail(SignInRefusal.Invalid, "A sign-in code and a step-up code cannot be presented together.");
+        }
+
+        string? code = Normalise(signIn?.Code ?? stepUp?.Code);
+
+        if (code is null)
+        {
+            return SignInRefusals.Fail(SignInRefusal.Invalid, "A code is required.");
+        }
+
+        HSUser? user = signIn is not null
+            ? await _rules.PendingTwoFactorAccountAsync(Context)
+            : await _rules.SignedInAccountAsync(Context);
 
         if (user is null)
         {
-            Logger.LogInformation("Authenticator code refused: no account is pending a second factor and nobody is signed in.");
+            Logger.LogInformation("Authenticator code refused: {Absent}.",
+                                  signIn is not null ? "no account is pending a second factor" : "nobody is signed in");
 
             return SignInRefusals.Fail(SignInRefusal.Invalid, "There is no account to verify a code for.");
         }
@@ -120,24 +130,11 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
             identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, AuthenticationMethod));
         }
 
-        AuthenticationProperties properties = new();
-        properties.Items[SourceProperty] = source;
+        Logger.LogInformation("Authenticator code verified for user {UserId} ({Purpose}).",
+                              user.Id,
+                              signIn is not null ? "completing a sign-in" : "a step-up");
 
-        Logger.LogInformation("Authenticator code verified for user {UserId} ({Source}).", user.Id, source);
-
-        return AuthenticateResult.Success(new AuthenticationTicket(principal, properties, Scheme.Name));
-    }
-
-    private async Task<(HSUser? user, string source)> AccountAsync()
-    {
-        HSUser? pending = await _rules.PendingTwoFactorAccountAsync(Context);
-
-        if (pending is not null)
-        {
-            return (pending, PendingSource);
-        }
-
-        return (await _rules.SignedInAccountAsync(Context), SessionSource);
+        return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));
     }
 
     /// <summary>

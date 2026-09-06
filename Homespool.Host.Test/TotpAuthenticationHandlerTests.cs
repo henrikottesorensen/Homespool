@@ -39,6 +39,11 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
         return new TotpCredential(code);
     }
 
+    private static TotpStepUpCredential StepUp(string code)
+    {
+        return new TotpStepUpCredential(code);
+    }
+
     private static RecoveryCodeCredential Recovery(string code)
     {
         return new RecoveryCodeCredential(code);
@@ -87,21 +92,53 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
         ClaimsPrincipal principal = result.Principal!;
         principal.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
         principal.FindFirstValue(JwtClaimTypes.AuthenticationMethod).Should().Be(TotpAuthenticationHandler.AuthenticationMethod);
-        result.Properties!.Items[TotpAuthenticationHandler.SourceProperty].Should().Be(TotpAuthenticationHandler.PendingSource);
     }
 
     [Fact]
-    public async Task ARightCodeAuthenticatesTheSignedInAccountOnAStepUp()
+    public async Task AStepUpCodeAuthenticatesTheSignedInAccount()
     {
         await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
         HSUser user = await rig.AddUserAsync("owner@example.com");
         byte[] secret = await rig.EnableAuthenticatorAsync(user);
+        string session = await rig.SessionCookieAsync(user);
 
-        AuthenticateResult result = await LocalSchemeRig.AuthenticateAsync(
-            rig.NewRequest(await rig.SessionCookieAsync(user)), Schemes.Totp, Code(LocalSchemeRig.CodeFor(secret)));
+        AuthenticateResult result = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.Totp, StepUp(LocalSchemeRig.CodeFor(secret)));
+        AuthenticateResult asSignIn = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.Totp, Code(LocalSchemeRig.CodeFor(secret)));
+        AuthenticateResult nobody = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.Totp, StepUp(LocalSchemeRig.CodeFor(secret)));
 
         result.Succeeded.Should().BeTrue(result.Failure?.Message);
-        result.Properties!.Items[TotpAuthenticationHandler.SourceProperty].Should().Be(TotpAuthenticationHandler.SessionSource);
+        result.Principal!.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
+        asSignIn.Succeeded.Should().BeFalse("a sign-in code is for the pending account, and none is pending");
+        nobody.Succeeded.Should().BeFalse("a step-up code is for the signed-in account, and nobody is signed in");
+    }
+
+    /// <summary>
+    /// One browser, two accounts: signed in as the owner, with the other account's password step
+    /// left pending. Each credential verifies against its own account and no other, so the other
+    /// account's code cannot pass the owner's step-up.
+    /// </summary>
+    [Fact]
+    public async Task EachCredentialVerifiesAgainstItsOwnAccountWhenABrowserHoldsTwo()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser owner = await rig.AddUserAsync("owner@example.com");
+        HSUser other = await rig.AddUserAsync("other@example.com");
+        byte[] ownerSecret = await rig.EnableAuthenticatorAsync(owner);
+        byte[] otherSecret = await rig.EnableAuthenticatorAsync(other);
+        string session = await rig.SessionCookieAsync(owner);
+        string pending = await rig.PendingTwoFactorCookieAsync(other);
+
+        AuthenticateResult ownersStepUp = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session, pending), Schemes.Totp, StepUp(LocalSchemeRig.CodeFor(ownerSecret)));
+        AuthenticateResult othersCodeAsStepUp = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session, pending), Schemes.Totp, StepUp(LocalSchemeRig.CodeFor(otherSecret)));
+        AuthenticateResult othersSignIn = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session, pending), Schemes.Totp, Code(LocalSchemeRig.CodeFor(otherSecret)));
+        AuthenticateResult both = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session, pending), Schemes.Totp, Code(LocalSchemeRig.CodeFor(otherSecret)), StepUp(LocalSchemeRig.CodeFor(ownerSecret)));
+
+        ownersStepUp.Succeeded.Should().BeTrue(ownersStepUp.Failure?.Message);
+        ownersStepUp.Principal!.FindFirstValue(JwtClaimTypes.Subject).Should().Be(owner.Id.ToString());
+        othersCodeAsStepUp.Succeeded.Should().BeFalse("the other account's code is not the owner's, whatever else the browser holds");
+        othersSignIn.Succeeded.Should().BeTrue(othersSignIn.Failure?.Message);
+        othersSignIn.Principal!.FindFirstValue(JwtClaimTypes.Subject).Should().Be(other.Id.ToString());
+        both.Succeeded.Should().BeFalse("one call, one account");
     }
 
     [Fact]

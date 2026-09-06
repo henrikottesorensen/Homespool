@@ -55,11 +55,13 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
+    private readonly LocalSignInRules _rules;
     private readonly IOptionsMonitor<Middleware.SecurityOptions> _security;
 
     protected ApiTokenAuthenticationHandlerBase(ApiTokenService tokens,
                                                 UserManager<HSUser> userManager,
                                                 IUserClaimsPrincipalFactory<HSUser> claimsFactory,
+                                                LocalSignInRules rules,
                                                 IOptionsMonitor<Middleware.SecurityOptions> security,
                                                 IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                                 ILoggerFactory loggerFactory,
@@ -69,6 +71,7 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
         _tokens = tokens;
         _userManager = userManager;
         _claimsFactory = claimsFactory;
+        _rules = rules;
         _security = security;
     }
 
@@ -143,6 +146,18 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
             // Structurally unreachable: deleting a user cascades to their tokens. Fail closed rather
             // than authenticate as nobody if a row is ever left inconsistent.
             Logger.LogWarning("API token {TokenId} resolves to no user.", token.Id);
+
+            return AuthenticateResult.Fail("Invalid API token.");
+        }
+
+        // A token is the account's credential, so the account's standing decides: a locked-out
+        // account's token is refused for as long as the lockout lasts (Henrik, 2026-09-06), and an
+        // account that may not sign in - unconfirmed - could never have minted one, but is refused
+        // the same way rather than trusted to stay unreachable. The same invalid-token 401 as below,
+        // for the same reason.
+        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        {
+            Logger.LogWarning("API token {TokenId} refused: user {UserId} may not sign in ({Refusal}).", token.Id, token.UserId, refusal);
 
             return AuthenticateResult.Fail("Invalid API token.");
         }

@@ -48,6 +48,8 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
             Email = email,
             NormalizedEmail = email.ToUpperInvariant(),
             NormalizedUserName = email.ToUpperInvariant(),
+            EmailConfirmed = true,
+            LockoutEnabled = true,
         };
 
         context.Users.Add(user);
@@ -106,6 +108,7 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
             new ApiTokenService(context),
             users,
             provider.GetRequiredService<IUserClaimsPrincipalFactory<HSUser>>(),
+            provider.GetRequiredService<LocalSignInRules>(),
             TestOptions.Monitor(new Homespool.Host.Middleware.SecurityOptions()),
             new StaticOptionsMonitor(),
             NullLoggerFactory.Instance,
@@ -344,5 +347,34 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// A token is the account's credential, so a locked-out account's token is refused for as long as
+    /// the lockout lasts - and works again once it has passed.
+    /// </summary>
+    [Fact]
+    public async Task ALockedOutOwnersTokenIsRefusedUntilTheLockoutLifts()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        HSUser user = await AddUserAsync(context);
+        ApiTokenService tokens = new(context);
+        (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
+
+        user.LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(5);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        (XApiKeyAuthenticationHandler locked, _) = await NewHandlerAsync(context, apiKey: plaintext);
+        AuthenticateResult whileLocked = await locked.AuthenticateAsync();
+
+        user.LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(-1);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        (XApiKeyAuthenticationHandler lifted, _) = await NewHandlerAsync(context, apiKey: plaintext);
+        AuthenticateResult afterwards = await lifted.AuthenticateAsync();
+
+        // Assert
+        whileLocked.Succeeded.Should().BeFalse("the account is locked out, and its token with it");
+        whileLocked.Failure!.Message.Should().Be("Invalid API token.", "the same refusal as any other, so the token is not an oracle for the lockout");
+        afterwards.Succeeded.Should().BeTrue();
     }
 }

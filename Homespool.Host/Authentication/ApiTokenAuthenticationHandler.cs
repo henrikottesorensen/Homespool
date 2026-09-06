@@ -28,11 +28,12 @@ public class ApiTokenAuthenticationHandler : ApiTokenAuthenticationHandlerBase
     public ApiTokenAuthenticationHandler(ApiTokenService tokens,
                                          UserManager<HSUser> userManager,
                                          IUserClaimsPrincipalFactory<HSUser> claimsFactory,
+                                         LocalSignInRules rules,
                                          IOptionsMonitor<Middleware.SecurityOptions> security,
                                          IOptionsMonitor<ApiTokenAuthenticationSchemeOptions> options,
                                          ILoggerFactory loggerFactory,
                                          UrlEncoder encoder)
-        : base(tokens, userManager, claimsFactory, security, options, loggerFactory, encoder)
+        : base(tokens, userManager, claimsFactory, rules, security, options, loggerFactory, encoder)
     {
     }
 

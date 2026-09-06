@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Host.Mail;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -36,7 +35,6 @@ public class SetupModel : PageModel
     private readonly IUserEmailStore<HSUser> _emailStore;
     private readonly LocalSignIn _signIn;
     private readonly SetupState _setupState;
-    private readonly AccountConfirmationPolicy _accountConfirmationPolicy;
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
     private readonly IStringLocalizer<SharedResource> _localiser;
@@ -46,7 +44,6 @@ public class SetupModel : PageModel
                       IUserStore<HSUser> userStore,
                       LocalSignIn signIn,
                       SetupState setupState,
-                      AccountConfirmationPolicy accountConfirmationPolicy,
                       TeamService teamService,
                       UnitOfWork unitOfWork,
                       IStringLocalizer<SharedResource> localiser,
@@ -57,7 +54,6 @@ public class SetupModel : PageModel
         _emailStore = GetEmailStore();
         _signIn = signIn;
         _setupState = setupState;
-        _accountConfirmationPolicy = accountConfirmationPolicy;
         _teamService = teamService;
         _unitOfWork = unitOfWork;
         _localiser = localiser;
@@ -149,7 +145,11 @@ public class SetupModel : PageModel
             await _userStore.SetUserNameAsync(user, Usernames.Prepare(Input.Username), CancellationToken.None);
             await _emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
 
-            _accountConfirmationPolicy.Apply(user);
+            // Confirmed at creation whatever the mail setup: the bootstrap token from the console is
+            // this person's proof, and the address is their own, typed with nobody else's account to
+            // vouch for it. The policy every other creation path follows would leave the first
+            // administrator unconfirmed on a box with SMTP, signed in once and refused thereafter.
+            user.EmailConfirmed = true;
 
             IdentityResult createResult = await _userManager.CreateAsync(user, Input.Password);
 

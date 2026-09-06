@@ -163,10 +163,17 @@ public sealed class LocalSignInRules
     }
 
     /// <summary>
-    /// The account the signed-in session belongs to, or <see langword="null"/> when there is none.
+    /// The account the signed-in session belongs to, or <see langword="null"/> when there is none:
+    /// the request's principal when the pipeline already signed a person in, else the application
+    /// cookie read directly.
     /// </summary>
     public async Task<HSUser?> SignedInAccountAsync(HttpContext context)
     {
+        if (IsSignedIn(context.User))
+        {
+            return await _users.GetUserAsync(context.User);
+        }
+
         AuthenticateResult session = await context.AuthenticateAsync(IdentityConstants.ApplicationScheme);
 
         return session.Principal is null ? null : await _users.GetUserAsync(session.Principal);

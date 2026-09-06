@@ -71,9 +71,9 @@ public enum LimitedAction
     SendConfirmationEmail = 5,
 
     /// <summary>
-    /// Proving the current password before a passkey may be added. A password check on an
-    /// authenticated path, so it needs a backoff of its own: a hijacked session must not get
-    /// unlimited guesses at the one thing standing between it and a durable sign-in.
+    /// <b>Retired 2026-09-06, nothing counts it.</b> Proving the current password before a passkey may
+    /// be added went through the <c>UserPassword</c> scheme, whose wrong passwords count toward the
+    /// account lockout instead. The member stays because rows naming it may exist.
     /// </summary>
     AddPasskey = 6,
 }

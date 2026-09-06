@@ -30,10 +30,18 @@ namespace Homespool.Host.Authentication;
 /// scheme resets it when the code is right.
 /// </para>
 /// <para>
-/// <b>The one scheme that names its own account.</b> The login field resolves by username and then by
-/// address, in one field, which is safe because a username may not contain <c>@</c>. An identifier
-/// nobody holds is refused after a decoy verification, so a miss costs what a wrong password costs
-/// and the form is not an enumeration oracle in its timing any more than in its wording.
+/// <b>The one scheme that names its own account - at login.</b> A <see cref="UserPasswordCredential"/>
+/// resolves by username and then by address, in one field, which is safe because a username may not
+/// contain <c>@</c>. An identifier nobody holds is refused after a decoy verification, so a miss costs
+/// what a wrong password costs and the form is not an enumeration oracle in its timing any more than
+/// in its wording.
+/// </para>
+/// <para>
+/// <b>On a step-up the account is the session's.</b> A <see cref="PasswordCredential"/> carries only
+/// the password, and it is checked against the signed-in account; with nobody signed in it is refused
+/// unread. A wrong one counts toward the lockout as at login, and a right one resets the count - a
+/// step-up owes no second factor, so the quirk below does not apply. A page that wants to confirm an
+/// act asks for this and never for a login.
 /// </para>
 /// <para>
 /// <b>Nothing here reads the form, signs anyone in, sets a cookie or reads one</b>, beyond the
@@ -71,14 +79,25 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         UserPasswordCredential? credential = Context.Features.Get<UserPasswordCredential>();
+        PasswordCredential? stepUp = Context.Features.Get<PasswordCredential>();
 
         // No credential presented: this scheme has nothing to say about the request.
-        if (credential is null)
+        if (credential is null && stepUp is null)
         {
             return AuthenticateResult.NoResult();
         }
 
-        (string? login, string? password) = credential;
+        if (credential is not null && stepUp is not null)
+        {
+            return SignInRefusals.Fail(SignInRefusal.Invalid, "A login and a step-up cannot be presented together.");
+        }
+
+        if (stepUp is not null)
+        {
+            return await StepUpAsync(stepUp.Password);
+        }
+
+        (string? login, string? password) = credential!;
 
         if (string.IsNullOrWhiteSpace(login) || string.IsNullOrEmpty(password))
         {
@@ -138,6 +157,62 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
         }
 
         Logger.LogInformation("Password authenticated user {UserId}.", user.Id);
+
+        return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));
+    }
+
+    /// <summary>The signed-in account's password, checked again for an act the session alone may not do.</summary>
+    private async Task<AuthenticateResult> StepUpAsync(string? password)
+    {
+        HSUser? user = await _rules.SignedInAccountAsync(Context);
+
+        if (user is null)
+        {
+            Logger.LogInformation("Password step-up refused: nobody is signed in.");
+
+            return SignInRefusals.Fail(SignInRefusal.Invalid, "There is no signed-in account to check a password for.");
+        }
+
+        if (string.IsNullOrEmpty(password))
+        {
+            return SignInRefusals.Fail(SignInRefusal.Invalid, "A password is required.");
+        }
+
+        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        {
+            Logger.LogInformation("Password step-up refused for user {UserId}: {Refusal}.", user.Id, refusal);
+
+            return SignInRefusals.Fail(refusal, "The account may not sign in.");
+        }
+
+        if (!await _users.CheckPasswordAsync(user, password))
+        {
+            bool lockedOut = await _rules.RecordFailureAsync(user);
+
+            Logger.LogInformation("Password step-up refused for user {UserId}: wrong password{LockedOut}.",
+                                  user.Id,
+                                  lockedOut ? ", now locked out" : string.Empty);
+
+            return SignInRefusals.Fail(lockedOut ? SignInRefusal.LockedOut : SignInRefusal.Invalid, "Invalid password.");
+        }
+
+        IdentityResult reset = await _users.ResetAccessFailedCountAsync(user);
+
+        if (!reset.Succeeded)
+        {
+            Logger.LogWarning("Password step-up refused for user {UserId}: the failed count could not be reset.", user.Id);
+
+            return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid password.");
+        }
+
+        ClaimsPrincipal principal = await _claimsFactory.CreateAsync(user);
+
+        if (principal.Identity is ClaimsIdentity identity)
+        {
+            identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, AuthenticationMethod));
+        }
+
+        Logger.LogInformation("Password step-up passed for user {UserId}.", user.Id);
 
         return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));
     }

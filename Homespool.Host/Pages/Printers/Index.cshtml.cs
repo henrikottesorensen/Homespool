@@ -159,7 +159,6 @@ public class IndexModel : PageModel
 
             Offer = new BundleOffer(
                 printerId,
-                PrinterName: null,
                 token,
                 names,
                 ConnectIni.BuildSnippet(PrinterEndpoint.Default(_options), names.Count > 0 ? names[0].Value : _options.PrinterHost, token),
@@ -183,16 +182,14 @@ public class IndexModel : PageModel
         // redirect would need somewhere to carry it (TempData is the wrong place for a bearer token).
         await LoadPrintersAsync(cancellationToken);
 
-        // The name only reaches the offer once the list has been loaded, and it is worth the second
-        // step: it is what tells two downloads in the same folder apart. The firmware rides along for
-        // the same reason and is why this is a reissue rather than a first provisioning: this printer
-        // has connected before, so it has told us what it runs, and the plaintext listener can be argued
-        // against specifically rather than in general.
+        // The firmware only reaches the offer once the list has been loaded, and it is worth the
+        // second step - it is also why this is a reissue rather than a first provisioning: this
+        // printer has connected before, so it has told us what it runs, and the plaintext listener
+        // can be argued against specifically rather than in general.
         if (Offer is not null)
         {
             Offer = Offer with
             {
-                PrinterName = Printers.Where(row => row.Printer.Id == printerId).Select(row => row.Printer.Name).FirstOrDefault(),
                 KnownFirmware = Printers.Where(row => row.Printer.Id == printerId).Select(row => row.Printer.Firmware).FirstOrDefault(),
             };
         }

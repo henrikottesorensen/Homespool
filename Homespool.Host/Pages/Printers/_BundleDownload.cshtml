@@ -8,9 +8,10 @@
     @if (Model.CanBuild)
     {
         <form method="post" asp-page="Bundle" class="mb-2">
+@*  Two fields, and the id is not one the page decides: the handler checks it against whoever is
+    signed in, and reads the printer's name from that row rather than from anything posted here. *@
             <input type="hidden" name="Token" value="@Model.Token" />
             <input type="hidden" name="PrinterId" value="@Model.PrinterId" />
-            <input type="hidden" name="PrinterName" value="@Model.PrinterName" />
 
             <div class="mb-2">
                 <label for="bundle-hostname" class="form-label">

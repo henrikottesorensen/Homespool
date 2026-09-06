@@ -5,12 +5,17 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Authorisation;
+using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Printers;
 
@@ -29,21 +34,33 @@ namespace Homespool.Host.Pages.Printers;
 /// both: they arrive at the same place — a token in hand and an address to write — and a second copy of
 /// this would be a second place for the name check to be forgotten.
 /// </para>
+/// <para>
+/// <b><c>[Authorize]</c> is not the whole check</b>, and could not be: the printer this bundle is for
+/// arrives in the POST body, so the per-printer half is a
+/// <see cref="PrinterAccessService"/> call in <see cref="OnPostAsync"/> - see
+/// <c>Authorisation/</c> for why a resource-shaped rule cannot be an attribute.
+/// </para>
 /// </remarks>
 [Authorize]
 public class BundleModel : PageModel
 {
     private readonly ProvisioningBundleBuilder _bundles;
+    private readonly PrinterAccessService _access;
+    private readonly UserManager<HSUser> _userManager;
     private readonly PrusaConnectOptions _options;
     private readonly ILogger<BundleModel> _logger;
 
     public BundleModel(ProvisioningBundleBuilder bundles,
+                       PrinterAccessService access,
+                       UserManager<HSUser> userManager,
                        IOptionsSnapshot<PrusaConnectOptions> options,
                        ILogger<BundleModel> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _bundles = bundles;
+        _access = access;
+        _userManager = userManager;
         _options = options.Value;
         _logger = logger;
     }
@@ -61,8 +78,10 @@ public class BundleModel : PageModel
     /// </summary>
     /// <param name="token">The one-time provisioning token, posted back because nothing else holds it.</param>
     /// <param name="hostname">The address to write into the ini.</param>
-    /// <param name="printerId">Which printer, for the file name and the log.</param>
-    /// <param name="printerName">The printer's name, for the file name and the instructions.</param>
+    /// <param name="printerId">
+    /// Which printer. Checked against the caller, and then the only thing this handler knows about
+    /// it — the name in the file and in the instructions is read from the row, not posted.
+    /// </param>
     /// <param name="legacy">Whether to point this printer at the plaintext listener instead.</param>
     /// <param name="legacyConfirmed">The second tick, without which <paramref name="legacy"/> is ignored.</param>
     /// <param name="cancellationToken">The usual.</param>
@@ -76,7 +95,6 @@ public class BundleModel : PageModel
     public async Task<IActionResult> OnPostAsync(string token,
                                                  string hostname,
                                                  int printerId,
-                                                 string? printerName,
                                                  bool legacy,
                                                  bool legacyConfirmed,
                                                  CancellationToken cancellationToken)
@@ -86,6 +104,44 @@ public class BundleModel : PageModel
             return BadRequest();
         }
 
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            // [Authorize] should make this unreachable; fail closed rather than build for an
+            // invented id.
+            return Forbid();
+        }
+
+        // The bundle is assembled around a token the caller posted, so this is not the gate that
+        // keeps that credential from a stranger - RegenerateProvisioningTokenAsync is, and it asks
+        // for the same capability. What this protects is the plaintext warning below, which is read
+        // months later as the record of whose traffic went in clear: an unchecked id lets any
+        // account write that line about somebody else's machine. The row it returns then names the
+        // printer in the file and in the instructions, so nothing posted here decides what the
+        // bundle says about the machine it is for.
+        //
+        // Both refusals become one answer below, where the service tells them apart: this id
+        // arrives on a hand-made POST rather than from something that already resolved it, so
+        // telling them apart would enumerate other people's printers for the price of a POST.
+        Printer printer;
+
+        try
+        {
+            printer = await _access.RequireAsync(printerId,
+                                                 CallerResolver.For(user, User),
+                                                 Capability.ManagePrinter,
+                                                 cancellationToken);
+        }
+        catch (PrinterNotFoundException)
+        {
+            return NotFound();
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return NotFound();
+        }
+
         PrinterEndpoint? legacyEndpoint = legacy && legacyConfirmed ? PrinterEndpoint.Legacy(_options) : null;
 
         if (legacy && legacyEndpoint is null)
@@ -93,18 +149,23 @@ public class BundleModel : PageModel
             // Either the confirmation was missing or this deployment has no such listener. Worth a line
             // in both cases: the first is a form filled in half way, the second is a bundle that
             // would have named a port nothing is listening on.
-            _logger.LogInformation("A plaintext provisioning bundle was asked for printer {PrinterId} and not "
+            _logger.LogInformation("A plaintext provisioning bundle was asked for printer {PrinterUuid} and not "
                                    + "produced; confirmed: {Confirmed}, listener open: {ListenerOpen}.",
-                                   printerId, legacyConfirmed, _options.LegacyPrinterPort is not null);
+                                   printer.Uuid, legacyConfirmed, _options.LegacyPrinterPort is not null);
         }
 
         PrinterEndpoint endpoint = legacyEndpoint ?? PrinterEndpoint.Default(_options);
+
+        // The name as the builder will have it, so the lines below report the address that was
+        // actually written rather than the spelling it arrived in - and so that only a string the
+        // builder accepted is ever logged. That is what keeps a newline out of the warning.
+        string name = hostname.Trim();
 
         byte[] bundle;
 
         try
         {
-            bundle = await _bundles.BuildAsync(hostname, token, printerName, endpoint, cancellationToken);
+            bundle = await _bundles.BuildAsync(name, token, printer.Name, endpoint, cancellationToken);
         }
         catch (ArgumentException ex)
         {
@@ -112,34 +173,41 @@ public class BundleModel : PageModel
             // rendered and the button being pressed. Logged rather than swallowed: a bundle refused
             // for a name the certificate does not cover is exactly the failure this check exists to
             // move off the printer's screen and onto ours.
-            _logger.LogWarning(ex, "Refused a provisioning bundle for printer {PrinterId}.", printerId);
+            _logger.LogWarning(ex, "Refused a provisioning bundle for printer {PrinterUuid}.", printer.Uuid);
 
             return BadRequest(ex.Message);
         }
 
         if (endpoint.Tls)
         {
-            _logger.LogInformation("Provisioning bundle downloaded for printer {PrinterId}, addressed to {Hostname}.",
-                                   printerId, hostname);
+            _logger.LogInformation("Provisioning bundle downloaded for printer {PrinterUuid}, addressed to {Hostname}.",
+                                   printer.Uuid, name);
         }
         else
         {
             // Warning rather than Information, and it names the port: this is the log line somebody
             // reads months later when they are working out why one printer's traffic is readable.
-            _logger.LogWarning("PLAINTEXT provisioning bundle downloaded for printer {PrinterId}, addressed to "
+            // The uuid rather than the row id for the same reason: whoever reads it is following one
+            // printer across the enrolment lines PrusaConnectService writes either side of this one.
+            _logger.LogWarning("PLAINTEXT provisioning bundle downloaded for printer {PrinterUuid}, addressed to "
                                + "{Hostname}:{Port}. That printer's token, its files, and the WiFi SSID and "
                                + "PrusaLink password it reports will cross the network in clear, and can be altered "
                                + "in flight.",
-                               printerId, hostname, endpoint.Port);
+                               printer.Uuid, name, endpoint.Port);
         }
 
-        return File(bundle, MediaTypeNames.Application.Zip, FileNameFor(printerName, printerId));
+        return File(bundle, MediaTypeNames.Application.Zip, FileNameFor(printer.Name, printerId));
     }
 
     /// <summary>
     /// A file name that says which printer it belongs to, since a downloads folder will end up holding
     /// several and they are otherwise identical.
     /// </summary>
+    /// <remarks>
+    /// <b>The row id in the fallback, where the log lines carry the uuid.</b> They are read by
+    /// different people: a uuid in a downloads folder is unreadable, and a name is what tells two of
+    /// these apart on a stick.
+    /// </remarks>
     private static string FileNameFor(string? printerName, int printerId)
     {
         string slug = new((printerName ?? string.Empty)

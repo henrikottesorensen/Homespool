@@ -20,8 +20,11 @@ namespace Homespool.Host.Pages.Printers;
 /// means reissuing.
 /// </para>
 /// </remarks>
-/// <param name="PrinterId">Which printer this provisions, for the download's file name.</param>
-/// <param name="PrinterName">The printer's name, or null if it was left blank.</param>
+/// <param name="PrinterId">
+/// Which printer this provisions. The download posts it back and the handler checks it against the
+/// caller before building anything — which is also where the printer's name comes from, so this
+/// offer carries no copy of one.
+/// </param>
 /// <param name="Token">The one-time provisioning token.</param>
 /// <param name="Names">
 /// Addresses the certificate covers, best first, each with what it will cost whoever picks it. Empty
@@ -40,7 +43,6 @@ namespace Homespool.Host.Pages.Printers;
 /// </param>
 public sealed record BundleOffer(
     int PrinterId,
-    string? PrinterName,
     string Token,
     IReadOnlyList<PrinterAddressSuggestion> Names,
     string Snippet,

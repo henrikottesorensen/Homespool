@@ -227,6 +227,13 @@ public sealed class ProvisioningBundleBuilder
 
         string name = hostname.Trim();
 
+        // First of the three checks a name has to pass, so that a malformed one is never echoed back
+        // by either of the refusals below.
+        if (SyntaxRefusal(name) is string malformed)
+        {
+            throw new ArgumentException(malformed, nameof(hostname));
+        }
+
         // Before the certificate check, and independent of it: the bundle page can address a bundle
         // to a kept name that never went through the options validation, and a name the printer
         // truncates fails whether or not the certificate covers it. It applies to a legacy bundle
@@ -276,6 +283,41 @@ public sealed class ProvisioningBundleBuilder
         }
 
         return stream.ToArray();
+    }
+
+    /// <summary>
+    /// Why <paramref name="name"/> cannot be written into an ini as a hostname, or null when it can.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The ini has no quoting and no escaping</b>, so whatever arrives here lands in
+    /// <c>hostname = …</c> exactly as it is - and a newline in it is not a mangled name, it is a
+    /// second key. The firmware's parser would honour it, so a name carrying one decides
+    /// <c>port</c>, <c>tls</c> or <c>custom_cert</c> in place of the code above that thinks it is
+    /// deciding them.
+    /// </para>
+    /// <para>
+    /// <b>Here rather than beside the certificate check, because that one does not always run.</b> A
+    /// legacy bundle verifies nothing and so has no SAN list for a name to be absent from - which
+    /// left length as the only thing a name had to satisfy on that path, and a length is not a
+    /// syntax. The same reasoning as the length rule it stands beside: what the printer will do with
+    /// this string is not the certificate's business.
+    /// </para>
+    /// <para>
+    /// An allowlist, and a narrow one on purpose. A name that reaches a printer is a DNS name or an
+    /// IPv4 literal - letters, digits, dots and hyphens covers both, punycode included - and the
+    /// firmware can dial nothing else: it does no IDNA, and <see cref="CouldReachAPrinter"/> has
+    /// already ruled out the IPv6 literals that would need anything more.
+    /// </para>
+    /// </remarks>
+    private static string? SyntaxRefusal(string name)
+    {
+        // Not echoed back, unlike the refusals below. A name that failed this rule is by definition
+        // one holding characters nobody should be handed a copy of - a newline first among them.
+        return name.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-') ?
+            null :
+            "That is not a hostname: an address written into the ini may hold only letters, digits, dots and "
+            + "hyphens, and this one holds something else. Choose one of the names offered.";
     }
 
     private static void WriteEntry(ZipArchive archive, string name, byte[] contents)

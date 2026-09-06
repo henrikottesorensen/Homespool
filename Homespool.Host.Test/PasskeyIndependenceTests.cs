@@ -30,10 +30,14 @@ namespace Homespool.Host.Test;
 public class PasskeyIndependenceTests
 {
     /// <summary>
-    /// <c>SignInManager</c>'s passkey surface, each spelled as the identifier a call site would use.
+    /// <c>SignInManager</c> itself, as a call site would spell the type, and its passkey surface, each
+    /// spelled as the identifier a call site would use. The type is forbidden outright now that every
+    /// sign-in is a scheme or helper of this application's; the methods stay listed so the reason each
+    /// was refused is still on record.
     /// </summary>
     private static readonly string[] ForbiddenCalls =
     [
+        "SignIn" + "Manager<HSUser>",
         "Make" + "PasskeyCreationOptionsAsync",
         "Make" + "PasskeyRequestOptionsAsync",
         "Perform" + "PasskeyAttestationAsync",
@@ -44,7 +48,7 @@ public class PasskeyIndependenceTests
     private static readonly string[] ProductionProjects = ["Homespool.Host", "Homespool.Data", "Homespool.Model"];
 
     [Fact]
-    public void NothingInProductionCodeRunsAPasskeyCeremonyThroughSignInManager()
+    public void NothingInProductionCodeUsesSignInManager()
     {
         IReadOnlyList<string> offenders =
         [
@@ -57,10 +61,11 @@ public class PasskeyIndependenceTests
         ];
 
         offenders.Should().BeEmpty(
-            "the Passkey scheme holds a ceremony's state itself and completes a sign-in on its own; "
-            + "SignInManager's passkey methods put that state in the two-factor cookie and route the "
-            + "sign-in through the first-then-second-factor flow, which is the coupling this scheme "
-            + "exists to avoid. Drive IPasskeyHandler through PasskeyAuthenticationHandler instead");
+            "every sign-in is a scheme or helper of this application's - the local credential schemes, "
+            + "LocalSignIn, ExternalSignIn and the stamp validators - so nothing resolves the framework's "
+            + "SignInManager, which is not registered. Its passkey methods in particular put a ceremony's "
+            + "state in the two-factor cookie and route the sign-in through the first-then-second-factor "
+            + "flow, which is the coupling the Passkey scheme exists to avoid");
     }
 
     /// <summary>

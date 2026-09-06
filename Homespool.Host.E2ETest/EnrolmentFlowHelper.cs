@@ -144,7 +144,6 @@ public static class EnrolmentFlowHelper
         IUserStore<HSUser> userStore = scope.ServiceProvider.GetRequiredService<IUserStore<HSUser>>();
         IUserEmailStore<HSUser> emailStore = (IUserEmailStore<HSUser>)userStore;
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-        SignInManager<HSUser> signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<HSUser>>();
         AccountConfirmationPolicy confirmationPolicy = scope.ServiceProvider.GetRequiredService<AccountConfirmationPolicy>();
         TeamService teamService = scope.ServiceProvider.GetRequiredService<TeamService>();
 
@@ -187,9 +186,9 @@ public static class EnrolmentFlowHelper
 
         using IServiceScope scope = factory.Services.CreateScope();
 
-        SignInManager<HSUser> signInManager = scope.ServiceProvider.GetRequiredService<SignInManager<HSUser>>();
+        IUserClaimsPrincipalFactory<HSUser> claimsFactory = scope.ServiceProvider.GetRequiredService<IUserClaimsPrincipalFactory<HSUser>>();
 
-        ClaimsPrincipal principal = await signInManager.CreateUserPrincipalAsync(user);
+        ClaimsPrincipal principal = await claimsFactory.CreateAsync(user);
         CookieAuthenticationOptions cookieOptions = scope.ServiceProvider
                                                          .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
                                                          .Get(IdentityConstants.ApplicationScheme);

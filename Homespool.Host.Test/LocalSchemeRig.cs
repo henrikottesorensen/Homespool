@@ -48,7 +48,7 @@ internal sealed class LocalSchemeRig : IAsyncDisposable
 
     public UserManager<HSUser> Users => _provider.GetRequiredService<UserManager<HSUser>>();
 
-    public static async Task<LocalSchemeRig> CreateAsync(string databasePath)
+    public static async Task<LocalSchemeRig> CreateAsync(string databasePath, Action<IServiceCollection>? configure = null)
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
                                                        .UseSqlite($"Data Source={databasePath}")
@@ -57,7 +57,7 @@ internal sealed class LocalSchemeRig : IAsyncDisposable
         HomespoolDbContext context = new(options);
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
-        (_, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        (_, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context, configure);
 
         return new LocalSchemeRig(context, (ServiceProvider)provider);
     }

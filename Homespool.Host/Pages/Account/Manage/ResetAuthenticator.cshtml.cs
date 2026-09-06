@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -39,7 +40,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// a reset that did nothing while quietly having removed their second factor.
 /// </para>
 /// <para>
-/// <b><see cref="SignInManager{TUser}.RefreshSignInAsync"/> is not optional and runs after the
+/// <b><see cref="LocalSignIn.RefreshSignInAsync"/> is not optional and runs after the
 /// commit.</b> Re-keying moves the security stamp, which invalidates the cookie that made this
 /// request - without the refresh the reader is signed out mid-flow, and refreshing before the commit
 /// would mint a cookie for a stamp that a rollback would take away.
@@ -49,19 +50,19 @@ namespace Homespool.Host.Pages.Account.Manage;
 public class ResetAuthenticatorModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<ResetAuthenticatorModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ResetAuthenticatorModel(UserManager<HSUser> userManager,
-                                   SignInManager<HSUser> signInManager,
+                                   LocalSignIn signIn,
                                    UnitOfWork unitOfWork,
                                    ILogger<ResetAuthenticatorModel> logger,
                                    IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _signIn = signIn;
         _unitOfWork = unitOfWork;
         _logger = logger;
         _localiser = localiser;
@@ -101,7 +102,7 @@ public class ResetAuthenticatorModel : PageModel
 
         _logger.LogInformation("User with ID '{UserId}' has reset their authenticator app key.", userId);
 
-        await _signInManager.RefreshSignInAsync(user);
+        await _signIn.RefreshSignInAsync(HttpContext, user);
 
         StatusMessage = _localiser["TwoFactor_KeyReset"];
 

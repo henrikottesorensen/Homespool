@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Authentication;
 using Homespool.Host.Mail;
 using Homespool.Host.Pages.Account;
 using Homespool.Model.Entities;
@@ -85,7 +86,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
     }
 
     private static ConfirmEmailChangeModel NewModel(UserManager<HSUser> users,
-                                                    SignInManager<HSUser> signIn,
+                                                    LocalSignIn signIn,
                                                     DefaultHttpContext httpContext)
     {
         return new ConfirmEmailChangeModel(users, signIn, Options.Create(new SmtpOptions()), TestLocaliser.Shared())
@@ -107,7 +108,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
         HSUser user = await AddUserAsync(users, "henrik", "before@example.com");
@@ -141,7 +142,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
         await AddUserAsync(users, "taken", "taken@example.com");

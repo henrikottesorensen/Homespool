@@ -347,7 +347,7 @@ public sealed class PasskeysPageTests : IDisposable
         OpenIdConnectChallengeProperties properties = challenge.Properties.Should().BeOfType<OpenIdConnectChallengeProperties>().Subject;
         properties.MaxAge.Should().Be(TimeSpan.Zero);
         properties.Prompt.Should().Be("login");
-        properties.Items.Should().ContainKey("XsrfId").WhoseValue.Should().Be(user.Id.ToString(CultureInfo.InvariantCulture));
+        properties.Items.Should().ContainKey(ExternalSignIn.ExpectedAccountItem).WhoseValue.Should().Be(user.Id.ToString(CultureInfo.InvariantCulture));
         other.Should().BeOfType<NotFoundResult>("the account holds no login with that provider");
     }
 
@@ -583,7 +583,7 @@ public sealed class PasskeysPageTests : IDisposable
             IdentityTestHarness.SignInAsPrincipal(request, user);
 
             PasskeysModel model = new(Users,
-                                      _provider.GetRequiredService<SignInManager<HSUser>>(),
+                                      _provider.GetRequiredService<ExternalSignIn>(),
                                       Engine,
                                       Ceremonies,
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),

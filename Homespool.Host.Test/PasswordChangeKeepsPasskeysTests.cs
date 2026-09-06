@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
@@ -55,7 +56,7 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
         HSUser user = await AddUserAsync(users, "changer@example.com");
@@ -89,7 +90,7 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, _) =
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
         HSUser user = await AddUserAsync(users, "nokeys@example.com");

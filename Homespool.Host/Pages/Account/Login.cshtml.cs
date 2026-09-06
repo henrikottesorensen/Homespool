@@ -26,7 +26,7 @@ namespace Homespool.Host.Pages.Account;
 [AllowAnonymous]
 public class LoginModel : PageModel
 {
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly ExternalSignIn _externalSignIn;
     private readonly UserManager<HSUser> _userManager;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginModel> _logger;
@@ -34,7 +34,7 @@ public class LoginModel : PageModel
     private readonly LocalSignInRules _rules;
     private readonly LocalSignIn _signIn;
 
-    public LoginModel(SignInManager<HSUser> signInManager,
+    public LoginModel(ExternalSignIn externalSignIn,
                       UserManager<HSUser> userManager,
                       ILogger<LoginModel> logger,
                       IStringLocalizer<SharedResource> localiser,
@@ -42,7 +42,7 @@ public class LoginModel : PageModel
                       LocalSignInRules rules,
                       LocalSignIn signIn)
     {
-        _signInManager = signInManager;
+        _externalSignIn = externalSignIn;
         _userManager = userManager;
         _localiser = localiser;
         _logger = logger;
@@ -108,7 +108,7 @@ public class LoginModel : PageModel
         // Clear the existing external cookie to ensure a clean login process.
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
-        ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
+        ExternalLogins = (await _externalSignIn.ProvidersAsync()).ToList();
         PasskeysAvailable = _passkeys.Get(Schemes.Passkey).Covers(Request.Host);
 
         ReturnUrl = returnUrl;
@@ -159,7 +159,7 @@ public class LoginModel : PageModel
     {
         returnUrl ??= Url.Content("~/");
 
-        ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
+        ExternalLogins = (await _externalSignIn.ProvidersAsync()).ToList();
         PasskeysAvailable = _passkeys.Get(Schemes.Passkey).Covers(Request.Host);
         ReturnUrl = returnUrl;
 
@@ -220,7 +220,7 @@ public class LoginModel : PageModel
     {
         returnUrl ??= Url.Content("~/");
 
-        ExternalLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync()).ToList();
+        ExternalLogins = (await _externalSignIn.ProvidersAsync()).ToList();
         PasskeysAvailable = _passkeys.Get(Schemes.Passkey).Covers(Request.Host);
 
         if (!ModelState.IsValid)

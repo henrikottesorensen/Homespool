@@ -11,6 +11,7 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
@@ -39,7 +40,8 @@ namespace Homespool.Host.Pages.Account;
 [AllowAnonymous] // The invite token is the credential here, not a session.
 public class RegisterModel : PageModel
 {
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
+    private readonly ExternalSignIn _externalSignIn;
     private readonly UserManager<HSUser> _userManager;
     private readonly IUserStore<HSUser> _userStore;
     private readonly IUserEmailStore<HSUser> _emailStore;
@@ -53,7 +55,8 @@ public class RegisterModel : PageModel
 
     public RegisterModel(UserManager<HSUser> userManager,
                          IUserStore<HSUser> userStore,
-                         SignInManager<HSUser> signInManager,
+                         LocalSignIn signIn,
+                         ExternalSignIn externalSignIn,
                          ILogger<RegisterModel> logger,
                          IEmailSender emailSender,
                          AccountConfirmationPolicy accountConfirmationPolicy,
@@ -65,7 +68,8 @@ public class RegisterModel : PageModel
         _userManager = userManager;
         _userStore = userStore;
         _emailStore = GetEmailStore();
-        _signInManager = signInManager;
+        _signIn = signIn;
+        _externalSignIn = externalSignIn;
         _logger = logger;
         _emailSender = emailSender;
         _accountConfirmationPolicy = accountConfirmationPolicy;
@@ -193,7 +197,7 @@ public class RegisterModel : PageModel
             await ResolveReactivationAsync(invitation);
         }
 
-        ExternalLogins = [.. await _signInManager.GetExternalAuthenticationSchemesAsync()];
+        ExternalLogins = [.. await _externalSignIn.ProvidersAsync()];
     }
 
     /// <summary>
@@ -339,7 +343,7 @@ public class RegisterModel : PageModel
             return RedirectToPage("RegisterConfirmation", new { email = invitation.Email, returnUrl, emailFailed });
         }
 
-        await _signInManager.SignInAsync(user, isPersistent: false);
+        await _signIn.SignInAsync(HttpContext, user, isPersistent: false);
 
         return LocalRedirect(returnUrl);
     }
@@ -411,7 +415,7 @@ public class RegisterModel : PageModel
         _logger.LogInformation("Invitation {InviteId} reactivated an existing account for {Email}.", InviteId,
                                invitation.Email);
 
-        await _signInManager.SignInAsync(existing, isPersistent: false);
+        await _signIn.SignInAsync(HttpContext, existing, isPersistent: false);
 
         return LocalRedirect(returnUrl);
     }

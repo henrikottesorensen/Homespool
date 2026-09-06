@@ -1,9 +1,10 @@
 @using Homespool.Host.Accounts
-@inject SignInManager<HSUser> SignInManager
+@using Homespool.Host.Authentication
+@inject ExternalSignIn ExternalSignIn
 @inject UserManager<HSUser> UserManager
 
 <ul class="navbar-nav">
-@if (SignInManager.IsSignedIn(User))
+@if (LocalSignInRules.IsSignedIn(User))
 {
     <li class="nav-item">
         <a id="printers" class="nav-link" asp-page="/Printers/Index">@Localiser["Printers_Title"]</a>
@@ -77,7 +78,7 @@
             <li>
                 <a id="change-password" class="dropdown-item" asp-page="/Account/Manage/ChangePassword">@Localiser["Account_Password"]</a>
             </li>
-            @if ((await SignInManager.GetExternalAuthenticationSchemesAsync()).Any())
+            @if ((await ExternalSignIn.ProvidersAsync()).Any())
             {
                 <li>
                     <a id="external-logins" class="dropdown-item" asp-page="/Account/Manage/ExternalLogins">@Localiser["Manage_ExternalLogins"]</a>

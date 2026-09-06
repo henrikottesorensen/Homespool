@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Localization;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
@@ -40,17 +41,17 @@ public class LanguageModel : PageModel
     public const string FollowBrowser = "";
 
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly TimeProvider _time;
 
     public LanguageModel(UserManager<HSUser> userManager,
-                         SignInManager<HSUser> signInManager,
+                         LocalSignIn signIn,
                          IStringLocalizer<SharedResource> localiser,
                          TimeProvider time)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _signIn = signIn;
         _localiser = localiser;
         _time = time;
     }
@@ -108,7 +109,7 @@ public class LanguageModel : PageModel
         // for the preference to take effect - the next request reads the column. It is here because
         // an account change that skips it is the kind that goes stale in one browser and not
         // another.
-        await _signInManager.RefreshSignInAsync(user);
+        await _signIn.RefreshSignInAsync(HttpContext, user);
 
         // Written in the language just chosen rather than the one the page was rendered in, so the
         // confirmation is itself the evidence that the choice took.

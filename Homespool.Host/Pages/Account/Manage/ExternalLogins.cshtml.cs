@@ -19,6 +19,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
@@ -62,19 +63,22 @@ namespace Homespool.Host.Pages.Account.Manage;
 public class ExternalLoginsModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
+    private readonly ExternalSignIn _externalSignIn;
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<ExternalLoginsModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ExternalLoginsModel(UserManager<HSUser> userManager,
-                               SignInManager<HSUser> signInManager,
+                               LocalSignIn signIn,
+                               ExternalSignIn externalSignIn,
                                UnitOfWork unitOfWork,
                                ILogger<ExternalLoginsModel> logger,
                                IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _signIn = signIn;
+        _externalSignIn = externalSignIn;
         _unitOfWork = unitOfWork;
         _logger = logger;
         _localiser = localiser;
@@ -146,7 +150,7 @@ public class ExternalLoginsModel : PageModel
 
         string redirectUrl = Url.Page("./ExternalLogins", pageHandler: "LinkLoginCallback");
         AuthenticationProperties properties =
-            _signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl, _userManager.GetUserId(User));
+            ExternalSignIn.ChallengeProperties(provider, redirectUrl, _userManager.GetUserId(User));
 
         return new ChallengeResult(provider, properties);
     }
@@ -161,7 +165,7 @@ public class ExternalLoginsModel : PageModel
 
         // Keyed on the signed-in account, so a callback carrying somebody else's external cookie
         // cannot attach their provider identity to this account.
-        ExternalLoginInfo info = await _signInManager.GetExternalLoginInfoAsync(user.Id.ToString(CultureInfo.InvariantCulture));
+        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, user.Id.ToString(CultureInfo.InvariantCulture));
         if (info == null)
         {
             StatusMessage = _localiser["Manage_ExternalLoginLinkError"];
@@ -209,7 +213,7 @@ public class ExternalLoginsModel : PageModel
                 return RedirectToPage();
             }
 
-            await _signInManager.RefreshSignInAsync(user);
+            await _signIn.RefreshSignInAsync(HttpContext, user);
 
             StatusMessage = _localiser["Manage_ExternalLoginRemoved"];
 
@@ -253,7 +257,7 @@ public class ExternalLoginsModel : PageModel
 
         // After the commit, and required: both writes move the security stamp, so the cookie that made
         // this request is stale. Refreshing before would mint one for a stamp a rollback would remove.
-        await _signInManager.RefreshSignInAsync(user);
+        await _signIn.RefreshSignInAsync(HttpContext, user);
 
         _logger.LogInformation("Removed the {LoginProvider} login and set a password in its place.", loginProvider);
 
@@ -266,7 +270,7 @@ public class ExternalLoginsModel : PageModel
     {
         CurrentLogins = await _userManager.GetLoginsAsync(user);
 
-        OtherLogins = (await _signInManager.GetExternalAuthenticationSchemesAsync())
+        OtherLogins = (await _externalSignIn.ProvidersAsync())
                       .Where(scheme => CurrentLogins.All(login => login.LoginProvider != scheme.Name))
                       .ToList();
 

@@ -20,6 +20,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Mail;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
@@ -82,7 +83,7 @@ public sealed class RegisterModelTests : IDisposable
         InvitationService invitationService,
         bool smtpConfigured)
     {
-        (UserManager<HSUser> users, SignInManager<HSUser> signIn, DefaultHttpContext httpContext, IServiceProvider provider) =
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
 
         AccountConfirmationPolicy confirmationPolicy = new(
@@ -93,6 +94,7 @@ public sealed class RegisterModelTests : IDisposable
             users,
             provider.GetRequiredService<IUserStore<HSUser>>(),
             signIn,
+            provider.GetRequiredService<ExternalSignIn>(),
             NullLogger<RegisterModel>.Instance,
             emailSender,
             confirmationPolicy,

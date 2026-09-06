@@ -90,6 +90,7 @@ public class PasskeysModel : PageModel
     public static readonly TimeSpan MaxProviderProofAge = TimeSpan.FromMinutes(2);
 
     private readonly UserManager<HSUser> _users;
+    private readonly LocalSignInRules _rules;
     private readonly ExternalSignIn _externalSignIn;
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly PasskeyCeremonies _ceremonies;
@@ -99,6 +100,7 @@ public class PasskeysModel : PageModel
     private readonly ILogger<PasskeysModel> _logger;
 
     public PasskeysModel(UserManager<HSUser> users,
+                         LocalSignInRules rules,
                          ExternalSignIn externalSignIn,
                          IPasskeyHandler<HSUser> engine,
                          PasskeyCeremonies ceremonies,
@@ -108,6 +110,7 @@ public class PasskeysModel : PageModel
                          ILogger<PasskeysModel> logger)
     {
         _users = users;
+        _rules = rules;
         _externalSignIn = externalSignIn;
         _engine = engine;
         _ceremonies = ceremonies;
@@ -247,11 +250,8 @@ public class PasskeysModel : PageModel
             {
                 if (stepUp.Refusal() == SignInRefusal.LockedOut)
                 {
-                    DateTimeOffset? lockedUntil = await _users.GetLockoutEndDateAsync(user);
-                    TimeSpan remaining = lockedUntil is null ? TimeSpan.Zero : lockedUntil.Value - _timeProvider.GetUtcNow();
-
                     return Refusal(StatusCodes.Status429TooManyRequests,
-                                   _localiser["Passkeys_PasswordLockedOut", BackoffWait.Format(_localiser, remaining)]);
+                                   _localiser["Passkeys_PasswordLockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]);
                 }
 
                 _logger.LogInformation("Passkey registration refused for user {UserId}: the password step-up failed.", user.Id);

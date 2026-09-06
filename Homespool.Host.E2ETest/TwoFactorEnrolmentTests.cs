@@ -14,9 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using OtpNet;
 
-using Homespool.Data;
 using Homespool.Host.Accounts;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -221,26 +219,19 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The backoff is checked before the code, so a ground account is refused even with a correct
-    /// one - which is what makes six digits with a per-account limiter a control at all.
+    /// The lockout is checked before the code, so a locked-out account is refused even with a correct
+    /// one - which is what makes six digits under the account lockout a control at all.
     /// </summary>
     [Fact]
-    public async Task ABackedOffAccountCannotDisableTwoFactorEvenWithTheRightCode()
+    public async Task ALockedOutAccountCannotDisableTwoFactorEvenWithTheRightCode()
     {
         (HSUser user, CookieJar jar) = await SeedAsync("lockedout2fa@example.com", withTwoFactor: true);
 
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
-            HomespoolDbContext db = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-
-            db.UserActionAttempts.Add(new UserActionAttempt
-            {
-                UserId = user.Id,
-                Action = LimitedAction.DisableTwoFactor,
-                FailedCount = 6,
-                LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(10),
-            });
-            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+            UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser locked = (await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)))!;
+            (await userManager.SetLockoutEndDateAsync(locked, DateTimeOffset.UtcNow.AddMinutes(10))).Succeeded.Should().BeTrue();
         }
 
         using HttpClient client = CreateClient();
@@ -255,7 +246,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         post.StatusCode.Should().Be(HttpStatusCode.Redirect);
         (await TwoFactorEnabledAsync(user.Id))
-            .Should().BeTrue("a backed-off account is refused before its code is even compared");
+            .Should().BeTrue("a locked-out account is refused before its code is even compared");
     }
 
     private async Task<bool> TwoFactorEnabledAsync(long userId)

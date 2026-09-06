@@ -10,10 +10,12 @@ namespace Homespool.Host.Mail;
 /// The single place that decides a newly created account's initial email-confirmation state.
 /// </summary>
 /// <remarks>
-/// Every account-creation site (Register, ExternalLogin, first-run Setup, and invite acceptance once
-/// it exists) injects this and calls <see cref="Apply"/> rather than repeating
-/// <c>EmailConfirmed = !IsConfigured</c>. The point is one authoritative source: this rule is
-/// security-relevant, so a change must not be applied to some creation paths and missed on others.
+/// Every account-creation site (Register, ExternalLogin, invite acceptance) injects this and calls
+/// <see cref="Apply"/> rather than repeating <c>EmailConfirmed = !IsConfigured</c>. The point is one
+/// authoritative source: this rule is security-relevant, so a change must not be applied to some
+/// creation paths and missed on others. <b>The one exception is first-run <c>Setup</c></b>, which
+/// confirms the administrator outright: the bootstrap token from the console is their proof, and
+/// there is no other account to vouch for the address - see the remark there.
 /// See <see cref="SmtpOptions.IsConfigured"/> for the full rationale behind the rule itself.
 /// <para>
 /// The decision is resolved <b>once at construction</b>, mirroring how <c>Program.cs</c> chooses the

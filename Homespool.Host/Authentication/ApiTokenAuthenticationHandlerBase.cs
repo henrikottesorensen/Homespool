@@ -151,7 +151,7 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
         }
 
         // A token is the account's credential, so the account's standing decides: a locked-out
-        // account's token is refused for as long as the lockout lasts (Henrik, 2026-09-06), and an
+        // account's token is refused for as long as the lockout lasts, and an
         // account that may not sign in - unconfirmed - could never have minted one, but is refused
         // the same way rather than trusted to stay unreachable. The same invalid-token 401 as below,
         // for the same reason.

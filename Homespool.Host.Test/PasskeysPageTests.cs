@@ -588,6 +588,7 @@ public sealed class PasskeysPageTests : IDisposable
             IdentityTestHarness.SignInAsPrincipal(request, user);
 
             PasskeysModel model = new(Users,
+                                      scope.ServiceProvider.GetRequiredService<LocalSignInRules>(),
                                       scope.ServiceProvider.GetRequiredService<ExternalSignIn>(),
                                       Engine,
                                       Ceremonies,

@@ -16,10 +16,15 @@ namespace Homespool.Host.Middleware;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>It acts only on the application cookie</b>, which is what keeps it off everything that has no
-/// second factor to offer. A printer authenticates with <c>PrusaConnect</c>, a script with
-/// <c>ApiToken</c> or <c>X-Api-Key</c>; none of those is a person, and a path-prefix exemption list
-/// would have to be kept in step with every route ever added. The scheme is the honest test.
+/// <b>It acts on every principal that is a person</b>, and the test is the principal's authentication
+/// type. The claims factory stamps <see cref="IdentityConstants.ApplicationScheme"/> on every
+/// principal it builds for an account - the session cookie's, and the API token schemes' too, since
+/// they build theirs through the same factory - so a token from an account with no authenticator is
+/// held as well, refused under <c>/api</c> rather than redirected, which is what
+/// <see cref="SecurityOptions.RequireTwoFactor"/> promises. A printer's principal carries its own
+/// scheme's type and is not a person, so it passes; and a path-prefix exemption list would have to
+/// be kept in step with every route ever added. (An earlier remark here said the gate acted only on
+/// the application cookie; the outcome was always this one, the reason given was not.)
 /// </para>
 /// <para>
 /// <b>The account is asked on every request rather than cached in a claim.</b> A claim would be one
@@ -76,7 +81,7 @@ public sealed class TwoFactorEnrolmentMiddleware
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(security);
 
-        if (!security.Value.RequireTwoFactor || !SignedInInteractively(context))
+        if (!security.Value.RequireTwoFactor || !SignedInAsPerson(context))
         {
             await _next(context);
 
@@ -114,9 +119,10 @@ public sealed class TwoFactorEnrolmentMiddleware
     }
 
     /// <summary>
-    /// Whether this request is a person using the browser, as opposed to a printer or a script.
+    /// Whether this request's principal is an account's - built by the claims factory, from a cookie
+    /// or a token - as opposed to a printer's.
     /// </summary>
-    private static bool SignedInInteractively(HttpContext context)
+    private static bool SignedInAsPerson(HttpContext context)
     {
         return context.User.Identity is { IsAuthenticated: true, AuthenticationType: not null }
                && string.Equals(context.User.Identity.AuthenticationType,

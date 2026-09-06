@@ -1303,6 +1303,13 @@
   <data name="Bundle_Root" xml:space="preserve">
     <value>root</value>
   </data>
+  <data name="Printer_PlaintextHeading" xml:space="preserve">
+    <value>This printer is connected without TLS.</value>
+  </data>
+  <data name="Printer_PlaintextBody" xml:space="preserve">
+    <value>It reports firmware {0}, which can load a TLS certificate - so it no longer needs the unencrypted port. Everything it sends, including its token and the files you send it, is readable on your network until you download a new provisioning bundle for it and load that from a USB stick.</value>
+    <comment>{0} is the firmware version the printer reported, rendered as code.</comment>
+  </data>
   <data name="Bundle_LegacySummary" xml:space="preserve">
     <value>This printer&apos;s firmware does not support using TLS with Homespool.</value>
   </data>

@@ -89,6 +89,11 @@ public sealed class PrinterConnectionSession
     /// here. The caller keeps the stream and socket it was built over, which is what the reader's
     /// <c>leaveOpen: true</c> says.
     /// </param>
+    /// <param name="overPlaintext">
+    /// Whether this printer came in on the legacy plaintext listener. Carried only so the registry can
+    /// answer it later; nothing in the session behaves differently, because the two listeners serve one
+    /// protocol and a connection that reached here is already authenticated either way.
+    /// </param>
     /// <param name="cancellationToken">
     /// Ends the read loop for reasons that are not the printer's doing - the request being aborted,
     /// or the host shutting down. It is deliberately not threaded into the teardown below, which
@@ -100,6 +105,7 @@ public sealed class PrinterConnectionSession
     public async Task RunAsync(int printerId,
                                IClosablePrinterConnection connection,
                                PipeReader input,
+                               bool overPlaintext,
                                CancellationToken cancellationToken)
     {
         // Opened before Create, and that ordering is the whole trick. PrinterConnectionActor starts
@@ -119,7 +125,7 @@ public sealed class PrinterConnectionSession
         });
 
         IPrinterConnectionActor actor = _actorFactory.Create(printerId, connection);
-        _connectionRegistry.Register(printerId, actor);
+        _connectionRegistry.Register(printerId, actor, overPlaintext);
 
         // A printer arriving may have had work waiting since before the last restart. The signal
         // carries nothing and cannot fail - the advancer re-reads everything - so this stays a plain

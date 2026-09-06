@@ -95,7 +95,7 @@ public sealed class HttpPrinterSessions : BackgroundService
     /// between the touch and the return, and the caller would post to an actor being drained - the
     /// exact race the lock exists to close.
     /// </remarks>
-    public IPrinterConnectionActor GetOrCreate(int printerId, string? userAgent = null)
+    public IPrinterConnectionActor GetOrCreate(int printerId, bool overPlaintext, string? userAgent = null)
     {
         lock (_lock)
         {
@@ -122,7 +122,7 @@ public sealed class HttpPrinterSessions : BackgroundService
             IPrinterConnectionActor actor = _actorFactory.Create(printerId, connection);
 
             _sessions[printerId] = new Session(connection, actor, correlation);
-            _registry.Register(printerId, actor);
+            _registry.Register(printerId, actor, overPlaintext);
 
             // Says what connected, not just that something did: Homespool could not previously
             // answer "what is this printer running", which was a diagnostic blind spot.

@@ -25,13 +25,42 @@ public class DeploymentExposureTests
     }
 
     /// <summary>
+    /// <b>TLS on is not the whole story once a plaintext listener exists.</b> The legacy listener is a
+    /// second way in, so a printer sitting on it is unprotected however the deployment is configured -
+    /// and this branch used to answer a flat "printers reach this server over TLS".
+    /// </summary>
+    [Fact]
+    public void APrinterNeedlesslyOnThePlaintextListenerIsReportedEvenWithTlsOn()
+    {
+        ExposureVerdict verdict = DeploymentExposure.EvaluatePrinterTransport(
+            printerTls: true, needlesslyOnPlaintext: 2, "printers.example.com", At("192.168.1.4"), ContainerNetworks);
+
+        verdict.State.Should().Be(ExposureState.PrinterOnPlaintextWithoutNeedingIt);
+        verdict.Description.Should().Contain("2 printer");
+    }
+
+    /// <summary>
+    /// <b>A printer that genuinely cannot do TLS is silent here.</b> It is doing the only thing open
+    /// to it, and a health check that grumbles at an unavoidable state teaches people to ignore it -
+    /// which costs the warnings that are actionable.
+    /// </summary>
+    [Fact]
+    public void APrinterOnPlaintextThatNeedsToBeIsNotReported()
+    {
+        ExposureVerdict verdict = DeploymentExposure.EvaluatePrinterTransport(
+            printerTls: true, needlesslyOnPlaintext: 0, "printers.example.com", At("192.168.1.4"), ContainerNetworks);
+
+        verdict.State.Should().Be(ExposureState.Ok);
+    }
+
+    /// <summary>
     /// The case the warning exists for: plaintext, at an address the internet can reach.
     /// </summary>
     [Fact]
     public void PlaintextAtAPublicAddressIsReported()
     {
         ExposureVerdict verdict = DeploymentExposure.EvaluatePrinterTransport(
-            printerTls: false, "printers.example.com", At("203.0.113.9"), ContainerNetworks);
+            printerTls: false, needlesslyOnPlaintext: 0, "printers.example.com", At("203.0.113.9"), ContainerNetworks);
 
         verdict.State.Should().Be(ExposureState.PrinterTokensCrossThePublicInternet);
         verdict.Description.Should().Contain("printers.example.com")
@@ -56,7 +85,7 @@ public class DeploymentExposureTests
     [InlineData("100.64.7.1")]
     public void PlaintextOnAPrivateAddressIsNotNaggedAbout(string address)
     {
-        DeploymentExposure.EvaluatePrinterTransport(false, "homespool.lan", At(address), ContainerNetworks)
+        DeploymentExposure.EvaluatePrinterTransport(false, needlesslyOnPlaintext: 0, "homespool.lan", At(address), ContainerNetworks)
                           .IsProblem.Should().BeFalse();
     }
 
@@ -65,7 +94,7 @@ public class DeploymentExposureTests
     public void AnyPublicAddressIsEnough()
     {
         DeploymentExposure.EvaluatePrinterTransport(
-                              false, "homespool.lan", At("192.168.13.238", "203.0.113.9"), ContainerNetworks)
+                              false, needlesslyOnPlaintext: 0, "homespool.lan", At("192.168.13.238", "203.0.113.9"), ContainerNetworks)
                           .State.Should().Be(ExposureState.PrinterTokensCrossThePublicInternet);
     }
 
@@ -73,7 +102,7 @@ public class DeploymentExposureTests
     [Fact]
     public void AnUnresolvableHostIsNotGuessedAt()
     {
-        DeploymentExposure.EvaluatePrinterTransport(false, "homespool.lan", At(), ContainerNetworks)
+        DeploymentExposure.EvaluatePrinterTransport(false, needlesslyOnPlaintext: 0, "homespool.lan", At(), ContainerNetworks)
                           .IsProblem.Should().BeFalse();
     }
 
@@ -81,7 +110,7 @@ public class DeploymentExposureTests
     [Fact]
     public void TlsMakesTheAddressIrrelevant()
     {
-        DeploymentExposure.EvaluatePrinterTransport(true, "printers.example.com", At("203.0.113.9"), ContainerNetworks)
+        DeploymentExposure.EvaluatePrinterTransport(true, needlesslyOnPlaintext: 0, "printers.example.com", At("203.0.113.9"), ContainerNetworks)
                           .IsProblem.Should().BeFalse();
     }
 

@@ -557,12 +557,74 @@ public sealed class DetailModelTests : IDisposable
         // Act - now connected
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
-        connectionRegistry.Register(printer.Id, actor);
+        connectionRegistry.Register(printer.Id, actor, overPlaintext: false);
 
         await model.OnGetAsync(printer.Uuid, CancellationToken.None);
 
         // Assert
         model.Connected.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The plaintext warning needs BOTH halves, and each half alone must stay silent.
+    /// </summary>
+    /// <remarks>
+    /// A printer on the plaintext listener whose firmware genuinely cannot do TLS is doing the only
+    /// thing open to it, so warning would be nagging about a decision already taken. A capable
+    /// printer on the TLS listener is simply correct. Only the pair means somebody is paying for an
+    /// escape hatch they have stopped needing.
+    /// </remarks>
+    [Theory]
+    [InlineData(true, "6.5.7", true)]
+    [InlineData(true, "6.2.6", false)]
+    [InlineData(false, "6.5.7", false)]
+    [InlineData(true, null, false)]
+    public async Task TheWarningNeedsBothAPlaintextConnectionAndCapableFirmware(bool overPlaintext,
+                                                                               string? firmware,
+                                                                               bool expected)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, PrinterConnectionRegistry connectionRegistry) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        printer.Firmware = firmware;
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        connectionRegistry.Register(printer.Id, actor, overPlaintext);
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.OnPlaintextAndCouldUseTls.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// <b>A disconnected printer says nothing either way.</b> Which listener it uses lives in the ini
+    /// on its own USB stick, so silence here is ignorance rather than reassurance - and the warning
+    /// must not appear for a printer we cannot currently see.
+    /// </summary>
+    [Fact]
+    public async Task ADisconnectedPrinterRaisesNoPlaintextWarning()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        printer.Firmware = "6.5.7";
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act - never registered, so never connected
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.OnPlaintextAndCouldUseTls.Should().BeFalse();
     }
 
     /// <summary>

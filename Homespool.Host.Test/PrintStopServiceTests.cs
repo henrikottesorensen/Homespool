@@ -275,7 +275,7 @@ public sealed class PrintStopServiceTests : IDisposable
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(reply, reason))));
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
     }
 
     /// <summary>
@@ -301,7 +301,7 @@ public sealed class PrintStopServiceTests : IDisposable
                                               new CommandOutcome(PrinterEventType.Finished, null));
              });
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
     }
 
     private HomespoolDbContext NewContext()

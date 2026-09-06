@@ -136,6 +136,29 @@ public class DetailModel : PageModel
 
     public bool Connected { get; private set; }
 
+    /// <summary>
+    /// Whether this printer is connected right now over the legacy plaintext listener <b>and</b> its
+    /// own firmware says it need not be.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Both halves, because either alone is not worth a warning.</b> A printer on the plaintext
+    /// listener whose firmware genuinely cannot do TLS is doing the only thing available to it, and
+    /// nagging about it would be nagging about a decision already taken deliberately. A capable
+    /// printer on the TLS listener is simply fine. It is the pair that says somebody is paying for an
+    /// escape hatch they have stopped needing.
+    /// </para>
+    /// <para>
+    /// <b>False while the printer is disconnected, and that is not reassurance.</b> Which listener a
+    /// printer uses lives in the ini on its own USB stick, so nothing here can know it until the
+    /// printer connects and says so by the port it arrives on.
+    /// </para>
+    /// </remarks>
+    public bool OnPlaintextAndCouldUseTls { get; private set; }
+
+    /// <summary>The firmware this printer last reported, for the warning to name.</summary>
+    public string? Firmware { get; private set; }
+
     /// <summary>What this printer will print, in order. Empty until somebody queues something.</summary>
     public IReadOnlyList<QueuedPrint> Queue { get; private set; } = [];
 
@@ -759,6 +782,12 @@ public class DetailModel : PageModel
 
         Statistics = statistics;
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
+
+        // Advisory only: the version is a header the printer writes about itself, so this decides
+        // what a page says and never what a connection is allowed to do.
+        Firmware = statistics.Printer.Firmware;
+        OnPlaintextAndCouldUseTls = _connectionRegistry.IsOnPlaintextListener(statistics.Printer.Id)
+                                    && PrusaConnect.PrinterFirmwareVersion.CanLoadCustomCertificate(Firmware);
 
         CanUse = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.Print, cancellationToken);
 

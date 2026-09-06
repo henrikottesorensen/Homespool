@@ -1269,6 +1269,12 @@
   <data name="Bundle_Root" xml:space="preserve">
     <value>roden</value>
   </data>
+  <data name="Printer_PlaintextHeading" xml:space="preserve">
+    <value>Denne printer er forbundet uden TLS.</value>
+  </data>
+  <data name="Printer_PlaintextBody" xml:space="preserve">
+    <value>Den melder firmware {0}, som kan indlæse et TLS-certifikat - så den har ikke længere brug for den ukrypterede port. Alt hvad den sender, herunder dens token og de filer du sender til den, kan læses på dit netværk, indtil du henter en ny klargøringspakke til den og indlæser den fra en USB-nøgle.</value>
+  </data>
   <data name="Bundle_LegacySummary" xml:space="preserve">
     <value>Denne printers firmware understøtter ikke brug af TLS med Homespool.</value>
   </data>

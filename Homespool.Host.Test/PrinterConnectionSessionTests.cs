@@ -95,7 +95,7 @@ public class PrinterConnectionSessionTests
         Pipe wire = new();
         PrinterConnectionSession session = NewSession(new StubWebSocketHandler(handlerEnd), actor ?? DrainedActor());
 
-        return (connection, () => session.RunAsync(PrinterId, connection, wire.Reader, CancellationToken.None));
+        return (connection, () => session.RunAsync(PrinterId, connection, wire.Reader, overPlaintext: false, CancellationToken.None));
     }
 
     /// <summary>
@@ -245,7 +245,7 @@ public class PrinterConnectionSessionTests
         PrinterConnectionSession session = NewSession(new StubWebSocketHandler(() => Task.CompletedTask), DrainedActor());
 
         // Act
-        await session.RunAsync(PrinterId, connection, wire.Reader, CancellationToken.None);
+        await session.RunAsync(PrinterId, connection, wire.Reader, overPlaintext: false, CancellationToken.None);
 
         // Assert - a write after the reader completed reports it, which is how a producer learns
         FlushResult flush = await wire.Writer.WriteAsync(new byte[] { 1 }, TestContext.Current.CancellationToken);

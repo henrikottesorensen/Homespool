@@ -42,10 +42,16 @@ public static class DeploymentExposure
     /// </para>
     /// </remarks>
     /// <param name="printerTls">Whether the printer transport uses TLS.</param>
+    /// <param name="needlesslyOnPlaintext">
+    /// How many printers are connected over the legacy plaintext listener while reporting firmware
+    /// that could load a certificate. Counted rather than named, because this is the deployment's
+    /// view; the printer's own page names it.
+    /// </param>
     /// <param name="printerHost">The address printers are told to use, or null if none is set.</param>
     /// <param name="resolvedHost">What that address resolves to; empty means the resolver had no answer.</param>
     /// <param name="containerNetworks">Ranges that exist only inside this deployment.</param>
     public static ExposureVerdict EvaluatePrinterTransport(bool printerTls,
+                                                           int needlesslyOnPlaintext,
                                                            string? printerHost,
                                                            IReadOnlyList<IPAddress> resolvedHost,
                                                            IReadOnlyList<IPNetwork> containerNetworks)
@@ -55,6 +61,21 @@ public static class DeploymentExposure
 
         if (printerTls || string.IsNullOrWhiteSpace(printerHost))
         {
+            // TLS is on and still not the whole story: the legacy listener is a second way in, and a
+            // printer sitting on it is unprotected however the deployment is configured. Reported only
+            // when the printer's OWN firmware says it need not be there - a printer that genuinely
+            // cannot do TLS is doing the only thing available to it, and a health check that grumbles
+            // at an unavoidable state trains people to ignore it.
+            if (needlesslyOnPlaintext > 0)
+            {
+                return new(ExposureState.PrinterOnPlaintextWithoutNeedingIt,
+                           $"{needlesslyOnPlaintext} printer(s) are connected over the plaintext printer listener "
+                           + "although the firmware they report can load a certificate. Their tokens, their files and "
+                           + "the PrusaLink password they report cross the network in clear. Download a new "
+                           + "provisioning bundle for each and load it from a USB stick; unset "
+                           + "Listeners:LegacyPrinterPort once none is left.");
+            }
+
             return new(ExposureState.Ok, "Printers reach this server over TLS.");
         }
 

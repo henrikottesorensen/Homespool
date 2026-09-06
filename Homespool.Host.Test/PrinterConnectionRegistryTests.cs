@@ -36,7 +36,7 @@ public class PrinterConnectionRegistryTests
         IPrinterConnectionActor actor = OpenActor();
 
         // Act
-        registry.Register(1, actor);
+        registry.Register(1, actor, overPlaintext: false);
 
         // Assert
         registry.TryGet(1, out IPrinterLink? found).Should().BeTrue();
@@ -50,7 +50,7 @@ public class PrinterConnectionRegistryTests
         PrinterConnectionRegistry registry = NewRegistry();
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(false);
-        registry.Register(1, actor);
+        registry.Register(1, actor, overPlaintext: false);
 
         // Act + Assert
         registry.IsConnected(1).Should().BeFalse();
@@ -67,11 +67,11 @@ public class PrinterConnectionRegistryTests
         IPrinterConnectionActor actorA = OpenActor();
         IPrinterConnectionActor actorB = OpenActor();
 
-        registry.Register(1, actorA);
+        registry.Register(1, actorA, overPlaintext: false);
 
         // Simulates a fast reconnect: a new connection registers its actor for the same printer
         // before the stale request's finally block runs its unregister.
-        registry.Register(1, actorB);
+        registry.Register(1, actorB, overPlaintext: false);
 
         // Act
         registry.Unregister(1, actorA);
@@ -87,7 +87,7 @@ public class PrinterConnectionRegistryTests
         // Arrange
         PrinterConnectionRegistry registry = NewRegistry();
         IPrinterConnectionActor actor = OpenActor();
-        registry.Register(1, actor);
+        registry.Register(1, actor, overPlaintext: false);
 
         // Act
         registry.Unregister(1, actor);
@@ -116,10 +116,10 @@ public class PrinterConnectionRegistryTests
         IPrinterConnectionActor first = OpenActor();
         IPrinterConnectionActor second = OpenActor();
 
-        registry.Register(printerId: 1, first);
+        registry.Register(printerId: 1, first, overPlaintext: false);
 
         // Act
-        registry.Register(printerId: 1, second);
+        registry.Register(printerId: 1, second, overPlaintext: false);
 
         // Assert
         registry.TryGet(1, out IPrinterLink? live).Should().BeTrue();
@@ -138,10 +138,10 @@ public class PrinterConnectionRegistryTests
     {
         // Arrange
         PrinterConnectionRegistry registry = NewRegistry();
-        registry.Register(printerId: 7, OpenActor());
+        registry.Register(printerId: 7, OpenActor(), overPlaintext: false);
 
         // Act
-        registry.Register(printerId: 7, OpenActor());
+        registry.Register(printerId: 7, OpenActor(), overPlaintext: false);
 
         // Assert
         FakeLogRecord record = _logger.Collector.GetSnapshot()
@@ -160,7 +160,7 @@ public class PrinterConnectionRegistryTests
         PrinterConnectionRegistry registry = NewRegistry();
 
         // Act
-        registry.Register(printerId: 1, OpenActor());
+        registry.Register(printerId: 1, OpenActor(), overPlaintext: false);
 
         // Assert
         _logger.Collector.GetSnapshot().Should().BeEmpty();
@@ -176,7 +176,7 @@ public class PrinterConnectionRegistryTests
         // Arrange
         PrinterConnectionRegistry registry = NewRegistry();
         IPrinterConnectionActor actor = OpenActor();
-        registry.Register(printerId: 1, actor);
+        registry.Register(printerId: 1, actor, overPlaintext: false);
 
         // Act
         bool closed = registry.Close(printerId: 1);
@@ -211,14 +211,14 @@ public class PrinterConnectionRegistryTests
         // Arrange
         PrinterConnectionRegistry registry = NewRegistry();
         IPrinterConnectionActor closed = OpenActor();
-        registry.Register(printerId: 1, closed);
+        registry.Register(printerId: 1, closed, overPlaintext: false);
 
         registry.Close(printerId: 1);
 
         // Act - a reconnect lands before the closed connection's request has torn down, then the
         // stale request finally runs its unregister.
         IPrinterConnectionActor reconnected = OpenActor();
-        registry.Register(printerId: 1, reconnected);
+        registry.Register(printerId: 1, reconnected, overPlaintext: false);
         registry.Unregister(printerId: 1, closed);
 
         // Assert
@@ -229,5 +229,93 @@ public class PrinterConnectionRegistryTests
     private PrinterConnectionRegistry NewRegistry()
     {
         return new(_logger);
+    }
+
+    /// <summary>
+    /// The listener a connection arrived on is carried, because a warning about it has nowhere else
+    /// to read it from - nothing persists which door a printer uses.
+    /// </summary>
+    [Fact]
+    public void APrinterRegisteredOnThePlaintextListenerIsReportedAsSuch()
+    {
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterLink actor = Substitute.For<IPrinterLink>();
+        actor.IsOpen.Returns(true);
+
+        registry.Register(1, actor, overPlaintext: true);
+
+        registry.IsOnPlaintextListener(1).Should().BeTrue();
+        registry.PrintersOnPlaintextListener().Should().Equal(1);
+    }
+
+    [Fact]
+    public void APrinterOnTheTlsListenerIsNotReportedAsPlaintext()
+    {
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterLink actor = Substitute.For<IPrinterLink>();
+        actor.IsOpen.Returns(true);
+
+        registry.Register(1, actor, overPlaintext: false);
+
+        registry.IsOnPlaintextListener(1).Should().BeFalse();
+        registry.PrintersOnPlaintextListener().Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// <b>A printer nobody is connected to is unknown, not protected.</b> Which listener it would use
+    /// lives in the ini on its own stick, so an absent connection answers nothing - and false here
+    /// must be read as "no warning to give", never as "this printer is fine".
+    /// </summary>
+    [Fact]
+    public void ADisconnectedPrinterReportsNoPlaintextConnection()
+    {
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterLink actor = Substitute.For<IPrinterLink>();
+        actor.IsOpen.Returns(false);
+
+        registry.Register(1, actor, overPlaintext: true);
+
+        registry.IsOnPlaintextListener(1).Should().BeFalse();
+        registry.IsOnPlaintextListener(2).Should().BeFalse("printer 2 has never connected at all");
+    }
+
+    /// <summary>
+    /// A reconnect onto the other listener replaces the answer rather than adding to it - which is
+    /// what makes re-provisioning onto TLS clear the warning by itself.
+    /// </summary>
+    [Fact]
+    public void ReconnectingOnTheTlsListenerClearsThePlaintextAnswer()
+    {
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterLink onPlaintext = Substitute.For<IPrinterLink>();
+        onPlaintext.IsOpen.Returns(true);
+        IPrinterLink onTls = Substitute.For<IPrinterLink>();
+        onTls.IsOpen.Returns(true);
+
+        registry.Register(1, onPlaintext, overPlaintext: true);
+        registry.Register(1, onTls, overPlaintext: false);
+
+        registry.IsOnPlaintextListener(1).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Unregister still matches on the link instance, which the stored value must not have broken:
+    /// a fast reconnect registers the newcomer before the old request's finally runs.
+    /// </summary>
+    [Fact]
+    public void UnregisteringAStaleLinkLeavesTheOneThatDisplacedIt()
+    {
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterLink stale = Substitute.For<IPrinterLink>();
+        stale.IsOpen.Returns(true);
+        IPrinterLink live = Substitute.For<IPrinterLink>();
+        live.IsOpen.Returns(true);
+
+        registry.Register(1, stale, overPlaintext: true);
+        registry.Register(1, live, overPlaintext: false);
+        registry.Unregister(1, stale);
+
+        registry.TryGet(1, out IPrinterLink? found).Should().BeTrue();
+        found.Should().BeSameAs(live);
     }
 }

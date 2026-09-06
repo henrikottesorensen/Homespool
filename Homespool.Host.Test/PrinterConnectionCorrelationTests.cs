@@ -97,7 +97,7 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
 
         Pipe wire = new();
 
-        await session.RunAsync(PrinterId, new NullConnection(), wire.Reader, CancellationToken.None);
+        await session.RunAsync(PrinterId, new NullConnection(), wire.Reader, overPlaintext: false, CancellationToken.None);
     }
 
     [Fact]

@@ -732,7 +732,7 @@ public sealed class QueueAdvancerTests : IDisposable
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(PrinterEventType.Rejected, reason))));
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
     }
 
     /// <summary>A printer that accepts whatever it is sent, so a refusal can only be ours.</summary>
@@ -747,7 +747,7 @@ public sealed class QueueAdvancerTests : IDisposable
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(PrinterEventType.Finished, null))));
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
     }
 
     /// <summary>
@@ -785,7 +785,7 @@ public sealed class QueueAdvancerTests : IDisposable
                                                                   { MachineReason = "FILE_EXISTS" }));
              });
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
     }
 
     /// <summary>
@@ -1306,7 +1306,7 @@ public sealed class QueueAdvancerTests : IDisposable
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
     }
 
     /// <summary>
@@ -1328,7 +1328,7 @@ public sealed class QueueAdvancerTests : IDisposable
                                                   $"{{\"state\":\"{finState}\"}}"))) :
                           Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
 
         return actor;
     }
@@ -1352,7 +1352,7 @@ public sealed class QueueAdvancerTests : IDisposable
                                                   $"{{\"state\":\"PRINTING\",\"path\":\"{path}\"}}"))) :
                           Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
 
         return actor;
     }

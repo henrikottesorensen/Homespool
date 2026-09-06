@@ -391,7 +391,7 @@ public sealed class IndexModelTests : IDisposable
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .ThrowsAsync(new InvalidOperationException("socket gone"));
-        registry.Register(printer.Id, actor);
+        registry.Register(printer.Id, actor, overPlaintext: false);
 
         // Act
         IActionResult result = await model.OnPostPauseAsync(printer.Id, CancellationToken.None);

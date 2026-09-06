@@ -253,7 +253,7 @@ public sealed class PrintFileSenderTests : IDisposable
         actor.Dialect.Returns(PrinterDialect.BuddyHttp);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns<Task<CommandSendResult>>(_ => throw new CommandResponseTimedOutException(PrinterId));
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
 
         // Act
         Func<Task> act = async () => await NewSender(context).SendAsync(
@@ -290,7 +290,7 @@ public sealed class PrintFileSenderTests : IDisposable
         actor.Dialect.Returns(PrinterDialect.BuddyHttp);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns<Task<CommandSendResult>>(_ => throw new InvalidOperationException("gone"));
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
 
         // Act
         Func<Task> act = async () => await NewSender(context).SendAsync(
@@ -377,7 +377,7 @@ public sealed class PrintFileSenderTests : IDisposable
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(reply, reason))));
 
-        _registry.Register(PrinterId, actor);
+        _registry.Register(PrinterId, actor, overPlaintext: false);
 
         return actor;
     }

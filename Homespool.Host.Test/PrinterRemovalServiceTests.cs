@@ -145,7 +145,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         PrinterConnectionRegistry registry = new(_registryLogger);
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
-        registry.Register(printer.Id, actor);
+        registry.Register(printer.Id, actor, overPlaintext: false);
 
         // Act
         await NewService(context, registry).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
@@ -169,7 +169,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         PrinterConnectionRegistry registry = new(_registryLogger);
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
-        registry.Register(printer.Id, actor);
+        registry.Register(printer.Id, actor, overPlaintext: false);
 
         // Act
         Func<Task> removing = () => NewService(context, registry)

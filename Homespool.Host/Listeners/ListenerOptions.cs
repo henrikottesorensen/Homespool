@@ -158,6 +158,21 @@ public class ListenerOptions
     public int TransferPort { get; set; } = 15080;
 
     /// <summary>
+    /// Whether a connection that arrived on <paramref name="localPort"/> came in over the legacy
+    /// plaintext listener rather than the TLS-terminated one.
+    /// </summary>
+    /// <remarks>
+    /// <b>The local port, for the reason the segregation uses it</b>: it is a property of the socket,
+    /// so a client cannot claim a different one. False when no such listener is configured, which is
+    /// then not a claim that anything is protected - there is simply no plaintext listener for a
+    /// connection to have used.
+    /// </remarks>
+    public bool IsLegacyPrinterListener(int localPort)
+    {
+        return LegacyPrinterPort is int legacyPort && legacyPort == localPort;
+    }
+
+    /// <summary>
     /// Throws unless the ports describe a boundary that can actually exist.
     /// </summary>
     /// <remarks>

@@ -13,7 +13,7 @@ namespace Homespool.Host.Printing;
 /// </summary>
 public sealed class PrinterConnectionRegistry
 {
-    private readonly ConcurrentDictionary<int, IPrinterLink> _actors = new();
+    private readonly ConcurrentDictionary<int, LiveConnection> _actors = new();
     private readonly ILogger<PrinterConnectionRegistry> _logger;
 
     public PrinterConnectionRegistry(ILogger<PrinterConnectionRegistry> logger)
@@ -52,9 +52,17 @@ public sealed class PrinterConnectionRegistry
     /// its read loop, which reaches the teardown that disposes its socket.
     /// </para>
     /// </remarks>
-    public void Register(int printerId, IPrinterLink actor)
+    /// <param name="printerId">The printer this connection speaks for.</param>
+    /// <param name="actor">The live link.</param>
+    /// <param name="overPlaintext">
+    /// Whether the connection arrived on the legacy plaintext listener rather than the TLS-terminated
+    /// one. <b>Required rather than defaulted</b>, so a future caller cannot forget it and silently
+    /// report a plaintext printer as protected - which is the direction that costs silence where a
+    /// warning was owed.
+    /// </param>
+    public void Register(int printerId, IPrinterLink actor, bool overPlaintext)
     {
-        IPrinterLink? displaced = Swap(printerId, actor);
+        IPrinterLink? displaced = Swap(printerId, new LiveConnection(actor, overPlaintext));
 
         if (displaced is null)
         {
@@ -82,12 +90,57 @@ public sealed class PrinterConnectionRegistry
     /// </summary>
     public void Unregister(int printerId, IPrinterLink actor)
     {
-        _actors.TryRemove(new KeyValuePair<int, IPrinterLink>(printerId, actor));
+        // Read then compare-and-remove, because the stored value now carries the listener alongside
+        // the link and only the LINK identifies the connection. The removal is still atomic on the
+        // whole value, so the instance-matching this method exists for is unchanged.
+        if (_actors.TryGetValue(printerId, out LiveConnection existing) && ReferenceEquals(existing.Link, actor))
+        {
+            _actors.TryRemove(new KeyValuePair<int, LiveConnection>(printerId, existing));
+        }
     }
 
     public bool TryGet(int printerId, out IPrinterLink? actor)
     {
-        return _actors.TryGetValue(printerId, out actor);
+        bool found = _actors.TryGetValue(printerId, out LiveConnection connection);
+        actor = found ? connection.Link : null;
+
+        return found;
+    }
+
+    /// <summary>
+    /// Whether this printer is connected right now over the legacy plaintext listener.
+    /// </summary>
+    /// <remarks>
+    /// <b>Observed rather than remembered</b>, and that is why nothing persists it. Which listener a
+    /// printer uses is a property of the connection it currently holds, decided by the ini on its own
+    /// USB stick - so a stored column would be a second answer that goes stale the moment somebody
+    /// re-provisions the printer without telling us. The cost is that this can only speak about a
+    /// printer that is connected; a disconnected one is not "protected", it is unknown, and callers
+    /// must not read false as reassurance.
+    /// </remarks>
+    public bool IsOnPlaintextListener(int printerId)
+    {
+        return _actors.TryGetValue(printerId, out LiveConnection connection)
+               && connection.OverPlaintext
+               && connection.Link.IsOpen;
+    }
+
+    /// <summary>
+    /// Every printer currently connected over the legacy plaintext listener.
+    /// </summary>
+    public IReadOnlyList<int> PrintersOnPlaintextListener()
+    {
+        List<int> printers = [];
+
+        foreach (KeyValuePair<int, LiveConnection> entry in _actors)
+        {
+            if (entry.Value.OverPlaintext && entry.Value.Link.IsOpen)
+            {
+                printers.Add(entry.Key);
+            }
+        }
+
+        return printers;
     }
 
     /// <summary>
@@ -111,35 +164,35 @@ public sealed class PrinterConnectionRegistry
     /// </remarks>
     public bool Close(int printerId)
     {
-        if (!_actors.TryGetValue(printerId, out IPrinterLink? actor))
+        if (!_actors.TryGetValue(printerId, out LiveConnection connection))
         {
             return false;
         }
 
         _logger.LogInformation("[{PrinterId}] closing the live connection because the printer is being deleted.", printerId);
 
-        actor.Complete();
+        connection.Link.Complete();
 
         return true;
     }
 
     /// <summary>
-    /// Installs <paramref name="actor"/> and returns whatever it replaced, atomically - so two
+    /// Installs <paramref name="connection"/> and returns whatever link it replaced, atomically - so two
     /// simultaneous registrations for one printer cannot both report displacing the same actor, and
     /// no actor can be dropped from the map without being handed back to be shut down.
     /// </summary>
-    private IPrinterLink? Swap(int printerId, IPrinterLink actor)
+    private IPrinterLink? Swap(int printerId, LiveConnection connection)
     {
         while (true)
         {
-            if (_actors.TryGetValue(printerId, out IPrinterLink? existing))
+            if (_actors.TryGetValue(printerId, out LiveConnection existing))
             {
-                if (_actors.TryUpdate(printerId, actor, existing))
+                if (_actors.TryUpdate(printerId, connection, existing))
                 {
-                    return existing;
+                    return existing.Link;
                 }
             }
-            else if (_actors.TryAdd(printerId, actor))
+            else if (_actors.TryAdd(printerId, connection))
             {
                 return null;
             }
@@ -148,6 +201,12 @@ public sealed class PrinterConnectionRegistry
 
     public bool IsConnected(int printerId)
     {
-        return _actors.TryGetValue(printerId, out IPrinterLink? actor) && actor.IsOpen;
+        return _actors.TryGetValue(printerId, out LiveConnection connection) && connection.Link.IsOpen;
     }
+
+    /// <summary>
+    /// A live connection and the one thing about it that is not the link's business: which listener it
+    /// came in on.
+    /// </summary>
+    private readonly record struct LiveConnection(IPrinterLink Link, bool OverPlaintext);
 }

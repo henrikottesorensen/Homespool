@@ -44,6 +44,19 @@
     </div>
 }
 
+@*  A printer paying for the plaintext escape hatch that its own firmware says it no longer needs.
+    Deliberately NOT dismissible and NOT inside the live region: it describes a standing state
+    rather than the outcome of something just pressed, so it should still be here tomorrow, and it
+    must not vanish on a refresh two seconds later. It is advisory in the strongest sense - the
+    printer keeps working exactly as it is until somebody re-provisions it. *@
+@if (Model.OnPlaintextAndCouldUseTls)
+{
+    <div class="alert alert-warning" role="alert">
+        <strong>@Localiser["Printer_PlaintextHeading"]</strong>
+        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printer_PlaintextBody"].Value, $"<code>{Model.Firmware}</code>"))
+    </div>
+}
+
 @* Refreshed in place by live-region.js. Without script it is simply what the server rendered when
    the page loaded, which is what it was before any of this. *@
 <div class="mb-3" data-live-region

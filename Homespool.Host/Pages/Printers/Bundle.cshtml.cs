@@ -38,7 +38,7 @@ public class BundleModel : PageModel
     private readonly ILogger<BundleModel> _logger;
 
     public BundleModel(ProvisioningBundleBuilder bundles,
-                       IOptions<PrusaConnectOptions> options,
+                       IOptionsSnapshot<PrusaConnectOptions> options,
                        ILogger<BundleModel> logger)
     {
         ArgumentNullException.ThrowIfNull(options);

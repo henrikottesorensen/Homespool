@@ -141,7 +141,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
              .Returns(result);
 
         PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
-        registry.Register(printerId, actor);
+        registry.Register(printerId, actor, overPlaintext: false);
 
         return (registry, actor);
     }
@@ -656,7 +656,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
             .Returns(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Finished, null)));
 
         PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
-        registry.Register(printer.Id, link);
+        registry.Register(printer.Id, link, overPlaintext: false);
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
         Printing.PausePrint intent = new();
 
@@ -683,7 +683,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
-        registry.Register(printer.Id, Substitute.For<IPrinterLink>());
+        registry.Register(printer.Id, Substitute.For<IPrinterLink>(), overPlaintext: false);
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
 
         // Act

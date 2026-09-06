@@ -47,6 +47,13 @@ public class PrusaConnectPrinterController : ControllerBase
     private readonly PrusaConnect.Transfers.ITransferContentStore _content;
     private readonly IHostApplicationLifetime _lifetime;
     private readonly PrusaConnectOptions _options;
+
+    /// <summary>
+    /// Injected as <see cref="IOptions{TOptions}"/> rather than the snapshot beside it: a listener
+    /// port is fixed once Kestrel has bound it, so a per-request value would promise a change that
+    /// cannot happen without a restart.
+    /// </summary>
+    private readonly Listeners.ListenerOptions _listeners;
     private readonly ILogger<PrusaConnectPrinterController> _logger;
 
     public PrusaConnectPrinterController(PrusaConnectService prusaConnectService,
@@ -56,9 +63,11 @@ public class PrusaConnectPrinterController : ControllerBase
                                          PrusaConnect.Transfers.ITransferContentStore content,
                                          IHostApplicationLifetime lifetime,
                                          IOptionsSnapshot<PrusaConnectOptions> options,
+                                         IOptions<Listeners.ListenerOptions> listeners,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(listeners);
 
         _prusaConnectService = prusaConnectService;
         _session = session;
@@ -67,8 +76,19 @@ public class PrusaConnectPrinterController : ControllerBase
         _content = content;
         _lifetime = lifetime;
         _options = options.Value;
+        _listeners = listeners.Value;
         _logger = logger;
     }
+
+    /// <summary>
+    /// Whether the printer on this request came in over the legacy plaintext listener.
+    /// </summary>
+    /// <remarks>
+    /// Read here rather than deeper down because this is the only layer that still has a socket: the
+    /// session and the HTTP sessions both exist precisely so the protocol is reachable without an
+    /// <c>HttpContext</c>, and handing them one back to answer this would undo that.
+    /// </remarks>
+    private bool ArrivedOverPlaintext => _listeners.IsLegacyPrinterListener(HttpContext.Connection.LocalPort);
 
     // [HttpGet] as well as the route, so this reaches the OpenAPI document at all: ApiExplorer cannot
     // describe an action with no method constraint, which is why /p/ws was the one printer endpoint
@@ -139,7 +159,7 @@ public class PrusaConnectPrinterController : ControllerBase
                 // the session, which owns `input` from this point and completes it. It is a separate
                 // type purely so that sequence is reachable without an HttpContext, and so a test
                 // can pin the order each of its steps was bought with.
-                await _session.RunAsync(printerId, connection, input, connectionLifetime.Token);
+                await _session.RunAsync(printerId, connection, input, ArrivedOverPlaintext, connectionLifetime.Token);
 
                 // Not Ok(): the response started at the 101, and a status-code result sets
                 // Response.StatusCode during result execution - after this action returns, outside
@@ -419,7 +439,7 @@ public class PrusaConnectPrinterController : ControllerBase
         // printer whose message we then refuse is still a printer that is there.
         // The user agent decides how a file may be offered to this printer later: firmware sends
         // none, the Python SDK sends its own. See HttpPrinterConnection.CanDecryptDownloads.
-        IPrinterConnectionActor actor = _sessions.GetOrCreate(printerId, Request.Headers.UserAgent.ToString());
+        IPrinterConnectionActor actor = _sessions.GetOrCreate(printerId, ArrivedOverPlaintext, Request.Headers.UserAgent.ToString());
 
         using (document)
         {

@@ -13,4 +13,10 @@ public enum ExposureState
 
     /// <summary>An administrator is using this server over plain HTTP from somewhere that is not this machine.</summary>
     SessionInClear = 3,
+
+    /// <summary>
+    /// A printer is connected over the legacy plaintext listener although its own firmware says it
+    /// could use TLS.
+    /// </summary>
+    PrinterOnPlaintextWithoutNeedingIt = 4,
 }

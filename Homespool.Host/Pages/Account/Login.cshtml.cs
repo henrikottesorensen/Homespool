@@ -222,8 +222,13 @@ public class LoginModel : PageModel
         // for an identifier nobody holds, the pre-sign-in check, and a wrong password counted toward
         // the lockout. Counting matters because this form has no rate limiting of its own and people
         // do expose self-hosted printer servers to the internet whatever the advice says; Identity's
-        // defaults apply, five failures then five minutes, and the accepted cost is that someone who
-        // knows an account's address can keep it locked out for those five minutes.
+        // defaults apply, five failures then five minutes.
+        //
+        // What that costs reaches well past this form, because the lockout is the account's and every
+        // scheme consults it before signing anything in: for those five minutes the account's passkey,
+        // its authenticator code, its recovery codes, its external provider and its API tokens are all
+        // refused too. So someone who knows an address can stop that account's scripts and its own way
+        // back in, not only its password - accepted, but wider than a login-form nuisance.
         AuthenticateResult password = await HttpContext.AuthenticateWithAsync(Schemes.UserPassword,
                                                                               new UserPasswordCredential(Input.Login, Input.Password));
 

@@ -81,9 +81,19 @@ public static class HealthEndpoints
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Anonymous by design</b>: a monitoring system holds no credentials, and the response carries
-    /// only counters and timestamps about this service's own write path - nothing about printers, jobs
-    /// or users.
+    /// <b>Anonymous by design</b>: a monitoring system holds no credentials, so this is mapped outside
+    /// authentication.
+    /// </para>
+    /// <para>
+    /// <b>The body is thinner than a session but not thin.</b> A check reports what an operator would
+    /// need in order to act on it, which across the six here means the configured printer host and the
+    /// addresses it resolves to, the names the printer certificate covers against the names this
+    /// machine now answers to, the WebRTC candidate browsers are handed, and counts of printers on the
+    /// plaintext listener and of cameras configured. No credential, no token, no printer serial and
+    /// nothing about a user or a job - so what it hands a stranger is reconnaissance of an internal
+    /// network rather than a secret. The answer to that is a horizon rather than a credential: the
+    /// proxy admits private ranges only, and <c>nginx/homespool-health-access.conf</c> carries the
+    /// reasoning and the one limit it has.
     /// </para>
     /// <para>
     /// <see cref="HealthEndpointPath"/> is everything, for monitoring and for humans. Alert on it;

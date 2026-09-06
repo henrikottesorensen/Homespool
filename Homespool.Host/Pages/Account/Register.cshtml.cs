@@ -140,10 +140,16 @@ public class RegisterModel : PageModel
     /// invite was unredeemable.
     /// </para>
     /// <para>
-    /// <b>Only an account with no password is adoptable</b>, which is exactly the orphaned set. That
-    /// bound matters: without it an invite would be a way to re-credential an account that already
-    /// works, without knowing its password, which is an account takeover with an administrator's
-    /// signature on it.
+    /// <b>Only an account with no password is adoptable.</b> That bound is what keeps an invite from
+    /// being a way to re-credential an account that already works, without knowing its password, which
+    /// is an account takeover with an administrator's signature on it.
+    /// </para>
+    /// <para>
+    /// <b>It is a wider set than the orphaned one, and nothing here narrows it further.</b> Holding no
+    /// password is not the same as having no way in: an account whose provider still answers, and one
+    /// that signs in with a passkey, both pass this test - and redeeming the invite then takes the
+    /// provider links away, passkeys untouched, since they are not logins. What the flow rests on is
+    /// possession of an invite for that address, not the account's own standing.
     /// </para>
     /// <para>
     /// <b>The proof is unchanged.</b> The invite is still single-use, still expiring, and still has to
@@ -334,20 +340,21 @@ public class RegisterModel : PageModel
     }
 
     /// <summary>
-    /// Gives an orphaned account a password and takes its dead provider links away, in one step.
+    /// Gives an account holding no password one, and takes its provider links away, in one step.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The links go with it</b> (Henrik, 2026-08-22), which mirrors what
-    /// <c>Account/Manage/ExternalLogins</c> does in the other direction. Leaving them would leave rows
-    /// pointing at a provider that is gone — and, if that provider is ever rebuilt at the same address
-    /// and reissues the same subject id, a stale row is a live credential nobody remembered granting.
+    /// <b>The links go with it</b>, which mirrors what <c>Account/Manage/ExternalLogins</c> does in the
+    /// other direction. For the account this flow exists for they point at a provider that is gone, and
+    /// if that provider is ever rebuilt at the same address and reissues the same subject id, a stale
+    /// row is a live credential nobody remembered granting. For an account whose provider still answers
+    /// — which this flow does not distinguish — redeeming the invite is what ends that way in.
     /// </para>
     /// <para>
     /// <b>One transaction, because it is several round trips.</b> The half-done states are
     /// both wrong in the way this flow exists to prevent: a password added while the dead links remain
     /// is the parallel credential the rule refuses, and links removed while the password was rejected
-    /// takes an account that was merely orphaned and makes it unreachable.
+    /// takes an account that had one way in and leaves it with none.
     /// </para>
     /// <para>
     /// <b>Nothing here touches teams or the confirmation flag.</b> The account already has its default
@@ -356,10 +363,9 @@ public class RegisterModel : PageModel
     /// account is sent that mail and held at confirmation, as a new account is.
     /// </para>
     /// <para>
-    /// <b>Then what follows a proved password.</b> The account existed before it was orphaned, so it
-    /// may be locked out, unconfirmed, or holding an authenticator, and the reactivation runs the
-    /// same checks and the same second-factor step as the login page before anything becomes a
-    /// session. (Until 2026-09-06 it signed straight in; a review caught it.)
+    /// <b>Then what follows a proved password.</b> The account existed before the invite, so it may be
+    /// locked out, unconfirmed, or holding an authenticator, and the reactivation runs the same checks
+    /// and the same second-factor step as the login page before anything becomes a session.
     /// </para>
     /// </remarks>
     private async Task<IActionResult> ReactivateAsync(HSUser existing, Invitation invitation, string returnUrl,
@@ -407,9 +413,9 @@ public class RegisterModel : PageModel
                                invitation.Email);
 
         // The invite token and the new password are this path's proof; what follows is what follows
-        // a proved password anywhere else. The account existed before, so it may be locked out, may
-        // still be unconfirmed, and may hold an authenticator from before it was orphaned - none of
-        // which a reactivation is a way around.
+        // a proved password anywhere else. The account existed before this invite, so it may be locked
+        // out, may still be unconfirmed, and may hold an authenticator - none of which a reactivation
+        // is a way around.
         switch (await _rules.PreSignInCheckAsync(existing))
         {
             case SignInRefusal.LockedOut:

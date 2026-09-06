@@ -28,8 +28,8 @@ namespace Homespool.Host.Controllers;
 /// Authenticated by sign-in cookie <b>or</b> personal access token, unlike
 /// <see cref="PrusaConnectPrinterController"/>'s printer-facing endpoints - exercisable with curl or a
 /// browser, not by the real Prusa app, which expects a bearer JWT of its own shape.
-/// <c>[ApiController]</c> is used deliberately here, unlike on the printer-facing controller: this is
-/// a first-party surface we control, not a firmware-dictated contract.
+/// A first-party surface we control, so ProblemDetails bodies and automatic model-validation
+/// responses are ours to shape here in a way a firmware-dictated contract never is.
 /// </summary>
 /// <remarks>
 /// <c>GET /api/v1/init</c> is deliberately not implemented - its spec schema

@@ -88,12 +88,12 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
             // grading it would send the alert email for a firmware upgrade. The log carries the
             // first sighting of each name; this is the unthrottled exact total.
             //
-            // The count only, deliberately - never UnknownFieldTracker.DistinctFields. This endpoint
-            // is anonymous, on the stated grounds that it carries "only counters and timestamps about
-            // this service's own write path" (Program.cs). Field names are neither: they come off the
-            // wire, so publishing them would let anyone who can reach /p/ws inject chosen strings and
-            // read them back from an unauthenticated endpoint. A monotonic counter is what a
-            // monitoring system needs; the names belong in the log and, later, behind admin auth.
+            // The count only, deliberately - never UnknownFieldTracker.DistinctFields. /health is
+            // anonymous, and what it reports is this deployment's own configuration; a field name is
+            // neither, because it comes off the wire. Publishing them would let anyone who can reach
+            // /p/ws inject chosen strings and read them back from an unauthenticated endpoint, which
+            // is a channel rather than a disclosure. A monotonic counter is what a monitoring system
+            // needs; the names belong in the log and, later, behind admin auth.
             ["unknownFieldOccurrences"] = _unknownFields.Total,
         };
 

@@ -9,16 +9,16 @@ namespace Homespool.Host;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Without this, the OpenAPI document is empty: ApiExplorer only surfaces controllers that opt in,
-/// which normally happens via <c>[ApiController]</c>.
+/// ApiExplorer only surfaces controllers that opt in, which normally happens via
+/// <c>[ApiController]</c>. Applying it here makes visibility a property of being a controller in this
+/// application, so the document does not quietly lose an endpoint whose attributes change.
 /// </para>
 /// <para>
-/// <c>[ApiController]</c> is deliberately <b>not</b> used on the PrusaConnect endpoints. It is not a
-/// documentation annotation - it also turns on automatic model-validation responses and changes
-/// binding-source inference. Those endpoints implement a contract dictated by printer firmware
-/// dictated by printer firmware, where the status code is the whole contract and a 400 aborts
-/// enrolment once the firmware exhausts its retries. This convention buys visibility and nothing
-/// else. New first-party API controllers can use <c>[ApiController]</c> normally.
+/// Visibility is all it buys. <c>[ApiController]</c> is a behaviour switch as much as a documentation
+/// one - automatic model-validation responses and binding-source inference come with it - and every
+/// controller here carries it, the printer-facing ones included, so those behaviours are in force on
+/// the firmware-dictated routes too. <c>PrusaConnectPrinterController</c> says what that means where
+/// it lands.
 /// </para>
 /// <para>
 /// Uses <c>??=</c> so an explicit <c>[ApiExplorerSettings(IgnoreApi = true)]</c> still wins.

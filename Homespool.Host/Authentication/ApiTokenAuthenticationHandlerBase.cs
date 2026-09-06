@@ -143,8 +143,9 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
 
         if (user is null)
         {
-            // Structurally unreachable: deleting a user cascades to their tokens. Fail closed rather
-            // than authenticate as nobody if a row is ever left inconsistent.
+            // Nothing in this application deletes an account, and the foreign key cascades to the
+            // tokens if anything ever does - so reaching here takes a write made outside both. Fail
+            // closed rather than authenticate as nobody if a row is ever left inconsistent anyway.
             Logger.LogWarning("API token {TokenId} resolves to no user.", token.Id);
 
             return AuthenticateResult.Fail("Invalid API token.");

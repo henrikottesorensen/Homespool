@@ -10,13 +10,13 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Nothing calls this, deliberately.</b> The encrypted download was built out, run against an
-/// MK3.5 on 2026-07-31 and <b>rejected</b>: it is ~13% slower than the inline path at every size
-/// measured, because the ceiling is the printer's write path rather than the transport
-/// itself. Kept because this class and the keystream fixture beside it
-/// are <i>evidence about firmware</i> rather than plumbing of ours - verified against Buddy's own
-/// decryptor and against ciphertext Connect itself produced. Regenerating that costs a container
-/// build and a firmware checkout; carrying it costs nothing. Delete both together, or neither.
+/// <b>This is the transfer path for a printer with no Connect WebSocket to pull chunks over.</b>
+/// <c>PrintFileSender</c> chooses it for a printer that cannot stream chunks but does understand the
+/// command - Buddy on the HTTP transport - and <c>EncryptedTransferController</c> encrypts every body
+/// it serves on <c>/f/&lt;iv&gt;/raw</c> with it. <b>Second choice, on measurement</b>: against an
+/// MK3.5 it is ~13% slower than the inline path at every size measured, the ceiling being the
+/// printer's write path rather than the transport, so a printer that can stream chunks is never sent
+/// here.
 /// </para>
 /// <para>
 /// <b>Confidentiality survives the plaintext transport, integrity does not.</b> The key reaches the

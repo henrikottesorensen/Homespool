@@ -34,6 +34,13 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// next step.
 /// </para>
 /// <para>
+/// <b>It asks for no authenticator code, unlike <see cref="Disable2faModel"/> beside it</b>, and the
+/// two reach the same state: the flag is off when this handler returns. A device that was lost cannot
+/// produce a code, which is the argument for the door being open - but the consequence is that
+/// nothing about turning two-factor off is behind a code once this page exists, whatever the other
+/// one requires.
+/// </para>
+/// <para>
 /// <b>The two writes are one transaction</b>, because it is several round trips rather than
 /// several entities. The state worth making unreachable here is the
 /// half-done one: two-factor off while the old app still works, which reads to the account holder as

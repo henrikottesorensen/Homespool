@@ -191,16 +191,21 @@ public class PrusaConnectPrinterController : ControllerBase
     // Firmware reads the status code and the Code header; the body is deliberately empty, and
     // text/html rather than JSON because that is what Connect answers with. The 200 is said here
     // because a content result carries no metadata of its own.
+    //
+    // One 400 on this route is not this action's: a field over its cap is refused by [ApiController]'s
+    // automatic model validation before the action runs, which is what makes RegisterPrinterRequestDTO's
+    // length attributes a bound rather than documentation, and it answers with a ProblemDetails body
+    // the union below never produces. Firmware reads the status and ignores the body either way.
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
     public async Task<Results<ContentHttpResult, BadRequest>> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
     {
         try
         {
-            // [FromBody] is required. Without it - and without [ApiController], which is deliberately
-            // not used here (see ApiExplorerVisibilityConvention) - MVC binds complex parameters from
-            // form data, not the JSON body, leaving every property null. The insert then died on
-            // NOT NULL SerialNumber. Everything this action needs is in the body; the printer sends
-            // no headers at all on this request.
+            // [FromBody] is spelled out although [ApiController] on this controller already infers it
+            // for a complex parameter: without one or the other, MVC binds from form data rather than
+            // from the JSON body and every property arrives null, which surfaces as an insert failing
+            // on NOT NULL SerialNumber rather than as a binding problem. Everything this action needs
+            // is in the body; the printer sends no headers at all on this request.
 
             // Get code for printer.
             CodeResponseDTO code = await _prusaConnectService.GetPrinterCode(printer);

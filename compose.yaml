@@ -20,10 +20,17 @@ services:
     # saying "homespool" rather than a hex id.
     hostname: homespool
 
-    # NOTHING is published from this container. All three listeners - people on 8080, printers on
-    # 15443, transfers on 15080 - stay inside this network, and the proxy below is the single way in
-    # to any of them. That is what makes X-Real-IP worth trusting: a client that could reach Kestrel
+    # NOTHING is published from this container. The listeners - people on 8080, printers on 15443,
+    # transfers on 15080, plus the legacy plaintext printer port 15800 when it is asked for - stay
+    # inside this network, so from OUTSIDE it the proxy below is the only way to any of them. That is
+    # what makes X-Real-IP worth trusting when the proxy writes it: a client that could reach Kestrel
     # directly could simply write that header itself.
+    #
+    # Inside the network is a different question, and worth knowing before trusting the header further
+    # than the proxy. XForwarded__KnownNetworks is this whole subnet, so every service here is a
+    # trusted forwarder - go2rtc included, which runs third-party code and publishes a port of its own.
+    # Nothing between the containers stops one of them reaching Kestrel directly with whatever X-Real-IP
+    # it likes.
     #
     # The printer port is not served TLS from here because .NET cannot serve that TLS correctly:
     # SslStream emits records far larger than the kilobyte of plaintext the firmware holds - a real

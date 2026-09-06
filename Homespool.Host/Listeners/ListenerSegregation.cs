@@ -18,9 +18,18 @@ namespace Homespool.Host.Listeners;
 /// exists.
 /// </para>
 /// <para>
-/// That promotes Connect's own URL prefixes into the thing the boundary is built on: <c>/p/*</c> is
-/// printer-authenticated (including <c>POST /p/camera</c>, which is a printer endpoint wearing a
-/// camera name), and <c>/c/*</c> will be camera-authenticated.
+/// That promotes Connect's own URL prefixes into the thing the boundary is built on, and it decides
+/// endpoints nobody has written yet: <c>POST /p/camera</c> registers a camera through the
+/// <i>printer's</i> connection, so serving it here would put it on the printer listener the moment
+/// the route exists, without anyone having to notice that a camera endpoint belongs there.
+/// </para>
+/// <para>
+/// <b>Connect's <c>/c/*</c> camera endpoints have no class of their own, and the failure is a quiet
+/// one.</b> <see cref="ClassFor"/> answers <see cref="ListenerClass.User"/> for everything it does not
+/// recognise, so a <c>/c/snapshot</c> added today would be served to browsers on the people-facing
+/// listener rather than refused - and <c>RouteListenerSegregationTests</c> compares each endpoint
+/// against this same method, so it would agree. Serving one means giving the prefix a class here
+/// first.
 /// </para>
 /// <para>
 /// The remaining way to lose the boundary is a <c>Map…</c> call that never passes through here, and

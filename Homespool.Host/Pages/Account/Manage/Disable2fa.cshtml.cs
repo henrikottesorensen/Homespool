@@ -25,12 +25,21 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// Turns two-factor off - against the current authenticator code, not just a live session.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>The code is required because a live session is exactly what two-factor distrusts.</b> Without
 /// it, the walk-up on an unlocked browser that the second factor exists to stop could simply switch
-/// the second factor off first. Requiring a current code means weakening the account takes the same
-/// credential the account is protected by - the shape the printer-removal confirmation set, through
-/// the same code scheme, so a wrong code counts toward the account lockout: six digits with
-/// unlimited attempts is not a control.
+/// the second factor off first. Requiring a current code means weakening the account through this
+/// page takes the same credential the account is protected by - the shape the printer-removal
+/// confirmation set, through the same code scheme, so a wrong code counts toward the account lockout:
+/// six digits with unlimited attempts is not a control.
+/// </para>
+/// <para>
+/// <b>The requirement is this page's, not the account's.</b>
+/// <see cref="ResetAuthenticatorModel"/> - the button beside this one on
+/// <c>TwoFactorAuthentication</c> - also clears the enabled flag, and asks for no code to do it. So a
+/// reader must not take the check below as "two-factor cannot be turned off from a live session";
+/// what it says is that it cannot be turned off <i>here</i>.
+/// </para>
 /// </remarks>
 [Authorize]
 public class Disable2faModel : PageModel

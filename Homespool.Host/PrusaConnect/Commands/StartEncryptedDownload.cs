@@ -10,17 +10,17 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Nothing sends this</b>, and it stays here for the same reason its ~25 hollow siblings in this
-/// folder do: the command vocabulary is worth describing whether or not we use it. Unlike them it is
-/// <i>proven</i> - an MK3.5 accepted this exact shape on 2026-07-31 and fetched the file. The path
-/// was then rejected on measurement, being ~13% slower than inline, so what survives is the
-/// description, not a caller.
+/// <b><c>PrintFileSender</c> sends this</b> to a printer that cannot pull chunks over a Connect
+/// WebSocket but does understand the command - Buddy on the HTTP transport. It is the second choice
+/// of two: the inline path is ~13% faster at every size measured, so a printer that can stream chunks
+/// gets <see cref="StartConnectDownload"/> instead.
 /// </para>
 /// <para>
-/// <b>Buddy answers a Connect-initiated print upload inline every time</b> (command.cpp:186-196 at
-/// the pinned ref), so nothing in the wild exercises this and no capture corroborates it. Everything
-/// here was read from firmware source and then confirmed on hardware - the URL below arrived
-/// character for character as predicted.
+/// <b>Nothing in the wild provoked it, and no capture corroborates it.</b> Buddy answers a
+/// Connect-initiated print upload inline every time (command.cpp:186-196 at the pinned ref), so
+/// everything here was read from firmware source rather than observed - then confirmed against an
+/// MK3.5, which accepted this exact shape, fetched the file, and asked for the URL below character
+/// for character as predicted.
 /// </para>
 /// <para>
 /// <b>The request URL is derived from the IV alone</b> - <c>/f/&lt;iv-as-lowercase-hex&gt;/raw</c>

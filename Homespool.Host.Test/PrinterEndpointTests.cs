@@ -102,7 +102,6 @@ public class PrinterEndpointTests
     {
         Pages.Printers.BundleOffer offer = new(
             PrinterId: 1,
-            PrinterName: "Bench",
             Token: "t",
             Names: [],
             Snippet: string.Empty,
@@ -125,7 +124,6 @@ public class PrinterEndpointTests
     {
         Pages.Printers.BundleOffer offer = new(
             PrinterId: 1,
-            PrinterName: "Bench",
             Token: "t",
             Names: [],
             Snippet: string.Empty,

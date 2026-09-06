@@ -136,7 +136,7 @@ public class AddModel : PageModel
 
             await transaction.CommitAsync(cancellationToken);
 
-            Offer = await BuildOfferAsync(printer.Id, Input.Name, token, cancellationToken);
+            Offer = await BuildOfferAsync(printer.Id, token, cancellationToken);
 
             _logger.LogInformation("Printer {PrinterUuid} provisioned via USB-key by user {UserId}.", printer.Uuid, user.Id);
 
@@ -172,7 +172,6 @@ public class AddModel : PageModel
     /// certificate does not carry fails at the printer with nothing but "TLS error" to go on.
     /// </remarks>
     private async Task<BundleOffer> BuildOfferAsync(int printerId,
-                                                    string? printerName,
                                                     string token,
                                                     CancellationToken cancellationToken)
     {
@@ -180,7 +179,6 @@ public class AddModel : PageModel
 
         return new BundleOffer(
             printerId,
-            printerName,
             token,
             names,
             ConnectIni.BuildSnippet(PrinterEndpoint.Default(_options), names.Count > 0 ? names[0].Value : _options.PrinterHost, token),

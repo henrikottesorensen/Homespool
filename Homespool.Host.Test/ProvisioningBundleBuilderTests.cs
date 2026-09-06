@@ -350,6 +350,34 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
             .And.Contain("homespool.example.ne", "it has to say what the printer would dial");
     }
 
+    /// <summary>
+    /// A name carrying a newline is refused before anything is written - with TLS off, which is the
+    /// path where nothing else would catch it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The ini has no escaping, so a newline in the hostname is not a mangled address - it is a
+    /// second key.</b> <c>printer\nport = 80</c> parses as two, and the firmware honours both, which
+    /// puts the transport in the hands of whoever typed the name. On the TLS path the certificate
+    /// check refuses it in passing, as a name no SAN carries; a legacy bundle has no certificate to
+    /// disagree with, and length is not a syntax - the whole injection is seventeen characters.
+    /// </remarks>
+    [Fact]
+    public async Task ANameCarryingANewlineIsRefusedBeforeItCanInjectAnIniKeyAsync()
+    {
+        // Arrange
+        ProvisioningBundleBuilder builder = NewBuilder(NewAuthority(), tls: false, host: "192.168.13.238");
+
+        // Act
+        Func<Task> act = async () =>
+            await builder.BuildAsync("printer\nport = 80", Token, "Bench printer", CancellationToken.None);
+
+        // Assert
+        ArgumentException refusal = (await act.Should().ThrowAsync<ArgumentException>()).Which;
+
+        refusal.Message.Should().Contain("not a hostname")
+               .And.NotContain("port = 80", "a refusal that echoes the name hands the injection straight back in a response body");
+    }
+
     /// <summary>Twenty characters is the limit itself, and a bundle is written for it.</summary>
     [Fact]
     public async Task ATwentyCharacterNameIsWrittenAsync()

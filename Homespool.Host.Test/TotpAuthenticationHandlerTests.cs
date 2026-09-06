@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 
 using Homespool.Host.Authentication;
@@ -83,8 +85,8 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
 
         result.Succeeded.Should().BeTrue(result.Failure?.Message);
         ClaimsPrincipal principal = result.Principal!;
-        principal.FindFirstValue(ClaimTypes.NameIdentifier).Should().Be(user.Id.ToString());
-        principal.FindFirstValue(ClaimTypes.AuthenticationMethod).Should().Be(TotpAuthenticationHandler.AuthenticationMethod);
+        principal.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
+        principal.FindFirstValue(JwtClaimTypes.AuthenticationMethod).Should().Be(TotpAuthenticationHandler.AuthenticationMethod);
         result.Properties!.Items[TotpAuthenticationHandler.SourceProperty].Should().Be(TotpAuthenticationHandler.PendingSource);
     }
 
@@ -152,7 +154,7 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
         AuthenticateResult again = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(pending), Schemes.RecoveryCode, Recovery(code));
 
         first.Succeeded.Should().BeTrue(first.Failure?.Message);
-        first.Principal!.FindFirstValue(ClaimTypes.NameIdentifier).Should().Be(user.Id.ToString());
+        first.Principal!.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
         again.Succeeded.Should().BeFalse("a redeemed code is spent");
     }
 

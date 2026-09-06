@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -25,9 +27,10 @@ namespace Homespool.Host.Authentication;
 /// is worth.
 /// </para>
 /// <para>
-/// <b>The pending cookie keeps the framework's claim shape</b>: the account id as
-/// <see cref="ClaimTypes.Name"/> and an optional provider as <see cref="ClaimTypes.AuthenticationMethod"/>,
-/// so a cookie written by either side reads on the other while the pages move across.
+/// <b>The pending and remembered cookies carry the account as <see cref="JwtClaimTypes.Subject"/></b>
+/// and the pending one its provider as <see cref="JwtClaimTypes.IdentityProvider"/>, the house's JWT
+/// spelling rather than the framework's <c>ClaimTypes.Name</c>. A cookie the framework wrote before
+/// this reads as absent, which costs one more code on a remembered browser.
 /// </para>
 /// </remarks>
 public sealed class LocalSignInRules
@@ -109,16 +112,16 @@ public sealed class LocalSignInRules
 
     /// <summary>
     /// The principal the pending two-factor cookie carries: the account that passed its first factor
-    /// and owes its second, in the framework's own claim shape.
+    /// and owes its second.
     /// </summary>
     public static ClaimsPrincipal PendingTwoFactor(HSUser user, string? loginProvider = null)
     {
         ClaimsIdentity identity = new(IdentityConstants.TwoFactorUserIdScheme);
-        identity.AddClaim(new Claim(ClaimTypes.Name, user.Id.ToString(CultureInfo.InvariantCulture)));
+        identity.AddClaim(new Claim(JwtClaimTypes.Subject, user.Id.ToString(CultureInfo.InvariantCulture)));
 
         if (loginProvider is not null)
         {
-            identity.AddClaim(new Claim(ClaimTypes.AuthenticationMethod, loginProvider));
+            identity.AddClaim(new Claim(JwtClaimTypes.IdentityProvider, loginProvider));
         }
 
         return new ClaimsPrincipal(identity);
@@ -131,7 +134,7 @@ public sealed class LocalSignInRules
     public async Task<HSUser?> PendingTwoFactorAccountAsync(HttpContext context)
     {
         AuthenticateResult pending = await context.AuthenticateAsync(IdentityConstants.TwoFactorUserIdScheme);
-        string? userId = pending.Principal?.FindFirstValue(ClaimTypes.Name);
+        string? userId = pending.Principal?.FindFirstValue(JwtClaimTypes.Subject);
 
         return userId is null ? null : await _users.FindByIdAsync(userId);
     }
@@ -154,6 +157,6 @@ public sealed class LocalSignInRules
     {
         AuthenticateResult remembered = await context.AuthenticateAsync(IdentityConstants.TwoFactorRememberMeScheme);
 
-        return remembered.Principal?.FindFirstValue(ClaimTypes.Name) == user.Id.ToString(CultureInfo.InvariantCulture);
+        return remembered.Principal?.FindFirstValue(JwtClaimTypes.Subject) == user.Id.ToString(CultureInfo.InvariantCulture);
     }
 }

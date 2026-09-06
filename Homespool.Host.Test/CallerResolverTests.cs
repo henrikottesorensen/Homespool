@@ -2,6 +2,8 @@ using System.Security.Claims;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Homespool.Host.Authorisation;
 using Homespool.Model;
 
@@ -43,7 +45,7 @@ public class CallerResolverTests
         // Arrange
         ClaimsPrincipal principal = new(new ClaimsIdentity(
         [
-            new Claim(HSClaimTypes.Scope, CapabilitySet.Format([Capability.Print])),
+            new Claim(JwtClaimTypes.Scope, CapabilitySet.Format([Capability.Print])),
         ]));
 
         // Act
@@ -64,7 +66,7 @@ public class CallerResolverTests
     public void AnEmptyScopeClaimGrantsNothingRatherThanEverything()
     {
         // Arrange
-        ClaimsPrincipal principal = new(new ClaimsIdentity([new Claim(HSClaimTypes.Scope, string.Empty)]));
+        ClaimsPrincipal principal = new(new ClaimsIdentity([new Claim(JwtClaimTypes.Scope, string.Empty)]));
 
         // Act
         Caller caller = CallerResolver.For(9, principal);

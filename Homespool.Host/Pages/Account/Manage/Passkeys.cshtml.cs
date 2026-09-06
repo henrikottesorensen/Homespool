@@ -8,6 +8,8 @@ using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
@@ -389,7 +391,7 @@ public class PasskeysModel : PageModel
             return "mismatch";
         }
 
-        string? authTime = info.Principal.FindFirstValue("auth_time");
+        string? authTime = info.Principal.FindFirstValue(JwtClaimTypes.AuthenticationTime);
 
         if (authTime is not null
             && long.TryParse(authTime, NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)

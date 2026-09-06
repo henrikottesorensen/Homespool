@@ -2,6 +2,8 @@ using System;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.Extensions.DependencyInjection;
@@ -42,7 +44,7 @@ public sealed class UserPreferenceCultureProvider : RequestCultureProvider
             return null;
         }
 
-        string? identifier = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        string? identifier = httpContext.User.FindFirstValue(JwtClaimTypes.Subject);
         if (!long.TryParse(identifier, out long userId))
         {
             return null;

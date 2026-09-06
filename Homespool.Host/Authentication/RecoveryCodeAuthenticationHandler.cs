@@ -3,6 +3,8 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -26,7 +28,7 @@ namespace Homespool.Host.Authentication;
 /// </remarks>
 public sealed class RecoveryCodeAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    /// <summary>The <see cref="ClaimTypes.AuthenticationMethod"/> the principal carries: the framework's word for a second factor.</summary>
+    /// <summary>The <see cref="JwtClaimTypes.AuthenticationMethod"/> the principal carries: the framework's word for a second factor.</summary>
     public const string AuthenticationMethod = "mfa";
 
     private readonly UserManager<HSUser> _users;
@@ -85,7 +87,7 @@ public sealed class RecoveryCodeAuthenticationHandler : AuthenticationHandler<Au
 
         if (principal.Identity is ClaimsIdentity identity)
         {
-            identity.AddClaim(new Claim(ClaimTypes.AuthenticationMethod, AuthenticationMethod));
+            identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, AuthenticationMethod));
         }
 
         Logger.LogInformation("Recovery code redeemed for user {UserId}.", user.Id);

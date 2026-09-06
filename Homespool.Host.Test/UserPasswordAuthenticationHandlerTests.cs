@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 
@@ -77,8 +79,8 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeTrue(result.Failure?.Message);
         result.Ticket!.AuthenticationScheme.Should().Be(Schemes.UserPassword);
         ClaimsPrincipal principal = result.Principal!;
-        principal.FindFirstValue(ClaimTypes.NameIdentifier).Should().Be(user.Id.ToString());
-        principal.FindFirstValue(ClaimTypes.AuthenticationMethod).Should().Be(UserPasswordAuthenticationHandler.AuthenticationMethod);
+        principal.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
+        principal.FindFirstValue(JwtClaimTypes.AuthenticationMethod).Should().Be(UserPasswordAuthenticationHandler.AuthenticationMethod);
     }
 
     [Fact]

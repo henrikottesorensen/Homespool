@@ -2,6 +2,8 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -42,7 +44,7 @@ namespace Homespool.Host.Authentication;
 /// </remarks>
 public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    /// <summary>The <see cref="ClaimTypes.AuthenticationMethod"/> a password-authenticated principal carries: the framework's own word.</summary>
+    /// <summary>The <see cref="JwtClaimTypes.AuthenticationMethod"/> a password-authenticated principal carries: the framework's own word.</summary>
     public const string AuthenticationMethod = "pwd";
 
     private readonly UserManager<HSUser> _users;
@@ -132,7 +134,7 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
 
         if (principal.Identity is ClaimsIdentity identity)
         {
-            identity.AddClaim(new Claim(ClaimTypes.AuthenticationMethod, AuthenticationMethod));
+            identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, AuthenticationMethod));
         }
 
         Logger.LogInformation("Password authenticated user {UserId}.", user.Id);

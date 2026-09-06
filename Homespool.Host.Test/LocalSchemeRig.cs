@@ -7,6 +7,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -155,7 +157,7 @@ internal sealed class LocalSchemeRig : IAsyncDisposable
     {
         DefaultHttpContext request = NewRequest();
         ClaimsIdentity identity = new(IdentityConstants.TwoFactorRememberMeScheme);
-        identity.AddClaim(new Claim(ClaimTypes.Name, user.Id.ToString(CultureInfo.InvariantCulture)));
+        identity.AddClaim(new Claim(JwtClaimTypes.Subject, user.Id.ToString(CultureInfo.InvariantCulture)));
         await request.SignInAsync(IdentityConstants.TwoFactorRememberMeScheme, new ClaimsPrincipal(identity));
 
         return CookieOf(request);

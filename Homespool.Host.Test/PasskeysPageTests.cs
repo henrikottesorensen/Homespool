@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -388,11 +390,11 @@ public sealed class PasskeysPageTests : IDisposable
 
     private static ExternalLoginInfo Answer(string subject, DateTimeOffset? authTime)
     {
-        List<Claim> claims = [new(ClaimTypes.NameIdentifier, subject)];
+        List<Claim> claims = [new(JwtClaimTypes.Subject, subject)];
 
         if (authTime is { } time)
         {
-            claims.Add(new Claim("auth_time", time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+            claims.Add(new Claim(JwtClaimTypes.AuthenticationTime, time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
         }
 
         return new ExternalLoginInfo(new ClaimsPrincipal(new ClaimsIdentity(claims, "test")), Schemes.ExternalOidc, subject, "Dex");

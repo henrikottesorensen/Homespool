@@ -3,6 +3,8 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -36,7 +38,7 @@ namespace Homespool.Host.Authentication;
 /// </remarks>
 public sealed class TotpAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    /// <summary>The <see cref="ClaimTypes.AuthenticationMethod"/> a code-authenticated principal carries: the framework's own word.</summary>
+    /// <summary>The <see cref="JwtClaimTypes.AuthenticationMethod"/> a code-authenticated principal carries: the framework's own word.</summary>
     public const string AuthenticationMethod = "mfa";
 
     /// <summary>The ticket property naming where the account came from: <see cref="PendingSource"/> or <see cref="SessionSource"/>.</summary>
@@ -115,7 +117,7 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
 
         if (principal.Identity is ClaimsIdentity identity)
         {
-            identity.AddClaim(new Claim(ClaimTypes.AuthenticationMethod, AuthenticationMethod));
+            identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, AuthenticationMethod));
         }
 
         AuthenticationProperties properties = new();

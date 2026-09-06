@@ -1,6 +1,8 @@
 using System;
 using System.Security.Claims;
 
+using Duende.IdentityModel;
+
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -20,7 +22,7 @@ namespace Homespool.Host.Authorisation;
 /// </para>
 /// <para>
 /// <b>The scope is read from the principal, not assumed.</b> The API token handler writes
-/// <see cref="HSClaimTypes.Scope"/> on every token it authenticates, and nothing writes it for a
+/// <see cref="JwtClaimTypes.Scope"/> on every token it authenticates, and nothing writes it for a
 /// sign-in cookie - so a token resolves to the capabilities its scope names and a browser session
 /// resolves unscoped, from the same read. Hardcoding either answer here would fail open the day the
 /// other side changed.
@@ -53,7 +55,7 @@ public static class CallerResolver
     {
         ArgumentNullException.ThrowIfNull(principal);
 
-        string? scope = principal.FindFirstValue(HSClaimTypes.Scope);
+        string? scope = principal.FindFirstValue(JwtClaimTypes.Scope);
 
         return scope is null ? Caller.Unscoped(userId) : Caller.Scoped(userId, CapabilitySet.Parse(scope));
     }

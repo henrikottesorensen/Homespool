@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -255,10 +257,10 @@ public sealed class XApiKeyAuthenticationHandlerTests : IDisposable
         // Assert
         result.Succeeded.Should().BeTrue();
         result.Principal!.Identity!.IsAuthenticated.Should().BeTrue();
-        result.Principal.FindFirstValue(ClaimTypes.NameIdentifier).Should().Be(user.Id.ToString());
-        result.Principal.FindFirstValue(ClaimTypes.AuthenticationMethod)
+        result.Principal.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
+        result.Principal.FindFirstValue(JwtClaimTypes.AuthenticationMethod)
               .Should().Be(ApiTokenAuthenticationHandlerBase.ApiKeyAuthenticationMethod);
-        result.Principal.FindFirstValue(ClaimTypes.AuthenticationMethod)
+        result.Principal.FindFirstValue(JwtClaimTypes.AuthenticationMethod)
               .Should().NotBe(ApiTokenAuthenticationHandlerBase.BearerAuthenticationMethod,
                               "the two schemes must stay tellable apart after the fact");
     }

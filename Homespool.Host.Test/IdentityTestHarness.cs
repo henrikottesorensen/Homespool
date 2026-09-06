@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using System.Security.Claims;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -112,7 +114,7 @@ internal static class IdentityTestHarness
     public static void SignInAsPrincipal(DefaultHttpContext httpContext, HSUser user)
     {
         httpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
-                                                   [new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())],
+                                                   [new Claim(JwtClaimTypes.Subject, user.Id.ToString())],
                                                    IdentityConstants.ApplicationScheme));
     }
 

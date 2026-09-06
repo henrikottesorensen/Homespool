@@ -92,6 +92,14 @@ public sealed class PrintFileSenderTests : IDisposable
         result.WireName.Should().Be(sent.WireName, "a refusal names the command the caller reports");
         _offers.TryOpen(inline.Hash, PrinterId, out ITransferContent? content).Should().BeTrue("the bytes are offered under the token the command carries");
         content!.Dispose();
+
+        // The byte count and the character count are one fact - firmware's hash buffer - and the
+        // arithmetic between them (three bytes per four characters) lives in PrintFileSender as an
+        // expression rather than a comment. This is what notices if either end stops agreeing:
+        // encoding past the buffer is truncated on the printer, and the only symptom is a first
+        // range request quoting a hash that correlates with nothing.
+        inline.Hash.Length.Should().Be(StartConnectDownload.MaxHashLength,
+                                       "the token fills firmware's hash buffer exactly, with no padding");
     }
 
     /// <summary>

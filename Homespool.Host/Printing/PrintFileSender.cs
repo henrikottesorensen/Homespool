@@ -38,16 +38,32 @@ namespace Homespool.Host.Printing;
 public class PrintFileSender
 {
     /// <summary>
-    /// Bytes of randomness in a transfer token. 21 rather than 20 because base64url carries three
-    /// bytes per four characters, so 21 encodes to exactly 28 - filling firmware's hash buffer
-    /// (<see cref="StartConnectDownload.MaxHashLength"/>) with nothing left over and no padding.
+    /// Bytes of randomness in a transfer token: whatever base64url-encodes to exactly
+    /// <see cref="StartConnectDownload.MaxHashLength"/> characters, filling firmware's hash buffer
+    /// with nothing left over and no padding.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>A base64 character carries 6 bits and a byte holds 8</b>, so characters times 6 over 8 is
+    /// bytes - written unreduced because the units are the explanation.
+    /// </para>
+    /// <para>
+    /// <b>Derived rather than stated, because a byte count written out beside the buffer it came from
+    /// is a coupling nothing enforces.</b> Raising this for more entropy encodes past firmware's
+    /// buffer and is truncated there, and the only symptom is a first range request quoting a hash
+    /// that correlates with nothing - so <c>PrintFileSenderTests</c> measures the minted token's
+    /// length rather than trusting the arithmetic.
+    /// </para>
+    /// <para>
     /// Unguessable is not load-bearing: the token is only meaningful to the printer that was just
     /// told to use it, and ownership is enforced before one is ever minted. It is random because
-    /// there is no reason for it to be anything else, and 168 bits is what the space happened to be.
+    /// there is no reason for it to be anything else, and the 168 bits it carries is the buffer
+    /// spelled in bits - 28 characters at 6 - rather than a figure anybody chose. <b>So if firmware's
+    /// buffer ever moves, follow it</b>: the entropy is a consequence of the buffer, not a
+    /// requirement of its own.
+    /// </para>
     /// </remarks>
-    private const int TransferTokenBytes = 21;
+    private const int TransferTokenBytes = StartConnectDownload.MaxHashLength * 6 / 8;
 
     private readonly ITransferOffers _offers;
     private readonly EncryptedTransferOffers _encrypted;

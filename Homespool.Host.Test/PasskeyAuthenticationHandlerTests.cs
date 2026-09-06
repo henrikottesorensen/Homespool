@@ -147,6 +147,61 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         rig.Ledger.Spent.Should().Be(0, "only a verified answer is remembered");
     }
 
+    /// <summary>
+    /// The account is known only once the assertion names it, and the pre-sign-in check runs right
+    /// then: a locked-out account's good assertion is refused with the reason, nothing is stored or
+    /// minted, and the ceremony is spent all the same so the answer cannot be replayed later.
+    /// </summary>
+    [Fact]
+    public async Task ALockedOutAccountsGoodAssertionIsRefusedBeforeAnythingIsStored()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        using FakeAuthenticator authenticator = new() { SignCount = 3 };
+        HSUser user = await rig.EnrolAsync(authenticator);
+        (await rig.Users.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5))).Succeeded.Should().BeTrue();
+
+        (PasskeyAuthenticationHandler challengeHandler, DefaultHttpContext challenge) = await rig.NewRequestAsync();
+        await challengeHandler.ChallengeAsync(new AuthenticationProperties());
+
+        authenticator.SignCount = 4;
+        string credential = authenticator.Assert(await rig.BodyOf(challenge), user.Id.ToString());
+        (PasskeyAuthenticationHandler handler, _) = await rig.NewRequestAsync(credential: credential, cookie: Rig.CookieOf(challenge));
+
+        // Act
+        AuthenticateResult result = await handler.AuthenticateAsync();
+        UserPasskeyInfo? stored = await rig.Users.GetPasskeyAsync(user, authenticator.CredentialId);
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+        result.Refusal().Should().Be(SignInRefusal.LockedOut, "the page routes to the lockout page on this");
+        stored!.SignCount.Should().Be(3, "a refused ceremony writes nothing back");
+        rig.Ledger.Spent.Should().Be(1, "the assertion verified, so it is spent all the same: the same answer must not sign in once the lockout lifts");
+    }
+
+    [Fact]
+    public async Task AnUnconfirmedAccountsGoodAssertionIsNotAllowed()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        using FakeAuthenticator authenticator = new();
+        HSUser user = await rig.EnrolAsync(authenticator);
+        user.EmailConfirmed = false;
+        (await rig.Users.UpdateAsync(user)).Succeeded.Should().BeTrue();
+
+        (PasskeyAuthenticationHandler challengeHandler, DefaultHttpContext challenge) = await rig.NewRequestAsync();
+        await challengeHandler.ChallengeAsync(new AuthenticationProperties());
+        string credential = authenticator.Assert(await rig.BodyOf(challenge), user.Id.ToString());
+        (PasskeyAuthenticationHandler handler, _) = await rig.NewRequestAsync(credential: credential, cookie: Rig.CookieOf(challenge));
+
+        // Act
+        AuthenticateResult result = await handler.AuthenticateAsync();
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+        result.Refusal().Should().Be(SignInRefusal.NotAllowed);
+    }
+
     /// <summary>A subdomain of the relying-party id is covered, which is the one way one name serves two hosts.</summary>
     [Fact]
     public async Task AChallengeIsIssuedOnASubdomainOfTheRelyingPartyId()

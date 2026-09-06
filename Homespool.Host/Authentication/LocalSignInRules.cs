@@ -114,12 +114,13 @@ public sealed class LocalSignInRules
             return false;
         }
 
-        // A failed increment is treated as a wrong credential by the framework too: a concurrency
-        // failure here could be an attacker trying to slip past the count, and a refusal costs a
-        // legitimate person one retry.
+        // A failed increment is a wrong credential and nothing more, as the framework has it: a
+        // concurrency failure here could be an attacker trying to slip past the count, so the
+        // attempt is refused, but it is not a lockout and must not send the person to the lockout
+        // page - it costs a legitimate person one retry.
         IdentityResult incremented = await _users.AccessFailedAsync(user);
 
-        return !incremented.Succeeded || await _users.IsLockedOutAsync(user);
+        return incremented.Succeeded && await _users.IsLockedOutAsync(user);
     }
 
     /// <summary>

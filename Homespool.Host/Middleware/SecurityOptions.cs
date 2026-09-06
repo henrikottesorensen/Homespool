@@ -23,8 +23,8 @@ public class SecurityOptions
     /// </para>
     /// <para>
     /// <b>What it does not reach: printers.</b> A machine has no second factor, so the printer schemes
-    /// are outside this entirely — the interactive gate acts only on the application cookie, and the
-    /// token check only on tokens.
+    /// are outside this entirely — the gate acts on principals the claims factory built for an account,
+    /// which a printer's is not.
     /// </para>
     /// <para>
     /// <b>The first administrator meets it immediately.</b> <c>Setup</c> creates an account with a

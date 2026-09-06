@@ -20,10 +20,14 @@ namespace Homespool.Host.Authentication;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Behaviour is the framework's, line for line.</b> Each method below is the corresponding
+/// <b>The registrations are the framework's, line for line.</b> Each method below is the corresponding
 /// <c>Microsoft.AspNetCore.Identity</c> extension with nothing added and nothing removed; anything this
 /// deployment wants different is set afterwards through <c>ConfigureApplicationCookie</c> and its
-/// siblings, exactly as it was when the framework did the registering. What the transcription buys is
+/// siblings, exactly as it was when the framework did the registering. <b>What the events resolve is
+/// not the framework's any more</b>: the two stamp validators are <see cref="SessionStampValidator"/>
+/// and <see cref="RememberedBrowserStampValidator"/>, and they are stricter than the originals in one
+/// way, ending the session when the remembered-browser cookie's stamp is stale as well as when the
+/// session's own is. What the transcription buys is
 /// that the scheme list, the cookie names, the lifetimes and the events are readable in one place
 /// alongside the printer, token and OpenID Connect schemes - and that a fifth cookie scheme, when one
 /// is needed, is added next to its four peers rather than bolted onto a black box.

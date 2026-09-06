@@ -85,11 +85,13 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
     private readonly UserManager<HSUser> _users;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
     private readonly PasskeyCeremonies _ceremonies;
+    private readonly LocalSignInRules _rules;
 
     public PasskeyAuthenticationHandler(IPasskeyHandler<HSUser> engine,
                                         UserManager<HSUser> users,
                                         IUserClaimsPrincipalFactory<HSUser> claimsFactory,
                                         PasskeyCeremonies ceremonies,
+                                        LocalSignInRules rules,
                                         IOptionsMonitor<PasskeyAuthenticationOptions> options,
                                         ILoggerFactory loggerFactory,
                                         UrlEncoder encoder)
@@ -99,6 +101,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         _users = users;
         _claimsFactory = claimsFactory;
         _ceremonies = ceremonies;
+        _rules = rules;
     }
 
     /// <inheritdoc/>
@@ -215,6 +218,18 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         HSUser user = result.User!;
         UserPasskeyInfo passkey = result.Passkey!;
 
+        // The account is known only now, once the assertion has named it; the framework's pre-sign-in
+        // check runs here, before anything is stored or minted, so a locked-out or unconfirmed
+        // account's assertion changes nothing - though the ceremony above is spent all the same, so
+        // the answer cannot be replayed once a lockout lifts. The refusal carries why, for the page
+        // to route on.
+        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        {
+            Logger.LogInformation("Passkey assertion refused for user {UserId}: {Refusal}.", user.Id, refusal);
+
+            return SignInRefusals.Fail(refusal, "The account may not sign in.");
+        }
+
         // The engine hands back the credential record with its sign count and backup state moved on,
         // and the ceremony is not complete until that is stored: the sign-count check on the next
         // assertion compares against whatever was written here. Fail closed if it cannot be.
@@ -225,6 +240,17 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
             Logger.LogError("Passkey assertion refused: the credential record for user {UserId} could not be updated.", user.Id);
 
             return AuthenticateResult.Fail("The passkey could not be recorded.");
+        }
+
+        // A passkey is a complete sign-in, so a good one resets the count the way a password does
+        // when no second factor is owed.
+        IdentityResult reset = await _users.ResetAccessFailedCountAsync(user);
+
+        if (!reset.Succeeded)
+        {
+            Logger.LogWarning("Passkey assertion refused for user {UserId}: the failed count could not be reset.", user.Id);
+
+            return AuthenticateResult.Fail("The passkey assertion was refused.");
         }
 
         ClaimsPrincipal principal = await _claimsFactory.CreateAsync(user);

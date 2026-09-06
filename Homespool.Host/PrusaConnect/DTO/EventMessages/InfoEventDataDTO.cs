@@ -13,6 +13,16 @@ namespace Homespool.Host.PrusaConnect.DTO.EventMessages;
 /// backed by a real multi-hardware capture the way the telemetry DTO is - so nothing here is
 /// trusted as guaranteed present.
 /// </summary>
+/// <remarks>
+/// <b>Nothing validates this type, so do not reach for <c>[StringLength]</c> here.</b> It is
+/// deserialised straight from a <see cref="JsonElement"/> by the dispatcher, and the HTTP transport's
+/// <c>/p/events</c> reads its request itself rather than binding a body - so no model validator ever
+/// runs over it, on either transport. An attribute here would read as a bound and enforce nothing,
+/// which is worse than an absent one: the next person to grep for a length would find it and stop
+/// looking. The lengths these fields are held to are
+/// <see cref="PrusaConnectConstants"/>, applied by
+/// <see cref="PrusaTelemetryMapping.ToIdentity(InfoEventDataDTO)"/>.
+/// </remarks>
 public class InfoEventDataDTO
 {
     [JsonPropertyName("firmware")]

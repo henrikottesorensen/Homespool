@@ -57,7 +57,9 @@
                         @if (Model.FirmwareCouldUseTls)
                         {
                             <p class="mb-0">
-                                <strong>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_LegacyNotNeeded"].Value, $"<code>{Model.KnownFirmware}</code>"))</strong>
+                                @* Encoded: the firmware string is the printer's own claim about
+                                   itself, not ours, so it goes into Html.Raw as text. *@
+                                <strong>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_LegacyNotNeeded"].Value, $"<code>{Html.Encode(Model.KnownFirmware)}</code>"))</strong>
                             </p>
                         }
                     </div>
@@ -105,7 +107,7 @@
         <details class="mb-0">
             <summary>@Localiser["Bundle_ReadIniInstead"]</summary>
             <p class="mt-2 mb-1">
-                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_WhatFileContains"].Value, $"<code>{Model.PreferredName}</code>", "<code>hostname</code>"))
+                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_WhatFileContains"].Value, $"<code>{Html.Encode(Model.PreferredName)}</code>", "<code>hostname</code>"))
             </p>
             <textarea class="form-control font-monospace" rows="7" readonly onclick="this.select()">@Model.Snippet</textarea>
         </details>

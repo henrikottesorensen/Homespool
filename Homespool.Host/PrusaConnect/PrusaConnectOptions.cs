@@ -26,7 +26,8 @@ public class PrusaConnectOptions
     /// <c>v6.8.1</c>.
     /// </para>
     /// <para>
-    /// The sibling limit is <see cref="Commands.SetToken.MaxTokenLength"/>, for the same reason.
+    /// The sibling limit is <see cref="PrusaConnectConstants.PrinterTokenLength"/>, for the same
+    /// reason — a different firmware buffer that happens to be the same size, not this one.
     /// Nothing here shortens a name to fit: a truncated name is exactly the failure, so a long one is
     /// refused where a person can still choose another — at startup, in the wizard, and at the
     /// bundle.

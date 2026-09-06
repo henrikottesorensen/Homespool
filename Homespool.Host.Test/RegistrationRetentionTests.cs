@@ -131,7 +131,7 @@ public sealed class RegistrationRetentionTests : IDisposable
     {
         RegisterPrinterRequestDTO oversized = new()
         {
-            SerialNumber = new string('x', RegisterPrinterRequestDTO.SerialNumberMaxLength + 1),
+            SerialNumber = new string('x', PrusaConnectConstants.SerialNumberMaxLength + 1),
             FingerPrint = new string('a', 50),
             PrinterType = "1.3.5",
             Firmware = "6.4.0+11974",

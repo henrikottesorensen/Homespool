@@ -13,14 +13,16 @@ public class TokenService
     public const int SaltSize = 128 / 8;
 
     /// <summary>
-    /// Prusa Firmware has a maximum length of 20 bytes.
+    /// Bytes of randomness in a printer token: whatever base64url-encodes to exactly
+    /// <see cref="PrusaConnectConstants.PrinterTokenLength"/> characters, which is 15 bytes - 120 bits.
     /// </summary>
-    public const int PrinterTokenLength = 20;
-
-    /// <summary>
-    /// After Base64 encoding, that gives us 15 bytes (120 bit) of randomness.
-    /// </summary>
-    private const int TokenSize = PrinterTokenLength * 3 / 4;
+    /// <remarks>
+    /// <b>A base64 character carries 6 bits and a byte holds 8</b>, so characters times 6 over 8 is
+    /// bytes - written unreduced because the units are the explanation. The 120 bits is the token
+    /// length spelled in bits rather than a figure chosen on its own, so a firmware buffer that moves
+    /// carries the entropy with it.
+    /// </remarks>
+    private const int TokenSize = PrusaConnectConstants.PrinterTokenLength * 6 / 8;
 
     /// <summary>
     /// Hash length.
@@ -98,7 +100,7 @@ public class TokenService
 
     public string HashToken(string token)
     {
-        if (token.Length is < PrinterTokenLength or > MaximumTokenLength)
+        if (token.Length is < PrusaConnectConstants.PrinterTokenLength or > MaximumTokenLength)
         {
             throw new ArgumentException("Invalid token: unexpected length.", nameof(token));
         }
@@ -130,7 +132,7 @@ public class TokenService
     /// <exception cref="ArgumentException"><paramref name="knownHash"/> is malformed.</exception>
     public bool VerifyToken(string? token, string knownHash)
     {
-        if (string.IsNullOrWhiteSpace(token) || token.Length is < PrinterTokenLength or > MaximumTokenLength)
+        if (string.IsNullOrWhiteSpace(token) || token.Length is < PrusaConnectConstants.PrinterTokenLength or > MaximumTokenLength)
         {
             return false;
         }

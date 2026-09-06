@@ -271,20 +271,57 @@ public static class PrusaTelemetryMapping
     /// <summary>
     /// The identity update an <c>INFO</c>'s parsed data amounts to, with this wire's absence rules
     /// applied: whitespace is unreported, a zero nozzle is unreported (a literal 0.0 mm nozzle does
-    /// not exist), and a missing MMU block is "firmware without MMU support", which must map to
-    /// null rather than false so a partial <c>INFO</c> cannot clear a stored true.
+    /// not exist), an over-length string is unreported, and a missing MMU block is "firmware without
+    /// MMU support", which must map to null rather than false so a partial <c>INFO</c> cannot clear
+    /// a stored true.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is where the length bounds on <see cref="InfoEventDataDTO"/> are applied</b>, because
+    /// it is the one point both transports converge on - the websocket dispatcher and the HTTP
+    /// <c>/p/events</c> ingest reach it alike, and so does the answer to a <c>SendInfo</c> we asked
+    /// for, which comes back as an ordinary <c>INFO</c> event. Neither transport model-binds the DTO,
+    /// so an attribute on it would be inert.
+    /// </para>
+    /// <para>
+    /// <b>Over-length reads as unreported rather than truncated, and the difference is the point.</b>
+    /// A truncated version string is a claim the printer never made, and it would be stored as
+    /// though it had - where leaving the field out keeps whatever the printer last said that was
+    /// within bounds. It follows the rule the rest of this method already holds, and the one
+    /// <c>ToToolUpdates</c> holds for a tool key that is not a number: one nonsense field costs that
+    /// field, never the rest of the <c>INFO</c>.
+    /// </para>
+    /// <para>
+    /// <b>These bounds are not a defence against markup.</b> The stored string is rendered as text
+    /// because every view encodes it; a cap only stops an unbounded column being written on every
+    /// <c>INFO</c>, which is a storage question. A payload that matters is far shorter than any of
+    /// these numbers.
+    /// </para>
+    /// </remarks>
     public static PrinterIdentityUpdate ToIdentity(InfoEventDataDTO info)
     {
         ArgumentNullException.ThrowIfNull(info);
 
         return new PrinterIdentityUpdate(
-            string.IsNullOrWhiteSpace(info.Firmware) ? null : info.Firmware,
-            string.IsNullOrWhiteSpace(info.PrinterType) ? null : info.PrinterType,
+            Reported(info.Firmware, PrusaConnectConstants.FirmwareMaxLength),
+            Reported(info.PrinterType, PrusaConnectConstants.PrinterTypeMaxLength),
             info.NozzleDiameter is > 0 ? info.NozzleDiameter : null,
             info.Mmu?.Enabled,
-            string.IsNullOrWhiteSpace(info.SerialNumber) ? null : info.SerialNumber,
+            Reported(info.SerialNumber, PrusaConnectConstants.SerialNumberMaxLength),
             ToToolUpdates(info.Tools));
+    }
+
+    /// <summary>
+    /// One <c>INFO</c> string as this wire reports it, or null where it reported nothing usable -
+    /// blank, or longer than <paramref name="maximum"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The string is passed on exactly as it arrived</b>, as it always has been here - the bound
+    /// is a check on what the printer sent, not a normalisation of it.
+    /// </remarks>
+    private static string? Reported(string? stated, int maximum)
+    {
+        return string.IsNullOrWhiteSpace(stated) || stated.Length > maximum ? null : stated;
     }
 
     /// <summary>

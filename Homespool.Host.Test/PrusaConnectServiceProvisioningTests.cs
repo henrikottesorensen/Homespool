@@ -171,7 +171,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         (Printer _, string token) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
 
         // Assert
-        token.Length.Should().BeLessThanOrEqualTo(TokenService.PrinterTokenLength);
+        token.Length.Should().BeLessThanOrEqualTo(PrusaConnectConstants.PrinterTokenLength);
     }
 
     /// <summary>

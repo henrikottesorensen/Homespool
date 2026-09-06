@@ -24,7 +24,7 @@ namespace Homespool.Host.PrusaConnect;
 /// <c>Prusa-Firmware-Buddy/src/connect/marlin_printer.cpp</c>: <c>hostname</c>, <c>port</c>, <c>tls</c>
 /// (accepts <c>1</c>/<c>0</c> or case-insensitive <c>true</c>/<c>false</c> — <c>True</c>/<c>False</c>
 /// is what a real exported ini uses, so that's what this emits), <c>token</c> (silently rejected, not
-/// truncated, past <see cref="TokenService.PrinterTokenLength"/> bytes).
+/// truncated, past <see cref="PrusaConnectConstants.PrinterTokenLength"/> bytes).
 /// </para>
 /// <para>
 /// <b>Every key, every time.</b> An omitted key is not left alone by the firmware — it is reset to its

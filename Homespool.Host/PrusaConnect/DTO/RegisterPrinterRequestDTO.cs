@@ -16,49 +16,35 @@ namespace Homespool.Host.PrusaConnect.DTO;
 /// nothing about how large each one is, and the deployment that fills up first is an SD card.
 /// </para>
 /// <para>
-/// <b>The caps are generous against what firmware actually sends</b>, because refusing a real printer
-/// is expensive: firmware reads any non-2xx here as <c>OnlineError::Server</c> and burns one of only
-/// three registration retries. The fingerprint is 50 characters in this body
-/// (traced to firmware rather than guessed), a serial is
-/// around twenty, and the type and firmware strings are shorter still — so each cap is a comfortable
-/// multiple of the real value rather than a fit to it.
+/// <b>The numbers are <see cref="PrusaConnectConstants"/>, not this type's own</b>, because a printer
+/// states these same fields again on every <c>INFO</c> and both messages answer to one bound. Bounding
+/// this endpoint alone achieves nothing: a value refused here can be stated a second later over
+/// <c>INFO</c> and stored. That type carries the argument, and the fact that the caps are generous
+/// against what firmware really sends.
 /// </para>
 /// <para>
 /// <b>Enforced by <c>[ApiController]</c>'s automatic model validation</b>, which answers 400 before
 /// the action runs. Nothing else checks this shape, so an attribute removed here is a bound removed
-/// entirely — the entity behind it is SQLite <c>TEXT</c>, which ignores length.
+/// entirely — the entity behind it is SQLite <c>TEXT</c>, which ignores length. <b>Refusing the whole
+/// message is right here and wrong on the <c>INFO</c> path</b>, which drops the one bad field instead:
+/// a registration is a single fact and an <c>INFO</c> is several.
 /// </para>
 /// </remarks>
 public class RegisterPrinterRequestDTO
 {
-    /// <summary>Longest serial number accepted. Real ones are around twenty characters.</summary>
-    public const int SerialNumberMaxLength = 64;
-
-    /// <summary>
-    /// Longest fingerprint accepted. Firmware sends 50 characters here, where the headers carry
-    /// only the first 16 of the same buffer.
-    /// </summary>
-    public const int FingerPrintMaxLength = 64;
-
-    /// <summary>Longest printer type accepted, e.g. <c>1.3.5</c>.</summary>
-    public const int PrinterTypeMaxLength = 32;
-
-    /// <summary>Longest firmware string accepted, e.g. <c>6.4.0+11974</c>.</summary>
-    public const int FirmwareMaxLength = 64;
-
     [JsonPropertyName("sn")]
-    [StringLength(SerialNumberMaxLength)]
+    [StringLength(PrusaConnectConstants.SerialNumberMaxLength)]
     public required string SerialNumber { get; set; }
 
     [JsonPropertyName("fingerprint")]
-    [StringLength(FingerPrintMaxLength)]
+    [StringLength(PrusaConnectConstants.FingerPrintMaxLength)]
     public required string FingerPrint { get; set; }
 
     [JsonPropertyName("printer_type")]
-    [StringLength(PrinterTypeMaxLength)]
+    [StringLength(PrusaConnectConstants.PrinterTypeMaxLength)]
     public required string PrinterType { get; set; }
 
     [JsonPropertyName("firmware")]
-    [StringLength(FirmwareMaxLength)]
+    [StringLength(PrusaConnectConstants.FirmwareMaxLength)]
     public required string Firmware { get; set; }
 }

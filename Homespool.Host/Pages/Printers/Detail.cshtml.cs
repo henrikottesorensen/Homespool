@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Exceptions;
@@ -59,7 +61,7 @@ public class DetailModel : PageModel
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrinterRemovalService _removalService;
     private readonly DefaultPrinterService _defaults;
-    private readonly AttemptLimiter _attemptLimiter;
+    private readonly LocalSignInRules _rules;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrinterFilamentService _filament;
@@ -84,7 +86,7 @@ public class DetailModel : PageModel
     public DetailModel(PrinterQueryService printerQueryService,
                        PrinterRemovalService removalService,
                        DefaultPrinterService defaults,
-                       AttemptLimiter attemptLimiter,
+                       LocalSignInRules rules,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrinterFilamentService filament,
@@ -109,7 +111,7 @@ public class DetailModel : PageModel
         _printerQueryService = printerQueryService;
         _removalService = removalService;
         _defaults = defaults;
-        _attemptLimiter = attemptLimiter;
+        _rules = rules;
         _queueService = queueService;
         _preheat = preheat;
         _filament = filament;
@@ -1120,21 +1122,9 @@ public class DetailModel : PageModel
 
         string name = DisplayNameFor(printer);
 
-        // The backoff is checked before anything is compared, so a locked-out account cannot learn
-        // whether its guesses were close by watching which refusal comes back.
-        DateTimeOffset now = _timeProvider.GetUtcNow();
-
-        if (await _attemptLimiter.RemainingLockoutAsync(caller.UserId, LimitedAction.RemovePrinter, now, cancellationToken)
-                is { } remaining)
-        {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveLockedOut", BackoffWait.Format(_localiser, remaining)].Value, false);
-
-            return RedirectToPage(new { uuid });
-        }
-
         // The name first, and the code second, deliberately. A wrong name is not a guess at a secret
         // - it is on the heading of the page the form sits on - so counting it would let somebody
-        // exhaust the allowance without ever attempting the thing the allowance protects.
+        // lock the account without ever attempting the thing the lockout protects.
         if (!string.Equals(confirmation?.Trim(), name, StringComparison.OrdinalIgnoreCase))
         {
             (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveNameMismatch", name].Value, false);
@@ -1147,23 +1137,24 @@ public class DetailModel : PageModel
         // widening what an unattended session can do to exactly what this exists to stop.
         if (await _userManager.GetTwoFactorEnabledAsync(user))
         {
-            string typed = (code ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+            // A step-up on the signed-in account through the code scheme: a wrong code counts toward
+            // the account lockout, as a wrong login does, and a locked-out account is refused before
+            // its code is compared.
+            AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(code));
 
-            bool valid = typed.Length > 0
-                         && await _userManager.VerifyTwoFactorTokenAsync(
-                                user, _userManager.Options.Tokens.AuthenticatorTokenProvider, typed);
-
-            if (!valid)
+            if (!stepUp.Succeeded)
             {
-                await _attemptLimiter.RecordFailedAttemptAsync(
-                    caller.UserId, LimitedAction.RemovePrinter, now, cancellationToken);
+                if (stepUp.Refusal() == SignInRefusal.LockedOut)
+                {
+                    (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveLockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))].Value, false);
+
+                    return RedirectToPage(new { uuid });
+                }
 
                 (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveCodeInvalid"].Value, false);
 
                 return RedirectToPage(new { uuid });
             }
-
-            await _attemptLimiter.ResetAsync(caller.UserId, LimitedAction.RemovePrinter, cancellationToken);
         }
 
         try

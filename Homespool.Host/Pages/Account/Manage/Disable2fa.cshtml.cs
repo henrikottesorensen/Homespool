@@ -4,15 +4,14 @@
 #nullable disable
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -29,28 +28,25 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// <b>The code is required because a live session is exactly what two-factor distrusts.</b> Without
 /// it, the walk-up on an unlocked browser that the second factor exists to stop could simply switch
 /// the second factor off first. Requiring a current code means weakening the account takes the same
-/// credential the account is protected by - the shape the printer-removal confirmation set, backed
-/// off through the same per-account limiter, because six digits with unlimited attempts is not a
-/// control.
+/// credential the account is protected by - the shape the printer-removal confirmation set, through
+/// the same code scheme, so a wrong code counts toward the account lockout: six digits with
+/// unlimited attempts is not a control.
 /// </remarks>
 [Authorize]
 public class Disable2faModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly AttemptLimiter _attemptLimiter;
-    private readonly TimeProvider _timeProvider;
+    private readonly LocalSignInRules _rules;
     private readonly ILogger<Disable2faModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public Disable2faModel(UserManager<HSUser> userManager,
-                           AttemptLimiter attemptLimiter,
-                           TimeProvider timeProvider,
+                           LocalSignInRules rules,
                            ILogger<Disable2faModel> logger,
                            IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
-        _attemptLimiter = attemptLimiter;
-        _timeProvider = timeProvider;
+        _rules = rules;
         _logger = logger;
         _localiser = localiser;
     }
@@ -78,7 +74,7 @@ public class Disable2faModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(string code, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAsync(string code)
     {
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -86,38 +82,20 @@ public class Disable2faModel : PageModel
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
         }
 
-        // The backoff is checked before the code is compared, so a locked-out account cannot learn
-        // whether its guesses were close by watching which refusal comes back.
-        DateTimeOffset now = _timeProvider.GetUtcNow();
-
-        if (await _attemptLimiter.RemainingLockoutAsync(user.Id, LimitedAction.DisableTwoFactor, now, cancellationToken)
-                is { } remaining)
-        {
-            StatusMessage = _localiser["TwoFactor_DisableLockedOut", BackoffWait.Format(_localiser, remaining)];
-
-            return RedirectToPage();
-        }
-
         // Authenticator codes only, as on the printer-removal confirmation: a recovery code is for
         // getting back into an account, and spending one here would widen what an unattended session
-        // can do to exactly what this exists to stop.
-        string typed = (code ?? string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+        // can do to exactly what this exists to stop. The code scheme verifies it for the signed-in
+        // account, counts a wrong one toward the lockout, and refuses a locked-out account first.
+        AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(code));
 
-        bool valid = typed.Length > 0
-                     && await _userManager.VerifyTwoFactorTokenAsync(
-                            user, _userManager.Options.Tokens.AuthenticatorTokenProvider, typed);
-
-        if (!valid)
+        if (!stepUp.Succeeded)
         {
-            await _attemptLimiter.RecordFailedAttemptAsync(
-                user.Id, LimitedAction.DisableTwoFactor, now, cancellationToken);
-
-            StatusMessage = _localiser["TwoFactor_DisableCodeInvalid"];
+            StatusMessage = stepUp.Refusal() == SignInRefusal.LockedOut
+                ? _localiser["TwoFactor_DisableLockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]
+                : _localiser["TwoFactor_DisableCodeInvalid"];
 
             return RedirectToPage();
         }
-
-        await _attemptLimiter.ResetAsync(user.Id, LimitedAction.DisableTwoFactor, cancellationToken);
 
         IdentityResult disable2faResult = await _userManager.SetTwoFactorEnabledAsync(user, false);
         if (!disable2faResult.Succeeded)

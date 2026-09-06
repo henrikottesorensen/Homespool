@@ -40,14 +40,34 @@ public sealed class LocalSignInRules
     private readonly UserManager<HSUser> _users;
     private readonly IUserConfirmation<HSUser> _confirmation;
     private readonly IdentityOptions _options;
+    private readonly TimeProvider _time;
 
     public LocalSignInRules(UserManager<HSUser> users,
                             IUserConfirmation<HSUser> confirmation,
-                            IOptions<IdentityOptions> options)
+                            IOptions<IdentityOptions> options,
+                            TimeProvider? time = null)
     {
         _users = users;
         _confirmation = confirmation;
         _options = options.Value;
+        _time = time ?? TimeProvider.System;
+    }
+
+    /// <summary>
+    /// How much longer <paramref name="user"/>'s lockout lasts, for a page that says so; zero when
+    /// the account is not locked out.
+    /// </summary>
+    public async Task<TimeSpan> RemainingLockoutAsync(HSUser user)
+    {
+        if (!_users.SupportsUserLockout || !await _users.IsLockedOutAsync(user))
+        {
+            return TimeSpan.Zero;
+        }
+
+        DateTimeOffset? end = await _users.GetLockoutEndDateAsync(user);
+        TimeSpan remaining = end is null ? TimeSpan.Zero : end.Value - _time.GetUtcNow();
+
+        return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
     }
 
     /// <summary>

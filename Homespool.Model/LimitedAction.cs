@@ -33,18 +33,17 @@ public enum LimitedAction
     ClaimPrinter = 1,
 
     /// <summary>
-    /// Confirming a printer's removal with an authenticator code, on the printer detail page.
+    /// <b>Retired 2026-09-06, nothing counts it.</b> Confirming a printer's removal with an
+    /// authenticator code goes through the <c>Totp</c> scheme now, whose wrong codes count toward
+    /// the account lockout. The member stays because rows naming it may exist. (It was separate from
+    /// <see cref="ClaimPrinter"/> so that fluffing a code would not back somebody off a claim they
+    /// were standing at a printer to complete; a claim is still counted here, on its own.)
     /// </summary>
-    /// <remarks>
-    /// Separate from <see cref="ClaimPrinter"/> deliberately, which is the whole reason this enum
-    /// exists rather than one shared counter: fluffing an authenticator code must not back somebody
-    /// off a claim they are standing at a printer to complete, and neither should the reverse.
-    /// </remarks>
     RemovePrinter = 2,
 
     /// <summary>
-    /// Confirming that two-factor is turned off with an authenticator code, on
-    /// <c>Account/Manage/Disable2fa</c>.
+    /// <b>Retired 2026-09-06, nothing counts it.</b> Confirming that two-factor is turned off went
+    /// through the <c>Totp</c> scheme, as above. The member stays because rows naming it may exist.
     /// </summary>
     DisableTwoFactor = 3,
 

@@ -13,10 +13,12 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -128,15 +130,17 @@ public class EnableAuthenticatorModel : PageModel
             return Page();
         }
 
-        // Strip spaces and hyphens
-        string verificationCode = Input.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
+        // The code proves the app holds the key just shown; the code scheme verifies it for the
+        // signed-in account against that key, two-factor being on or not, and a wrong one counts
+        // toward the lockout as any wrong code does.
+        AuthenticateResult proof = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(Input.Code));
 
-        bool is2faTokenValid = await _userManager.VerifyTwoFactorTokenAsync(
-            user, _userManager.Options.Tokens.AuthenticatorTokenProvider, verificationCode);
-
-        if (!is2faTokenValid)
+        if (!proof.Succeeded)
         {
-            ModelState.AddModelError("Input.Code", _localiser["Manage_VerificationCodeInvalid"]);
+            ModelState.AddModelError("Input.Code",
+                                     proof.Refusal() == SignInRefusal.LockedOut
+                                         ? _localiser["Account_LockedOut"]
+                                         : _localiser["Manage_VerificationCodeInvalid"]);
             await LoadSharedKeyAndQrCodeUriAsync(user);
             return Page();
         }

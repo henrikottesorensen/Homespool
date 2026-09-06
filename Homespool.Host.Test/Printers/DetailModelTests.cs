@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -21,6 +22,7 @@ using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Localisation;
@@ -97,7 +99,7 @@ public sealed class DetailModelTests : IDisposable
                                PrinterConnectionRegistry connectionRegistry, UserManager<HSUser> users)>
         NewModelWithUsersAsync(HomespoolDbContext context)
     {
-        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) = IdentityTestHarness.BuildIdentityServices(context);
+        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
 
         HSUser user = new("owner") { Email = "owner@example.com", EmailConfirmed = true };
         IdentityResult createResult = await users.CreateAsync(user, "Sup3rSecret!23");
@@ -136,8 +138,7 @@ public sealed class DetailModelTests : IDisposable
                                                           Substitute.For<ITelemetryEviction>(),
                                                           NullLogger<PrinterRemovalService>.Instance),
                                 new DefaultPrinterService(access, users),
-                                new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
-                                                   NullLogger<AttemptLimiter>.Instance),
+                                provider.GetRequiredService<LocalSignInRules>(),
                                 queueService,
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
@@ -793,7 +794,7 @@ public sealed class DetailModelTests : IDisposable
         (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
-    /// <summary>A wrong code refuses, and is counted against the backoff.</summary>
+    /// <summary>A wrong code refuses, and is counted toward the account's lockout.</summary>
     [Fact]
     public async Task RemoveWithTwoFactorRefusesAWrongCodeAndCountsIt()
     {
@@ -817,14 +818,7 @@ public sealed class DetailModelTests : IDisposable
         (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
 
         // The guess is counted, which is what makes the six digits worth anything.
-        UserActionAttempt? attempt = await context.UserActionAttempts
-                                                  .AsNoTracking()
-                                                  .SingleOrDefaultAsync(
-                                                      a => a.UserId == user.Id
-                                                           && a.Action == LimitedAction.RemovePrinter,
-                                                      TestContext.Current.CancellationToken);
-
-        attempt?.FailedCount.Should().Be(1);
+        (await users.GetAccessFailedCountAsync(user)).Should().Be(1);
     }
 
     /// <summary>

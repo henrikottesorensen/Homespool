@@ -145,8 +145,9 @@ services:
       # The legacy plaintext printer listener, and EMPTY BY DEFAULT - which binds to null and means the
       # socket is never opened. Set LEGACY_PRINTER_PORT only if you own a printer whose firmware
       # cannot load a custom certificate; every printer provisioned onto it sends its token, its
-      # files and the PrusaLink password in its own INFO across the network in clear, and plain HTTP
-      # has no integrity, so gcode and commands can be altered in flight rather than only read.
+      # files, and the WiFi SSID and PrusaLink password it reports in its own INFO, across the
+      # network in clear - and plain HTTP has no integrity, so gcode and commands can be altered in
+      # flight rather than only read.
       # Unlike PRINTER_TLS this leaves TLS standing for every other printer, which is the whole
       # reason it exists as a second listener rather than a switch.
       #

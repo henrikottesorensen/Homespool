@@ -127,8 +127,9 @@ public class BundleModel : PageModel
             // Warning rather than Information, and it names the port: this is the log line somebody
             // reads months later when they are working out why one printer's traffic is readable.
             _logger.LogWarning("PLAINTEXT provisioning bundle downloaded for printer {PrinterId}, addressed to "
-                               + "{Hostname}:{Port}. That printer's token, its files and the PrusaLink password it "
-                               + "reports will cross the network in clear, and can be altered in flight.",
+                               + "{Hostname}:{Port}. That printer's token, its files, and the WiFi SSID and "
+                               + "PrusaLink password it reports will cross the network in clear, and can be altered "
+                               + "in flight.",
                                printerId, hostname, endpoint.Port);
         }
 

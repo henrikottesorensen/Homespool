@@ -5,6 +5,7 @@
 
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
@@ -21,17 +22,20 @@ namespace Homespool.Host.Pages.Account.Manage;
 public class TwoFactorAuthenticationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignInRules _rules;
+    private readonly LocalSignIn _signIn;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<TwoFactorAuthenticationModel> _logger;
 
     public TwoFactorAuthenticationModel(UserManager<HSUser> userManager,
-                                        SignInManager<HSUser> signInManager,
+                                        LocalSignInRules rules,
+                                        LocalSignIn signIn,
                                         IStringLocalizer<SharedResource> localiser,
                                         ILogger<TwoFactorAuthenticationModel> logger)
     {
         _userManager = userManager;
-        _signInManager = signInManager;
+        _rules = rules;
+        _signIn = signIn;
         _localiser = localiser;
         _logger = logger;
     }
@@ -78,7 +82,7 @@ public class TwoFactorAuthenticationModel : PageModel
 
         HasAuthenticator = await _userManager.GetAuthenticatorKeyAsync(user) != null;
         Is2faEnabled = await _userManager.GetTwoFactorEnabledAsync(user);
-        IsMachineRemembered = await _signInManager.IsTwoFactorClientRememberedAsync(user);
+        IsMachineRemembered = await _rules.IsTwoFactorClientRememberedAsync(HttpContext, user);
         RecoveryCodesLeft = await _userManager.CountRecoveryCodesAsync(user);
 
         return Page();
@@ -92,7 +96,7 @@ public class TwoFactorAuthenticationModel : PageModel
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
         }
 
-        await _signInManager.ForgetTwoFactorClientAsync();
+        await _signIn.ForgetClientAsync(HttpContext);
         StatusMessage =
             _localiser["Manage_BrowserForgotten"];
         return RedirectToPage();

@@ -7,11 +7,12 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
@@ -19,21 +20,27 @@ using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
 
+/// <summary>
+/// The way back in without the authenticator: the account the password step left pending redeems
+/// one of its recovery codes. The <see cref="Schemes.RecoveryCode"/> scheme redeems it, spending it;
+/// this page turns the proof into the session. No remembered browser here - a recovery code is for
+/// getting in, not for settling in.
+/// </summary>
 [AllowAnonymous]
 public class LoginWithRecoveryCodeModel : PageModel
 {
-    private readonly SignInManager<HSUser> _signInManager;
-    private readonly UserManager<HSUser> _userManager;
+    private readonly LocalSignInRules _rules;
+    private readonly LocalSignIn _signIn;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginWithRecoveryCodeModel> _logger;
 
-    public LoginWithRecoveryCodeModel(SignInManager<HSUser> signInManager,
-                                      UserManager<HSUser> userManager,
+    public LoginWithRecoveryCodeModel(LocalSignInRules rules,
+                                      LocalSignIn signIn,
                                       IStringLocalizer<SharedResource> localiser,
                                       ILogger<LoginWithRecoveryCodeModel> logger)
     {
-        _signInManager = signInManager;
-        _userManager = userManager;
+        _rules = rules;
+        _signIn = signIn;
         _localiser = localiser;
         _logger = logger;
     }
@@ -55,7 +62,7 @@ public class LoginWithRecoveryCodeModel : PageModel
     public async Task<IActionResult> OnGetAsync(string returnUrl = null)
     {
         // Ensure the user has gone through the username & password screen first.
-        HSUser user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             throw new InvalidOperationException("Unable to load two-factor authentication user.");
@@ -73,34 +80,32 @@ public class LoginWithRecoveryCodeModel : PageModel
             return Page();
         }
 
-        HSUser user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             throw new InvalidOperationException("Unable to load two-factor authentication user.");
         }
 
-        string recoveryCode = Input.RecoveryCode.Replace(" ", string.Empty, StringComparison.Ordinal);
+        AuthenticateResult code = await HttpContext.AuthenticateWithAsync(Schemes.RecoveryCode, new RecoveryCodeCredential(Input.RecoveryCode));
 
-        Microsoft.AspNetCore.Identity.SignInResult result =
-            await _signInManager.TwoFactorRecoveryCodeSignInAsync(recoveryCode);
-
-        string userId = await _userManager.GetUserIdAsync(user);
-
-        if (result.Succeeded)
+        if (code.Succeeded)
         {
-            _logger.LogInformation("User with ID {UserId} logged in with a recovery code.", userId);
+            string loginProvider = await _rules.PendingLoginProviderAsync(HttpContext);
+            await _signIn.SignInAsync(HttpContext, code.Principal, isPersistent: false, loginProvider);
+
+            _logger.LogInformation("User with ID {UserId} logged in with a recovery code.", user.Id);
 
             return LocalRedirect(returnUrl ?? Url.Content("~/"));
         }
 
-        if (result.IsLockedOut)
+        if (code.Refusal() == SignInRefusal.LockedOut)
         {
-            _logger.LogWarning("User with ID {UserId} account locked out.", userId);
+            _logger.LogWarning("User with ID {UserId} account locked out.", user.Id);
 
             return RedirectToPage("./Lockout");
         }
 
-        _logger.LogWarning("Invalid recovery code entered for user with ID {UserId}", userId);
+        _logger.LogWarning("Invalid recovery code entered for user with ID {UserId}", user.Id);
         ModelState.AddModelError(string.Empty, _localiser["Account_InvalidRecoveryCode"]);
 
         return Page();

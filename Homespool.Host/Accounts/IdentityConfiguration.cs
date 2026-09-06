@@ -1,5 +1,7 @@
 using System;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Identity;
 
 namespace Homespool.Host.Accounts;
@@ -48,6 +50,18 @@ public static class IdentityConfiguration
         // enforces it, and two accounts sharing an address would make that lookup pick one of them
         // arbitrarily.
         options.User.RequireUniqueEmail = true;
+
+        // The claims factory spells the account's claims the JWT way, as every other principal in the
+        // application does: the bearer scheme already maps name and role to these, and the local
+        // schemes and the pending cookie carry sub and amr. Identity's defaults are the SOAP-era URIs
+        // (ClaimTypes.NameIdentifier and friends), and a principal that mixes the two is one that a
+        // reader gets wrong. The security stamp keeps Identity's own claim type; it is the framework's
+        // to compare. User.Identity.Name and IsInRole follow the identity's own name and role claim
+        // types, which the factory sets from these, so nothing reading those changes.
+        options.ClaimsIdentity.UserIdClaimType = JwtClaimTypes.Subject;
+        options.ClaimsIdentity.UserNameClaimType = JwtClaimTypes.Name;
+        options.ClaimsIdentity.EmailClaimType = JwtClaimTypes.Email;
+        options.ClaimsIdentity.RoleClaimType = JwtClaimTypes.Role;
     }
 
     /// <summary>

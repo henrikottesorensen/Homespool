@@ -5,10 +5,9 @@
 
 using System.Threading.Tasks;
 
-using Homespool.Model.Entities;
+using Homespool.Host.Authentication;
 
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
@@ -18,18 +17,18 @@ namespace Homespool.Host.Pages.Account;
 [AllowAnonymous]
 public class LogoutModel : PageModel
 {
-    private readonly SignInManager<HSUser> _signInManager;
+    private readonly LocalSignIn _signIn;
     private readonly ILogger<LogoutModel> _logger;
 
-    public LogoutModel(SignInManager<HSUser> signInManager, ILogger<LogoutModel> logger)
+    public LogoutModel(LocalSignIn signIn, ILogger<LogoutModel> logger)
     {
-        _signInManager = signInManager;
+        _signIn = signIn;
         _logger = logger;
     }
 
     public async Task<IActionResult> OnPost(string returnUrl = null)
     {
-        await _signInManager.SignOutAsync();
+        await _signIn.SignOutAsync(HttpContext);
         _logger.LogInformation("User logged out.");
 
         if (returnUrl != null)

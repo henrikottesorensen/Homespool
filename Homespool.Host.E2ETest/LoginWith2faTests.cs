@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -225,10 +226,8 @@ public sealed class LoginWith2faTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Unlike a wrong password on <c>Login</c> (<c>lockoutOnFailure: false</c>, deliberately), a wrong
-    /// 2FA code counts toward Identity's default lockout threshold -
-    /// <c>TwoFactorAuthenticatorSignInAsync</c> takes no such override. Enough wrong codes locks the
-    /// account out and redirects to <c>/Account/Lockout</c>.
+    /// A wrong code counts toward Identity's default lockout threshold, as a wrong password does.
+    /// Enough wrong codes locks the account out and redirects to <c>/Account/Lockout</c>.
     /// </summary>
     [Fact]
     public async Task RepeatedInvalidCodesEventuallyLockTheAccountOut()
@@ -259,6 +258,99 @@ public sealed class LoginWith2faTests : IAsyncLifetime
             lastResponse!.StatusCode.Should()
                          .Be(HttpStatusCode.Redirect, "enough failed codes must eventually lock the account out");
             lastResponse.Headers.Location!.OriginalString.Should().Be("/Account/Lockout");
+        }
+    }
+
+    /// <summary>
+    /// "Remember this machine" is a cookie for the browser, not the session: the next password sign-in
+    /// on the same browser completes without asking for a code.
+    /// </summary>
+    [Fact]
+    public async Task ARememberedBrowserIsNotAskedForACodeNextTime()
+    {
+        // Arrange
+        await CreateTwoFactorEnabledUserAsync();
+        (HttpClient client, string antiforgeryToken) = await SignInWithPasswordAsync();
+        using (client)
+        {
+            using FormUrlEncodedContent remembered = new(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = antiforgeryToken,
+                ["RememberMe"] = "false",
+                ["Input.TwoFactorCode"] = await GenerateValidAuthenticatorCodeAsync(),
+                ["Input.RememberMachine"] = "true",
+            });
+            HttpResponseMessage completed = await client.PostAsync("/Account/LoginWith2fa", remembered, TestContext.Current.CancellationToken);
+            completed.StatusCode.Should().Be(HttpStatusCode.Redirect, "the code was right, so this is setup rather than what the test verifies");
+
+            HttpResponseMessage loginGet = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+            string loginToken = AntiforgeryTestHelper.ExtractToken(await loginGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            using FormUrlEncodedContent loginBody = new(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = loginToken,
+                ["Input.Login"] = Email,
+                ["Input.Password"] = Password,
+            });
+
+            // Act
+            HttpResponseMessage again = await client.PostAsync("/Account/Login", loginBody, TestContext.Current.CancellationToken);
+
+            // Assert
+            again.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            again.Headers.Location!.OriginalString.Should().Be("/", "a remembered browser owes no code, so the password alone completes the sign-in");
+            IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, again).Should().BeTrue();
+        }
+    }
+
+    /// <summary>
+    /// The way back in without the authenticator: a recovery code completes the sign-in from the
+    /// pending step, and is spent by it - the same code is refused the second time.
+    /// </summary>
+    [Fact]
+    public async Task ARecoveryCodeCompletesSignInOnceAndIsThenSpent()
+    {
+        // Arrange
+        await CreateTwoFactorEnabledUserAsync();
+        string recoveryCode;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser user = (await userManager.FindByEmailAsync(Email))!;
+            recoveryCode = (await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 2))!.First();
+        }
+
+        // Act
+        HttpResponseMessage first = await RedeemAsync(recoveryCode);
+        HttpResponseMessage second = await RedeemAsync(recoveryCode);
+
+        // Assert
+        first.StatusCode.Should().Be(HttpStatusCode.Redirect, "a valid recovery code completes the sign-in");
+        first.Headers.Location!.OriginalString.Should().Be("/");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, first).Should().BeTrue();
+
+        second.StatusCode.Should().Be(HttpStatusCode.OK, "a spent code re-renders the page rather than redirecting");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, second).Should().BeFalse();
+        (await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("Invalid recovery code");
+    }
+
+    /// <summary>Passes the password step on a fresh browser, then posts <paramref name="recoveryCode"/> to the recovery page.</summary>
+    private async Task<HttpResponseMessage> RedeemAsync(string recoveryCode)
+    {
+        (HttpClient client, _) = await SignInWithPasswordAsync();
+        using (client)
+        {
+            HttpResponseMessage recoveryGet = await client.GetAsync("/Account/LoginWithRecoveryCode", TestContext.Current.CancellationToken);
+            recoveryGet.StatusCode.Should().Be(HttpStatusCode.OK, "the pending account may choose the recovery page instead of the code page");
+            string token = AntiforgeryTestHelper.ExtractToken(await recoveryGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+            using FormUrlEncodedContent body = new(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = token,
+                ["Input.RecoveryCode"] = recoveryCode,
+            });
+
+            return await client.PostAsync("/Account/LoginWithRecoveryCode", body, TestContext.Current.CancellationToken);
         }
     }
 }

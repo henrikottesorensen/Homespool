@@ -107,6 +107,7 @@ public static class Program
                                 options.DefaultSignInScheme = IdentityConstants.ExternalScheme;
                             })
                             .AddIdentityCookieSchemes()
+                            .AddLocalAuthentication()
                             .AddPasskeyAuthentication()
                             .AddPrusaConnectPrinterAuthentication()
                             .AddApiTokenAuthentication()

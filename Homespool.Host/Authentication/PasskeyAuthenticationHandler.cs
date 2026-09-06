@@ -4,12 +4,13 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Primitives;
 
 using Homespool.Model.Entities;
 
@@ -45,7 +46,7 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>The principal is built by the same factory the sign-in cookie uses</b>, as the token schemes do,
 /// so a passkey-authenticated request is indistinguishable downstream from a cookie-authenticated
-/// one. It carries <see cref="ClaimTypes.AuthenticationMethod"/> as <see cref="AuthenticationMethod"/>
+/// one. It carries <see cref="JwtClaimTypes.AuthenticationMethod"/> as <see cref="AuthenticationMethod"/>
 /// for whoever wants to know how the caller was authenticated, and the ticket's properties name the
 /// credential that answered under <see cref="CredentialIdProperty"/>.
 /// </para>
@@ -57,7 +58,7 @@ namespace Homespool.Host.Authentication;
 /// </remarks>
 public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<PasskeyAuthenticationOptions>
 {
-    /// <summary>The <see cref="ClaimTypes.AuthenticationMethod"/> a passkey-authenticated principal carries.</summary>
+    /// <summary>The <see cref="JwtClaimTypes.AuthenticationMethod"/> a passkey-authenticated principal carries.</summary>
     public const string AuthenticationMethod = "passkey";
 
     /// <summary>
@@ -164,7 +165,12 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
     /// <inheritdoc/>
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        string? credential = await ReadCredentialAsync();
+        string? credential = Context.Features.Get<PasskeyCredential>()?.Json;
+
+        if (string.IsNullOrWhiteSpace(credential))
+        {
+            credential = null;
+        }
 
         // No assertion posted, so this scheme has nothing to say about the request.
         if (credential is null)
@@ -225,7 +231,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
 
         if (principal.Identity is ClaimsIdentity identity)
         {
-            identity.AddClaim(new Claim(ClaimTypes.AuthenticationMethod, AuthenticationMethod));
+            identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, AuthenticationMethod));
         }
 
         AuthenticationProperties properties = new();
@@ -234,29 +240,6 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         Logger.LogInformation("Passkey {PasskeyName} authenticated user {UserId}.", passkey.Name ?? "(unnamed)", user.Id);
 
         return AuthenticateResult.Success(new AuthenticationTicket(principal, properties, Scheme.Name));
-    }
-
-    /// <summary>
-    /// The assertion this request carries, or <see langword="null"/> when it carries none: the
-    /// <see cref="PasskeyAuthenticationOptions.CredentialFormField"/> of a posted form.
-    /// </summary>
-    private async Task<string?> ReadCredentialAsync()
-    {
-        if (!HttpMethods.IsPost(Request.Method) || !Request.HasFormContentType)
-        {
-            return null;
-        }
-
-        IFormCollection form = await Request.ReadFormAsync(Context.RequestAborted);
-
-        if (!form.TryGetValue(PasskeyAuthenticationOptions.CredentialFormField, out StringValues values))
-        {
-            return null;
-        }
-
-        string? credential = values.Count == 1 ? values[0] : null;
-
-        return string.IsNullOrWhiteSpace(credential) ? null : credential;
     }
 
     /// <inheritdoc/>

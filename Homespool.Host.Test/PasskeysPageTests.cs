@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
@@ -299,6 +301,31 @@ public sealed class PasskeysPageTests : IDisposable
     }
 
     /// <summary>
+    /// A proof is the provider vouching for one subject, and it counts only for the account that
+    /// signs in as that subject. One account's proof presented with another account's session - a
+    /// cookie swapped in the same browser - unlocks nothing.
+    /// </summary>
+    [Fact]
+    public async Task AProofForAnotherAccountUnlocksNothing()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser insider = await rig.AddProviderUserAsync("insider@example.com", "subject-insider");
+        HSUser victim = await rig.AddProviderUserAsync("victim@example.com", "subject-victim");
+
+        (_, DefaultHttpContext proofRequest) = rig.NewModel(insider, password: null);
+        rig.Ceremonies.Begin(proofRequest, PasskeyCeremonies.ProviderProof, "subject-insider").Should().BeTrue();
+
+        (PasskeysModel model, _) = rig.NewModel(victim, cookie: Rig.CookieOf(proofRequest), password: null);
+
+        // Act
+        IActionResult begin = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
+
+        // Assert
+        begin.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(401, "the provider vouched for the insider, not for this account");
+    }
+
+    /// <summary>
     /// The re-authentication challenge asks the provider for a fresh sign-in, in both of the words
     /// providers understand, and goes only to a provider the account holds a login for.
     /// </summary>
@@ -363,11 +390,11 @@ public sealed class PasskeysPageTests : IDisposable
 
     private static ExternalLoginInfo Answer(string subject, DateTimeOffset? authTime)
     {
-        List<Claim> claims = [new(ClaimTypes.NameIdentifier, subject)];
+        List<Claim> claims = [new(JwtClaimTypes.Subject, subject)];
 
         if (authTime is { } time)
         {
-            claims.Add(new Claim("auth_time", time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+            claims.Add(new Claim(JwtClaimTypes.AuthenticationTime, time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
         }
 
         return new ExternalLoginInfo(new ClaimsPrincipal(new ClaimsIdentity(claims, "test")), Schemes.ExternalOidc, subject, "Dex");

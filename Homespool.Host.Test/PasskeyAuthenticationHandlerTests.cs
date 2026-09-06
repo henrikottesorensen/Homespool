@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -10,12 +9,13 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Primitives;
 using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
@@ -446,8 +446,8 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeTrue(result.Failure?.Message);
         result.Ticket!.AuthenticationScheme.Should().Be(Schemes.Passkey);
         result.Principal!.Identity!.IsAuthenticated.Should().BeTrue();
-        result.Principal.FindFirstValue(ClaimTypes.NameIdentifier).Should().Be(user.Id.ToString());
-        result.Principal.FindFirstValue(ClaimTypes.AuthenticationMethod).Should().Be(PasskeyAuthenticationHandler.AuthenticationMethod);
+        result.Principal.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
+        result.Principal.FindFirstValue(JwtClaimTypes.AuthenticationMethod).Should().Be(PasskeyAuthenticationHandler.AuthenticationMethod);
         result.Ticket.Properties.Items.Should().ContainKey(PasskeyAuthenticationHandler.CredentialIdProperty);
         stored!.SignCount.Should().Be(4, "the ceremony is not complete until the counter is written back");
     }
@@ -481,7 +481,7 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         using JsonDocument options = JsonDocument.Parse(body);
         options.RootElement.GetProperty("allowCredentials").GetArrayLength().Should().Be(1, "a bound challenge names the account's credentials");
         result.Succeeded.Should().BeTrue(result.Failure?.Message);
-        result.Principal!.FindFirstValue(ClaimTypes.NameIdentifier).Should().Be(user.Id.ToString());
+        result.Principal!.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
     }
 
     /// <summary>
@@ -549,11 +549,7 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
             if (credential is not null)
             {
                 request.Request.Method = HttpMethods.Post;
-                request.Request.ContentType = "application/x-www-form-urlencoded";
-                request.Request.Form = new FormCollection(new Dictionary<string, StringValues>
-                {
-                    [PasskeyAuthenticationOptions.CredentialFormField] = credential,
-                });
+                request.Features.Set(new PasskeyCredential(credential));
             }
 
             if (cookie is not null)

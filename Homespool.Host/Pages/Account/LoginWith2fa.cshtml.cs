@@ -7,11 +7,12 @@ using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
@@ -19,21 +20,26 @@ using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account;
 
+/// <summary>
+/// The second half of a two-factor sign-in: the account the password step left pending answers with
+/// its authenticator code. The <see cref="Schemes.Totp"/> scheme verifies the code for that account;
+/// this page decides what the proof is worth - the session, and a remembered browser if asked.
+/// </summary>
 [AllowAnonymous]
 public class LoginWith2faModel : PageModel
 {
-    private readonly SignInManager<HSUser> _signInManager;
-    private readonly UserManager<HSUser> _userManager;
+    private readonly LocalSignInRules _rules;
+    private readonly LocalSignIn _signIn;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<LoginWith2faModel> _logger;
 
-    public LoginWith2faModel(SignInManager<HSUser> signInManager,
-                             UserManager<HSUser> userManager,
+    public LoginWith2faModel(LocalSignInRules rules,
+                             LocalSignIn signIn,
                              IStringLocalizer<SharedResource> localiser,
                              ILogger<LoginWith2faModel> logger)
     {
-        _signInManager = signInManager;
-        _userManager = userManager;
+        _rules = rules;
+        _signIn = signIn;
         _localiser = localiser;
         _logger = logger;
     }
@@ -60,7 +66,7 @@ public class LoginWith2faModel : PageModel
     public async Task<IActionResult> OnGetAsync(bool rememberMe, string returnUrl = null)
     {
         // Ensure the user has gone through the username & password screen first.
-        HSUser user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             throw new InvalidOperationException("Unable to load two-factor authentication user.");
@@ -81,35 +87,39 @@ public class LoginWith2faModel : PageModel
 
         returnUrl ??= Url.Content("~/");
 
-        HSUser user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
+        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             throw new InvalidOperationException("Unable to load two-factor authentication user.");
         }
 
-        string authenticatorCode = Input.TwoFactorCode.Replace(" ", string.Empty, StringComparison.Ordinal)
-                                        .Replace("-", string.Empty, StringComparison.Ordinal);
+        // The scheme verifies the code for the pending account, counts a wrong one toward the lockout
+        // and resets the count on a right one; the code is presented as typed and normalised there.
+        AuthenticateResult code = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpCredential(Input.TwoFactorCode));
 
-        Microsoft.AspNetCore.Identity.SignInResult result =
-            await _signInManager.TwoFactorAuthenticatorSignInAsync(authenticatorCode, rememberMe, Input.RememberMachine);
-
-        string userId = await _userManager.GetUserIdAsync(user);
-
-        if (result.Succeeded)
+        if (code.Succeeded)
         {
-            _logger.LogInformation("User with ID {UserId} logged in with 2fa.", userId);
+            if (Input.RememberMachine)
+            {
+                await _signIn.RememberClientAsync(HttpContext, user);
+            }
+
+            string loginProvider = await _rules.PendingLoginProviderAsync(HttpContext);
+            await _signIn.SignInAsync(HttpContext, code.Principal, rememberMe, loginProvider);
+
+            _logger.LogInformation("User with ID {UserId} logged in with 2fa.", user.Id);
 
             return LocalRedirect(returnUrl);
         }
 
-        if (result.IsLockedOut)
+        if (code.Refusal() == SignInRefusal.LockedOut)
         {
-            _logger.LogWarning("User with ID {UserId} account locked out.", userId);
+            _logger.LogWarning("User with ID {UserId} account locked out.", user.Id);
 
             return RedirectToPage("./Lockout");
         }
 
-        _logger.LogWarning("Invalid authenticator code entered for user with ID {UserId}.", userId);
+        _logger.LogWarning("Invalid authenticator code entered for user with ID {UserId}.", user.Id);
         ModelState.AddModelError(string.Empty, _localiser["Account_InvalidAuthenticatorCode"]);
 
         return Page();

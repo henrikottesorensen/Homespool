@@ -285,7 +285,7 @@ public sealed class PasskeysPageTests : IDisposable
         HSUser user = await rig.AddProviderUserAsync("provider@example.com", "subject-1");
 
         (_, DefaultHttpContext proofRequest) = rig.NewModel(user, password: null);
-        rig.Ceremonies.Begin(proofRequest, PasskeyCeremonies.ProviderProof, "subject-1").Should().BeTrue();
+        rig.Ceremonies.Begin(proofRequest, PasskeyCeremonies.ProviderProof, "subject-1");
         string proof = Rig.CookieOf(proofRequest);
 
         (PasskeysModel first, _) = rig.NewModel(user, cookie: proof, password: null);
@@ -314,7 +314,7 @@ public sealed class PasskeysPageTests : IDisposable
         HSUser victim = await rig.AddProviderUserAsync("victim@example.com", "subject-victim");
 
         (_, DefaultHttpContext proofRequest) = rig.NewModel(insider, password: null);
-        rig.Ceremonies.Begin(proofRequest, PasskeyCeremonies.ProviderProof, "subject-insider").Should().BeTrue();
+        rig.Ceremonies.Begin(proofRequest, PasskeyCeremonies.ProviderProof, "subject-insider");
 
         (PasskeysModel model, _) = rig.NewModel(victim, cookie: Rig.CookieOf(proofRequest), password: null);
 

@@ -22,10 +22,13 @@ namespace Homespool.Host.Authentication;
 /// secrecy, and its expiry is <see cref="PasskeyAuthenticationOptions.CeremonyLifetime"/>.
 /// </para>
 /// <para>
-/// <b>A ceremony is spent once, server-side.</b> Deleting the cookie is an instruction to the
-/// browser; <see cref="PasskeyCeremonyLedger"/> is what refuses a copy of the request presented
-/// again. <b>And it is spent for one operation</b>: an attestation's state answered as an assertion,
-/// or the reverse, is refused before the engine sees it.
+/// <b>A ceremony is spent once, server-side, when its answer verifies.</b> Deleting the cookie is an
+/// instruction to the browser; <see cref="PasskeyCeremonyLedger"/> is what refuses a copy of the
+/// request presented again. <see cref="Take"/> reads the state and refuses one already answered;
+/// the caller runs the engine and, on success, <see cref="Spend"/> records it - so a challenge
+/// costs the server nothing, and only a verified answer is remembered. <b>And it is spent for one
+/// operation</b>: an attestation's state answered as an assertion, or the reverse, is refused
+/// before the engine sees it.
 /// </para>
 /// <para>
 /// <b>The cookie is scoped to the page that issued the challenge</b> unless the options name a path,
@@ -47,23 +50,27 @@ public sealed class PasskeyCeremonies
     public const string ProviderProof = "provider-proof";
 
     /// <summary>
-    /// What <see cref="Take"/> found: the engine's state to answer with, or why there is none.
+    /// What <see cref="Take"/> found: the engine's state to answer with, or why there is none, and
+    /// what <see cref="Spend"/> needs to record the answer.
     /// </summary>
     /// <param name="EngineState">The state the ceremony was started with, when it may be answered.</param>
     /// <param name="Reason">Why it may not be, for the log; empty when it may.</param>
-    public readonly record struct Outcome(string? EngineState, string Reason)
+    /// <param name="CeremonyId">The ceremony's id, when it may be answered.</param>
+    /// <param name="IssuedUtc">When the ceremony was issued.</param>
+    /// <param name="ExpiresUtc">When the ceremony expires.</param>
+    public readonly record struct Outcome(string? EngineState, string Reason, string? CeremonyId, DateTimeOffset IssuedUtc, DateTimeOffset ExpiresUtc)
     {
         /// <summary>Whether the ceremony may be answered.</summary>
         public bool Succeeded => EngineState is not null;
 
-        internal static Outcome Taken(string engineState)
+        internal static Outcome Taken(string engineState, string ceremonyId, DateTimeOffset issued, DateTimeOffset expires)
         {
-            return new Outcome(engineState, string.Empty);
+            return new Outcome(engineState, string.Empty, ceremonyId, issued, expires);
         }
 
         internal static Outcome Refused(string reason)
         {
-            return new Outcome(null, reason);
+            return new Outcome(null, reason, null, default, default);
         }
     }
 
@@ -93,12 +100,11 @@ public sealed class PasskeyCeremonies
     private TimeProvider Clock => Options.TimeProvider ?? TimeProvider.System;
 
     /// <summary>
-    /// Starts a ceremony: records it in the ledger and writes the cookie carrying
-    /// <paramref name="engineState"/> for <paramref name="operation"/>, to be answered within the
-    /// ceremony lifetime. <see langword="false"/> when the ledger is full and no ceremony could be
-    /// started, in which case no cookie is written and the caller answers 503.
+    /// Starts a ceremony: writes the cookie carrying <paramref name="engineState"/> for
+    /// <paramref name="operation"/>, to be answered within the ceremony lifetime. Nothing is recorded
+    /// server-side; the ledger learns of the ceremony only when its answer verifies.
     /// </summary>
-    public bool Begin(HttpContext context, string operation, string engineState)
+    public void Begin(HttpContext context, string operation, string engineState)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(operation);
@@ -116,27 +122,19 @@ public sealed class PasskeyCeremonies
             },
         };
 
-        string? ceremonyId = _ledger.Begin(now, state.ExpiresUtc.Value);
-
-        if (ceremonyId is null)
-        {
-            return false;
-        }
-
-        state.Items[CeremonyIdItem] = ceremonyId;
+        state.Items[CeremonyIdItem] = Guid.NewGuid().ToString("N");
 
         CookieOptions cookie = CookieOptionsFor(context);
         cookie.Expires = state.ExpiresUtc;
 
         context.Response.Cookies.Append(Options.CeremonyCookie.Name!, _format.Protect(state), cookie);
-
-        return true;
     }
 
     /// <summary>
-    /// Ends the ceremony this request carries: deletes the cookie whatever happens next, spends the
-    /// ceremony, and hands back the engine's state for <paramref name="operation"/> - or a refusal
-    /// with a reason fit for a log line.
+    /// Reads the ceremony this request carries: deletes the cookie whatever happens next, refuses one
+    /// already answered, and hands back the engine's state for <paramref name="operation"/> - or a
+    /// refusal with a reason fit for a log line. The caller verifies the answer and then
+    /// <see cref="Spend"/>s the outcome.
     /// </summary>
     public Outcome Take(HttpContext context, string operation)
     {
@@ -164,7 +162,7 @@ public sealed class PasskeyCeremonies
             return Outcome.Refused("the ceremony cookie could not be read");
         }
 
-        if (state.ExpiresUtc is null || state.ExpiresUtc <= Clock.GetUtcNow())
+        if (state.ExpiresUtc is null || state.IssuedUtc is null || state.ExpiresUtc <= Clock.GetUtcNow())
         {
             return Outcome.Refused($"the ceremony expired at {state.ExpiresUtc:O}");
         }
@@ -172,9 +170,9 @@ public sealed class PasskeyCeremonies
         // Server-side as well as in the browser: a copy of this request taken before the cookie was
         // deleted is otherwise a complete answer that still verifies, since most authenticators never
         // advance the sign count that would notice a repeat.
-        if (!_ledger.TrySpend(ceremonyId))
+        if (_ledger.IsSpent(ceremonyId, state.IssuedUtc.Value))
         {
-            return Outcome.Refused("the ceremony was already answered, or was not issued by this server");
+            return Outcome.Refused("the ceremony was already answered, or was issued before this server started");
         }
 
         if (!string.Equals(actual, operation, StringComparison.Ordinal))
@@ -182,7 +180,28 @@ public sealed class PasskeyCeremonies
             return Outcome.Refused($"the ceremony was a {actual}, answered as a {operation}");
         }
 
-        return Outcome.Taken(engineState);
+        return Outcome.Taken(engineState, ceremonyId, state.IssuedUtc.Value, state.ExpiresUtc.Value);
+    }
+
+    /// <summary>
+    /// Records that the ceremony <paramref name="outcome"/> was taken for has been answered and the
+    /// answer verified. <see langword="null"/> when recorded; otherwise why the answer must be refused
+    /// after all - it was recorded by a concurrent copy of the request, or the ledger is full.
+    /// </summary>
+    public string? Spend(in Outcome outcome)
+    {
+        if (!outcome.Succeeded)
+        {
+            return "the ceremony was not taken";
+        }
+
+        return _ledger.Spend(outcome.CeremonyId!, outcome.IssuedUtc, outcome.ExpiresUtc, Clock.GetUtcNow()) switch
+        {
+            PasskeyCeremonyLedger.SpendResult.Spent => null,
+            PasskeyCeremonyLedger.SpendResult.AlreadySpent => "the ceremony was answered by a concurrent request",
+            PasskeyCeremonyLedger.SpendResult.BeforeThisProcess => "the ceremony was issued before this server started",
+            _ => "the ceremony ledger is full",
+        };
     }
 
     /// <summary>

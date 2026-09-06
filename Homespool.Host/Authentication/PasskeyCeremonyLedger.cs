@@ -6,9 +6,9 @@ using System.Threading;
 namespace Homespool.Host.Authentication;
 
 /// <summary>
-/// Which passkey ceremonies this server has issued and not yet seen answered. A ceremony is spent the
-/// moment its answer is read, so a second answer - the same cookie and the same assertion presented
-/// again - is refused whatever the credential says.
+/// Which passkey ceremonies this server has seen answered. A ceremony is spent when its answer
+/// verifies, so a second answer - the same cookie and the same assertion presented again - is refused
+/// whatever the credential says.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,84 +17,118 @@ namespace Homespool.Host.Authentication;
 /// request taken before it is a complete answer that still verifies: the challenge matches, the
 /// signature is good, and most platform authenticators report a sign count of zero for ever, which
 /// takes the one check that would notice a repeat out of play. So the server keeps its own memory of
-/// what it issued, and the state's ceremony id must still be in it.
+/// what was answered, and the state's ceremony id must not be in it.
 /// </para>
 /// <para>
-/// <b>Issued, not spent.</b> Remembering the answered ones would let a replay through after a restart
-/// emptied the list; remembering the outstanding ones means a restart refuses every ceremony in
-/// flight instead, and somebody presses the button again. On a single-process appliance an in-memory
-/// set is the honest shape.
+/// <b>Spent, not issued - since 2026-09-06.</b> The first ledger remembered every ceremony issued and
+/// forgot it when answered, which meant an anonymous challenge bought a row of server state: the
+/// login page hands one out to anybody with an antiforgery pair, so fourteen requests a second kept
+/// the cap full and every passkey sign-in at 503. Remembering the answered ones instead costs a
+/// challenge nothing; a row here takes a signed assertion or attestation that verified, and a
+/// failed answer needs no row because replaying it fails again.
 /// </para>
 /// <para>
-/// <b>Bounded, because the challenge is anonymous.</b> The login page hands one out to anybody with
-/// an antiforgery pair, and a page load supplies that, so the list would otherwise grow at whatever
-/// rate somebody cared to ask for five minutes at a time. Expired entries are swept every
-/// <see cref="SweepInterval"/> begins rather than on each one, and above <see cref="MaxOutstanding"/>
-/// live entries a new ceremony is refused - the caller answers 503, and a person presses the button
-/// again a minute later, which is the right failure for a box with a fixed amount of memory.
+/// <b>A restart forgets, and refuses what it cannot remember.</b> A spent set emptied by a restart
+/// would let an answer captured before it through; so a ceremony issued before this process started
+/// is refused outright, the same outcome the old ledger had for every ceremony in flight, and the
+/// person presses the button again.
+/// </para>
+/// <para>
+/// <b>Bounded, still.</b> Expired entries are swept every <see cref="SweepInterval"/> spends rather
+/// than on each one, and above <see cref="MaxSpent"/> live entries a further spend is refused - a
+/// ceiling that now takes real verified answers to reach, and is refused rather than evicted because
+/// an evicted entry is a replay window.
 /// </para>
 /// </remarks>
 public sealed class PasskeyCeremonyLedger
 {
     /// <summary>
-    /// The most ceremonies that may be outstanding at once. Tens of people on a household appliance
-    /// start a handful an hour; this is a ceiling on abuse, not on use.
+    /// The most answered ceremonies remembered at once. Tens of people on a household appliance
+    /// answer a handful an hour; this is a ceiling on abuse, not on use.
     /// </summary>
-    public const int MaxOutstanding = 4096;
+    public const int MaxSpent = 4096;
 
-    /// <summary>How many begins pass between sweeps of expired entries.</summary>
+    /// <summary>How many spends pass between sweeps of expired entries.</summary>
     public const int SweepInterval = 64;
 
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _outstanding = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _spent = new(StringComparer.Ordinal);
 
-    private int _beginsSinceSweep;
+    private int _spendsSinceSweep;
+
+    public PasskeyCeremonyLedger(TimeProvider? time = null)
+    {
+        // To the second, rounded down: a ceremony's issue time rides the cookie in RFC 1123 form,
+        // which keeps whole seconds, and a ceremony issued in the same second this process started
+        // must not read as issued before it.
+        DateTimeOffset now = (time ?? TimeProvider.System).GetUtcNow();
+        StartedUtc = new DateTimeOffset(now.Ticks - (now.Ticks % TimeSpan.TicksPerSecond), now.Offset);
+    }
+
+    /// <summary>What a spend came to.</summary>
+    public enum SpendResult
+    {
+        /// <summary>Recorded; the ceremony is answered and cannot be again.</summary>
+        Spent = 0,
+
+        /// <summary>Already recorded: this is a replay.</summary>
+        AlreadySpent = 1,
+
+        /// <summary>Issued before this process started, so whether it was answered is unknowable.</summary>
+        BeforeThisProcess = 2,
+
+        /// <summary>The ledger holds its maximum of live entries.</summary>
+        Full = 3,
+    }
+
+    /// <summary>When this ledger began remembering; a ceremony issued earlier is refused.</summary>
+    public DateTimeOffset StartedUtc { get; }
+
+    /// <summary>How many answered ceremonies are remembered, expired ones included until the next sweep.</summary>
+    public int Spent => _spent.Count;
+
+    /// <summary>Whether <paramref name="id"/> is known to have been answered, or predates this process.</summary>
+    public bool IsSpent(string id, DateTimeOffset issued)
+    {
+        ArgumentNullException.ThrowIfNull(id);
+
+        return issued < StartedUtc || _spent.ContainsKey(id);
+    }
 
     /// <summary>
-    /// Records a new ceremony that may be answered until <paramref name="expires"/>, and returns its
-    /// id - or <see langword="null"/> when the ledger is full of ceremonies that have not yet expired
-    /// at <paramref name="now"/>.
+    /// Records that the ceremony <paramref name="id"/>, issued at <paramref name="issued"/> and good
+    /// until <paramref name="expires"/>, has been answered.
     /// </summary>
-    public string? Begin(DateTimeOffset now, DateTimeOffset expires)
+    public SpendResult Spend(string id, DateTimeOffset issued, DateTimeOffset expires, DateTimeOffset now)
     {
-        if (Interlocked.Increment(ref _beginsSinceSweep) >= SweepInterval || _outstanding.Count >= MaxOutstanding)
+        ArgumentNullException.ThrowIfNull(id);
+
+        if (issued < StartedUtc)
+        {
+            return SpendResult.BeforeThisProcess;
+        }
+
+        if (Interlocked.Increment(ref _spendsSinceSweep) >= SweepInterval || _spent.Count >= MaxSpent)
         {
             Sweep(now);
         }
 
-        if (_outstanding.Count >= MaxOutstanding)
+        if (_spent.Count >= MaxSpent)
         {
-            return null;
+            return SpendResult.Full;
         }
 
-        string id = Guid.NewGuid().ToString("N");
-        _outstanding[id] = expires;
-
-        return id;
+        return _spent.TryAdd(id, expires) ? SpendResult.Spent : SpendResult.AlreadySpent;
     }
-
-    /// <summary>
-    /// Spends the ceremony <paramref name="id"/>: <see langword="true"/> exactly once for an id this
-    /// server issued and has not seen answered, and never again.
-    /// </summary>
-    public bool TrySpend(string id)
-    {
-        ArgumentNullException.ThrowIfNull(id);
-
-        return _outstanding.TryRemove(id, out _);
-    }
-
-    /// <summary>How many ceremonies are outstanding, for a test to watch the list stay small.</summary>
-    public int Outstanding => _outstanding.Count;
 
     private void Sweep(DateTimeOffset now)
     {
-        Interlocked.Exchange(ref _beginsSinceSweep, 0);
+        Interlocked.Exchange(ref _spendsSinceSweep, 0);
 
-        foreach (KeyValuePair<string, DateTimeOffset> entry in _outstanding)
+        foreach (KeyValuePair<string, DateTimeOffset> entry in _spent)
         {
             if (entry.Value <= now)
             {
-                _outstanding.TryRemove(entry.Key, out _);
+                _spent.TryRemove(entry.Key, out _);
             }
         }
     }

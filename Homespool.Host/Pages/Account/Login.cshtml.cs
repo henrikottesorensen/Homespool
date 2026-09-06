@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -24,8 +25,12 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous]
+[EnableRateLimiting(PasskeyChallengeRateLimit.PolicyName)]
 public class LoginModel : PageModel
 {
+    /// <summary>The handler that issues a passkey challenge; the one handler on this page the rate limit applies to.</summary>
+    public const string PasskeyOptionsHandler = "PasskeyOptions";
+
     private readonly ExternalSignIn _externalSignIn;
     private readonly UserManager<HSUser> _userManager;
     private readonly IStringLocalizer<SharedResource> _localiser;

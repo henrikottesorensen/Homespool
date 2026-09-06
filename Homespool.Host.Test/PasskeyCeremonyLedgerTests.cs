@@ -2,76 +2,95 @@ using System;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.Time.Testing;
+
 using Homespool.Host.Authentication;
 
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The ceremony ledger: an id is spendable exactly once, an id the ledger never issued is not, the
-/// list does not grow with time, and it does not grow without bound either.
+/// The ceremony ledger: an answered ceremony is recorded once, a ceremony from before this process
+/// is refused, the list does not grow with time, and it does not grow without bound either.
 /// </summary>
 public sealed class PasskeyCeremonyLedgerTests
 {
-    private static readonly DateTimeOffset Noon = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Noon = new(2026, 9, 6, 12, 0, 0, TimeSpan.Zero);
 
-    [Fact]
-    public void AnIssuedCeremonyIsSpentOnce()
+    private static PasskeyCeremonyLedger LedgerStartedAt(DateTimeOffset started)
     {
-        PasskeyCeremonyLedger ledger = new();
-        string id = ledger.Begin(Noon, Noon.AddMinutes(5))!;
+        return new PasskeyCeremonyLedger(new FakeTimeProvider(started));
+    }
 
-        ledger.TrySpend(id).Should().BeTrue("the first answer is the one that counts");
-        ledger.TrySpend(id).Should().BeFalse("the second is a replay");
+    private static string NewId()
+    {
+        return Guid.NewGuid().ToString("N");
     }
 
     [Fact]
-    public void ACeremonyThisLedgerNeverIssuedCannotBeSpent()
+    public void AnAnsweredCeremonyIsRecordedOnce()
     {
-        PasskeyCeremonyLedger ledger = new();
+        PasskeyCeremonyLedger ledger = LedgerStartedAt(Noon);
+        string id = NewId();
 
-        ledger.TrySpend(Guid.NewGuid().ToString("N")).Should().BeFalse("a restart forgets what was outstanding, and forgetting must refuse rather than admit");
+        ledger.IsSpent(id, Noon.AddMinutes(1)).Should().BeFalse("nothing has answered it yet");
+        ledger.Spend(id, Noon.AddMinutes(1), Noon.AddMinutes(6), Noon.AddMinutes(2)).Should().Be(PasskeyCeremonyLedger.SpendResult.Spent, "the first verified answer is the one that counts");
+        ledger.IsSpent(id, Noon.AddMinutes(1)).Should().BeTrue();
+        ledger.Spend(id, Noon.AddMinutes(1), Noon.AddMinutes(6), Noon.AddMinutes(2)).Should().Be(PasskeyCeremonyLedger.SpendResult.AlreadySpent, "the second is a replay");
+    }
+
+    [Fact]
+    public void ACeremonyIssuedBeforeThisProcessStartedIsRefused()
+    {
+        PasskeyCeremonyLedger ledger = LedgerStartedAt(Noon);
+        string id = NewId();
+
+        ledger.IsSpent(id, Noon.AddMinutes(-1)).Should().BeTrue("a restart forgets what was answered, and forgetting must refuse rather than admit");
+        ledger.Spend(id, Noon.AddMinutes(-1), Noon.AddMinutes(4), Noon).Should().Be(PasskeyCeremonyLedger.SpendResult.BeforeThisProcess);
     }
 
     /// <summary>
-    /// Expired entries are swept every <see cref="PasskeyCeremonyLedger.SweepInterval"/> begins rather
-    /// than on each one, so a begin costs nothing most of the time and the list still shrinks.
+    /// Expired entries are swept every <see cref="PasskeyCeremonyLedger.SweepInterval"/> spends rather
+    /// than on each one, so a spend costs nothing most of the time and the list still shrinks.
     /// </summary>
     [Fact]
-    public void ExpiredCeremoniesAreForgottenAtTheNextSweep()
+    public void ExpiredEntriesAreForgottenAtTheNextSweep()
     {
-        PasskeyCeremonyLedger ledger = new();
-        string stale = ledger.Begin(Noon, Noon.AddMinutes(5))!;
-        string live = ledger.Begin(Noon, Noon.AddMinutes(30))!;
+        PasskeyCeremonyLedger ledger = LedgerStartedAt(Noon);
+        string stale = NewId();
+        string live = NewId();
+        ledger.Spend(stale, Noon, Noon.AddMinutes(5), Noon);
+        ledger.Spend(live, Noon, Noon.AddMinutes(30), Noon);
 
-        // Past the stale one's expiry, enough begins to bring a sweep round.
+        // Past the stale one's expiry, enough spends to bring a sweep round.
         for (int i = 0; i < PasskeyCeremonyLedger.SweepInterval; i += 1)
         {
-            ledger.Begin(Noon.AddMinutes(6), Noon.AddMinutes(11));
+            ledger.Spend(NewId(), Noon.AddMinutes(6), Noon.AddMinutes(11), Noon.AddMinutes(6));
         }
 
-        ledger.Outstanding.Should().Be(PasskeyCeremonyLedger.SweepInterval + 1, "the stale one went at the sweep, the live one and the new ones stand");
-        ledger.TrySpend(stale).Should().BeFalse();
-        ledger.TrySpend(live).Should().BeTrue();
+        ledger.Spent.Should().Be(PasskeyCeremonyLedger.SweepInterval + 1, "the stale one went at the sweep, the live one and the new ones stand");
+        ledger.IsSpent(live, Noon).Should().BeTrue();
+        ledger.IsSpent(stale, Noon).Should().BeFalse("an expired ceremony cannot be answered anyway, so forgetting it admits nothing");
     }
 
     /// <summary>
-    /// Above the cap a new ceremony is refused rather than remembered, and the cap counts live
-    /// entries only: once the old ones expire, begins succeed again.
+    /// Above the cap a further answer is refused rather than remembered, and the cap counts live
+    /// entries only: once the old ones expire, spends succeed again. Refused rather than evicted,
+    /// because an evicted entry is a replay window.
     /// </summary>
     [Fact]
     public void AFullLedgerRefusesUntilSomethingExpires()
     {
-        PasskeyCeremonyLedger ledger = new();
+        PasskeyCeremonyLedger ledger = LedgerStartedAt(Noon);
 
-        for (int i = 0; i < PasskeyCeremonyLedger.MaxOutstanding; i += 1)
+        for (int i = 0; i < PasskeyCeremonyLedger.MaxSpent; i += 1)
         {
-            ledger.Begin(Noon, Noon.AddMinutes(5)).Should().NotBeNull("the cap has not been reached");
+            ledger.Spend(NewId(), Noon, Noon.AddMinutes(5), Noon).Should().Be(PasskeyCeremonyLedger.SpendResult.Spent, "the cap has not been reached");
         }
 
-        ledger.Begin(Noon.AddMinutes(1), Noon.AddMinutes(6)).Should().BeNull("every slot holds a ceremony that has not expired");
-        ledger.Outstanding.Should().Be(PasskeyCeremonyLedger.MaxOutstanding);
+        ledger.Spend(NewId(), Noon.AddMinutes(1), Noon.AddMinutes(6), Noon.AddMinutes(1)).Should().Be(PasskeyCeremonyLedger.SpendResult.Full, "every slot holds an answer that has not expired");
+        ledger.Spent.Should().Be(PasskeyCeremonyLedger.MaxSpent);
 
-        ledger.Begin(Noon.AddMinutes(6), Noon.AddMinutes(11)).Should().NotBeNull("the sweep at the cap cleared the expired ones");
-        ledger.Outstanding.Should().Be(1);
+        ledger.Spend(NewId(), Noon.AddMinutes(6), Noon.AddMinutes(11), Noon.AddMinutes(6)).Should().Be(PasskeyCeremonyLedger.SpendResult.Spent, "the sweep at the cap cleared the expired ones");
+        ledger.Spent.Should().Be(1);
     }
 }

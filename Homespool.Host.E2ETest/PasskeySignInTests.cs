@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Pages.Account;
 using Homespool.Host.Test;
 using Homespool.Model.Entities;
 
@@ -229,7 +230,7 @@ public sealed class PasskeySignInTests : IAsyncLifetime
                 ["__RequestVerificationToken"] = antiforgeryToken,
             });
 
-            HttpResponseMessage response = await client.PostAsync("/Account/Login?handler=PasskeyOptions", body, TestContext.Current.CancellationToken);
+            HttpResponseMessage response = await client.PostAsync($"/Account/Login?handler={LoginModel.PasskeyOptionsHandler}", body, TestContext.Current.CancellationToken);
 
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
             response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies);
@@ -250,7 +251,7 @@ public sealed class PasskeySignInTests : IAsyncLifetime
         client.DefaultRequestHeaders.Add("Origin", Origin);
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>());
-        HttpResponseMessage response = await client.PostAsync("/Account/Login?handler=PasskeyOptions", body, TestContext.Current.CancellationToken);
+        HttpResponseMessage response = await client.PostAsync($"/Account/Login?handler={LoginModel.PasskeyOptionsHandler}", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -325,7 +326,7 @@ public sealed class PasskeySignInTests : IAsyncLifetime
             ["__RequestVerificationToken"] = antiforgeryToken,
         });
 
-        HttpResponseMessage response = await client.PostAsync("/Account/Login?handler=PasskeyOptions", body, TestContext.Current.CancellationToken);
+        HttpResponseMessage response = await client.PostAsync($"/Account/Login?handler={LoginModel.PasskeyOptionsHandler}", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the relying-party id covers this host, so a challenge is issued");
         response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");

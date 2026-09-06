@@ -46,7 +46,10 @@ public static class AuthenticationBuilderExtensions
         // One per process: the ceremonies this server has issued and not yet seen answered, and the
         // cookie that carries each one between its two requests. Both ceremonies - the sign-in the
         // scheme runs and the registration the Manage page runs - go through the same pair.
-        builder.Services.AddSingleton<PasskeyCeremonyLedger>();
+        // The ledger tells time by the scheme's clock, as the ceremonies do, so "issued before this
+        // process started" compares like with like - a test that moves the scheme's clock moves both.
+        builder.Services.AddSingleton(services =>
+            new PasskeyCeremonyLedger(services.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>().Get(Schemes.Passkey).TimeProvider));
         builder.Services.AddSingleton<PasskeyCeremonies>();
 
         builder.Services.AddOptions<PasskeyAuthenticationOptions>(Schemes.Passkey)

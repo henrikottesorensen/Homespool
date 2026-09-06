@@ -142,16 +142,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
 
         PasskeyRequestOptionsResult requestOptions = await _engine.MakeRequestOptionsAsync(user, Context);
 
-        if (!_ceremonies.Begin(Context, PasskeyCeremonies.Assertion, requestOptions.AssertionState!))
-        {
-            // Too many ceremonies in flight to remember another. Not a refusal of this person, so
-            // not a 4xx: the box is busy, and a minute later it will not be.
-            Logger.LogWarning("Passkey challenge refused: the ceremony ledger is full.");
-
-            Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-
-            return;
-        }
+        _ceremonies.Begin(Context, PasskeyCeremonies.Assertion, requestOptions.AssertionState!);
 
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json; charset=utf-8";
@@ -210,6 +201,15 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
             Logger.LogInformation("Passkey assertion refused: {Reason}", result.Failure?.Message);
 
             return AuthenticateResult.Fail("The passkey assertion was refused.");
+        }
+
+        // Verified, so now it is answered: recorded before anything is done with it, and a record
+        // refused - a concurrent copy of this request got there first - is a refusal of this one.
+        if (_ceremonies.Spend(ceremony) is { } notSpent)
+        {
+            Logger.LogInformation("Passkey assertion refused: {Reason}.", notSpent);
+
+            return AuthenticateResult.Fail($"The passkey ceremony could not be completed: {notSpent}.");
         }
 
         HSUser user = result.User!;

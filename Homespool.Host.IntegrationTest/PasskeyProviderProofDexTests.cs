@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.E2ETest;
+using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Test;
 using Homespool.Model.Entities;
 
@@ -91,7 +92,7 @@ public sealed class PasskeyProviderProofDexTests
     {
         using FormUrlEncodedContent body = new(new Dictionary<string, string> { ["__RequestVerificationToken"] = token });
 
-        return await client.PostAsync("/Account/Manage/Passkeys?handler=BeginRegistration", body, TestContext.Current.CancellationToken);
+        return await client.PostAsync($"/Account/Manage/Passkeys?handler={PasskeysModel.BeginRegistrationHandler}", body, TestContext.Current.CancellationToken);
     }
 
     /// <summary>A host configured against dex with passkeys bound to localhost, and a dex client to walk its hops.</summary>

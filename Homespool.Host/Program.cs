@@ -25,6 +25,7 @@ using Homespool.Host.Health;
 using Homespool.Host.Listeners;
 using Homespool.Host.Localisation;
 using Homespool.Host.Middleware;
+using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 
@@ -398,6 +399,7 @@ public static class Program
             builder.Services.AddScoped<Printing.PrintFileSender>();
 
             builder.Services.AddPrinterRateLimiting();
+            builder.Services.AddPasskeyChallengeRateLimiting();
 
             // Scoped, following the WebSocketHandler it runs: one session per accepted upgrade.
             builder.Services.AddScoped<PrusaConnect.PrinterConnectionSession>();

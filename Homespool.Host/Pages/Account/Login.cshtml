@@ -51,7 +51,7 @@
                challenge and the answer. *@
             <section id="passkey-section">
                 <form id="passkey-form" method="post" asp-page-handler="Passkey" asp-route-returnUrl="@Model.ReturnUrl"
-                      data-passkey-options="@Url.Page("./Login", "PasskeyOptions")"
+                      data-passkey-options="@Url.Page("./Login", LoginModel.PasskeyOptionsHandler)"
                       data-passkey-cancelled="@Localiser["Account_PasskeyCancelled"]">
                     <input type="hidden" name="@Homespool.Host.Authentication.PasskeyCredential.FormField" value="" />
                     <input type="hidden" name="rememberMe" value="false" />

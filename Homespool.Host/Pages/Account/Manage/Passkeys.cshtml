@@ -41,7 +41,7 @@ else
                there is no no-script path for WebAuthn. The form posts the attestation the script
                fills in, so the antiforgery token guards both the challenge and the answer. *@
             <form id="passkey-register-form" method="post" asp-page-handler="Register"
-                  data-passkey-options="@Url.Page("./Passkeys", "BeginRegistration")"
+                  data-passkey-options="@Url.Page("./Passkeys", PasskeysModel.BeginRegistrationHandler)"
                   data-passkey-cancelled="@Localiser["Passkeys_Cancelled"]">
                 <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
                 <div class="form-floating mb-3">

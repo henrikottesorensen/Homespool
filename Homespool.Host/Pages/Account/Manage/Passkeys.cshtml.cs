@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -72,8 +73,12 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
+[EnableRateLimiting(PasskeyChallengeRateLimit.PolicyName)]
 public class PasskeysModel : PageModel
 {
+    /// <summary>The handler that starts a registration ceremony; the one handler on this page the rate limit applies to.</summary>
+    public const string BeginRegistrationHandler = "BeginRegistration";
+
     /// <summary>The longest name a passkey may be given. It is rendered in a table row and nowhere else.</summary>
     public const int NameMaxLength = 64;
 
@@ -224,6 +229,13 @@ public class PasskeysModel : PageModel
 
                 return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
             }
+
+            if (_ceremonies.Spend(proof) is { } notSpent)
+            {
+                _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, notSpent);
+
+                return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
+            }
         }
         else
         {
@@ -257,12 +269,7 @@ public class PasskeysModel : PageModel
             },
             HttpContext);
 
-        if (!_ceremonies.Begin(HttpContext, PasskeyCeremonies.Attestation, creation.AttestationState!))
-        {
-            _logger.LogWarning("Passkey registration refused for user {UserId}: the ceremony ledger is full.", user.Id);
-
-            return StatusCode(StatusCodes.Status503ServiceUnavailable);
-        }
+        _ceremonies.Begin(HttpContext, PasskeyCeremonies.Attestation, creation.AttestationState!);
 
         Response.Headers.CacheControl = "no-store";
 
@@ -354,10 +361,7 @@ public class PasskeysModel : PageModel
             return RedirectToPage();
         }
 
-        if (!_ceremonies.Begin(HttpContext, PasskeyCeremonies.ProviderProof, info.ProviderKey))
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable);
-        }
+        _ceremonies.Begin(HttpContext, PasskeyCeremonies.ProviderProof, info.ProviderKey);
 
         _logger.LogInformation("User {UserId} re-authenticated at {LoginProvider} to add a passkey.", user.Id, info.LoginProvider);
 
@@ -459,6 +463,15 @@ public class PasskeysModel : PageModel
             _logger.LogWarning("Passkey registration refused: the ceremony named user {CeremonyUserId}, the session is user {UserId}.",
                                attested.UserEntity.Id,
                                user.Id);
+
+            return Refused();
+        }
+
+        // Verified and for this account, so now it is answered; a record refused is a concurrent
+        // copy of this request that got there first.
+        if (_ceremonies.Spend(ceremony) is { } notSpent)
+        {
+            _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, notSpent);
 
             return Refused();
         }

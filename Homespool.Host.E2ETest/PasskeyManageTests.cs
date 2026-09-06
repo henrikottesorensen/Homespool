@@ -14,6 +14,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Pages.Account;
+using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Test;
 using Homespool.Model.Entities;
 
@@ -110,7 +112,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
                 ["__RequestVerificationToken"] = token,
                 ["Input.Password"] = "Correct-Horse-Battery-Staple-1!", // betterleaks:allow
             });
-            HttpResponseMessage begin = await client.PostAsync($"{ManagePath}?handler=BeginRegistration", beginBody, TestContext.Current.CancellationToken);
+            HttpResponseMessage begin = await client.PostAsync($"{ManagePath}?handler={PasskeysModel.BeginRegistrationHandler}", beginBody, TestContext.Current.CancellationToken);
             begin.StatusCode.Should().Be(HttpStatusCode.OK, "the current password unlocks the ceremony");
             string creationOptions = await begin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
@@ -144,7 +146,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         string loginToken = AntiforgeryTestHelper.ExtractToken(await login.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         using FormUrlEncodedContent challengeBody = new(new Dictionary<string, string> { ["__RequestVerificationToken"] = loginToken });
-        HttpResponseMessage challenge = await anonymous.PostAsync("/Account/Login?handler=PasskeyOptions", challengeBody, TestContext.Current.CancellationToken);
+        HttpResponseMessage challenge = await anonymous.PostAsync($"/Account/Login?handler={LoginModel.PasskeyOptionsHandler}", challengeBody, TestContext.Current.CancellationToken);
         string requestOptions = await challenge.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         using FormUrlEncodedContent assertionBody = new(new Dictionary<string, string>

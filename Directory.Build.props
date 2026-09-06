@@ -59,22 +59,6 @@
             not compile from this directory. Remove when the investigation ends.
         -->
         <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-
-        <!--
-            Every project keeps a packages.lock.json, committed. A PackageReference version is a
-            floor - "0.2.0" means at least 0.2.0 - so what a build actually links is whatever the
-            feed held that day, transitive dependencies included. The lock file records the exact
-            graph and a content hash per package, and restore reuses it while the manifests it was
-            generated from are unchanged. Bumping a version in a .csproj regenerates it on the next
-            restore; that diff is the review of what changed underneath.
-
-            Locked mode is enforced only on GitHub Actions, where a lock file that no longer matches
-            its manifests fails the restore (NU1004) instead of being quietly rewritten. Locally it
-            stays off so that editing a version does not require remembering a flag; the regenerated
-            file shows up in git status either way.
-        -->
-        <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-        <RestoreLockedMode Condition="'$(GITHUB_ACTIONS)' == 'true'">true</RestoreLockedMode>
     </PropertyGroup>
 
     <!--

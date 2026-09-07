@@ -623,12 +623,6 @@
   <data name="Passkeys_PasswordWhy" xml:space="preserve">
     <value>Spørges om, så en session, som en anden har fået fat i, ikke kan tilføje et login, der overlever den.</value>
   </data>
-  <data name="Passkeys_PasswordWrong" xml:space="preserve">
-    <value>Det er ikke din adgangskode.</value>
-  </data>
-  <data name="Passkeys_PasswordLockedOut" xml:space="preserve">
-    <value>For mange forkerte adgangskoder. Prøv igen om {0}.</value>
-  </data>
   <data name="Manage_PasswordChangedPasskeys" xml:space="preserve">
     <value>Dine {0} adgangsnøgle(r) logger dig stadig ind. Hvis du skiftede adgangskode, fordi en anden kendte den, så se efter en adgangsnøgle, du ikke selv har tilføjet, på siden Adgangsnøgler.</value>
   </data>
@@ -638,26 +632,8 @@
   <data name="Passkeys_ProviderWhy" xml:space="preserve">
     <value>Denne konto logger ind gennem {0}, så {0} skal bekræfte, at det er dig, før en adgangsnøgle kan tilføjes. Bekræftelsen gælder i fem minutter.</value>
   </data>
-  <data name="Passkeys_YourProvider" xml:space="preserve">
-    <value>din udbyder</value>
-  </data>
-  <data name="Passkeys_ProviderConfirm" xml:space="preserve">
-    <value>Bekræft med {0}</value>
-  </data>
   <data name="Passkeys_ProviderConfirmed" xml:space="preserve">
     <value>{0} har bekræftet dig. Tilføj din adgangsnøgle inden for fem minutter.</value>
-  </data>
-  <data name="Passkeys_ProviderNotConfirmed" xml:space="preserve">
-    <value>Bekræft med din udbyder først.</value>
-  </data>
-  <data name="Passkeys_ProviderFailed" xml:space="preserve">
-    <value>Bekræftelsen blev ikke gennemført. Prøv igen.</value>
-  </data>
-  <data name="Passkeys_ProviderMismatch" xml:space="preserve">
-    <value>Det var en anden {0}-konto end den, denne konto logger ind med.</value>
-  </data>
-  <data name="Passkeys_ProviderStale" xml:space="preserve">
-    <value>{0} bad dig ikke om at logge ind igen lige nu. Prøv igen.</value>
   </data>
   <data name="Passkeys_NameInvalid" xml:space="preserve">
     <value>Et navn på en adgangsnøgle må højst være 64 tegn.</value>
@@ -2642,5 +2618,38 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Cert_ResolvesToNothing" xml:space="preserve">
     <value>Slåes ikke op til noget en printer kunne bruge</value>
+  </data>
+  <data name="StepUp_PasswordWhy" xml:space="preserve">
+    <value>Spørges om, så en session, som en anden har fået fat i, ikke kan svække beskyttelsen af denne konto.</value>
+  </data>
+  <data name="StepUp_PasswordWrong" xml:space="preserve">
+    <value>Det er ikke din adgangskode.</value>
+  </data>
+  <data name="StepUp_LockedOut" xml:space="preserve">
+    <value>For mange forkerte adgangskoder. Prøv igen om {0}.</value>
+  </data>
+  <data name="StepUp_ProviderWhy" xml:space="preserve">
+    <value>Denne konto logger ind gennem {0}, så {0} skal bekræfte, at det er dig, først. Bekræftelsen gælder i fem minutter.</value>
+  </data>
+  <data name="StepUp_YourProvider" xml:space="preserve">
+    <value>din udbyder</value>
+  </data>
+  <data name="StepUp_ProviderConfirm" xml:space="preserve">
+    <value>Bekræft med {0}</value>
+  </data>
+  <data name="StepUp_ProviderConfirmed" xml:space="preserve">
+    <value>{0} har bekræftet dig. Gør det færdigt inden for fem minutter.</value>
+  </data>
+  <data name="StepUp_ProviderNotConfirmed" xml:space="preserve">
+    <value>Bekræft med din udbyder først.</value>
+  </data>
+  <data name="StepUp_ProviderFailed" xml:space="preserve">
+    <value>Bekræftelsen blev ikke gennemført. Prøv igen.</value>
+  </data>
+  <data name="StepUp_ProviderMismatch" xml:space="preserve">
+    <value>Det var en anden {0}-konto end den, denne konto logger ind med.</value>
+  </data>
+  <data name="StepUp_ProviderStale" xml:space="preserve">
+    <value>{0} bad dig ikke om at logge ind igen lige nu. Prøv igen.</value>
   </data>
 </root>

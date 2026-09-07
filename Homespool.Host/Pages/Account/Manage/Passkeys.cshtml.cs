@@ -4,11 +4,8 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Duende.IdentityModel;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -81,13 +78,6 @@ public class PasskeysModel : PageModel
 
     /// <summary>The longest name a passkey may be given. It is rendered in a table row and nowhere else.</summary>
     public const int NameMaxLength = 64;
-
-    /// <summary>
-    /// How old a provider's <c>auth_time</c> may be for the round trip to count as a re-authentication.
-    /// Generous next to the ceremony's five minutes, because the person spent some of it at the
-    /// provider's own screens.
-    /// </summary>
-    public static readonly TimeSpan MaxProviderProofAge = TimeSpan.FromMinutes(2);
 
     private readonly UserManager<HSUser> _users;
     private readonly LocalSignInRules _rules;
@@ -217,7 +207,7 @@ public class PasskeysModel : PageModel
             {
                 _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, proof.Reason);
 
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
+                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_ProviderNotConfirmed"]);
             }
 
             // The proof names the subject the provider vouched for, and it must be one THIS account
@@ -230,14 +220,14 @@ public class PasskeysModel : PageModel
             {
                 _logger.LogWarning("Passkey registration refused for user {UserId}: the provider proof was for another account.", user.Id);
 
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
+                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_ProviderNotConfirmed"]);
             }
 
             if (_ceremonies.Spend(proof) is { } notSpent)
             {
                 _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, notSpent);
 
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_ProviderNotConfirmed"]);
+                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_ProviderNotConfirmed"]);
             }
         }
         else
@@ -251,12 +241,12 @@ public class PasskeysModel : PageModel
                 if (stepUp.Refusal() == SignInRefusal.LockedOut)
                 {
                     return Refusal(StatusCodes.Status429TooManyRequests,
-                                   _localiser["Passkeys_PasswordLockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]);
+                                   _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]);
                 }
 
                 _logger.LogInformation("Passkey registration refused for user {UserId}: the password step-up failed.", user.Id);
 
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["Passkeys_PasswordWrong"]);
+                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_PasswordWrong"]);
             }
         }
 
@@ -341,13 +331,13 @@ public class PasskeysModel : PageModel
 
         if (info is null)
         {
-            StatusMessage = _localiser["Passkeys_ProviderFailed"];
+            StatusMessage = _localiser["StepUp_ProviderFailed"];
 
             return RedirectToPage();
         }
 
         IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
-        string? refusal = ProviderProofRefusal(info, logins, _timeProvider.GetUtcNow());
+        string? refusal = StepUpGate.ProviderProofRefusal(info, logins, _timeProvider.GetUtcNow());
 
         if (refusal is not null)
         {
@@ -356,7 +346,7 @@ public class PasskeysModel : PageModel
                                info.LoginProvider,
                                refusal);
 
-            StatusMessage = _localiser[refusal == "mismatch" ? "Passkeys_ProviderMismatch" : "Passkeys_ProviderStale", info.ProviderDisplayName ?? info.LoginProvider];
+            StatusMessage = _localiser[refusal == "mismatch" ? "StepUp_ProviderMismatch" : "StepUp_ProviderStale", info.ProviderDisplayName ?? info.LoginProvider];
 
             return RedirectToPage();
         }
@@ -368,37 +358,6 @@ public class PasskeysModel : PageModel
         StatusMessage = _localiser["Passkeys_ProviderConfirmed", info.ProviderDisplayName ?? info.LoginProvider];
 
         return RedirectToPage();
-    }
-
-    /// <summary>
-    /// Why a provider's answer does not count as this account re-authenticating, or
-    /// <see langword="null"/> when it does: <c>"mismatch"</c> when the subject is not one this account
-    /// signs in with, <c>"stale"</c> when the provider reports a sign-in older than
-    /// <see cref="MaxProviderProofAge"/>. A provider that reports no sign-in time is taken at its word.
-    /// </summary>
-    public static string? ProviderProofRefusal(ExternalLoginInfo info, IEnumerable<UserLoginInfo> logins, DateTimeOffset now)
-    {
-        ArgumentNullException.ThrowIfNull(info);
-        ArgumentNullException.ThrowIfNull(logins);
-
-        bool held = logins.Any(login => string.Equals(login.LoginProvider, info.LoginProvider, StringComparison.Ordinal)
-                                        && string.Equals(login.ProviderKey, info.ProviderKey, StringComparison.Ordinal));
-
-        if (!held)
-        {
-            return "mismatch";
-        }
-
-        string? authTime = info.Principal.FindFirstValue(JwtClaimTypes.AuthenticationTime);
-
-        if (authTime is not null
-            && long.TryParse(authTime, NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)
-            && now - DateTimeOffset.FromUnixTimeSeconds(seconds) > MaxProviderProofAge)
-        {
-            return "stale";
-        }
-
-        return null;
     }
 
     /// <summary>

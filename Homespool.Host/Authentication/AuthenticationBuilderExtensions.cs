@@ -105,6 +105,12 @@ public static class AuthenticationBuilderExtensions
         builder.Services.AddScoped<LocalSignIn>();
         builder.Services.AddScoped<ExternalSignIn>();
 
+        // Not a scheme but the thing four Manage pages compose out of two of them: the proof a page
+        // demands before an act a live session alone may not perform, and the sentences it is refused
+        // with.
+        builder.Services.AddScoped<StepUpGate>();
+        builder.Services.AddScoped<Localisation.StepUpText>();
+
         builder.AddScheme<AuthenticationSchemeOptions, UserPasswordAuthenticationHandler>(Schemes.UserPassword, options => { });
         builder.AddScheme<AuthenticationSchemeOptions, TotpAuthenticationHandler>(Schemes.Totp, options => { });
         builder.AddScheme<AuthenticationSchemeOptions, RecoveryCodeAuthenticationHandler>(Schemes.RecoveryCode, options => { });

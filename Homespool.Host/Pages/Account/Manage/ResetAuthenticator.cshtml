@@ -15,7 +15,32 @@
     </p>
 </div>
 <div>
+    @if (!Model.UsesPassword)
+    {
+        @* No password to prove, so the provider does the proving: a round trip that ends back here
+           with a five-minute confirmation the reset below spends. Its own form, since a form cannot
+           nest in the reset form. *@
+        <p class="form-text">@Localiser["StepUp_ProviderWhy", Model.Providers.Count > 0 ? (Model.Providers[0].DisplayName ?? Model.Providers[0].Name) : Localiser["StepUp_YourProvider"].Value]</p>
+        @foreach (var scheme in Model.Providers)
+        {
+            <form method="post" asp-page-handler="Reauthenticate" class="mb-3">
+                <input type="hidden" name="provider" value="@scheme.Name" />
+                <button type="submit" class="btn btn-outline-primary">@Localiser["StepUp_ProviderConfirm", scheme.DisplayName ?? scheme.Name]</button>
+            </form>
+        }
+    }
+
     <form id="reset-authenticator-form" method="post">
+        @if (Model.UsesPassword)
+        {
+            @* The password, not a code: this page is for the person whose authenticator is gone. *@
+            <div class="form-floating mb-1">
+                <input asp-for="Input.Password" class="form-control" autocomplete="current-password" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
+                <label asp-for="Input.Password" class="form-label"></label>
+            </div>
+            <p class="form-text mb-3">@Localiser["StepUp_PasswordWhy"]</p>
+        }
+
         <button id="reset-authenticator-button" class="btn btn-danger" type="submit">@Localiser["TwoFactor_ResetKeyButton"]</button>
     </form>
 </div>

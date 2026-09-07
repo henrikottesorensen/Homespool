@@ -378,13 +378,13 @@ public sealed class PasskeysPageTests : IDisposable
         DateTimeOffset now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
         UserLoginInfo[] logins = [new(Schemes.ExternalOidc, "subject-1", "Dex")];
 
-        PasskeysModel.ProviderProofRefusal(Answer("subject-1", authTime: null), logins, now)
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: null), logins, now)
                      .Should().BeNull("the subject matches and the provider reported no sign-in time, so it is taken at its word");
-        PasskeysModel.ProviderProofRefusal(Answer("subject-2", authTime: null), logins, now)
+        StepUpGate.ProviderProofRefusal(Answer("subject-2", authTime: null), logins, now)
                      .Should().Be("mismatch", "another account at the same provider is not this account re-authenticating");
-        PasskeysModel.ProviderProofRefusal(Answer("subject-1", authTime: now.AddSeconds(-30)), logins, now)
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddSeconds(-30)), logins, now)
                      .Should().BeNull("a sign-in half a minute ago is what max_age=0 asked for");
-        PasskeysModel.ProviderProofRefusal(Answer("subject-1", authTime: now.AddMinutes(-10)), logins, now)
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddMinutes(-10)), logins, now)
                      .Should().Be("stale", "the provider reused a session it already had instead of asking again");
     }
 

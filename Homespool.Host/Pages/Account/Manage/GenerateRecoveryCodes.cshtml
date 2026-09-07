@@ -19,7 +19,32 @@
     </p>
 </div>
 <div>
+    @if (!Model.UsesPassword)
+    {
+        @* No password to prove, so the provider does the proving: a round trip that ends back here
+           with a five-minute confirmation the generation below spends. Its own form, since a form
+           cannot nest in the generate form. *@
+        <p class="form-text">@Localiser["StepUp_ProviderWhy", Model.Providers.Count > 0 ? (Model.Providers[0].DisplayName ?? Model.Providers[0].Name) : Localiser["StepUp_YourProvider"].Value]</p>
+        @foreach (var scheme in Model.Providers)
+        {
+            <form method="post" asp-page-handler="Reauthenticate" class="mb-3">
+                <input type="hidden" name="provider" value="@scheme.Name" />
+                <button type="submit" class="btn btn-outline-primary">@Localiser["StepUp_ProviderConfirm", scheme.DisplayName ?? scheme.Name]</button>
+            </form>
+        }
+    }
+
     <form method="post">
+        @if (Model.UsesPassword)
+        {
+            @* Ten offline keys to this account is a credential change, so it takes the credential. *@
+            <div class="form-floating mb-1">
+                <input asp-for="Input.Password" class="form-control" autocomplete="current-password" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
+                <label asp-for="Input.Password" class="form-label"></label>
+            </div>
+            <p class="form-text mb-3">@Localiser["StepUp_PasswordWhy"]</p>
+        }
+
         <button class="btn btn-danger" type="submit">@Localiser["TwoFactor_GenerateCodes"]</button>
     </form>
 </div>

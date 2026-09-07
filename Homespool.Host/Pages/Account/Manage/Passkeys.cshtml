@@ -27,12 +27,12 @@ else
                 @* No password to prove, so the provider does the proving: a round trip that ends back
                    here with a five-minute confirmation the add below spends. Its own form, since a form
                    cannot nest in the add form. *@
-                <p class="form-text">@Localiser["Passkeys_ProviderWhy", Model.Providers.Count > 0 ? (Model.Providers[0].DisplayName ?? Model.Providers[0].Name) : Localiser["Passkeys_YourProvider"].Value]</p>
+                <p class="form-text">@Localiser["Passkeys_ProviderWhy", Model.Providers.Count > 0 ? (Model.Providers[0].DisplayName ?? Model.Providers[0].Name) : Localiser["StepUp_YourProvider"].Value]</p>
                 @foreach (var scheme in Model.Providers)
                 {
                     <form method="post" asp-page-handler="Reauthenticate" class="mb-3">
                         <input type="hidden" name="provider" value="@scheme.Name" />
-                        <button type="submit" class="btn btn-outline-primary">@Localiser["Passkeys_ProviderConfirm", scheme.DisplayName ?? scheme.Name]</button>
+                        <button type="submit" class="btn btn-outline-primary">@Localiser["StepUp_ProviderConfirm", scheme.DisplayName ?? scheme.Name]</button>
                     </form>
                 }
             }

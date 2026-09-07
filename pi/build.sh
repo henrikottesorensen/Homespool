@@ -133,26 +133,6 @@ if [ "$(uname -m)" != "arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
     exit 1
 fi
 
-# There is no stock password any more, and this is where one used to be.
-#
-# It was "homespool", the OctoPi arrangement, adopted because rpi-image-gen's own default is to
-# *lock* the account - correct for a fleet, and useless for an appliance whose board would not join
-# the network, since that is then also a board you cannot log into to find out why. The only way in
-# was editing cmdline.txt for an init=/bin/sh shell, which happened here, and settled it.
-#
-# What settled it the other way is that a published password is a remote one. Nothing in this image
-# configures sshd, so it runs Debian's PasswordAuthentication yes with UsePAM yes - and under PAM an
-# expired password still authenticates over SSH and then prompts for a new one. Expiry was the whole
-# mitigation, and it was not one: between a card reaching a LAN and its owner's first login, anybody
-# who could reach port 22 could log in with the credential from the README and set a password of
-# their own, locking the owner out of their own board.
-#
-# The recovery case that argued for it is answered better by /boot/firmware/homespool-login.txt,
-# which supplies the first password and only the first. It is the same physical operation as setting
-# the wi-fi, on the same partition, and it stays available for as long as the account has no
-# password - so a board nobody can get into can always be given a way in, which is more than the
-# init=/bin/sh hack ever offered.
-
 # ------------------------------------------------------------------------------------------------
 # 1. The application images, native arm64.
 # ------------------------------------------------------------------------------------------------

@@ -139,7 +139,7 @@ public class ResetAuthenticatorModel : PageModel
         {
             _logger.LogInformation("Authenticator reset refused for user {UserId}: {Refusal}.", user.Id, proof.Refusal);
 
-            StatusMessage = await _stepUpText.DescribeAsync(proof, user);
+            StatusMessage = _stepUpText.Describe(proof);
 
             return RedirectToPage();
         }

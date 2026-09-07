@@ -30,15 +30,15 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// it, the walk-up on an unlocked browser that the second factor exists to stop could simply switch
 /// the second factor off first. Requiring a current code means weakening the account through this
 /// page takes the same credential the account is protected by - the shape the printer-removal
-/// confirmation set, through the same code scheme, so a wrong code counts toward the account lockout:
-/// six digits with unlimited attempts is not a control.
+/// confirmation set, through the same code scheme, which backs a wrong code off with every other
+/// step-up: six digits with unlimited attempts is not a control.
 /// </para>
 /// <para>
-/// <b>The requirement is this page's, not the account's.</b>
-/// <see cref="ResetAuthenticatorModel"/> - the button beside this one on
-/// <c>TwoFactorAuthentication</c> - also clears the enabled flag, and asks for no code to do it. So a
-/// reader must not take the check below as "two-factor cannot be turned off from a live session";
-/// what it says is that it cannot be turned off <i>here</i>.
+/// <b>The page beside it asks for a different credential, not for nothing.</b>
+/// <see cref="ResetAuthenticatorModel"/> - the button next to this one on
+/// <c>TwoFactorAuthentication</c> - reaches the same state, the flag off, and demands the account's
+/// password rather than a code: it exists for the person whose authenticator is gone, who is the one
+/// credential-holder that cannot produce one. Both doors are shut; they take different keys.
 /// </para>
 /// </remarks>
 [Authorize]
@@ -94,13 +94,14 @@ public class Disable2faModel : PageModel
         // Authenticator codes only, as on the printer-removal confirmation: a recovery code is for
         // getting back into an account, and spending one here would widen what an unattended session
         // can do to exactly what this exists to stop. The code scheme verifies it for the signed-in
-        // account, counts a wrong one toward the lockout, and refuses a locked-out account first.
+        // account, backs a wrong one off with every other step-up, and refuses a backed-off or
+        // locked-out account first.
         AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(code));
 
         if (!stepUp.Succeeded)
         {
             StatusMessage = stepUp.Refusal() == SignInRefusal.LockedOut
-                ? _localiser["TwoFactor_DisableLockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]
+                ? _localiser["TwoFactor_DisableLockedOut", BackoffWait.Format(_localiser, stepUp.RetryAfter() ?? TimeSpan.Zero)]
                 : _localiser["TwoFactor_DisableCodeInvalid"];
 
             return RedirectToPage();

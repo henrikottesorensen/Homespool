@@ -108,9 +108,15 @@ public sealed class StepUpGate
 
     /// <summary>
     /// Checks <paramref name="password"/> against the signed-in account through
-    /// <see cref="Schemes.UserPassword"/>, which counts a wrong one toward the lockout and refuses a
-    /// locked-out account before comparing anything.
+    /// <see cref="Schemes.UserPassword"/>, which refuses an account that may not sign in before
+    /// comparing anything.
     /// </summary>
+    /// <remarks>
+    /// <b>What a wrong one costs is the scheme's to decide, not this class's.</b> It backs off the
+    /// account's step-up counter and leaves the account lockout alone - a session holder guessing here
+    /// must not be able to lock the owner out of taking the session back. The refusal carries how long
+    /// the backoff lasts, which is the only part of it a page can act on.
+    /// </remarks>
     public async Task<StepUpResult> PasswordAsync(HttpContext context, string? password)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -123,7 +129,7 @@ public sealed class StepUpGate
         }
 
         return stepUp.Refusal() == SignInRefusal.LockedOut
-            ? StepUpResult.Refused(StepUpRefusal.LockedOut)
+            ? StepUpResult.Refused(StepUpRefusal.LockedOut, stepUp.RetryAfter())
             : StepUpResult.Refused(StepUpRefusal.WrongPassword);
     }
 

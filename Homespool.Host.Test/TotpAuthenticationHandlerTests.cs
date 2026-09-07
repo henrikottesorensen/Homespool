@@ -10,6 +10,7 @@ using Duende.IdentityModel;
 
 using Microsoft.AspNetCore.Authentication;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Model.Entities;
 
@@ -175,6 +176,36 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
         }
 
         last.Refusal().Should().Be(SignInRefusal.LockedOut);
+    }
+
+    /// <summary>
+    /// A wrong step-up code backs off the step-up and nothing else: the account is not locked out,
+    /// the sign-in code still completes a sign-in, and the backoff says how long it lasts.
+    /// </summary>
+    [Fact]
+    public async Task EnoughWrongStepUpCodesBackOffTheStepUpAndNothingElse()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        byte[] secret = await rig.EnableAuthenticatorAsync(user);
+        string session = await rig.SessionCookieAsync(user);
+        int allowed = new AttemptLimitOptions().MaxFailedAttempts;
+
+        // The allowance, and one past it: the backoff starts on the failure that exceeds it.
+        for (int i = 0; i <= allowed; i += 1)
+        {
+            await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.Totp, StepUp("000000"));
+        }
+
+        AuthenticateResult backedOff = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.Totp, StepUp(LocalSchemeRig.CodeFor(secret)));
+        AuthenticateResult signIn = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(await rig.PendingTwoFactorCookieAsync(user)), Schemes.Totp, Code(LocalSchemeRig.CodeFor(secret)));
+
+        backedOff.Succeeded.Should().BeFalse();
+        backedOff.Refusal().Should().Be(SignInRefusal.LockedOut);
+        backedOff.RetryAfter().Should().NotBeNull().And.BeGreaterThan(TimeSpan.Zero);
+        (await rig.Users.GetAccessFailedCountAsync(user)).Should().Be(0, "a step-up never counts toward the account lockout");
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeFalse();
+        signIn.Succeeded.Should().BeTrue(signIn.Failure?.Message);
     }
 
     // ---------- the recovery code ----------

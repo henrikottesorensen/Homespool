@@ -1,11 +1,9 @@
 using System;
-using System.Threading.Tasks;
 
 using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Printers;
-using Homespool.Model.Entities;
 
 namespace Homespool.Host.Localisation;
 
@@ -22,24 +20,27 @@ namespace Homespool.Host.Localisation;
 public class StepUpText
 {
     private readonly IStringLocalizer<SharedResource> _localiser;
-    private readonly LocalSignInRules _rules;
 
-    public StepUpText(IStringLocalizer<SharedResource> localiser, LocalSignInRules rules)
+    public StepUpText(IStringLocalizer<SharedResource> localiser)
     {
         _localiser = localiser;
-        _rules = rules;
     }
 
     /// <summary>
     /// The sentence for <paramref name="result"/>, which must be a refusal.
     /// </summary>
+    /// <remarks>
+    /// <b>The wait comes off the refusal, not out of the account.</b> A wrong step-up backs off its
+    /// own counter and leaves the account lockout untouched, so asking the account how long it is
+    /// locked out for answers zero and the reader is told to try again in no time at all.
+    /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="result"/> proved the account.</exception>
-    public async Task<string> DescribeAsync(StepUpResult result, HSUser user)
+    public string Describe(StepUpResult result)
     {
         return result.Refusal switch
         {
             StepUpRefusal.LockedOut =>
-                _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))],
+                _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, result.RetryAfter ?? TimeSpan.Zero)],
             StepUpRefusal.WrongPassword => _localiser["StepUp_PasswordWrong"],
             StepUpRefusal.NoProviderProof => _localiser["StepUp_ProviderNotConfirmed"],
             _ => throw new ArgumentException("A proved step-up has nothing to say.", nameof(result)),

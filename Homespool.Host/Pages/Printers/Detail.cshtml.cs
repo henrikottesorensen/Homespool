@@ -1153,7 +1153,7 @@ public class DetailModel : PageModel
 
         // The name first, and the code second, deliberately. A wrong name is not a guess at a secret
         // - it is on the heading of the page the form sits on - so counting it would let somebody
-        // lock the account without ever attempting the thing the lockout protects.
+        // back the step-up off without ever attempting the thing the backoff protects.
         if (!string.Equals(confirmation?.Trim(), name, StringComparison.OrdinalIgnoreCase))
         {
             (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveNameMismatch", name].Value, false);
@@ -1166,16 +1166,16 @@ public class DetailModel : PageModel
         // widening what an unattended session can do to exactly what this exists to stop.
         if (await _userManager.GetTwoFactorEnabledAsync(user))
         {
-            // A step-up on the signed-in account through the code scheme: a wrong code counts toward
-            // the account lockout, as a wrong login does, and a locked-out account is refused before
-            // its code is compared.
+            // A step-up on the signed-in account through the code scheme: a wrong code backs off the
+            // account's step-ups, never its sign-in, and a backed-off or locked-out account is refused
+            // before its code is compared.
             AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(code));
 
             if (!stepUp.Succeeded)
             {
                 if (stepUp.Refusal() == SignInRefusal.LockedOut)
                 {
-                    (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveLockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))].Value, false);
+                    (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveLockedOut", BackoffWait.Format(_localiser, stepUp.RetryAfter() ?? TimeSpan.Zero)].Value, false);
 
                     return RedirectToPage(new { uuid });
                 }

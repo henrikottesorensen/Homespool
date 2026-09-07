@@ -73,6 +73,10 @@ internal static class IdentityTestHarness
 
         services.Configure<IdentityPasskeyOptions>(IdentityConfiguration.ConfigurePasskeys);
 
+        // The step-up backoff the local schemes keep, over the same tracked context.
+        services.AddOptions<AttemptLimitOptions>();
+        services.AddScoped<AttemptLimiter>();
+
         // A test that needs a deployment choice - a relying-party id, say - makes it here, after the
         // application's registrations and before the container is built, the way Program would.
         configure?.Invoke(services);

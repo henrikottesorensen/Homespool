@@ -856,7 +856,7 @@ public sealed class DetailModelTests : IDisposable
         (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
-    /// <summary>A wrong code refuses, and is counted toward the account's lockout.</summary>
+    /// <summary>A wrong code refuses, and is counted against the account's step-up backoff - not its lockout.</summary>
     [Fact]
     public async Task RemoveWithTwoFactorRefusesAWrongCodeAndCountsIt()
     {
@@ -879,8 +879,17 @@ public sealed class DetailModelTests : IDisposable
         context.ChangeTracker.Clear();
         (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
 
-        // The guess is counted, which is what makes the six digits worth anything.
-        (await users.GetAccessFailedCountAsync(user)).Should().Be(1);
+        // The guess is counted, which is what makes the six digits worth anything - against the
+        // step-up backoff, never the account lockout a session holder could otherwise aim at the owner.
+        (await users.GetAccessFailedCountAsync(user)).Should().Be(0);
+        UserActionAttempt? attempt = await context.UserActionAttempts
+                                                  .AsNoTracking()
+                                                  .SingleOrDefaultAsync(
+                                                      a => a.UserId == user.Id && a.Action == LimitedAction.StepUp,
+                                                      TestContext.Current.CancellationToken);
+
+        attempt.Should().NotBeNull();
+        attempt!.FailedCount.Should().Be(1);
     }
 
     /// <summary>

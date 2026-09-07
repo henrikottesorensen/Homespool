@@ -10,6 +10,7 @@ using Duende.IdentityModel;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Model.Entities;
 
@@ -198,7 +199,7 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
         right.Principal!.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
         wrong.Succeeded.Should().BeFalse();
         wrong.Refusal().Should().Be(SignInRefusal.Invalid);
-        (await rig.Users.GetAccessFailedCountAsync(user)).Should().Be(1, "a wrong step-up counts as a wrong login does");
+        (await rig.Users.GetAccessFailedCountAsync(user)).Should().Be(0, "a wrong step-up backs off the step-up, never the account");
     }
 
     [Fact]
@@ -227,5 +228,34 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
             new PasswordCredential(LocalSchemeRig.Password));
 
         result.Succeeded.Should().BeFalse("one call, one account: another account's login has no place in a step-up");
+    }
+
+    /// <summary>
+    /// The step-up's counter is its own: enough wrong passwords back the step-up off, with the wait
+    /// on the refusal, while the account is not locked out and signs in as before. A session holder
+    /// guessing at a step-up cannot lock the owner out.
+    /// </summary>
+    [Fact]
+    public async Task EnoughWrongStepUpsBackOffTheStepUpAndNothingElse()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        string session = await rig.SessionCookieAsync(user);
+        int allowed = new AttemptLimitOptions().MaxFailedAttempts;
+
+        // The allowance, and one past it: the backoff starts on the failure that exceeds it.
+        for (int i = 0; i <= allowed; i += 1)
+        {
+            await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.UserPassword, new PasswordCredential("not it")); // betterleaks:allow
+        }
+
+        AuthenticateResult backedOff = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(session), Schemes.UserPassword, new PasswordCredential(LocalSchemeRig.Password));
+        AuthenticateResult login = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential("owner", LocalSchemeRig.Password));
+
+        backedOff.Succeeded.Should().BeFalse("the step-up is backed off before the password is compared");
+        backedOff.Refusal().Should().Be(SignInRefusal.LockedOut);
+        backedOff.RetryAfter().Should().NotBeNull().And.BeGreaterThan(TimeSpan.Zero, "the page says how long");
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeFalse("the account itself is untouched");
+        login.Succeeded.Should().BeTrue("signing in still works, which is how the owner takes a session back");
     }
 }

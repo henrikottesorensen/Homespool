@@ -23,6 +23,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Model.Entities;
@@ -226,18 +227,19 @@ public sealed class PasskeysPageTests : IDisposable
     }
 
     /// <summary>
-    /// The step-up goes through the password scheme, so wrong guesses count toward the account's own
-    /// lockout - not a backoff of the page's - and even the right password is refused while it lasts.
+    /// The step-up goes through the password scheme, so wrong guesses back off the account's step-ups
+    /// - never its sign-in - and even the right password is refused while the backoff lasts.
     /// </summary>
     [Fact]
-    public async Task RepeatedWrongPasswordsLockTheAccountOut()
+    public async Task RepeatedWrongPasswordsBackOffTheStepUpNotTheAccount()
     {
         // Arrange
         await using Rig rig = await Rig.CreateAsync(this);
         HSUser user = await rig.AddUserAsync("owner@example.com");
-        int threshold = rig.Users.Options.Lockout.MaxFailedAccessAttempts;
+        int threshold = new AttemptLimitOptions().MaxFailedAttempts;
 
-        for (int i = 0; i < threshold; i += 1)
+        // The allowance, and one past it: the backoff starts on the failure that exceeds it.
+        for (int i = 0; i <= threshold; i += 1)
         {
             (PasskeysModel wrong, _) = rig.NewModel(user, password: "not it"); // betterleaks:allow
             await wrong.OnPostBeginRegistrationAsync(CancellationToken.None);
@@ -250,7 +252,7 @@ public sealed class PasskeysPageTests : IDisposable
 
         // Assert
         result.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(429);
-        (await rig.Users.IsLockedOutAsync(user)).Should().BeTrue("the guesses counted against the account, as at login");
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeFalse("a session holder guessing here must not lock the owner out of signing in");
     }
 
     /// <summary>

@@ -43,8 +43,8 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// hold of, or a browser left unlocked, would otherwise mint a durable, phishing-resistant sign-in
 /// that a later password change does not touch. So the challenge is issued only after the password
 /// is proved - demanded of the <see cref="Schemes.UserPassword"/> scheme as a step-up on the signed-in
-/// account, so a wrong guess counts toward the same lockout a wrong login does and this page holds no
-/// password check of its own. The five-minute ceremony is what the password unlocks; the answer needs
+/// account, so a wrong guess backs off the account's step-ups as every other does and this page holds
+/// no password check of its own. The five-minute ceremony is what the password unlocks; the answer needs
 /// no second proof. <b>An account created through an external
 /// provider has no password to prove, and re-authenticates at the provider instead</b>: a challenge
 /// to the provider's scheme with <c>max_age=0</c> and <c>prompt=login</c>, a callback that checks the
@@ -232,8 +232,9 @@ public class PasskeysModel : PageModel
         }
         else
         {
-            // The scheme checks the password against the signed-in account and counts a wrong one
-            // toward the lockout; a locked-out account is refused before its password is compared.
+            // The scheme checks the password against the signed-in account and backs a wrong one off
+            // with every other step-up; a backed-off or locked-out account is refused before its
+            // password is compared.
             AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.UserPassword, new PasswordCredential(Input.Password));
 
             if (!stepUp.Succeeded)
@@ -241,7 +242,7 @@ public class PasskeysModel : PageModel
                 if (stepUp.Refusal() == SignInRefusal.LockedOut)
                 {
                     return Refusal(StatusCodes.Status429TooManyRequests,
-                                   _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]);
+                                   _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, stepUp.RetryAfter() ?? TimeSpan.Zero)]);
                 }
 
                 _logger.LogInformation("Passkey registration refused for user {UserId}: the password step-up failed.", user.Id);

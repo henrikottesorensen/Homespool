@@ -163,7 +163,7 @@ public class EmailModel : PageModel
 
             if (!proof.Succeeded)
             {
-                StatusMessage = await _stepUpText.DescribeAsync(proof, user);
+                StatusMessage = _stepUpText.Describe(proof);
 
                 return RedirectToPage();
             }

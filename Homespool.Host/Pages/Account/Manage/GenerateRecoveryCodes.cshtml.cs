@@ -129,7 +129,7 @@ public class GenerateRecoveryCodesModel : PageModel
         {
             _logger.LogInformation("Recovery-code generation refused for user {UserId}: {Refusal}.", user.Id, proof.Refusal);
 
-            StatusMessage = await _stepUpText.DescribeAsync(proof, user);
+            StatusMessage = _stepUpText.Describe(proof);
 
             return RedirectToPage();
         }

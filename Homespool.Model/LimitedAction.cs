@@ -33,17 +33,18 @@ public enum LimitedAction
     ClaimPrinter = 1,
 
     /// <summary>
-    /// <b>Retired 2026-09-06, nothing counts it.</b> Confirming a printer's removal with an
-    /// authenticator code goes through the <c>Totp</c> scheme now, whose wrong codes count toward
-    /// the account lockout. The member stays because rows naming it may exist. (It was separate from
+    /// <b>Retired 2026-09-06, superseded by <see cref="StepUp"/>.</b> Confirming a printer's removal
+    /// with an authenticator code goes through the <c>Totp</c> scheme now, and every step-up shares
+    /// one counter. The member stays because rows naming it may exist. (It was separate from
     /// <see cref="ClaimPrinter"/> so that fluffing a code would not back somebody off a claim they
-    /// were standing at a printer to complete; a claim is still counted here, on its own.)
+    /// were standing at a printer to complete; a claim is still counted on its own.)
     /// </summary>
     RemovePrinter = 2,
 
     /// <summary>
-    /// <b>Retired 2026-09-06, nothing counts it.</b> Confirming that two-factor is turned off went
-    /// through the <c>Totp</c> scheme, as above. The member stays because rows naming it may exist.
+    /// <b>Retired 2026-09-06, superseded by <see cref="StepUp"/>.</b> Confirming that two-factor is
+    /// turned off goes through the <c>Totp</c> scheme now. The member stays because rows naming it may
+    /// exist.
     /// </summary>
     DisableTwoFactor = 3,
 
@@ -70,9 +71,26 @@ public enum LimitedAction
     SendConfirmationEmail = 5,
 
     /// <summary>
-    /// <b>Retired 2026-09-06, nothing counts it.</b> Proving the current password before a passkey may
-    /// be added went through the <c>UserPassword</c> scheme, whose wrong passwords count toward the
-    /// account lockout instead. The member stays because rows naming it may exist.
+    /// <b>Retired 2026-09-06, superseded by <see cref="StepUp"/>.</b> Proving the current password
+    /// before a passkey may be added goes through the <c>UserPassword</c> scheme now. The member stays
+    /// because rows naming it may exist.
     /// </summary>
     AddPasskey = 6,
+
+    /// <summary>
+    /// A step-up on the signed-in account: the password or the authenticator code typed again, inside
+    /// a session, before an act the session alone may not do - adding a passkey, removing a printer,
+    /// turning two-factor off, enrolling an authenticator. One counter for all of them, kept by the
+    /// credential schemes themselves.
+    /// </summary>
+    /// <remarks>
+    /// <b>Backed off here rather than counted toward the account lockout, deliberately.</b> A step-up
+    /// exists to guard against somebody holding a session - an unlocked browser, a stolen cookie. Under
+    /// the account lockout, five wrong codes typed by that somebody would lock the owner out of signing
+    /// in, which is exactly how the owner regains control; every five minutes, for as long as they
+    /// cared to. This backoff slows the guessing the same way and touches nothing but the step-up. The
+    /// login page's own counting is a different matter: reaching a code there already takes the
+    /// password.
+    /// </remarks>
+    StepUp = 7,
 }

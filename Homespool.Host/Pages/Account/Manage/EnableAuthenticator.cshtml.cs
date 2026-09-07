@@ -131,8 +131,8 @@ public class EnableAuthenticatorModel : PageModel
         }
 
         // The code proves the app holds the key just shown; the code scheme verifies it for the
-        // signed-in account against that key, two-factor being on or not, and a wrong one counts
-        // toward the lockout as any wrong code does.
+        // signed-in account against that key, two-factor being on or not, and a wrong one backs off
+        // the account's step-ups as any wrong step-up does - never its sign-in.
         AuthenticateResult proof = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(Input.Code));
 
         if (!proof.Succeeded)

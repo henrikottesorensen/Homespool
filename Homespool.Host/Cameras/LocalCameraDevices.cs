@@ -152,6 +152,62 @@ public sealed class LocalCameraDevices
     }
 
     /// <summary>
+    /// Whether <paramref name="source"/> is exactly what <see cref="SourceFor"/> would write for a
+    /// device in <paramref name="deviceNames"/> at <paramref name="resolution"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Composing a source is not the same as controlling it, and that is what this closes.</b>
+    /// <see cref="SourceFor"/> builds the string rather than accepting one, but it builds it out of
+    /// a device name and a capture size that both arrive from a form. The stream server reads an
+    /// <c>ffmpeg:</c> source as a command line and splits it on <c>#</c>, making each fragment an
+    /// argument - so a device name carrying one adds arguments to the ffmpeg it runs, inside a
+    /// container that can open every video device on the machine.
+    /// </para>
+    /// <para>
+    /// <b>Equality against a fresh composition, rather than a list of things to refuse.</b> A
+    /// denylist has to anticipate every character that server's parser gives meaning to, and gains
+    /// holes as it learns new ones. This asks the question with a stable answer - is this the string
+    /// we would have written? - so anything smuggled through either part changes the answer whatever
+    /// syntax it used.
+    /// </para>
+    /// <para>
+    /// <b>A size is checked by shape, not against the sizes the camera offers.</b> That list comes
+    /// from the stream server and is empty whenever it is unreachable or has not enumerated the
+    /// device, so checking against it would refuse an ordinary edit every time the sidecar was down.
+    /// Two numbers cannot carry an argument, which is all this needs from it.
+    /// </para>
+    /// <para>
+    /// Callers pass every device this machine has rather than the unclaimed ones: the camera being
+    /// edited holds its own device, and refusing that would make an attached camera uneditable.
+    /// </para>
+    /// </remarks>
+    public static CameraSourceCheck CheckComposed(string source,
+                                                  string? resolution,
+                                                  IEnumerable<string> deviceNames)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(deviceNames);
+
+        if (DeviceNameFrom(source) is not { } deviceName
+            || !deviceNames.Any(name => string.Equals(name, deviceName, StringComparison.Ordinal)))
+        {
+            return CameraSourceCheck.Refused("Cameras_AttachedDeviceUnknown");
+        }
+
+        string? size = string.IsNullOrWhiteSpace(resolution) ? null : resolution.Trim();
+
+        if (size is not null && !Go2RtcClient.IsCaptureSize(size))
+        {
+            return CameraSourceCheck.Refused("Cameras_AttachedSourceNotComposed");
+        }
+
+        return string.Equals(source, SourceFor(deviceName, size), StringComparison.Ordinal) ?
+            CameraSourceCheck.Accepted :
+            CameraSourceCheck.Refused("Cameras_AttachedSourceNotComposed");
+    }
+
+    /// <summary>
     /// The <c>/dev/videoN</c> node a by-id entry points at, or <see langword="null"/> when the link
     /// cannot be read.
     /// </summary>

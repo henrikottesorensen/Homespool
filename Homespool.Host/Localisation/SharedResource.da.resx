@@ -1980,8 +1980,14 @@
   <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
     <value>Dette kamera findes ikke, eller du må ikke ændre på dets opsætning.</value>
   </data>
+  <data name="Cameras_AttachedDeviceUnknown" xml:space="preserve">
+    <value>Denne server kan ikke se det kamera. Vælg et fra listen over tilsluttede kameraer, og hvis du lige har tilsluttet det, så søg efter det igen først.</value>
+  </data>
   <data name="Cameras_AttachedNeedsAdministrator" xml:space="preserve">
     <value>Et kamera, der er tilkoblet direkte til denne server, kan kun sættes op af en administrator. Et kamera, der kan nås over netværket, kræver ikke en.</value>
+  </data>
+  <data name="Cameras_AttachedSourceNotComposed" xml:space="preserve">
+    <value>Et kamera, der er tilkoblet direkte til denne server, sættes op ved at vælge kameraet og dets opløsning, ikke ved at skrive en adresse. Vælg begge dele på listerne, og gem igen.</value>
   </data>
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>Du kan ikke tilføje et kamera til dette team.</value>
@@ -2629,7 +2635,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>GiB</value>
   </data>
   <data name="Cert_LoopbackOnly" xml:space="preserve">
-    <value>Set inde fra denne container opløses {0} kun til en loopback-adresse - maskinens egen hosts-fil-linje for dens eget værtsnavn ({1} på Debian og Raspberry Pi OS), ikke det printerne vil se. Indtil det er rettet, kan Homespool ikke afgøre hvilke af maskinens adresser der svarer, og ville tilbyde at fjerne navne der virker. Fjern navnet fra {1}-linjen i {2} på værten, og genstart stakken.</value>
+    <value>Set inde fra denne container slås {0} kun op til en loopback-adresse - maskinens egen hosts-fil-linje for dens eget værtsnavn ({1} på Debian og Raspberry Pi OS), ikke det printerne vil se. Indtil det er rettet, kan Homespool ikke afgøre hvilke af maskinens adresser der svarer, og ville tilbyde at fjerne navne der virker. Fjern navnet fra {1}-linjen i {2} på værten, og genstart stakken.</value>
   </data>
   <data name="Cert_DroppingUnconfirmed" xml:space="preserve">
     <value>Disse adresser er sandsynligvis stadig gode, men Homespool kan ikke bekræfte det inde fra sin container.</value>

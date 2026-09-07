@@ -2049,8 +2049,14 @@
   <data name="Cameras_NotFoundOrNotYours" xml:space="preserve">
     <value>That camera does not exist, or is not yours to change.</value>
   </data>
+  <data name="Cameras_AttachedDeviceUnknown" xml:space="preserve">
+    <value>This server cannot see that camera. Pick one from the list of attached cameras, and if you have just plugged it in, search for it again first.</value>
+  </data>
   <data name="Cameras_AttachedNeedsAdministrator" xml:space="preserve">
     <value>A camera plugged into this server can only be set up by an administrator. A camera reachable over the network does not need one.</value>
+  </data>
+  <data name="Cameras_AttachedSourceNotComposed" xml:space="preserve">
+    <value>A camera plugged into this server is set up by choosing the camera and its resolution, not by typing an address. Choose both from the lists and save again.</value>
   </data>
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>You cannot add a camera to that team.</value>

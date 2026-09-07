@@ -29,9 +29,12 @@ namespace Homespool.Host.Cameras;
 /// <c>/health/live</c> and drive a restart loop - a restart would faithfully reproduce it.
 /// </para>
 /// <para>
-/// <b>Healthy when no camera is configured</b>, and that is the point of asking the database rather
-/// than the options alone. Most deployments have no camera, the sidecar idles, and telling them
-/// about a credential they have no use for is how a banner trains people to ignore banners.
+/// <b>Reported whether or not a camera is configured.</b> A deployment cannot leave this state by
+/// itself: adding a camera is refused while there is no credential, so the camera count that would
+/// justify speaking up can never rise, and staying quiet until it does means staying quiet forever
+/// on a deployment that never ran the setup script. The count is still asked for, because it changes
+/// what there is to say - cameras that will not work is a different sentence from cameras that
+/// cannot be added.
 /// </para>
 /// </remarks>
 public sealed class CameraCredentialHealthCheck : IHealthCheck
@@ -69,17 +72,18 @@ public sealed class CameraCredentialHealthCheck : IHealthCheck
 
         int cameras = await _dbContext.Cameras.CountAsync(cancellationToken).ConfigureAwait(false);
 
-        if (cameras == 0)
-        {
-            return HealthCheckResult.Healthy(
-                "No cameras are configured, and the camera stream server has no credential. Setting one is only "
-                + "needed before adding a camera.");
-        }
+        // Not "the sidecar's API is open to anything that can reach it": the shipped stack starts it
+        // with no API at all until the credential exists, so the cost of this state is that cameras
+        // do not work rather than that something is exposed.
+        const string Remedy =
+            "Set GO2RTC_USERNAME and GO2RTC_PASSWORD in .env - ./setup-env.sh generates them - and restart. "
+            + "Until then the stream server starts with its API switched off, so nothing can drive it, and "
+            + "Homespool declines to use an unauthenticated one in any case.";
 
         return HealthCheckResult.Degraded(
-            $"{cameras} camera(s) are configured but the stream server has no credential, so none of them will "
-            + "produce a picture. Set GO2RTC_USERNAME and GO2RTC_PASSWORD in .env - ./setup-env.sh generates them - "
-            + "and restart. Without a credential the sidecar's own API is open to anything that can reach it, "
-            + "which is why Homespool declines to use it rather than using it unauthenticated.");
+            cameras == 0 ?
+                $"The camera stream server has no credential, so no camera can be added. {Remedy}" :
+                $"{cameras} camera(s) are configured but the stream server has no credential, so none of them "
+                + $"will produce a picture. {Remedy}");
     }
 }

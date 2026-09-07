@@ -185,6 +185,11 @@ public class CameraService
             return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
         }
 
+        if (CheckAttachedSource(source, resolution) is { } malformed)
+        {
+            return malformed;
+        }
+
         CameraSourceCheck check = await _sourcePolicy.CheckAsync(source, cancellationToken).ConfigureAwait(false);
         if (!check.IsAcceptable)
         {
@@ -267,6 +272,11 @@ public class CameraService
         if (!_options.CurrentValue.IsAuthenticated)
         {
             return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
+        }
+
+        if (CheckAttachedSource(source, resolution) is { } malformed)
+        {
+            return malformed;
         }
 
         CameraSourceCheck check = await _sourcePolicy.CheckAsync(source, cancellationToken).ConfigureAwait(false);
@@ -369,6 +379,44 @@ public class CameraService
         return permitted ?
             null :
             CameraSaveOutcome.Refused("Cameras_NotYourTeam");
+    }
+
+    /// <summary>
+    /// What an attached camera's source may be: the string this application composes for a device
+    /// this machine has, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Composing a source is not the same as controlling it, and that is the mistake this closes.</b>
+    /// <see cref="LocalCameraDevices.SourceFor"/> builds the string here rather than taking it from
+    /// the form, but it builds it out of a device name and a capture size that both arrive from the
+    /// form. The sidecar reads an <c>ffmpeg:</c> source as a command line and splits it on <c>#</c>,
+    /// turning each fragment into an argument, so a device name carrying one adds arguments to the
+    /// ffmpeg it runs - inside a container that mounts <c>/dev</c> and sits on the same network as
+    /// the printer listeners.
+    /// </para>
+    /// <para>
+    /// The rule itself is <see cref="LocalCameraDevices.CheckComposed"/>, beside the composition it
+    /// checks. This supplies the devices and turns a refusal into a save outcome.
+    /// </para>
+    /// <para>
+    /// Network sources are not this method's business and pass straight through -
+    /// <see cref="CameraSourcePolicy"/> is what decides those.
+    /// </para>
+    /// </remarks>
+    private CameraSaveOutcome? CheckAttachedSource(string source, string? resolution)
+    {
+        if (!CameraSourcePolicy.IsLocalDevice(source))
+        {
+            return null;
+        }
+
+        // Every device this machine has, not AvailableDevicesAsync, which hides the ones already
+        // claimed - an edit has to keep working on the camera's own device.
+        CameraSourceCheck check =
+            LocalCameraDevices.CheckComposed(source, resolution, _devices.List().Select(device => device.Name));
+
+        return check.IsAcceptable ? null : CameraSaveOutcome.Refused(check.Error!);
     }
 
     /// <summary>

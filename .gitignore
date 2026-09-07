@@ -29,6 +29,12 @@ private-captures/
 .env.*
 !.env.example
 
+# The camera sidecar's own configuration, bind-mounted beside compose.yaml so that it has host
+# ownership and the sidecar need not run as root. It is runtime state written by go2rtc - the
+# cameras this deployment has - not something to commit, and it holds a camera's RTSP address,
+# which can carry a credential.
+/go2rtc.yaml
+
 # Captured server output. Verbose logging carries fingerprints and printer identifiers, so these
 # stay local even though they hold no credential outright (the registration code is deliberately
 # never logged - see PrusaConnectService.GetPrinterCode).

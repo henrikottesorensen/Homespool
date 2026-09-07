@@ -838,7 +838,7 @@ validate_printer_host() {
     # one silently, so the ini loads, the panel reports a connection error, and nothing names the
     # cause. The server refuses to start on one too; this is the same rule where the value is typed.
     if [ "${#host}" -gt 20 ]; then
-        warn $"$host is ${#host} characters, and Prusa firmware stores the Connect hostname in a 20-character field - silently truncated, so a printer given this name would dial ${host:0:20} and never connect. Use a shorter name, or the address."
+        warn $"$host is ${#host} characters, and Prusa firmware stores the Connect hostname in a 20-character field - silently truncated, so a printer given this name would try to connect to ${host:0:20} and never reach anything. Use a shorter name, or the address."
         return 1
     fi
 
@@ -934,7 +934,7 @@ resolve_host() {
         # nothing, and silently dropping the one name that worked.
         #
         # Everything downstream is IPv4: the addresses come from `ip -4`, the certificate covers what
-        # a printer dials over v4, and the CIDR arithmetic here is 32-bit. Asking for A records is
+        # a printer connects to over v4, and the CIDR arithmetic here is 32-bit. Asking for A records is
         # not a limitation, it is the question being asked.
         # Tested for output, not for exit status: awk succeeds having printed nothing, so `&&` here
         # would report success on an empty answer and the fallback would never run.
@@ -1434,7 +1434,7 @@ ensure_go2rtc_credential() {
 
     password="$(random_password)"
     if [ -z "$password" ]; then
-        warn $"No source of randomness found - leaving the camera sidecar unauthenticated, which is what this deployment already had. Its port is not published."
+        warn $"No source of randomness found - leaving the camera sidecar unauthenticated, which is what this deployment already had. Its API is not started without a credential."
         return 0
     fi
 
@@ -1443,6 +1443,109 @@ ensure_go2rtc_credential() {
     plan_set GO2RTC_USERNAME homespool
     plan_set GO2RTC_PASSWORD "$password"
     say $"Generated a credential for the camera sidecar."
+}
+
+# The host's numeric group for its video devices, or empty when this host has no answer.
+#
+# The NUMBER is the whole point. The sidecar resolves a group *name* inside its own container, where
+# Alpine's video group is not Debian's, so a name silently grants the wrong group: the sidecar starts,
+# network cameras keep working, and every camera plugged into this machine goes black with nothing in
+# any log.
+#
+# Asked of a device node first and of the host's group database second, and the second is what makes
+# this safe on a machine with no camera attached yet. 44 is Debian and Raspberry Pi OS, not a
+# universal truth - so a box whose video group is some other number, and which had nothing plugged in
+# when this ran, must not be recorded as 44 and then fail the day a camera arrives. Both stat
+# dialects are tried, and getent is absent on macOS, where the answer is legitimately nothing.
+video_group_id() {
+    local node gid=""
+
+    for node in /dev/video*; do
+        [ -e "$node" ] || continue
+        gid="$(stat -c '%g' "$node" 2>/dev/null || stat -f '%g' "$node" 2>/dev/null)"
+        [ -n "$gid" ] && break
+    done
+
+    if [ -z "$gid" ] && command -v getent >/dev/null 2>&1; then
+        gid="$(getent group video 2>/dev/null | awk -F: 'NR==1 {print $3}')"
+    fi
+
+    case $gid in
+        '' | *[!0-9]*) echo "" ;;
+        *) echo "$gid" ;;
+    esac
+}
+
+# go2rtc's own configuration, which compose bind-mounts as a single file into a container that does
+# not run as root. Two things must be true before the first start and neither announces itself
+# afterwards:
+#
+#   It must EXIST. Docker creates a *directory* at a bind-mount path that is missing, and go2rtc then
+#   fails on a directory where it wanted its configuration.
+#
+#   It must be WRITABLE by the identity the sidecar runs as. Registering a camera is a config write,
+#   so without it every camera save answers 400 - and go2rtc logs nothing at all.
+#
+# Beside .env rather than off $repo_root, because that is the directory compose resolves
+# ./go2rtc.yaml against, and it is what a test can point somewhere harmless.
+#
+# An existing file is never touched: it holds the cameras this deployment already has.
+ensure_go2rtc_config_file() {
+    local config gid
+    config="$(dirname "$env_file")/go2rtc.yaml"
+    gid="$(video_group_id)"
+
+    # Written down whenever this host has an answer, rather than only when it differs from the 44 in
+    # compose. The default is right on Debian and Raspberry Pi OS and is a guess anywhere else, and
+    # the failure it produces is invisible - so recording the number this machine actually uses is
+    # worth one line in .env. Where nothing could be detected the line is left alone and compose's
+    # default stands, which is the best available answer and is marked as such by its absence.
+    if [ -n "$gid" ]; then
+        plan_set GO2RTC_VIDEO_GID "$gid"
+    else
+        gid=44
+    fi
+
+    [ -e "$config" ] && return 0
+
+    local fmt
+
+    # This is the one thing here that writes outside .env, so it is also the one thing that has to
+    # honour --dry-run itself: the plan machinery below never sees it, and the script promises that
+    # a dry run writes nothing.
+    if $dry_run; then
+        fmt=$"--dry-run: %s would be created for the camera sidecar."
+        say "$(printf "$fmt" "$config")"
+        return 0
+    fi
+
+    # Empty is a valid starting point - go2rtc reads it, starts, and writes the first camera in.
+    if ! : > "$config" 2>/dev/null; then
+        fmt=$"Could not create %s, which the camera sidecar needs before it starts. Create it yourself - otherwise Docker makes a directory of that name and the sidecar fails on it."
+        warn "$(printf "$fmt" "$config")"
+        return 0
+    fi
+
+    # Group write is what the sidecar needs: it runs as a uid that owns nothing here but has this
+    # group. chgrp needs no root for anybody already in the group, which is the person who plugged
+    # the camera in - and root, where this runs as root, can do it regardless.
+    if chgrp "$gid" "$config" 2>/dev/null && chmod 660 "$config" 2>/dev/null; then
+        fmt=$"Created %s for the camera sidecar, writable by group %s."
+        say "$(printf "$fmt" "$config" "$gid")"
+        return 0
+    fi
+
+    # Only Linux hands host ownership straight to the container. Docker Desktop maps it instead, so
+    # on a Mac the group is not what decides whether the sidecar can write - and a group 44 that may
+    # not exist there at all would make this a false alarm on the one platform it cannot apply to.
+    if [ "$(uname -s)" != Linux ]; then
+        fmt=$"Created %s for the camera sidecar."
+        say "$(printf "$fmt" "$config")"
+        return 0
+    fi
+
+    fmt=$"Created %s but could not give it group %s, so the camera sidecar cannot write it and adding a camera will fail. Fix it with: sudo chgrp %s %s && sudo chmod 660 %s"
+    warn "$(printf "$fmt" "$config" "$gid" "$gid" "$config" "$config")"
 }
 
 # The passphrase encrypting the printer CA's private key at rest. The point of it living in .env is
@@ -1507,6 +1610,7 @@ auto_answer() {
     plan_set USER_HOSTS "$(suggested_user_host)"
     plan_set TZ "$(detect_timezone)"
     ensure_go2rtc_credential
+    ensure_go2rtc_config_file
     ensure_ca_passphrase
 
     # Only while creating the file. Moving the compose network under a stack that is already running
@@ -1865,6 +1969,7 @@ main() {
         ask_public_tls
         ask_legacy_printer_port
         ensure_go2rtc_credential
+        ensure_go2rtc_config_file
         ensure_ca_passphrase
         check_subnet_collision
     fi

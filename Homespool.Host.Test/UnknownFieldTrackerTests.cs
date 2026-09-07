@@ -117,6 +117,58 @@ public class UnknownFieldTrackerTests
               .NotContain(pair => pair.Value != null && pair.Value.Contains("SENSITIVE-PAYLOAD-CONTENT", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A key name is a string the printer chose, and it reaches a Warning line an operator reads:
+    /// control characters do not survive the trip.
+    /// </summary>
+    /// <remarks>
+    /// Escaped in the JSON rather than pasted, so this file holds no invisible characters of its own
+    /// - and the escapes are what a printer would send anyway, since a control character cannot
+    /// appear raw in a JSON string.
+    /// </remarks>
+    [Fact]
+    public void AFieldNameCannotCarryControlCharactersIntoTheLog()
+    {
+        // Arrange
+        FakeLogger<UnknownFieldTracker> logger = new();
+        UnknownFieldTracker tracker = new(logger);
+
+        // Act
+        tracker.Record(1, "telemetry", Unknown("""{"nozzle\u001B[2J\ncleared":1}"""));
+
+        // Assert
+        FakeLogRecord record = logger.Collector.GetSnapshot().Should().ContainSingle().Subject;
+
+        record.Message.Should().NotContainAny("\u001B", "\n", "\r");
+        record.Message.Should().Contain("telemetry.nozzle\uFFFD[2J\uFFFDcleared",
+                                        "the name is still legible, and visibly not what a printer ought to send");
+        tracker.DistinctFields.Should().ContainSingle().Which.Should().NotContainAny("\u001B", "\n");
+    }
+
+    /// <summary>
+    /// A name has no length of its own on the wire, so it is bounded before it is remembered - the
+    /// dictionary holds it until the process ends, and sixty-four of them may.
+    /// </summary>
+    [Fact]
+    public void AnAbsurdlyLongFieldNameIsBoundedBeforeItIsRemembered()
+    {
+        // Arrange
+        FakeLogger<UnknownFieldTracker> logger = new();
+        UnknownFieldTracker tracker = new(logger);
+        string absurd = new('x', 100_000);
+
+        // Act
+        tracker.Record(1, "telemetry", Unknown($$"""{"{{absurd}}":1}"""));
+
+        // Assert
+        string remembered = tracker.DistinctFields.Should().ContainSingle().Subject;
+
+        remembered.Length.Should().BeLessThan(300, "a megabyte of key name may not be kept for the life of the process");
+        remembered.Should().Contain("<100000 characters in all>", "the bound is reported, not applied silently");
+        logger.Collector.GetSnapshot().Should().ContainSingle()
+              .Which.Message.Length.Should().BeLessThan(500);
+    }
+
     [Fact]
     public void DistinctFieldsAreCappedWhileOccurrencesKeepCounting()
     {

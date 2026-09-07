@@ -1,3 +1,5 @@
+using System;
+
 using AwesomeAssertions;
 
 using Homespool.Host.Services;
@@ -86,6 +88,71 @@ public class LogTextTests
     public void AnOrdinaryValuePassesThroughUnchanged(string value)
     {
         LogText.Clean(value).Should().Be(value);
+    }
+
+    /// <summary>
+    /// Under the bound, the bound is not felt: the same string back, marker and all absent.
+    /// </summary>
+    [Theory]
+    [InlineData("nozzle")]
+    [InlineData("0123456789")]
+    public void AValueWithinTheBoundIsUnchanged(string value)
+    {
+        LogText.Clean(value, 10).Should().Be(value);
+    }
+
+    /// <summary>
+    /// Past it, the start is kept and the line says how much arrived - the operator can still see
+    /// what the name was, and that it was absurd.
+    /// </summary>
+    /// <remarks>
+    /// A JSON property name has no length of its own, which is what makes this different from the
+    /// registration fields: those are capped before they are stored, and a wire key is capped by
+    /// nobody.
+    /// </remarks>
+    [Fact]
+    public void AnOverLongValueKeepsItsStartAndSaysHowMuchArrived()
+    {
+        string name = new('x', 5000);
+
+        LogText.Clean(name, 8).Should().Be("xxxxxxxx<5000 characters in all>");
+    }
+
+    /// <summary>The kept prefix is cleaned like anything else - truncating is not a way in.</summary>
+    [Fact]
+    public void TheKeptPrefixIsStillCleaned()
+    {
+        LogText.Clean("MK4\u001B[2J" + new string('x', 5000), 6)
+               .Should()
+               .Be("MK4\uFFFD[2<5007 characters in all>");
+    }
+
+    /// <summary>
+    /// The cut never falls between the halves of a surrogate pair, which would leave the log holding
+    /// half a character - ill-formed UTF-16 that some JSON writers refuse outright.
+    /// </summary>
+    /// <remarks>
+    /// Written through <see cref="char.ConvertFromUtf32"/> rather than pasted: the pair is the
+    /// subject, and a literal would hide which half sits where.
+    /// </remarks>
+    [Fact]
+    public void ASurrogatePairIsNotCutInHalf()
+    {
+        string cleaned = LogText.Clean(new string('x', 9) + char.ConvertFromUtf32(0x1F600) + new string('y', 90), 10);
+
+        cleaned.Should().StartWith(new string('x', 9) + "<");
+        cleaned.Should().NotContainAny(char.ConvertFromUtf32(0x1F600)[..1], char.ConvertFromUtf32(0x1F600)[1..]);
+    }
+
+    /// <summary>A bound of nothing is a caller's mistake, not a log line of nothing.</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ABoundMustBePositive(int maxLength)
+    {
+        Action bounded = () => LogText.Clean("temp_nozzle", maxLength);
+
+        bounded.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     /// <summary>Nothing to say is said as nothing, rather than as a null in the rendered line.</summary>

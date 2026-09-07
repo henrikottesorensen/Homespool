@@ -1,3 +1,4 @@
+using System;
 using System.Text;
 
 namespace Homespool.Host.Services;
@@ -59,6 +60,40 @@ public static class LogText
         }
 
         return cleaned?.ToString() ?? value;
+    }
+
+    /// <summary>
+    /// As <see cref="Clean(string)"/>, and cut to <paramref name="maxLength"/> characters with a
+    /// marker naming the length that arrived.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the log sites whose value has no length of its own - a JSON property name off the wire,
+    /// where the sender picks the size as well as the bytes. Cleaning bounds what a value can do;
+    /// this bounds what it can cost.
+    /// </para>
+    /// <para>
+    /// <b>The kept prefix is the point</b>, which is where this differs from
+    /// <c>PrinterTrafficLog</c>'s elision: that drops an over-long <i>value</i> whole, because a
+    /// thumbnail explains nothing about a misbehaving printer. A name is an identifier, and an
+    /// operator reading the line needs to see what it started with.
+    /// </para>
+    /// </remarks>
+    public static string Clean(string? value, int maxLength)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxLength);
+
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength)
+        {
+            return Clean(value);
+        }
+
+        // Never mid-pair: a lone surrogate is not a character, and it reaches whatever writes the log
+        // as ill-formed UTF-16 - which some JSON writers refuse outright. Cutting one earlier costs a
+        // character of an already-truncated name.
+        int cut = char.IsHighSurrogate(value[maxLength - 1]) ? maxLength - 1 : maxLength;
+
+        return Clean(value[..cut]) + $"<{value.Length} characters in all>";
     }
 
     /// <summary>

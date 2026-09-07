@@ -667,8 +667,7 @@ mmdebstrap:
     # config/homespool.yaml instead, which is the variable that layer actually reads.
 
     # No credential is installed here. The account is left as rpi-image-gen leaves it - locked, no
-    # key - and homespool-login.txt on the boot partition is the one way it gets either. A build-time
-    # key used to be copied in at this point; it went with build.sh's --ssh-key.
+    # key - and homespool-login.txt on the boot partition is the one way it gets either.
 
     # Enabled, not started - there is no running systemd in a chroot. They run on the real board.
     - chroot $1 systemctl enable homespool-firstboot.service

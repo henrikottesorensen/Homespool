@@ -277,11 +277,10 @@ if [ "$board" = "all" ]; then
     overrides+=("IGconf_fs_ext4_mkfs_args=-F -b 4096")
 fi
 # No credential is passed to rpi-image-gen, so it locks the account - its default, and the one this
-# image ships with: no password, no key, and nothing on the card for anyone to look up. There used
-# to be --password and --ssh-key here for a card built for yourself; they went once the boot file
-# could do the same job, because a password on this command line was also on the host's argv, on
-# the container's, and in final.env under the work volume afterwards, and a key given here was
-# whatever file was named, private ones included. The boot file does neither.
+# image ships with: no password, no key, and nothing on the card for anyone to look up. The boot
+# partition's homespool-login.txt is how the account gets either, and it is the only way, because a
+# credential on this command line would also sit on the host's argv, on the container's, and in
+# final.env under the work volume afterwards.
 #
 # Stated rather than warned about: a locked account is what every card is meant to be. Somebody
 # building one for themselves still wants to know before they flash it rather than after.

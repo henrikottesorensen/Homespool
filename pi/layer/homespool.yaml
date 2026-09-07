@@ -186,6 +186,26 @@ mmdebstrap:
     - mkdir -p $1/opt/homespool
     - cp -a ${IGconf_homespool_payload}/. $1/opt/homespool/
 
+    # The camera sidecar's configuration, shipped empty so the card has it before anything runs.
+    # compose.yaml bind-mounts this ONE FILE, and Docker invents a DIRECTORY at a bind-mount path
+    # that is missing - which go2rtc then fails on, reporting a directory where it wanted its
+    # configuration. That is the same failure the payload comment in build.sh describes for the
+    # nginx mounts, and it is why this is not left to first boot alone: setup-env.sh creates the
+    # file too and the unit runs it before `docker compose up`, so this is the belt to that braces.
+    # Neither is trusted on its own with a fault that presents as "the sidecar will not start".
+    #
+    # Here rather than in the payload, because only this hook runs as root: the payload is staged as
+    # whoever ran build.sh and `cp -a` above would carry that uid onto the card, producing a file the
+    # sidecar cannot write - which is worse than an absent one, being a quiet 400 on saving a camera
+    # instead of a container that will not start.
+    #
+    # Empty is a valid configuration: go2rtc reads it, starts, and writes the first camera into it.
+    # Group 44 is video on Debian and Raspberry Pi OS, which is what this image is; the sidecar runs
+    # as 65532:44 and rewrites this file in place, so group write is exactly and only what it needs.
+    # The numeric gid rather than the name, because the name would be resolved against the wrong
+    # /etc/group inside the sidecar's own container.
+    - install -o 0 -g 44 -m 0660 /dev/null $1/opt/homespool/go2rtc.yaml
+
     # No script to install alongside it any more: the unit calls /opt/homespool/setup-env.sh, which
     # arrives with the payload above, and then docker compose. homespool-firstboot.sh carried its own
     # copy of the address detection and is gone.

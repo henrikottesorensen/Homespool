@@ -205,6 +205,12 @@ public static class Program
                 // A credential scope refusing an action is a 403, not a fault - and mapping it here
                 // rather than per action is what keeps a new file endpoint from answering 500.
                 options.Filters.Add<Authorisation.CredentialScopeDeniedFilter>();
+
+                // A cookie-authenticated write must come from this origin, on the browser's own word.
+                // Global rather than per controller for the reason the scope filter is: a controller
+                // added later is covered without anyone remembering to say so, and it is inert for
+                // every request a token or a printer authenticated.
+                options.Filters.Add<Authorisation.SameOriginWriteFilter>();
             });
 
             builder.Services.AddOpenApi();

@@ -19,6 +19,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Controllers;
 using Homespool.Host.Mail;
 using Homespool.Host.PrusaConnect;
@@ -203,6 +204,11 @@ public static class EnrolmentFlowHelper
 
         HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={protectedTicket}");
+
+        // What a browser sends on every request its own pages make, and what SameOriginWriteFilter
+        // demands before a cookie-signed-in write reaches a controller. Set here so a signed-in test
+        // client is a browser on this site; a test about the filter itself removes or overrides it.
+        client.DefaultRequestHeaders.Add(SameOriginWriteFilter.HeaderName, SameOriginWriteFilter.SameOrigin);
 
         return client;
     }

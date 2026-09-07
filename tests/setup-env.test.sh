@@ -608,6 +608,40 @@ PROXY_ADDRESS=172.17.0.2"
     assert_eq "172.31.0.2" "$(proxy_address_for 172.31.0.0/16)" "second address of the range, after the gateway"
 fi
 
+if test_case "a sidecar network that collides is moved on its own, and the proxy's settings stay"; then
+    # Three networks, one fact each. Moving the camera network must not touch the proxy's range or
+    # its address - and the range it moves to must be free of the other two as well as of the host.
+    sandbox_path linux docker-collision
+    use_temp_env "PROXY_SUBNET=172.28.0.0/16
+PROXY_NETWORK=172.28.0.0/16
+PROXY_ADDRESS=172.28.0.2
+CAMERA_SUBNET=172.18.0.0/16
+CERTS_SUBNET=172.30.0.0/16"
+    auto_move_subnet >/dev/null 2>&1
+    assert_contains "$pending" "CAMERA_SUBNET=172.20.0.0/16" "the camera network moved to the first free range"
+    case "$pending" in
+        *PROXY_*|*CERTS_SUBNET*) fail "moved a network that did not collide: $pending" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
+if test_case "two of the stack's own networks on one range are pulled apart"; then
+    # The host's list excludes our own bridges - a network is not in its own way - so two of ours
+    # sharing a range would pass a check that only asked the host. They are asked about each other.
+    sandbox_path linux docker-collision
+    use_temp_env "PROXY_SUBNET=172.28.0.0/16
+PROXY_NETWORK=172.28.0.0/16
+PROXY_ADDRESS=172.28.0.2
+CAMERA_SUBNET=172.29.0.0/16
+CERTS_SUBNET=172.29.0.0/16"
+    auto_move_subnet >/dev/null 2>&1
+    assert_contains "$pending" "CAMERA_SUBNET=172.20.0.0/16" "the first of the pair moves off the shared range"
+    case "$pending" in
+        *CERTS_SUBNET*) fail "moved the second of the pair too, against the first's OLD range: $pending" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
 if test_case "a Windows zone becomes an IANA one"; then
     # Windows says "W. Europe Standard Time"; TZ takes "Europe/Berlin". The conversion needs .NET 6+,
     # which Windows PowerShell 5.1 does not have - so the container the wizard already runs in

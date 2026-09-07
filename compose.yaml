@@ -111,6 +111,13 @@ services:
       # known here and are not guessed at.
       Certificates__ContainerNetworks__1: "172.17.0.0/16"
 
+      # The two sidecar networks below, for the same reason: each is a bridge whose gateway address
+      # this machine's name resolves to, and a range the filter does not know lands in the printer
+      # certificate. Fed from the same variables the networks are allocated from, so they cannot
+      # drift.
+      Certificates__ContainerNetworks__2: "${CAMERA_SUBNET:-172.29.0.0/16}"
+      Certificates__ContainerNetworks__3: "${CERTS_SUBNET:-172.30.0.0/16}"
+
       # Encrypts the printer CA's private key on the data volume. The value living here - in .env,
       # outside that volume - is the point: a copied data/ backup alone then no longer carries the
       # key every provisioned printer trusts. Required: with it empty the server refuses to start
@@ -218,8 +225,11 @@ services:
       # Read-only, because reading symlink names is the whole of what this service does with it.
       - /dev:/hostdev:ro
 
+    # Two networks: the proxy's, and the camera sidecar's. The sidecar is reached by service name
+    # over the second, and is on nothing else - see its own networks: line.
     networks:
       - homespool
+      - homespool-cameras
 
     # The outermost of three shutdown budgets and the only one Docker enforces: SIGTERM, then
     # SIGKILL after this. The app's own two - TelemetryWriter's final flush and
@@ -429,8 +439,12 @@ services:
       # the mount confirmed ro and a write inside the container refused, while frames kept arriving.
       - /dev:/dev:ro
 
+    # Its own network, shared with the application and nothing else. The proxy and the certificate
+    # renewer are not on it, so a sidecar that runs third-party code and fetches addresses people
+    # give it can reach neither. Not `internal`: it has to reach network cameras on the LAN, which
+    # goes out through this bridge's NAT like any other container's traffic.
     networks:
-      - homespool
+      - homespool-cameras
 
     restart: unless-stopped
 
@@ -628,13 +642,17 @@ services:
     image: goacme/lego:v5
     profiles: ["certs"]
 
-    # On the project's own network like every other service, although it only needs outbound
-    # internet. A service with no networks: line makes compose create <project>_default - a bridge
-    # nothing is ever on, whose gateway address this machine's name then resolves to alongside the
-    # real one. After the next `up`, `docker network rm homespool_default` removes the one already
-    # created.
+    # A network of its own. It needs outbound internet for the certificate authority and the DNS
+    # API, and nothing in this stack - it writes the proxy's certificates through the shared volume
+    # below, not over the network. Holding the DNS token, it is the container that least belongs
+    # beside the application's listeners.
+    #
+    # A named network rather than none: a service with no networks: line makes compose create
+    # <project>_default, a bridge whose gateway address this machine's name resolves to and whose
+    # range nothing here can name. This one has a range, and Certificates__ContainerNetworks knows
+    # it.
     networks:
-      - homespool
+      - homespool-certs
 
     # The same uid the proxy runs as, which is what lets the proxy read what this writes. It is
     # possible because the credentials arrive as environment rather than as a compose secret: a
@@ -713,6 +731,19 @@ networks:
     ipam:
       config:
         - subnet: "${PROXY_SUBNET:-172.28.0.0/16}"
+
+  # The camera sidecar's network, shared with the application alone; the certificate renewer's,
+  # shared with nothing. Each has a pinned range for the reason the first one does - it has to be
+  # nameable in Certificates__ContainerNetworks, or its gateway lands in the printer certificate.
+  # setup-env.sh checks all three ranges against the host and moves any that collides.
+  homespool-cameras:
+    ipam:
+      config:
+        - subnet: "${CAMERA_SUBNET:-172.29.0.0/16}"
+  homespool-certs:
+    ipam:
+      config:
+        - subnet: "${CERTS_SUBNET:-172.30.0.0/16}"
 
 volumes:
   # Keeps the SQLite database across container replacement. Use a local docker volume or a

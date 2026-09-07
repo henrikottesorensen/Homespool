@@ -136,6 +136,7 @@ Configuration lives in two places, deliberately:
 | `GO2RTC_USERNAME` / `GO2RTC_PASSWORD` | Credentials for the camera sidecar's API — required if you want cameras, ignored otherwise. `setup-env.sh` generates them. |
 | `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest, and the certificate that encrypts the sign-in key ring. Required — the server refuses to start without one rather than store either key in the clear; `setup-env.sh` generates it. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers, or a key-ring certificate that signs everyone out. |
 | `PROXY_SUBNET` / `PROXY_NETWORK` / `PROXY_ADDRESS` | The stack's internal Docker network, the same range as the app knows it, and the proxy's fixed address on it - the one address whose forwarded headers are trusted. Change all three together only if the default collides with your LAN; `setup-env.sh` does. |
+| `CAMERA_SUBNET` / `CERTS_SUBNET` | The camera sidecar's and the certificate renewer's own networks, each shared with as little as possible. Pinned so the app can name them; `setup-env.sh` moves one that collides. |
 
 [.env.example](.env.example) documents every setting in full, including the WebRTC overrides for
 deployments behind a router or tunnel.

@@ -55,18 +55,21 @@ public sealed class CameraStreamReconciler : BackgroundService
     private readonly Go2RtcClient _streamServer;
     private readonly CameraLiveAvailability _liveView;
     private readonly CameraCredentialProtector _credentials;
+    private readonly LocalCameraDevices _devices;
     private readonly ILogger<CameraStreamReconciler> _logger;
 
     public CameraStreamReconciler(IServiceScopeFactory scopeFactory,
                                   Go2RtcClient streamServer,
                                   CameraLiveAvailability liveView,
                                   CameraCredentialProtector credentials,
+                                  LocalCameraDevices devices,
                                   ILogger<CameraStreamReconciler> logger)
     {
         _scopeFactory = scopeFactory;
         _streamServer = streamServer;
         _liveView = liveView;
         _credentials = credentials;
+        _devices = devices;
         _logger = logger;
     }
 
@@ -109,8 +112,30 @@ public sealed class CameraStreamReconciler : BackgroundService
 
             foreach (Camera camera in missing)
             {
-                if (await _streamServer.PutStreamAsync(camera.Uuid, _credentials.Reveal(camera), stoppingToken)
-                                       .ConfigureAwait(false))
+                string source = _credentials.Reveal(camera);
+
+                // This is the one path that hands the stream server a stored source without it
+                // passing back through CameraService, so the rule about what an attached camera's
+                // source may be has to be applied here too. A row written before that rule existed,
+                // or by any future caller that goes round the service, would otherwise be registered
+                // unchecked at every start - which is exactly the shape of thing this reconciler
+                // exists to do quietly and unattended.
+                if (CameraSourcePolicy.IsLocalDevice(source)
+                    && !LocalCameraDevices.CheckComposed(source,
+                                                         camera.Resolution,
+                                                         _devices.List().Select(device => device.Name))
+                                          .IsAcceptable)
+                {
+                    // The source itself is deliberately not logged: it is the thing under suspicion,
+                    // and a log line is a place it would then be read from.
+                    _logger.LogWarning(
+                        "Camera {Uuid} names an attached device this server did not compose, so it was not "
+                        + "registered. Open it on the cameras page and save it again to repair it.",
+                        camera.Uuid);
+                    continue;
+                }
+
+                if (await _streamServer.PutStreamAsync(camera.Uuid, source, stoppingToken).ConfigureAwait(false))
                 {
                     restored++;
                 }

@@ -74,11 +74,16 @@ public sealed class HealthEndpointTests : IAsyncLifetime
 
         using JsonDocument document = JsonDocument.Parse(body);
 
-        document.RootElement.GetProperty("status").GetString().Should().Be("Healthy",
-                                                                           "nothing has failed to flush on a freshly started host");
-
         JsonElement check = document.RootElement.GetProperty("checks")[0];
         check.GetProperty("name").GetString().Should().Be("telemetry-persistence");
+
+        // This check's own verdict, not the report's aggregate. The aggregate is the worst of every
+        // check registered, so asserting on it here made this test fail for reasons that have
+        // nothing to do with flushing - a test host has no camera sidecar credential, which is a
+        // Degraded configuration and is meant to be. What this test is about is that nothing has
+        // failed to flush on a freshly started host.
+        check.GetProperty("status").GetString().Should().Be("Healthy",
+                                                            "nothing has failed to flush on a freshly started host");
 
         // The counters are the point: a bare status word cannot distinguish a database that is
         // briefly stuck from one that has already lost events.

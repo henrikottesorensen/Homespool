@@ -16,7 +16,7 @@ namespace Homespool.Host.Test;
 /// </remarks>
 public class PrinterHostLengthValidatorTests
 {
-    /// <summary>Twenty fits, twenty-one does not, and the message names what would be dialled.</summary>
+    /// <summary>Twenty fits, twenty-one does not, and the message names what would be connected to.</summary>
     [Fact]
     public void TheLimitIsTwentyCharactersInclusive()
     {

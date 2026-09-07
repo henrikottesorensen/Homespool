@@ -227,7 +227,7 @@ public static class Program
                             .ValidateOnStart();
 
             // A printer host longer than the printer's field is refused here, at the boot after it
-            // was set, rather than discovered at a printer that dials a truncated name.
+            // was set, rather than discovered at a printer that connects to a truncated name.
             builder.Services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<PrusaConnect.PrusaConnectOptions>,
                 PrusaConnect.PrinterHostLengthValidator>();
 

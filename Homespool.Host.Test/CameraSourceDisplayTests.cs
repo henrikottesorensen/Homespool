@@ -156,7 +156,7 @@ public sealed class CameraSourceDisplayTests
     public void TakingASourceApartAndPuttingItBackChangesNothing(string source)
     {
         // The round trip is what the stream server depends on: the sidecar has to receive the source
-        // byte for byte, or it dials a subtly different address than the one that was checked.
+        // byte for byte, or it connects to a subtly different address than the one that was checked.
         CameraSourceParts parts = CameraSourceDisplay.SplitCredential(source);
 
         CameraSourceDisplay.WithCredential(parts.Address, parts.User, parts.Password)

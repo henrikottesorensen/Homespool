@@ -329,7 +329,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
 
     /// <summary>
     /// A name of 21 characters is refused before the certificate is consulted: the printer would
-    /// dial the first 20, and the certificate cannot help with that.
+    /// connect to the first 20, and the certificate cannot help with that.
     /// </summary>
     /// <remarks>
     /// With TLS off, so that the only thing standing between the name and the ini is this rule. The
@@ -347,7 +347,7 @@ public sealed class ProvisioningBundleBuilderTests : IDisposable
         // Assert
         (await act.Should().ThrowAsync<ArgumentException>())
             .Which.Message.Should().Contain("20-character")
-            .And.Contain("homespool.example.ne", "it has to say what the printer would dial");
+            .And.Contain("homespool.example.ne", "it has to say what the printer would connect to");
     }
 
     /// <summary>

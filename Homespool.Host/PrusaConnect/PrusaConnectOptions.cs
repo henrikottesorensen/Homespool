@@ -15,13 +15,13 @@ public class PrusaConnectOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Firmware truncates silently, and the truncated name is dialled.</b> Buddy stores the
+    /// <b>Firmware truncates silently, and the truncated name is what it connects to.</b> Buddy stores the
     /// Connect hostname in a fixed field of <c>connect_host_size</c> = 20 characters
     /// (<c>src/persistent_stores/store_instances/config_store/constants.hpp</c>), and the store's
     /// <c>set</c> is a <c>strlcpy</c> into it. The ini handler length-checks <c>token</c> and
     /// <c>proxy_hostname</c> against their fields and refuses; <c>hostname</c> alone goes through
     /// <c>compress_host</c> into a 36-byte runtime buffer instead, passes, and is cut to 20 on its way
-    /// into the store. The ini loads "OK" and the printer dials a name that does not exist — a
+    /// into the store. The ini loads "OK" and the printer connects to a name that does not exist — a
     /// 21-character name lost its last letter on both printers of one deployment. Read at
     /// <c>v6.8.1</c>.
     /// </para>

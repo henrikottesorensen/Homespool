@@ -55,7 +55,7 @@ public static class ForwardedHeaderScope
     /// <b>The legacy listener is a printer listener for this purpose, and follows the same flag.</b> It
     /// carries no TLS, but the shape around it is the one the flag describes: in the compose stack the
     /// proxy publishes its port and relays to Kestrel over the container network, setting
-    /// <c>X-Real-IP</c> exactly as on the TLS printer port; run without the proxy, it is dialled
+    /// <c>X-Real-IP</c> exactly as on the TLS printer port; run without the proxy, it is reached
     /// directly and the header is the caller's own. A separate flag would be a second setting that can
     /// disagree with the first about what is in front of this process.
     /// </para>

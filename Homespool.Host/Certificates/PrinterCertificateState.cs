@@ -28,7 +28,7 @@ public enum PrinterCertificateState
     /// <summary>The authority is close to expiring — a USB visit to every printer.</summary>
     AuthorityExpiring = 7,
 
-    /// <summary>The address printers are told to use is longer than a printer's field, so they dial a truncated one.</summary>
+    /// <summary>The address printers are told to use is longer than a printer's field, so they connect to a truncated one.</summary>
     ConfiguredAddressTooLong = 8,
 
     /// <summary>

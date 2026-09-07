@@ -3,7 +3,7 @@ using System;
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
-/// Which way in a provisioning bundle points one printer: the port it should dial, and whether it
+/// Which way in a provisioning bundle points one printer: the port it should connect to, and whether it
 /// verifies anything when it gets there.
 /// </summary>
 /// <remarks>
@@ -22,7 +22,7 @@ namespace Homespool.Host.PrusaConnect;
 /// up saying.
 /// </para>
 /// </remarks>
-/// <param name="Port">The port to write into the ini — what the printer dials from outside.</param>
+/// <param name="Port">The port to write into the ini — what the printer connects to from outside.</param>
 /// <param name="Tls">Whether the printer should use TLS, and so whether it verifies a certificate.</param>
 public readonly record struct PrinterEndpoint(int Port, bool Tls)
 {

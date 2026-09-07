@@ -18,7 +18,7 @@ namespace Homespool.Host.Listeners;
 /// <remarks>
 /// <para>
 /// <b>The rule: anything the printer certificate vouches for is a host a printer may address.</b> A
-/// printer dials whatever its ini names and sends that as <c>Host</c>, and the framework's host filter
+/// printer connects to whatever its ini names and sends that as <c>Host</c>, and the framework's host filter
 /// answers 400 to a name it was not told about — before any of this application runs, with a generic
 /// HTML page the printer's panel reports as <c>Bug</c>. The list it is told about is composed in
 /// <c>compose.yaml</c> from the names people browse to and the one configured printer host, so a

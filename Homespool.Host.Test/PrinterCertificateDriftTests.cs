@@ -159,11 +159,11 @@ public class PrinterCertificateDriftTests
 
     /// <summary>
     /// A configured host of 21 characters is the first thing reported, even when the certificate
-    /// covers it — the printer dials the first 20 and never connects.
+    /// covers it — the printer connects to the first 20 and never reaches anything.
     /// </summary>
     /// <remarks>
     /// The fixture is the shape of the name that took two printers offline: 21 characters, one over
-    /// the firmware's field. The message has to name what the printer would actually dial, because
+    /// the firmware's field. The message has to name what the printer would actually connect to, because
     /// that is the only thing that makes "connection error" on the panel make sense.
     /// </remarks>
     [Fact]
@@ -175,7 +175,7 @@ public class PrinterCertificateDriftTests
         verdict.State.Should().Be(PrinterCertificateState.ConfiguredAddressTooLong);
         verdict.IsProblem.Should().BeTrue();
         verdict.Description.Should().Contain("20-character")
-               .And.Contain("homespool.example.ne", "it has to say what the printer would dial")
+               .And.Contain("homespool.example.ne", "it has to say what the printer would connect to")
                .And.Contain("PRINTER_HOST");
     }
 

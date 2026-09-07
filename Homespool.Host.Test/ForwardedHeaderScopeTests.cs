@@ -82,7 +82,7 @@ public class ForwardedHeaderScopeTests
     /// <b>The legacy listener's twin of the refusal, and the case the rule used to get wrong</b>: it
     /// treated every port that was not the printer port as the user listener, which was true when it
     /// was written and stopped being true when the legacy listener opened. Run without the proxy, that
-    /// port is dialled directly and the header is the caller's own.
+    /// port is reached directly and the header is the caller's own.
     /// </summary>
     [Fact]
     public void TheLegacyListenerIsNotTrustedWhenPrintersDialItDirectly()

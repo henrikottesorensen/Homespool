@@ -44,7 +44,7 @@ public static class ConnectIni
     /// The section on its own, to paste into an existing ini — for someone who would rather read what
     /// they are about to do than trust a zip.
     /// </summary>
-    /// <param name="endpoint">The port to dial and whether to verify anything on arrival.</param>
+    /// <param name="endpoint">The port to connect to and whether to verify anything on arrival.</param>
     /// <param name="hostname">The address this printer should use: one of the names in the certificate.</param>
     /// <param name="token">The provisioning token, which is what makes this a credential.</param>
     public static string BuildSnippet(PrinterEndpoint endpoint, string hostname, string token)
@@ -92,7 +92,7 @@ public static class ConnectIni
     /// path are not. Firmware parses the first two; the third names a menu in firmware's language
     /// rather than ours.
     /// </remarks>
-    /// <param name="endpoint">The port to dial and whether to verify anything on arrival.</param>
+    /// <param name="endpoint">The port to connect to and whether to verify anything on arrival.</param>
     /// <param name="hostname">The address this printer should use: one of the names in the certificate.</param>
     /// <param name="token">The provisioning token, which is what makes this a credential.</param>
     /// <param name="localiser">Reads the comments in the culture of whoever asked for the bundle.</param>

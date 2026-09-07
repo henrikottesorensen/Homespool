@@ -306,7 +306,7 @@ public sealed class ProvisioningBundleBuilder
     /// <para>
     /// An allowlist, and a narrow one on purpose. A name that reaches a printer is a DNS name or an
     /// IPv4 literal - letters, digits, dots and hyphens covers both, punycode included - and the
-    /// firmware can dial nothing else: it does no IDNA, and <see cref="CouldReachAPrinter"/> has
+    /// firmware can reach nothing else: it does no IDNA, and <see cref="CouldReachAPrinter"/> has
     /// already ruled out the IPv6 literals that would need anything more.
     /// </para>
     /// </remarks>

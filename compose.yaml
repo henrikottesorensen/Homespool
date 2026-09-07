@@ -521,8 +521,15 @@ services:
   # several would produce one certificate and one file - and every other name would find nothing
   # under its own name and fall back to the self-signed one, silently. acme/homespool-renew-cert.sh
   # runs this service once per name in ACME_HOSTS, overriding LEGO_DOMAINS each time.
+  #
+  # Pinned to the major, not a digest. This container holds the DNS API token and writes every
+  # user-facing TLS key, and `docker compose run` pulls whatever the tag points at on the next
+  # timer - so an untagged image meant an unreviewed build about twice a month (lego released
+  # fourteen times between May and August 2026). A digest would be stricter but goes stale at
+  # that cadence; the major keeps patch releases flowing and makes a breaking change a deliberate
+  # edit here.
   certs:
-    image: goacme/lego
+    image: goacme/lego:v5
     profiles: ["certs"]
 
     # On the project's own network like every other service, although it only needs outbound

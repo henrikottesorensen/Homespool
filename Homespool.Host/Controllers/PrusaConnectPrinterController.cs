@@ -177,7 +177,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting(PrinterRateLimits.RegistrationPolicy)]
+    [EnableRateLimiting(PrinterRateLimits.RegistrationStartPolicy)]
     [HttpPost]
     [Route("/p/register")]
 
@@ -225,7 +225,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting(PrinterRateLimits.RegistrationPolicy)]
+    [EnableRateLimiting(PrinterRateLimits.RegistrationPollPolicy)]
     [HttpGet]
     [Route("/p/register")]
     [RequestSizeLimit(8 * 1024)]

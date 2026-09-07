@@ -70,6 +70,12 @@ jobs:
       - name: Test the Pi login provisioning script
         run: ./tests/pi-login.test.sh
 
+      # The proxy's name derivation, which decides what the deployment answers to and what gets a
+      # certificate. Linux, because it sources a file the nginx image's dash reads - and because
+      # bash 3.2, which is what a Mac would run it under, cannot parse that file at all.
+      - name: Test the user server-name derivation
+        run: ./tests/user-server-names.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

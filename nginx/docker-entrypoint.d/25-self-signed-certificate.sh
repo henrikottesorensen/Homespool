@@ -94,10 +94,14 @@ set -- $NAMES
 IFS="$OLD_IFS"
 
 for host in "$@"; do
-    # A name reaches this script from .env and becomes a file path, so it is checked before it is
-    # one. Anything outside the hostname character set - a slash most of all - is refused rather
-    # than sanitised: a name that cannot be served is a configuration error to report, and quietly
-    # rewriting it would serve a certificate for a name the operator did not ask for.
+    # A name reaches this script as an environment variable and becomes a file path, so it is checked
+    # before it is one. Anything outside the hostname character set - a slash most of all - is refused
+    # rather than sanitised: a name that cannot be served is a configuration error to report, and
+    # quietly rewriting it would serve a certificate for a name the operator did not ask for.
+    #
+    # 16-user-server-names.envsh applies this same test while deriving USER_TLS_NAMES, so in the
+    # shipped entrypoint order nothing reaches here to refuse. Kept as a backstop rather than
+    # deleted: this reads a variable, and a variable is not a promise about who set it.
     case "$host" in
         *[!A-Za-z0-9.-]* | .* | '')
             echo "$0: refusing $host - not a usable hostname" >&2

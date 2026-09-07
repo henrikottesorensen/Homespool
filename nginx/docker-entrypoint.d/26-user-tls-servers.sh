@@ -50,8 +50,9 @@ set -- $NAMES
 IFS="$OLD_IFS"
 
 for host in "$@"; do
-    # The same check 25 applies, for the same reason: this name becomes a file path and a
-    # server_name. A name that failed there has no certificate, so it could not be served anyway.
+    # The same check 25 applies, and 16 applied first while deriving the list - so this refuses
+    # nothing in the shipped order and is a backstop, for the reason 25 gives: the name arrives in a
+    # variable, and it becomes a file path and a server_name here.
     case "$host" in
         *[!A-Za-z0-9.-]* | .* | '')
             echo "$0: refusing $host - not a usable hostname" >&2

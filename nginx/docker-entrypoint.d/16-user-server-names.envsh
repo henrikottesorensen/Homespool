@@ -26,6 +26,13 @@
 # name with a certificate and no block is served by nobody. Deriving the list once is what stops
 # them drifting apart - no consumer splits USER_HOSTS itself.
 #
+# WHICH INCLUDES AGREEING ON WHAT A NAME IS. 25 and 26 each refuse anything outside a hostname
+# charset, and they have to keep doing so - they read an environment variable and cannot assume
+# anyone filtered it. But refusing there and nowhere else is a disagreement of its own: the name is
+# dropped from the certificates and the TLS blocks while the plain-HTTP server_name below still
+# carries it, so it is announced by a listener that redirects to a name nothing serves. Refusing
+# here instead means all three see the same list.
+#
 # DEDUPLICATED, and that is not tidiness: localhost has to be folded in for the default deployment
 # to work at all, and the default USER_HOSTS is `localhost`. Named twice it produces two identical
 # server blocks, and nginx warns about a conflicting server name at every start - which it has done
@@ -48,6 +55,17 @@ export USER_TLS_NAMES="$(
         # a space.
         host="$(echo "$host" | tr -d '[:space:]')"
         [ -n "$host" ] || continue
+
+        # Letters, digits, dots and hyphens, and not a leading dot - the same test 25 and 26 apply,
+        # which is what makes this the place they agree rather than a fourth opinion. Said out loud,
+        # because a name that silently vanishes between .env and the listener is the whole reason
+        # this check moved here.
+        case "$host" in
+            *[!A-Za-z0-9.-]* | .*)
+                echo "16-user-server-names.envsh: refusing $host from USER_HOSTS - not a usable hostname" >&2
+                continue
+                ;;
+        esac
 
         # Whole-entry match, which the delimiters are what make it: without them `home.lan` would
         # count `myhome.lan` as already present and quietly drop it.

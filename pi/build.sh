@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # Builds a Raspberry Pi SD-card image with the Homespool stack baked in.
 #
-#   pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub
-#   pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub --device pi5 --dev
+#   pi/build.sh
+#   pi/build.sh --device pi5 --dev
 #
 # The artefact is homespool-rpi-arm64.img, one card carrying both kernels so any 64-bit Pi boots it -
 # see the --device block below. --dev adds the .NET SDK, Claude Code and debugging tools on top of
-# the appliance and suffixes the name; it wants a Pi 4 or better.
+# the appliance and suffixes the name; it wants a Pi 4 or better. The card carries no credential:
+# homespool-login.txt on its boot partition is how the account gets a password or a key.
 #
 # Two builds happen here, and the order matters. First the application's own container images, built
 # natively for arm64 on this machine - which is why an Apple Silicon Mac is the easy host and an x86
@@ -24,8 +25,6 @@ work_dir="$pi_dir/work"
 payload_dir="$work_dir/payload"
 images_dir="$work_dir/images"
 
-ssh_key=""
-password=""
 device_user="pi"
 
 # The board, and it decides only the kernel flavour. rpi-image-gen ships pi3, pi4, cm4 and zero2w on
@@ -64,14 +63,12 @@ custom_layer="homespool"
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --ssh-key)   ssh_key="$2"; shift 2 ;;
-        --password)  password="$2"; shift 2 ;;
         --user)      device_user="$2"; shift 2 ;;
         --device)    board="$2"; shift 2 ;;
         --dev)       custom_layer="homespool-dev"; shift ;;
-        # 2,9 rather than 2,12: the usage block ends at the --dev note, and a fixed range that runs
-        # past it prints half a sentence about container builds. Extend this when the header does.
-        -h|--help)   sed -n '2,9p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        # 2,10 rather than 2,13: the usage block ends at the login-file note, and a fixed range that
+        # runs past it prints half a sentence about container builds. Extend this when the header does.
+        -h|--help)   sed -n '2,10p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -104,13 +101,6 @@ if [ "$custom_layer" = "homespool-dev" ]; then
     # An if rather than a one-line [ ... ] && ..., which under set -e is a trap: the test returns 1
     # on an appliance build and takes the whole script down with it.
     image_name="$image_name-dev"
-fi
-
-# Checked here rather than where it is used, which is on the far side of a ~550 MB image save and a
-# container build. A typo in a path should cost a second, not the whole build.
-if [ -n "$ssh_key" ] && [ ! -f "$ssh_key" ]; then
-    echo "No such public key: $ssh_key" >&2
-    exit 2
 fi
 
 # The layer metadata between METABEGIN and METAEND is DEB822, not free-form comment. A prose line
@@ -286,39 +276,20 @@ overrides=(
 if [ "$board" = "all" ]; then
     overrides+=("IGconf_fs_ext4_mkfs_args=-F -b 4096")
 fi
-# Neither variable set means rpi-image-gen locks the account, and that is now the default this image
-# ships: no password, nobody logs in, and the card carries no credential for anyone to look up.
+# No credential is passed to rpi-image-gen, so it locks the account - its default, and the one this
+# image ships with: no password, no key, and nothing on the card for anyone to look up. There used
+# to be --password and --ssh-key here for a card built for yourself; they went once the boot file
+# could do the same job, because a password on this command line was also on the host's argv, on
+# the container's, and in final.env under the work volume afterwards, and a key given here was
+# whatever file was named, private ones included. The boot file does neither.
 #
-# --password is for a card you are building for yourself and want to reach immediately. Note that
-# rpi-image-gen validates it against a regex demanding upper, lower, digit and punctuation - the
-# check the old stock password had to route around with a pre-computed hash, and a reasonable one to
-# submit to for a password chosen deliberately at build time.
-if [ -n "$password" ]; then
-    overrides+=("IGconf_device_user1pass=$password")
-elif [ -n "$ssh_key" ]; then
-    # The one case where the boot file's gate stays open on a board somebody can already reach: a
-    # key is a way in, an empty password field is not, and the gate reads the password field. That
-    # is the right default - this is exactly the board that needs a way back if the key is lost -
-    # but it is theirs to close, so say how rather than leaving it to be discovered.
-    echo "==> No --password given; the $device_user account is locked and the key is the way in."
-    echo "    homespool-login.txt on the card's boot partition can still give it a password, and"
-    echo "    stays able to for as long as the account has none - which is the way back if the key"
-    echo "    is ever lost, and the only thing that works at the console. To close it off, run"
-    echo "    passwd once on the board."
-else
-    # Stated rather than warned about: no key and no password is what a card built for other people
-    # is *meant* to be, and it is what a downloaded image ships as. Somebody building one for
-    # themselves still wants to know before they flash it rather than after.
-    echo "==> No --password and no --ssh-key: the $device_user account will ship LOCKED."
-    echo "    The stack runs and serves its pages either way; what is missing is a shell on the"
-    echo "    board. To get one, put a password and/or an SSH key in homespool-login.txt on the"
-    echo "    card's boot partition - before first boot, or at any point afterwards, for as long as"
-    echo "    the account still has neither."
-fi
-if [ -n "$ssh_key" ]; then
-    cp "$ssh_key" "$work_dir/authorized_key.pub"
-    overrides+=("IGconf_homespool_sshkey=/repo/pi/work/authorized_key.pub")
-fi
+# Stated rather than warned about: a locked account is what every card is meant to be. Somebody
+# building one for themselves still wants to know before they flash it rather than after.
+echo "==> The $device_user account ships LOCKED."
+echo "    The stack runs and serves its pages either way; what is missing is a shell on the board."
+echo "    To get one, put a password and/or an SSH key in homespool-login.txt on the card's boot"
+echo "    partition - before first boot, or at any point afterwards, for as long as the account"
+echo "    still has neither."
 
 # --privileged: mmdebstrap mounts pseudo-filesystems in private namespaces and genimage wants loop
 # devices. -v on the repo rather than a copy, so a failed build can be re-run against an edit without

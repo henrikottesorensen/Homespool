@@ -213,7 +213,8 @@ public sealed class ErrorTextTests
         [
             "Cameras_SourceMissing", "Cameras_SourceIncomplete", "Cameras_SourceScheme",
             "Cameras_SourceIsThisServer", "Cameras_NotFoundOrNotYours",
-            "Cameras_AttachedNeedsAdministrator", "Cameras_NotYourTeam", "Cameras_StreamServerRefused",
+            "Cameras_AttachedNeedsAdministrator", "Cameras_AttachedDeviceUnknown",
+            "Cameras_AttachedSourceNotComposed", "Cameras_NotYourTeam", "Cameras_StreamServerRefused",
             "Cameras_NoPictureLocal", "Cameras_NoPictureNetwork",
             "Bundle_AddressSurvivesLease", "Bundle_AddressIsTheContainers",
             "Bundle_AddressUntilLeaseMoves", "Bundle_AddressUnclassified",

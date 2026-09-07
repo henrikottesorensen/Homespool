@@ -15,9 +15,19 @@ public class CameraOptions
     /// Base address of the go2rtc sidecar. Default <c>http://go2rtc:1984</c>.
     /// </summary>
     /// <remarks>
-    /// The service name on the Compose network, not a published port - the sidecar's API has no
-    /// authentication of its own, so it is reachable from inside the stack and from nowhere else.
-    /// Homespool is the only thing that configures it, which is what makes that safe.
+    /// <para>
+    /// The service name on the Compose network, not a published port: 1984 is not published, so the
+    /// API is reachable from inside the stack and from nowhere else. Homespool is the only thing
+    /// that configures it.
+    /// </para>
+    /// <para>
+    /// <b>That is the outer wall and never the only one.</b> The API carries a credential of its own
+    /// — see <see cref="IsAuthenticated"/>, which is why an absent one stops cameras rather than
+    /// merely omitting a header — and the sidecar is configured to apply it to requests reaching it
+    /// from inside its own container too. Both matter because the sidecar fetches camera sources
+    /// itself and follows redirects, so an address it is given can send it back to this API; an
+    /// unpublished port is no answer to a request that originates in there.
+    /// </para>
     /// </remarks>
     public string StreamServerBaseUrl { get; set; } = "http://go2rtc:1984";
 

@@ -263,8 +263,24 @@ services:
     # that file when it registers a camera. It is one credential for the whole API - not the access
     # control; Homespool still proxies every viewing path and applies the per-camera check. It is
     # required all the same: an unauthenticated go2rtc runs command sources for anything that can
-    # reach it. Homespool enforces that rather than a `${VAR:?}` here, so an existing deployment
-    # can still run `docker compose down`.
+    # reach it.
+    #
+    # So `listen` is empty unless a username is set, and an uncredentialled deployment then runs no
+    # API at all rather than an open one. That is go2rtc's own rule made visible: it installs its
+    # authentication middleware only when the username is non-empty, so this makes the API exist
+    # exactly when something is checking it. Not `${VAR:?}`, which fails every compose subcommand
+    # including `docker compose down` on a deployment that has not set it yet. Measured: with an
+    # empty `listen` nothing binds 1984 and no "[api] listen" line appears; RTSP and WebRTC still
+    # listen, and with no streams registered they serve nothing.
+    #
+    # local_auth applies the credential to requests reaching this API from inside this container
+    # too. Without it go2rtc skips authentication entirely for anything arriving from 127.0.0.1, and
+    # it follows HTTP redirects when it fetches a camera - so a camera address answering 302 with a
+    # Location of this API arrives back here as an unauthenticated loopback request, creates a
+    # stream, and runs ffmpeg with the arguments that redirect chose. Not publishing 1984 does not
+    # help, because the request originates in here. Measured on 1.9.14: without it a loopback
+    # request with no credential answers 200, with it 401, while a credentialled request from
+    # either address still answers 200.
     #
     # GO2RTC_PASSWORD comes from .env and is given to both containers, so the two cannot drift.
     # An empty *username* is the off switch, and it has to be: measured 2026-08-09, a username with
@@ -300,14 +316,16 @@ services:
       # the candidate and ice_servers are written by Homespool over /api/config at startup, because
       # a value frozen into a command line cannot follow this machine's address. ice_servers
       # defaults to empty: left alone, go2rtc contacts a third-party STUN server unprompted.
-      - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
+      - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","local_auth":true,"allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
 
       # DEVELOPER: swap the line above for this one to get the web interface back - it is how
       # stream types get tested by hand, and omitting allow_paths entirely is how go2rtc means
       # "unrestricted". One line swapped rather than a second -c: whether a second '{"api":{...}}'
       # merges with this one or replaces it is untested, and if it replaced it the credential would
-      # go with it.
-      # - '{"api":{"username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}"}}'
+      # go with it. It keeps `listen` and `local_auth`, so the two lines differ in allow_paths and
+      # nothing else - dropping either of those would quietly reopen the sidecar rather than widen
+      # it, which is not what swapping this line is meant to buy.
+      # - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","local_auth":true}}'
 
     # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
     hostname: go2rtc
@@ -342,10 +360,73 @@ services:
     device_cgroup_rules:
       - "c 81:* rmw"
 
+    # What this container may do beyond running its own binary: nothing. It runs third-party code,
+    # it fetches addresses people give it, and it decodes what those addresses return - so the
+    # question is not whether it is trustworthy but how little it needs, and the answer measured on
+    # a Pi 3 with a USB camera and an RTSP camera is: none of this.
+    #
+    # All settings below were tried one at a time and then together, each time asking both cameras
+    # for a frame. Both answered under every one of them.
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+
+    # Not root. Nothing this sidecar does needs it: it binds only unprivileged ports, and the one
+    # thing it must write is /config.
+    #
+    # The group is the host's numeric video GID, and it has to be the NUMBER. `group_add: video`
+    # resolves the name inside the container, where Alpine's video GID is not Debian's, so the name
+    # form silently grants the wrong group and every attached camera goes black with nothing logged.
+    # 44 is Debian and Raspberry Pi OS; check yours with `stat -c '%g' /dev/video0` and set
+    # GO2RTC_VIDEO_GID if it differs. A network camera does not care either way.
+    #
+    # What this user must be able to write is its own configuration, and the volumes block below is
+    # where that is arranged - read it before changing either.
+    user: "65532:${GO2RTC_VIDEO_GID:-44}"
+
+    # The root filesystem is written to only by a process that has been told what to write, so it
+    # does not need to be writable. /config is a volume and stays writable under this - which
+    # matters, because registering a camera is a config write: go2rtc persists a stream to its
+    # config file, and a read-only /config answers 400 to the registration and 500 to /api/config,
+    # in both cases with nothing in its log.
+    read_only: true
+    tmpfs:
+      - /tmp
+
     volumes:
-      - homespool-go2rtc-config:/config
-      # Visibility only - the cgroup rule above is what grants access.
-      - /dev:/dev
+      # One file, bind-mounted, and the only bind mount in this stack - everything else persistent
+      # here is a named volume. The reason is ownership. A named volume is seeded from the image,
+      # whose /config is owned by root, so a sidecar running as anything else cannot write its own
+      # configuration; a host file has host ownership, which is something a deployment sets once and
+      # never thinks about again. That is what buys the `user:` line above.
+      #
+      # IT MUST EXIST BEFORE THE FIRST START. Docker creates a *directory* at a bind-mount path that
+      # is missing, and go2rtc then fails on a directory where it wanted its configuration. From
+      # nothing:
+      #
+      #   install -o 65532 -g 44 -m 664 /dev/null ./go2rtc.yaml
+      #
+      # The requirement is only that the file be WRITABLE by the identity in `user:` above, by owner
+      # or by group - the line above is one way to satisfy it, not the shape it has to have. A file
+      # left owned by the deployment's own user with group 44 and mode 660 is equally fine, and is
+      # what copying one out of an older deployment tends to produce; measured, and the in-place
+      # rewrite keeps whatever ownership it found. If cameras save but never appear, check this
+      # first.
+      #
+      # An empty file is a valid starting point - go2rtc reads it, starts, and writes the first
+      # camera into it. Do not edit it by hand: it is rewritten by the sidecar whenever Homespool
+      # registers a camera, and a camera described in two places is described wrongly in one of them.
+      #
+      # Measured rather than assumed, because the failure would be silent: go2rtc rewrites this file
+      # IN PLACE, same inode, so mounting the single file holds. Were it to write a temporary file
+      # and rename, a single-file mount would break and this would have to become a directory.
+      - ./go2rtc.yaml:/config/go2rtc.yaml
+      # Visibility only - the cgroup rule above is what grants access, and READ-ONLY is not a typo
+      # or a thing to repair. Opening a capture device is governed by the node's own permissions and
+      # the cgroup rule, never by this mount's flag, so v4l2 capture is unaffected: measured, with
+      # the mount confirmed ro and a write inside the container refused, while frames kept arriving.
+      - /dev:/dev:ro
 
     networks:
       - homespool
@@ -634,11 +715,6 @@ volumes:
   # across container replacement so the exception someone clicked through keeps meaning something -
   # a certificate regenerated on every start teaches people that the warning is noise.
   homespool-proxy-certs:
-
-  # go2rtc's own configuration, written by go2rtc when Homespool registers a camera. Kept across
-  # container replacement so cameras survive one - the startup reconciler re-registers anything
-  # lost, but a volume means it usually has nothing to do.
-  homespool-go2rtc-config:
 
   # The printer-facing leaf and its key, in PEM: written by the app, read by the proxy.
   # Deliberately NOT part of homespool-data, which holds the certificate authority's private key -

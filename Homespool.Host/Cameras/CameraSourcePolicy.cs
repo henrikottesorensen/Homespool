@@ -101,8 +101,16 @@ public sealed class CameraSourcePolicy
     /// its user-facing names (<c>USER_HOSTS</c> goes to the proxy alone and nobody stores the
     /// answer), so it cannot refuse a
     /// name it has never been given. What that leaves reachable is our own front door over nginx,
-    /// answering an unauthenticated fetch with a login page; the sidecar's API, which is the target
-    /// that matters, is container-side and fully covered.
+    /// answering an unauthenticated fetch with a login page.
+    /// </para>
+    /// <para>
+    /// <b>What no spelling of this check covers is a source that never names the sidecar.</b> The
+    /// stream server follows redirects, so an address that resolves and answers perfectly well can
+    /// send it wherever it likes on the next hop — including back to the stream server's own API,
+    /// arriving from inside its container, where an unpublished port means nothing. This check reads
+    /// a name once, before any of that; it is not the thing standing between a camera source and
+    /// that API, and must not be read as though it were. The sidecar's own credential is, applied to
+    /// requests from inside its container as well as outside.
     /// </para>
     /// <para>
     /// Deliberately not derived from the request: <c>Host</c> is written by the caller, which is a

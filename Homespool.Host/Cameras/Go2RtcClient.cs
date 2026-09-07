@@ -432,7 +432,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
 
             List<string> sizes = source.Info
                                        .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                                       .Where(IsSize)
+                                       .Where(IsCaptureSize)
                                        .Distinct(StringComparer.Ordinal)
                                        .OrderBy(Pixels)
                                        .ToList();
@@ -463,8 +463,16 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         return end < 0 ? url[start..] : url[start..end];
     }
 
-    /// <summary><c>WIDTHxHEIGHT</c>, and nothing else - the info field is free text.</summary>
-    private static bool IsSize(string value)
+    /// <summary>
+    /// <c>WIDTHxHEIGHT</c>, both positive, and nothing else - the info field is free text.
+    /// </summary>
+    /// <remarks>
+    /// Public because a size is also composed into a device source, where the shape is what stops it
+    /// carrying anything else - see <c>CameraService</c>. One predicate rather than two, so a size
+    /// this reads out of the sidecar's listing and a size a form offers back cannot mean different
+    /// things.
+    /// </remarks>
+    public static bool IsCaptureSize(string value)
     {
         string[] parts = value.Split('x');
 

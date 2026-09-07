@@ -155,15 +155,16 @@ public sealed class CameraCredentialTests : IDisposable
     }
 
     [Fact]
-    public async Task TheHealthCheckIsQuietWhenNoCameraIsConfigured()
+    public async Task TheHealthCheckWarnsWithNoCredentialEvenWithNoCamera()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
 
         HealthCheckResult result = await CheckAsync(context, credentialed: false);
 
-        result.Status.Should().Be(HealthStatus.Healthy,
-                                  "most deployments have no camera, and a banner about a credential they have no "
-                                  + "use for is how people learn to ignore banners");
+        result.Status.Should().Be(HealthStatus.Degraded,
+                                  "a camera cannot be added without a credential, so waiting for a camera to "
+                                  + "appear before saying so is waiting for something that cannot happen");
+        result.Description.Should().Contain("GO2RTC_PASSWORD");
     }
 
     [Fact]

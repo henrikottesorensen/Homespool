@@ -182,7 +182,8 @@ sandbox_path() {
     # fragility - a nicety able to abort the write - hid behind it. A tool missing here does not
     # report itself; it changes behaviour somewhere else.
     for tool in awk sed grep tr head cat seq mktemp chmod cp rm base64 stty sort uniq \
-                dirname basename ln mkdir openssl getent hostname date tail timeout fold tput; do
+                dirname basename ln mkdir openssl getent hostname date tail timeout fold tput \
+                stat chgrp uname; do
         src="$(PATH="$system_path" command -v "$tool" 2>/dev/null)" \
             || src="$(PATH="$real_path" command -v "$tool" 2>/dev/null)" \
             || continue
@@ -1051,7 +1052,7 @@ fi
 
 if test_case "a name over 20 characters is refused outright, because firmware truncates it"; then
     # Prusa firmware keeps the Connect hostname in a 20-character field and cuts a longer one
-    # silently: the ini loads, the printer dials the first 20 characters, and the panel says
+    # silently: the ini loads, the printer connects to the first 20 characters, and the panel says
     # "connection error" about a name that does not exist. Unlike every other warning here there is
     # no "use it anyway" - no network exists on which the truncated name works.
     sandbox_path linux docker-collision
@@ -1060,7 +1061,7 @@ if test_case "a name over 20 characters is refused outright, because firmware tr
     status=$?
     assert_eq "1" "$status" "refused, with no question asked"
     assert_says "$out" "20-character" "and says whose limit it is"
-    assert_says "$out" "homespool.example.ne" "naming what the printer would actually dial"
+    assert_says "$out" "homespool.example.ne" "naming what the printer would actually connect to"
 
     # Twenty is the limit itself. A name, so it is asked about resolving; the answer is yes.
     if validate_printer_host "printers.example.net" >/dev/null 2>&1 <<< "y"
@@ -1238,6 +1239,74 @@ if test_case "interactive with no tty refuses instead of hanging"; then
     status=$?
     assert_contains "$out" "nothing to read answers from" "says why"
     assert_eq "1" "$status" "and fails"
+fi
+
+# ------------------------------------------------------------------------------------------------
+# The camera sidecar's configuration file
+#
+# It is bind-mounted as a single file into a container that does not run as root, so its absence and
+# its group are both silent failures at a distance: a missing file becomes a Docker-created
+# directory, and a wrong group means every camera save answers 400 with nothing logged anywhere.
+# ------------------------------------------------------------------------------------------------
+
+if test_case "the sidecar config file is created beside .env"; then
+    use_temp_env "PRINTER_HOST="
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    assert_succeeds test -f "$temp_env_dir/go2rtc.yaml"
+    # Empty is deliberate and is what go2rtc starts on; anything else would be a config we invented.
+    assert_eq "0" "$(wc -c < "$temp_env_dir/go2rtc.yaml" | tr -d ' ')" "created empty"
+fi
+
+if test_case "an existing sidecar config is never touched"; then
+    use_temp_env "PRINTER_HOST="
+    printf 'streams:\n  camera: rtsp://kept/\n' > "$temp_env_dir/go2rtc.yaml"
+    before="$(cat "$temp_env_dir/go2rtc.yaml")"
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    assert_eq "$before" "$(cat "$temp_env_dir/go2rtc.yaml")" "the cameras this deployment has survive"
+fi
+
+if test_case "--dry-run creates no sidecar config"; then
+    use_temp_env "PRINTER_HOST="
+    dry_run=true
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    assert_fails test -e "$temp_env_dir/go2rtc.yaml"
+fi
+
+if test_case "video_group_id answers a number or nothing, never a name"; then
+    # A name would resolve inside the container, where Alpine's video group is not Debian's - so the
+    # one thing this must never do is answer "video". Empty is a legitimate answer (macOS has no
+    # getent and no video devices); 44 is not privileged over any other number.
+    case "$(video_group_id)" in
+        '' | *[0-9]) passed=$((passed + 1)) ;;
+        *) fail "video_group_id answered something that is neither a number nor empty" ;;
+    esac
+fi
+
+if test_case "the detected video group is recorded whatever its number"; then
+    # Including 44. The default in compose is right on Debian and a guess elsewhere, and a box that
+    # detected its own number should say so rather than lean on the guess agreeing.
+    use_temp_env "PRINTER_HOST="
+    video_group_id() { echo 44; }
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    assert_contains "$pending" "GO2RTC_VIDEO_GID" "recorded even when it matches the default"
+
+    use_temp_env "PRINTER_HOST="
+    pending=""
+    video_group_id() { echo 987; }
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    assert_contains "$pending" "987" "a host that differs is recorded, or its cameras go black"
+fi
+
+if test_case "an undetectable video group leaves the line alone"; then
+    # Nothing detected is not the same as 44 detected: compose's default stands, and its absence
+    # from .env is what says nobody measured it.
+    use_temp_env "PRINTER_HOST="
+    video_group_id() { echo ""; }
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    case "$pending" in
+        *GO2RTC_VIDEO_GID*) fail "a guess must not be recorded as though it were measured" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
 fi
 
 # ------------------------------------------------------------------------------------------------

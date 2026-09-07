@@ -592,6 +592,22 @@ PROXY_NETWORK=172.17.0.0/16"
     assert_contains "$out" "172.20.0.0/16" "proposed the first free range"
 fi
 
+if test_case "moving the compose network moves the proxy's address with it"; then
+    # Three settings answer one fact: the range Docker allocates, the range the application treats
+    # as container-only, and the one address inside it whose forwarded headers are believed. A move
+    # that left the address behind would trust headers from nowhere - the log would then say every
+    # client is the proxy - and say nothing about why.
+    sandbox_path linux docker-collision
+    use_temp_env "PROXY_SUBNET=172.17.0.0/16
+PROXY_NETWORK=172.17.0.0/16
+PROXY_ADDRESS=172.17.0.2"
+    auto_move_subnet >/dev/null 2>&1
+    assert_contains "$pending" "PROXY_SUBNET=172.20.0.0/16" "the range Docker allocates"
+    assert_contains "$pending" "PROXY_NETWORK=172.20.0.0/16" "the range the application knows"
+    assert_contains "$pending" "PROXY_ADDRESS=172.20.0.2" "and the proxy's address inside it"
+    assert_eq "172.31.0.2" "$(proxy_address_for 172.31.0.0/16)" "second address of the range, after the gateway"
+fi
+
 if test_case "a Windows zone becomes an IANA one"; then
     # Windows says "W. Europe Standard Time"; TZ takes "Europe/Berlin". The conversion needs .NET 6+,
     # which Windows PowerShell 5.1 does not have - so the container the wizard already runs in

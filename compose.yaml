@@ -26,11 +26,11 @@ services:
     # what makes X-Real-IP worth trusting when the proxy writes it: a client that could reach Kestrel
     # directly could simply write that header itself.
     #
-    # Inside the network is a different question, and worth knowing before trusting the header further
-    # than the proxy. XForwarded__KnownNetworks is this whole subnet, so every service here is a
-    # trusted forwarder - go2rtc included, which runs third-party code and publishes a port of its own.
-    # Nothing between the containers stops one of them reaching Kestrel directly with whatever X-Real-IP
-    # it likes.
+    # Inside the network the header is trusted from ONE address, the proxy's, pinned below. Every
+    # other container that shares a network with this one - go2rtc runs third-party code and fetches
+    # addresses people give it - can open a connection to Kestrel, since Docker networks are
+    # symmetric, but arrives as an ordinary untrusted client: whatever X-Real-IP or X-Forwarded-Proto
+    # it writes is ignored, and it needs a printer token or a sign-in like anybody else.
     #
     # The printer port is not served TLS from here because .NET cannot serve that TLS correctly:
     # SslStream emits records far larger than the kilobyte of plaintext the firmware holds - a real
@@ -92,15 +92,16 @@ services:
       Cameras__WebRtcPort: "${WEBRTC_PORT:-8555}"
 
 
-      # Which peer may speak for the client - the proxy's network below, and nothing else. It must
-      # agree with PROXY_SUBNET: change one and you must change the other, or forwarded headers are
-      # silently ignored. Empty would mean the middleware is not registered at all, and links in
-      # outgoing mail would say http:// while every logged client address was the proxy's.
-      XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
+      # Which peer may speak for the client - the proxy, at the address pinned on it below, and
+      # nothing else. Not the network: a range trusts every container on it, and a sidecar that runs
+      # third-party code is on it too. The address must lie inside PROXY_SUBNET, and setup-env.sh
+      # moves the two together. Empty would mean the middleware is not registered at all, and links
+      # in outgoing mail would say http:// while every logged client address was the proxy's.
+      XForwarded__KnownProxies__0: "${PROXY_ADDRESS:-172.28.0.2}"
 
-      # The same range for a different question: which addresses exist only in here, so the
-      # provisioning page does not offer an address no printer on your network can route to. Fed
-      # from the same variable deliberately - one network, one value, no way for them to drift.
+      # Which addresses exist only in here, so the provisioning page does not offer an address no
+      # printer on your network can route to. The network's own range, which is also what the
+      # camera source policy refuses as a destination.
       Certificates__ContainerNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
       # docker0 is on every Docker host whether or not anything uses it, and its gateway address is
@@ -440,7 +441,7 @@ services:
   # this network.
   #
   # Replacing this with a Traefik, Caddy or nginx of your own is supported for the people-facing
-  # half - the app only needs XForwarded__KnownNetworks to name yours - but the printer half is
+  # half - the app only needs XForwarded__KnownProxies to name yours - but the printer half is
   # fussier than a normal reverse proxy: exactly one certificate presented, no chain, one
   # ciphersuite, no response buffering, and OpenSSL rather than Go's crypto/tls. Read
   # nginx/homespool-printer.conf before substituting anything for that half.
@@ -458,7 +459,8 @@ services:
     # client shares one X-Real-IP, so attempt limiting and the logs cannot tell them apart.
     #
     # Serving IPv6 properly is a piece of work, not a flag: enable_ipv6 on the network below with a
-    # subnet, that subnet in XForwarded__KnownNetworks and Certificates__ContainerNetworks, Kestrel
+    # subnet, that subnet in Certificates__ContainerNetworks and a v6 proxy address in
+    # XForwarded__KnownProxies, Kestrel
     # listening on v6, and the health allow-list revisited. Until that is done, not offering v6 is
     # the only configuration in which the addresses this stack reasons about are real. A browser
     # that tries v6 first gets a refusal and falls back to v4 on its own.
@@ -578,8 +580,14 @@ services:
     group_add:
       - "1654"
 
+    # A fixed address, because it is the ONE address the application trusts forwarded headers
+    # from (XForwarded__KnownProxies above). Docker's allocator would hand this container a
+    # different address on any recreation, and a trust pinned to yesterday's address is no trust
+    # at all - the log would then say every client is the proxy. Must lie inside PROXY_SUBNET;
+    # .1 is the bridge gateway, so .2 is the first address a container can hold.
     networks:
-      - homespool
+      homespool:
+        ipv4_address: "${PROXY_ADDRESS:-172.28.0.2}"
 
     # service_started, not service_healthy: waiting for health kept every port closed for the whole
     # of startup, and a first boot on a Raspberry Pi migrates a database before it reports healthy -
@@ -696,10 +704,11 @@ services:
     command: run
 
 networks:
-  # Pinned rather than left to Docker's allocator, so XForwarded__KnownNetworks can name it - the
-  # trusted range stops being something the operator has to discover and becomes something we
-  # chose. Change the subnet if it collides with something on your host, and change PROXY_NETWORK
-  # in .env to match - the two must agree or forwarded headers are silently ignored.
+  # Pinned rather than left to Docker's allocator, so that Certificates__ContainerNetworks can name
+  # the range and PROXY_ADDRESS can sit inside it - both stop being something the operator has to
+  # discover and become something we chose. Change the subnet if it collides with something on
+  # your host, and change PROXY_NETWORK and PROXY_ADDRESS in .env with it; setup-env.sh does all
+  # three together.
   homespool:
     ipam:
       config:

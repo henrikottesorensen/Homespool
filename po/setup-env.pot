@@ -170,53 +170,53 @@ msgstr ""
 msgid "Detected $address as the address printers reach this server on."
 msgstr ""
 #: setup-env.sh:1636
-msgid "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
+msgid "/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET, PROXY_NETWORK and PROXY_ADDRESS by hand."
 msgstr ""
 #: setup-env.sh:1641
 msgid "$candidate instead."
 msgstr ""
-#: setup-env.sh:1662
+#: setup-env.sh:1677
 msgid "The compose network $subnet collides with:$colliding"
 msgstr ""
-#: setup-env.sh:1664
+#: setup-env.sh:1679
 msgid "A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 msgstr ""
-#: setup-env.sh:1668
+#: setup-env.sh:1683
 msgid "Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
 msgstr ""
-#: setup-env.sh:1712
+#: setup-env.sh:1723
 msgid "This stack has run before, so the printer certificate has already been issued - and it is issued once. Changing PRINTER_HOST in .env does not change what that certificate covers. Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
 msgstr ""
-#: setup-env.sh:1750
+#: setup-env.sh:1761
 msgid "This will change:"
 msgstr ""
-#: setup-env.sh:1783
+#: setup-env.sh:1794
 msgid "Every other line - comments, blank lines, and any key not listed - is left as it is."
 msgstr ""
-#: setup-env.sh:1791
+#: setup-env.sh:1802
 msgid "Created $env_file from .env.example."
 msgstr ""
-#: setup-env.sh:1953
+#: setup-env.sh:1964
 msgid "Homespool - .env setup"
 msgstr ""
-#: setup-env.sh:1956
+#: setup-env.sh:1967
 msgid "Editing the existing file, and only the settings below are touched:"
 msgstr ""
-#: setup-env.sh:1959
+#: setup-env.sh:1970
 msgid "No .env yet. One will be created from .env.example, with these settings filled in."
 msgstr ""
-#: setup-env.sh:1979
+#: setup-env.sh:1990
 msgid "Nothing to change."
 msgstr ""
-#: setup-env.sh:1988
+#: setup-env.sh:1999
 msgid "--dry-run: nothing written."
 msgstr ""
-#: setup-env.sh:1994
+#: setup-env.sh:2005
 msgid "Write these"
 msgstr ""
-#: setup-env.sh:2003
+#: setup-env.sh:2014
 msgid "Written. Bring the stack up with:"
 msgstr ""
-#: setup-env.sh:2005
+#: setup-env.sh:2016
 msgid "    docker compose up -d"
 msgstr ""

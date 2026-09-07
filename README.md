@@ -135,7 +135,7 @@ Configuration lives in two places, deliberately:
 | `TZ` | The IANA timezone timestamps are rendered in. Containers default to UTC, which is rarely right for a machine in a house. |
 | `GO2RTC_USERNAME` / `GO2RTC_PASSWORD` | Credentials for the camera sidecar's API — required if you want cameras, ignored otherwise. `setup-env.sh` generates them. |
 | `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest, and the certificate that encrypts the sign-in key ring. Required — the server refuses to start without one rather than store either key in the clear; `setup-env.sh` generates it. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers, or a key-ring certificate that signs everyone out. |
-| `PROXY_SUBNET` / `PROXY_NETWORK` | The stack's internal Docker network and the range whose forwarded headers are trusted. Change both together only if the default collides with your LAN. |
+| `PROXY_SUBNET` / `PROXY_NETWORK` / `PROXY_ADDRESS` | The stack's internal Docker network, the same range as the app knows it, and the proxy's fixed address on it - the one address whose forwarded headers are trusted. Change all three together only if the default collides with your LAN; `setup-env.sh` does. |
 
 [.env.example](.env.example) documents every setting in full, including the WebRTC overrides for
 deployments behind a router or tunnel.
@@ -148,7 +148,7 @@ deployments behind a router or tunnel.
 - **Printers** get a certificate Homespool mints itself, delivered on the provisioning USB stick,
   so the printer connection is verified TLS out of the box with no public CA involved.
 - Bringing your own reverse proxy (Traefik, Caddy, your nginx) is supported for the people-facing
-  half — point `PROXY_NETWORK` at it. The printer-facing half is **not** a normal reverse-proxy
+  half — put it on the stack's network and point `PROXY_ADDRESS` at it. The printer-facing half is **not** a normal reverse-proxy
   job, and a generic proxy will break it: the firmware's TLS stack holds one kilobyte of plaintext
   at a time, so every TLS record must be capped at 1000 bytes — on the ordinary path *and* through
   the WebSocket tunnel. This limit is extremely easy to get wrong, because nothing tells you it

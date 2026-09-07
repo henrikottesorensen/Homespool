@@ -1633,14 +1633,29 @@ auto_move_subnet() {
     candidate="$(free_subnet)"
     if [ -z "$candidate" ]; then
         warn "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')and every"
-        warn $"/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
+        warn $"/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET, PROXY_NETWORK and PROXY_ADDRESS by hand."
         return 0
     fi
 
     say "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')- using"
     say $"$candidate instead."
-    plan_set PROXY_SUBNET "$candidate"
-    plan_set PROXY_NETWORK "$candidate"
+    move_proxy_subnet "$candidate"
+}
+
+# The proxy's fixed address inside a /16: the gateway takes .1, so .2 is the first a container can
+# hold. Only ever called with a range free_subnet chose, which are all /16s.
+proxy_address_for() {
+    echo "${1%.0.0/16}.0.2"
+}
+
+# All three, always. One is what Docker allocates, one is what the application treats as
+# container-only, and one is the single address whose forwarded headers it believes; they answer
+# different questions from the same fact, and a stack where they disagree either trusts headers from
+# nowhere or offers a printer an address it cannot route to.
+move_proxy_subnet() {
+    plan_set PROXY_SUBNET "$1"
+    plan_set PROXY_NETWORK "$1"
+    plan_set PROXY_ADDRESS "$(proxy_address_for "$1")"
 }
 
 # The subnet is not a question - it is right until it collides with something, and the operator has
@@ -1670,11 +1685,7 @@ check_subnet_collision() {
     fi
 
     if ask_yes_no "  Move the compose network to $candidate" y; then
-        # Both, always. One is what Docker allocates and the other is what the application trusts
-        # for forwarded headers and treats as container-only; they answer different questions from
-        # the same fact, and a stack where they disagree believes headers from the wrong network.
-        plan_set PROXY_SUBNET "$candidate"
-        plan_set PROXY_NETWORK "$candidate"
+        move_proxy_subnet "$candidate"
     fi
 }
 

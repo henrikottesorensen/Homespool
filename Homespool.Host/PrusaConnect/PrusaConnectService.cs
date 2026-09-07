@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -59,6 +60,13 @@ public class PrusaConnectService
     /// <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(System.Threading.CancellationToken)"/> because the
     /// key is not assigned until the insert completes.
     /// </para>
+    /// <para>
+    /// <b>What the printer said about itself goes through <see cref="LogText.Clean(string)"/> first.</b> This
+    /// endpoint is anonymous, so the serial, the model and the firmware version are three strings a
+    /// stranger chose; length is the only other rule they pass. Refusing the registration over a
+    /// character would buy nothing - the same values are restated on the next <c>INFO</c> - and would
+    /// cost a printer its enrolment.
+    /// </para>
     /// </remarks>
     public async Task<DTO.CodeResponseDTO> GetPrinterCode(DTO.RegisterPrinterRequestDTO printer)
     {
@@ -99,14 +107,19 @@ public class PrusaConnectService
         {
             _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) "
                                    + "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
-                                   printer.SerialNumber, printer.PrinterType, printer.Firmware, registration.Id,
+                                   LogText.Clean(printer.SerialNumber),
+                                   LogText.Clean(printer.PrinterType),
+                                   LogText.Clean(printer.Firmware),
+                                   registration.Id,
                                    registration.TemporaryCodeExpiry);
         }
         else if (renewed)
         {
             _logger.LogInformation("PrusaConnect registration {RegistrationId} for printer {SerialNumber} "
                                    + "renewed its Connect code, expiring {CodeExpiry:o}.",
-                                   registration.Id, printer.SerialNumber, registration.TemporaryCodeExpiry);
+                                   registration.Id,
+                                   LogText.Clean(printer.SerialNumber),
+                                   registration.TemporaryCodeExpiry);
         }
 
         return new DTO.CodeResponseDTO

@@ -53,14 +53,16 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     private static RegisterPrinterRequestDTO Request(string serial = "15715-4842441651816441",
-                                                     string fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L")
+                                                     string fingerprint = "SUDBAJQ78CTJBNA8IHEMODUG43QD9H5GSBSFE0MMKBST8B9E0L",
+                                                     string printerType = "1.3.5",
+                                                     string firmware = "6.4.0+11974")
     {
         return new()
         {
             SerialNumber = serial,
             FingerPrint = fingerprint,
-            PrinterType = "1.3.5",
-            Firmware = "6.4.0+11974",
+            PrinterType = printerType,
+            Firmware = firmware,
         };
     }
 
@@ -558,6 +560,48 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         stored.Id.Should().BeGreaterThan(0, "the key is assigned by the insert, so the log has to come after the save");
         sink.Entries.Should().ContainMatch($"RegistrationId={stored.Id}");
+    }
+
+    /// <summary>
+    /// What the printer said about itself reaches the log with its control characters replaced, on
+    /// the issue branch and on the renewal branch alike.
+    /// </summary>
+    /// <remarks>
+    /// The endpoint is anonymous, so the serial, the model and the firmware version are three strings
+    /// a stranger chose and length is the only other rule they pass; an escape sequence among them
+    /// repaints the terminal of whoever reads the log. <c>LogTextTests</c> pins what cleaning means -
+    /// this pins that these log sites do it, which is the half that deleting the calls would leave
+    /// green.
+    /// </remarks>
+    [Fact]
+    public async Task RegistrationFieldsReachTheLogWithoutControlCharacters()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        using CapturingSink sink = new();
+        PrusaConnectService service = NewService(context, logger: sink.AsLogger<PrusaConnectService>());
+
+        RegisterPrinterRequestDTO printer = Request(serial: "15715\u001B[2J",
+                                                    printerType: "1.3.5\n1.3.6",
+                                                    firmware: "6.4.0\u0000");
+
+        // Act
+        await service.GetPrinterCode(printer);
+
+        PrusaConnectRegistration stored =
+            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+        stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // The renewal branch logs the serial a second time, and leaked independently of the first.
+        await service.GetPrinterCode(printer);
+
+        // Assert
+        sink.Entries.Should().NotBeEmpty("registering is still worth an operational record");
+        sink.Entries.Should().AllSatisfy(
+            entry => entry.Should().NotContainAny("\u001B", "\n", "\r", "\u0000"));
+        sink.Entries.Should().ContainMatch("*15715\uFFFD*",
+                                           "a cleaned value still says what arrived; a dropped one reads as a serial nobody sent");
     }
 
     /// <summary>

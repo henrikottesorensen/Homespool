@@ -28,12 +28,19 @@ namespace Homespool.Host.PrusaConnect;
 /// unknown field's value is exactly as likely to be file content.
 /// </para>
 /// <para>
-/// <b>Two bounds, because this path is reachable at wire rate by anyone who can connect.</b>
+/// <b>Three bounds, because this path is reachable at wire rate by anyone who can connect.</b>
 /// Distinct fields are capped at <see cref="MaxDistinctFields"/>, which bounds both memory and the
 /// number of per-field warnings this can ever emit; past the cap a <see cref="LogThrottle"/> allows
 /// one summary line per window. Occurrences are always counted exactly - see
 /// <see cref="Total"/> - and only the logging is bounded, the same arrangement
-/// <c>TelemetryHealthSnapshot.DroppedMessages</c> uses.
+/// <c>TelemetryHealthSnapshot.DroppedMessages</c> uses. The third is the name itself
+/// (<see cref="MaxNameLength"/>), which is the only part of any of this the sender writes.
+/// </para>
+/// <para>
+/// <b>That name goes through <see cref="LogText.Clean(string, int)"/> before it is remembered</b>,
+/// rather than on the way out to a log line. A key a printer chose is a string an operator will
+/// read, and the bound has to cover the copy held for the life of the process as much as the line
+/// written once.
 /// </para>
 /// <para>
 /// <b>What this deliberately does not see:</b> <see cref="DTO.EventMessages.EventDTO.Data"/> is a raw
@@ -53,6 +60,14 @@ public sealed class UnknownFieldTracker
     /// not sixty - so the cap doubles as the "something is generating junk" threshold.
     /// </summary>
     public const int MaxDistinctFields = 64;
+
+    /// <summary>
+    /// How much of a field name is kept. A JSON property name has no length of its own, so without
+    /// this one message can put a megabyte into a Warning line and leave it in memory until the
+    /// process ends - and sixty-four of them may. Real wire names are a dozen characters, and the
+    /// excess is reported rather than silently dropped, so the line still says what arrived.
+    /// </summary>
+    private const int MaxNameLength = 128;
 
     /// <summary>Spacing between "still seeing unknown fields past the cap" summaries.</summary>
     private static readonly TimeSpan CappedWarningInterval = TimeSpan.FromMinutes(5);
@@ -119,7 +134,7 @@ public sealed class UnknownFieldTracker
                 continue;
             }
 
-            string name = $"{shape}.{field.Key}";
+            string name = $"{shape}.{LogText.Clean(field.Key, MaxNameLength)}";
 
             if (_seen.TryAdd(name, 0))
             {

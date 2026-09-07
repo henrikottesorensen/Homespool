@@ -4,7 +4,7 @@ Builds an SD-card image — Debian trixie, arm64, Docker, and the Homespool comp
 container images already on the card. Boot it, wait, browse to `http://homespool.local`.
 
 ```bash
-pi/build.sh --ssh-key ~/.ssh/id_ed25519.pub
+pi/build.sh
 ```
 
 The result lands in `pi/work/out/homespool-rpi-arm64.img`. Flash **that**, not the `.img.zst` beside
@@ -100,15 +100,13 @@ unaffected by its presence — `acme/README.md` on the card has the rest.
 settings rely on first-boot machinery that ships in Raspberry Pi OS and not here — verified, not
 assumed: `raspberrypi-sys-mods` contains no reference to `custom.toml` at all, and only provides the
 `imager_custom` helper that a Raspberry-Pi-OS-generated `firstrun.sh` calls. Set in Imager, those
-settings are written and then **silently ignored**, which looks exactly like a wrong password. Use
-`--ssh-key` or `--password` here instead, or set them on the card itself — see
-[Getting a shell on the board](#getting-a-shell-on-the-board).
+settings are written and then **silently ignored**, which looks exactly like a wrong password. Set
+them on the card itself instead — see [Getting a shell on the board](#getting-a-shell-on-the-board).
 
-With neither, the account is locked: the stack still comes up and serves pages, but there is no shell
-on the board. That is `rpi-image-gen`'s default, it is what a downloaded image ships as, and
-`build.sh` warns when a build you run yourself would produce one. It is not a dead end — the card's
-own `homespool-login.txt` is how a locked account gets a password or a key, before first boot or
-long afterwards. See [Getting a shell on the board](#getting-a-shell-on-the-board).
+The account ships locked: the stack still comes up and serves pages, but there is no shell on the
+board. That is `rpi-image-gen`'s default, every card is built that way, and `build.sh` says so at the
+end of each build. It is not a dead end — the card's own `homespool-login.txt` is how a locked
+account gets a password or a key, before first boot or long afterwards. See [Getting a shell on the board](#getting-a-shell-on-the-board).
 
 ## Wi-Fi, and which networks work
 
@@ -347,12 +345,10 @@ board a first way in and can never override one. Afterwards it is `passwd` and
 
 The two gates are independent, which shows up in one case: **a card set up with only a key keeps its
 password line working**, because the account still has no password. That is deliberate — it is the
-console recourse if the network ever goes — and filling in both lines closes both. The same is true
-of a card built with `--ssh-key` and no `--password`, where one `passwd` on the board closes it.
+console recourse if the network ever goes — and filling in both lines closes both.
 
-Nothing checks how good the password is, unlike `--password` at build time, which `rpi-image-gen`
-validates against a regex wanting upper, lower, digit and punctuation. This account can be reached
-over SSH from your network, so that is yours to get right.
+Nothing checks how good the password is. This account can be reached over SSH from your network, so
+that is yours to get right.
 
 ### Why there is no stock password
 

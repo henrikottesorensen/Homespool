@@ -27,8 +27,8 @@
 #   password   works while `passwd -S` reports L or NP; dead once it reports P
 #   sshkey     works while authorized_keys is absent or empty; dead once it has a line in it
 #
-# So this can supply a first credential and never override one, whether that one came from here,
-# from build.sh --password or --ssh-key, or from somebody typing passwd. Those are properties of the
+# So this can supply a first credential and never override one, whether that one came from here
+# on an earlier boot or from somebody typing passwd. Those are properties of the
 # account itself rather than a stamp file recording what we think happened, so there is nothing that
 # can drift out of step with reality.
 #

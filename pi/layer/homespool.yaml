@@ -26,20 +26,6 @@
 # X-Env-Var-assetdir-Required: y
 # X-Env-Var-assetdir-Valid: dir
 # X-Env-Var-assetdir-Set: y
-#
-# X-Env-Var-sshkey:
-# X-Env-Var-sshkey-Desc: Path to a public key authorised for the device user. Optional, and normally
-#  unset - a card built for other people cannot carry anybody's key, so a distributed image ships
-#  with the account locked and homespool-login.txt on the boot partition is how it gets a credential.
-#  This is for a card you are building for yourself.
-#  .
-#  Set is n rather than y deliberately. With y the empty default is *set*, as an empty string, which
-#  then fails this variable's own "string cannot be empty" validation - so declaring an optional
-#  variable the obvious way makes every build that does not use it fail. Unset is what optional
-#  means here.
-# X-Env-Var-sshkey-Required: n
-# X-Env-Var-sshkey-Valid: string
-# X-Env-Var-sshkey-Set: n
 # METAEND
 ---
 mmdebstrap:
@@ -680,20 +666,8 @@ mmdebstrap:
     # "pi3-pjgxel" with a README promising homespool.local. It is set as device.hostname in
     # config/homespool.yaml instead, which is the variable that layer actually reads.
 
-    - |-
-      #
-      # An authorised key for the device user, when one was supplied. Without this and without
-      # device_user1pass the account is locked - rpi-image-gen's default, and a deliberate one, but
-      # it means a headless board you cannot reach.
-      set -eu
-      if [ -n "${IGconf_homespool_sshkey:-}" ] ; then
-         home=$1/home/$IGconf_device_user1
-         mkdir -p $home/.ssh
-         cp "$IGconf_homespool_sshkey" $home/.ssh/authorized_keys
-         chmod 700 $home/.ssh
-         chmod 600 $home/.ssh/authorized_keys
-         chroot $1 chown -R $IGconf_device_user1:$IGconf_device_user1 /home/$IGconf_device_user1/.ssh
-      fi
+    # No credential is installed here. The account is left as rpi-image-gen leaves it - locked, no
+    # key - and homespool-login.txt on the boot partition is the one way it gets either.
 
     # Enabled, not started - there is no running systemd in a chroot. They run on the real board.
     - chroot $1 systemctl enable homespool-firstboot.service

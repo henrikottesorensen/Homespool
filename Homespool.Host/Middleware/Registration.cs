@@ -69,8 +69,10 @@ public static class Registration
         {
             Log.Warning("No proxy is trusted (XForwarded:KnownProxies and :KnownNetworks are both empty), so "
                         + "forwarded headers are ignored except from loopback. If this deployment sits behind a "
-                        + "reverse proxy, links in outgoing mail will say http:// and client addresses in the log "
-                        + "will be the proxy's. Set XForwarded:KnownProxies to the proxy's address.");
+                        + "reverse proxy, links in outgoing mail will say http://, client addresses in the log "
+                        + "will be the proxy's, and the sign-in rate limit is off - it needs an address that "
+                        + "names one client, and every visitor would otherwise share one window. Set "
+                        + "XForwarded:KnownProxies to the proxy's address.");
         }
 
         return builder;

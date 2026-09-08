@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
+using Homespool.Host.RateLimiting;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -17,6 +18,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -24,6 +26,7 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous] // Carries its own credential in the reset token.
+[EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class ResetPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

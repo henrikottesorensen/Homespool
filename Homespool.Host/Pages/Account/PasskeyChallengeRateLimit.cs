@@ -8,15 +8,22 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 
 using Homespool.Host.Pages.Account.Manage;
+using Homespool.Host.RateLimiting;
 
 namespace Homespool.Host.Pages.Account;
 
 /// <summary>
 /// A per-address ceiling on how often a passkey ceremony may be asked for: the login page's
-/// challenge, which is anonymous, and the Manage page's, which is not. Every other handler on those
-/// two pages is unlimited.
+/// challenge, which is anonymous, and the Manage page's, which is not.
 /// </summary>
 /// <remarks>
+/// <para>
+/// <b>This policy is carried by the Manage page alone.</b> A page may hold one
+/// <see cref="EnableRateLimitingAttribute"/>, and the login page holds
+/// <see cref="SignInRateLimit"/>, which limits its credential handlers as well - reading
+/// <see cref="IsChallenge"/> and these numbers, so the challenge there keeps exactly this ceiling.
+/// The one behavioural difference is that the two pages' challenges no longer share a window.
+/// </para>
 /// <para>
 /// <b>Defence in depth, not the defence.</b> Since the ledger records answers rather than
 /// challenges, a challenge costs the server nothing to remember and a flood of them cannot fill it;
@@ -39,9 +46,6 @@ namespace Homespool.Host.Pages.Account;
 /// </remarks>
 public static class PasskeyChallengeRateLimit
 {
-    /// <summary>The policy name, for <see cref="EnableRateLimitingAttribute"/> on the two pages.</summary>
-    public const string PolicyName = "passkey-challenge";
-
     /// <summary>How many challenges one address may ask for in a <see cref="Window"/>.</summary>
     public const int PermitLimit = 30;
 
@@ -60,7 +64,7 @@ public static class PasskeyChallengeRateLimit
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            options.AddPolicy(PolicyName, context => IsChallenge(context)
+            options.AddPolicy(RateLimitPolicies.PasskeyChallenge, context => IsChallenge(context)
                 ? RateLimitPartition.GetFixedWindowLimiter(AddressOf(context), _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = PermitLimit,

@@ -409,6 +409,7 @@ public static class Program
 
             builder.Services.AddPrinterRateLimiting();
             builder.Services.AddPasskeyChallengeRateLimiting();
+            builder.Services.AddSignInRateLimiting();
 
             // Scoped, following the WebSocketHandler it runs: one session per accepted upgrade.
             builder.Services.AddScoped<PrusaConnect.PrinterConnectionSession>();

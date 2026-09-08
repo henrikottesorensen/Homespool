@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
@@ -98,7 +99,23 @@ public class ConfirmEmailChangeModel : PageModel
         // under the old address while displaying the new one. The username is now the person's own and
         // an address change does not touch it, so the pairing that needed the transaction is gone
         // rather than the guarantee it bought.
-        IdentityResult result = await _userManager.ChangeEmailAsync(user, email, token);
+        IdentityResult result;
+
+        try
+        {
+            result = await _userManager.ChangeEmailAsync(user, email, token);
+        }
+        catch (DbUpdateException)
+        {
+            // An address another account already holds normally comes back as a failed IdentityResult:
+            // RequireUniqueEmail makes the validator refuse it before the write. This catch is for
+            // losing the race to it - the other account takes the address between that check and this
+            // insert, and the unique index on NormalizedEmail refuses the write instead. A change that
+            // did not happen, told to the person as one, rather than a 500 on a link from their mail.
+            StatusMessage = _localiser["Account_EmailChangeError"];
+
+            return Page();
+        }
 
         if (!result.Succeeded)
         {

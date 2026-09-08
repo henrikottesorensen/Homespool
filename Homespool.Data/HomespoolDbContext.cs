@@ -130,13 +130,31 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
         {
             // Bounded well below Identity's own 256 because it is rendered into every page header,
             // and because it is what a person types at a sign-in prompt. Uniqueness is not configured
-            // here: Identity already indexes NormalizedUserName uniquely, which is the constraint that
-            // matters, and duplicating it would be a second index over the same values.
+            // here: Identity already indexes NormalizedUserName uniquely, and declaring it again would
+            // be a second index over the same values.
             entity.Property(e => e.UserName)
                   .HasMaxLength(HSUser.UsernameMaxLength);
 
             entity.Property(e => e.NormalizedUserName)
                   .HasMaxLength(HSUser.UsernameMaxLength);
+
+            // The address gets the constraint the username already had. RequireUniqueEmail is on, but a
+            // validator is a read before a write: two invitation accepts, or two first-run setup
+            // submissions, could each find no account for the address and each create one. Sign-in,
+            // password reset, confirmation resend, invite reactivation and the recipient's language all
+            // resolve an address to an account and take the first row, so a duplicate makes every one of
+            // them pick arbitrarily - a reset mail delivered for the account it does not reset.
+            //
+            // Identity's own EmailIndex is redefined rather than joined by a second one: same name, same
+            // column, uniqueness added. Naming it is what makes this replace the framework's index
+            // instead of adding a duplicate beside it.
+            //
+            // SQLite counts NULLs as distinct, so this does not bound accounts holding no address at all.
+            // RequireUniqueEmail refuses an empty one on every write, and that is what covers it; the
+            // index is not what stops it.
+            entity.HasIndex(e => e.NormalizedEmail)
+                  .IsUnique()
+                  .HasDatabaseName("EmailIndex");
 
             // Homespool has no use for a phone number and no channel that would send to one: there is
             // no SMS two-factor provider registered, and the notification design rejected even email

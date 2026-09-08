@@ -38,6 +38,13 @@ namespace Homespool.Host.Controllers;
 
 [ApiController]
 [Authorize(Authorisation.Policies.PrusaConnectPrinter)]
+
+// The default every action inherits, and the actions below that need a differently shaped window
+// override it. Declared here rather than per action because the failure this prevents is an omission:
+// every route on this controller runs the printer authentication handler, which spends a PBKDF2 on
+// the token, so an unannotated action sells hashing at wire rate without doing anything expensive of
+// its own. Opting out now has to be written down as [DisableRateLimiting].
+[EnableRateLimiting(PrinterRateLimits.FilePolicy)]
 public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;

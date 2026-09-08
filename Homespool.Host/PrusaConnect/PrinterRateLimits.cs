@@ -122,6 +122,29 @@ public static class PrinterRateLimits
     public const string HttpTransportPolicy = "printer-http-transport";
 
     /// <summary>
+    /// Rate-limit policy for <c>GET /p/teams/{teamId}/files/{hash}/raw</c>, and the controller-wide
+    /// default that every printer action inherits unless it names one of the policies above.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Being the default is what this is for, more than the numbers are.</b> Every route on that
+    /// controller reaches the printer authentication handler, which spends a PBKDF2 verifying the
+    /// presented token before anything is authenticated - so an action shipped with no policy is an
+    /// unmetered way to buy hashing at wire rate, whatever the action itself costs. The raw-fetch
+    /// route was exactly that and nothing reported it, because a missing attribute looks like every
+    /// other action nobody has annotated yet. As the controller's default, an action can only escape
+    /// by writing <c>[DisableRateLimiting]</c>, which a reader sees.
+    /// </para>
+    /// <para>
+    /// <b>Partitioned like the other two authenticated routes</b>, because the SDK sends its
+    /// <c>Fingerprint</c> here: its download only attaches credentials when the URL starts with the
+    /// server it posts telemetry to (<c>download.py</c>), which is what makes this route authenticated
+    /// at all. So a printer collecting a file has its own window and cannot be starved by another.
+    /// </para>
+    /// </remarks>
+    public const string FilePolicy = "printer-file";
+
+    /// <summary>
     /// How many code requests every caller together may make in a <see cref="Window"/>. A printer
     /// POSTs about once in its life and gets three tries, so a fleet powering on for the first time
     /// stays far below this.
@@ -157,6 +180,20 @@ public static class PrinterRateLimits
     /// </summary>
     public const int HttpTransportCeiling = 1200;
 
+    /// <summary>
+    /// How many file fetches one printer may make in a <see cref="Window"/>. A fetch is one whole
+    /// file, not one per chunk, and it happens when somebody sends a print - so a printer collecting
+    /// twenty in a minute is already not a printer.
+    /// </summary>
+    public const int FilePerPrinterLimit = 20;
+
+    /// <summary>
+    /// How many file fetches every caller together may make in a <see cref="Window"/>. This is also
+    /// the ceiling any future printer action inherits, so it is sized as a bound on an unmetered
+    /// route rather than for the fetch alone.
+    /// </summary>
+    public const int FileCeiling = 120;
+
     /// <summary>The window every limit above is counted over.</summary>
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
@@ -167,8 +204,18 @@ public static class PrinterRateLimits
     private const string Unattributed = "(none)";
 
     /// <summary>
-    /// Adds the rate limiter, the ceiling on each printer route, and the four printer policies.
+    /// Adds the rate limiter, the ceiling on each printer route, and the five printer policies.
     /// </summary>
+    /// <remarks>
+    /// <b>A policy name has to be added in both places, and neither omission is caught by anything
+    /// that does not make a request.</b> Left out of the switch, it falls through to no limiter and
+    /// the route keeps its per-printer window with no ceiling at all - which is the shape a caller
+    /// rotating fingerprints walks straight through, silently and with ordinary answers. Left out of
+    /// <c>AddPolicy</c>, every request to that route is a 500, thrown when the middleware fails to
+    /// resolve the name - loud, but at request time rather than at startup, so a route no test
+    /// exercises ships broken. Adding an arm and a policy together is the discipline; only a request
+    /// can check it was kept.
+    /// </remarks>
     public static IServiceCollection AddPrinterRateLimiting(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -191,6 +238,7 @@ public static class PrinterRateLimits
                     RegistrationPollPolicy => Ceiling(policy, RegistrationPollCeiling),
                     SocketPolicy => Ceiling(policy, SocketCeiling),
                     HttpTransportPolicy => Ceiling(policy, HttpTransportCeiling),
+                    FilePolicy => Ceiling(policy, FileCeiling),
                     _ => RateLimitPartition.GetNoLimiter(string.Empty),
                 };
             });
@@ -202,6 +250,7 @@ public static class PrinterRateLimits
 
             options.AddPolicy(SocketPolicy, context => PerPrinter(context, SocketPerPrinterLimit));
             options.AddPolicy(HttpTransportPolicy, context => PerPrinter(context, HttpTransportPerPrinterLimit));
+            options.AddPolicy(FilePolicy, context => PerPrinter(context, FilePerPrinterLimit));
         });
 
         return services;

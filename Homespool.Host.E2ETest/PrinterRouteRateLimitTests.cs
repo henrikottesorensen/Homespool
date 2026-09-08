@@ -120,31 +120,22 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Every policy a printer route names is one this class declares - the tripwire for a sixth
-    /// policy arriving wired to only half of the limiter.
+    /// Every policy a printer route names is one the limiter actually wires.
     /// </summary>
     /// <remarks>
-    /// A policy needs an <c>AddPolicy</c> for its per-printer window <b>and</b> an arm in the
-    /// ceiling's switch, and nothing makes the pair. This cannot see the wiring, so it asserts the
-    /// next best thing: that the set of policies actually in use is the set somebody has thought
-    /// about. A legitimate sixth fails here once, which is the prompt to check both sites.
+    /// <b>The one omission the table cannot make impossible.</b> Both halves of a policy now come from
+    /// a single entry, so a policy can no longer be half-wired - but naming a policy on an endpoint
+    /// that was never added to the table is still reachable, and it answers 500 on every request to
+    /// that route. Asserted against the table itself rather than a list kept here, so this cannot
+    /// drift into agreeing with a copy of the truth instead of the truth.
     /// </remarks>
     [Fact]
-    public void EveryPrinterRoutesPolicyIsOneTheLimiterDeclares()
+    public void EveryPrinterRoutesPolicyIsOneTheLimiterWires()
     {
         // Arrange
         using HttpClient started = _factory.CreateClient();
 
         EndpointDataSource endpoints = _factory.Services.GetRequiredService<EndpointDataSource>();
-
-        string[] declared =
-        [
-            PrinterRateLimits.RegistrationStartPolicy,
-            PrinterRateLimits.RegistrationPollPolicy,
-            PrinterRateLimits.SocketPolicy,
-            PrinterRateLimits.HttpTransportPolicy,
-            PrinterRateLimits.FilePolicy,
-        ];
 
         // Act
         List<string> inUse = endpoints.Endpoints
@@ -158,10 +149,10 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
 
         // Assert
         inUse.Should().NotBeEmpty();
-        inUse.Should().BeSubsetOf(declared,
-                                  "a policy needs both an AddPolicy for its per-printer window and an arm in the "
-                                  + "ceiling's switch, and nothing pairs them - so a new one arriving here is the "
-                                  + "moment to check it was wired to both");
+        inUse.Should().BeSubsetOf(PrinterRateLimits.PolicyNames,
+                                  "a policy an endpoint names but the limiter never wired is registered nowhere, and "
+                                  + "answers 500 on every request to that route - at request time, not at startup, so "
+                                  + "nothing reports it until somebody drives the route");
     }
 
     /// <summary>
@@ -169,6 +160,7 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
     /// it rather than running free.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>This exists because the two tests above cannot see the wiring, and a mutant proved it.</b>
     /// Half-wiring a policy left the route annotated, the policy declared and the per-printer window
     /// working - so every metadata assertion passed - while the route had no ceiling at all, which is
@@ -176,6 +168,13 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
     /// tell. Driven the same way as
     /// <see cref="PrinterRateLimitTests.TheCeilingBoundsACallerRotatingFingerprints"/>, whose
     /// reasoning about counting off the constants applies here too.
+    /// </para>
+    /// <para>
+    /// <b>It stays now that one table wires both halves.</b> That makes the omission it was written
+    /// for unreachable, which is a reason to keep the test rather than retire it: the assertion is
+    /// that this route is bounded, not that a particular mistake is absent, and the next rearrangement
+    /// of the limiter is exactly when that would quietly stop being true.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task TheFileRoutesCeilingBoundsACallerRotatingFingerprints()
@@ -205,6 +204,62 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
 
         answers[PrinterRateLimits.FileCeiling]
             .Should().Be(HttpStatusCode.TooManyRequests, "the ceiling counts every fingerprint together");
+    }
+
+    /// <summary>
+    /// The file route's other half: one printer collecting files cannot spend another printer's
+    /// allowance.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling test above cannot see this. A per-printer window of null leaves the ceiling doing
+    /// all the work, and a caller rotating fingerprints meets it at exactly the same point - so that
+    /// test passes while the isolation this route was given is gone, and one printer fetching files
+    /// can starve the fleet. Same property and same shape as
+    /// <see cref="PrinterRateLimitTests.APrinterSpendingItsOwnWindowDoesNotSpendAnother"/>, on the
+    /// route that gained a window later.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterSpendingTheFileWindowDoesNotSpendAnothers()
+    {
+        // Arrange
+        using HttpClient printers = PrinterListener.CreateClient(_factory);
+        PrinterIdentity loud = PrinterIdentity.CreateRandom();
+        PrinterIdentity quiet = PrinterIdentity.CreateRandom();
+        List<HttpStatusCode> answers = [];
+
+        // Act
+        for (int i = 0; i <= PrinterRateLimits.FilePerPrinterLimit; i += 1)
+        {
+            answers.Add(await FetchAsync(printers, loud.HeaderFingerprint));
+        }
+
+        HttpStatusCode neighbour = await FetchAsync(printers, quiet.HeaderFingerprint);
+
+        // Assert
+        answers[..PrinterRateLimits.FilePerPrinterLimit]
+            .Should().AllSatisfy(status => status.Should().Be(HttpStatusCode.Unauthorized,
+                                                              "the window admits its permits, and an admitted request reaches authentication"));
+
+        answers[PrinterRateLimits.FilePerPrinterLimit]
+            .Should().Be(HttpStatusCode.TooManyRequests, "the permit after the last is refused");
+
+        neighbour.Should().Be(HttpStatusCode.Unauthorized,
+                              "the window that was spent belongs to the printer that spent it - without this the route "
+                              + "has only a ceiling, and one printer fetching files starves the fleet");
+    }
+
+    /// <summary>
+    /// One fetch of a hash nothing offered, under <paramref name="fingerprint"/>. The limiter runs
+    /// before authentication, so an admitted request answers 401 rather than being served.
+    /// </summary>
+    private static async Task<HttpStatusCode> FetchAsync(HttpClient printers, string fingerprint)
+    {
+        using HttpRequestMessage fetch = new(HttpMethod.Get, "/p/teams/1/files/whatever/raw");
+        fetch.Headers.TryAddWithoutValidation(Headers.Fingerprint, fingerprint);
+
+        using HttpResponseMessage response = await printers.SendAsync(fetch, TestContext.Current.CancellationToken);
+
+        return response.StatusCode;
     }
 
     /// <summary>

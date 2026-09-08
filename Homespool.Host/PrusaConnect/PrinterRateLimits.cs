@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Threading.RateLimiting;
 
 using Microsoft.AspNetCore.Builder;
@@ -204,17 +206,54 @@ public static class PrinterRateLimits
     private const string Unattributed = "(none)";
 
     /// <summary>
-    /// Adds the rate limiter, the ceiling on each printer route, and the five printer policies.
+    /// Every policy this class wires, and both of the limits each one gets.
     /// </summary>
     /// <remarks>
-    /// <b>A policy name has to be added in both places, and neither omission is caught by anything
-    /// that does not make a request.</b> Left out of the switch, it falls through to no limiter and
-    /// the route keeps its per-printer window with no ceiling at all - which is the shape a caller
-    /// rotating fingerprints walks straight through, silently and with ordinary answers. Left out of
-    /// <c>AddPolicy</c>, every request to that route is a 500, thrown when the middleware fails to
-    /// resolve the name - loud, but at request time rather than at startup, so a route no test
-    /// exercises ships broken. Adding an arm and a policy together is the discipline; only a request
-    /// can check it was kept.
+    /// <para>
+    /// <b>One table, because a policy needs registering in two places and the pairing used to be a
+    /// habit.</b> The ceiling and the per-printer window are separate mechanisms - a
+    /// <see cref="RateLimiterOptions.GlobalLimiter"/> partition and an endpoint policy - keyed on the
+    /// same string, and neither omission announced itself. Wiring one and not the other left a route
+    /// with a per-printer window and <em>no ceiling at all</em>, answering normally throughout, which
+    /// is precisely what a caller minting a fresh fingerprint per request walks through; the reverse
+    /// answered 500 on every request, at request time rather than at startup, so a route no test drove
+    /// would have shipped broken. Both were reachable by forgetting one line. Driving both
+    /// registrations from this table is what makes the halves impossible to separate.
+    /// </para>
+    /// <para>
+    /// <b>A null <see cref="PolicyLimits.PerPrinter"/> means the ceiling and nothing else</b>, which
+    /// is the honest shape for the two registration verbs: neither names a printer this middleware can
+    /// read, so there is nothing to partition on. It is a deliberate value here rather than an absent
+    /// entry, so the table lists every policy and a reader can see which ones have no window and why.
+    /// </para>
+    /// <para>
+    /// Frozen because it is read on the global limiter's per-request path - which the measurement in
+    /// this class's own remarks shows running a second time for a refused request - and written once.
+    /// </para>
+    /// </remarks>
+    private static readonly FrozenDictionary<string, PolicyLimits> Policies =
+        new Dictionary<string, PolicyLimits>(StringComparer.Ordinal)
+        {
+            [RegistrationStartPolicy] = new(RegistrationStartCeiling, null),
+            [RegistrationPollPolicy] = new(RegistrationPollCeiling, null),
+            [SocketPolicy] = new(SocketCeiling, SocketPerPrinterLimit),
+            [HttpTransportPolicy] = new(HttpTransportCeiling, HttpTransportPerPrinterLimit),
+            [FilePolicy] = new(FileCeiling, FilePerPrinterLimit),
+        }.ToFrozenDictionary(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The policies this class wires, for a test that has to ask what an endpoint may legitimately
+    /// name. A policy an endpoint carries that is absent here is wired nowhere.
+    /// </summary>
+    public static IReadOnlyCollection<string> PolicyNames => Policies.Keys;
+
+    /// <summary>
+    /// Adds the rate limiter and, from <see cref="Policies"/>, both halves of every printer policy.
+    /// </summary>
+    /// <remarks>
+    /// Neither half is written out per policy here, deliberately: they are the two registrations that
+    /// have to agree, so they are made from one entry in one loop. See <see cref="Policies"/> for what
+    /// forgetting one used to cost.
     /// </remarks>
     public static IServiceCollection AddPrinterRateLimiting(this IServiceCollection services)
     {
@@ -232,25 +271,24 @@ public static class PrinterRateLimits
             {
                 string? policy = context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
 
-                return policy switch
-                {
-                    RegistrationStartPolicy => Ceiling(policy, RegistrationStartCeiling),
-                    RegistrationPollPolicy => Ceiling(policy, RegistrationPollCeiling),
-                    SocketPolicy => Ceiling(policy, SocketCeiling),
-                    HttpTransportPolicy => Ceiling(policy, HttpTransportCeiling),
-                    FilePolicy => Ceiling(policy, FileCeiling),
-                    _ => RateLimitPartition.GetNoLimiter(string.Empty),
-                };
+                // An endpoint carrying no policy, or one this class does not wire, is not limited
+                // here - which is what keeps the ceiling off every page in the application.
+                return policy is not null && Policies.TryGetValue(policy, out PolicyLimits limits)
+                           ? Ceiling(policy, limits.Ceiling)
+                           : RateLimitPartition.GetNoLimiter(string.Empty);
             });
 
-            // Neither registration verb names a printer this middleware can read, so both are the
-            // ceiling and nothing else.
-            options.AddPolicy(RegistrationStartPolicy, _ => RateLimitPartition.GetNoLimiter(string.Empty));
-            options.AddPolicy(RegistrationPollPolicy, _ => RateLimitPartition.GetNoLimiter(string.Empty));
+            foreach (KeyValuePair<string, PolicyLimits> entry in Policies)
+            {
+                // Captured per iteration, and read inside the callback rather than branched on out
+                // here, so one lambda serves both shapes: a policy with no per-printer window is the
+                // ceiling and nothing else.
+                int? perPrinter = entry.Value.PerPrinter;
 
-            options.AddPolicy(SocketPolicy, context => PerPrinter(context, SocketPerPrinterLimit));
-            options.AddPolicy(HttpTransportPolicy, context => PerPrinter(context, HttpTransportPerPrinterLimit));
-            options.AddPolicy(FilePolicy, context => PerPrinter(context, FilePerPrinterLimit));
+                options.AddPolicy(entry.Key, context => perPrinter is { } permitLimit
+                                                            ? PerPrinter(context, permitLimit)
+                                                            : RateLimitPartition.GetNoLimiter(string.Empty));
+            }
         });
 
         return services;
@@ -291,4 +329,19 @@ public static class PrinterRateLimits
             QueueLimit = 0,
         });
     }
+
+    /// <summary>
+    /// What one policy is allowed: a ceiling on the route's total, and a window per printer where the
+    /// request names one.
+    /// </summary>
+    /// <param name="Ceiling">
+    /// Permits every caller together may spend on this policy's route in a <see cref="Window"/>.
+    /// Required, because a route with no ceiling is bounded only per fingerprint, and the fingerprint
+    /// is the caller's to choose.
+    /// </param>
+    /// <param name="PerPrinter">
+    /// Permits one printer may spend, or null for a route where no printer can be read off the
+    /// request - the two registration verbs, which get the ceiling alone.
+    /// </param>
+    private readonly record struct PolicyLimits(int Ceiling, int? PerPrinter);
 }

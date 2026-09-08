@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -32,6 +33,14 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class SecurityHeaderTests : IAsyncLifetime
 {
+    /// <summary>
+    /// The exact shape: a script policy admitting this origin and one nonce, then the three
+    /// directives that close the ways around it, and nothing about styles or connections - those are
+    /// unrestricted on purpose, and a directive the policy does not name stays that way.
+    /// </summary>
+    private const string PolicyShape =
+        @"^script-src 'self' 'nonce-[A-Za-z0-9_-]{22}'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'$";
+
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("secheaders");
     private HomespoolFactory _factory = null!;
 
@@ -76,30 +85,56 @@ public sealed class SecurityHeaderTests : IAsyncLifetime
         // Assert
         Header(response, "X-Content-Type-Options").Should().Be("nosniff");
         Header(response, "X-Frame-Options").Should().Be("DENY");
-        Header(response, "Content-Security-Policy").Should().Be("frame-ancestors 'none'");
+        Header(response, "Content-Security-Policy").Should().MatchRegex(PolicyShape);
         Header(response, "Referrer-Policy").Should().Be("same-origin");
     }
 
     /// <summary>
-    /// The policy names <c>frame-ancestors</c> and nothing else, deliberately: a directive a policy
-    /// does not mention stays unrestricted, which is what lets framing be closed without taking on
-    /// the inline script and two CDNs that a script-src would have to account for.
+    /// <b>The nonce is the policy's whole worth</b>, and it is worth nothing if it repeats: a value
+    /// an attacker can predict is a value they can put on their own script. Two responses, two
+    /// nonces.
     /// </summary>
     [Fact]
-    public async Task ThePolicyRestrictsFramingAndNothingElse()
+    public async Task EveryResponseMintsItsOwnNonce()
+    {
+        // Arrange
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Act
+        using HttpResponseMessage first = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+        using HttpResponseMessage second = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+
+        // Assert
+        Nonce(first).Should().NotBe(Nonce(second));
+    }
+
+    /// <summary>
+    /// The one inline script carries the same nonce the header names, which is the only reason a
+    /// browser runs it. A header and a page minted from different instances would agree on nothing,
+    /// and the theme would silently stop following the OS.
+    /// </summary>
+    [Fact]
+    public async Task TheInlineScriptCarriesTheHeadersNonce()
     {
         // Arrange
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act
         using HttpResponseMessage response = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+        string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        string policy = Header(response, "Content-Security-Policy");
+        page.Should().Contain($"<script nonce=\"{Nonce(response)}\">");
+        page.Should().NotContain("<script>", "an inline block without the nonce is one the browser refuses");
+    }
 
-        policy.Should().NotContain("script-src", "a script policy needs a nonce for the colour-mode block, and is its own change");
-        policy.Should().NotContain("style-src");
-        policy.Should().Contain("frame-ancestors 'none'");
+    private static string Nonce(HttpResponseMessage response)
+    {
+        string policy = Header(response, "Content-Security-Policy");
+        int start = policy.IndexOf("'nonce-", StringComparison.Ordinal) + "'nonce-".Length;
+        int end = policy.IndexOf('\'', start);
+
+        return policy[start..end];
     }
 
     private static string Header(HttpResponseMessage response, string name)

@@ -10,6 +10,11 @@
    shorter name can still inject their own. *@
 @inject IStringLocalizer<SharedResource> Localiser
 
+@* The nonce this response's Content-Security-Policy admits. The one inline script, in _Layout,
+   carries it; a view that adds another must too, or the browser refuses it - and a test refuses
+   the view first. *@
+@inject Homespool.Host.Middleware.CspNonce Nonce
+
 
 
 @namespace Homespool.Host.Pages

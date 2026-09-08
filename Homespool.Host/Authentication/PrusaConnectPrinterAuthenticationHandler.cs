@@ -74,15 +74,23 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// The caller's fingerprint in its key form for logging, or a placeholder when it sent none.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Normalised through <see cref="PrinterFingerprint.Key"/> so a line about a failure and a line
     /// about a success name the same printer the same way - the SDK's fingerprint is 64 characters
     /// where Buddy's is 50 or 16, and only the key form is comparable across them.
+    /// </para>
+    /// <para>
+    /// <b>And cleaned, because <c>Key</c> truncates and nothing more.</b> Sixteen characters of a
+    /// header a stranger chose still hold a newline or an escape sequence, and every route reaching
+    /// this handler is one an anonymous caller can hit - so the value is a log-forging vector wherever
+    /// it is written, not only here.
+    /// </para>
     /// </remarks>
     private string FingerprintForLog()
     {
         return Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues value)
                && !StringValues.IsNullOrEmpty(value)
-                   ? PrinterFingerprint.Key(value.ToString())
+                   ? LogText.Clean(PrinterFingerprint.Key(value.ToString()))
                    : "(none)";
     }
 
@@ -225,7 +233,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
                 + "written for it more than {ProvisioningTokenLifetimeHours} hours ago, that token has expired - reissue "
                 + "to get a fresh one.",
                 enrolled.PrinterId,
-                enrolled.FingerPrintKey,
+                LogText.Clean(enrolled.FingerPrintKey),
                 PrusaConnectService.ProvisioningTokenLifetime.TotalHours);
 
             return AuthenticateResult.Fail("PrusaConnect invalid token.");
@@ -317,7 +325,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             "PrusaConnect authentication failed, fingerprint {Fingerprint} unknown. A USB-key token written more than "
             + "{ProvisioningTokenLifetimeHours} hours ago has expired and reads as unknown here - reissue to get a "
             + "fresh one.",
-            fingerprint,
+            LogText.Clean(fingerprint),
             PrusaConnectService.ProvisioningTokenLifetime.TotalHours);
 
         return AuthenticateResult.Fail("Printer unknown");

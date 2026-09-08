@@ -148,6 +148,9 @@ deployments behind a router or tunnel.
   `homespool-proxy-certs` volume and restart the proxy.
 - **Printers** get a certificate Homespool mints itself, delivered on the provisioning USB stick,
   so the printer connection is verified TLS out of the box with no public CA involved.
+- **HSTS** is opt-in: `HSTS=1` in `.env`, which `setup-env.sh` offers once a public name has a
+  certificate. It is sent only on names that actually hold an issued certificate, never on a
+  self-signed one, so a `.lan` name or a bare address cannot lock its own users out.
 - Bringing your own reverse proxy (Traefik, Caddy, your nginx) is supported for the people-facing
   half — put it on the stack's network and point `PROXY_ADDRESS` at it. The printer-facing half is **not** a normal reverse-proxy
   job, and a generic proxy will break it: the firmware's TLS stack holds one kilobyte of plaintext

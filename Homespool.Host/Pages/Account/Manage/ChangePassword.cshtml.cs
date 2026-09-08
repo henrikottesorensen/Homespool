@@ -4,20 +4,17 @@
 #nullable disable
 
 using System.ComponentModel.DataAnnotations;
-using System.Threading;
 using System.Threading.Tasks;
 
 using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -28,22 +25,16 @@ public class ChangePasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
-    private readonly ApiTokenService _apiTokens;
-    private readonly UnitOfWork _unitOfWork;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ChangePasswordModel> _logger;
 
     public ChangePasswordModel(UserManager<HSUser> userManager,
                                LocalSignIn signIn,
-                               ApiTokenService apiTokens,
-                               UnitOfWork unitOfWork,
                                IStringLocalizer<SharedResource> localiser,
                                ILogger<ChangePasswordModel> logger)
     {
         _userManager = userManager;
         _signIn = signIn;
-        _apiTokens = apiTokens;
-        _unitOfWork = unitOfWork;
         _localiser = localiser;
         _logger = logger;
     }
@@ -131,7 +122,19 @@ public class ChangePasswordModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
+    /// <summary>
+    /// Changes the password, and changes nothing else the account holds.
+    /// </summary>
+    /// <remarks>
+    /// <b>A password change does not revoke this account's API tokens</b>, and the asymmetry with
+    /// <c>Account/ResetPassword</c>, which does, is the point. Reaching this form takes the current
+    /// password inside a live session, so it is overwhelmingly a rotation by somebody in possession
+    /// of their account, and breaking every script they run is a poor answer to routine hygiene. The
+    /// reset path is where somebody locked out of a compromised account arrives, and there the tokens
+    /// go. An account whose tokens must die while its owner still holds it has two other routes: the
+    /// owner revokes them on <c>Manage/ApiTokens</c>, or an administrator does on <c>Admin/Users</c>.
+    /// </remarks>
+    public async Task<IActionResult> OnPostAsync()
     {
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -156,55 +159,31 @@ public class ChangePasswordModel : PageModel
             return Page();
         }
 
-        int revoked;
-        int passkeys;
+        IdentityResult changePasswordResult =
+            await _userManager.ChangePasswordAsync(user, Input.OldPassword, Input.NewPassword);
 
-        // The password change and the revocation are one step, deliberately. The state to make
-        // unreachable is "new password, old tokens still live" - which is exactly what someone
-        // changing their password because their account is compromised would believe they had
-        // escaped. Any return before CommitAsync disposes the transaction uncommitted, rolling both
-        // back together.
-        await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
+        if (!changePasswordResult.Succeeded)
         {
-            IdentityResult changePasswordResult =
-                await _userManager.ChangePasswordAsync(user, Input.OldPassword, Input.NewPassword);
-
-            if (!changePasswordResult.Succeeded)
+            foreach (IdentityError error in changePasswordResult.Errors)
             {
-                foreach (IdentityError error in changePasswordResult.Errors)
-                {
-                    ModelState.AddModelError(string.Empty, error.Description);
-                }
-
-                return Page();
+                ModelState.AddModelError(string.Empty, error.Description);
             }
 
-            revoked = await _apiTokens.RevokeAllForUserAsync(user.Id, cancellationToken);
-
-            // Counted, not revoked. A passkey is the person's daily sign-in, and losing it on every
-            // password change would mean re-enrolling every device every time; and nothing can add
-            // one without this password, so a hijacked session cannot have planted one. What a
-            // change cannot rule out is a passkey added by somebody who KNEW the password, so the
-            // person is told to look, with the list one click away.
-            passkeys = (await _userManager.GetPasskeysAsync(user)).Count;
-
-            await transaction.CommitAsync(cancellationToken);
+            return Page();
         }
 
-        // Outside the transaction: re-issuing the cookie is not part of the atomic write, and it is
-        // the one step that must not happen if the commit failed.
+        // Counted, not revoked. A passkey is the person's daily sign-in, and losing it on every
+        // password change would mean re-enrolling every device every time; and nothing can add
+        // one without this password, so a hijacked session cannot have planted one. What a
+        // change cannot rule out is a passkey added by somebody who KNEW the password, so the
+        // person is told to look, with the list one click away.
+        int passkeys = (await _userManager.GetPasskeysAsync(user)).Count;
+
         await _signIn.RefreshSignInAsync(HttpContext, user);
 
-        _logger.LogInformation("User changed their password successfully. {RevokedTokenCount} API tokens revoked.", revoked);
+        _logger.LogInformation("User changed their password successfully.");
 
-        // Silent breakage is the real cost of revoking here, so it is reported - but only when there
-        // was something to report. Most accounts hold no tokens and do not need telling so.
-        string message = revoked switch
-        {
-            0 => _localiser["Manage_PasswordChanged"],
-            1 => _localiser["Manage_PasswordChangedOneToken"],
-            _ => _localiser["Manage_PasswordChangedTokens", revoked],
-        };
+        string message = _localiser["Manage_PasswordChanged"];
 
         if (passkeys > 0)
         {

@@ -1815,12 +1815,6 @@
   <data name="Manage_PasswordChanged" xml:space="preserve">
     <value>Din adgangskode er ændret.</value>
   </data>
-  <data name="Manage_PasswordChangedOneToken" xml:space="preserve">
-    <value>Din adgangskode er ændret. 1 API-token blev tilbagekaldt.</value>
-  </data>
-  <data name="Manage_PasswordChangedTokens" xml:space="preserve">
-    <value>Din adgangskode er ændret. {0} API-tokens blev tilbagekaldt.</value>
-  </data>
   <data name="Manage_VerificationCodeInvalid" xml:space="preserve">
     <value>Bekræftelseskoden er forkert.</value>
   </data>

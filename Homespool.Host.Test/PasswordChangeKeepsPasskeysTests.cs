@@ -64,8 +64,8 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
         await SeedPasskeyAsync(users, user, "phone");
         await SeedPasskeyAsync(users, user, "laptop");
 
-        ChangePasswordModel model = new(users, signIn, new ApiTokenService(context), new UnitOfWork(context),
-                                        TestLocaliser.Shared(), NullLogger<ChangePasswordModel>.Instance)
+        ChangePasswordModel model = new(users, signIn, TestLocaliser.Shared(),
+                                        NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel
@@ -77,7 +77,7 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
         };
 
         // Act
-        IActionResult result = await model.OnPostAsync(CancellationToken.None);
+        IActionResult result = await model.OnPostAsync();
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
@@ -96,8 +96,8 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
         HSUser user = await AddUserAsync(users, "nokeys@example.com");
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ChangePasswordModel model = new(users, signIn, new ApiTokenService(context), new UnitOfWork(context),
-                                        TestLocaliser.Shared(), NullLogger<ChangePasswordModel>.Instance)
+        ChangePasswordModel model = new(users, signIn, TestLocaliser.Shared(),
+                                        NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Input = new ChangePasswordModel.InputModel
@@ -109,7 +109,7 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
         };
 
         // Act
-        await model.OnPostAsync(CancellationToken.None);
+        await model.OnPostAsync();
 
         // Assert
         model.StatusMessage.Should().Be("Your password has been changed.");

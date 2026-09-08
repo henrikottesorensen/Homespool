@@ -11,7 +11,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
+
+using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
@@ -70,6 +74,29 @@ public sealed class ConfirmEmailChangeTests : IDisposable
                 File.Delete(path);
             }
         }
+    }
+
+    /// <summary>
+    /// A <see cref="UserManager{TUser}"/> whose user validation always passes - what the request that
+    /// lost the race held, having read the table before the other account's address landed.
+    /// </summary>
+    private static (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext)
+        IdentityWithApprovingValidation(HomespoolDbContext context)
+    {
+        IUserValidator<HSUser> approving = Substitute.For<IUserValidator<HSUser>>();
+        approving.ValidateAsync(Arg.Any<UserManager<HSUser>>(), Arg.Any<HSUser>())
+                 .Returns(IdentityResult.Success);
+
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
+            IdentityTestHarness.BuildIdentityServices(
+                context,
+                services =>
+                {
+                    services.RemoveAll<IUserValidator<HSUser>>();
+                    services.AddSingleton(approving);
+                });
+
+        return (users, signIn, httpContext);
     }
 
     private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string userName, string email)
@@ -166,6 +193,46 @@ public sealed class ConfirmEmailChangeTests : IDisposable
 
         reloaded.Email.Should().Be("mover@example.com", "a refused change must leave the address where it was");
         reloaded.UserName.Should().Be("mover");
+
+        model.StatusMessage.Should().Be("Error changing email.");
+    }
+
+    /// <summary>
+    /// <b>The clash the validator did not see.</b> The other account took the address between this
+    /// request's validation and its write, so the refusal comes from the unique index instead - and
+    /// arrives as the same failed change rather than as a 500 on a link followed from a mail client.
+    /// </summary>
+    /// <remarks>
+    /// The validator is replaced with one that approves, which is what a lost race leaves the request
+    /// holding: a correct reading of the table, already out of date. Take the catch out of
+    /// <c>ConfirmEmailChangeModel</c> and this test fails with the <c>DbUpdateException</c> the page
+    /// would have shown the visitor.
+    /// </remarks>
+    [Fact]
+    public async Task AnAddressTakenAfterValidationLeavesTheAccountUnchanged()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext) =
+            IdentityWithApprovingValidation(context);
+
+        await AddUserAsync(users, "taken", "taken@example.com");
+        HSUser mover = await AddUserAsync(users, "mover", "mover@example.com");
+
+        string code = await ChangeEmailCodeAsync(users, mover, "taken@example.com");
+
+        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+
+        // Act
+        IActionResult result = await model.OnGetAsync(mover.Id.ToString(), "taken@example.com", code);
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+
+        HSUser reloaded = await context.Users.AsNoTracking()
+                                       .SingleAsync(u => u.Id == mover.Id, TestContext.Current.CancellationToken);
+
+        reloaded.Email.Should().Be("mover@example.com", "a write the database refused must leave the address where it was");
 
         model.StatusMessage.Should().Be("Error changing email.");
     }

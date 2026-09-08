@@ -715,15 +715,6 @@
   <data name="Passkeys_Gone" xml:space="preserve">
     <value>That passkey was already gone.</value>
   </data>
-  <data name="AdminPasskeys_Explanation" xml:space="preserve">
-    <value>Every passkey enrolled in Homespool. Revoke one if its owner has lost the device it lives on; they can still sign in with their password and add another.</value>
-  </data>
-  <data name="AdminPasskeys_None" xml:space="preserve">
-    <value>No passkeys have been enrolled.</value>
-  </data>
-  <data name="AdminPasskeys_Owner" xml:space="preserve">
-    <value>Account</value>
-  </data>
   <data name="AdminPasskeys_Revoke" xml:space="preserve">
     <value>Revoke passkey</value>
   </data>
@@ -2761,5 +2752,110 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="StepUp_ProviderStale" xml:space="preserve">
     <value>{0} did not ask you to sign in again just now. Try again.</value>
+  </data>
+  <data name="Nav_Users" xml:space="preserve">
+    <value>Users</value>
+  </data>
+  <data name="AdminUsers_Explanation" xml:space="preserve">
+    <value>Every account on this deployment, what it signs in with, and whether it may.</value>
+  </data>
+  <data name="AdminUsers_Authenticator" xml:space="preserve">
+    <value>Authenticator</value>
+  </data>
+  <data name="AdminUsers_Administrator" xml:space="preserve">
+    <value>Administrator</value>
+  </data>
+  <data name="AdminUsers_EmailUnconfirmed" xml:space="preserve">
+    <value>Unconfirmed</value>
+  </data>
+  <data name="AdminUsers_StateActive" xml:space="preserve">
+    <value>Active</value>
+  </data>
+  <data name="AdminUsers_StateDeactivated" xml:space="preserve">
+    <value>Deactivated</value>
+  </data>
+  <data name="AdminUsers_StateLockedOut" xml:space="preserve">
+    <value>Locked out</value>
+  </data>
+  <data name="AdminUsers_Manage" xml:space="preserve">
+    <value>Manage</value>
+  </data>
+  <data name="AdminUsers_BackToList" xml:space="preserve">
+    <value>All users</value>
+  </data>
+  <data name="AdminUsers_SignsInWith" xml:space="preserve">
+    <value>Signs in with</value>
+  </data>
+  <data name="AdminUsers_DeactivatedSince" xml:space="preserve">
+    <value>since {0}</value>
+  </data>
+  <data name="AdminUsers_Deactivate" xml:space="preserve">
+    <value>Deactivate account</value>
+  </data>
+  <data name="AdminUsers_Reactivate" xml:space="preserve">
+    <value>Reactivate account</value>
+  </data>
+  <data name="AdminUsers_RevokeTokens" xml:space="preserve">
+    <value>Revoke all API tokens</value>
+  </data>
+  <data name="AdminUsers_ClearLockout" xml:space="preserve">
+    <value>Clear lockout</value>
+  </data>
+  <data name="AdminUsers_DeactivateWhy" xml:space="preserve">
+    <value>Deactivating closes an account: no password, passkey, authenticator code or API token is accepted afterwards, and its tokens are deleted rather than suspended. The account keeps its name, its teams and its history, and can be reopened here — accounts are never deleted, so that the record of who printed and who stopped a print stays true. A browser already signed in keeps working for up to five minutes.</value>
+  </data>
+  <data name="AdminUsers_PasskeysExplanation" xml:space="preserve">
+    <value>Revoke a passkey if its owner has lost the device it lives on; they can still sign in with their password and enrol another.</value>
+  </data>
+  <data name="AdminUsers_PasskeySynced" xml:space="preserve">
+    <value>Synced across the owner's devices</value>
+  </data>
+  <data name="AdminUsers_NoPasskeys" xml:space="preserve">
+    <value>No passkeys enrolled.</value>
+  </data>
+  <data name="AdminUsers_NoTokens" xml:space="preserve">
+    <value>No API tokens.</value>
+  </data>
+  <data name="AdminUsers_Teams" xml:space="preserve">
+    <value>Teams</value>
+  </data>
+  <data name="AdminUsers_NoTeams" xml:space="preserve">
+    <value>No teams.</value>
+  </data>
+  <data name="AdminUsers_DefaultTeam" xml:space="preserve">
+    <value>Default team</value>
+  </data>
+  <data name="AdminUsers_Deactivated" xml:space="preserve">
+    <value>Account deactivated.</value>
+  </data>
+  <data name="AdminUsers_DeactivatedOneToken" xml:space="preserve">
+    <value>Account deactivated, and its one API token revoked.</value>
+  </data>
+  <data name="AdminUsers_DeactivatedTokens" xml:space="preserve">
+    <value>Account deactivated, and its {0} API tokens revoked.</value>
+  </data>
+  <data name="AdminUsers_Reactivated" xml:space="preserve">
+    <value>Account reactivated. Its API tokens are not restored; the owner creates new ones.</value>
+  </data>
+  <data name="AdminUsers_NoTokensToRevoke" xml:space="preserve">
+    <value>That account holds no API tokens.</value>
+  </data>
+  <data name="AdminUsers_RevokedOneToken" xml:space="preserve">
+    <value>One API token revoked.</value>
+  </data>
+  <data name="AdminUsers_RevokedTokens" xml:space="preserve">
+    <value>{0} API tokens revoked.</value>
+  </data>
+  <data name="AdminUsers_LockoutCleared" xml:space="preserve">
+    <value>Lockout cleared. The account can sign in and ask for mail again.</value>
+  </data>
+  <data name="AdminUsers_RefusedSelf" xml:space="preserve">
+    <value>You cannot deactivate your own account: an administrator who closes their own account is the one person who cannot reopen it.</value>
+  </data>
+  <data name="AdminUsers_RefusedLastAdmin" xml:space="preserve">
+    <value>That is the only administrator still active. Make somebody else an administrator first, or this deployment would be left with nobody who can administer it.</value>
+  </data>
+  <data name="AdminUsers_Gone" xml:space="preserve">
+    <value>That account no longer exists.</value>
   </data>
 </root>

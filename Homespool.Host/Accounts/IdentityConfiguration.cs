@@ -28,6 +28,29 @@ public static class IdentityConfiguration
     /// </remarks>
     public const int MinimumPasswordLength = 8;
 
+    /// <summary>
+    /// How long a signed-in browser is trusted before its cookie is re-checked against the account's
+    /// security stamp - which is what a password change, a removed login or a deactivated account
+    /// rely on to end the sessions they invalidate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Identity's default is 30 minutes, which is the lag on every revocation the stamp carries</b>:
+    /// signing out everywhere, revoking a remembered browser, closing an account. Half an hour of a
+    /// hijacked session outliving the act meant to end it is the wrong trade here, where the whole
+    /// deployment is a household appliance and the cost of checking is one account read per session
+    /// per interval.
+    /// </para>
+    /// <para>
+    /// <b>Five minutes rather than zero.</b> Checking on every request would make the stamp a
+    /// per-request database read on every authenticated page - the cost this project declined for a
+    /// token's last-used timestamp, for the same reason. The credential that needs revoking
+    /// <i>instantly</i> is the API token, and that one is read from the database on every request
+    /// anyway, so it does not depend on this number at all.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan StampValidationInterval = TimeSpan.FromMinutes(5);
+
     public static void Configure(IdentityOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -62,6 +85,17 @@ public static class IdentityConfiguration
         options.ClaimsIdentity.UserNameClaimType = JwtClaimTypes.Name;
         options.ClaimsIdentity.EmailClaimType = JwtClaimTypes.Email;
         options.ClaimsIdentity.RoleClaimType = JwtClaimTypes.Role;
+    }
+
+    /// <summary>
+    /// The one deviation from <see cref="SecurityStampValidatorOptions"/>' defaults:
+    /// <see cref="StampValidationInterval"/>, which that field explains.
+    /// </summary>
+    public static void ConfigureStampValidation(SecurityStampValidatorOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        options.ValidationInterval = StampValidationInterval;
     }
 
     /// <summary>

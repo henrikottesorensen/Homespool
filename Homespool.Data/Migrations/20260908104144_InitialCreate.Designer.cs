@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260905095708_InitialCreate")]
+    [Migration("20260908104144_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -122,6 +122,9 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("DeactivatedAt")
+                        .HasColumnType("INTEGER");
 
                     b.Property<int?>("DefaultPrinterId")
                         .HasColumnType("INTEGER");

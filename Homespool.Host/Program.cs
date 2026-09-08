@@ -491,6 +491,7 @@ public static class Program
             builder.Services.AddSingleton<QueueAdvancer>();
             builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueAdvancer>());
             builder.Services.AddScoped<Accounts.ApiTokenService>();
+            builder.Services.AddScoped<Accounts.UserAdministration>();
 
             WebApplication app = builder.Build();
 

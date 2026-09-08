@@ -1,0 +1,200 @@
+@page "{id:long}"
+@model DetailModel
+@{
+    ViewData["Title"] = Model.UserName;
+    var timestamp = "yyyy-MM-dd HH:mm";
+}
+
+<p><a asp-page="Index">@Localiser["AdminUsers_BackToList"]</a></p>
+
+<h1 class="typed-name">@Model.UserName</h1>
+
+@* Inline rather than the _StatusMessage partial, which lives under Account/Manage and is not on
+   this folder's search path. *@
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<dl class="row">
+    <dt class="col-sm-3">@Localiser["Account_Email"]</dt>
+    <dd class="col-sm-9 typed-name">
+        @Model.Email
+        @if (!Model.EmailConfirmed)
+        {
+            <span class="badge text-bg-warning ms-1">@Localiser["AdminUsers_EmailUnconfirmed"]</span>
+        }
+    </dd>
+
+    <dt class="col-sm-3">@Localiser["Common_Status"]</dt>
+    <dd class="col-sm-9">
+        @if (Model.DeactivatedAt is { } deactivated)
+        {
+            <span class="badge text-bg-danger">@Localiser["AdminUsers_StateDeactivated"]</span>
+            <span class="ms-1">@Localiser["AdminUsers_DeactivatedSince", deactivated.ToLocalTime().ToString(timestamp, System.Globalization.CultureInfo.InvariantCulture)]</span>
+        }
+        else if (Model.LockedOut)
+        {
+            <span class="badge text-bg-warning">@Localiser["AdminUsers_StateLockedOut"]</span>
+        }
+        else
+        {
+            <span class="badge text-bg-success">@Localiser["AdminUsers_StateActive"]</span>
+        }
+
+        @if (Model.IsAdministrator)
+        {
+            <span class="badge text-bg-secondary ms-1">@Localiser["AdminUsers_Administrator"]</span>
+        }
+    </dd>
+
+    <dt class="col-sm-3">@Localiser["AdminUsers_SignsInWith"]</dt>
+    <dd class="col-sm-9">
+        <ul class="list-inline mb-0">
+            @if (Model.HasPassword)
+            {
+                <li class="list-inline-item">@Localiser["Account_Password"]</li>
+            }
+            @if (Model.TwoFactorEnabled)
+            {
+                <li class="list-inline-item">@Localiser["AdminUsers_Authenticator"]</li>
+            }
+            @if (Model.Passkeys.Count > 0)
+            {
+                <li class="list-inline-item">@Localiser["Manage_Passkeys"] (@Model.Passkeys.Count)</li>
+            }
+            @if (!Model.HasPassword && !Model.TwoFactorEnabled && Model.Passkeys.Count == 0)
+            {
+                <li class="list-inline-item">@Localiser["Common_None"]</li>
+            }
+        </ul>
+    </dd>
+</dl>
+
+@* One form for every act on this page: each button names its own handler, and the passkey buttons
+   carry the credential they revoke as their own value. Nothing here asks for a password - reaching
+   this page at all took an elevation, which is what authorises the buttons. *@
+<form method="post">
+    <div class="d-flex flex-wrap gap-2 mb-2">
+        @if (Model.DeactivatedAt is null)
+        {
+            @if (!Model.IsSelf)
+            {
+                <button type="submit" class="btn btn-outline-danger" asp-page-handler="Deactivate" asp-route-id="@Model.Id">@Localiser["AdminUsers_Deactivate"]</button>
+            }
+        }
+        else
+        {
+            <button type="submit" class="btn btn-outline-primary" asp-page-handler="Reactivate" asp-route-id="@Model.Id">@Localiser["AdminUsers_Reactivate"]</button>
+        }
+
+        <button type="submit" class="btn btn-outline-danger" asp-page-handler="RevokeTokens" asp-route-id="@Model.Id">@Localiser["AdminUsers_RevokeTokens"]</button>
+        <button type="submit" class="btn btn-outline-secondary" asp-page-handler="ClearLockout" asp-route-id="@Model.Id">@Localiser["AdminUsers_ClearLockout"]</button>
+    </div>
+
+    <p class="text-muted">@Localiser["AdminUsers_DeactivateWhy"]</p>
+
+    @if (Model.IsSelf)
+    {
+        <p class="text-muted">@Localiser["AdminUsers_RefusedSelf"]</p>
+    }
+
+    <h2 class="h4 mt-4">@Localiser["Manage_Passkeys"]</h2>
+
+    @if (Model.Passkeys.Count == 0)
+    {
+        <p class="text-muted">@Localiser["AdminUsers_NoPasskeys"]</p>
+    }
+    else
+    {
+        <p class="text-muted">@Localiser["AdminUsers_PasskeysExplanation"]</p>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">@Localiser["Common_Name"]</th>
+                    <th scope="col">@Localiser["Common_Created"]</th>
+                    <th scope="col">@Localiser["Passkeys_KindColumn"]</th>
+                    <th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var passkey in Model.Passkeys)
+            {
+                <tr>
+                    <td class="typed-name">@passkey.Name</td>
+                    <td>@passkey.CreatedAt.ToLocalTime().ToString(timestamp, System.Globalization.CultureInfo.InvariantCulture)</td>
+                    <td class="small">@(passkey.Synced ? Localiser["AdminUsers_PasskeySynced"] : Localiser["Passkeys_DeviceBound"])</td>
+                    <td class="text-end">
+                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                asp-page-handler="RevokePasskey" asp-route-id="@Model.Id"
+                                name="credentialId" value="@passkey.Id">@Localiser["AdminPasskeys_Revoke"]</button>
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+
+    <h2 class="h4 mt-4">@Localiser["Manage_ApiTokens"]</h2>
+
+    @if (Model.Tokens.Count == 0)
+    {
+        <p class="text-muted">@Localiser["AdminUsers_NoTokens"]</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">@Localiser["Common_Name"]</th>
+                    <th scope="col">@Localiser["Tokens_ScopeColumn"]</th>
+                    <th scope="col">@Localiser["Common_Created"]</th>
+                </tr>
+            </thead>
+            <tbody>
+            @foreach (var token in Model.Tokens)
+            {
+                <tr>
+                    <td class="typed-name">@token.Name</td>
+                    <td class="small">@token.Scope</td>
+                    <td>@token.CreatedAt.ToLocalTime().ToString(timestamp, System.Globalization.CultureInfo.InvariantCulture)</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</form>
+
+<h2 class="h4 mt-4">@Localiser["AdminUsers_Teams"]</h2>
+
+@if (Model.Teams.Count == 0)
+{
+    <p class="text-muted">@Localiser["AdminUsers_NoTeams"]</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th scope="col">@Localiser["Common_Team"]</th>
+                <th scope="col">@Localiser["Tokens_ScopeColumn"]</th>
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var team in Model.Teams)
+        {
+            <tr>
+                <td class="typed-name">@team.Name</td>
+                <td class="small">@team.Capabilities</td>
+                <td>
+                    @if (team.IsDefault)
+                    {
+                        <span class="badge text-bg-secondary">@Localiser["AdminUsers_DefaultTeam"]</span>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}

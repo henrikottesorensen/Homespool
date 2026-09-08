@@ -452,6 +452,10 @@ public sealed class LocalisationTests
             "That code is not right. Open your authenticator app and try the current one.",
             "Too many wrong two-factor attempts. Try again in {0}.",
 
+            // Account_LockoutTitle heads the page somebody locked out lands on and addresses them;
+            // AdminUsers_StateLockedOut is a state word in a column about somebody else. The first
+            // can reasonably become "You are locked out" and the second cannot.
+            "Locked out",
         ];
 
         IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");

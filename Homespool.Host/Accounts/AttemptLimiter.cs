@@ -178,4 +178,30 @@ public class AttemptLimiter
 
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    /// <summary>
+    /// Clears every backoff this account is under, whatever the action, and says how many there were.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>For an administrator unsticking an account, and nothing else.</b> Every other caller resets
+    /// the one action it just saw succeed - which is what keeps a backoff meaningful. This is the
+    /// operator's override, and it exists because the backoffs an account can be held under are not
+    /// all ones the account can clear by succeeding: the two mail counters are spent by whoever knows
+    /// the address, and the person they lock out is the one who needs the mail.
+    /// </para>
+    /// <para>
+    /// Bulk and untracked, like <c>ApiTokenService.RevokeAllForUserAsync</c>: there is nothing to
+    /// load, and it still joins an ambient transaction, which is what lets the caller clear these and
+    /// the account lockout as one act.
+    /// </para>
+    /// </remarks>
+    /// <param name="userId">The account to clear.</param>
+    /// <param name="cancellationToken">Cancels the delete.</param>
+    public async Task<int> ResetAllAsync(long userId, CancellationToken cancellationToken)
+    {
+        return await _dbContext.UserActionAttempts
+                               .Where(a => a.UserId == userId)
+                               .ExecuteDeleteAsync(cancellationToken);
+    }
 }

@@ -1,0 +1,68 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = Localiser["Nav_Users"].Value;
+}
+
+<h1>@ViewData["Title"]</h1>
+
+<p class="text-muted">@Localiser["AdminUsers_Explanation"]</p>
+
+<table class="table align-middle">
+    <thead>
+        <tr>
+            <th scope="col">@Localiser["Account_Username"]</th>
+            <th scope="col">@Localiser["Account_Email"]</th>
+            <th scope="col">@Localiser["Account_Password"]</th>
+            <th scope="col">@Localiser["AdminUsers_Authenticator"]</th>
+            <th scope="col">@Localiser["Manage_Passkeys"]</th>
+            <th scope="col">@Localiser["Manage_ApiTokens"]</th>
+            <th scope="col">@Localiser["Common_Status"]</th>
+            <th scope="col"></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var row in Model.Rows)
+    {
+        <tr>
+            <td class="typed-name">
+                @row.UserName
+                @if (row.IsAdministrator)
+                {
+                    <span class="badge text-bg-secondary ms-1">@Localiser["AdminUsers_Administrator"]</span>
+                }
+            </td>
+            <td class="typed-name">
+                @row.Email
+                @if (!row.EmailConfirmed)
+                {
+                    <span class="badge text-bg-warning ms-1">@Localiser["AdminUsers_EmailUnconfirmed"]</span>
+                }
+            </td>
+            @* A tick or a dash rather than words: the column heading says what is being answered, and
+               eight columns of Yes/No would be a wall of text in two languages. *@
+            <td>@(row.HasPassword ? "✓" : "—")</td>
+            <td>@(row.TwoFactorEnabled ? "✓" : "—")</td>
+            <td>@(row.Passkeys == 0 ? "—" : row.Passkeys.ToString(System.Globalization.CultureInfo.CurrentCulture))</td>
+            <td>@(row.Tokens == 0 ? "—" : row.Tokens.ToString(System.Globalization.CultureInfo.CurrentCulture))</td>
+            <td>
+                @if (row.Deactivated)
+                {
+                    <span class="badge text-bg-danger">@Localiser["AdminUsers_StateDeactivated"]</span>
+                }
+                else if (row.LockedOut)
+                {
+                    <span class="badge text-bg-warning">@Localiser["AdminUsers_StateLockedOut"]</span>
+                }
+                else
+                {
+                    <span class="badge text-bg-success">@Localiser["AdminUsers_StateActive"]</span>
+                }
+            </td>
+            <td class="text-end">
+                <a class="btn btn-sm btn-outline-secondary" asp-page="Detail" asp-route-id="@row.Id">@Localiser["AdminUsers_Manage"]</a>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

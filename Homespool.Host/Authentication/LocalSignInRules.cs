@@ -143,11 +143,27 @@ public sealed class LocalSignInRules
     }
 
     /// <summary>
-    /// Whether the account may sign in at all: the confirmed-account rule, and the email and phone
-    /// ones the framework also offers, read from <see cref="IdentityOptions.SignIn"/>.
+    /// Whether the account may sign in at all: this deployment's deactivation, then the
+    /// confirmed-account rule and the email and phone ones the framework also offers, read from
+    /// <see cref="IdentityOptions.SignIn"/>.
     /// </summary>
+    /// <remarks>
+    /// <b>The deactivation check is here rather than in each scheme, and that is the whole design.</b>
+    /// Every credential this application accepts - password, authenticator code, recovery code,
+    /// passkey, a provider's assertion, and both personal-access-token headers - reaches
+    /// <see cref="PreSignInCheckAsync"/> before it is believed, so one condition in this method
+    /// refuses all of them. A scheme added later gets the rule by calling what its siblings call,
+    /// rather than by remembering to.
+    /// </remarks>
     public async Task<bool> CanSignInAsync(HSUser user)
     {
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (user.DeactivatedAt is not null)
+        {
+            return false;
+        }
+
         if (_options.SignIn.RequireConfirmedEmail && !await _users.IsEmailConfirmedAsync(user))
         {
             return false;

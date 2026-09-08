@@ -78,6 +78,33 @@ public class HSUser : IdentityUser<long>
     /// </remarks>
     public int? DefaultPrinterId { get; set; }
 
+    /// <summary>
+    /// When an administrator deactivated this account, or null while it is active. A deactivated
+    /// account may not sign in by any credential and holds no API tokens; it keeps everything else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what there is instead of deleting an account.</b> Attribution is history - who
+    /// queued a print, who stopped one - and hard deleting the subject of a record is the one
+    /// operation that makes such a record lie. So the row stays, the username and address stay
+    /// reserved, team memberships stay listed, and what changes is that no credential the account
+    /// holds is believed any more.
+    /// </para>
+    /// <para>
+    /// <b>Deliberately not <c>LockoutEnd</c></b>, which means "locked out by failed attempts" and
+    /// ends by itself. Two states that read alike and behave differently: a lockout is temporary and
+    /// arrives from outside, a deactivation is indefinite and is somebody's decision. Overloading the
+    /// one column would leave an operator unable to tell which had happened, and clearing a lockout
+    /// would silently readmit an account somebody had closed.
+    /// </para>
+    /// <para>
+    /// <b>A timestamp rather than a flag</b>, because the row is then self-explaining next to the
+    /// other dates on it. Nothing reads the value; the question every caller asks is whether it is
+    /// null.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? DeactivatedAt { get; set; }
+
     public HSUser(string userName)
         : this()
     {

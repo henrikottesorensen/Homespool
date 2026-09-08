@@ -35,9 +35,11 @@ namespace Homespool.Host.Accounts;
 /// what the unit-test harness has to replicate.
 /// </para>
 /// <para>
-/// <b>Same registrations, same order, same lifetimes, with one marked departure</b>:
-/// <see cref="UsernameValidator"/> runs beside the framework's user validator, commented where it is
-/// added. The one thing the framework does that this cannot is walk the
+/// <b>Same registrations, same order, same lifetimes, with two marked departures</b>:
+/// <see cref="UsernameValidator"/> runs beside the framework's user validator, and
+/// <see cref="SecurityStampValidatorOptions.ValidationInterval"/> is shortened from the framework's
+/// default - both commented where they are added, and both here rather than in <c>Program</c>
+/// because the test harness must apply the same rules. The one thing the framework does that this cannot is walk the
 /// type hierarchy to pick a store: <c>AddEntityFrameworkStores</c> reflects over the context to find
 /// the six framework entity types, where <see cref="AddHomespoolStores"/> simply names the ones
 /// <see cref="HomespoolDbContext"/> inherits. A change to that base class therefore has to be
@@ -107,7 +109,13 @@ public static class IdentityServices
 
         services.Configure(configure);
 
-        // The one departure: a validator of this application's own, run after Identity's. It is
+        // A second departure, and here rather than in Program for the same reason as the first: how
+        // often a session is re-checked against its account decides how long a deactivation, a
+        // password change or a revoked remembered-browser takes to bite, and a test asserting any of
+        // those must be measuring the interval the deployment runs.
+        services.Configure<SecurityStampValidatorOptions>(IdentityConfiguration.ConfigureStampValidation);
+
+        // The other departure: a validator of this application's own, run after Identity's. It is
         // registered here rather than in Program because it decides what a username may BE, which
         // the test harness must agree with - the same reason IdentityConfiguration is shared.
         IdentityBuilder builder = new(typeof(HSUser), typeof(IdentityRole<long>), services);

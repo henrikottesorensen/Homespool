@@ -686,15 +686,6 @@
   <data name="Passkeys_Gone" xml:space="preserve">
     <value>Den adgangsnøgle var allerede væk.</value>
   </data>
-  <data name="AdminPasskeys_Explanation" xml:space="preserve">
-    <value>Alle adgangsnøgler tilmeldt i Homespool. Tilbagekald en, hvis ejeren har mistet den enhed, den ligger på; de kan stadig logge ind med deres adgangskode og tilføje en ny.</value>
-  </data>
-  <data name="AdminPasskeys_None" xml:space="preserve">
-    <value>Der er ikke tilmeldt nogen adgangsnøgler.</value>
-  </data>
-  <data name="AdminPasskeys_Owner" xml:space="preserve">
-    <value>Konto</value>
-  </data>
   <data name="AdminPasskeys_Revoke" xml:space="preserve">
     <value>Tilbagekald adgangsnøgle</value>
   </data>
@@ -2660,5 +2651,110 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="StepUp_ProviderStale" xml:space="preserve">
     <value>{0} bad dig ikke om at logge ind igen lige nu. Prøv igen.</value>
+  </data>
+  <data name="Nav_Users" xml:space="preserve">
+    <value>Brugere</value>
+  </data>
+  <data name="AdminUsers_Explanation" xml:space="preserve">
+    <value>Alle konti på denne installation, hvad de logger ind med, og om de må.</value>
+  </data>
+  <data name="AdminUsers_Authenticator" xml:space="preserve">
+    <value>Godkendelsesapp</value>
+  </data>
+  <data name="AdminUsers_Administrator" xml:space="preserve">
+    <value>Administrator</value>
+  </data>
+  <data name="AdminUsers_EmailUnconfirmed" xml:space="preserve">
+    <value>Ubekræftet</value>
+  </data>
+  <data name="AdminUsers_StateActive" xml:space="preserve">
+    <value>Aktiv</value>
+  </data>
+  <data name="AdminUsers_StateDeactivated" xml:space="preserve">
+    <value>Deaktiveret</value>
+  </data>
+  <data name="AdminUsers_StateLockedOut" xml:space="preserve">
+    <value>Låst ude</value>
+  </data>
+  <data name="AdminUsers_Manage" xml:space="preserve">
+    <value>Administrer</value>
+  </data>
+  <data name="AdminUsers_BackToList" xml:space="preserve">
+    <value>Alle brugere</value>
+  </data>
+  <data name="AdminUsers_SignsInWith" xml:space="preserve">
+    <value>Logger ind med</value>
+  </data>
+  <data name="AdminUsers_DeactivatedSince" xml:space="preserve">
+    <value>siden {0}</value>
+  </data>
+  <data name="AdminUsers_Deactivate" xml:space="preserve">
+    <value>Deaktiver konto</value>
+  </data>
+  <data name="AdminUsers_Reactivate" xml:space="preserve">
+    <value>Genaktiver konto</value>
+  </data>
+  <data name="AdminUsers_RevokeTokens" xml:space="preserve">
+    <value>Tilbagekald alle API-tokens</value>
+  </data>
+  <data name="AdminUsers_ClearLockout" xml:space="preserve">
+    <value>Ophæv udelukkelse</value>
+  </data>
+  <data name="AdminUsers_DeactivateWhy" xml:space="preserve">
+    <value>At deaktivere lukker en konto: hverken adgangskode, adgangsnøgle, engangskode eller API-token accepteres bagefter, og kontoens tokens slettes i stedet for at blive sat i bero. Kontoen beholder sit navn, sine hold og sin historik og kan genåbnes her — konti slettes aldrig, så det står fast, hvem der har printet, og hvem der har stoppet et print. En browser, der allerede er logget ind, virker i op til fem minutter endnu.</value>
+  </data>
+  <data name="AdminUsers_PasskeysExplanation" xml:space="preserve">
+    <value>Tilbagekald en adgangsnøgle, hvis ejeren har mistet den enhed, den ligger på; de kan stadig logge ind med deres adgangskode og tilmelde en ny.</value>
+  </data>
+  <data name="AdminUsers_PasskeySynced" xml:space="preserve">
+    <value>Synkroniseret på tværs af ejerens enheder</value>
+  </data>
+  <data name="AdminUsers_NoPasskeys" xml:space="preserve">
+    <value>Ingen adgangsnøgler tilmeldt.</value>
+  </data>
+  <data name="AdminUsers_NoTokens" xml:space="preserve">
+    <value>Ingen API-tokens.</value>
+  </data>
+  <data name="AdminUsers_Teams" xml:space="preserve">
+    <value>Hold</value>
+  </data>
+  <data name="AdminUsers_NoTeams" xml:space="preserve">
+    <value>Ingen hold.</value>
+  </data>
+  <data name="AdminUsers_DefaultTeam" xml:space="preserve">
+    <value>Standardhold</value>
+  </data>
+  <data name="AdminUsers_Deactivated" xml:space="preserve">
+    <value>Kontoen er deaktiveret.</value>
+  </data>
+  <data name="AdminUsers_DeactivatedOneToken" xml:space="preserve">
+    <value>Kontoen er deaktiveret, og dens ene API-token er tilbagekaldt.</value>
+  </data>
+  <data name="AdminUsers_DeactivatedTokens" xml:space="preserve">
+    <value>Kontoen er deaktiveret, og dens {0} API-tokens er tilbagekaldt.</value>
+  </data>
+  <data name="AdminUsers_Reactivated" xml:space="preserve">
+    <value>Kontoen er genaktiveret. Dens API-tokens gendannes ikke; ejeren opretter nye.</value>
+  </data>
+  <data name="AdminUsers_NoTokensToRevoke" xml:space="preserve">
+    <value>Den konto har ingen API-tokens.</value>
+  </data>
+  <data name="AdminUsers_RevokedOneToken" xml:space="preserve">
+    <value>Én API-token er tilbagekaldt.</value>
+  </data>
+  <data name="AdminUsers_RevokedTokens" xml:space="preserve">
+    <value>{0} API-tokens er tilbagekaldt.</value>
+  </data>
+  <data name="AdminUsers_LockoutCleared" xml:space="preserve">
+    <value>Udelukkelsen er ophævet. Kontoen kan logge ind og bede om post igen.</value>
+  </data>
+  <data name="AdminUsers_RefusedSelf" xml:space="preserve">
+    <value>Du kan ikke deaktivere din egen konto: en administrator, der lukker sin egen konto, er den eneste, der ikke kan åbne den igen.</value>
+  </data>
+  <data name="AdminUsers_RefusedLastAdmin" xml:space="preserve">
+    <value>Det er den eneste administrator, der stadig er aktiv. Gør en anden til administrator først, ellers står denne installation uden nogen, der kan administrere den.</value>
+  </data>
+  <data name="AdminUsers_Gone" xml:space="preserve">
+    <value>Den konto findes ikke længere.</value>
   </data>
 </root>

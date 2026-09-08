@@ -120,6 +120,9 @@ namespace Homespool.Data.Migrations
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("DeactivatedAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("DefaultPrinterId")
                         .HasColumnType("INTEGER");
 

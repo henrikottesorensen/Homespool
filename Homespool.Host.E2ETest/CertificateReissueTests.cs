@@ -249,6 +249,8 @@ public sealed class CertificateReissueTests : IAsyncLifetime
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
 
+        await EnrolmentFlowHelper.ElevateAsync(client);
+
         return client;
     }
 }

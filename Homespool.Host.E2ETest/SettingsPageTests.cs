@@ -231,6 +231,8 @@ public sealed class SettingsPageTests : IAsyncLifetime
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, email, AdminBootstrap.AdminRole);
 
+        await EnrolmentFlowHelper.ElevateAsync(client);
+
         return client;
     }
 

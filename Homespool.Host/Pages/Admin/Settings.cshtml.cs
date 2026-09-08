@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Configuration;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
@@ -40,6 +41,7 @@ namespace Homespool.Host.Pages.Admin;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
+[RequireAdminElevation]
 public class SettingsModel : PageModel
 {
     private readonly SettingsStore _store;

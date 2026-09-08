@@ -17,6 +17,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
 using Homespool.Model.Entities;
@@ -30,6 +31,7 @@ namespace Homespool.Host.Pages.Admin.Invites;
 /// existing team.
 /// </summary>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
+[RequireAdminElevation]
 public class CreateModel : PageModel
 {
     private readonly InvitationService _invitationService;

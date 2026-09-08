@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Certificates;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
@@ -41,6 +42,7 @@ namespace Homespool.Host.Pages.Admin;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
+[RequireAdminElevation]
 public class CertificateModel : PageModel
 {
     private readonly PrinterCertificateAuthority _authority;

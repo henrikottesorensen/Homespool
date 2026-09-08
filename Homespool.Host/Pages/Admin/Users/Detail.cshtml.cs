@@ -15,6 +15,7 @@ using Microsoft.Extensions.Localization;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
@@ -26,6 +27,15 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// </summary>
 /// <remarks>
 /// <para>
+/// <b>What stands between a session and these acts is <see cref="AdminElevation"/></b>, earned at
+/// <c>Admin/Challenge</c> and good for ten minutes across the administration screens - so this page
+/// asks for nothing itself. A password field beside every button would be retyped until it stopped
+/// being read, and on a page about somebody else's account it also asks a confusing question: whose
+/// password is this? The reason for having a gate at all is unchanged - a session says only that a
+/// browser signed in once, and closing an account is exactly what a walk-up on an unlocked
+/// administrator's browser would want to do.
+/// </para>
+/// <para>
 /// <b>The listings are read-only except where an administrator is the only one who can act.</b>
 /// Passkeys have a revoke because losing the device one lives on leaves a credential the owner
 /// cannot remove; tokens revoke as a set, because the case that brings somebody to this page is a
@@ -34,6 +44,7 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
+[RequireAdminElevation]
 public class DetailModel : PageModel
 {
     private readonly HomespoolDbContext _context;

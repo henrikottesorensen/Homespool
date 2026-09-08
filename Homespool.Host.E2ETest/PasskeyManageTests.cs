@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -34,7 +35,8 @@ public sealed class PasskeyManageTests : IAsyncLifetime
     private const string RelyingPartyId = "localhost";
     private const string Origin = "http://localhost";
     private const string ManagePath = "/Account/Manage/Passkeys";
-    private const string AdminPath = "/Admin/Passkeys";
+    private const string AdminPath = "/Admin/Users";
+    private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
 
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("passkey-manage");
     private HomespoolFactory _factory = null!;
@@ -110,7 +112,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
             using FormUrlEncodedContent beginBody = new(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = token,
-                ["Input.Password"] = "Correct-Horse-Battery-Staple-1!", // betterleaks:allow
+                ["Input.Password"] = Password,
             });
             HttpResponseMessage begin = await client.PostAsync($"{ManagePath}?handler={PasskeysModel.BeginRegistrationHandler}", beginBody, TestContext.Current.CancellationToken);
             begin.StatusCode.Should().Be(HttpStatusCode.OK, "the current password unlocks the ceremony");
@@ -162,8 +164,13 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, signedIn).Should().BeTrue();
     }
 
+    /// <summary>
+    /// The administrator's recovery path, end to end: the owner's passkey is listed on their detail
+    /// page and revoked from it - on the administrator's own password, which the page asks for
+    /// before it does anything.
+    /// </summary>
     [Fact]
-    public async Task AnAdministratorSeesEveryPasskeyAndRevokesOne()
+    public async Task AnAdministratorSeesAnAccountsPasskeyAndRevokesOne()
     {
         // Arrange
         (HSUser owner, HttpClient ownerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
@@ -171,31 +178,86 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         UserPasskeyInfo passkey = await SeedPasskeyAsync(owner, "phone");
 
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "admin@example.com", AdminBootstrap.AdminRole);
+        string detailPath = $"{AdminPath}/Detail/{owner.Id.ToString(CultureInfo.InvariantCulture)}";
 
         using (admin)
         {
-            HttpResponseMessage before = await admin.GetAsync(AdminPath, TestContext.Current.CancellationToken);
+            await EnrolmentFlowHelper.ElevateAsync(admin);
+
+            HttpResponseMessage roster = await admin.GetAsync($"{AdminPath}/Index", TestContext.Current.CancellationToken);
+            string rosterHtml = await roster.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            HttpResponseMessage before = await admin.GetAsync(detailPath, TestContext.Current.CancellationToken);
             string beforeHtml = await before.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(beforeHtml);
 
             using FormUrlEncodedContent revokeBody = new(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = token,
-                ["userId"] = owner.Id.ToString(CultureInfo.InvariantCulture),
-                ["id"] = Convert.ToBase64String(passkey.CredentialId).TrimEnd('=').Replace('+', '-').Replace('/', '_'),
+                ["credentialId"] = Convert.ToBase64String(passkey.CredentialId).TrimEnd('=').Replace('+', '-').Replace('/', '_'),
             });
 
             // Act
-            HttpResponseMessage revoked = await admin.PostAsync($"{AdminPath}?handler=Revoke", revokeBody, TestContext.Current.CancellationToken);
-            HttpResponseMessage after = await admin.GetAsync(AdminPath, TestContext.Current.CancellationToken);
+            // Posted to the URL the rendered button carries, not to a path composed here: a handler
+            // name that resolves to nothing still renders a formaction, so a test that composes its
+            // own URL cannot tell a working button from a dead one.
+            HttpResponseMessage revoked = await admin.PostAsync(ButtonTarget(beforeHtml, "RevokePasskey"), revokeBody, TestContext.Current.CancellationToken);
+            HttpResponseMessage after = await admin.GetAsync(detailPath, TestContext.Current.CancellationToken);
             string afterHtml = await after.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             // Assert
+            roster.StatusCode.Should().Be(HttpStatusCode.OK);
+            rosterHtml.Should().Contain(owner.UserName!);
             before.StatusCode.Should().Be(HttpStatusCode.OK);
             beforeHtml.Should().Contain(owner.UserName!).And.Contain("phone");
             revoked.StatusCode.Should().Be(HttpStatusCode.Redirect);
-            afterHtml.Should().Contain("Passkey revoked.").And.Contain("No passkeys have been enrolled.");
+            afterHtml.Should().Contain("Passkey revoked.").And.Contain("No passkeys enrolled.");
         }
+    }
+
+    /// <summary>
+    /// A live administrator session alone reaches nothing: without an elevation the screens send the
+    /// browser to the challenge, and a passkey posted at directly stays where it is.
+    /// </summary>
+    [Fact]
+    public async Task AnAdministratorWhoHasNotConfirmedReachesNothing()
+    {
+        // Arrange
+        (HSUser owner, HttpClient ownerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
+        ownerClient.Dispose();
+        UserPasskeyInfo passkey = await SeedPasskeyAsync(owner, "phone");
+
+        (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "admin@example.com", AdminBootstrap.AdminRole);
+        string detailPath = $"{AdminPath}/Detail/{owner.Id.ToString(CultureInfo.InvariantCulture)}";
+
+        using (admin)
+        {
+            // Act
+            HttpResponseMessage page = await admin.GetAsync(detailPath, TestContext.Current.CancellationToken);
+
+            // The antiforgery token comes from the challenge it was sent to, so the post that follows
+            // fails on the elevation rather than on a missing token.
+            HttpResponseMessage challenge = await admin.GetAsync("/Admin/Challenge", TestContext.Current.CancellationToken);
+            string token = AntiforgeryTestHelper.ExtractToken(
+                await challenge.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+            using FormUrlEncodedContent revokeBody = new(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = token,
+                ["credentialId"] = Convert.ToBase64String(passkey.CredentialId).TrimEnd('=').Replace('+', '-').Replace('/', '_'),
+            });
+
+            HttpResponseMessage posted = await admin.PostAsync(
+                $"{detailPath}?handler=RevokePasskey", revokeBody, TestContext.Current.CancellationToken);
+
+            // Assert
+            page.StatusCode.Should().Be(HttpStatusCode.Redirect, "an unelevated administrator is asked to confirm");
+            page.Headers.Location!.OriginalString.Should().Contain("/Admin/Challenge");
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            posted.Headers.Location!.OriginalString.Should().Contain("/Admin/Challenge");
+        }
+
+        (await PasskeysOfAsync(owner)).Should().ContainSingle("nothing was revoked");
     }
 
     [Fact]
@@ -205,10 +267,33 @@ public sealed class PasskeyManageTests : IAsyncLifetime
 
         using (client)
         {
-            HttpResponseMessage page = await client.GetAsync(AdminPath, TestContext.Current.CancellationToken);
+            HttpResponseMessage page = await client.GetAsync($"{AdminPath}/Index", TestContext.Current.CancellationToken);
 
             page.StatusCode.Should().NotBe(HttpStatusCode.OK, "the screen lists other people's credentials");
         }
+    }
+
+    /// <summary>
+    /// Where the button whose handler is <paramref name="handler"/> actually posts, read off the
+    /// rendered page.
+    /// </summary>
+    private static string ButtonTarget(string html, string handler)
+    {
+        Match match = Regex.Match(html, $"formaction=\"(?<url>[^\"]*handler={Regex.Escape(handler)})\"");
+
+        match.Success.Should().BeTrue($"the page must render a button posting to the {handler} handler");
+
+        return WebUtility.HtmlDecode(match.Groups["url"].Value);
+    }
+
+    /// <summary>The passkeys the store holds for <paramref name="user"/> right now.</summary>
+    private async Task<IList<UserPasskeyInfo>> PasskeysOfAsync(HSUser user)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        HSUser tracked = (await users.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)))!;
+
+        return await users.GetPasskeysAsync(tracked);
     }
 
     private async Task<UserPasskeyInfo> SeedPasskeyAsync(HSUser user, string name)

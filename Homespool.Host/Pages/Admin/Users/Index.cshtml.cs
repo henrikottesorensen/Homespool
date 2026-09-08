@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Admin.Users;
@@ -32,6 +33,7 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
+[RequireAdminElevation]
 public class IndexModel : PageModel
 {
     private readonly HomespoolDbContext _context;

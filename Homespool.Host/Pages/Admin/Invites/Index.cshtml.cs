@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
@@ -19,6 +20,7 @@ namespace Homespool.Host.Pages.Admin.Invites;
 /// <see cref="InvitationService.RevokeAsync"/>), so a revoked invite shows here as "Expired".
 /// </summary>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
+[RequireAdminElevation]
 public class IndexModel : PageModel
 {
     private readonly InvitationService _invitationService;

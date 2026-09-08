@@ -4,6 +4,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Cameras;
 using Homespool.Host.Localisation;
 
@@ -21,6 +22,7 @@ namespace Homespool.Host.Pages.Admin;
 /// them.
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
+[RequireAdminElevation]
 public class LiveViewModel : PageModel
 {
     private readonly CameraLiveAvailability _availability;

@@ -2751,4 +2751,16 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="AdminUsers_Gone" xml:space="preserve">
     <value>Den konto findes ikke længere.</value>
   </data>
+  <data name="AdminChallenge_Title" xml:space="preserve">
+    <value>Bekræft, at det er dig</value>
+  </data>
+  <data name="AdminChallenge_Explanation" xml:space="preserve">
+    <value>Administrationssiderne handler på andres konti og på denne installations indstillinger, så de beder om din adgangskode, før de åbner. Én bekræftelse dækker dem alle i ti minutter.</value>
+  </data>
+  <data name="AdminChallenge_YourPassword" xml:space="preserve">
+    <value>Din egen adgangskode</value>
+  </data>
+  <data name="AdminChallenge_Confirm" xml:space="preserve">
+    <value>Bekræft</value>
+  </data>
 </root>

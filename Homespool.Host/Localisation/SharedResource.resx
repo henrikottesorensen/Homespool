@@ -2852,4 +2852,16 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="AdminUsers_Gone" xml:space="preserve">
     <value>That account no longer exists.</value>
   </data>
+  <data name="AdminChallenge_Title" xml:space="preserve">
+    <value>Confirm it is you</value>
+  </data>
+  <data name="AdminChallenge_Explanation" xml:space="preserve">
+    <value>The administration screens act on other people's accounts and on this deployment's settings, so they ask for your password before they open. One confirmation covers them all for ten minutes.</value>
+  </data>
+  <data name="AdminChallenge_YourPassword" xml:space="preserve">
+    <value>Your own password</value>
+  </data>
+  <data name="AdminChallenge_Confirm" xml:space="preserve">
+    <value>Confirm</value>
+  </data>
 </root>

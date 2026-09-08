@@ -48,18 +48,21 @@ public sealed class LocalSignIn
     private readonly UserManager<HSUser> _users;
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
     private readonly LocalSignInRules _rules;
+    private readonly AdminElevation _elevation;
     private readonly IdentityOptions _options;
     private readonly ILogger<LocalSignIn> _logger;
 
     public LocalSignIn(UserManager<HSUser> users,
                        IUserClaimsPrincipalFactory<HSUser> claimsFactory,
                        LocalSignInRules rules,
+                       AdminElevation elevation,
                        IOptions<IdentityOptions> options,
                        ILogger<LocalSignIn> logger)
     {
         _users = users;
         _claimsFactory = claimsFactory;
         _rules = rules;
+        _elevation = elevation;
         _options = options.Value;
         _logger = logger;
     }
@@ -214,9 +217,16 @@ public sealed class LocalSignIn
     }
 
     /// <summary>
-    /// Ends the session: the application cookie, and the external and pending cookies a sign-in in
-    /// progress may have left. The remembered browser stays remembered, as the framework leaves it.
+    /// Ends the session: the application cookie, the external and pending cookies a sign-in in
+    /// progress may have left, and any administration elevation. The remembered browser stays
+    /// remembered, as the framework leaves it.
     /// </summary>
+    /// <remarks>
+    /// <b>The elevation goes with the session</b>, and it is cleared here rather than on the logout
+    /// page so that every route out of a session takes it. Otherwise signing out and back in inside
+    /// ten minutes would walk into the administration screens without proving anything - which is
+    /// exactly the shared-machine case the window is there to bound.
+    /// </remarks>
     public async Task SignOutAsync(HttpContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -224,6 +234,8 @@ public sealed class LocalSignIn
         await context.SignOutAsync(IdentityConstants.ApplicationScheme);
         await context.SignOutAsync(IdentityConstants.ExternalScheme);
         await context.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
+
+        _elevation.Clear(context);
     }
 
     private static async Task SignInCoreAsync(HttpContext context, ClaimsPrincipal principal, AuthenticationProperties? properties)

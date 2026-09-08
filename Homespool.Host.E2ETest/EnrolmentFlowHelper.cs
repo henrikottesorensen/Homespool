@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Security.Claims;
@@ -102,6 +104,40 @@ public static class EnrolmentFlowHelper
     }
 
     /// <summary>
+    /// The password every account this helper creates is given, and therefore the one an
+    /// administration elevation is earned with.
+    /// </summary>
+    public const string AccountPassword = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
+
+    /// <summary>
+    /// Earns <paramref name="client"/> an administration elevation, which every page under
+    /// <c>/Admin</c> requires.
+    /// </summary>
+    /// <remarks>
+    /// <b>Called explicitly rather than folded into the sign-in above</b>, so that a test driving an
+    /// administration page shows the gate it had to pass. A helper that elevated silently would make
+    /// the one thing standing between a session and these screens invisible in every test that
+    /// crosses it.
+    /// </remarks>
+    public static async Task ElevateAsync(HttpClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+
+        HttpResponseMessage challenge = await client.GetAsync("/Admin/Challenge", TestContext.Current.CancellationToken);
+        string html = await challenge.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
+            ["Input.Password"] = AccountPassword,
+        });
+
+        HttpResponseMessage proved = await client.PostAsync("/Admin/Challenge", body, TestContext.Current.CancellationToken);
+
+        proved.StatusCode.Should().Be(HttpStatusCode.Redirect, "the elevation is setup for a test, not what it verifies");
+    }
+
+    /// <summary>
     /// A username for a fixture that identifies its account by an address: the address's local part,
     /// with anything Identity would refuse replaced by a hyphen.
     /// </summary>
@@ -153,7 +189,7 @@ public static class EnrolmentFlowHelper
         await emailStore.SetEmailAsync(user, email, CancellationToken.None);
         confirmationPolicy.Apply(user);
 
-        IdentityResult createResult = await userManager.CreateAsync(user, "Correct-Horse-Battery-Staple-1!");
+        IdentityResult createResult = await userManager.CreateAsync(user, AccountPassword);
         createResult.Succeeded.Should().BeTrue("account creation is setup for this test, not what it verifies");
 
         await teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, CancellationToken.None);

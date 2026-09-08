@@ -48,8 +48,15 @@ public sealed class PrinterConnectionRegistry
     /// indistinguishable on the wire</em>, because both present a valid fingerprint and token. That
     /// is exactly why this is Error rather than Warning: it is the only signal an operator can ever
     /// get, and the benign case is rare enough (a reconnect after a network fault) to be worth
-    /// seeing too. Completing the displaced actor stops the double-write; its mailbox closing ends
-    /// its read loop, which reaches the teardown that disposes its socket.
+    /// seeing too. Completing the displaced actor stops the double-write, and its owning session is
+    /// watching that actor's completion, so the connection itself is torn down too.
+    /// </para>
+    /// <para>
+    /// <b>That second half is the session's doing, and it is what makes this line's "shut down"
+    /// true.</b> Completing the mailbox on its own reaches a read loop only when that loop next posts
+    /// a message, which for a client that stays silent is never - so without the session watching, a
+    /// caller holding a stolen token could upgrade repeatedly, say nothing, and keep every displaced
+    /// socket, pipe and request while this line reported each one closed.
     /// </para>
     /// </remarks>
     /// <param name="printerId">The printer this connection speaks for.</param>
@@ -156,10 +163,10 @@ public sealed class PrinterConnectionRegistry
     /// reconnect landing in the same instant should be closed too, not left running.
     /// </para>
     /// <para>
-    /// <b>The entry is not removed.</b> <see cref="IPrinterLink.Complete"/>ing the actor ends its read loop, which
-    /// reaches the session teardown, which unregisters it by instance - removing it here as well
-    /// would take out whatever registered in between, which is exactly what Unregister's
-    /// instance-matching exists to prevent.
+    /// <b>The entry is not removed.</b> <see cref="IPrinterLink.Complete"/>ing the actor ends the session
+    /// watching it, which unregisters it by instance - removing it here as well would take out
+    /// whatever registered in between, which is exactly what Unregister's instance-matching exists to
+    /// prevent.
     /// </para>
     /// </remarks>
     public bool Close(int printerId)

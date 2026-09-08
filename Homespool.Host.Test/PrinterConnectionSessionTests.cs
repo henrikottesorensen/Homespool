@@ -73,6 +73,24 @@ public class PrinterConnectionSessionTests
         return actor;
     }
 
+    /// <summary>
+    /// An actor that does what the real one does when it is completed: its loop finishes, because a
+    /// completed mailbox with nothing left in it is the end of the loop. That is the whole of the
+    /// actor behaviour the two shut-down-from-outside cases turn on.
+    /// </summary>
+    private static IPrinterConnectionActor CompletableActor()
+    {
+        TaskCompletionSource loop = new();
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+
+        actor.Completion.Returns(loop.Task);
+
+        // TrySet, because the session's own teardown completes the actor a second time.
+        actor.When(a => a.Complete()).Do(_ => loop.TrySetResult());
+
+        return actor;
+    }
+
     private PrinterConnectionSession NewSession(WebSocketHandler handler, IPrinterConnectionActor actor)
     {
         // The signal is poked when a printer registers. Nothing here observes it - these cases are
@@ -89,6 +107,16 @@ public class PrinterConnectionSessionTests
     /// nothing ever writes to.
     /// </summary>
     private (FakeConnection connection, Func<Task> run) Arrange(Func<Task> handlerEnd,
+                                                                IPrinterConnectionActor? actor = null)
+    {
+        return Arrange(_ => handlerEnd(), actor);
+    }
+
+    /// <summary>
+    /// As above, for the cases whose read loop has no end of its own: the session's own token is the
+    /// only thing that can finish it, which is exactly what a silent client leaves behind.
+    /// </summary>
+    private (FakeConnection connection, Func<Task> run) Arrange(Func<CancellationToken, Task> handlerEnd,
                                                                 IPrinterConnectionActor? actor = null)
     {
         FakeConnection connection = new(_registry);
@@ -182,6 +210,64 @@ public class PrinterConnectionSessionTests
     }
 
     /// <summary>
+    /// A connection whose actor is shut down from outside must end, even though the printer has said
+    /// nothing and will say nothing. Completing the mailbox is not enough on its own: the read loop
+    /// only learns of a closed mailbox when it next posts to it, so a client that upgrades and stays
+    /// silent would otherwise keep its socket, pipe and request indefinitely - once per upgrade, at
+    /// whatever rate it cares to reconnect.
+    /// </summary>
+    /// <remarks>
+    /// Bounded rather than a bare await, deliberately: a regression here does not fail an assertion,
+    /// it hangs, and a hung suite is far more expensive to diagnose than a failed one.
+    /// </remarks>
+    [Fact]
+    public async Task AnActorShutDownFromOutsideEndsAConnectionThatIsSayingNothing()
+    {
+        // Arrange - a read loop with no end of its own, which is what a silent client produces
+        IPrinterConnectionActor actor = CompletableActor();
+        (FakeConnection connection, Func<Task> run) = Arrange(token => Task.Delay(Timeout.Infinite, token), actor);
+
+        Task session = run();
+
+        // Act - all that displacement and printer deletion actually do
+        actor.Complete();
+
+        // Assert
+        await session.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        connection.CloseStatus.Should().NotBeNull("a connection whose actor has finished must not keep its socket");
+        _registry.IsConnected(PrinterId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The same invariant reached the way it is reached in production - through the registry, whose
+    /// displacement log line says the loser has been shut down. Written against the real registry
+    /// rather than a direct <c>Complete()</c> so it fails if that claim stops being true, whichever
+    /// side stopped making it good.
+    /// </summary>
+    [Fact]
+    public async Task ASecondConnectionForThePrinterTearsDownTheOneItDisplaced()
+    {
+        // Arrange
+        (FakeConnection connection, Func<Task> run) =
+            Arrange(token => Task.Delay(Timeout.Infinite, token), CompletableActor());
+
+        Task session = run();
+
+        // Act - one valid fingerprint and token is all this takes, and it can be repeated
+        IPrinterConnectionActor newcomer = DrainedActor();
+        _registry.Register(PrinterId, newcomer, overPlaintext: false);
+
+        // Assert
+        await session.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        connection.CloseStatus.Should().NotBeNull();
+
+        // The loser's teardown unregisters by instance, so the newcomer keeps the slot - which is
+        // also why WasRegisteredAtClose says nothing useful here.
+        _registry.TryGet(PrinterId, out IPrinterLink? live).Should().BeTrue();
+        live.Should().BeSameAs(newcomer);
+    }
+
+    /// <summary>
     /// The one step no token cancels is the actor loop's socket write, so the drain wait is bounded.
     /// An unbounded wait here would hold the request open with no ceiling at all - the shutdown
     /// stall the connection's linked ApplicationStopping token exists to prevent, without even
@@ -242,7 +328,7 @@ public class PrinterConnectionSessionTests
         // Arrange
         Pipe wire = new();
         FakeConnection connection = new(_registry);
-        PrinterConnectionSession session = NewSession(new StubWebSocketHandler(() => Task.CompletedTask), DrainedActor());
+        PrinterConnectionSession session = NewSession(new StubWebSocketHandler(_ => Task.CompletedTask), DrainedActor());
 
         // Act
         await session.RunAsync(PrinterId, connection, wire.Reader, overPlaintext: false, CancellationToken.None);
@@ -266,8 +352,12 @@ public class PrinterConnectionSessionTests
         }
     }
 
-    /// <summary>Supplies the read loop's ending, which is all the session cares about.</summary>
-    private sealed class StubWebSocketHandler(Func<Task> end)
+    /// <summary>
+    /// Supplies the read loop's ending, which is all the session cares about. The token is handed to
+    /// <paramref name="end"/> rather than ignored, so a case can produce the one ending that is not
+    /// the printer's doing: a loop that returns only because the session cancelled it.
+    /// </summary>
+    private sealed class StubWebSocketHandler(Func<CancellationToken, Task> end)
         : WebSocketHandler(NullLogger<WebSocketHandler>.Instance,
                            new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
                                                  new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
@@ -280,7 +370,7 @@ public class PrinterConnectionSessionTests
                                                   IPrinterConnectionActor actor,
                                                   CancellationToken cancellationToken)
         {
-            return end();
+            return end(cancellationToken);
         }
     }
 

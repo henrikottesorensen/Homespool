@@ -70,9 +70,9 @@ public sealed class PrinterConnectionSession
     }
 
     /// <summary>
-    /// Runs the connection until the printer closes its end, the handler rejects what it sent, or
-    /// <paramref name="cancellationToken"/> ends it - then tears down and closes. Returns normally
-    /// for every ordinary end; only a protocol violation propagates.
+    /// Runs the connection until the printer closes its end, the handler rejects what it sent, the
+    /// actor is shut down from outside, or <paramref name="cancellationToken"/> ends it - then tears
+    /// down and closes. Returns normally for every ordinary end; only a protocol violation propagates.
     /// </summary>
     /// <param name="printerId">
     /// The printer this socket belongs to, already resolved from its fingerprint by the
@@ -96,8 +96,10 @@ public sealed class PrinterConnectionSession
     /// </param>
     /// <param name="cancellationToken">
     /// Ends the read loop for reasons that are not the printer's doing - the request being aborted,
-    /// or the host shutting down. It is deliberately not threaded into the teardown below, which
-    /// drains by completion instead; see the comments in the <c>finally</c>.
+    /// or the host shutting down. Linked into a source this method also cancels itself, so those
+    /// reasons and the actor's own end arrive at the read loop the same way. It is deliberately not
+    /// threaded into the teardown below, which drains by completion instead; see the comments in the
+    /// <c>finally</c>.
     /// </param>
     /// <exception cref="JsonException">The printer sent malformed JSON. Closed on, then rethrown.</exception>
     /// <exception cref="PrinterMessageTooLargeException">The printer never finished a message. Closed
@@ -143,9 +145,34 @@ public sealed class PrinterConnectionSession
         // reconnects from either.
         WebSocketCloseStatus closeStatus = WebSocketCloseStatus.NormalClosure;
 
+        // A connection can end two ways, and only one of them arrives as bytes. The read loop sees
+        // the printer hang up; nothing in it sees the *actor* shut down from outside - displaced by
+        // a second connection for this printer, or the printer being deleted - because a loop parked
+        // in a read asks nothing of the mailbox until the next message, which never comes from a
+        // client that stays silent. Without this, such a connection keeps its socket, pipe and request
+        // for as long as it cares to hold them, while the log says it has been shut down.
+        //
+        // Linked, so the caller's own reasons to stop still do.
+        using CancellationTokenSource connectionEnd = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         try
         {
-            await _webSocketHandler.HandlePrusaWebsocket(input, printerId, actor, cancellationToken);
+            // Started inside the try because this is a virtual call: an override that throws rather
+            // than returning a faulted task must still reach the close statuses below.
+            Task readLoop = _webSocketHandler.HandlePrusaWebsocket(input, printerId, actor, connectionEnd.Token);
+
+            // The actor finishing is the end of the connection, whoever ended it - so cancel, which
+            // aborts the receive and lets the read loop return into the teardown below. WhenAny
+            // rather than a continuation on Completion: nothing here outlives the scope, so the
+            // linked source cannot be disposed out from under a cancel that is still to come.
+            if (await Task.WhenAny(readLoop, actor.Completion) == actor.Completion)
+            {
+                await connectionEnd.CancelAsync();
+            }
+
+            // Whichever ended it, the loop's own result is what the statuses below are chosen from.
+            // A cancelled read surfaces as the OperationCanceledException already caught here.
+            await readLoop;
         }
         catch (JsonException)
         {

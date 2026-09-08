@@ -78,7 +78,10 @@ public sealed class RegisterConfirmationPageTests : IAsyncLifetime
     /// </summary>
     private static string WithoutAntiforgeryTokens(string html)
     {
-        return Regex.Replace(html, """(<input[^>]*name="__RequestVerificationToken"[^>]*value=")[^"]*(")""", "$1$2");
+        // The script nonce is the other value minted per response, and it differs by design.
+        string withoutTokens = Regex.Replace(html, """(<input[^>]*name="__RequestVerificationToken"[^>]*value=")[^"]*(")""", "$1$2");
+
+        return Regex.Replace(withoutTokens, """(<script nonce=")[^"]*(")""", "$1$2");
     }
 
     /// <summary>

@@ -247,6 +247,21 @@ document.addEventListener("DOMContentLoaded", function () {
 // nobody: the fallback below means the button does something useful even where the clipboard API is
 // missing, which is not a hypothetical - navigator.clipboard is undefined outside a secure context,
 // and a deployment reached over plain HTTP on anything but localhost is exactly that.
+// A read-only field that selects its whole contents on click, so a snippet can be copied with one
+// keystroke. An attribute rather than an onclick, because the script policy admits no inline
+// handlers: everything that runs on a page comes from a file, and this is where that one lives.
+(function () {
+    "use strict";
+
+    var fields = document.querySelectorAll("[data-select-on-click]");
+
+    Array.prototype.forEach.call(fields, function (field) {
+        field.addEventListener("click", function () {
+            field.select();
+        });
+    });
+})();
+
 (function () {
     "use strict";
 

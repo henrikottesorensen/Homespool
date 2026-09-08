@@ -1345,6 +1345,7 @@ ask_public_tls() {
             fmt=$"  Stop obtaining certificates for %s"
             if ask_yes_no "$(printf "$fmt" "$current")" y; then
                 plan_set ACME_HOSTS ""
+                clear_hsts_with_public_names
             fi
         fi
         return 0
@@ -1405,6 +1406,8 @@ ask_public_tls() {
     say $"Which DNS provider hosts the name. The challenge is answered by writing a DNS record, so nothing here has to be reachable from the internet - no port forwarding, no public address."
     provider="$(ask "  DNS provider" "$(env_get ACME_DNS_PROVIDER)")"
     plan_set ACME_DNS_PROVIDER "$provider"
+
+    ask_hsts
 
     say
     say $"Two more steps, which this wizard cannot do for you:"
@@ -1718,6 +1721,34 @@ move_proxy_subnet() {
     plan_set PROXY_SUBNET "$1"
     plan_set PROXY_NETWORK "$1"
     plan_set PROXY_ADDRESS "$(proxy_address_for "$1")"
+}
+
+# Offered only from inside ask_public_tls, once a public name is set: the header is sent only on a
+# name with an issued certificate, so without one there is nothing to ask about.
+ask_hsts() {
+    local current
+    current="$(env_get HSTS)"
+
+    say
+    say $"Once the certificate is in place, the site can tell browsers to insist on HTTPS for the public name and to refuse any certificate warning for it - for two years at a time. That is HSTS. It is sent only on a name that actually holds an issued certificate; a .lan name or an address never gets it."
+
+    if ask_yes_no $"  Turn on HSTS for the public name" y; then
+        plan_set HSTS 1
+    elif [ -n "$current" ]; then
+        plan_set HSTS ""
+    fi
+}
+
+# Dropping the public name has to drop HSTS with it, and the order in which browsers forget things
+# is the reason it is said out loud: the header stops the moment the name goes, but a browser that
+# has already seen it refuses the self-signed certificate that name falls back to until the two
+# years run down. Nothing here can shorten that; the warning is the most this script can do.
+clear_hsts_with_public_names() {
+    [ -n "$(env_get HSTS)" ] || return 0
+
+    plan_set HSTS ""
+    say
+    warn $"HSTS was on for that name. Browsers that saw it will refuse the self-signed certificate it now falls back to until the two years they were told about run down - keep the public name and its certificate for that long if you can, or expect to clear the name from each browser by hand."
 }
 
 # The subnet is not a question - it is right until it collides with something, and the operator has

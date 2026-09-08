@@ -76,6 +76,11 @@ jobs:
       - name: Test the user server-name derivation
         run: ./tests/user-server-names.test.sh
 
+      # The per-name TLS blocks, and which of them carry HSTS: only a name with an issued
+      # certificate, never a self-signed one. Linux for the same reason as the step above.
+      - name: Test the user TLS server blocks
+        run: ./tests/user-tls-servers.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

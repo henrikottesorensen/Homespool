@@ -110,7 +110,7 @@
             <p class="mt-2 mb-1">
                 @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Bundle_WhatFileContains"].Value, $"<code>{Html.Encode(Model.PreferredName)}</code>", "<code>hostname</code>"))
             </p>
-            <textarea class="form-control font-monospace" rows="7" readonly onclick="this.select()">@Model.Snippet</textarea>
+            <textarea class="form-control font-monospace" rows="7" readonly data-select-on-click>@Model.Snippet</textarea>
         </details>
     }
     else

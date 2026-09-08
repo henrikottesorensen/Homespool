@@ -31,9 +31,10 @@
     <link rel="icon" href="~/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="~/img/apple-touch-icon.png" />
 
-    <script>
+    <script nonce="@Nonce.Value">
         // Follow the browser/OS colour-scheme preference using Bootstrap 5.3 colour modes. Inline and
         // early so the theme is set before first paint (no flash), and updated live if the OS switches.
+        // The nonce is what lets it run under the script policy; it is the only inline block there is.
         (function () {
             var mql = window.matchMedia("(prefers-color-scheme: dark)");
             var apply = function (dark) { document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light"); };

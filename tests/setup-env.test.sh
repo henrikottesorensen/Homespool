@@ -642,6 +642,41 @@ CERTS_SUBNET=172.29.0.0/16"
     esac
 fi
 
+if test_case "hsts is planned on when the public name is confirmed, and off when declined"; then
+    sandbox_path linux
+    use_temp_env "ACME_HOSTS=homespool.example.com"
+    ask_hsts >/dev/null 2>&1 <<< "y"
+    assert_contains "$pending" "HSTS=1" "yes turns it on"
+
+    pending=""
+    use_temp_env "ACME_HOSTS=homespool.example.com
+HSTS=1"
+    ask_hsts >/dev/null 2>&1 <<< "n"
+    assert_contains "$pending" "HSTS=" "no turns an existing setting off"
+    case "$pending" in
+        *HSTS=1*) fail "declining left HSTS on: $pending" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
+if test_case "hsts goes when the public name goes, and the browser lock-out is named"; then
+    # The header stops with the name; what browsers already remember does not, and that is the
+    # thing the operator has to hear before the self-signed fallback starts being refused.
+    sandbox_path linux
+    # Not in a command substitution: that is a subshell, and the plan it writes would die with it.
+    use_temp_env "ACME_HOSTS=homespool.example.com
+HSTS=1"
+    clear_hsts_with_public_names > "$temp_env_dir/out" 2>&1
+    assert_contains "$pending" "HSTS=" "planned off"
+    assert_contains "$(cat "$temp_env_dir/out")" "HSTS was on for that name" "and the lock-out is explained"
+
+    pending=""
+    use_temp_env "ACME_HOSTS=homespool.example.com"
+    clear_hsts_with_public_names > "$temp_env_dir/out" 2>&1
+    assert_eq "" "$pending" "nothing to clear when it was never on"
+    assert_eq "" "$(cat "$temp_env_dir/out")" "and nothing to say"
+fi
+
 if test_case "a Windows zone becomes an IANA one"; then
     # Windows says "W. Europe Standard Time"; TZ takes "Europe/Berlin". The conversion needs .NET 6+,
     # which Windows PowerShell 5.1 does not have - so the container the wizard already runs in

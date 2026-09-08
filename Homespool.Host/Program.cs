@@ -334,8 +334,11 @@ public static class Program
             // no per-request state, only the singleton SetupState.
             builder.Services.AddSingleton<Middleware.SetupGateMiddleware>();
 
-            // Likewise factory-activated, and it holds nothing at all.
+            // Likewise factory-activated. The nonce it writes into the script policy is scoped, one
+            // per request, so the view that puts the same value on the inline block reads the same
+            // instance - see CspNonce.
             builder.Services.AddSingleton<Middleware.SecurityHeadersMiddleware>();
+            builder.Services.AddScoped<Middleware.CspNonce>();
             builder.Services.AddSingleton<Middleware.ClientGoneMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
@@ -409,6 +412,7 @@ public static class Program
 
             builder.Services.AddPrinterRateLimiting();
             builder.Services.AddPasskeyChallengeRateLimiting();
+            builder.Services.AddSignInRateLimiting();
 
             // Scoped, following the WebSocketHandler it runs: one session per accepted upgrade.
             builder.Services.AddScoped<PrusaConnect.PrinterConnectionSession>();

@@ -22,6 +22,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
+using Homespool.Host.RateLimiting;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -70,7 +71,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
-[EnableRateLimiting(PasskeyChallengeRateLimit.PolicyName)]
+[EnableRateLimiting(RateLimitPolicies.PasskeyChallenge)]
 public class PasskeysModel : PageModel
 {
     /// <summary>The handler that starts a registration ceremony; the one handler on this page the rate limit applies to.</summary>

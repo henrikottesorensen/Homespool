@@ -23,6 +23,7 @@ using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO;
+using Homespool.Host.RateLimiting;
 
 // What both HTTP-transport ingest endpoints answer, and the helper behind them: named once,
 // because a union spelled out at three sites is three chances for one to drift. The file arm is a
@@ -44,7 +45,7 @@ namespace Homespool.Host.Controllers;
 // every route on this controller runs the printer authentication handler, which spends a PBKDF2 on
 // the token, so an unannotated action sells hashing at wire rate without doing anything expensive of
 // its own. Opting out now has to be written down as [DisableRateLimiting].
-[EnableRateLimiting(PrinterRateLimits.FilePolicy)]
+[EnableRateLimiting(RateLimitPolicies.PrinterFile)]
 public class PrusaConnectPrinterController : ControllerBase
 {
     private readonly PrusaConnectService _prusaConnectService;
@@ -103,7 +104,7 @@ public class PrusaConnectPrinterController : ControllerBase
     // protocol actually uses (Henrik, 2026-08-01, after the change was flagged as touching /p/*).
     [HttpGet]
     [Route("/p/ws")]
-    [EnableRateLimiting(PrinterRateLimits.SocketPolicy)]
+    [EnableRateLimiting(RateLimitPolicies.PrinterSocket)]
 
     // The 101 is said here because nothing in the union can: the response starts inside the action.
     [ProducesResponseType(typeof(void), StatusCodes.Status101SwitchingProtocols)]
@@ -184,7 +185,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting(PrinterRateLimits.RegistrationStartPolicy)]
+    [EnableRateLimiting(RateLimitPolicies.PrinterRegistrationStart)]
     [HttpPost]
     [Route("/p/register")]
 
@@ -232,7 +233,7 @@ public class PrusaConnectPrinterController : ControllerBase
     }
 
     [AllowAnonymous]
-    [EnableRateLimiting(PrinterRateLimits.RegistrationPollPolicy)]
+    [EnableRateLimiting(RateLimitPolicies.PrinterRegistrationPoll)]
     [HttpGet]
     [Route("/p/register")]
     [RequestSizeLimit(8 * 1024)]
@@ -304,7 +305,7 @@ public class PrusaConnectPrinterController : ControllerBase
     /// </remarks>
     [HttpPost]
     [Route("/p/telemetry")]
-    [EnableRateLimiting(PrinterRateLimits.HttpTransportPolicy)]
+    [EnableRateLimiting(RateLimitPolicies.PrinterHttpTransport)]
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
@@ -376,7 +377,7 @@ public class PrusaConnectPrinterController : ControllerBase
     /// </summary>
     [HttpPost]
     [Route("/p/events")]
-    [EnableRateLimiting(PrinterRateLimits.HttpTransportPolicy)]
+    [EnableRateLimiting(RateLimitPolicies.PrinterHttpTransport)]
     [ProducesResponseType(typeof(void), StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(void), StatusCodes.Status400BadRequest)]
     public Task<IngestResult> PostEvent(CancellationToken cancellationToken)

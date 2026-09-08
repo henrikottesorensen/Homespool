@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.FakePrinter;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.RateLimiting;
 
 namespace Homespool.Host.E2ETest;
 
@@ -284,6 +285,6 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
 
         policy.Should().NotBeNull(
             "an anonymous caller with an unknown fingerprint reaches the provisioning scan through here");
-        policy!.PolicyName.Should().Be(PrinterRateLimits.FilePolicy);
+        policy!.PolicyName.Should().Be(RateLimitPolicies.PrinterFile);
     }
 }

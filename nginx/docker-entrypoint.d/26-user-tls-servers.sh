@@ -15,10 +15,23 @@
 # so that by the time this script resolves a path there is always something to point at.
 set -eu
 
-CERT_DIR=/etc/nginx/certs
+# Overridable so that tests/user-tls-servers.test.sh can run this against a scratch directory; in
+# the image none of the three is set and the defaults are the paths nginx reads.
+CERT_DIR="${HOMESPOOL_CERT_DIR:-/etc/nginx/certs}"
 ACME_DIR="$CERT_DIR/certificates"
-CONF_DIR=/etc/nginx/conf.d
-BODY=/etc/nginx/homespool-user-tls.conf
+CONF_DIR="${HOMESPOOL_CONF_DIR:-/etc/nginx/conf.d}"
+BODY="${HOMESPOOL_TLS_BODY:-/etc/nginx/homespool-user-tls.conf}"
+
+# HSTS, from .env. Sent ONLY on a name whose certificate was issued by an authority - the header
+# tells a browser to refuse plain HTTP and to refuse any certificate warning for that name for as
+# long as max-age says, so sent on a self-signed name it would lock the operator out of their own
+# site the moment they cleared the browser's exception. A name is decided by the certificate this
+# script finds for it, below, not by the setting alone: setting HSTS on a deployment with no
+# public name sends nothing anywhere, and says so.
+#
+# No includeSubDomains, deliberately. A deployment reached as homespool.example.com and as
+# printers.homespool.example.com, the second self-signed, would have the first pin the second.
+HSTS_HEADER='add_header Strict-Transport-Security "max-age=63072000" always;'
 
 # The same list 25-self-signed-certificate.sh minted certificates from, derived once by
 # 16-user-server-names.envsh. Neither script splits USER_HOSTS itself, so the blocks written here
@@ -65,12 +78,17 @@ for host in "$@"; do
     # name it was issued for, this script prefers that path on the next start, and nothing has to be
     # linked, copied or renamed into the place nginx reads. A renewal that rewrites the same file is
     # picked up by restarting the proxy.
+    hsts=""
     if [ -s "$ACME_DIR/$host.crt" ] && [ -s "$ACME_DIR/$host.key" ]; then
         crt="$ACME_DIR/$host.crt"
         key="$ACME_DIR/$host.key"
+        [ -n "${HSTS:-}" ] && hsts="$HSTS_HEADER"
     elif [ -s "$CERT_DIR/$host.crt" ] && [ -s "$CERT_DIR/$host.key" ]; then
         crt="$CERT_DIR/$host.crt"
         key="$CERT_DIR/$host.key"
+        if [ -n "${HSTS:-}" ]; then
+            echo "$0: HSTS is set but $host has a self-signed certificate - not sent for this name." >&2
+        fi
     else
         # Skipped rather than written with a path that does not exist. nginx refuses to start on a
         # missing ssl_certificate, which would take every other name down over one - the same trade
@@ -89,13 +107,13 @@ server {
 
     ssl_certificate     $crt;
     ssl_certificate_key $key;
-
+    $hsts
     include $BODY;
 }
 EOF
 
     written=$((written + 1))
-    echo "$0: $host served with ${crt#"$CERT_DIR/"}"
+    echo "$0: $host served with ${crt#"$CERT_DIR/"}${hsts:+, HSTS on}"
 done
 
 if [ "$written" -eq 0 ]; then

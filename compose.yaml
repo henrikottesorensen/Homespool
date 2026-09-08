@@ -542,6 +542,11 @@ services:
       # symptom. The filter is the whole safety of this arrangement.
       NGINX_ENVSUBST_FILTER: "REDIRECT_PORT_SUFFIX|USER_SERVER_NAMES"
 
+      # Read by 26-user-tls-servers.sh, which sends Strict-Transport-Security only on names served
+      # with a publicly-issued certificate - a self-signed name never gets it, whatever this says.
+      # Empty is the default and sends nothing.
+      HSTS: "${HSTS:-}"
+
     volumes:
       # From the repository rather than baked into the image: this is the file an operator is most
       # likely to want to change (HSTS, a hostname, an extra header), and a mount makes that an

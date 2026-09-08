@@ -268,6 +268,79 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     // ---------- regenerate ----------
 
     /// <summary>
+    /// Reissuing restarts the row's clock, so the new token gets a full lifetime rather than
+    /// inheriting what was left of the old one's.
+    /// </summary>
+    /// <remarks>
+    /// <b>Without this the reissue of an already-expired row would be born expired</b>, which is the
+    /// exact case a reissue exists to fix: the operator presses the button precisely because the last
+    /// token stopped working, writes a stick from it, and finds it refused. The row is reused; the
+    /// credential on it is new, and so is its age.
+    /// </remarks>
+    [Fact]
+    public async Task RegeneratingRestartsTheTokensLifetime()
+    {
+        // Arrange - a row already past its lifetime, which is when somebody reaches for reissue
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+
+        PrusaConnectProvisioning stale =
+            await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+        stale.CreatedAt = DateTimeOffset.UtcNow - (PrusaConnectService.ProvisioningTokenLifetime + TimeSpan.FromHours(1));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await service.RegenerateProvisioningTokenAsync(printer.Id, caller: Caller.Unscoped(1));
+
+        // Assert
+        PrusaConnectProvisioning refreshed =
+            await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+
+        refreshed.CreatedAt.Should().BeAfter(DateTimeOffset.UtcNow - PrusaConnectService.ProvisioningTokenLifetime,
+                                             "a reissued token must not arrive already expired");
+    }
+
+    /// <summary>
+    /// The listing can tell an expired provisioning token from one still waiting to be carried to a
+    /// printer - and still offers the reissue that fixes it.
+    /// </summary>
+    /// <remarks>
+    /// The overlap is the assertion, not an accident: the page gates its reissue button on enrolled or
+    /// awaiting, so an expired row dropping out of <c>AwaitingUsbProvisioning</c> would take the only
+    /// recovery control with it and leave a never-enrolled printer unreachable.
+    /// </remarks>
+    [Fact]
+    public async Task AnExpiredProvisioningTokenIsReportedAsExpiredAndStillAwaiting()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+
+        (Printer fresh, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer expired, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+
+        PrusaConnectProvisioning aged = await context.PrusaConnectProvisionings
+                                                     .SingleAsync(p => p.PrinterId == expired.Id, TestContext.Current.CancellationToken);
+        aged.CreatedAt = DateTimeOffset.UtcNow - (PrusaConnectService.ProvisioningTokenLifetime + TimeSpan.FromMinutes(1));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        PrinterEnrolmentStatus status =
+            await service.GetEnrolmentStatusAsync([fresh.Id, expired.Id], TestContext.Current.CancellationToken);
+
+        // Assert
+        status.ExpiredUsbProvisioning.Should().BeEquivalentTo([expired.Id]);
+        status.AwaitingUsbProvisioning.Should().BeEquivalentTo([fresh.Id, expired.Id],
+                                                               "the reissue button is gated on this set, and the expired one is exactly what needs it");
+        status.Enrolled.Should().BeEmpty("neither printer has ever authenticated");
+    }
+
+    /// <summary>
     /// Reissuing replaces the token in place: the old one stops verifying, the new one starts, and the
     /// printer is not duplicated.
     /// </summary>

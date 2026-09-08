@@ -234,6 +234,9 @@
   <data name="Printers_AwaitingUsb" xml:space="preserve">
     <value>Afventer USB-klargøring</value>
   </data>
+  <data name="Printers_ExpiredUsb" xml:space="preserve">
+    <value>USB-token er udløbet</value>
+  </data>
   <data name="Printers_AwaitingAny" xml:space="preserve">
     <value>Afventer forbindelse</value>
   </data>

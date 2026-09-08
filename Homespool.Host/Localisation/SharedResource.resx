@@ -251,6 +251,10 @@
     <value>Awaiting USB provisioning</value>
     <comment>The printer has a provisioning token nobody has carried to it yet. Deliberately not "USB connection", which reads as a cable between the printer and this server - there is no such cable, and the USB key never touches the machine Homespool runs on.</comment>
   </data>
+  <data name="Printers_ExpiredUsb" xml:space="preserve">
+    <value>USB token expired</value>
+    <comment>The provisioning token was written more than a working day ago and no longer authenticates. Says the token expired rather than the printer failed, because the remedy is the reissue button beside this badge and not anything at the machine.</comment>
+  </data>
   <data name="Printers_AwaitingAny" xml:space="preserve">
     <value>Awaiting connection</value>
   </data>

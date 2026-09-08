@@ -117,6 +117,7 @@ public class IndexModel : PageModel
         string TeamName,
         bool Enrolled,
         bool AwaitingUsbProvisioning,
+        bool ExpiredUsbProvisioning,
         bool Connected,
         PrinterStatus? LiveStatus);
 
@@ -367,6 +368,7 @@ public class IndexModel : PageModel
                                    _localiser["Common_TeamNumbered", row.Printer.TeamId].Value,
                                status.Enrolled.Contains(row.Printer.Id),
                                status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
+                               status.ExpiredUsbProvisioning.Contains(row.Printer.Id),
                                _connectionRegistry.IsConnected(row.Printer.Id),
                                row.LiveState?.Status))
                    .ToList();

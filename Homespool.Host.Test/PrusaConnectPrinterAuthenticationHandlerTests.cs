@@ -93,8 +93,18 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         return (printer, token);
     }
 
-    /// <summary>Seeds a printer with an outstanding, unbound provisioning token.</summary>
-    private static async Task<(Printer printer, string token)> AddProvisionedPrinterAsync(HomespoolDbContext context)
+    /// <summary>
+    /// Seeds a printer with an outstanding, unbound provisioning token, written
+    /// <paramref name="age"/> ago.
+    /// </summary>
+    /// <remarks>
+    /// Age is expressed by backdating <c>CreatedAt</c> rather than by moving a clock, because the
+    /// handler reads <c>TimeProvider.System</c> as it does for its two enrolment stamps. A row written
+    /// nine hours ago is the same fact from the row's side, and it keeps the handler's constructor
+    /// from becoming a test seam.
+    /// </remarks>
+    private static async Task<(Printer printer, string token)> AddProvisionedPrinterAsync(HomespoolDbContext context,
+                                                                                          TimeSpan? age = null)
     {
         Printer printer = await AddPrinterAsync(context);
 
@@ -105,7 +115,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         {
             PrinterId = printer.Id,
             HashedToken = tokenService.HashToken(token),
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = DateTimeOffset.UtcNow - (age ?? TimeSpan.Zero),
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -375,6 +385,100 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
             .BeFalse("nothing was enrolled");
         (await verify.PrusaConnectProvisionings.CountAsync(TestContext.Current.CancellationToken)).Should()
             .Be(1, "the real printer's token must survive a wrong guess");
+    }
+
+    /// <summary>
+    /// A provisioning token that has outlived its lifetime does not authenticate, and - the half that
+    /// matters as much - does not take its row with it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The row has to survive.</b> A printer provisioned and never enrolled has no enrolled row, so
+    /// deleting this one would leave nothing for a reissue to attach to and nothing on the listing to
+    /// press: the printer would be recoverable only by deleting it and starting over. Expiry stops the
+    /// credential working; it does not erase the printer's only record of itself.
+    /// </remarks>
+    [Fact]
+    public async Task AProvisioningTokenPastItsLifetimeIsRefusedAndItsRowSurvives()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        (Printer printer, string token) = await AddProvisionedPrinterAsync(
+            context, PrusaConnectService.ProvisioningTokenLifetime + TimeSpan.FromMinutes(1));
+
+        // Act
+        AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, token);
+
+        // Assert
+        result.Succeeded.Should().BeFalse("the token was written more than a working day ago");
+
+        await using HomespoolDbContext verify = NewContext();
+
+        (await verify.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should()
+            .BeFalse("an expired token enrols nothing");
+
+        PrusaConnectProvisioning survivor =
+            await verify.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
+        survivor.PrinterId.Should().Be(printer.Id,
+                                       "reissuing needs this row, and a never-enrolled printer has no other");
+    }
+
+    /// <summary>
+    /// The other side of the bound, so an inverted or absent comparison cannot pass by refusing
+    /// everything.
+    /// </summary>
+    [Fact]
+    public async Task AProvisioningTokenInsideItsLifetimeStillEnrols()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        (Printer printer, string token) = await AddProvisionedPrinterAsync(
+            context, PrusaConnectService.ProvisioningTokenLifetime - TimeSpan.FromMinutes(1));
+
+        // Act
+        AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, token);
+
+        // Assert
+        result.Succeeded.Should().BeTrue("a token written within the working day is still good");
+        result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}");
+    }
+
+    /// <summary>
+    /// The reissue path expires the same way. An enrolled printer presenting a stale reissued token is
+    /// refused, and keeps authenticating with the credential it already holds - which is what makes
+    /// expiry safe to apply here at all.
+    /// </summary>
+    [Fact]
+    public async Task AReissuedTokenPastItsLifetimeDoesNotRebindAndTheOldCredentialStands()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string enrolledToken) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        TokenService tokenService = new();
+        string reissuedToken = tokenService.GenerateToken();
+
+        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
+        {
+            PrinterId = printer.Id,
+            HashedToken = tokenService.HashToken(reissuedToken),
+            CreatedAt = DateTimeOffset.UtcNow - (PrusaConnectService.ProvisioningTokenLifetime + TimeSpan.FromMinutes(1)),
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        AuthenticateResult stale = await AuthenticateAsync(context, Fingerprint, reissuedToken);
+
+        // Assert
+        stale.Succeeded.Should().BeFalse("the reissued token aged out before the printer presented it");
+
+        await using HomespoolDbContext replay = NewContext();
+        AuthenticateResult existing = await AuthenticateAsync(replay, Fingerprint, enrolledToken);
+
+        existing.Succeeded.Should().BeTrue(
+            "expiring a reissue that was never used must not disturb the credential the printer is actually running on");
     }
 
     /// <summary>

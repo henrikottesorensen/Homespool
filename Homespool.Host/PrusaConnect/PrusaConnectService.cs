@@ -20,6 +20,33 @@ namespace Homespool.Host.PrusaConnect;
 
 public class PrusaConnectService
 {
+    /// <summary>
+    /// How long a pre-provisioned USB-key token stays usable after it is written. Past this the
+    /// printer's first contact is refused, and the operator reissues to get a fresh one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A working day, because a stick is written and walked to a printer in one sitting or not at
+    /// all.</b> What is left otherwise is an unbound credential nobody is watching, sitting in the
+    /// database and on a stick in a drawer. Reissuing is one click and produces a new stick, so the
+    /// recovery costs less than the exposure it removes.
+    /// </para>
+    /// <para>
+    /// <b>Expiry stops a token authenticating; it does not delete the row, and must not.</b> A printer
+    /// provisioned but never enrolled has no other record of itself, so removing the row would strand
+    /// it - <see cref="RegenerateProvisioningTokenAsync"/> needs either an outstanding row or an
+    /// enrolment to attach to, and provisioning again mints a <em>second</em> printer whose token the
+    /// auth handler then deliberately refuses to bind. The row stays, stops working, and says so on
+    /// the listing.
+    /// </para>
+    /// <para>
+    /// <b>Not configuration</b>, for the same reason the drain timeout is not: the number encodes what
+    /// provisioning physically is rather than a preference, and a deployment that wanted a longer one
+    /// wants a different enrolment channel.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan ProvisioningTokenLifetime = TimeSpan.FromHours(8);
+
     private readonly HomespoolDbContext _dbContext;
     private readonly CodeGenerator _codeGenerator;
     private readonly TokenService _tokenService;
@@ -441,6 +468,12 @@ public class PrusaConnectService
         if (provisioning is not null)
         {
             provisioning.HashedToken = _tokenService.HashToken(token);
+
+            // CreatedAt is the row's age and the age is what expires it, so a reissue that left it
+            // alone would hand out a token born older than it is - and, on a row already past
+            // ProvisioningTokenLifetime, one that is expired before the stick is written. The row is
+            // reused; the credential on it is new.
+            provisioning.CreatedAt = _timeProvider.GetUtcNow();
         }
         else
         {
@@ -472,10 +505,18 @@ public class PrusaConnectService
 
     /// <summary>
     /// Which of <paramref name="printerIds"/> are enrolled (have authenticated at least once) versus
-    /// still have an outstanding USB-key provisioning token awaiting first contact. A printer claimed
-    /// through the code exchange but not yet polled by its own printer appears in neither set - there
-    /// is nothing to show or act on for it here, only "waiting for the printer to connect".
+    /// still have an outstanding USB-key provisioning token awaiting first contact, and which of those
+    /// tokens have expired. A printer claimed through the code exchange but not yet polled by its own
+    /// printer appears in neither set - there is nothing to show or act on for it here, only "waiting
+    /// for the printer to connect".
     /// </summary>
+    /// <remarks>
+    /// <b>An expired row stays in <c>AwaitingUsbProvisioning</c> as well as in its own set</b>, and
+    /// that overlap is deliberate rather than sloppy: the listing gates the reissue button on being
+    /// enrolled or awaiting, and a printer provisioned but never enrolled is neither once its token
+    /// ages out - so dropping it from that set would hide the one control that recovers it. The
+    /// expired set is what changes the badge, not what decides whether anything can be done.
+    /// </remarks>
     public async Task<PrinterEnrolmentStatus> GetEnrolmentStatusAsync(IReadOnlyCollection<int> printerIds,
                                                                       CancellationToken cancellationToken)
     {
@@ -489,7 +530,18 @@ public class PrusaConnectService
                                                              .Select(p => p.PrinterId)
                                                              .ToListAsync(cancellationToken)).ToHashSet();
 
-        return new PrinterEnrolmentStatus(enrolled, awaitingProvisioning);
+        DateTimeOffset issuedAfter = _timeProvider.GetUtcNow() - ProvisioningTokenLifetime;
+
+        // A second read rather than one that carries the flag, because the flag cannot be expressed
+        // without an anonymous type and the query is an indexed hit on a table with one row per
+        // printer. Both are the same page load.
+        HashSet<int> expiredProvisioning = (await _dbContext.PrusaConnectProvisionings
+                                                            .Where(p => printerIds.Contains(p.PrinterId)
+                                                                        && p.CreatedAt <= issuedAfter)
+                                                            .Select(p => p.PrinterId)
+                                                            .ToListAsync(cancellationToken)).ToHashSet();
+
+        return new PrinterEnrolmentStatus(enrolled, awaitingProvisioning, expiredProvisioning);
     }
 
     private static Printer NewPrinter(string? name, string? location, int teamId, DateTimeOffset now)
@@ -561,4 +613,6 @@ public class PrusaConnectService
 }
 
 /// <summary>See <see cref="PrusaConnectService.GetEnrolmentStatusAsync"/>.</summary>
-public sealed record PrinterEnrolmentStatus(IReadOnlySet<int> Enrolled, IReadOnlySet<int> AwaitingUsbProvisioning);
+public sealed record PrinterEnrolmentStatus(IReadOnlySet<int> Enrolled,
+                                            IReadOnlySet<int> AwaitingUsbProvisioning,
+                                            IReadOnlySet<int> ExpiredUsbProvisioning);

@@ -71,6 +71,14 @@ else
                            beside it already says the credential is in place. *@
                         <span class="badge @PrinterStatusBadge.Absent">@Localiser["PrinterStatus_Offline"]</span>
                     }
+                    else if (row.ExpiredUsbProvisioning)
+                    {
+                        @* Its own badge, because the action changed: the stick in someone's hand no
+                           longer works, and reissuing is what fixes it. Left as the warning colour it
+                           was - this is still an absence somebody can act on, and the reissue button
+                           is beside it. *@
+                        <span class="badge text-bg-warning">@Localiser["Printers_ExpiredUsb"]</span>
+                    }
                     else if (row.AwaitingUsbProvisioning)
                     {
                         @* Filled, unlike its two neighbours, because this one is the only absence with

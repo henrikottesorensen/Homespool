@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
@@ -205,17 +206,27 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// </remarks>
     private async Task<AuthenticateResult> RebindReissuedTokenAsync(PrusaConnectAuthenticationData enrolled, string token)
     {
+        DateTimeOffset issuedAfter = UsableProvisioningIssuedAfter();
+
+        // The age bound is in the query, not a check on the result: an expired row must cost neither
+        // a bind nor the PBKDF2 that would decide it.
         PrusaConnectProvisioning? reissued = await _dbContext.PrusaConnectProvisionings
-                                                             .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId);
+                                                             .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId
+                                                                                        && p.CreatedAt > issuedAfter);
 
         if (reissued is null || !_tokenService.VerifyToken(token, reissued.HashedToken))
         {
             // The printer is known, so this line can name it - which separates "this printer's token
             // is stale" from the fingerprint-unknown case below, the two being identical to a caller
-            // and needing opposite remedies.
-            Logger.LogInformation("PrusaConnect invalid token for printer {PrinterId} ({Fingerprint}).",
-                                  enrolled.PrinterId,
-                                  enrolled.FingerPrintKey);
+            // and needing opposite remedies. An outstanding reissue that has simply aged out lands
+            // here too, and its remedy is named because it is not the one a reader would guess.
+            Logger.LogInformation(
+                "PrusaConnect invalid token for printer {PrinterId} ({Fingerprint}). If a reissued USB-key token was "
+                + "written for it more than {ProvisioningTokenLifetimeHours} hours ago, that token has expired - reissue "
+                + "to get a fresh one.",
+                enrolled.PrinterId,
+                enrolled.FingerPrintKey,
+                PrusaConnectService.ProvisioningTokenLifetime.TotalHours);
 
             return AuthenticateResult.Fail("PrusaConnect invalid token.");
         }
@@ -253,15 +264,40 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     }
 
     /// <summary>
+    /// The instant a provisioning row must have been created after to still be usable - anything
+    /// older has outlived <see cref="PrusaConnectService.ProvisioningTokenLifetime"/> and is refused.
+    /// </summary>
+    /// <remarks>
+    /// <c>TimeProvider.System</c> rather than an injected clock, matching the two enrolment stamps
+    /// this handler already writes. Nothing here needs to fake a clock: a test that wants an expired
+    /// row backdates <c>CreatedAt</c>, which is the same fact from the other side and does not make
+    /// the handler's constructor a test seam.
+    /// </remarks>
+    private static DateTimeOffset UsableProvisioningIssuedAfter()
+    {
+        return TimeProvider.System.GetUtcNow() - PrusaConnectService.ProvisioningTokenLifetime;
+    }
+
+    /// <summary>
     /// First contact for a USB-provisioned printer. The provisioning table holds only unbound tokens
-    /// (binding deletes the row), expected to be a handful at most, so a per-row
+    /// (binding deletes the row), one per printer at most, so a per-row
     /// <see cref="TokenService.VerifyToken"/> is cheap; it cannot be pushed into SQL because the
     /// stored value is a salted PBKDF2 hash. A match is promoted into the enrolled table under a
     /// transaction, so every later request from this printer takes the hot path above.
     /// </summary>
+    /// <remarks>
+    /// <b>The age filter is what keeps "cheap" true, and it belongs in the query.</b> This is the
+    /// path an unknown fingerprint reaches, so its cost is chosen by whoever sends the request: one
+    /// PBKDF2 per row that comes back, before anything has been authenticated. Filtering in SQL means
+    /// an expired credential costs an index read rather than a hash, and the rate limiter on the
+    /// endpoints in front of this bounds how often even that can be asked for.
+    /// </remarks>
     private async Task<AuthenticateResult> BindProvisionedPrinterAsync(string fingerprint, string token)
     {
+        DateTimeOffset issuedAfter = UsableProvisioningIssuedAfter();
+
         List<PrusaConnectProvisioning> pending = await _dbContext.PrusaConnectProvisionings
+                                                                 .Where(p => p.CreatedAt > issuedAfter)
                                                                  .Include(p => p.Printer)
                                                                  .ToListAsync();
 
@@ -273,10 +309,16 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             }
         }
 
-        // No enrolled row and no provisioning token matched. Naming the fingerprint is what separates
-        // one printer retrying with a credential we no longer hold from a caller working through
-        // fingerprints it has invented.
-        Logger.LogInformation("PrusaConnect authentication failed, fingerprint {Fingerprint} unknown.", fingerprint);
+        // No enrolled row and no live provisioning token matched. Naming the fingerprint is what
+        // separates one printer retrying with a credential we no longer hold from a caller working
+        // through fingerprints it has invented - and expiry is now a third way to arrive here, whose
+        // remedy is named because "unknown" would send a reader looking for the wrong thing.
+        Logger.LogInformation(
+            "PrusaConnect authentication failed, fingerprint {Fingerprint} unknown. A USB-key token written more than "
+            + "{ProvisioningTokenLifetimeHours} hours ago has expired and reads as unknown here - reissue to get a "
+            + "fresh one.",
+            fingerprint,
+            PrusaConnectService.ProvisioningTokenLifetime.TotalHours);
 
         return AuthenticateResult.Fail("Printer unknown");
     }

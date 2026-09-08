@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -27,6 +28,7 @@ namespace Homespool.Host.Pages.Account;
 /// getting in, not for settling in.
 /// </summary>
 [AllowAnonymous]
+[EnableRateLimiting(SignInRateLimit.PolicyName)]
 public class LoginWithRecoveryCodeModel : PageModel
 {
     private readonly LocalSignInRules _rules;

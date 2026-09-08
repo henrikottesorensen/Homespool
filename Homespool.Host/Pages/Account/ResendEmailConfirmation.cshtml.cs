@@ -20,12 +20,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous]
+[EnableRateLimiting(SignInRateLimit.PolicyName)]
 public class ResendEmailConfirmationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

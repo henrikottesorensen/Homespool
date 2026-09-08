@@ -25,10 +25,10 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous]
-[EnableRateLimiting(PasskeyChallengeRateLimit.PolicyName)]
+[EnableRateLimiting(SignInRateLimit.PolicyName)]
 public class LoginModel : PageModel
 {
-    /// <summary>The handler that issues a passkey challenge; the one handler on this page the rate limit applies to.</summary>
+    /// <summary>The handler that issues a passkey challenge, which is rate-limited on its own terms rather than this page's.</summary>
     public const string PasskeyOptionsHandler = "PasskeyOptions";
 
     private readonly ExternalSignIn _externalSignIn;

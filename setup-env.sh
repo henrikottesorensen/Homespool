@@ -285,11 +285,27 @@ $range
 
 # The subnets of this stack's own compose network, by label rather than by name - the project name
 # comes from the directory, so a worktree or a -p flag changes it.
-our_compose_subnets() {
-    local ours id
+# The stack's networks: the .env setting holding each one's range, and the name compose labels the
+# bridge with. Moving PROXY_SUBNET moves PROXY_NETWORK and PROXY_ADDRESS with it; the other two are
+# a range and nothing else.
+stack_networks() {
+    printf '%s\n' \
+        "PROXY_SUBNET homespool" \
+        "CAMERA_SUBNET homespool-cameras" \
+        "CERTS_SUBNET homespool-certs"
+}
+
+our_network_ids() {
+    local label
     command -v docker >/dev/null 2>&1 || return 0
-    ours="$(docker network ls --filter label=com.docker.compose.network=homespool -q 2>/dev/null || true)"
-    for id in $ours; do
+    while read -r _ label; do
+        docker network ls --filter "label=com.docker.compose.network=$label" -q 2>/dev/null || true
+    done <<< "$(stack_networks)"
+}
+
+our_compose_subnets() {
+    local id
+    for id in $(our_network_ids); do
         docker network inspect "$id" -f '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' 2>/dev/null || true
     done | grep -E '^[0-9]+\.' || true
 }
@@ -325,7 +341,7 @@ docker_subnets() {
 docker_subnets_excluding_ours() {
     local ours id
     command -v docker >/dev/null 2>&1 || return 0
-    ours="$(docker network ls --filter label=com.docker.compose.network=homespool -q 2>/dev/null || true)"
+    ours="$(our_network_ids | tr '\n' ' ')"
 
     for id in $(docker network ls -q 2>/dev/null || true); do
         case " $ours " in
@@ -1623,64 +1639,129 @@ auto_answer() {
 # The unattended half of check_subnet_collision: same question, but nobody to ask, so it takes the
 # first free range and says loudly which one and why.
 auto_move_subnet() {
-    local subnet colliding candidate
-    subnet="$(env_get PROXY_SUBNET)"
-    [ -n "$subnet" ] || return 0
+    local var label subnet colliding candidate chosen=""
 
-    colliding="$(overlaps_any "$subnet" <<< "$(allocated_ranges)")" || true
-    [ -n "$colliding" ] || return 0
+    while read -r var label; do
+        subnet="$(env_get "$var")"
+        [ -n "$subnet" ] || continue
 
-    candidate="$(free_subnet)"
-    if [ -z "$candidate" ]; then
-        warn "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')and every"
-        warn $"/16 from 172.16 to 172.31 is taken. Set PROXY_SUBNET and PROXY_NETWORK by hand."
-        return 0
+        colliding="$(overlaps_any "$subnet" <<< "$(taken_ranges_for "$var" "$chosen")")" || true
+        [ -n "$colliding" ] || continue
+
+        candidate="$(free_subnet "$(other_stack_ranges "$var")" "$chosen")"
+        if [ -z "$candidate" ]; then
+            warn "The compose network $label ($subnet) collides with $(echo "$colliding" | tr '\n' ' ')and every"
+            warn $"/16 from 172.16 to 172.31 is taken. Set the network's range in .env by hand."
+            continue
+        fi
+
+        say "The compose network $label ($subnet) collides with $(echo "$colliding" | tr '\n' ' ')- using"
+        say $"$candidate instead."
+        move_subnet "$var" "$candidate"
+        chosen="$chosen$candidate
+"
+    done <<< "$(stack_networks)"
+}
+
+# What a range for $1 must not overlap: everything allocated on this host, the stack's OTHER
+# networks as .env has them, and whatever this run has already chosen ($2, one per line). The
+# stack's own bridges are excluded from the host's list - a network is not in its own way - which
+# is why the other two have to be added back explicitly, or two of ours could sit on one range.
+taken_ranges_for() {
+    allocated_ranges
+    other_stack_ranges "$1"
+    printf '%s' "$2"
+}
+
+# The ranges of every stack network except $1, one per line - as this run has planned them where
+# it has, else as .env has them. Reading the plan is what stops a pair on one range from BOTH
+# moving: the first moves, and the second then sees the first's new range rather than its old one.
+other_stack_ranges() {
+    local var range
+    while read -r var _; do
+        [ "$var" = "$1" ] && continue
+        range="$(planned_or_env "$var")"
+        [ -n "$range" ] && echo "$range"
+    done <<< "$(stack_networks)"
+    return 0
+}
+
+planned_or_env() {
+    local planned
+    planned="$(printf '%s' "$pending" | awk -v key="$1" 'index($0, key "=") == 1 { print substr($0, length(key) + 2) }' | tail -1)"
+    if [ -n "$planned" ]; then
+        echo "$planned"
+    else
+        env_get "$1"
     fi
+}
 
-    say "The compose network $subnet collides with $(echo "$colliding" | tr '\n' ' ')- using"
-    say $"$candidate instead."
-    plan_set PROXY_SUBNET "$candidate"
-    plan_set PROXY_NETWORK "$candidate"
+# Plans a network's new range - and for the proxy's, the two settings that travel with it.
+move_subnet() {
+    case "$1" in
+        PROXY_SUBNET) move_proxy_subnet "$2" ;;
+        *) plan_set "$1" "$2" ;;
+    esac
+}
+
+# The proxy's fixed address inside a /16: the gateway takes .1, so .2 is the first a container can
+# hold. Only ever called with a range free_subnet chose, which are all /16s.
+proxy_address_for() {
+    echo "${1%.0.0/16}.0.2"
+}
+
+# All three, always. One is what Docker allocates, one is what the application treats as
+# container-only, and one is the single address whose forwarded headers it believes; they answer
+# different questions from the same fact, and a stack where they disagree either trusts headers from
+# nowhere or offers a printer an address it cannot route to.
+move_proxy_subnet() {
+    plan_set PROXY_SUBNET "$1"
+    plan_set PROXY_NETWORK "$1"
+    plan_set PROXY_ADDRESS "$(proxy_address_for "$1")"
 }
 
 # The subnet is not a question - it is right until it collides with something, and the operator has
 # no way of knowing that in advance. So it is checked, and only mentioned when it is wrong.
 check_subnet_collision() {
-    local subnet colliding candidate
-    subnet="$(env_get PROXY_SUBNET)"
-    [ -n "$subnet" ] || return 0
+    local var label subnet colliding candidate chosen=""
 
-    # Emptiness is the test, not the exit status - and the `|| true` is load-bearing under `set -e`:
-    # overlaps_any reports "no overlap" by failing, which is the ORDINARY case here, and a bare
-    # assignment from a failing substitution ends the script. It did, silently, right after the
-    # camera credential and before anything was written.
-    colliding="$(overlaps_any "$subnet" <<< "$(allocated_ranges)")" || true
-    [ -n "$colliding" ] || return 0
-    colliding="$(echo "$colliding" | tr '\n' ' ' | sed 's/ *$//; s/^/ /')"
+    while read -r var label; do
+        subnet="$(env_get "$var")"
+        [ -n "$subnet" ] || continue
 
-    say
-    warn $"The compose network $subnet collides with:$colliding"
-    say
-    warn $"A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
+        # Emptiness is the test, not the exit status - and the `|| true` is load-bearing under
+        # `set -e`: overlaps_any reports "no overlap" by failing, which is the ORDINARY case here,
+        # and a bare assignment from a failing substitution ends the script. It did, silently,
+        # right after the camera credential and before anything was written.
+        colliding="$(overlaps_any "$subnet" <<< "$(taken_ranges_for "$var" "$chosen")")" || true
+        [ -n "$colliding" ] || continue
+        colliding="$(echo "$colliding" | tr '\n' ' ' | sed 's/ *$//; s/^/ /')"
 
-    candidate="$(free_subnet)"
-    if [ -z "$candidate" ]; then
-        warn $"Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
-        return 0
-    fi
+        say
+        warn $"The compose network $label ($subnet) collides with:$colliding"
+        say
+        warn $"A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 
-    if ask_yes_no "  Move the compose network to $candidate" y; then
-        # Both, always. One is what Docker allocates and the other is what the application trusts
-        # for forwarded headers and treats as container-only; they answer different questions from
-        # the same fact, and a stack where they disagree believes headers from the wrong network.
-        plan_set PROXY_SUBNET "$candidate"
-        plan_set PROXY_NETWORK "$candidate"
-    fi
+        candidate="$(free_subnet "$(other_stack_ranges "$var")" "$chosen")"
+        if [ -z "$candidate" ]; then
+            warn $"Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
+            continue
+        fi
+
+        if ask_yes_no "  Move the compose network $label to $candidate" y; then
+            move_subnet "$var" "$candidate"
+            chosen="$chosen$candidate
+"
+        fi
+    done <<< "$(stack_networks)"
+    return 0
 }
 
+# The first /16 in 172.16-172.31 that nothing holds: nothing on this host, and nothing passed in -
+# each argument is a list of ranges, one per line, that this run also has to keep clear of.
 free_subnet() {
     local taken octet candidate
-    taken="$(allocated_ranges)"
+    taken="$(allocated_ranges; printf '%s\n' "$@")"
     for octet in $(seq 16 31); do
         candidate="172.$octet.0.0/16"
         if ! overlaps_any "$candidate" <<< "$taken" >/dev/null; then

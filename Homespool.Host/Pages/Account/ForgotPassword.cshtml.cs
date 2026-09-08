@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
+using Homespool.Host.RateLimiting;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -27,7 +28,7 @@ using Microsoft.Extensions.Localization;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous] // Nobody asking for a password reset can be signed in.
-[EnableRateLimiting(SignInRateLimit.PolicyName)]
+[EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class ForgotPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

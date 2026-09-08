@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
+using Homespool.Host.RateLimiting;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -27,7 +28,7 @@ using Microsoft.Extensions.Localization;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous]
-[EnableRateLimiting(SignInRateLimit.PolicyName)]
+[EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class ResendEmailConfirmationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

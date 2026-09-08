@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
+using Homespool.Host.RateLimiting;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authentication;
@@ -27,7 +28,7 @@ namespace Homespool.Host.Pages.Account;
 /// this page decides what the proof is worth - the session, and a remembered browser if asked.
 /// </summary>
 [AllowAnonymous]
-[EnableRateLimiting(SignInRateLimit.PolicyName)]
+[EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class LoginWith2faModel : PageModel
 {
     private readonly LocalSignInRules _rules;

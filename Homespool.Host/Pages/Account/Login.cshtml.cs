@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
+using Homespool.Host.RateLimiting;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authentication;
@@ -25,7 +26,7 @@ using Microsoft.Extensions.Options;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous]
-[EnableRateLimiting(SignInRateLimit.PolicyName)]
+[EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class LoginModel : PageModel
 {
     /// <summary>The handler that issues a passkey challenge, which is rate-limited on its own terms rather than this page's.</summary>

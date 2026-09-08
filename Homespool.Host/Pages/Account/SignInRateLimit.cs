@@ -3,11 +3,11 @@ using System.Threading.RateLimiting;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Middleware;
+using Homespool.Host.RateLimiting;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -46,9 +46,6 @@ namespace Homespool.Host.Pages.Account;
 /// </remarks>
 public static class SignInRateLimit
 {
-    /// <summary>The policy name, for <see cref="EnableRateLimitingAttribute"/> on the pages it covers.</summary>
-    public const string PolicyName = "sign-in";
-
     /// <summary>How many credential attempts one address may make in a <see cref="Window"/>.</summary>
     /// <remarks>
     /// Far above what a household presses - a person mistyping a password twice and asking for a
@@ -70,7 +67,7 @@ public static class SignInRateLimit
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            options.AddPolicy(PolicyName, Partition);
+            options.AddPolicy(RateLimitPolicies.SignIn, Partition);
         });
 
         return services;

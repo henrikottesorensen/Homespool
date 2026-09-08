@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
+using Homespool.Host.RateLimiting;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -25,7 +26,7 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous] // Carries its own credential in the reset token.
-[EnableRateLimiting(SignInRateLimit.PolicyName)]
+[EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class ResetPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 
 using Homespool.Host.Pages.Account.Manage;
+using Homespool.Host.RateLimiting;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -45,9 +46,6 @@ namespace Homespool.Host.Pages.Account;
 /// </remarks>
 public static class PasskeyChallengeRateLimit
 {
-    /// <summary>The policy name, for <see cref="EnableRateLimitingAttribute"/> on the two pages.</summary>
-    public const string PolicyName = "passkey-challenge";
-
     /// <summary>How many challenges one address may ask for in a <see cref="Window"/>.</summary>
     public const int PermitLimit = 30;
 
@@ -66,7 +64,7 @@ public static class PasskeyChallengeRateLimit
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            options.AddPolicy(PolicyName, context => IsChallenge(context)
+            options.AddPolicy(RateLimitPolicies.PasskeyChallenge, context => IsChallenge(context)
                 ? RateLimitPartition.GetFixedWindowLimiter(AddressOf(context), _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = PermitLimit,

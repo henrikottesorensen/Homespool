@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 
+using Homespool.Host.RateLimiting;
+
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
@@ -86,77 +88,31 @@ namespace Homespool.Host.PrusaConnect;
 public static class PrinterRateLimits
 {
     /// <summary>
-    /// Rate-limit policy for <c>POST /p/register</c>, which asks for a registration code.
-    /// </summary>
-    /// <remarks>
-    /// <b>Its own policy, and the one route with no per-printer window.</b> The printer sends no
-    /// headers at all on this request - it names itself in the JSON body, which is unbound while this
-    /// runs - so there is nothing to partition on without parsing an anonymous request's body ahead of
-    /// any limit. Splitting it from <see cref="RegistrationPollPolicy"/> is what a separate window
-    /// buys instead: the two halves cost different things and can no longer starve each other. This
-    /// half is the one that writes a row, and it is now capped below what the shared window allowed.
-    /// </remarks>
-    public const string RegistrationStartPolicy = "printer-registration-start";
-
-    /// <summary>
-    /// Rate-limit policy for <c>GET /p/register</c>, which polls for the token behind a code.
-    /// </summary>
-    /// <remarks>
-    /// Buddy's poll carries a <c>Code</c> header and nothing else, so this route has no per-printer
-    /// window either. Partitioning on the code would give a guesser a fresh window per guess, which
-    /// bounds nothing; the ceiling on this policy is what bounds the oracle, as it did before.
-    /// </remarks>
-    public const string RegistrationPollPolicy = "printer-registration-poll";
-
-    /// <summary>Rate-limit policy for the <c>/p/ws</c> upgrade.</summary>
-    public const string SocketPolicy = "printer-socket";
-
-    /// <summary>
-    /// Rate-limit policy for the pre-websocket HTTP transport - <c>POST /p/telemetry</c> and
-    /// <c>POST /p/events</c>.
-    /// </summary>
-    /// <remarks>
-    /// <b>Its own policy, because the traffic shape is the opposite of the socket's.</b> An upgrade
-    /// happens once per connection, so <see cref="SocketPolicy"/>'s window covers a whole fleet;
-    /// this transport posts roughly once a second <em>per printer</em>, so sharing that window would
-    /// let two printers exhaust it and throttle every printer as a matter of course.
-    /// </remarks>
-    public const string HttpTransportPolicy = "printer-http-transport";
-
-    /// <summary>
-    /// Rate-limit policy for <c>GET /p/teams/{teamId}/files/{hash}/raw</c>, and the controller-wide
-    /// default that every printer action inherits unless it names one of the policies above.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Being the default is what this is for, more than the numbers are.</b> Every route on that
-    /// controller reaches the printer authentication handler, which spends a PBKDF2 verifying the
-    /// presented token before anything is authenticated - so an action shipped with no policy is an
-    /// unmetered way to buy hashing at wire rate, whatever the action itself costs. The raw-fetch
-    /// route was exactly that and nothing reported it, because a missing attribute looks like every
-    /// other action nobody has annotated yet. As the controller's default, an action can only escape
-    /// by writing <c>[DisableRateLimiting]</c>, which a reader sees.
-    /// </para>
-    /// <para>
-    /// <b>Partitioned like the other two authenticated routes</b>, because the SDK sends its
-    /// <c>Fingerprint</c> here: its download only attaches credentials when the URL starts with the
-    /// server it posts telemetry to (<c>download.py</c>), which is what makes this route authenticated
-    /// at all. So a printer collecting a file has its own window and cannot be starved by another.
-    /// </para>
-    /// </remarks>
-    public const string FilePolicy = "printer-file";
-
-    /// <summary>
     /// How many code requests every caller together may make in a <see cref="Window"/>. A printer
     /// POSTs about once in its life and gets three tries, so a fleet powering on for the first time
     /// stays far below this.
     /// </summary>
+    /// <remarks>
+    /// <b><see cref="RateLimitPolicies.PrinterRegistrationStart"/> is its own policy, and one of the two
+    /// routes with no per-printer window.</b> The printer sends no headers at all on this request - it
+    /// names itself in the JSON body, which is unbound while this runs - so there is nothing to
+    /// partition on without parsing an anonymous request's body ahead of any limit. Splitting it from
+    /// the poll is what a separate window buys instead: the two halves cost different things and can no
+    /// longer starve each other. This half is the one that writes a row, and it is capped below what
+    /// the shared window allowed.
+    /// </remarks>
     public const int RegistrationStartCeiling = 120;
 
     /// <summary>
     /// How many registration polls every caller together may make in a <see cref="Window"/>. A
     /// printer polls every 5s, so ten of them sit near 120/minute under this.
     /// </summary>
+    /// <remarks>
+    /// Buddy's poll carries a <c>Code</c> header and nothing else, so
+    /// <see cref="RateLimitPolicies.PrinterRegistrationPoll"/> has no per-printer window either.
+    /// Partitioning on the code would give a guesser a fresh window per guess, which bounds nothing;
+    /// this ceiling is what bounds the oracle.
+    /// </remarks>
     public const int RegistrationPollCeiling = 300;
 
     /// <summary>
@@ -174,6 +130,13 @@ public static class PrinterRateLimits
     /// HTTP transport posts telemetry every 1-4s and events on top, so one printer alone can spend
     /// about 90 a minute; this is twice that.
     /// </summary>
+    /// <remarks>
+    /// <b><see cref="RateLimitPolicies.PrinterHttpTransport"/> is its own policy, because the traffic
+    /// shape is the opposite of the socket's.</b> An upgrade happens once per connection, so
+    /// <see cref="RateLimitPolicies.PrinterSocket"/>'s window covers a whole fleet; this transport
+    /// posts roughly once a second <em>per printer</em>, so sharing that window would let two printers
+    /// exhaust it and throttle every printer as a matter of course.
+    /// </remarks>
     public const int HttpTransportPerPrinterLimit = 180;
 
     /// <summary>
@@ -187,6 +150,12 @@ public static class PrinterRateLimits
     /// file, not one per chunk, and it happens when somebody sends a print - so a printer collecting
     /// twenty in a minute is already not a printer.
     /// </summary>
+    /// <remarks>
+    /// <b>Partitioned like the other two authenticated routes</b>, because the SDK sends its
+    /// <c>Fingerprint</c> here: its download only attaches credentials when the URL starts with the
+    /// server it posts telemetry to (<c>download.py</c>), which is what makes this route authenticated
+    /// at all. So a printer collecting a file has its own window and cannot be starved by another.
+    /// </remarks>
     public const int FilePerPrinterLimit = 20;
 
     /// <summary>
@@ -194,6 +163,15 @@ public static class PrinterRateLimits
     /// the ceiling any future printer action inherits, so it is sized as a bound on an unmetered
     /// route rather than for the fetch alone.
     /// </summary>
+    /// <remarks>
+    /// <b>Being the controller-wide default is what <see cref="RateLimitPolicies.PrinterFile"/> is for,
+    /// more than the numbers are.</b> Every route on that controller reaches the printer authentication
+    /// handler, which spends a PBKDF2 verifying the presented token before anything is authenticated -
+    /// so an action shipped with no policy is an unmetered way to buy hashing at wire rate, whatever
+    /// the action itself costs. The raw-fetch route was exactly that and nothing reported it, because a
+    /// missing attribute looks like every other action nobody has annotated yet. As the controller's
+    /// default, an action can only escape by writing <c>[DisableRateLimiting]</c>, which a reader sees.
+    /// </remarks>
     public const int FileCeiling = 120;
 
     /// <summary>The window every limit above is counted over.</summary>
@@ -234,11 +212,11 @@ public static class PrinterRateLimits
     private static readonly FrozenDictionary<string, PolicyLimits> Policies =
         new Dictionary<string, PolicyLimits>(StringComparer.Ordinal)
         {
-            [RegistrationStartPolicy] = new(RegistrationStartCeiling, null),
-            [RegistrationPollPolicy] = new(RegistrationPollCeiling, null),
-            [SocketPolicy] = new(SocketCeiling, SocketPerPrinterLimit),
-            [HttpTransportPolicy] = new(HttpTransportCeiling, HttpTransportPerPrinterLimit),
-            [FilePolicy] = new(FileCeiling, FilePerPrinterLimit),
+            [RateLimitPolicies.PrinterRegistrationStart] = new(RegistrationStartCeiling, null),
+            [RateLimitPolicies.PrinterRegistrationPoll] = new(RegistrationPollCeiling, null),
+            [RateLimitPolicies.PrinterSocket] = new(SocketCeiling, SocketPerPrinterLimit),
+            [RateLimitPolicies.PrinterHttpTransport] = new(HttpTransportCeiling, HttpTransportPerPrinterLimit),
+            [RateLimitPolicies.PrinterFile] = new(FileCeiling, FilePerPrinterLimit),
         }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>

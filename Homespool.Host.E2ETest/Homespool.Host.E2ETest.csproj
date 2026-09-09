@@ -18,8 +18,8 @@
         <!-- Drives the real ASP.NET Core pipeline (routing, the setup gate, [Authorize], cookie auth)
              through an in-memory TestServer rather than calling services directly - the one thing that
              distinguishes every test in this project from Homespool.Host.Test. -->
-        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
         <!-- Only used by LoginWith2faTests, to generate a valid RFC 6238 TOTP code for a seeded
              account's authenticator secret. UserManager.GenerateTwoFactorTokenAsync does not work
              for AuthenticatorTokenProvider - it's designed for validation only, since a real

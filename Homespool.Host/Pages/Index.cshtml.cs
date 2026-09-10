@@ -44,6 +44,7 @@ namespace Homespool.Host.Pages;
 /// </para>
 /// </remarks>
 [AllowAnonymous]
+[BoundedUpload] // MaxUploadBytes, applied before the body is read - see BoundedUploadAttribute.
 public class IndexModel : PageModel
 {
     /// <summary>
@@ -264,6 +265,21 @@ public class IndexModel : PageModel
     /// <b>A list, though a drag only ever sends one.</b> The single-file rule lives in tile-drop.js,
     /// where the drop happens; this is a handler anybody can post to, and looping is what keeps it
     /// honest rather than dependent on the caller having obeyed a convention it cannot see.
+    /// </para>
+    /// <para>
+    /// <b>The upload is bounded by <see cref="BoundedUploadAttribute"/> on this class</b>, at the
+    /// configured cap plus form overhead and before a byte is read - the same bound the Files page
+    /// carries, and what makes the cap this page advertises the cap it enforces. <b>Because the
+    /// parameter is a list, both halves of that bound are load-bearing here</b>: the multipart limit
+    /// applies to each file, and the server's ceiling to the sum of them, so several files spend one
+    /// cap between them and no single one may exceed it. A drag sends one, so the sum is a limit on
+    /// what a hand-built post can do rather than something the dialog can walk into.
+    /// </para>
+    /// <para>
+    /// <b>What is deliberately not here is the Files page's <c>file.Length</c> check</b>, which turns
+    /// the narrow band between the cap and the cap plus overhead into a localised message. A drop
+    /// refused for size arrives as a bare 4xx instead - which is the trade that attribute documents,
+    /// and the reason the dialog states the cap up front.
     /// </para>
     /// <para>
     /// <b>Readying happens last, and only if something was queued.</b> Making a printer ready with

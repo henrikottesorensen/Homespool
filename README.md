@@ -152,7 +152,11 @@ deployments behind a router or tunnel.
   certificate. It is sent only on names that actually hold an issued certificate, never on a
   self-signed one, so a `.lan` name or a bare address cannot lock its own users out.
 - Bringing your own reverse proxy (Traefik, Caddy, your nginx) is supported for the people-facing
-  half — put it on the stack's network and point `PROXY_ADDRESS` at it. The printer-facing half is **not** a normal reverse-proxy
+  half — put it on the stack's network and point `PROXY_ADDRESS` at it. It must pass the browser's
+  own `Host` header through unchanged (Traefik and Caddy do by default; nginx needs
+  `proxy_set_header Host $http_host`): the links in outgoing mail are built from that header, and
+  `X-Forwarded-Host` is ignored, so a proxy that rewrites `Host` is answered with a 400 rather than
+  with mail pointing at the wrong name. The printer-facing half is **not** a normal reverse-proxy
   job, and a generic proxy will break it: the firmware's TLS stack holds one kilobyte of plaintext
   at a time, so every TLS record must be capped at 1000 bytes — on the ordinary path *and* through
   the WebSocket tunnel. This limit is extremely easy to get wrong, because nothing tells you it

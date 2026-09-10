@@ -48,15 +48,18 @@ public class ForwardedHeadersConfiguratorTests
     }
 
     /// <summary>
-    /// Scheme and host are forwarded too, not only the address.
+    /// The scheme is forwarded as well as the address; the host is not.
     /// </summary>
     /// <remarks>
-    /// The proto is what stops eight mail-link call sites emitting <c>http://</c> behind a
-    /// TLS-terminating proxy; the host is what makes them name the address the user reached rather
-    /// than the container's internal one.
+    /// The proto is what stops the mail-link call sites emitting <c>http://</c> behind a
+    /// TLS-terminating proxy. The host is deliberately absent: <c>Request.Host</c> already carries
+    /// the address the user reached and is the value host filtering checks, whereas
+    /// <c>X-Forwarded-Host</c> is a header a browser can send that host filtering never sees - so
+    /// honouring it would let a stranger choose the host a password-reset link names.
+    /// <c>ForwardedHostTests</c> drives the whole pipeline; this pins the flag.
     /// </remarks>
     [Fact]
-    public void SchemeAndHostAreForwardedAsWellAsTheAddress()
+    public void TheSchemeIsForwardedAsWellAsTheAddressAndTheHostIsNot()
     {
         // Act
         ForwardedHeadersOptions applied = Apply(new XForwardedOptions(), out _);
@@ -64,7 +67,7 @@ public class ForwardedHeadersConfiguratorTests
         // Assert
         applied.ForwardedHeaders.Should().HaveFlag(ForwardedHeaders.XForwardedFor);
         applied.ForwardedHeaders.Should().HaveFlag(ForwardedHeaders.XForwardedProto);
-        applied.ForwardedHeaders.Should().HaveFlag(ForwardedHeaders.XForwardedHost);
+        applied.ForwardedHeaders.Should().NotHaveFlag(ForwardedHeaders.XForwardedHost);
     }
 
     /// <summary>

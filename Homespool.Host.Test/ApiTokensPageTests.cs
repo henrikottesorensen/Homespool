@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,10 +9,12 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Model;
@@ -26,6 +29,7 @@ namespace Homespool.Host.Test;
 public sealed class ApiTokensPageTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-apipage-{Guid.NewGuid():N}.db");
+    private readonly List<IServiceScope> _scopes = [];
 
     private HomespoolDbContext NewContext()
     {
@@ -46,6 +50,11 @@ public sealed class ApiTokensPageTests : IDisposable
 
     public void Dispose()
     {
+        foreach (IServiceScope scope in _scopes)
+        {
+            scope.Dispose();
+        }
+
         foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
         {
             if (File.Exists(path))
@@ -229,29 +238,76 @@ public sealed class ApiTokensPageTests : IDisposable
         model.CreatedToken.Should().BeNull();
     }
 
-    private static async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(
+    /// <summary>
+    /// A model for a signed-in password account, with the create form filled in and the right
+    /// password typed - so every test that mints reaches the mint, and the one that types the wrong
+    /// password says so itself.
+    /// </summary>
+    private async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(
         HomespoolDbContext context,
-        string name)
+        string name,
+        string? password = LocalSchemeRig.Password)
     {
-        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser user = new("owner") { Email = "owner@example.com" };
-        (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
+        // A scope per request, as a real request has: the step-up authenticates through scoped
+        // handlers that memoise their first answer.
+        IServiceScope scope = provider.CreateScope();
+        _scopes.Add(scope);
+
+        DefaultHttpContext httpContext = new() { RequestServices = scope.ServiceProvider };
+        httpContext.Request.Scheme = "https";
+        httpContext.Request.Host = new HostString("homespool.test");
+        httpContext.Response.Body = new MemoryStream();
+
+        HSUser user = new("owner") { Email = "owner@example.com", EmailConfirmed = true };
+        (await users.CreateAsync(user, LocalSchemeRig.Password)).Succeeded.Should().BeTrue();
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ApiTokensModel model = new(new ApiTokenService(context), users, NullLogger<ApiTokensModel>.Instance,
-                                   TestLocaliser.Shared(), new CapabilityText(TestLocaliser.Shared()))
+        ApiTokensModel model = new(new ApiTokenService(context),
+                                   users,
+                                   scope.ServiceProvider.GetRequiredService<StepUpGate>(),
+                                   new StepUpText(TestLocaliser.Shared()),
+                                   scope.ServiceProvider.GetRequiredService<ExternalSignIn>(),
+                                   NullLogger<ApiTokensModel>.Instance,
+                                   TestLocaliser.Shared(),
+                                   new CapabilityText(TestLocaliser.Shared()))
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
+            Url = IdentityTestHarness.NewUrlHelper(httpContext),
             Input = new ApiTokensModel.InputModel
             {
                 Name = name,
                 Scope = [.. CapabilitySet.Everything],
+                Password = password,
             },
         };
 
         return (model, httpContext);
+    }
+
+    /// <summary>
+    /// The password stands in front of the mint: a session alone, or a wrong guess, mints nothing and
+    /// the form comes back saying why, with the name still in it.
+    /// </summary>
+    [Theory]
+    [InlineData("not-the-current-password")]
+    [InlineData(null)]
+    public async Task ATokenIsNotMintedWithoutTheRightPassword(string? password)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "laptop", password);
+
+        // Act
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ApiTokens.Should().BeEmpty("the step-up refused the mint");
+        model.CreatedToken.Should().BeNull();
+        model.ModelState.IsValid.Should().BeFalse("the refusal is reported on the form");
+        model.Input.Name.Should().Be("laptop", "what was typed survives the retry");
     }
 
     /// <summary>

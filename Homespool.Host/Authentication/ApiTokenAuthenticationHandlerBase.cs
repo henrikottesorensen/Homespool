@@ -38,10 +38,12 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>The security stamp is deliberately not validated.</b> Cookies carry one so that a password
 /// change signs other sessions out; a token is not a session and is revoked by deleting its row.
-/// A password <em>reset</em> does invalidate tokens, but by deletion rather than by stamp — see
-/// <c>ResetPassword</c>, which revokes inside the same transaction as the password write. A password
-/// change from a live session deliberately leaves them standing. Nothing here needs to know either
-/// way, which is the point: this handler's only question is whether a row exists.
+/// That deletion is what a password <em>reset</em> and an administrator's deactivation do, inside
+/// the same transaction as their own write — see <c>ResetPassword</c> and <c>UserAdministration</c>.
+/// A password <em>change</em>, typed with the current password, leaves tokens standing: minting
+/// one takes that password too, so a change cannot rule out a token its holder was allowed to make.
+/// Nothing here needs to know any of that, which is the point: this handler's only question is
+/// whether a row exists.
 /// </para>
 /// </remarks>
 public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<ApiTokenAuthenticationSchemeOptions>

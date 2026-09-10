@@ -10,13 +10,13 @@
              promises are vouched for by the library's own tests at this version only. -->
         <PackageReference Include="libbgcode.NET" Version="[0.2.0]" />
         <PackageReference Include="MailKit" Version="4.17.0" />
-        <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.11" />
-        <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.11" />
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.11" />
-        <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.11" />
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11"/>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.11" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.11">
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.12" />
+        <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.12" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.12" />
+        <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.12">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>

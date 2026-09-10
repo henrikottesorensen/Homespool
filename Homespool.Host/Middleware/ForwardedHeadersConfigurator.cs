@@ -46,11 +46,17 @@ public static class ForwardedHeadersConfigurator
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(target);
 
-        // Scheme and host as well as the address: absolute URLs - confirmation and password-reset
-        // links especially - must be built with the address the user actually reached.
+        // Scheme as well as the address, and NOT the host. The scheme is what makes an absolute URL -
+        // a password-reset link above all - say https behind a proxy that terminates TLS. The host
+        // those links name is Request.Host, and that already carries the address the user reached:
+        // the proxy passes the browser's own Host header through, and host filtering refuses any
+        // value outside the deployment's names. X-Forwarded-Host would be a second way to set the
+        // same thing, from a header a browser can send and host filtering never sees - trusting the
+        // peer says the request came through the proxy, not that the proxy wrote the header. A proxy
+        // that rewrites Host is therefore unsupported; host filtering answers it with a 400, so the
+        // failure is on the first page rather than in somebody's inbox.
         target.ForwardedHeaders = ForwardedHeaders.XForwardedFor
-                                  | ForwardedHeaders.XForwardedProto
-                                  | ForwardedHeaders.XForwardedHost;
+                                  | ForwardedHeaders.XForwardedProto;
 
         target.ForwardedForHeaderName = source.ClientAddressHeader;
         target.ForwardLimit = source.ForwardLimit;

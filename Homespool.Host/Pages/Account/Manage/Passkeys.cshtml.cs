@@ -59,8 +59,9 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// <b>Removing the last one is allowed.</b> A passkey is a complete sign-in beside whatever else the
 /// account holds, a password or a provider, rather than a factor either needs, so no removal can
 /// strand anybody. The administrator's revoke on <c>Admin/Passkeys</c> is the recovery for a lost
-/// device. <b>A password change or reset leaves passkeys standing</b>, unlike API tokens: they are
-/// the person's own daily sign-in, not a machine's, and nothing can add one without the password,
+/// device. <b>A password change or reset leaves passkeys standing</b>, unlike API tokens, which a
+/// reset deletes: they are the person's own daily sign-in, not a machine's, and nothing can add one
+/// without the password,
 /// so what a change cannot rule out is only a passkey added by somebody who knew it - which both
 /// password pages tell the person to go and look for.
 /// </para>

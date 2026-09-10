@@ -150,18 +150,20 @@ public class ApiTokenService
 
     /// <summary>
     /// Revokes every token belonging to <paramref name="userId"/>, returning how many there were.
-    /// Called when a password changes: see the pages that do it for why.
+    /// Called on a password <em>reset</em>, and by an administrator closing an account or revoking
+    /// its tokens outright: see the callers for why. A password change from a live session does not
+    /// come here.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Bulk and untracked, like <c>TelemetryRetentionService</c>'s sweep - there is nothing to load,
     /// and the count is the only thing the caller wants. <b>It still participates in an ambient
-    /// transaction</b>, which matters here: the callers wrap this together with the password change so
-    /// that neither can land without the other.
+    /// transaction</b>, which matters here: the reset and deactivation paths wrap this together with
+    /// the write that provoked it, so that neither can land without the other.
     /// </para>
     /// <para>
     /// Deliberately not "revoke tokens created before now": there is no window to preserve. If the
-    /// password is being changed because the account is compromised, a token the attacker minted a
+    /// password is being reset because the account is compromised, a token the attacker minted a
     /// second ago is exactly the one that has to go.
     /// </para>
     /// </remarks>

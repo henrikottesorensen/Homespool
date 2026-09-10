@@ -244,7 +244,9 @@ public class LoginModel : PageModel
 
             // One message for a wrong password, an unknown identifier and an account that may not
             // sign in: telling an anonymous caller which of those it was is the enumeration this form
-            // is exposed enough to care about.
+            // is exposed enough to care about. The lockout redirect above is the deliberate exception,
+            // and it is a real one - it confirms an account exists, in exchange for telling its owner
+            // why they are being turned away rather than leaving them to retry into a longer lockout.
             ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
             return Page();

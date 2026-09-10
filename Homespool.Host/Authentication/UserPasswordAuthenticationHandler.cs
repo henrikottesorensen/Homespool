@@ -33,8 +33,18 @@ namespace Homespool.Host.Authentication;
 /// <b>The one scheme that names its own account - at login.</b> A <see cref="UserPasswordCredential"/>
 /// resolves by username and then by address, in one field, which is safe because a username may not
 /// contain <c>@</c>. An identifier nobody holds is refused after a decoy verification, so a miss costs
-/// what a wrong password costs and the form is not an enumeration oracle in its timing any more than
-/// in its wording.
+/// what a wrong password costs, and the wording is the same for both.
+/// </para>
+/// <para>
+/// <b>The timing is not uniform beyond that, and the gap is worth knowing before it is quoted as a
+/// defence.</b> An account that exists but may not sign in - deactivated, or already locked out -
+/// returns from the pre-sign-in check without ever reaching the password comparison, so it answers
+/// faster than either a wrong password or an unknown identifier, which both pay a verification.
+/// <c>Login</c> compounds it by redirecting a locked-out account to <c>Lockout</c> while re-rendering
+/// the form for everything else, which says as much in the response itself. Both are observable to an
+/// anonymous caller, and the thing that would blunt them - the per-address <c>SignIn</c> rate limit -
+/// is inert where no proxy is trusted. So: the wording is one message by design; the timing is not a
+/// control, and closing that would mean paying the decoy on the refusal paths too.
 /// </para>
 /// <para>
 /// <b>On a step-up the account is the session's.</b> A <see cref="PasswordCredential"/> carries only

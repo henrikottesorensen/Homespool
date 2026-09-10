@@ -1912,8 +1912,14 @@ apply() {
     # every run that gets this far, including one that changes nothing: a spare copy is litter, and
     # litter is cheaper than the alternative.
     #
-    # Created with the mode already set rather than chmod'ed afterwards, so the secrets are never on
+    # Created with the mode already set rather than chmod'ed afterwards, so the backup is never on
     # disk world-readable, even briefly.
+    #
+    # The .env it copies is not in that position, and the difference is worth knowing before either
+    # is changed: on a first run .env is seeded from .env.example and so carries the repository's
+    # mode until the chmod at the end of apply(). Anything that writes a secret before then writes
+    # into a file whose mode has not caught up. Tightening that means creating the seed copy with
+    # the mode already on it, the way this backup is.
     if [ -f "$env_file" ]; then
         local backup
         # date(1) rather than printf's %(...)T, which would be tidier and is a trap: that format is

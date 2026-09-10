@@ -137,17 +137,23 @@ public static class Program
 
                 // Lax, written down rather than inherited. It is already the framework's default for
                 // this cookie, so this changes no behaviour - what it changes is that the value is a
-                // decision somebody can find, on the setting that is currently the ONLY thing
-                // standing between a cross-site POST and an authenticated /api call: Policies.Api
-                // accepts this cookie and no antiforgery guards those actions.
+                // decision somebody can find, on the setting that stands between a cross-site POST
+                // and an authenticated /api call: Policies.Api accepts this cookie and no antiforgery
+                // guards those actions. It is not the only thing there any more - SameOriginWriteFilter
+                // refuses a cookie-authenticated write to any controller unless the browser says the
+                // request is same-origin - but the two answer different questions, cross-site and
+                // cross-origin, and neither makes the other redundant.
                 //
                 // NOT Strict, and that was costed rather than assumed. Strict withholds the cookie on
                 // every cross-site top-level navigation, not merely on cross-site POSTs - so every
                 // link in outgoing mail (confirm, reset, invite) would open the app signed out even in
                 // a browser that is signed in, and ConfirmEmailChange, which is designed to be clicked
                 // while signed in, would answer NotFound. What it would buy is protection against a
-                // cross-site GET with side effects, of which there are none by design: Logout is a
-                // POST and the API's GETs are reads. Real friction against a marginal gain.
+                // cross-site GET with side effects, of which there is one: Logout is a POST, and the
+                // API's GETs are reads except printers/{uuid}/storage/usb, which reads by making the
+                // printer go and list a directory. Firing it cross-site needs the printer's UUID and
+                // ControlPrinter, and the answer is unreadable from the foreign page. Real friction
+                // against a narrow gain.
                 options.Cookie.SameSite = SameSiteMode.Lax;
 
                 // SameAsRequest, written down for the same reason as the line above: it is already
@@ -678,7 +684,8 @@ public static class Program
 
             // After authorization, so it sees a resolved principal and cannot be reached by anybody
             // an endpoint would have refused anyway. It is inert unless Security:RequireTwoFactor is
-            // on, and it only ever acts on the application cookie - see the middleware's remarks.
+            // on, and it holds every principal that is a person - a token's as well as the session
+            // cookie's, refused under /api rather than redirected. See the middleware's remarks.
             app.UseMiddleware<Middleware.TwoFactorEnrolmentMiddleware>();
 
             // After authentication, and that ordering is load-bearing rather than tidy: the first

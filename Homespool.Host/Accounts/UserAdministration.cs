@@ -32,11 +32,18 @@ namespace Homespool.Host.Accounts;
 /// each is refused on its own reasoning rather than for want of time.
 /// </para>
 /// <para>
-/// <b>Every write goes through the context rather than <c>UserManager</c>.</b> The manager's update
-/// path runs the user validators, so closing a compromised account could fail because its username
-/// stopped validating against somebody else's - which is exactly the moment the act must not fail.
-/// The same reasoning <see cref="AttemptLimiter"/> already applies to a counter bump, and it matters
-/// more here.
+/// <b>Every write in this class goes through the context rather than <c>UserManager</c>.</b> The
+/// manager's update path runs the user validators, so closing a compromised account could fail
+/// because its username stopped validating against somebody else's - which is exactly the moment the
+/// act must not fail. The same reasoning <see cref="AttemptLimiter"/> already applies to a counter
+/// bump, and it matters more here.
+/// </para>
+/// <para>
+/// <b>"In this class" is load-bearing.</b> Not every administrative act is routed through here:
+/// <c>Admin/Users/Detail</c>'s passkey revoke calls <c>UserManager.RemovePasskeyAsync</c> directly,
+/// so it runs the validators this class exists to avoid - and it discards the <c>IdentityResult</c>,
+/// reporting the revoke as done whether or not it happened. An act that must not fail, or must not
+/// fail quietly, belongs here rather than on a page.
 /// </para>
 /// </remarks>
 public sealed class UserAdministration

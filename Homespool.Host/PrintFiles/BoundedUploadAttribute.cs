@@ -21,7 +21,17 @@ namespace Homespool.Host.PrintFiles;
 /// ceiling itself, used as written with nothing added: an endpoint naming its own number is
 /// describing the whole request rather than a file inside it, and quietly granting it 64 KB more
 /// than it asked for is the kind of surprise this attribute exists to remove. Prefer the first
-/// wherever the payload is a print file, so one setting still moves every such endpoint together.
+/// wherever the payload is a print file, so one setting still moves every endpoint carrying it
+/// together.
+/// </para>
+/// <para>
+/// <b>It binds where it is declared and nowhere else, and nothing checks that it was.</b> An endpoint
+/// that takes a print file without this attribute is not bounded by
+/// <see cref="PrintFileStorageOptions.MaxUploadBytes"/> at all - it falls back to Kestrel's own
+/// request default, which is unrelated to the configured cap and moves with neither it nor the proxy.
+/// No build or test fails over the omission, so a handler that accepts an upload has to carry this
+/// beside it as a matter of course: the dialog that advertises the configured cap is not the thing
+/// that enforces it.
 /// </para>
 /// <para>
 /// <b>Why a filter rather than <c>[RequestSizeLimit]</c>.</b> Those attributes take a compile-time

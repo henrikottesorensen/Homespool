@@ -33,10 +33,12 @@ namespace Homespool.Host.Configuration;
 /// copying it into a writable file would freeze shipped values for no reason.
 /// </para>
 /// <para>
-/// <b>The SMTP password is written in the clear, and that is temporary.</b> Nothing protects it yet;
-/// when the protector arrives, a file carrying a plaintext password is used as it stands and
-/// converted on its next save - the same adopt-on-save rule a camera credential already follows. The
-/// file is written 0600 either way.
+/// <b>The SMTP password is written in the clear here.</b> <see cref="SettingsSecretProtector"/> now
+/// exists, and <c>SettingsStore.Save</c> - the path the administration screen takes - writes
+/// <c>Smtp:ProtectedPassword</c> through it. This applet still writes <c>Smtp:Password</c>, which is
+/// read back as it stands and converted on its next save through the screen: the same adopt-on-save
+/// rule a camera credential follows. So a file this applet produced holds a plaintext password until
+/// somebody saves mail settings once. The file is written 0600 either way.
 /// </para>
 /// </remarks>
 public static class SettingsWriter

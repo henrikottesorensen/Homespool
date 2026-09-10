@@ -14,14 +14,20 @@ Eleven capabilities. Every permission decision in Homespool is one of them.
 | `ViewPrinter` | See that a printer exists at all, and its name, state and telemetry |
 | `ViewQueue` | See what a printer is going to print, and why the queue is waiting |
 | `ViewHistory` | See what a printer has printed |
-| `Print` | Queue a print — and cancel your own queue entry or stop your own running print |
-| `ControlPrinter` | Stop, pause, resume, ready, idle and preheat — on **anybody's** print — and reorder or cancel anybody's queue entry |
+| `Print` | Queue a print — cancel your own queue entry or stop your own running print — and mark the printer ready, or withdraw that |
+| `ControlPrinter` | Stop, pause, resume, idle and preheat — on **anybody's** print — and reorder or cancel anybody's queue entry |
 | `ManagePrinter` | Rename a printer, change its location, re-enrol it, and allow it to be readied remotely |
 | `ViewCamera` | See a camera and its picture |
 | `ManageCamera` | Add, change and remove cameras |
 | `ViewOwnFiles` | List and download **your own** files |
 | `UploadOwnFiles` | Upload a file under a name you are not already using |
 | `ManipulateOwnFiles` | Rename, delete and overwrite **your own** files |
+
+**Readying is `Print`, not `ControlPrinter`, and deliberately so.** Readiness is a person's assertion
+that the sheet is clear rather than an act on somebody else's print, and the queue starts nothing
+without it — gating it higher would leave somebody able to queue work and never able to start it. What
+guards the assertion is the per-printer *allow remote ready* toggle, which is `ManagePrinter` and off
+by default.
 
 **Without `ViewPrinter` a printer is not read-only, it is invisible.** It does not appear in listings,
 and asking for it by name answers *no such printer* — the same answer somebody who is not on its team
@@ -92,9 +98,13 @@ it lives in a slicer's configuration file on a laptop.
 
 ### Revoking
 
-Revoking a token is deleting it, and it stops working immediately. **Changing your password revokes
-every token you have**, on the assumption that somebody changing their password believes an account is
-compromised.
+Revoking a token is deleting it, and it stops working immediately. **Resetting your password revokes
+every token you have** — the email-link path is where somebody locked out of a compromised account
+arrives, so that is where the tokens go. **Changing your password from a signed-in session does not**:
+reaching that form takes the current password, so it is overwhelmingly routine rotation by somebody in
+possession of their account, and breaking every script they run is a poor answer to hygiene. To drop
+your tokens while you still hold the account, revoke them here — or ask an administrator, who can
+revoke them for you and does so automatically when an account is closed.
 
 One thing revocation does not do: **a print already queued by a token goes on printing.** The queue
 records what a job was accepted under and keeps running it. Removing the person's access to the

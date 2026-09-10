@@ -144,15 +144,23 @@ deployments behind a router or tunnel.
 ### TLS
 
 - **Browsers** get a self-signed certificate generated on first start, covering every name in
-  `USER_HOSTS`. To use a real certificate, put `homespool.crt` and `homespool.key` into the
-  `homespool-proxy-certs` volume and restart the proxy.
+  `USER_HOSTS`. To use a real certificate, put `<name>.crt` and `<name>.key` into the
+  `homespool-proxy-certs` volume — one pair per name, named for the host it covers, so
+  `printers.example.com` needs `printers.example.com.crt` and `.key` — and restart the proxy. A name
+  with no pair of its own falls back to the generated self-signed one; the entrypoint prints the same
+  instruction on first start.
 - **Printers** get a certificate Homespool mints itself, delivered on the provisioning USB stick,
   so the printer connection is verified TLS out of the box with no public CA involved.
 - **HSTS** is opt-in: `HSTS=1` in `.env`, which `setup-env.sh` offers once a public name has a
   certificate. It is sent only on names that actually hold an issued certificate, never on a
   self-signed one, so a `.lan` name or a bare address cannot lock its own users out.
 - Bringing your own reverse proxy (Traefik, Caddy, your nginx) is supported for the people-facing
-  half — put it on the stack's network and point `PROXY_ADDRESS` at it. The printer-facing half is **not** a normal reverse-proxy
+  half — put it on the stack's network, point `PROXY_ADDRESS` at it, and **have it clear
+  `X-Forwarded-Host`**. Homespool trusts that header from the proxy's address and builds
+  password-reset, confirmation and invitation links out of it, so a proxy that passes a
+  client-supplied one through lets a caller aim those links at a host of their choosing. The shipped
+  [nginx/homespool-proxy.conf](nginx/homespool-proxy.conf) clears it; a generic proxy does not, and
+  `PROXY_ADDRESS` alone is not enough. The printer-facing half is **not** a normal reverse-proxy
   job, and a generic proxy will break it: the firmware's TLS stack holds one kilobyte of plaintext
   at a time, so every TLS record must be capped at 1000 bytes — on the ordinary path *and* through
   the WebSocket tunnel. This limit is extremely easy to get wrong, because nothing tells you it

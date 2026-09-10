@@ -131,10 +131,11 @@ public class ResetPasswordModel : PageModel
             return RedirectToPage("./ResetPasswordConfirmation");
         }
 
-        // Revoked here as well as on the change-password page, and this is the more important of the
-        // two: recovering by email link is the path someone locked out of a compromised account
-        // actually takes. Atomic for the same reason - a reset that left the attacker's tokens live
-        // would hand back an account that only looks recovered.
+        // Revoked here and deliberately nowhere else on the two password paths: recovering by email
+        // link is what someone locked out of a compromised account actually does, while a change from
+        // a live session already took the current password and is overwhelmingly rotation. Atomic for
+        // the same reason - a reset that left the attacker's tokens live would hand back an account
+        // that only looks recovered.
         await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
         {
             IdentityResult result = await _userManager.ResetPasswordAsync(user, Input.Code, Input.Password);

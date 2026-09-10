@@ -25,7 +25,14 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>It runs after authorisation, never instead of it.</b> Authorisation filters run first, so an
 /// anonymous visitor is at the login page and a signed-in non-administrator is refused before this
-/// is reached. Every page carrying this also carries <c>[Authorize(Roles = AdminBootstrap.AdminRole)]</c>.
+/// is reached. Every page carrying this also carries <c>[Authorize(Roles = AdminBootstrap.AdminRole)]</c>
+/// - <b>a pairing held by hand</b>. <c>AdminElevationDeclarationTests</c> checks only that this
+/// attribute is declared, and says nothing about the role, so a page could carry one without the
+/// other and nothing would go red. What keeps that from being a hole today is that an elevation is
+/// only ever earned on <c>Admin/Challenge</c>, which requires the role itself - the filter below asks
+/// about elevation and nothing else. Declare both regardless: the transitive route is a property of
+/// another page, and a non-administrator should be refused where they asked rather than sent to a
+/// challenge they cannot pass.
 /// </para>
 /// <para>
 /// <b>A refused POST is not replayed after the challenge.</b> The redirect goes to the page's own

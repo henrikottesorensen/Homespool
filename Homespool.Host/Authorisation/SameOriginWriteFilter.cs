@@ -50,7 +50,10 @@ namespace Homespool.Host.Authorisation;
 /// Pages as well, and every page handler that writes already validates the antiforgery token, which
 /// is a stronger proof of origin than this and one the page tests sign in without this header to
 /// exercise - so a page is left alone by construction. Reads are never refused: a cross-site GET
-/// carries no cookie under <c>Lax</c>, and every API GET is a read. Registered for every controller
+/// carries no cookie under <c>Lax</c>, and the API's GETs are reads with one exception -
+/// <c>printers/{uuid}/storage/usb</c> reads by making the printer go and list a directory, which
+/// needs the printer's UUID and <c>ControlPrinter</c> and answers where a foreign
+/// page cannot read it. Registered for every controller
 /// rather than declared per action, so a controller added later is covered without anyone remembering
 /// to say so.
 /// </para>

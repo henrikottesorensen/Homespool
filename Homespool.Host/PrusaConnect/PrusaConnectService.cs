@@ -82,6 +82,15 @@ public class PrusaConnectService
     /// destructured <see cref="DTO.RegisterPrinterRequestDTO"/> that carried the fingerprint too,
     /// which put a live credential into the console sink and anything downstream of it.
     /// <para>
+    /// <b>The fingerprint is not a lesser secret than the code, and this method is the reason.</b> The
+    /// POST behind it is anonymous and keyed on the fingerprint alone, and it returns the outstanding
+    /// unexpired code for that fingerprint rather than minting a fresh one - so the fingerprint reaches
+    /// the same place the code does. Keeping the code out of the logs is worth doing and does not
+    /// change that: a fingerprint has to be handled as a credential wherever it is stored, logged or
+    /// carried in clear, and the way to make this paragraph unnecessary is to issue a new code per
+    /// POST, or to bind the poll to the fingerprint the client already sends.
+    /// </para>
+    /// <para>
     /// <see cref="PrusaConnectRegistration.Id"/> is logged in its place, which correlates an issue
     /// with the later poll and claim without reproducing the secret. The logging happens after
     /// <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(System.Threading.CancellationToken)"/> because the
@@ -179,7 +188,8 @@ public class PrusaConnectService
     /// <para>
     /// <c>TemporaryCode</c> is deliberately non-uniquely indexed, so a collision yields more than one
     /// row rather than being impossible. <see cref="EntityFrameworkQueryableExtensions.SingleOrDefaultAsync{TSource}(System.Linq.IQueryable{TSource},System.Threading.CancellationToken)"/> throws in that case, which
-    /// the controller surfaces as a 400 - honest, and vanishingly rare at 24 base36 characters.
+    /// the controller surfaces as a 400 - honest, and vanishingly rare at the ten Crockford base32
+    /// characters <see cref="CodeGenerator"/> issues, which is 2^50.
     /// </para>
     /// <para>
     /// <b>Expiry is enforced here, in the query.</b> <see cref="GetPrinterCode"/> only replaces an

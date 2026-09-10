@@ -223,6 +223,11 @@ services:
       # is three moving parts to solve a problem that has one.
       #
       # Read-only, because reading symlink names is the whole of what this service does with it.
+      #
+      # Read-only is not the same as narrow. The mount carries everything under the host's /dev, not
+      # only device nodes: /dev/shm holds ordinary files, and the container can read any of it that
+      # its uid is permitted to. What bounds this is host file ownership, not the :ro - so treat it
+      # as "this container can read the host's /dev tree" when weighing what else goes in there.
       - /dev:/hostdev:ro
 
     # Two networks: the proxy's, and the camera sidecar's. The sidecar is reached by service name

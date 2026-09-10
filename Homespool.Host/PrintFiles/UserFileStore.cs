@@ -22,11 +22,14 @@ namespace Homespool.Host.PrintFiles;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The layout is <c>{root}/{userId}/{name}</c>, and that is the whole design.</b>
+/// <b>The layout is <c>{root}/{userId}-{userName}/{name}</c>, and that is the whole design.</b>
 /// The user's mental model is a folder of files, so the store is
 /// one: names are unique per user and are the identity, <c>ls</c> shows you exactly what a user has,
 /// and ownership is <i>where a file lives</i> rather than a column somebody forgets to check. Every
 /// lookup here is scoped to a user id, so there is no way to ask for a file without saying whose.
+/// Only the <c>{userId}-</c> prefix is ever matched on: the name after it is decoration for whoever
+/// reads the data directory, is allowed to go stale when somebody renames themselves, and is
+/// <see cref="UserDirectoryName"/>'s business rather than this class's.
 /// </para>
 /// <para>
 /// <b>Replaces the id-addressed store</b> that came before it, which was a testing surface and said
@@ -37,10 +40,12 @@ namespace Homespool.Host.PrintFiles;
 /// the wire nothing.
 /// </para>
 /// <para>
-/// <b>No database table, deliberately, and not forever.</b> The filesystem is the truth; a table
-/// would today be an index with no reader, since size and timestamp come from the entry itself and
-/// the surrogate id a table would add exists to protect machinery - a queue, job history - that does
-/// not exist yet. When it does, the table joins and this class keeps its shape.
+/// <b>No database table in this class, and the table it said would come has come.</b> The filesystem
+/// is still the truth here: everything below answers from directory entries, and size and timestamp
+/// come from the entry itself. The <c>PrintFiles</c> row lives beside it, and the surrogate id it
+/// adds is what the queue and job history hang off. <see cref="PrintFileCatalog"/> is the pair kept in
+/// step - this store plus the row - so anything that must not let the two drift goes through the
+/// catalog and not through here. This class kept its shape, which was the bet.
 /// </para>
 /// <para>
 /// <b>Names are compared case-insensitively</b>, though the filesystem underneath may not be. macOS

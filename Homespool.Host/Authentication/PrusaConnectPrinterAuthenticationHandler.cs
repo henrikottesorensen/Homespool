@@ -83,7 +83,11 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// <b>And cleaned, because <c>Key</c> truncates and nothing more.</b> Sixteen characters of a
     /// header a stranger chose still hold a newline or an escape sequence, and every route reaching
     /// this handler is one an anonymous caller can hit - so the value is a log-forging vector wherever
-    /// it is written, not only here.
+    /// it is written, not only here. <b>That last sentence is a warning, not a description of the
+    /// code today</b>: the websocket connect line in <c>PrusaConnectPrinterController</c> writes the
+    /// fingerprint and printer headers as they arrived, and <c>HttpPrinterSessions</c> writes the raw
+    /// <c>User-Agent</c>. Cleaning happens here, and anywhere else that logs one of these has to do
+    /// it itself.
     /// </para>
     /// </remarks>
     private string FingerprintForLog()

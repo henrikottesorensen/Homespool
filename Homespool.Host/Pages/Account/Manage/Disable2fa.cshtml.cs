@@ -34,6 +34,15 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// step-up: six digits with unlimited attempts is not a control.
 /// </para>
 /// <para>
+/// <b>What that does not buy today, and it is the reason to be careful changing either page.</b>
+/// <see cref="EnableAuthenticatorModel"/>'s GET renders the existing authenticator seed and its QR
+/// code to any live session, with no step-up of its own and no check that two-factor is currently
+/// off. So the walk-up this page turns away can enrol that seed into its own app one screen over and
+/// come back and satisfy this one. Until that page refuses to re-display a seed the account already
+/// has, the code asked for here proves possession of a secret a session-holder can help themselves
+/// to, and this guard is worth what the neighbouring page leaves it worth.
+/// </para>
+/// <para>
 /// <b>The page beside it asks for a different credential, not for nothing.</b>
 /// <see cref="ResetAuthenticatorModel"/> - the button next to this one on
 /// <c>TwoFactorAuthentication</c> - reaches the same state, the flag off, and demands the account's

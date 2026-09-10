@@ -1898,8 +1898,14 @@ summarise() {
 apply() {
     # Seeded from the example rather than written from nothing, so that somebody who opens this file
     # later still finds the documentation for the twenty-odd settings the wizard never asked about.
+    #
+    # Created with the mode already on it rather than copied and chmod'ed afterwards, the way the
+    # backup below is. .env.example is 664 in the repository and cp would carry that across, so the
+    # file stood world-readable from here until the chmod at the end of this function - with the
+    # generated secrets written into it in between. cat under umask 077 rather than cp because cp
+    # preserves the source's mode and would defeat the umask.
     if [ ! -f "$env_file" ]; then
-        cp "$example_file" "$env_file"
+        ( umask 077 && cat "$example_file" > "$env_file" )
         say $"Created $env_file from .env.example."
     fi
 
@@ -1912,14 +1918,10 @@ apply() {
     # every run that gets this far, including one that changes nothing: a spare copy is litter, and
     # litter is cheaper than the alternative.
     #
-    # Created with the mode already set rather than chmod'ed afterwards, so the backup is never on
-    # disk world-readable, even briefly.
-    #
-    # The .env it copies is not in that position, and the difference is worth knowing before either
-    # is changed: on a first run .env is seeded from .env.example and so carries the repository's
-    # mode until the chmod at the end of apply(). Anything that writes a secret before then writes
-    # into a file whose mode has not caught up. Tightening that means creating the seed copy with
-    # the mode already on it, the way this backup is.
+    # Created with the mode already set rather than chmod'ed afterwards, so the secrets are never on
+    # disk world-readable, even briefly - the same reason the seed copy above is made that way. The
+    # chmod at the end of this function is what covers a .env that already existed; neither of these
+    # two files ever relies on it.
     if [ -f "$env_file" ]; then
         local backup
         # date(1) rather than printf's %(...)T, which would be tidier and is a trap: that format is

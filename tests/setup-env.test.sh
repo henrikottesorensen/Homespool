@@ -852,6 +852,30 @@ if test_case "apply tightens the mode on a file holding a password"; then
     assert_eq "600" "$mode" "not world-readable"
 fi
 
+if test_case "the seeded .env is not world-readable even before the chmod"; then
+    # The mode after apply proves nothing about this: the chmod at the bottom sets it either way,
+    # and the test above passes whether the file spent the run at 600 or arrived at 664 and was
+    # tightened at the end. What matters is the window in between, because that is where the
+    # generated secrets are written. say() runs immediately after the seed, so it is the one seam
+    # that can see the file at that moment - and reset_state re-sources the script, so overriding it
+    # here restores itself.
+    use_temp_env "GO2RTC_PASSWORD=" > /dev/null
+    # The mode .env.example carries in the repository, stated rather than inherited from the
+    # checkout, so the test still means something wherever it runs.
+    chmod 664 "$example_file"
+
+    seeded_mode=""
+    say() {
+        [ -n "$seeded_mode" ] ||
+            seeded_mode="$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")"
+    }
+
+    plan_set GO2RTC_PASSWORD hunter2
+    apply >/dev/null 2>&1
+
+    assert_eq "600" "$seeded_mode" "the seed copy carries its mode from the moment it exists"
+fi
+
 # ------------------------------------------------------------------------------------------------
 # --no-prompt and --no-overwrite
 #

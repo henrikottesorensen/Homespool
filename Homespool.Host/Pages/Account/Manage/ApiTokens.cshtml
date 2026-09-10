@@ -22,6 +22,21 @@
 
 <div class="row">
     <div class="col-md-6">
+        @if (!Model.UsesPassword)
+        {
+            @* No password to prove, so the provider does the proving: a round trip that ends back here
+               with a five-minute confirmation the create below spends. Its own form, since a form cannot
+               nest in the create form. *@
+            <p class="form-text">@Localiser["StepUp_ProviderWhy", Model.Providers.Count > 0 ? (Model.Providers[0].DisplayName ?? Model.Providers[0].Name) : Localiser["StepUp_YourProvider"].Value]</p>
+            @foreach (var scheme in Model.Providers)
+            {
+                <form method="post" asp-page-handler="Reauthenticate" class="mb-3">
+                    <input type="hidden" name="provider" value="@scheme.Name" />
+                    <button type="submit" class="btn btn-outline-primary">@Localiser["StepUp_ProviderConfirm", scheme.DisplayName ?? scheme.Name]</button>
+                </form>
+            }
+        }
+
         <form id="create-token-form" method="post">
             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
             <div class="form-floating mb-3">
@@ -66,6 +81,17 @@
                     </div>
                 }
             </fieldset>
+
+            @if (Model.UsesPassword)
+            {
+                @* The password, not a code: a token is a complete sign-in, so minting one takes the
+                   credential the account is protected by, as adding a passkey does. *@
+                <div class="form-floating mb-1">
+                    <input asp-for="Input.Password" class="form-control" autocomplete="current-password" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
+                    <label asp-for="Input.Password" class="form-label"></label>
+                </div>
+                <p class="form-text mb-3">@Localiser["StepUp_PasswordWhy"]</p>
+            }
 
             <button type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Tokens_Create"]</button>
         </form>

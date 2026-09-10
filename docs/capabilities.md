@@ -68,6 +68,11 @@ fail in; **Tick all** is there for the rare key that genuinely wants everything.
 **A token with no capabilities is refused.** You will be asked to choose at least one rather than
 handed a credential that fails on its first call.
 
+**Creating a token asks for your password** — or, for an account that signs in through a provider,
+a fresh confirmation there. A token is a complete sign-in for everything it names and it does not
+expire, so a browser session on its own is not enough to mint one, for the same reason it is not
+enough to add a passkey.
+
 **A token can never do more than you can.** What it may do is what your memberships allow *and* what
 its scope names — narrowing only. Ticking `ManagePrinter` on a token does not let it manage a printer
 you may only watch.
@@ -92,9 +97,10 @@ it lives in a slicer's configuration file on a laptop.
 
 ### Revoking
 
-Revoking a token is deleting it, and it stops working immediately. **Changing your password revokes
-every token you have**, on the assumption that somebody changing their password believes an account is
-compromised.
+Revoking a token is deleting it, and it stops working immediately. **Resetting a forgotten password
+revokes every token you have**, on the assumption that somebody who had to reset it may not be the
+only one holding the account. Changing it from the account menu, where the current password is
+typed, leaves your tokens standing.
 
 One thing revocation does not do: **a print already queued by a token goes on printing.** The queue
 records what a job was accepted under and keeps running it. Removing the person's access to the

@@ -183,6 +183,9 @@ namespace Homespool.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("ClearsTwoFactor")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long>("CreatedAt")
                         .HasColumnType("INTEGER");
 
@@ -198,6 +201,9 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<long>("InvitedBy")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("RecoversUserId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int?>("TeamId")

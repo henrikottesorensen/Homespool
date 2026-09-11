@@ -92,6 +92,33 @@
         <button type="submit" class="btn btn-outline-secondary" asp-page-handler="ClearLockout" asp-route-id="@Model.Id">@Localiser["AdminUsers_ClearLockout"]</button>
     </div>
 
+    @if (!Model.IsSelf && Model.DeactivatedAt is null)
+    {
+        <div class="border rounded p-3 mb-3">
+            <h2 class="h5">@Localiser["AdminUsers_Recovery"]</h2>
+            <p class="text-muted mb-2">@Localiser["AdminUsers_RecoveryWhy"]</p>
+
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" asp-for="ClearAuthenticator" id="clear-authenticator" />
+                <label class="form-check-label" for="clear-authenticator">@Localiser["AdminUsers_ClearAuthenticator"]</label>
+            </div>
+
+            <button type="submit" class="btn btn-outline-primary" asp-page-handler="Recover" asp-route-id="@Model.Id">@Localiser["AdminUsers_SendRecovery"]</button>
+
+            @if (!string.IsNullOrEmpty(Model.RecoveryLink))
+            {
+                @* Rendered here rather than carried through a redirect: this link is a credential for
+                   the account it names, and it exists in this one response and in the mail. *@
+                <div class="alert alert-success mt-3" role="alert">
+                    <p class="mb-1">@Localiser["AdminUsers_RecoveryLinkShownOnce"]</p>
+                    <div class="input-group">
+                        <input type="text" class="form-control" readonly value="@Model.RecoveryLink" aria-label="@Localiser["AdminUsers_Recovery"]" />
+                    </div>
+                </div>
+            }
+        </div>
+    }
+
     <p class="text-muted">@Localiser["AdminUsers_DeactivateWhy"]</p>
 
     @if (Model.IsSelf)

@@ -2864,4 +2864,55 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="AdminChallenge_Confirm" xml:space="preserve">
     <value>Confirm</value>
   </data>
+  <data name="AdminUsers_Recovery" xml:space="preserve">
+    <value>Recovery</value>
+  </data>
+  <data name="AdminUsers_RecoveryWhy" xml:space="preserve">
+    <value>If this person has lost their password, send them a single-use link that lets them set a new one. It goes to the address above, and it is shown here once so you can pass it on another way.</value>
+  </data>
+  <data name="AdminUsers_ClearAuthenticator" xml:space="preserve">
+    <value>They have lost their authenticator too — clear it as well</value>
+  </data>
+  <data name="AdminUsers_SendRecovery" xml:space="preserve">
+    <value>Send a recovery link</value>
+  </data>
+  <data name="AdminUsers_RecoveryIssued" xml:space="preserve">
+    <value>Recovery link sent. It can be used once, and their API tokens are revoked when it is.</value>
+  </data>
+  <data name="AdminUsers_RecoveryLinkShownOnce" xml:space="preserve">
+    <value>The link, shown here once:</value>
+  </data>
+  <data name="AdminUsers_RefusedSelfRecovery" xml:space="preserve">
+    <value>You cannot send yourself a recovery link: it would clear your own second factor on your password alone. Use your recovery codes, or ask another administrator.</value>
+  </data>
+  <data name="AdminUsers_RefusedRecoverDeactivated" xml:space="preserve">
+    <value>That account is deactivated, so a recovery link could not be used. Reactivate it first.</value>
+  </data>
+  <data name="AdminUsers_RefusedRecoverNoAddress" xml:space="preserve">
+    <value>That account has no email address, so there is nowhere to send a recovery link.</value>
+  </data>
+  <data name="Account_RecoverHelp" xml:space="preserve">
+    <value>Set a new password</value>
+  </data>
+  <data name="Account_RecoverExplanation" xml:space="preserve">
+    <value>An administrator sent you this link to get back into your account. Choose a new password; the API tokens the account held are revoked.</value>
+  </data>
+  <data name="Account_RecoverClearsTwoFactor" xml:space="preserve">
+    <value>Your authenticator is cleared as well, so you can set one up again afterwards.</value>
+  </data>
+  <data name="Account_RecoveryDeactivated" xml:space="preserve">
+    <value>That account is deactivated, so it cannot be recovered.</value>
+  </data>
+  <data name="Email_RecoverySubject" xml:space="preserve">
+    <value>Getting back into your Homespool account</value>
+  </data>
+  <data name="Email_RecoveryBody" xml:space="preserve">
+    <value>An administrator sent you a link to set a new password. Use it by &lt;a href=&apos;{0}&apos;&gt;clicking here&lt;/a&gt;. It can be used once and expires {1}.</value>
+  </data>
+  <data name="Email_RecoveredSubject" xml:space="preserve">
+    <value>Your Homespool password was reset</value>
+  </data>
+  <data name="Email_RecoveredBody" xml:space="preserve">
+    <value>A recovery link issued by an administrator was just used to set a new password on your account. If that was not you, tell whoever runs this Homespool straight away.</value>
+  </data>
 </root>

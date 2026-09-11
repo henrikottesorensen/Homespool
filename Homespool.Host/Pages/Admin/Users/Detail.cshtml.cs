@@ -3,6 +3,8 @@ using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,13 +12,16 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Admin.Users;
@@ -51,25 +56,34 @@ public class DetailModel : PageModel
     private readonly UserManager<HSUser> _users;
     private readonly UserAdministration _administration;
     private readonly TeamService _teams;
+    private readonly InvitationService _invitations;
+    private readonly IEmailSender _emailSender;
     private readonly CapabilityText _capabilities;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly TimeProvider _time;
+    private readonly ILogger<DetailModel> _logger;
 
     public DetailModel(HomespoolDbContext context,
                        UserManager<HSUser> users,
                        UserAdministration administration,
                        TeamService teams,
+                       InvitationService invitations,
+                       IEmailSender emailSender,
                        CapabilityText capabilities,
                        IStringLocalizer<SharedResource> localiser,
-                       TimeProvider time)
+                       TimeProvider time,
+                       ILogger<DetailModel> logger)
     {
         _context = context;
         _users = users;
         _administration = administration;
         _teams = teams;
+        _invitations = invitations;
+        _emailSender = emailSender;
         _capabilities = capabilities;
         _localiser = localiser;
         _time = time;
+        _logger = logger;
     }
 
     /// <summary>One of this account's passkeys.</summary>
@@ -83,6 +97,23 @@ public class DetailModel : PageModel
 
     [TempData]
     public string? StatusMessage { get; set; }
+
+    /// <summary>
+    /// Whether a recovery issued now also clears the account's authenticator - ticked when the person
+    /// has lost their second factor as well as their password.
+    /// </summary>
+    [BindProperty]
+    public bool ClearAuthenticator { get; set; }
+
+    /// <summary>
+    /// The recovery link just issued, rendered by the POST that made it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not carried through a redirect.</b> A recovery link is a credential for the account it
+    /// names, and <c>TempData</c> is a cookie - the same reason the API token page renders its secret
+    /// in the response that mints it. It exists in one HTTP response and in the mail.
+    /// </remarks>
+    public string? RecoveryLink { get; private set; }
 
     public long Id { get; private set; }
 
@@ -156,6 +187,86 @@ public class DetailModel : PageModel
                               administratorId => _administration.ClearLockoutAsync(administratorId, id, cancellationToken),
                               _ => _localiser["AdminUsers_LockoutCleared"].Value,
                               cancellationToken);
+    }
+
+    /// <summary>
+    /// Issues a recovery invite for this account: a single-use, expiring link that lets its owner set
+    /// a new password, and clears their authenticator when <see cref="ClearAuthenticator"/> says so.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What an administrator has instead of knowing somebody's password.</b> The self-service
+    /// routes need something the person no longer has - the mailbox for a reset link, the password for
+    /// a re-key - so an account whose owner has lost everything had no way back at all.
+    /// </para>
+    /// <para>
+    /// <b>Not for your own account.</b> An administrator recovering themselves would be clearing
+    /// their own second factor on a password alone, which is exactly what <c>Manage/Disable2fa</c>
+    /// refuses by demanding a live code. The route out of your own lost authenticator is the recovery
+    /// codes, or another administrator.
+    /// </para>
+    /// <para>
+    /// <b>Refused for a closed account</b>, because the sign-in gate would refuse the result: an
+    /// invite that cannot be redeemed is worse than a refusal, being a thing that looks like help.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnPostRecoverAsync(long id, CancellationToken cancellationToken)
+    {
+        HSUser? administrator = await _users.GetUserAsync(User);
+
+        if (administrator is null || !await LoadAsync(id, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        if (IsSelf)
+        {
+            StatusMessage = _localiser["AdminUsers_RefusedSelfRecovery"].Value;
+
+            return Page();
+        }
+
+        if (DeactivatedAt is not null)
+        {
+            StatusMessage = _localiser["AdminUsers_RefusedRecoverDeactivated"].Value;
+
+            return Page();
+        }
+
+        if (string.IsNullOrEmpty(Email))
+        {
+            StatusMessage = _localiser["AdminUsers_RefusedRecoverNoAddress"].Value;
+
+            return Page();
+        }
+
+        (Invitation invitation, string plaintext) = await _invitations.CreateRecoveryAsync(
+            id, Email, ClearAuthenticator, administrator.Id, expiresAt: null, cancellationToken);
+
+        string code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(plaintext));
+
+        RecoveryLink = Url.Page("/Account/Register",
+                                pageHandler: null,
+                                values: new { inviteId = invitation.Id, code },
+                                protocol: Request.Scheme);
+
+        await _emailSender.SendEmailAsync(
+            Email,
+            _localiser["Email_RecoverySubject"],
+            _localiser["Email_RecoveryBody",
+                       HtmlEncoder.Default.Encode(RecoveryLink!),
+                       invitation.ExpiresAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)]);
+
+        _logger.LogWarning(
+            "Administrator {AdministratorId} issued recovery invitation {InviteId} for user {UserId}; clears two-factor: {ClearsTwoFactor}.",
+            administrator.Id,
+            invitation.Id,
+            id,
+            ClearAuthenticator);
+
+        StatusMessage = _localiser["AdminUsers_RecoveryIssued"].Value;
+
+        return Page();
     }
 
     /// <summary>

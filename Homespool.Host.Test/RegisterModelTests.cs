@@ -102,6 +102,7 @@ public sealed class RegisterModelTests : IDisposable
             invitationService,
             new TeamService(context),
             new UnitOfWork(context),
+            new ApiTokenService(context),
             TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

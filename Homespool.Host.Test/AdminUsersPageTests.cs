@@ -20,6 +20,7 @@ using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Admin.Users;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -43,6 +44,14 @@ public sealed class AdminUsersPageTests : IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-adminusers-{Guid.NewGuid():N}.db");
 
     private readonly List<IServiceScope> _scopes = [];
+
+    /// <summary>What the recovery invite's mail went to, when a test issued one.</summary>
+    private CapturingEmailSender Mail { get; } = new();
+
+    private static InvitationService NewInvitationService(HomespoolDbContext context)
+    {
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+    }
 
     public void Dispose()
     {
@@ -168,6 +177,81 @@ public sealed class AdminUsersPageTests : IDisposable
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().StartWith("You cannot deactivate your own account");
         (await Reload(context, admin.Id)).DeactivatedAt.Should().BeNull();
+    }
+
+    /// <summary>
+    /// An administrator recovering themselves would clear their own second factor on their password
+    /// alone - which is exactly what Disable2fa refuses by demanding a live code.
+    /// </summary>
+    [Fact]
+    public async Task RecoveringYourOwnAccountIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        (DetailModel model, _) = NewDetail(context, provider, users, admin);
+        model.ClearAuthenticator = true;
+
+        // Act
+        IActionResult result = await model.OnPostRecoverAsync(admin.Id, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+        model.StatusMessage.Should().StartWith("You cannot send yourself a recovery link");
+        model.RecoveryLink.Should().BeNull();
+        (await context.Invitations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        Mail.SentEmails.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A closed account gets no recovery link either: it could not be redeemed, and an invite that
+    /// cannot work is worse than a refusal because it looks like help.
+    /// </summary>
+    [Fact]
+    public async Task ADeactivatedAccountIsRefusedARecovery()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        await Administration(context, provider).DeactivateAsync(admin.Id, subject.Id, CancellationToken.None);
+
+        (DetailModel model, _) = NewDetail(context, provider, users, admin);
+
+        // Act
+        IActionResult result = await model.OnPostRecoverAsync(subject.Id, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+        model.StatusMessage.Should().StartWith("That account is deactivated");
+        model.RecoveryLink.Should().BeNull();
+        (await context.Invitations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>The happy path: a link, rendered once, and a mail to the account.</summary>
+    [Fact]
+    public async Task IssuingARecoveryRendersTheLinkAndMailsIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        (DetailModel model, _) = NewDetail(context, provider, users, admin);
+
+        // Act
+        IActionResult result = await model.OnPostRecoverAsync(subject.Id, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+        model.RecoveryLink.Should().Contain("/Account/Register");
+        Mail.SentEmails.Should().ContainSingle().Which.email.Should().Be("subject@example.com");
+
+        Invitation issued = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
+        issued.RecoversUserId.Should().Be(subject.Id);
+        issued.ClearsTwoFactor.Should().BeFalse("the administrator did not tick it");
     }
 
     [Fact]
@@ -321,9 +405,12 @@ public sealed class AdminUsersPageTests : IDisposable
                                 users,
                                 Administration(context, provider),
                                 new TeamService(context),
+                                NewInvitationService(context),
+                                Mail,
                                 new CapabilityText(TestLocaliser.Shared()),
                                 TestLocaliser.Shared(),
-                                TimeProvider.System)
+                                TimeProvider.System,
+                                NullLogger<DetailModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(request),
             Url = IdentityTestHarness.NewUrlHelper(request),

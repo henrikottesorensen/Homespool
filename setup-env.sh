@@ -1132,7 +1132,26 @@ candidate_names_raw() {
     while IFS= read -r address; do
         address="${address%%	*}"
         [ -n "$address" ] || continue
-        reverse_name "$address"
+
+        # QUALIFIED ANSWERS ONLY, and this is the only source that needs saying: every other one
+        # below emits a name that already carries a dot or assembles one with a suffix, while a
+        # reverse lookup answers with whatever the hosts file holds - and a machine whose own
+        # address maps to a short name there, which is how cloud images and plenty of installers
+        # write it, answers with a single label.
+        #
+        # A single label is no use to either caller. It resolves for this machine and for anything
+        # sharing its search domain and for nobody else, so as a name to type in a browser or to
+        # hand a printer it is a name that does not work. Dropping it costs nothing: .local waits at
+        # the end of this list, and the printer path tests every candidate against the addresses
+        # anyway.
+        #
+        # This does not demote reverse DNS, which is first deliberately and has to stay there: where
+        # the router publishes a real name and no search suffix, every assembled guess comes up
+        # empty and this is the only source that answers at all.
+        name="$(reverse_name "$address")"
+        case "$name" in
+            *.*) echo "$name" ;;
+        esac
     done <<< "$addresses"
 
     name="$(machine_name)"

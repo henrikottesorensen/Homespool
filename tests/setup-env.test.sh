@@ -1333,12 +1333,31 @@ if test_case "USER_HOSTS may be .local, because browsers do mDNS"; then
     # .local - so this asserts the part that is fixed: a bare name does not stay bare.
     # machine_name is overridden rather than trusted: in a container it correctly returns nothing, so
     # the honest answer there is localhost and the rule under test never runs.
+    #
+    # EVERY SOURCE IS PINNED, and this test is the reason the rule exists. It used to stub only
+    # machine_name and let reverse DNS reach the real machine, so what it asserted depended on what
+    # the host's own hosts file said about its own address - green here, green on macOS, and red on
+    # a CI runner whose address maps to a short name. A test about which candidate is chosen must
+    # not also be a test of the machine it runs on.
+    sandbox_path linux
     use_temp_env "USER_HOSTS=localhost"
+    in_container() { return 1; }
+    lan_addresses() { printf '10.1.0.42\teth0\n'; }
     machine_name() { echo printbox; }
+
+    # The shape that was failing: the hosts file answers with a single label, which is a name only
+    # this machine and its search domain can resolve.
+    reverse_name() { echo "fv-az1234-567"; }
     case "$(suggested_user_host)" in
         *.*) passed=$((passed + 1)) ;;
         *) fail "a bare hostname was offered to a browser unqualified" ;;
     esac
+
+    # And the half that must not regress while fixing the other: reverse DNS is first deliberately,
+    # because where the router publishes a real name and no search suffix it is the only source that
+    # answers at all. A qualified answer from it still wins over anything assembled.
+    reverse_name() { echo "printbox.lan"; }
+    assert_eq "printbox.lan" "$(suggested_user_host)" "a qualified reverse answer still beats the assembled guesses"
 
     # And with nothing to go on at all, no answer beats a wrong one. Both sources are silenced:
     # reverse DNS is a real source now, so stubbing only machine_name no longer means "nothing".

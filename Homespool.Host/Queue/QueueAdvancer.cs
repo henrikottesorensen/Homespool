@@ -448,9 +448,21 @@ public sealed class QueueAdvancer : BackgroundService
                                                    .OrderBy(printerEvent => printerEvent.Id)
                                                    .ToListAsync(cancellationToken);
 
-        long highest = await dbContext.PrinterEvents
-                                      .Where(printerEvent => printerEvent.PrinterId == printerId)
-                                      .MaxAsync(printerEvent => (long?)printerEvent.Id, cancellationToken) ?? watermark;
+        // THE HIGHEST EVENT THIS PASS ACTUALLY LOOKED AT, which is the only id it can claim to have
+        // handled. The maximum over every event was a SECOND query issued after the one above, so
+        // anything written between the two was lost outright: too new for the first query to
+        // return, and, once the watermark moved past it, too old for the next pass to ask for.
+        //
+        // Not a narrow window. TelemetryWriter adds printer events in batches and saves them in
+        // one go, and a printer mid-transfer produces a steady stream of them - TRANSFER_INFO,
+        // STATE_CHANGED, JOB_INFO - so the id this claimed to have reached was routinely one
+        // another connection had only just written. A batch landing between the two queries took
+        // every FILE_INFO in it.
+        //
+        // What it costs when it happens: nothing records the file as arrived and nothing records it
+        // as failed, so the entry waits out TransferStaleAfter - half an hour - before the file is
+        // offered again.
+        long highest = events.Count > 0 ? events[^1].Id : watermark;
 
         bool changed = false;
 

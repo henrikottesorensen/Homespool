@@ -378,12 +378,64 @@ public sealed class LoginFlowTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>An account that exists but may not sign in costs a verification too.</b> The pre-sign-in
+    /// check returns before the password is ever compared, so without a decoy on that branch a
+    /// deactivated, unconfirmed or locked-out account is the one cheap answer among expensive ones -
+    /// the oracle the unknown identifier already spends a decoy to close, one branch further down.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Counted rather than timed, for the reason the test above gives in full.
+    /// </para>
+    /// <para>
+    /// <b>The locked-out case is here even though the page redirects it to <c>Lockout</c></b> and so
+    /// announces the account in its status line by decision. The decoy is the handler's property, not
+    /// the page's: a caller who reaches the scheme by another route, or a page that stops redirecting,
+    /// must not find the timing gap still open underneath.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnAccountThatMayNotSignInVerifiesAPasswordToo()
+    {
+        // Arrange - one account refused for being unconfirmed, one for being locked out
+        await CreateUserAsync("unconfirmed@example.com", confirmed: false);
+        await CreateUserAsync("shut@example.com", confirmed: true);
+
+        CountingPasswordHasher counter = new();
+
+        using WebApplicationFactory<Controllers.PrinterAppController> counted =
+            _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(
+                                            services => services.AddSingleton<IPasswordHasher<HSUser>>(counter)));
+
+        using (IServiceScope scope = counted.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser locked = (await users.FindByEmailAsync("shut@example.com"))!;
+
+            (await users.SetLockoutEndDateAsync(locked, DateTimeOffset.UtcNow.AddMinutes(30)))
+                .Succeeded.Should().BeTrue("the lockout is setup for this test, not what it verifies");
+        }
+
+        // Act - the *correct* password each time, so the refusal is the pre-sign-in check and nothing else
+        int afterUnconfirmed = await AttemptAsync(counted, "unconfirmed@example.com", Password);
+        int afterLockedOut = await AttemptAsync(counted, "shut@example.com", Password, HttpStatusCode.Redirect);
+
+        // Assert
+        afterUnconfirmed.Should().Be(1, "an account that may not sign in is refused after a decoy, not before one");
+        afterLockedOut.Should().Be(1, "and so is one already locked out");
+    }
+
+    /// <summary>
     /// Posts one login attempt through <paramref name="factory"/> and returns how many password
-    /// verifications it cost.
+    /// verifications it cost. <paramref name="expected"/> is the refusal's own status - the form for
+    /// every reason but one, and the redirect to <c>Lockout</c> for that one.
     /// </summary>
     private static async Task<int> AttemptAsync(WebApplicationFactory<Controllers.PrinterAppController> factory,
                                                 string login,
-                                                string password)
+                                                string password,
+                                                HttpStatusCode expected = HttpStatusCode.OK)
     {
         using HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
@@ -399,7 +451,7 @@ public sealed class LoginFlowTests : IAsyncLifetime
         using HttpResponseMessage postResponse =
             await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
 
-        postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "both attempts are refusals, rendered on the form");
+        postResponse.StatusCode.Should().Be(expected, "the attempt is a refusal, answered the way its reason is");
 
         return counter.Verifications;
     }

@@ -127,8 +127,14 @@ public class ResetPasswordModel : PageModel
         HSUser user = await _userManager.FindByEmailAsync(Input.Email);
         if (user == null)
         {
-            // Don't reveal that the user does not exist
-            return RedirectToPage("./ResetPasswordConfirmation");
+            // Refused the way a bad token is, rather than sent to the confirmation page. An address no
+            // account holds cannot hold a usable token either, so this is the same answer and not a
+            // softer one - and a redirect here, where a known address re-renders, is what told an
+            // anonymous caller which addresses exist. The describer is the one the failure below uses,
+            // so the two cannot drift into different words.
+            ModelState.AddModelError(string.Empty, _userManager.ErrorDescriber.InvalidToken().Description);
+
+            return Page();
         }
 
         // Revoked here and deliberately nowhere else on the two password paths: recovering by email
@@ -159,9 +165,9 @@ public class ResetPasswordModel : PageModel
 
             await transaction.CommitAsync(cancellationToken);
 
-            // Logged rather than shown: the confirmation page is reached by anyone who submits the
-            // form, including for an address that does not exist, so it cannot say anything specific
-            // about an account without becoming an enumeration oracle.
+            // Logged rather than shown: a count of revoked tokens is operator detail, and the person
+            // who has just recovered an account cannot act on it. The confirmation page is reached
+            // only by a reset that succeeded, so what it says is a choice rather than a constraint.
             _logger.LogInformation("Password reset completed. {RevokedTokenCount} API tokens revoked.", revoked);
         }
 

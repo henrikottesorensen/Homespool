@@ -121,6 +121,17 @@ public static class EditableSettings
             SettingGrade.Deferred,
             AppliesWhenKey: "Settings_AppliesOnNextSweep",
             DisplaySubgroup: "Telemetry"),
+        new(typeof(StorageOptions),
+            StorageOptions.SectionName,
+            nameof(StorageOptions.MaxSamplesPerPrinter),
+            SettingGrade.Deferred,
+            AppliesWhenKey: "Settings_AppliesOnNextSweep",
+            DisplaySubgroup: "Telemetry"),
+
+        // Decides which database the telemetry context is opened against, in
+        // DataServiceCollectionExtensions.AddTelemetryData, so it is fixed for the life of the
+        // process rather than merely cached like the two below.
+        new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.TelemetryInMemory), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
         // Sizes the writer's bounded channel at TelemetryWriter:234 and is read per batch at :547.
         new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteBatchSize), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),

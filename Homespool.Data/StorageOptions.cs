@@ -23,6 +23,74 @@ public class StorageOptions
     public bool AutoMigrate { get; set; } = true;
 
     /// <summary>
+    /// Keep telemetry in memory only, discarding it when the process stops. Default off.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What it is for: an SD card wears out by being written to, and telemetry is nearly all of the
+    /// writing.</b> Measured on a Pi appliance, one printer streaming while printing costs about
+    /// 1.1 GB of card writes a day to persist roughly 5 MB of telemetry - some two hundred times
+    /// amplification - and samples account for 98% of the database. With this on, the steady-state
+    /// telemetry write rate is zero.
+    /// </para>
+    /// <para>
+    /// <b>The amplification is per commit, not per row, which is why this covers live state too.</b>
+    /// Every telemetry message dirties the one-row-per-printer live state, so a flush commits whether
+    /// or not any history is buffered - moving the history alone would shrink each transaction and
+    /// leave their number unchanged. All five telemetry tables move together or the saving does not
+    /// arrive.
+    /// </para>
+    /// <para>
+    /// <b>What it costs is history across a restart, and memory while running.</b> The window is
+    /// bounded by <see cref="MaxSamplesPerPrinter"/> and <see cref="MaxEventsPerPrinter"/> rather than
+    /// by disk. Live state is the exception and is written back at shutdown, so a printer that is
+    /// switched off still shows what it last reported after a planned restart; an unclean stop loses
+    /// that too, which is the same trade <see cref="WriteFlushIntervalSeconds"/> already makes.
+    /// </para>
+    /// <para>
+    /// <b>Needs a restart</b>, because it decides which database the telemetry context is opened
+    /// against.
+    /// </para>
+    /// </remarks>
+    public bool TelemetryInMemory { get; set; }
+
+    /// <summary>
+    /// The most <see cref="TelemetrySample"/> rows to keep for any one printer, oldest dropped first.
+    /// Zero disables the cap.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Per printer and counted in rows</b>, for the reasons <see cref="MaxEventsPerPrinter"/> gives
+    /// - a global cap lets one chatty printer evict every other printer's history, and rows are what
+    /// bound memory where days do not. <b>That neighbour's other argument does not carry across</b>:
+    /// a row cap bounds the durable event table because age alone demonstrably does not, and nobody
+    /// has made that case for samples. Assuming it by analogy is what once had this capping the file
+    /// as well.
+    /// </para>
+    /// <para>
+    /// <b>It applies only when <see cref="TelemetryInMemory"/> is on.</b> Days bound a disk and rows
+    /// bound memory, and a durable store is already bounded by <see cref="TelemetryRetentionDays"/>;
+    /// capping its rows as well would discard history somebody chose to keep, the moment they upgraded
+    /// to a build carrying this default. Measured on the appliance this was written for, that would
+    /// have been 68% of its samples on the first startup, with the setting switched off.
+    /// </para>
+    /// <para>
+    /// <b>In memory it is the only thing that bounds anything.</b> In an in-memory SQLite a sample is
+    /// about 146 bytes including its index, so the default costs roughly 7 MiB per printer - a little
+    /// over a day of continuous printing at the two-second cadence a printing printer sustains, and
+    /// considerably longer once it spends any time idle, firmware slowing to five and then fifteen
+    /// seconds as it settles.
+    /// </para>
+    /// <para>
+    /// <b>The graph window shrinks with it</b>, because a chart cannot show rows that no longer exist;
+    /// <c>TemperatureWindow</c> clamps itself to what is actually held rather than drawing an empty
+    /// stretch that reads as data loss.
+    /// </para>
+    /// </remarks>
+    [Range(0, 10_000_000)]
+    public int MaxSamplesPerPrinter { get; set; } = 50_000;
+
+    /// <summary>
     /// How long to keep <see cref="TelemetrySample"/> rows. Zero disables the retention sweep
     /// entirely.
     /// </summary>

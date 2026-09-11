@@ -364,6 +364,60 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 "[{PrinterId}] the telemetry writer did not acknowledge the deletion within {Timeout}; deleting anyway, which may cost one failed flush.",
                 printerId, ForgetTimeout);
         }
+
+        await DeleteStoredTelemetryAsync(printerId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Removes everything the telemetry store holds for a printer that is being deleted.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only the buffers are the drain loop's business; the rows are this.</b>
+    /// <see cref="ForgetPrinterAsync"/> has already waited for the loop to purge what was queued and
+    /// to start refusing anything further, so by this point nothing can write a new row for this
+    /// printer and the stored ones can be deleted without racing it.
+    /// </para>
+    /// <para>
+    /// <b>Explicit rather than left to the cascade, because in memory there is no cascade to leave it
+    /// to.</b> A telemetry database holding these five tables alone has no <c>Printers</c> table and
+    /// therefore no foreign key from it, so deleting the printer row would strand its history for the
+    /// life of the process. Run in both modes deliberately: against the file it does the work the
+    /// cascade was about to do anyway, a moment earlier, and one behaviour is worth more than the
+    /// saving of skipping it.
+    /// </para>
+    /// <para>
+    /// Slot rows are not deleted here. They cascade from their parent sample and live state, and both
+    /// of those relationships exist in either database.
+    /// </para>
+    /// </remarks>
+    private async Task DeleteStoredTelemetryAsync(int printerId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
+            await ApplyWriterCommandTimeoutAsync(telemetry, budget: null, cancellationToken);
+
+            await telemetry.TelemetrySamples
+                           .Where(sample => sample.PrinterId == printerId)
+                           .ExecuteDeleteAsync(cancellationToken);
+
+            await telemetry.PrinterEvents
+                           .Where(printerEvent => printerEvent.PrinterId == printerId)
+                           .ExecuteDeleteAsync(cancellationToken);
+
+            await telemetry.PrinterLiveStates
+                           .Where(state => state.PrinterId == printerId)
+                           .ExecuteDeleteAsync(cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Logged rather than thrown, on ForgetPrinterAsync's reasoning: refusing to delete a
+            // printer because its history would not go quietly helps nobody, and what is left behind
+            // is rows nothing can reach rather than a broken deployment.
+            _logger.LogError(e, "[{PrinterId}] could not delete stored telemetry for a printer being removed.", printerId);
+        }
     }
 
     /// <summary>
@@ -605,6 +659,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             }
         }
 
+        // Independent of whether the flush above succeeded: the cache is the authority on what each
+        // printer last reported, and that is worth saving even when the history it came from is not.
+        await PersistLiveStateForRestartAsync(cache);
+
         // The only place that can honestly report whether shutdown saved everything, and the signal
         // an operator waiting out the drain is looking for. SafeFlushAsync leaves the buffers
         // populated when a flush fails, so anything still here is about to die with the process -
@@ -618,6 +676,92 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         else
         {
             _logger.LogInformation("Telemetry drained to the database. Shutdown can complete safely.");
+        }
+    }
+
+    /// <summary>
+    /// Writes each printer's last-known state to the application database as the process stops, so a
+    /// restart does not lose it. Only when telemetry is held in memory.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Without this, an in-memory deployment forgets every printer that is switched off.</b> A
+    /// connected printer refills its live state within seconds of reconnecting, so it would barely
+    /// show; one that is unplugged, or off for the night, has nothing to refill it and would read as
+    /// "never connected" for as long as it stayed away - discarding a fact the application had, and
+    /// which is exactly what somebody opening the page wants to see. One of the two printers on the
+    /// appliance this was measured against had been off for six days.
+    /// </para>
+    /// <para>
+    /// <b>What it costs is one row per printer, once, at shutdown</b> - so it does not reintroduce the
+    /// write rate the setting exists to remove. An unclean stop still loses it, which is the same
+    /// trade <see cref="StorageOptions.WriteFlushIntervalSeconds"/> already makes for buffered
+    /// telemetry.
+    /// </para>
+    /// <para>
+    /// <b>The rows are read back before they are written</b>, rather than reusing
+    /// <c>LiveStateCacheEntry.ExistsInDatabase</c>: that flag tracks the telemetry database, which in
+    /// this mode is a different one, and trusting it here would issue an <c>UPDATE</c> matching no
+    /// rows on the first shutdown after a printer was first seen.
+    /// </para>
+    /// <para>
+    /// <b>A failure is logged, never thrown.</b> This runs after the drain loop has ended, on the way
+    /// out; losing last-known state is a degradation, and taking the shutdown down with it would be
+    /// worse than the thing it was trying to prevent.
+    /// </para>
+    /// </remarks>
+    private async Task PersistLiveStateForRestartAsync(Dictionary<int, LiveStateCacheEntry> cache)
+    {
+        if (!_options.TelemetryInMemory || cache.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            HomespoolDbContext durable = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+            await ApplyWriterCommandTimeoutAsync(durable, FinalFlushCommandBudget, CancellationToken.None);
+
+            List<int> printerIds = [.. cache.Keys];
+
+            // Untracked, and that is required rather than tidy: the cache's own instances are attached
+            // below, and a tracked read of the same keys would put two instances of one entity in the
+            // change tracker and throw.
+            List<PrinterLiveState> stored = await durable.PrinterLiveStates
+                                                         .AsNoTracking()
+                                                         .Include(state => state.Slots)
+                                                         .Where(state => printerIds.Contains(state.PrinterId))
+                                                         .ToListAsync(CancellationToken.None);
+
+            HashSet<int> storedPrinters = [.. stored.Select(state => state.PrinterId)];
+            HashSet<(int printerId, int slotNumber)> storedSlots =
+                [.. stored.SelectMany(state => state.Slots).Select(slot => (slot.PrinterId, slot.SlotNumber))];
+
+            foreach ((int printerId, LiveStateCacheEntry entry) in cache)
+            {
+                durable.Attach(entry.State);
+                durable.Entry(entry.State).State =
+                    storedPrinters.Contains(printerId) ? EntityState.Modified : EntityState.Added;
+
+                foreach (PrinterLiveSlotState slot in entry.State.Slots)
+                {
+                    durable.Entry(slot).State = storedSlots.Contains((printerId, slot.SlotNumber)) ?
+                        EntityState.Modified :
+                        EntityState.Added;
+                }
+            }
+
+            await durable.SaveChangesAsync(CancellationToken.None);
+
+            _logger.LogInformation(
+                "Saved last-known state for {PrinterCount} printer(s) so it survives this restart; telemetry history is in memory only and is not.",
+                cache.Count);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogError(
+                e, "Could not save last-known printer state on shutdown; printers that are offline will read as never connected until they reconnect.");
         }
     }
 
@@ -1189,7 +1333,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Security", "EF1002:Risk of vulnerability to SQL injection",
                                                      Justification =
                                                          "PRAGMA cannot be parameterised; the interpolated value is an int this class computes.")]
-    private async Task ApplyWriterCommandTimeoutAsync(HomespoolDbContext context,
+    private async Task ApplyWriterCommandTimeoutAsync(DbContext context,
                                                       TimeSpan? budget,
                                                       CancellationToken cancellationToken)
     {
@@ -1234,6 +1378,14 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             $"PRAGMA busy_timeout = {Math.Max((int)(effective.TotalMilliseconds / 2), 1)}", cancellationToken);
     }
 
+    /// <remarks>
+    /// <b>Read from the application database rather than the telemetry one, and that is the whole
+    /// point when telemetry is held in memory.</b> With it on disk the two are the same rows, so this
+    /// is the same read it always was. In memory the telemetry store begins empty every time, and what
+    /// this finds is the live state written back at the last clean shutdown - which is what lets a
+    /// printer that is switched off still show what it last reported after a restart, instead of
+    /// reappearing as one that has never connected.
+    /// </remarks>
     private async Task<LiveStateCacheEntry> HydrateAsync(int printerId, CancellationToken cancellationToken)
     {
         using IServiceScope scope = _scopeFactory.CreateScope();
@@ -1247,11 +1399,21 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         if (existing is not null)
         {
-            LiveStateCacheEntry hydrated = new() { State = existing, ExistsInDatabase = true };
+            // The values come from the application database; whether a ROW exists is a question about
+            // the telemetry one, and in memory those are different databases. A memory store begins
+            // every process empty, so the first flush after hydration has to INSERT - marking this
+            // entry as already present would issue an UPDATE matching no rows, silently, and the
+            // printer's live state would never appear in the store anything reads.
+            bool rowExistsInStore = !_options.TelemetryInMemory;
 
-            foreach (PrinterLiveSlotState slot in existing.Slots)
+            LiveStateCacheEntry hydrated = new() { State = existing, ExistsInDatabase = rowExistsInStore };
+
+            if (rowExistsInStore)
             {
-                hydrated.ExistingSlotNumbers.Add(slot.SlotNumber);
+                foreach (PrinterLiveSlotState slot in existing.Slots)
+                {
+                    hydrated.ExistingSlotNumbers.Add(slot.SlotNumber);
+                }
             }
 
             return hydrated;
@@ -1334,12 +1496,34 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// flush, so it is used directly instead of asking EF to infer it.
     /// </para>
     /// <para>
-    /// <b>"One transaction" is literal, including <c>Printer.LoadedMaterial</c>.</b> That update is a
-    /// tracked single-property change on an attached, unloaded stub - not
-    /// <c>ExecuteUpdateAsync</c>, which runs as its own immediate statement outside
-    /// <see cref="DbContext.SaveChangesAsync(CancellationToken)"/>'s implicit transaction and would
-    /// commit on its own even if the save below then failed. Every write in this method rises or
-    /// falls with that one call.
+    /// <b>Two transactions, because two databases can be involved.</b>
+    /// <see cref="TelemetryDbContext"/> takes the history and the live state, which
+    /// <see cref="StorageOptions.TelemetryInMemory"/> may have diverted away from disk entirely; the
+    /// application database takes what describes the machine - <c>Printer.LoadedMaterial</c>, the
+    /// identity an <c>INFO</c> reported, the per-tool rows and the drive listing.
+    /// </para>
+    /// <para>
+    /// <b>Telemetry goes first, and each half clears only its own buffers, only once its own save has
+    /// succeeded.</b> That is what keeps two transactions as safe as the one they replaced. Telemetry
+    /// is the half that cannot be repeated - re-running it would insert the same samples twice - so it
+    /// commits and clears before anything else is attempted. The durable half is idempotent, being a
+    /// last-writer-wins upsert of the printer as it stands, so a failure there costs a retry that
+    /// writes the same values again.
+    /// </para>
+    /// <para>
+    /// <b>The order also preserves what a single transaction guaranteed about partial writes.</b> A
+    /// failure in the telemetry half means the durable half is never attempted, so a material
+    /// writeback cannot be left behind by a flush that then failed - which is the property
+    /// <c>LoadedMaterialRollsBackWithTheRestOfTheFlushOnFailure</c> pins. Reversed, that test would be
+    /// the thing that broke. Neither half uses <c>ExecuteUpdateAsync</c>, which runs as its own
+    /// immediate statement outside <see cref="DbContext.SaveChangesAsync(CancellationToken)"/>'s
+    /// implicit transaction and would commit even when the save around it failed.
+    /// </para>
+    /// <para>
+    /// <b>What is genuinely given up</b> is the reverse case: telemetry committed while the identity
+    /// beside it fails, leaving a printer's firmware string one flush behind its samples until the
+    /// retry. Both are snapshots of a machine still talking to us, so the disagreement is transient
+    /// and describes nothing a reader can act on wrongly.
     /// </para>
     /// </remarks>
     private async Task FlushAsync(Dictionary<int, LiveStateCacheEntry> cache,
@@ -1357,31 +1541,38 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
 
         using IServiceScope scope = _scopeFactory.CreateScope();
-        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-        await ApplyWriterCommandTimeoutAsync(context, commandBudget, cancellationToken);
 
-        if (pendingSamples.Count > 0)
-        {
-            context.TelemetrySamples.AddRange(pendingSamples);
-        }
+        HomespoolDbContext durable = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+        TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
 
-        if (pendingEvents.Count > 0)
-        {
-            context.PrinterEvents.AddRange(pendingEvents);
-        }
+        await ApplyWriterCommandTimeoutAsync(durable, commandBudget, cancellationToken);
+        await ApplyWriterCommandTimeoutAsync(telemetry, commandBudget, cancellationToken);
 
-        // Every cache mutation below is recorded here rather than applied directly, and only
-        // carried out once SaveChangesAsync below actually succeeds. Applying any of them before
-        // the save is confirmed would leave the cache believing something is true in the database
-        // that a rolled-back save never actually wrote - permanently, for the rest of the process's
-        // life, since nothing else ever corrects it:
+        // Every cache mutation below is recorded rather than applied directly, and only carried out
+        // once the save it belongs to has actually succeeded. Applying any of them early would leave
+        // the cache believing something is true in a database that a rolled-back save never wrote -
+        // permanently, for the rest of the process's life, since nothing else ever corrects it:
         // - ExistsInDatabase: every later flush would choose Modified over Added and issue an
         //   UPDATE against a row that was never created, failing forever even once whatever caused
         //   the original failure is resolved.
         // - ExistingSlotNumbers: the same failure, per slot.
-        // - PendingLoadedMaterial: clearing it here and having the save then fail would mean the
-        //   material is never retried, yet nothing else remembers the printer still needs it.
-        List<(LiveStateCacheEntry entry, List<int> newSlotNumbers, bool clearsPendingMaterial)> newlyPersisted = [];
+        // - PendingLoadedMaterial: clearing it and having the save then fail would mean the material
+        //   is never retried, yet nothing else remembers the printer still needs it.
+        List<(LiveStateCacheEntry entry, List<int> newSlotNumbers)> newlyPersisted = [];
+
+        // The telemetry half first, because it is the half that cannot be repeated: re-running it
+        // would insert the same samples a second time. It commits and clears before the durable half
+        // is attempted at all, which is also what keeps a failure here from leaving a material
+        // writeback committed on its own.
+        if (pendingSamples.Count > 0)
+        {
+            telemetry.TelemetrySamples.AddRange(pendingSamples);
+        }
+
+        if (pendingEvents.Count > 0)
+        {
+            telemetry.PrinterEvents.AddRange(pendingEvents);
+        }
 
         foreach (int printerId in dirtyPrinterIds)
         {
@@ -1395,15 +1586,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // wedged persistence for the rest of the process's life (the slow-database rig,
             // 2026-07-29). The navigations are gone instead - all three types now cross contexts as
             // plain data, and TelemetryWriterTests pins the recovery.
-            context.Attach(entry.State);
-            context.Entry(entry.State).State = entry.ExistsInDatabase ? EntityState.Modified : EntityState.Added;
+            telemetry.Attach(entry.State);
+            telemetry.Entry(entry.State).State = entry.ExistsInDatabase ? EntityState.Modified : EntityState.Added;
 
             List<int> newSlotNumbers = [];
 
             foreach (PrinterLiveSlotState slot in entry.State.Slots)
             {
                 bool slotExists = entry.ExistingSlotNumbers.Contains(slot.SlotNumber);
-                context.Entry(slot).State = slotExists ? EntityState.Modified : EntityState.Added;
+                telemetry.Entry(slot).State = slotExists ? EntityState.Modified : EntityState.Added;
 
                 if (!slotExists)
                 {
@@ -1411,36 +1602,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 }
             }
 
-            bool clearsPendingMaterial = false;
-
-            if (entry.PendingLoadedMaterial.IsPresent)
-            {
-                // A tracked single-property update, not ExecuteUpdateAsync: that runs as its own
-                // immediate statement against the database, independent of the SaveChangesAsync
-                // below - so if the save later failed, this would already have committed on its
-                // own, silently breaking the "one transaction" this method promises. Attaching an
-                // unloaded stub and marking only LoadedMaterial as changed folds it into the same
-                // SaveChangesAsync call as everything else, so it succeeds or rolls back with it.
-                Printer printerStub = new() { Id = printerId };
-                context.Attach(printerStub);
-                printerStub.LoadedMaterial = entry.PendingLoadedMaterial.Value;
-                context.Entry(printerStub).Property(p => p.LoadedMaterial).IsModified = true;
-
-                clearsPendingMaterial = true;
-            }
-
-            newlyPersisted.Add((entry, newSlotNumbers, clearsPendingMaterial));
+            newlyPersisted.Add((entry, newSlotNumbers));
         }
 
-        // After the loop above, so the material writeback's stub already exists and can be reused
-        // rather than collided with.
-        await ApplyPrinterInfoAsync(context, pendingPrinterInfo, cancellationToken);
-        await ApplyDriveListingsAsync(context, pendingDriveListings, cancellationToken);
+        await telemetry.SaveChangesAsync(cancellationToken);
 
-        await context.SaveChangesAsync(cancellationToken);
-
-        // Only reached once the save above has actually succeeded.
-        foreach ((LiveStateCacheEntry entry, List<int> newSlotNumbers, bool clearsPendingMaterial) in newlyPersisted)
+        // Only reached once that save has actually succeeded.
+        foreach ((LiveStateCacheEntry entry, List<int> newSlotNumbers) in newlyPersisted)
         {
             entry.ExistsInDatabase = true;
 
@@ -1448,21 +1616,62 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             {
                 entry.ExistingSlotNumbers.Add(slotNumber);
             }
-
-            if (clearsPendingMaterial)
-            {
-                entry.PendingLoadedMaterial = Field<string?>.Absent;
-            }
         }
+
+        // Cleared here rather than at the end, so a failure in the durable half below cannot cause
+        // these rows to be written a second time. The dirty set is carried forward first: the durable
+        // half still needs to know which printers this flush covered.
+        List<int> flushedPrinters = [.. dirtyPrinterIds];
 
         pendingSamples.Clear();
         pendingEvents.Clear();
         dirtyPrinterIds.Clear();
 
-        // Cleared only here, past the save, for the same reason as everything above it: a failed
-        // flush leaves the pending identity in place so the next attempt still applies it. INFO
-        // arrives once per connection, so dropping it on a failure would mean the printer's firmware
-        // stayed wrong until it next reconnected.
+        // Then the durable half. What each printer has loaded, and what an INFO said it is, live on
+        // rows that stay in the application database whatever the telemetry store is doing. Every
+        // write here is a last-writer-wins upsert of the machine as it currently stands, so a failure
+        // costs a retry that writes the same values again rather than anything lost.
+        HashSet<int> materialWritebacks = [];
+
+        foreach (int printerId in flushedPrinters)
+        {
+            LiveStateCacheEntry entry = cache[printerId];
+
+            if (!entry.PendingLoadedMaterial.IsPresent)
+            {
+                continue;
+            }
+
+            // A tracked single-property update, not ExecuteUpdateAsync: that runs as its own
+            // immediate statement against the database, independent of the SaveChangesAsync below, so
+            // a later failure would leave it committed on its own. Attaching an unloaded stub and
+            // marking only LoadedMaterial as changed folds it into the same call as the rest.
+            Printer printerStub = new() { Id = printerId };
+            durable.Attach(printerStub);
+            printerStub.LoadedMaterial = entry.PendingLoadedMaterial.Value;
+            durable.Entry(printerStub).Property(p => p.LoadedMaterial).IsModified = true;
+
+            materialWritebacks.Add(printerId);
+        }
+
+        // After the loop above, so the material writeback's stub already exists and can be reused
+        // rather than collided with.
+        await ApplyPrinterInfoAsync(durable, pendingPrinterInfo, cancellationToken);
+        await ApplyDriveListingsAsync(durable, pendingDriveListings, cancellationToken);
+
+        if (durable.ChangeTracker.HasChanges())
+        {
+            await durable.SaveChangesAsync(cancellationToken);
+        }
+
+        foreach (int printerId in materialWritebacks)
+        {
+            cache[printerId].PendingLoadedMaterial = Field<string?>.Absent;
+        }
+
+        // Cleared only here, past their own save: a failed durable half leaves the pending identity in
+        // place so the next attempt still applies it. INFO arrives once per connection, so dropping it
+        // on a failure would mean the printer's firmware stayed wrong until it next reconnected.
         pendingPrinterInfo.Clear();
         pendingDriveListings.Clear();
     }

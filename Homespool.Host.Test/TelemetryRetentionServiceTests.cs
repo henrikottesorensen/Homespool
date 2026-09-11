@@ -96,6 +96,10 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite(_connectionString));
+
+        // Same connection string, so foreign keys stay enabled - this suite's cascade test depends
+        // on it, and the sweep now runs against this context rather than the one above.
+        services.AddDbContext<TelemetryDbContext>(o => o.UseSqlite(_connectionString));
         _provider = services.BuildServiceProvider();
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
@@ -395,5 +399,117 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.PrinterEvents.CountAsync(e => e.PrinterId == 2, TestContext.Current.CancellationToken))
             .Should().Be(2, "the quiet printer keeps everything it had");
+    }
+
+    /// <summary>
+    /// <b>The sample cap is what bounds a telemetry store held in memory</b>, where days of retention
+    /// mean nothing because the store is discarded at shutdown. It keeps the newest and drops the
+    /// rest, exactly as the event cap does.
+    /// </summary>
+    [Fact]
+    public async Task TheSampleCountCapKeepsTheNewestSamplesAndDropsTheOldest()
+    {
+        // Arrange - ten samples, all recent, so only the cap can remove any
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedSampleAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryInMemory = true,
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+            MaxSamplesPerPrinter = 4,
+        });
+
+        // Assert
+        bool trimmed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken) == 4;
+        }, TimeSpan.FromSeconds(10));
+
+        trimmed.Should().BeTrue("ten rows trimmed to a cap of four");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        List<long> kept = await verify.TelemetrySamples.Select(s => s.Id)
+                                      .OrderBy(id => id)
+                                      .ToListAsync(TestContext.Current.CancellationToken);
+
+        kept.Should().Equal([7, 8, 9, 10], "the newest four by id, not an arbitrary four");
+    }
+
+    /// <summary>
+    /// <b>Zero means off, per knob.</b> The three sweeps are independent, and a deployment keeping a
+    /// fortnight by age with no row cap is the ordinary one.
+    /// </summary>
+    [Fact]
+    public async Task ZeroMaxSamplesPerPrinterDisablesTheCountCap()
+    {
+        // Arrange
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedSampleAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryInMemory = true,
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+            MaxSamplesPerPrinter = 0,
+        });
+
+        // Assert - a beat for a sweep that should do nothing, then confirm it did nothing
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(10, "the cap is disabled, so nothing trims by count");
+    }
+
+    /// <summary>
+    /// <b>A durable store is bounded by age, and must not also be trimmed by row count.</b> The cap
+    /// carries a non-zero default, so without this guard merely upgrading to a build that has it would
+    /// delete history nobody asked it to - 68% of the appliance's samples, measured, with the
+    /// in-memory setting switched off.
+    /// </summary>
+    [Fact]
+    public async Task TheSampleCountCapDoesNothingWhenTelemetryIsStoredDurably()
+    {
+        // Arrange - far more rows than the cap, all recent, so only the cap could remove any
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedSampleAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        // Act - the cap is set, and deliberately low; the store is the file
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryInMemory = false,
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+            MaxSamplesPerPrinter = 4,
+        });
+
+        // Assert - a beat for a sweep that should decline, then confirm it declined
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(10, "an upgrade must not discard history because a feature nobody enabled has a default");
     }
 }

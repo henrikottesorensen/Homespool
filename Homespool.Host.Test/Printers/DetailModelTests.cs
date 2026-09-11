@@ -43,6 +43,11 @@ namespace Homespool.Host.Test.Printers;
 /// <see cref="PrinterQueryService.GetPrinterForUserAsync"/> follows, and that it correctly
 /// surfaces live connection state.
 /// </summary>
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
+                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
+                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
+                                 + "read free of another one's change tracking.")]
 public sealed class DetailModelTests : IDisposable
 {
     /// <summary>Shared and never poked here - the page only needs the service to construct.</summary>
@@ -127,13 +132,13 @@ public sealed class DetailModelTests : IDisposable
                                              TimeProvider.System,
                                              QueueSignal);
 
-        QueueSnapshotReader snapshots = new(context, connectionRegistry, TimeProvider.System);
+        QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System);
 
         // One localiser, shared by the page and by the three text services it now holds, so a word
         // inside a sentence reads in the same language as the sentence.
         IStringLocalizer<SharedResource> localiser = TestLocaliser.Shared();
 
-        DetailModel model = new(new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
+        DetailModel model = new(new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
                                 new PrinterRemovalService(context, access, snapshots, connectionRegistry,
                                                           Substitute.For<ITelemetryEviction>(),
                                                           NullLogger<PrinterRemovalService>.Instance),
@@ -143,13 +148,13 @@ public sealed class DetailModelTests : IDisposable
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
                                 // that never gets a connected printer simply refuses, which is the honest default here.
-                                new PrinterPreheatService(commands: null!, snapshots, new ToolTargetReader(context)),
+                                new PrinterPreheatService(commands: null!, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
 
                                 // Same reasoning as the preheat service above: real, with a null
                                 // command service, so a guard that stops firing fails at the send
                                 // rather than quietly pulling filament out of something.
-                                new PrinterFilamentService(commands: null!, snapshots, new ToolTargetReader(context)),
-                                new ToolTargetReader(context),
+                                new PrinterFilamentService(commands: null!, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
+                                new ToolTargetReader(context, TestTelemetryContext.For(context)),
                                 new PrintHistoryService(context, access, snapshots, new UserNameLookup(context)),
                                 new UserNameLookup(context),
                                 snapshots,

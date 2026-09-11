@@ -272,6 +272,21 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
 
             services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite(_connectionString));
 
+            // The telemetry context has to be redirected with it, onto the same file. It is a second
+            // door onto tables the migration creates, so leaving it pointed at the configured database
+            // would have every read of live state, samples and events answered by a different one -
+            // and the host would still start, which is what makes it worth doing here rather than
+            // discovering per test.
+            ServiceDescriptor? telemetryDescriptor =
+                services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<TelemetryDbContext>));
+
+            if (telemetryDescriptor is not null)
+            {
+                services.Remove(telemetryDescriptor);
+            }
+
+            services.AddDbContext<TelemetryDbContext>(options => options.UseSqlite(_connectionString));
+
             // Everything that keeps a file resolves its configured, relative directory against this.
             // Replacing it is what isolates uploads, certificates and whatever comes next, in one
             // place, instead of overriding each component's options as it is discovered escaping -

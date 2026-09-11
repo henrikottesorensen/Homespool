@@ -312,7 +312,25 @@ public sealed class CameraSourcePolicy
         return names;
     }
 
-    public async Task<CameraSourceCheck> CheckAsync(string? source, CancellationToken cancellationToken)
+    public Task<CameraSourceCheck> CheckAsync(string? source, CancellationToken cancellationToken)
+    {
+        return CheckAsync(source, acceptUnresolvable: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// <see cref="CheckAsync(string?, CancellationToken)"/>, with the answer for a name the resolver
+    /// cannot resolve chosen by the caller.
+    /// </summary>
+    /// <remarks>
+    /// <b>A save refuses; the reconciler accepts.</b> The resolver cannot tell "no such name" from
+    /// "DNS is unhappy right now", so the two callers answer that ambiguity differently. At a save
+    /// there is a person at the keyboard who can read the refusal and try again, and an unchecked
+    /// name is exactly what a rebinding attacker offers first: one that fails the lookup here and
+    /// succeeds at the sidecar. At start-up there is nobody to retry, DNS is the service most likely
+    /// to still be waking up beside this one, and a name that resolves to nothing reaches nothing -
+    /// so a stored camera is kept rather than silently dropped until somebody saves it again.
+    /// </remarks>
+    public async Task<CameraSourceCheck> CheckAsync(string? source, bool acceptUnresolvable, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(source))
         {
@@ -351,12 +369,21 @@ public sealed class CameraSourcePolicy
             return CameraSourceCheck.Refused("Cameras_SourceIsThisDeployment", uri.Host);
         }
 
-        // An address in the source is already an answer; a name has to be asked about. An
-        // unresolvable name is allowed through on purpose - the resolver cannot tell "no such name"
-        // from "DNS is unhappy right now", and a camera that cannot be resolved cannot be reached
-        // either, so the attempt that follows reports it far more usefully than a refusal here.
+        // An address in the source is already an answer; a name has to be asked about. IdnHost
+        // rather than Host: the resolver answers only the ASCII form of a name, and handed the
+        // Unicode spelling it fails the lookup - which would make every internationalised name an
+        // unresolvable one, and an unresolvable name is the case decided below rather than here.
         IReadOnlyList<IPAddress> addresses =
-            await _resolver.ResolveAsync(uri.Host, cancellationToken).ConfigureAwait(false);
+            await _resolver.ResolveAsync(uri.IdnHost, cancellationToken).ConfigureAwait(false);
+
+        // No answer is not an answer. This check exists because the sidecar resolves the name
+        // again, on its own, when it dials - so a name this lookup cannot see is a name the check
+        // has said nothing about, and letting it through would let anyone who controls a name skip
+        // the check by making it fail here first. Which caller is asking decides the rest.
+        if (addresses.Count == 0 && !acceptUnresolvable)
+        {
+            return CameraSourceCheck.Refused("Cameras_SourceUnresolvable", uri.Host);
+        }
 
         IReadOnlyList<IPNetwork> containerNetworks = _certificates.CurrentValue.ParsedContainerNetworks;
         IReadOnlyList<IPAddress> ownAddresses = OwnAddresses();

@@ -56,6 +56,7 @@ public sealed class CameraStreamReconciler : BackgroundService
     private readonly CameraLiveAvailability _liveView;
     private readonly CameraCredentialProtector _credentials;
     private readonly LocalCameraDevices _devices;
+    private readonly CameraSourcePolicy _policy;
     private readonly ILogger<CameraStreamReconciler> _logger;
 
     public CameraStreamReconciler(IServiceScopeFactory scopeFactory,
@@ -63,6 +64,7 @@ public sealed class CameraStreamReconciler : BackgroundService
                                   CameraLiveAvailability liveView,
                                   CameraCredentialProtector credentials,
                                   LocalCameraDevices devices,
+                                  CameraSourcePolicy policy,
                                   ILogger<CameraStreamReconciler> logger)
     {
         _scopeFactory = scopeFactory;
@@ -70,6 +72,7 @@ public sealed class CameraStreamReconciler : BackgroundService
         _liveView = liveView;
         _credentials = credentials;
         _devices = devices;
+        _policy = policy;
         _logger = logger;
     }
 
@@ -133,6 +136,29 @@ public sealed class CameraStreamReconciler : BackgroundService
                         + "registered. Open it on the cameras page and save it again to repair it.",
                         camera.Uuid);
                     continue;
+                }
+
+                // The network half of the same rule. What a name points at is decided by whoever
+                // controls the name, and can have changed since the save that checked it - so the
+                // check is asked again here, where a source is next handed over. An unresolvable
+                // name is kept: at start-up nobody can retry, and a name that resolves to nothing
+                // reaches nothing. See CameraSourcePolicy.CheckAsync for why the save answers that
+                // differently.
+                if (!CameraSourcePolicy.IsLocalDevice(source))
+                {
+                    CameraSourceCheck check = await _policy.CheckAsync(source, acceptUnresolvable: true, stoppingToken)
+                                                           .ConfigureAwait(false);
+
+                    if (!check.IsAcceptable)
+                    {
+                        // The source itself is deliberately not logged, for the reason given above.
+                        _logger.LogWarning(
+                            "Camera {Uuid} now points at this deployment rather than at a camera ({Reason}), so it "
+                            + "was not registered. Open it on the cameras page to see where it points.",
+                            camera.Uuid,
+                            check.Error?.Key);
+                        continue;
+                    }
                 }
 
                 if (await _streamServer.PutStreamAsync(camera.Uuid, source, stoppingToken).ConfigureAwait(false))

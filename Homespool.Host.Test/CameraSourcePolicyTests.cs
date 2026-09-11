@@ -126,18 +126,52 @@ public class CameraSourcePolicyTests
     }
 
     /// <summary>
-    /// An unresolvable name is allowed through on purpose. The resolver cannot tell "no such name"
-    /// from "DNS is unhappy", and a camera that cannot be resolved cannot be reached either - so the
-    /// attempt that follows reports it far more usefully than a refusal here would.
+    /// An unresolvable name is refused at a save. The sidecar resolves the name again when it dials,
+    /// so a name this lookup cannot see is one the check has said nothing about - and a name that
+    /// fails here and succeeds there is exactly what a rebinding attacker offers first.
     /// </summary>
     [Fact]
-    public async Task AnUnresolvableHostIsNotRefusedOnThatBasis()
+    public async Task AnUnresolvableHostIsRefusedAtASave()
     {
-        CameraSourcePolicy policy = Build();
+        CameraSourcePolicy policy = Build(unresolvable: true);
 
         CameraSourceCheck check = await policy.CheckAsync("rtsp://nowhere.invalid/live", CancellationToken.None);
 
+        check.IsAcceptable.Should().BeFalse();
+        check.Error!.Key.Should().Be("Cameras_SourceUnresolvable");
+    }
+
+    /// <summary>
+    /// The reconciler asks the other way round: at start-up nobody can retry, DNS may still be
+    /// waking up, and a name that resolves to nothing reaches nothing.
+    /// </summary>
+    [Fact]
+    public async Task AnUnresolvableHostIsKeptWhenTheCallerSaysSo()
+    {
+        CameraSourcePolicy policy = Build(unresolvable: true);
+
+        CameraSourceCheck check = await policy.CheckAsync("rtsp://nowhere.invalid/live", acceptUnresolvable: true, CancellationToken.None);
+
         check.IsAcceptable.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A name is resolved in its ASCII form. The resolver answers only that form, so asking about
+    /// the Unicode spelling would turn every internationalised camera name into an unresolvable one.
+    /// </summary>
+    [Fact]
+    public async Task AnInternationalisedNameIsResolvedInItsAsciiForm()
+    {
+        IHostAddressResolver resolver = Substitute.For<IHostAddressResolver>();
+        resolver.ResolveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult<IReadOnlyList<IPAddress>>([IPAddress.Parse("203.0.113.10")]));
+
+        CameraSourcePolicy policy = Build(resolver: resolver);
+
+        CameraSourceCheck check = await policy.CheckAsync("rtsp://kælder-kamera.example/live", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeTrue();
+        await resolver.Received(1).ResolveAsync("xn--klder-kamera-6cb.example", Arg.Any<CancellationToken>());
     }
 
     /// <summary>
@@ -263,17 +297,27 @@ public class CameraSourcePolicyTests
         CameraSourcePolicy.IsReachableAddress(IPAddress.Parse(address)).Should().BeFalse();
     }
 
-    internal static CameraSourcePolicy Build(string? resolvesTo = null,
+    /// <summary>
+    /// A policy over a resolver that answers every name with <paramref name="resolvesTo"/> - a
+    /// documentation-range address by default, so an ordinary camera name is an ordinary camera -
+    /// or with nothing at all when <paramref name="unresolvable"/>.
+    /// </summary>
+    internal static CameraSourcePolicy Build(string? resolvesTo = "203.0.113.10",
                                              bool refuseLoopback = true,
                                              string? containerNetwork = null,
-                                             string? printerHost = null)
+                                             string? printerHost = null,
+                                             bool unresolvable = false,
+                                             IHostAddressResolver? resolver = null)
     {
-        IHostAddressResolver resolver = Substitute.For<IHostAddressResolver>();
+        if (resolver is null)
+        {
+            resolver = Substitute.For<IHostAddressResolver>();
 
-        IReadOnlyList<IPAddress> answer = resolvesTo is null ? [] : [IPAddress.Parse(resolvesTo)];
+            IReadOnlyList<IPAddress> answer = unresolvable || resolvesTo is null ? [] : [IPAddress.Parse(resolvesTo)];
 
-        resolver.ResolveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromResult(answer));
+            resolver.ResolveAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+                    .Returns(Task.FromResult(answer));
+        }
 
         CameraOptions options = new() { RefuseLoopbackAndLinkLocal = refuseLoopback };
 

@@ -75,7 +75,46 @@ public sealed class CameraStreamReconcilerTests : IDisposable
         handler.Registered.Should().Contain(network, "restoring these is the whole point of the reconciler");
     }
 
-    private static async Task RunReconcilerAsync(HomespoolDbContext context, RecordingHandler handler)
+    /// <summary>
+    /// A stored network source is checked again before it is handed over, against what its name
+    /// resolves to now rather than at the save. Only a positive verdict - it points into this
+    /// deployment - withholds it; a name that resolves to nothing is kept, since at start-up nobody
+    /// can retry and such a name reaches nothing.
+    /// </summary>
+    [Fact]
+    public async Task AStoredNetworkSourceThatNowPointsInsideTheDeploymentIsNotRegistered()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid rebound = await AddCameraAsync(context, "rtsp://camera.example/live");
+
+        using RecordingHandler handler = new();
+        await RunReconcilerAsync(context,
+                                 handler,
+                                 CameraSourcePolicyTests.Build(resolvesTo: "172.28.0.3", containerNetwork: "172.28.0.0/16"));
+
+        handler.Registered.Should().NotContain(rebound,
+                                               "a name that has come to point inside the deployment is exactly what "
+                                               + "re-checking at start-up exists to catch");
+    }
+
+    [Fact]
+    public async Task AStoredNetworkSourceWhoseNameDoesNotResolveIsStillRegistered()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid unresolved = await AddCameraAsync(context, "rtsp://camera.example/live");
+
+        using RecordingHandler handler = new();
+        await RunReconcilerAsync(context, handler, CameraSourcePolicyTests.Build(unresolvable: true));
+
+        handler.Registered.Should().Contain(unresolved,
+                                            "DNS not answering at boot must not cost a camera its registration");
+    }
+
+    private static async Task RunReconcilerAsync(HomespoolDbContext context,
+                                                 RecordingHandler handler,
+                                                 CameraSourcePolicy? policy = null)
     {
         IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler, disposeHandler: false));
@@ -98,6 +137,7 @@ public sealed class CameraStreamReconcilerTests : IDisposable
                                           NullLogger<CameraCredentialProtector>.Instance),
             new LocalCameraDevices(NullLogger<LocalCameraDevices>.Instance,
                                    new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance)),
+            policy ?? CameraSourcePolicyTests.Build(),
             NullLogger<CameraStreamReconciler>.Instance);
 
         await reconciler.StartAsync(TestContext.Current.CancellationToken);

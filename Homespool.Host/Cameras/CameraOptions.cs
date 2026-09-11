@@ -213,10 +213,13 @@ public class CameraOptions
     /// settings file, which is the escape hatch a developer occasionally wants.
     /// </para>
     /// <para>
-    /// <b>Known and unhandled: DNS rebinding.</b> This is checked when a camera is saved and the
+    /// <b>Known and only narrowed: DNS rebinding.</b> This is checked when a camera is saved and the
     /// sidecar connects later, so a name that resolves past the check and then elsewhere defeats it.
     /// Closing that means pinning the resolved address for the life of the stream, and that
-    /// connection is not ours to make - it is a limit of the check, not an oversight in it.
+    /// connection is not ours to make - it is a limit of the check, not an oversight in it. What the
+    /// check does do is refuse a name it cannot resolve at the save, so the lookup cannot be skipped
+    /// by failing it, and ask again about every stored source at start-up, so a name that has since
+    /// moved inside the deployment stops being handed over at the next start rather than never.
     /// </para>
     /// </remarks>
     public bool RefuseLoopbackAndLinkLocal { get; set; } = true;

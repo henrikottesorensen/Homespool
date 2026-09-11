@@ -81,6 +81,12 @@ jobs:
       - name: Test the user TLS server blocks
         run: ./tests/user-tls-servers.test.sh
 
+      # Which names the renewal will act on, and which it refuses before they reach a shell. It
+      # talks to the world only through `docker`, and a stub of that is the whole harness, so this
+      # needs neither a daemon nor a certificate authority.
+      - name: Test the certificate renewal script
+        run: ./tests/acme-renew-cert.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

@@ -18,7 +18,12 @@
 #
 # ONE CONTAINER FOR ALL NAMES. A container start is seconds on a small board, and a check that
 # costs a start per name is a check somebody turns off.
-set -eu
+#
+# -f because the host list is split by an unquoted expansion below, and pathname expansion applies
+# to whatever that produces: a `*` in ACME_HOSTS would otherwise become the names of the files
+# sitting beside the compose file, each one then asked of a certificate authority as though it were
+# a domain. Nothing here globs on purpose.
+set -euf
 
 COMPOSE_DIR="${COMPOSE_DIR:-/opt/homespool}"
 

@@ -18,7 +18,12 @@
 # that is where the proxy's 26-user-tls-servers.sh looks before it looks at the self-signed
 # certificate beside it. Obtaining a certificate for a name is the whole of the work; making it the
 # one that gets served happens by itself at the next proxy start.
-set -eu
+#
+# -f because the host list is split by an unquoted expansion below, and pathname expansion applies
+# to whatever that produces: a `*` in ACME_HOSTS would otherwise become the names of the files
+# sitting beside the compose file, each one then asked of a certificate authority as though it were
+# a domain. Nothing here globs on purpose.
+set -euf
 
 # Where the compose file lives. Set by the systemd unit; the default is where install.sh puts a
 # deployment that did not say otherwise.
@@ -73,10 +78,38 @@ IFS=';'
 set -- $acme_hosts
 IFS="$OLD_IFS"
 
+# Checked once, here, and both loops below work from what this leaves in "$@". The verification pass
+# splices each name into a shell command, where it becomes a file path, so a name outside the
+# hostname character set has to be refused before it gets there - and a name outside it could not
+# have been issued a certificate anyway, no authority would sign one, so nothing usable is lost.
+# This is the test 16-user-server-names.envsh, 25-self-signed-certificate.sh, 26-user-tls-servers.sh
+# and the expiry check apply, which is what makes it the same answer everywhere rather than a fifth
+# opinion.
+#
+# A stray space around a semicolon is a typo, not a name, so it is trimmed rather than refused.
+#
+# Refused rather than fatal, for the reason the per-name failure below gives: one unusable name
+# should not stop a second name from renewing. The unit still fails at the end, so the timer says so.
+checked=''
+
 for host in "$@"; do
     host="$(echo "$host" | tr -d '[:space:]')"
     [ -n "$host" ] || continue
 
+    case "$host" in
+        *[!A-Za-z0-9.-]* | .*)
+            echo "refusing $host from ACME_HOSTS - not a usable hostname" >&2
+            failed=1
+            continue
+            ;;
+    esac
+
+    checked="$checked$host "
+done
+
+set -- $checked
+
+for host in "$@"; do
     echo "--- $host ---"
 
     # LEGO_DOMAINS overridden per name; everything else - the provider, the credentials, the
@@ -99,9 +132,6 @@ after="$(fingerprint)"
 # and reporting perfect health.
 missing=''
 for host in "$@"; do
-    host="$(echo "$host" | tr -d '[:space:]')"
-    [ -n "$host" ] || continue
-
     if ! in_certs "[ -s /certs/certificates/$host.crt ] && [ -s /certs/certificates/$host.key ]"; then
         missing="$missing$host "
     fi

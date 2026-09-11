@@ -677,6 +677,77 @@ HSTS=1"
     assert_eq "" "$(cat "$temp_env_dir/out")" "and nothing to say"
 fi
 
+if test_case "a name that cannot be a hostname is refused, and nothing is planned"; then
+    # The wizard is where this value is typed, so it is where the correction is cheapest. Refused
+    # downstream instead, it is a certificate that never appears and a log line read days later.
+    #
+    # USER_HOSTS carries the bad name deliberately, so the not-in-USER_HOSTS warning below it cannot
+    # be what stops the plan - and the answers after it are the ones a run that got past the check
+    # would consume, so a regression fails an assertion here rather than ending the suite on a
+    # closed stdin.
+    sandbox_path linux
+    use_temp_env "USER_HOSTS=no_good.example.com"
+    ask_public_tls > "$temp_env_dir/out" 2>&1 <<< "y
+no_good.example.com
+warnings@example.com
+cloudflare
+n
+n"
+    assert_contains "$(cat "$temp_env_dir/out")" "Not a usable hostname: no_good.example.com" "the name is named"
+    assert_eq "" "$pending" "and nothing at all is planned"
+fi
+
+if test_case "one bad name takes the whole answer, rather than quietly planning the good ones"; then
+    # Obtaining certificates for two of the three names somebody typed is the silent
+    # half-configuration this question exists to prevent.
+    sandbox_path linux
+    use_temp_env "USER_HOSTS=homespool.example.com;bad_name;other.example.com"
+    ask_public_tls > "$temp_env_dir/out" 2>&1 <<< "y
+homespool.example.com;bad_name;other.example.com
+warnings@example.com
+cloudflare
+n
+n"
+    assert_eq "" "$pending" "the good names go with the bad one"
+    assert_contains "$(cat "$temp_env_dir/out")" "bad_name" "and the operator is told which was wrong"
+fi
+
+if test_case "a glob is refused rather than expanded into the names beside it"; then
+    # The split is an unquoted expansion, so without -f the answer becomes whatever is in the
+    # working directory - and those names pass a hostname check, which is what makes this worth a
+    # case rather than leaving it to the character test above. USER_HOSTS names them so that the
+    # not-in-USER_HOSTS warning is not what stops an expanded list being planned.
+    sandbox_path linux
+    use_temp_env "USER_HOSTS=decoy.example.com;out"
+    printf 'x\n' > "$temp_env_dir/decoy.example.com"
+    entry_cwd="$PWD"
+    cd "$temp_env_dir" || exit 1
+    ask_public_tls > "$temp_env_dir/out" 2>&1 <<< "y
+*
+warnings@example.com
+cloudflare
+n
+n"
+    cd "$entry_cwd" || exit 1
+    assert_eq "" "$pending" "nothing is planned"
+    # The glob itself in the refusal, which is what says it was never expanded - the suggested
+    # default above the prompt names decoy.example.com either way, so its presence proves nothing.
+    assert_contains "$(cat "$temp_env_dir/out")" "Not a usable hostname: *" "refused as typed"
+fi
+
+if test_case "an ordinary public name is still planned"; then
+    sandbox_path linux
+    use_temp_env "USER_HOSTS=homespool.example.com"
+    ask_public_tls > "$temp_env_dir/out" 2>&1 <<< "y
+homespool.example.com
+warnings@example.com
+cloudflare
+n
+n"
+    assert_contains "$pending" "ACME_HOSTS=homespool.example.com" "the name is planned"
+    assert_contains "$pending" "ACME_EMAIL=warnings@example.com" "with the address the authority writes to"
+fi
+
 if test_case "a Windows zone becomes an IANA one"; then
     # Windows says "W. Europe Standard Time"; TZ takes "Europe/Berlin". The conversion needs .NET 6+,
     # which Windows PowerShell 5.1 does not have - so the container the wizard already runs in
@@ -1198,6 +1269,61 @@ if test_case "one machine gets one name"; then
     assert_eq "homespool.lan" "$suggestion" "the name the network publishes, same as PRINTER_HOST"
 fi
 
+if test_case "unusable_hostnames names the entries a listener cannot be built for"; then
+    # One place asks the character test, so the two questions that take host lists cannot disagree
+    # with each other or with what the proxy does at start.
+    assert_eq "" "$(unusable_hostnames "homespool.lan;homespool.example.com")" "ordinary names pass"
+    assert_eq "bad_name " "$(unusable_hostnames "homespool.lan;bad_name;other.lan")" "the bad entry alone comes back"
+    assert_eq "" "$(unusable_hostnames "  homespool.lan ; other.lan  ")" "spacing is a typo, not a refusal"
+    assert_eq ".lan " "$(unusable_hostnames ".lan")" "a leading dot is a suffix, not a name"
+    assert_eq "" "$(unusable_hostnames "")" "an empty list has nothing wrong with it"
+fi
+
+if test_case "unusable_hostnames does not expand a glob against the working directory"; then
+    use_temp_env "USER_HOSTS=localhost"
+    printf 'x\n' > "$temp_env_dir/decoy.example.com"
+    entry_cwd="$PWD"
+    cd "$temp_env_dir" || exit 1
+    result="$(unusable_hostnames "*")"
+    cd "$entry_cwd" || exit 1
+    # The glob itself, not the directory listing it would have become - and a listing is the case
+    # that matters, because those names pass the character test on their own.
+    assert_eq "* " "$result" "the glob is what is refused"
+fi
+
+if test_case "a name the proxy would refuse is asked again rather than written"; then
+    # USER_HOSTS is required and has no useful half-answer: a name the listener refuses is a name
+    # the deployment does not answer to, said only at the next start, into a log.
+    sandbox_path linux
+    use_temp_env "USER_HOSTS=homespool.lan"
+    ask_user_host > "$temp_env_dir/out" 2>&1 <<< "no_good.lan
+homespool.lan"
+    assert_contains "$(cat "$temp_env_dir/out")" "Not a usable hostname: no_good.lan" "the first answer is named"
+    assert_contains "$pending" "USER_HOSTS=homespool.lan" "and the corrected one is what gets planned"
+fi
+
+if test_case "the name loop stops on a closed input rather than spinning"; then
+    # The trap ask_yes_no documents at its own loop: taking the default and going round again would
+    # ask a stream with nothing left to give, for ever.
+    sandbox_path linux
+    use_temp_env "USER_HOSTS=homespool.lan"
+    out="$( (ask_user_host < /dev/null) 2>&1 )"
+    status=$?
+    assert_eq "1" "$status" "stops rather than looping"
+    assert_says "$out" "nothing was written" "and says so"
+fi
+
+if test_case "a machine name that cannot be a hostname is never the answer nobody was asked for"; then
+    # An underscore is legal in a Linux hostname and outside the set the proxy accepts. The
+    # unattended path takes this without a prompt, so an appliance would otherwise write a
+    # USER_HOSTS leaving it answering to localhost alone, with nothing said anywhere.
+    use_temp_env "USER_HOSTS="
+    qualified_machine_name() { echo "my_board.local"; }
+    value="$(suggested_user_host 2> "$temp_env_dir/warn")"
+    assert_eq "localhost" "$value" "the name the proxy would refuse is not offered"
+    assert_contains "$(cat "$temp_env_dir/warn")" "my_board.local cannot be a hostname here" "and the fallback is said out loud"
+fi
+
 if test_case "USER_HOSTS may be .local, because browsers do mDNS"; then
     # The opposite of the PRINTER_HOST rule, and the reason it is not one rule: what resolves
     # USER_HOSTS is a desktop, which does mDNS perfectly well. What resolves PRINTER_HOST is Buddy
@@ -1207,12 +1333,31 @@ if test_case "USER_HOSTS may be .local, because browsers do mDNS"; then
     # .local - so this asserts the part that is fixed: a bare name does not stay bare.
     # machine_name is overridden rather than trusted: in a container it correctly returns nothing, so
     # the honest answer there is localhost and the rule under test never runs.
+    #
+    # EVERY SOURCE IS PINNED, and this test is the reason the rule exists. It used to stub only
+    # machine_name and let reverse DNS reach the real machine, so what it asserted depended on what
+    # the host's own hosts file said about its own address - green here, green on macOS, and red on
+    # a CI runner whose address maps to a short name. A test about which candidate is chosen must
+    # not also be a test of the machine it runs on.
+    sandbox_path linux
     use_temp_env "USER_HOSTS=localhost"
+    in_container() { return 1; }
+    lan_addresses() { printf '10.1.0.42\teth0\n'; }
     machine_name() { echo printbox; }
+
+    # The shape that was failing: the hosts file answers with a single label, which is a name only
+    # this machine and its search domain can resolve.
+    reverse_name() { echo "fv-az1234-567"; }
     case "$(suggested_user_host)" in
         *.*) passed=$((passed + 1)) ;;
         *) fail "a bare hostname was offered to a browser unqualified" ;;
     esac
+
+    # And the half that must not regress while fixing the other: reverse DNS is first deliberately,
+    # because where the router publishes a real name and no search suffix it is the only source that
+    # answers at all. A qualified answer from it still wins over anything assembled.
+    reverse_name() { echo "printbox.lan"; }
+    assert_eq "printbox.lan" "$(suggested_user_host)" "a qualified reverse answer still beats the assembled guesses"
 
     # And with nothing to go on at all, no answer beats a wrong one. Both sources are silenced:
     # reverse DNS is a real source now, so stubbing only machine_name no longer means "nothing".

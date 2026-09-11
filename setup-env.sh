@@ -968,12 +968,72 @@ resolve_host() {
     fi
 }
 
+# The names in a semicolon-separated list that cannot be hostnames, space-separated, and empty when
+# every one of them can. Letters, digits, dots and hyphens, and not a leading dot: the test the
+# proxy's listener scripts and the certificate renewal both apply, asked here in one place so the
+# two questions that take host lists cannot disagree with each other or with the runtime.
+#
+# The wizard is the cheapest place to ask it. A name refused downstream is a listener that never
+# appears or a certificate that never arrives, diagnosed from a log line days later - and the person
+# who can correct it is standing here now.
+unusable_hostnames() {
+    local list="$1" host result=""
+
+    local old_ifs="$IFS"
+    IFS=';'
+    # -f because the split is an unquoted expansion, and pathname expansion applies to what it
+    # produces: a `*` typed at a prompt would otherwise arrive here as a listing of whatever
+    # directory this was run from, whose names then pass the test below.
+    set -f
+    for host in $list; do
+        IFS="$old_ifs"
+        # A stray space around a semicolon is a typo, not a name, and is trimmed everywhere else
+        # this list is read - so it must not be what makes a name unusable here.
+        host="$(echo "$host" | tr -d '[:space:]')"
+        [ -n "$host" ] || { IFS=';'; continue; }
+        case "$host" in
+            *[!A-Za-z0-9.-]* | .*) result="$result$host " ;;
+        esac
+        IFS=';'
+    done
+    IFS="$old_ifs"
+    set +f
+
+    printf '%s' "$result"
+}
+
 ask_user_host() {
     say
-    local suggestion
+    local suggestion answer unusable fmt
     suggestion="$(suggested_user_host)"
     say $"The name people type in a browser. Anything reaching this deployment under a name that is not here is refused, so give every name that should work - separated by semicolons, as in name1.tld;name2.tld. Each one gets its own certificate, self-signed unless you ask for a public one later, and a browser warns about a self-signed certificate whatever it carries."
-    plan_set USER_HOSTS "$(ask "  Name" "$suggestion")"
+
+    # Asked again rather than accepted and warned about, because this one is required and there is
+    # no useful half-answer: a name the proxy refuses is a name the deployment does not answer to,
+    # and the listener says so only at the next start, into a log.
+    while :; do
+        # End of input is not an answer, for the reason ask_yes_no gives at its own loop: taking the
+        # default and going round again would spin for ever asking a stream with nothing left.
+        if ! answer="$(ask "  Name" "$suggestion")"; then
+            echo >&2
+            echo "setup-env.sh: input ended - nothing was written." >&2
+            exit 1
+        fi
+
+        unusable="$(unusable_hostnames "$answer")"
+        [ -z "$unusable" ] && break
+
+        fmt=$"Not a usable hostname: %s"
+        say
+        warn "$(printf "$fmt" "$unusable")"
+        say $"  Names may contain letters, digits, dots and hyphens. Semicolons separate them."
+
+        # The offered default is deliberately left as it was rather than becoming the refused
+        # answer: it is always a name this passes, so pressing enter ends the loop instead of
+        # re-submitting what was just refused.
+    done
+
+    plan_set USER_HOSTS "$answer"
 }
 
 ask_timezone() {
@@ -990,13 +1050,32 @@ ask_timezone() {
 # list somebody has to read and prune rather than an answer they can accept. The prompt says the list
 # is available; what to put in it is theirs.
 suggested_user_host() {
-    local current suggestion
+    local current suggestion fmt
     current="$(env_get USER_HOSTS)"
     if [ -n "$current" ] && [ "$current" != localhost ]; then
-        echo "$current"
-        return 0
+        suggestion="$current"
+    else
+        suggestion="$(qualified_machine_name)"
     fi
-    suggestion="$(qualified_machine_name)"
+
+    # Whatever it is about to offer has to be a name a listener can actually be built for, and
+    # neither source guarantees that: an underscore is legal in a Linux hostname and outside the set
+    # the proxy accepts, and an existing .env may hold anything somebody typed into it.
+    #
+    # This matters most where nobody is looking. The unattended path takes this answer without a
+    # prompt, so an appliance whose machine name a listener cannot be built for would otherwise
+    # write a USER_HOSTS that quietly leaves it answering to localhost alone. It falls back to that
+    # name deliberately rather than refusing, because it is the one the proxy adds regardless, so a
+    # board that reaches the network is still reachable while the name is sorted out.
+    #
+    # For the question, this is also what keeps the offered default safe to accept: the loop there
+    # refuses an unusable answer and offers this again, which has to terminate on a pressed enter.
+    if [ -n "$suggestion" ] && [ -n "$(unusable_hostnames "$suggestion")" ]; then
+        fmt=$"%s cannot be a hostname here, so it is not offered; suggesting localhost instead."
+        warn "$(printf "$fmt" "$suggestion")"
+        suggestion=""
+    fi
+
     echo "${suggestion:-localhost}"
 }
 
@@ -1265,6 +1344,10 @@ acme_host_suggestion() {
 
     local old_ifs="$IFS"
     IFS=';'
+    # -f because the split below is an unquoted expansion, and pathname expansion applies to what it
+    # produces: a `*` left in USER_HOSTS would otherwise become the names of the files in whatever
+    # directory this was run from, and be suggested as names to get certificates for.
+    set -f
     for host in $hosts; do
         IFS="$old_ifs"
         host="$(echo "$host" | tr -d '[:space:]')"
@@ -1288,6 +1371,7 @@ acme_host_suggestion() {
         IFS=';'
     done
     IFS="$old_ifs"
+    set +f
 
     printf '%s' "${result%;}"
 }
@@ -1361,6 +1445,26 @@ ask_public_tls() {
         return 0
     fi
 
+    # Refused outright, where a name missing from USER_HOSTS only warns below: that one is a
+    # configuration this script cannot see the whole of, and this one cannot work at all - no
+    # authority signs a name outside the hostname character set, and the proxy would refuse to serve
+    # it if one did. The whole answer goes rather than the bad name alone, because obtaining
+    # certificates for two of the three names somebody typed is the half-configuration this question
+    # exists to avoid.
+    #
+    # Returned rather than asked again, which is the opposite of USER_HOSTS and for the reason that
+    # one is required and this one is not: leaving automatic certificates switched off is a complete
+    # answer here, so there is nothing this has to keep asking until it gets.
+    local unusable
+    unusable="$(unusable_hostnames "$names")"
+    if [ -n "$unusable" ]; then
+        fmt=$"Not a usable hostname: %s"
+        say
+        warn "$(printf "$fmt" "$unusable")"
+        say $"  Names may contain letters, digits, dots and hyphens. Nothing was changed; run this again with the name corrected."
+        return 0
+    fi
+
     # Checked against the answer this run gave, not against the file, so the two are compared as
     # they will be written. A name here that is missing there produces a certificate nothing serves
     # and no error anywhere - the exact silent half-configuration this question exists to avoid.
@@ -1370,6 +1474,9 @@ ask_public_tls() {
 
     local old_ifs="$IFS"
     IFS=';'
+    # -f for the reason unusable_hostnames gives. The check above has already refused anything a
+    # glob could expand to, but this loop splits the same way and should not depend on that.
+    set -f
     for host in $names; do
         IFS="$old_ifs"
         host="$(echo "$host" | tr -d '[:space:]')"
@@ -1381,6 +1488,7 @@ ask_public_tls() {
         IFS=';'
     done
     IFS="$old_ifs"
+    set +f
 
     if [ -n "$missing" ]; then
         # Translated by bash's $"..." and then formatted, rather than through gettext(1): the

@@ -2763,4 +2763,55 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="AdminChallenge_Confirm" xml:space="preserve">
     <value>Bekræft</value>
   </data>
+  <data name="AdminUsers_Recovery" xml:space="preserve">
+    <value>Gendannelse</value>
+  </data>
+  <data name="AdminUsers_RecoveryWhy" xml:space="preserve">
+    <value>Hvis denne person har mistet sin adgangskode, kan du sende et engangslink, der lader dem vælge en ny. Det sendes til adressen ovenfor og vises her én gang, så du kan give det videre på anden vis.</value>
+  </data>
+  <data name="AdminUsers_ClearAuthenticator" xml:space="preserve">
+    <value>De har også mistet deres godkendelsesapp — ryd den med</value>
+  </data>
+  <data name="AdminUsers_SendRecovery" xml:space="preserve">
+    <value>Send et gendannelseslink</value>
+  </data>
+  <data name="AdminUsers_RecoveryIssued" xml:space="preserve">
+    <value>Gendannelseslinket er sendt. Det kan bruges én gang, og kontoens API-tokens tilbagekaldes, når det bliver brugt.</value>
+  </data>
+  <data name="AdminUsers_RecoveryLinkShownOnce" xml:space="preserve">
+    <value>Linket, som kun vises her én gang:</value>
+  </data>
+  <data name="AdminUsers_RefusedSelfRecovery" xml:space="preserve">
+    <value>Du kan ikke sende dig selv et gendannelseslink: det ville rydde din egen anden faktor alene ud fra din adgangskode. Brug dine gendannelseskoder, eller spørg en anden administrator.</value>
+  </data>
+  <data name="AdminUsers_RefusedRecoverDeactivated" xml:space="preserve">
+    <value>Den konto er deaktiveret, så et gendannelseslink ville ikke kunne bruges. Genaktiver den først.</value>
+  </data>
+  <data name="AdminUsers_RefusedRecoverNoAddress" xml:space="preserve">
+    <value>Den konto har ingen e-mailadresse, så der er ingen steder at sende et gendannelseslink hen.</value>
+  </data>
+  <data name="Account_RecoverHelp" xml:space="preserve">
+    <value>Vælg en ny adgangskode</value>
+  </data>
+  <data name="Account_RecoverExplanation" xml:space="preserve">
+    <value>En administrator har sendt dig dette link, så du kan komme ind på din konto igen. Vælg en ny adgangskode; de API-tokens, kontoen havde, bliver tilbagekaldt.</value>
+  </data>
+  <data name="Account_RecoverClearsTwoFactor" xml:space="preserve">
+    <value>Din godkendelsesapp ryddes også, så du kan sætte en op igen bagefter.</value>
+  </data>
+  <data name="Account_RecoveryDeactivated" xml:space="preserve">
+    <value>Den konto er deaktiveret, så den kan ikke gendannes.</value>
+  </data>
+  <data name="Email_RecoverySubject" xml:space="preserve">
+    <value>Kom ind på din Homespool-konto igen</value>
+  </data>
+  <data name="Email_RecoveryBody" xml:space="preserve">
+    <value>En administrator har sendt dig et link, så du kan vælge en ny adgangskode. Brug det ved at &lt;a href=&apos;{0}&apos;&gt;klikke her&lt;/a&gt;. Det kan bruges én gang og udløber {1}.</value>
+  </data>
+  <data name="Email_RecoveredSubject" xml:space="preserve">
+    <value>Din Homespool-adgangskode er nulstillet</value>
+  </data>
+  <data name="Email_RecoveredBody" xml:space="preserve">
+    <value>Et gendannelseslink udstedt af en administrator er netop blevet brugt til at vælge en ny adgangskode på din konto. Hvis det ikke var dig, så sig det til den, der driver denne Homespool, med det samme.</value>
+  </data>
 </root>

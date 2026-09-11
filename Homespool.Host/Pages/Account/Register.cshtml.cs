@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading;
@@ -52,6 +53,7 @@ public class RegisterModel : PageModel
     private readonly InvitationService _invitationService;
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
+    private readonly ApiTokenService _apiTokens;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public RegisterModel(UserManager<HSUser> userManager,
@@ -65,6 +67,7 @@ public class RegisterModel : PageModel
                          InvitationService invitationService,
                          TeamService teamService,
                          UnitOfWork unitOfWork,
+                         ApiTokenService apiTokens,
                          IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
@@ -80,6 +83,7 @@ public class RegisterModel : PageModel
         _invitationService = invitationService;
         _teamService = teamService;
         _unitOfWork = unitOfWork;
+        _apiTokens = apiTokens;
     }
 
     /// <summary>Invite id, carried in the accept link and echoed back on post via a hidden field.</summary>
@@ -159,11 +163,33 @@ public class RegisterModel : PageModel
     public bool Reactivating { get; private set; }
 
     /// <summary>
-    /// The existing account's username when <see cref="Reactivating"/>. Shown read-only and never
-    /// re-chosen: it is already theirs, and letting an invite rename an account is not a thing this
-    /// flow is for.
+    /// The existing account's username when <see cref="Reactivating"/> or <see cref="Recovering"/>.
+    /// Shown read-only and never re-chosen: it is already theirs, and letting an invite rename an
+    /// account is not a thing this flow is for.
     /// </summary>
     public string ExistingUsername { get; private set; }
+
+    /// <summary>
+    /// True when this invite is a <b>recovery</b> an administrator issued for an account whose owner
+    /// lost their credentials: redeeming it sets a new password on that account rather than creating
+    /// one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It names its account by id</b>, so nothing about the address decides who is recovered - an
+    /// address change between issuing and redeeming cannot retarget it, and the page shows whose
+    /// account it is before anything is typed.
+    /// </para>
+    /// <para>
+    /// <b>The proof is the same as any invite's</b>: single-use, expiring, and presented with its
+    /// token. What differs is what redeeming does, and that an administrator had to name the subject
+    /// to issue it at all.
+    /// </para>
+    /// </remarks>
+    public bool Recovering { get; private set; }
+
+    /// <summary>Whether redeeming this recovery also clears the account's authenticator.</summary>
+    public bool RecoveryClearsTwoFactor { get; private set; }
 
     public class InputModel
     {
@@ -214,6 +240,25 @@ public class RegisterModel : PageModel
     /// </summary>
     private async Task<HSUser> ResolveReactivationAsync(Invitation invitation)
     {
+        if (invitation.RecoversUserId is long recovered)
+        {
+            // Named, not looked up: the address on a recovery is where the link was sent, and the id
+            // is who it is for. A miss means the account is gone, which is a recovery that can no
+            // longer be redeemed rather than one to redirect at somebody else.
+            HSUser subject = await _userManager.FindByIdAsync(recovered.ToString(CultureInfo.InvariantCulture));
+
+            if (subject is null)
+            {
+                return null;
+            }
+
+            Recovering = true;
+            RecoveryClearsTwoFactor = invitation.ClearsTwoFactor;
+            ExistingUsername = subject.UserName;
+
+            return subject;
+        }
+
         HSUser existing = await _userManager.FindByEmailAsync(invitation.Email);
 
         if (existing is null)
@@ -247,6 +292,28 @@ public class RegisterModel : PageModel
         Email = invitation.Email;
 
         HSUser existing = await ResolveReactivationAsync(invitation);
+
+        if (Recovering)
+        {
+            if (existing is null)
+            {
+                // The account this recovery names is gone. Nothing to give back, and nothing to
+                // create in its place: an invite that says "recover" is not an invite that says
+                // "register".
+                InviteValid = false;
+
+                return Page();
+            }
+
+            ModelState.Remove($"{nameof(Input)}.{nameof(InputModel.Username)}");
+
+            if (!ModelState.IsValid)
+            {
+                return Page();
+            }
+
+            return await RecoverAsync(existing, invitation, returnUrl, cancellationToken);
+        }
 
         if (existing is not null && !Reactivating)
         {
@@ -368,6 +435,153 @@ public class RegisterModel : PageModel
     /// and the same second-factor step as the login page before anything becomes a session.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Gives an account back to its owner: a new password, optionally a cleared authenticator, and
+    /// its API tokens revoked - on an invite an administrator issued naming that account.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The password is reset, never added.</b> <c>ResetPasswordAsync</c> writes the hash whether or
+    /// not one exists, so the one method serves an account that forgot its password and one that never
+    /// had a local credential. Removing a password is what nothing here may do - one administrator
+    /// always retaining one is what keeps a deployment from locking itself out.
+    /// </para>
+    /// <para>
+    /// <b>An account with no password loses its provider logins</b>, exactly as reactivation does and
+    /// for the same reason: a password beside a live provider link is the parallel credential the
+    /// account rules refuse, so a recovery of a provider account is a swap rather than an addition.
+    /// An account that already had a password keeps whatever it holds; the recovery is not a tidy-up.
+    /// </para>
+    /// <para>
+    /// <b>The tokens go.</b> A recovery is somebody locked out of an account they may no longer have
+    /// been alone in - the same reasoning that makes <c>Account/ResetPassword</c> revoke, and the
+    /// opposite of a password change made from inside a live session.
+    /// </para>
+    /// <para>
+    /// <b>The authenticator is cleared only when the invite says so.</b> Restoring a password gives
+    /// the account back to somebody who can still prove possession of their device; clearing the
+    /// second factor as well hands whoever holds the link the entire account, which is a thing an
+    /// administrator decides deliberately when issuing.
+    /// </para>
+    /// <para>
+    /// <b>One transaction, and the mail is outside it.</b> Every half-done state here is worse than
+    /// either end - a cleared authenticator on an unchanged password, or a spent invite that changed
+    /// nothing - and telling the owner is not part of the write.
+    /// </para>
+    /// </remarks>
+    private async Task<IActionResult> RecoverAsync(HSUser subject, Invitation invitation, string returnUrl,
+                                                   CancellationToken cancellationToken)
+    {
+        // A closed account is not recoverable, and saying so beats a redemption that appears to work
+        // and then cannot sign in: the sign-in gate refuses it whatever credential it now holds.
+        if (subject.DeactivatedAt is not null)
+        {
+            ModelState.AddModelError(string.Empty, _localiser["Account_RecoveryDeactivated"]);
+
+            return Page();
+        }
+
+        bool hadPassword = await _userManager.HasPasswordAsync(subject);
+        int revoked;
+
+        await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
+
+        try
+        {
+            string resetToken = await _userManager.GeneratePasswordResetTokenAsync(subject);
+            IdentityResult reset = await _userManager.ResetPasswordAsync(subject, resetToken, Input.Password);
+
+            if (!reset.Succeeded)
+            {
+                AddErrors(reset);
+
+                return Page();
+            }
+
+            if (!hadPassword)
+            {
+                foreach (UserLoginInfo login in await _userManager.GetLoginsAsync(subject))
+                {
+                    IdentityResult removed =
+                        await _userManager.RemoveLoginAsync(subject, login.LoginProvider, login.ProviderKey);
+
+                    if (!removed.Succeeded)
+                    {
+                        AddErrors(removed);
+
+                        return Page();
+                    }
+                }
+            }
+
+            if (invitation.ClearsTwoFactor)
+            {
+                // Both halves, as Manage/ResetAuthenticator does: turning the flag off while the old
+                // key still verifies leaves a second factor somebody can turn back on without ever
+                // holding the device.
+                IdentityResult disabled = await _userManager.SetTwoFactorEnabledAsync(subject, false);
+
+                if (!disabled.Succeeded)
+                {
+                    AddErrors(disabled);
+
+                    return Page();
+                }
+
+                await _userManager.ResetAuthenticatorKeyAsync(subject);
+            }
+
+            revoked = await _apiTokens.RevokeAllForUserAsync(subject.Id, cancellationToken);
+
+            await _invitationService.MarkUsedAsync(invitation, cancellationToken);
+
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "Failed to redeem recovery invitation {InviteId}; rolling back.", InviteId);
+            ModelState.AddModelError(string.Empty, _localiser["Account_RegistrationFailed"]);
+
+            return Page();
+        }
+
+        _logger.LogWarning(
+            "Recovery invitation {InviteId} redeemed for user {UserId}; two-factor cleared: {ClearedTwoFactor}; {RevokedTokenCount} API tokens revoked.",
+            InviteId,
+            subject.Id,
+            invitation.ClearsTwoFactor,
+            revoked);
+
+        // The owner's only signal, if this recovery was not theirs. Sent to the account's own address
+        // rather than the invite's, which is the same string today and need not stay so.
+        await _emailSender.SendEmailAsync(
+            subject.Email,
+            _localiser["Email_RecoveredSubject"],
+            _localiser["Email_RecoveredBody"]);
+
+        // What follows a proved password anywhere else: the account may be locked out or unconfirmed,
+        // and a recovery is not a way around either.
+        switch (await _rules.PreSignInCheckAsync(subject))
+        {
+            case SignInRefusal.LockedOut:
+                _logger.LogWarning("Recovered account {UserId} is locked out.", subject.Id);
+
+                return RedirectToPage("./Lockout");
+
+            case SignInRefusal.NotAllowed when !subject.EmailConfirmed:
+                return await HoldForConfirmationAsync(subject, subject.Email, returnUrl);
+
+            case SignInRefusal.NotAllowed:
+                ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
+
+                return Page();
+        }
+
+        await _signIn.SignInAsync(HttpContext, subject, isPersistent: false);
+
+        return LocalRedirect(returnUrl);
+    }
+
     private async Task<IActionResult> ReactivateAsync(HSUser existing, Invitation invitation, string returnUrl,
                                                       CancellationToken cancellationToken)
     {

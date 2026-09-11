@@ -83,6 +83,59 @@ public class InvitationService
     }
 
     /// <summary>
+    /// Creates a <b>recovery</b> invite: one that gives <paramref name="userId"/> back to its owner
+    /// rather than creating an account, returning it with its plaintext token as
+    /// <see cref="CreateAsync"/> does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The address it carries is the account's own</b>, taken by the caller from the account
+    /// rather than typed, so a recovery cannot be aimed at a mailbox its subject does not hold. What
+    /// the invite is bound to is the id; the address is where the link is sent and what the page
+    /// shows.
+    /// </para>
+    /// <para>
+    /// <b>It is the same token, lifetime and single-use rule as any other invite.</b> What differs is
+    /// only what redeeming it does, so there is one thing to reason about at rest: a hashed token
+    /// with an expiry and a <c>UsedAt</c> stamp.
+    /// </para>
+    /// </remarks>
+    /// <param name="userId">The account being recovered.</param>
+    /// <param name="email">That account's address, where the link is sent.</param>
+    /// <param name="clearsTwoFactor">Whether redeeming also clears the account's authenticator.</param>
+    /// <param name="invitedBy">The administrator issuing it, recorded for audit.</param>
+    /// <param name="expiresAt">Explicit expiry, or null for the configured default from now.</param>
+    /// <param name="cancellationToken">Cancels the insert; nothing is persisted if it fires first.</param>
+    public async Task<(Invitation invitation, string plaintextToken)> CreateRecoveryAsync(long userId,
+                                                                                          string email,
+                                                                                          bool clearsTwoFactor,
+                                                                                          long invitedBy,
+                                                                                          DateTimeOffset? expiresAt,
+                                                                                          CancellationToken cancellationToken)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        string plaintext = _tokenService.GenerateToken(InviteTokenLength);
+
+        Invitation invitation = new()
+        {
+            HashedToken = _tokenService.HashToken(plaintext),
+            Email = email,
+            CreatedAt = now,
+            ExpiresAt = expiresAt ?? now + _options.Lifetime,
+            UsedAt = null,
+            InvitedBy = invitedBy,
+            TeamId = null,
+            RecoversUserId = userId,
+            ClearsTwoFactor = clearsTwoFactor,
+        };
+
+        _dbContext.Invitations.Add(invitation);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return (invitation, plaintext);
+    }
+
+    /// <summary>
     /// Loads invite <paramref name="inviteId"/> and returns it only if it is outstanding (not used, not
     /// expired) <b>and</b> <paramref name="plaintextToken"/> verifies against its stored hash. Returns
     /// <c>null</c> on any failure without distinguishing which — a wrong token, a used invite, an

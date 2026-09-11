@@ -294,7 +294,9 @@ namespace Homespool.Data.Migrations
                     ExpiresAt = table.Column<long>(type: "INTEGER", nullable: false),
                     UsedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     InvitedBy = table.Column<long>(type: "INTEGER", nullable: false),
-                    TeamId = table.Column<int>(type: "INTEGER", nullable: true)
+                    TeamId = table.Column<int>(type: "INTEGER", nullable: true),
+                    RecoversUserId = table.Column<long>(type: "INTEGER", nullable: true),
+                    ClearsTwoFactor = table.Column<bool>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
                 {

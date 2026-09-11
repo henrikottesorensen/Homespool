@@ -36,15 +36,16 @@ namespace Homespool.Host.Authentication;
 /// what a wrong password costs, and the wording is the same for both.
 /// </para>
 /// <para>
-/// <b>The timing is not uniform beyond that, and the gap is worth knowing before it is quoted as a
-/// defence.</b> An account that exists but may not sign in - deactivated, or already locked out -
-/// returns from the pre-sign-in check without ever reaching the password comparison, so it answers
-/// faster than either a wrong password or an unknown identifier, which both pay a verification.
-/// <c>Login</c> compounds it by redirecting a locked-out account to <c>Lockout</c> while re-rendering
-/// the form for everything else, which says as much in the response itself. Both are observable to an
-/// anonymous caller, and the thing that would blunt them - the per-address <c>SignIn</c> rate limit -
-/// is inert where no proxy is trusted. So: the wording is one message by design; the timing is not a
-/// control, and closing that would mean paying the decoy on the refusal paths too.
+/// <b>Every refusal pays a verification, and one gap survives that.</b> An account that exists but may
+/// not sign in - deactivated, or already locked out - returns from the pre-sign-in check without ever
+/// reaching the password comparison, so it spends the same decoy an unknown identifier does; without
+/// it that branch answers in microseconds where every other outcome costs a PBKDF2, which is the same
+/// oracle in a different place. What a decoy cannot cover is the response itself: <c>Login</c>
+/// redirects a locked-out account to <c>Lockout</c> while re-rendering the form for everything else,
+/// which confirms the account exists - deliberately, in exchange for telling its owner why they are
+/// being turned away. The thing that would blunt the guessing that finds it, the per-address
+/// <c>SignIn</c> rate limit, is inert where no proxy is trusted. So: one message, and one hash on
+/// every path; one status code still differs, by decision.
 /// </para>
 /// <para>
 /// <b>On a step-up the account is the session's.</b> A <see cref="PasswordCredential"/> carries only
@@ -130,6 +131,11 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
 
         if (await _rules.PreSignInCheckAsync(user) is { } refusal)
         {
+            // The decoy the unknown-identifier branch pays, for the same reason: this refusal returns
+            // before the password is ever compared, so without it an account that may not sign in is
+            // the cheap answer among expensive ones, and cheap is measurable from outside.
+            PasswordVerificationDecoy.Verify(_hasher, password);
+
             Logger.LogInformation("Password sign-in refused for user {UserId}: {Refusal}.", user.Id, refusal);
 
             return SignInRefusals.Fail(refusal, "The account may not sign in.");

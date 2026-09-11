@@ -1938,6 +1938,9 @@
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">
     <value>{0} slår op til {1}, som er selve denne server og ikke et kamera på dit netværk.</value>
   </data>
+  <data name="Cameras_SourceUnresolvable" xml:space="preserve">
+    <value>{0} kunne ikke slås op. Kontrollér navnet, eller brug kameraets adresse i stedet.</value>
+  </data>
   <data name="Cameras_SourceIsThisDeployment" xml:space="preserve">
     <value>{0} er en del af denne Homespool-installation og ikke et kamera på dit netværk. Brug kameraets egen adresse.</value>
   </data>

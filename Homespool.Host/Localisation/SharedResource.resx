@@ -2007,6 +2007,10 @@
     <value>{0} resolves to {1}, which is this server itself rather than a camera on your network.</value>
     <comment>{0} is the host as typed, {1} the address it resolved to.</comment>
   </data>
+  <data name="Cameras_SourceUnresolvable" xml:space="preserve">
+    <value>{0} could not be resolved. Check the name, or use the camera's address instead.</value>
+    <comment>{0} is the host as typed. Shown when a camera is saved by name and the name does not resolve; an address never reaches this.</comment>
+  </data>
   <data name="Cameras_SourceIsThisDeployment" xml:space="preserve">
     <value>{0} is part of this Homespool deployment, not a camera on your network. Use the camera's own address.</value>
     <comment>{0} is the host as typed - for example the application's own name or the camera service beside it.</comment>

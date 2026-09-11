@@ -212,7 +212,7 @@ public sealed class ErrorTextTests
         string[] keys =
         [
             "Cameras_SourceMissing", "Cameras_SourceIncomplete", "Cameras_SourceScheme",
-            "Cameras_SourceIsThisServer", "Cameras_NotFoundOrNotYours",
+            "Cameras_SourceIsThisServer", "Cameras_SourceUnresolvable", "Cameras_NotFoundOrNotYours",
             "Cameras_AttachedNeedsAdministrator", "Cameras_AttachedDeviceUnknown",
             "Cameras_AttachedSourceNotComposed", "Cameras_NotYourTeam", "Cameras_StreamServerRefused",
             "Cameras_NoPictureLocal", "Cameras_NoPictureNetwork",

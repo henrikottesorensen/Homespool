@@ -592,20 +592,17 @@ PROXY_NETWORK=172.17.0.0/16"
     assert_contains "$out" "172.20.0.0/16" "proposed the first free range"
 fi
 
-if test_case "moving the compose network moves the proxy's address with it"; then
-    # Three settings answer one fact: the range Docker allocates, the range the application treats
-    # as container-only, and the one address inside it whose forwarded headers are believed. A move
-    # that left the address behind would trust headers from nowhere - the log would then say every
-    # client is the proxy - and say nothing about why.
+if test_case "moving the compose network moves the range the application trusts with it"; then
+    # Two settings answer one fact: the range Docker allocates, and the range the application treats
+    # as container-only and believes forwarded headers from. A move that left the second behind
+    # would trust headers from nowhere - the log would then say every client is the proxy - and say
+    # nothing about why.
     sandbox_path linux docker-collision
     use_temp_env "PROXY_SUBNET=172.17.0.0/16
-PROXY_NETWORK=172.17.0.0/16
-PROXY_ADDRESS=172.17.0.2"
+PROXY_NETWORK=172.17.0.0/16"
     auto_move_subnet >/dev/null 2>&1
     assert_contains "$pending" "PROXY_SUBNET=172.20.0.0/16" "the range Docker allocates"
     assert_contains "$pending" "PROXY_NETWORK=172.20.0.0/16" "the range the application knows"
-    assert_contains "$pending" "PROXY_ADDRESS=172.20.0.2" "and the proxy's address inside it"
-    assert_eq "172.31.0.2" "$(proxy_address_for 172.31.0.0/16)" "second address of the range, after the gateway"
 fi
 
 if test_case "a sidecar network that collides is moved on its own, and the proxy's settings stay"; then
@@ -614,7 +611,6 @@ if test_case "a sidecar network that collides is moved on its own, and the proxy
     sandbox_path linux docker-collision
     use_temp_env "PROXY_SUBNET=172.28.0.0/16
 PROXY_NETWORK=172.28.0.0/16
-PROXY_ADDRESS=172.28.0.2
 CAMERA_SUBNET=172.18.0.0/16
 CERTS_SUBNET=172.30.0.0/16"
     auto_move_subnet >/dev/null 2>&1
@@ -631,7 +627,6 @@ if test_case "two of the stack's own networks on one range are pulled apart"; th
     sandbox_path linux docker-collision
     use_temp_env "PROXY_SUBNET=172.28.0.0/16
 PROXY_NETWORK=172.28.0.0/16
-PROXY_ADDRESS=172.28.0.2
 CAMERA_SUBNET=172.29.0.0/16
 CERTS_SUBNET=172.29.0.0/16"
     auto_move_subnet >/dev/null 2>&1

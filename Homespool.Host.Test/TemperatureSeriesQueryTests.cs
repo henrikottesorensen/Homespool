@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -29,6 +30,11 @@ namespace Homespool.Host.Test;
 /// milliseconds in an INTEGER column - and it materialises an unmapped type by column name. None of
 /// that is checked by the compiler, and none of it would be exercised by a substitute.
 /// </remarks>
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
+                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
+                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
+                                 + "read free of another one's change tracking.")]
 public sealed class TemperatureSeriesQueryTests : IDisposable
 {
     private static readonly DateTimeOffset Start = new(2026, 8, 20, 9, 0, 0, TimeSpan.Zero);
@@ -65,7 +71,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
 
     private static PrinterQueryService ServiceFor(HomespoolDbContext context)
     {
-        return new PrinterQueryService(context,
+        return new PrinterQueryService(context, TestTelemetryContext.For(context),
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                        new TeamCapabilityLookup(context),
                                        TimeProvider.System);

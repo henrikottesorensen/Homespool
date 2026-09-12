@@ -180,6 +180,10 @@ public sealed class TelemetryWriterTests : IDisposable
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+
+        // The same file, which is the default arrangement: TelemetryDbContext is a second door onto
+        // tables the migration created, and only StorageOptions.TelemetryInMemory moves them.
+        services.AddDbContext<TelemetryDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
         _provider = services.BuildServiceProvider();
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
@@ -1702,6 +1706,10 @@ public sealed class TelemetryWriterTests : IDisposable
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
+
+        // The same file, which is the default arrangement: TelemetryDbContext is a second door onto
+        // tables the migration created, and only StorageOptions.TelemetryInMemory moves them.
+        services.AddDbContext<TelemetryDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
         _provider = services.BuildServiceProvider();
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),

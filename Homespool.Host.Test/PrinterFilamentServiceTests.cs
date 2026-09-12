@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -39,6 +40,11 @@ namespace Homespool.Host.Test;
 /// guard cannot look like a pass.
 /// </para>
 /// </remarks>
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
+                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
+                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
+                                 + "read free of another one's change tracking.")]
 public sealed class PrinterFilamentServiceTests : IDisposable
 {
     private const int PrinterId = 1;
@@ -396,8 +402,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
 
         return new PrinterFilamentService(commands: null!,
-                                          new QueueSnapshotReader(context, registry, TimeProvider.System),
-                                          new ToolTargetReader(context));
+                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System),
+                                          new ToolTargetReader(context, TestTelemetryContext.For(context)));
     }
 
     private HomespoolDbContext NewContext()

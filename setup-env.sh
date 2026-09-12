@@ -286,8 +286,8 @@ $range
 # The subnets of this stack's own compose network, by label rather than by name - the project name
 # comes from the directory, so a worktree or a -p flag changes it.
 # The stack's networks: the .env setting holding each one's range, and the name compose labels the
-# bridge with. Moving PROXY_SUBNET moves PROXY_NETWORK and PROXY_ADDRESS with it; the other two are
-# a range and nothing else.
+# bridge with. Moving PROXY_SUBNET moves PROXY_NETWORK with it; the other two are a range and
+# nothing else.
 stack_networks() {
     printf '%s\n' \
         "PROXY_SUBNET homespool" \
@@ -1826,7 +1826,7 @@ planned_or_env() {
     fi
 }
 
-# Plans a network's new range - and for the proxy's, the two settings that travel with it.
+# Plans a network's new range - and for the proxy's, the setting that travels with it.
 move_subnet() {
     case "$1" in
         PROXY_SUBNET) move_proxy_subnet "$2" ;;
@@ -1834,20 +1834,13 @@ move_subnet() {
     esac
 }
 
-# The proxy's fixed address inside a /16: the gateway takes .1, so .2 is the first a container can
-# hold. Only ever called with a range free_subnet chose, which are all /16s.
-proxy_address_for() {
-    echo "${1%.0.0/16}.0.2"
-}
-
-# All three, always. One is what Docker allocates, one is what the application treats as
-# container-only, and one is the single address whose forwarded headers it believes; they answer
-# different questions from the same fact, and a stack where they disagree either trusts headers from
-# nowhere or offers a printer an address it cannot route to.
+# Both, always. One is what Docker allocates, the other is the range the application believes
+# forwarded headers from and treats as container-only; they answer different questions from the
+# same fact, and a stack where they disagree either trusts headers from nowhere or offers a printer
+# an address it cannot route to.
 move_proxy_subnet() {
     plan_set PROXY_SUBNET "$1"
     plan_set PROXY_NETWORK "$1"
-    plan_set PROXY_ADDRESS "$(proxy_address_for "$1")"
 }
 
 # Offered only from inside ask_public_tls, once a public name is set: the header is sent only on a

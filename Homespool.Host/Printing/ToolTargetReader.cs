@@ -24,9 +24,16 @@ public class ToolTargetReader
 {
     private readonly HomespoolDbContext _dbContext;
 
-    public ToolTargetReader(HomespoolDbContext dbContext)
+    /// <summary>
+    /// Where the slot block lands. Separate from the tool rows below it, which are <c>INFO</c>'s and
+    /// stay in the application database - see <see cref="TelemetryDbContext"/>.
+    /// </summary>
+    private readonly TelemetryDbContext _telemetry;
+
+    public ToolTargetReader(HomespoolDbContext dbContext, TelemetryDbContext telemetry)
     {
         _dbContext = dbContext;
+        _telemetry = telemetry;
     }
 
     /// <summary>
@@ -47,7 +54,7 @@ public class ToolTargetReader
     public async Task<IReadOnlyList<PrinterToolState>> ReadToolsAsync(int printerId,
                                                                      CancellationToken cancellationToken)
     {
-        PrinterLiveState? live = await _dbContext.PrinterLiveStates
+        PrinterLiveState? live = await _telemetry.PrinterLiveStates
                                                  .AsNoTracking()
                                                  .Include(state => state.Slots)
                                                  .SingleOrDefaultAsync(state => state.PrinterId == printerId,
@@ -107,7 +114,7 @@ public class ToolTargetReader
     /// <summary>Reads the situation for one printer.</summary>
     public async Task<ToolTarget> ReadAsync(int printerId, CancellationToken cancellationToken)
     {
-        int? activeSlot = await _dbContext.PrinterLiveStates
+        int? activeSlot = await _telemetry.PrinterLiveStates
                                           .AsNoTracking()
                                           .Where(state => state.PrinterId == printerId)
                                           .Select(state => state.ActiveSlot)

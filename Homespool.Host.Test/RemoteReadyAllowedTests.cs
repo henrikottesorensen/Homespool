@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading.Tasks;
 
@@ -44,6 +45,11 @@ namespace Homespool.Host.Test;
 /// standing judgement about it.
 /// </para>
 /// </remarks>
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
+                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
+                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
+                                 + "read free of another one's change tracking.")]
 public sealed class RemoteReadyAllowedTests : IDisposable
 {
     private const long Reader = 1;
@@ -191,7 +197,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
 
     private static PrinterQueryService ServiceFor(HomespoolDbContext context)
     {
-        return new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System);
+        return new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System);
     }
 
     private async Task<bool> ReadFlagAsync(HomespoolDbContext context)

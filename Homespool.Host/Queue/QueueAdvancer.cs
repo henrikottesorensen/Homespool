@@ -351,11 +351,15 @@ public sealed class QueueAdvancer : BackgroundService
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
+        // What the printer has told us, which StorageOptions.TelemetryInMemory may keep in a database
+        // of its own. Both reads below are by printer id, so nothing here has to join across the two.
+        TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
+
         // Read the printer's own reports first, so a transfer that finished since the last pass is
         // known before anything is decided on the assumption that it has not.
-        await ReconcileArrivalsAsync(dbContext, printerId, cancellationToken);
+        await ReconcileArrivalsAsync(dbContext, telemetry, printerId, cancellationToken);
 
-        PrinterLiveState? live = await dbContext.PrinterLiveStates
+        PrinterLiveState? live = await telemetry.PrinterLiveStates
                                                 .AsNoTracking()
                                                 .SingleOrDefaultAsync(state => state.PrinterId == printerId,
                                                                       cancellationToken);
@@ -435,12 +439,13 @@ public sealed class QueueAdvancer : BackgroundService
     /// </para>
     /// </remarks>
     private async Task ReconcileArrivalsAsync(HomespoolDbContext dbContext,
+                                              TelemetryDbContext telemetry,
                                               int printerId,
                                               CancellationToken cancellationToken)
     {
         long watermark = _watermarks.TryGetValue(printerId, out long last) ? last : 0;
 
-        List<PrinterEvent> events = await dbContext.PrinterEvents
+        List<PrinterEvent> events = await telemetry.PrinterEvents
                                                    .AsNoTracking()
                                                    .Where(printerEvent => printerEvent.PrinterId == printerId
                                                                           && printerEvent.Id > watermark

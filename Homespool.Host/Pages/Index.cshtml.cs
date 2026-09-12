@@ -114,15 +114,6 @@ public class IndexModel : PageModel
     /// <summary>Whether a drop has anywhere to put its bytes. False makes the tiles inert targets.</summary>
     public bool CanUpload { get; private set; }
 
-    /// <summary>
-    /// Whether the reader may overwrite one of their own files, which is a capability of its own -
-    /// <see cref="Capability.ManipulateOwnFiles"/> rather than
-    /// <see cref="Capability.UploadOwnFiles"/>. Somebody able to add files but not change them gets
-    /// the name-clash question with only one answer available, and the dialog says so rather than
-    /// offering a replace that would be refused.
-    /// </summary>
-    public bool CanReplace { get; private set; }
-
     /// <summary>What a drop did, said per file. Rendered once and then gone.</summary>
     [TempData]
     public string? StatusMessage { get; set; }
@@ -329,7 +320,6 @@ public class IndexModel : PageModel
         // printer is party to it, which is why PrintFileCatalog checks Caller.Allows directly rather
         // than going through PrinterAccessService. Without it a drop has nowhere to put the bytes.
         CanUpload = caller.Allows(Capability.UploadOwnFiles);
-        CanReplace = caller.Allows(Capability.ManipulateOwnFiles);
     }
 
     /// <summary>

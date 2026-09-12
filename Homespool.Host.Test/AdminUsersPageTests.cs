@@ -382,8 +382,8 @@ public sealed class AdminUsersPageTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <b>Nothing here proves anything, and that is the page's shape now</b>: what stands between a
-    /// session and these acts is the elevation the request had to carry to reach the page at all,
-    /// which <c>AdminElevationTests</c> and <c>AdminChallengePageTests</c> cover. A scope per
+    /// session and these acts is the recent proof the request had to carry to reach the page at all,
+    /// which <c>RecentProofTests</c> and <c>ReauthenticatePageTests</c> cover. A scope per
     /// request, as a real request has.
     /// </remarks>
     private (DetailModel model, DefaultHttpContext request) NewDetail(HomespoolDbContext context,

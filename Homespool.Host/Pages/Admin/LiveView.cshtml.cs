@@ -22,7 +22,7 @@ namespace Homespool.Host.Pages.Admin;
 /// them.
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
-[RequireAdminElevation]
+[RequireRecentProof]
 public class LiveViewModel : PageModel
 {
     private readonly CameraLiveAvailability _availability;

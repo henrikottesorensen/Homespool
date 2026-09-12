@@ -42,7 +42,7 @@ namespace Homespool.Host.Pages.Admin;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
-[RequireAdminElevation]
+[RequireRecentProof]
 public class CertificateModel : PageModel
 {
     private readonly PrinterCertificateAuthority _authority;

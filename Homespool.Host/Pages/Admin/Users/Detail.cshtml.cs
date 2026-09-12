@@ -32,8 +32,8 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>What stands between a session and these acts is <see cref="AdminElevation"/></b>, earned at
-/// <c>Admin/Challenge</c> and good for ten minutes across the administration screens - so this page
+/// <b>What stands between a session and these acts is a recent proof</b>, earned at
+/// <c>Account/Reauthenticate</c> and good for <see cref="RecentProof.Window"/> - so this page
 /// asks for nothing itself. A password field beside every button would be retyped until it stopped
 /// being read, and on a page about somebody else's account it also asks a confusing question: whose
 /// password is this? The reason for having a gate at all is unchanged - a session says only that a
@@ -49,7 +49,7 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
-[RequireAdminElevation]
+[RequireRecentProof]
 public class DetailModel : PageModel
 {
     private readonly HomespoolDbContext _context;

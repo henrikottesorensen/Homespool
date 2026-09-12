@@ -33,7 +33,7 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
-[RequireAdminElevation]
+[RequireRecentProof]
 public class IndexModel : PageModel
 {
     private readonly HomespoolDbContext _context;

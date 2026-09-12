@@ -104,26 +104,26 @@ public static class EnrolmentFlowHelper
     }
 
     /// <summary>
-    /// The password every account this helper creates is given, and therefore the one an
-    /// administration elevation is earned with.
+    /// The password every account this helper creates is given, and therefore the one a
+    /// recent proof is earned with.
     /// </summary>
     public const string AccountPassword = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
 
     /// <summary>
-    /// Earns <paramref name="client"/> an administration elevation, which every page under
-    /// <c>/Admin</c> requires.
+    /// Earns <paramref name="client"/> a recent proof at <c>Account/Reauthenticate</c>, which every page
+    /// carrying <c>[RequireRecentProof]</c> requires - the administration screens among them.
     /// </summary>
     /// <remarks>
-    /// <b>Called explicitly rather than folded into the sign-in above</b>, so that a test driving an
-    /// administration page shows the gate it had to pass. A helper that elevated silently would make
-    /// the one thing standing between a session and these screens invisible in every test that
-    /// crosses it.
+    /// <b>Called explicitly rather than folded into the sign-in above</b>, so that a test driving a
+    /// gated page shows the gate it had to pass. A helper that proved silently would make the one thing
+    /// standing between a session and these screens invisible in every test that crosses it - and a
+    /// sign-in is deliberately not a proof: the mark has its own timer.
     /// </remarks>
-    public static async Task ElevateAsync(HttpClient client)
+    public static async Task ReauthenticateAsync(HttpClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
 
-        HttpResponseMessage challenge = await client.GetAsync("/Admin/Challenge", TestContext.Current.CancellationToken);
+        HttpResponseMessage challenge = await client.GetAsync("/Account/Reauthenticate", TestContext.Current.CancellationToken);
         string html = await challenge.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
@@ -132,9 +132,9 @@ public static class EnrolmentFlowHelper
             ["Input.Password"] = AccountPassword,
         });
 
-        HttpResponseMessage proved = await client.PostAsync("/Admin/Challenge", body, TestContext.Current.CancellationToken);
+        HttpResponseMessage proved = await client.PostAsync("/Account/Reauthenticate", body, TestContext.Current.CancellationToken);
 
-        proved.StatusCode.Should().Be(HttpStatusCode.Redirect, "the elevation is setup for a test, not what it verifies");
+        proved.StatusCode.Should().Be(HttpStatusCode.Redirect, "the proof is setup for a test, not what it verifies");
     }
 
     /// <summary>

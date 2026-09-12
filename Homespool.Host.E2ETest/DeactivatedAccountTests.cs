@@ -76,7 +76,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         // Act
         using (admin)
         {
-            await EnrolmentFlowHelper.ElevateAsync(admin);
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
 
             HttpResponseMessage page = await admin.GetAsync(detailPath, TestContext.Current.CancellationToken);
             string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -124,7 +124,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         // Act
         using (admin)
         {
-            await EnrolmentFlowHelper.ElevateAsync(admin);
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
 
             await PostAsync(admin, detailPath, "Deactivate");
             await PostAsync(admin, detailPath, "Reactivate");

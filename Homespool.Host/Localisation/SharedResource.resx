@@ -2856,17 +2856,23 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="AdminUsers_Gone" xml:space="preserve">
     <value>That account no longer exists.</value>
   </data>
-  <data name="AdminChallenge_Title" xml:space="preserve">
+  <data name="Reauthenticate_Title" xml:space="preserve">
     <value>Confirm it is you</value>
   </data>
-  <data name="AdminChallenge_Explanation" xml:space="preserve">
-    <value>The administration screens act on other people's accounts and on this deployment's settings, so they ask for your password before they open. One confirmation covers them all for ten minutes.</value>
+  <data name="Reauthenticate_Explanation" xml:space="preserve">
+    <value>What you were about to do outlives this sign-in — a change to how your account is protected, or an administration screen — so it asks you to prove it is you first. Any of the ways you sign in will do, and once is enough for ten minutes.</value>
   </data>
-  <data name="AdminChallenge_YourPassword" xml:space="preserve">
-    <value>Your own password</value>
-  </data>
-  <data name="AdminChallenge_Confirm" xml:space="preserve">
+  <data name="Reauthenticate_Confirm" xml:space="preserve">
     <value>Confirm</value>
+  </data>
+  <data name="Reauthenticate_WithPasskey" xml:space="preserve">
+    <value>Confirm with a passkey</value>
+  </data>
+  <data name="Reauthenticate_PasskeyRefused" xml:space="preserve">
+    <value>That passkey did not confirm you. Try again, or confirm another way.</value>
+  </data>
+  <data name="Reauthenticate_NoPassword" xml:space="preserve">
+    <value>This account has no password. Confirm with a passkey or with the provider you sign in through.</value>
   </data>
   <data name="AdminUsers_Recovery" xml:space="preserve">
     <value>Recovery</value>

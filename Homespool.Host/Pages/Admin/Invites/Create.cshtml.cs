@@ -31,7 +31,7 @@ namespace Homespool.Host.Pages.Admin.Invites;
 /// existing team.
 /// </summary>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
-[RequireAdminElevation]
+[RequireRecentProof]
 public class CreateModel : PageModel
 {
     private readonly InvitationService _invitationService;

@@ -2754,17 +2754,23 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="AdminUsers_Gone" xml:space="preserve">
     <value>Den konto findes ikke længere.</value>
   </data>
-  <data name="AdminChallenge_Title" xml:space="preserve">
+  <data name="Reauthenticate_Title" xml:space="preserve">
     <value>Bekræft, at det er dig</value>
   </data>
-  <data name="AdminChallenge_Explanation" xml:space="preserve">
-    <value>Administrationssiderne handler på andres konti og på denne installations indstillinger, så de beder om din adgangskode, før de åbner. Én bekræftelse dækker dem alle i ti minutter.</value>
+  <data name="Reauthenticate_Explanation" xml:space="preserve">
+    <value>Det, du var ved at gøre, rækker ud over dette login – en ændring af, hvordan din konto er beskyttet, eller en administrationsside – så du bliver bedt om at bekræfte, at det er dig, først. Enhver af de måder, du logger ind på, kan bruges, og én gang er nok til ti minutter.</value>
   </data>
-  <data name="AdminChallenge_YourPassword" xml:space="preserve">
-    <value>Din egen adgangskode</value>
-  </data>
-  <data name="AdminChallenge_Confirm" xml:space="preserve">
+  <data name="Reauthenticate_Confirm" xml:space="preserve">
     <value>Bekræft</value>
+  </data>
+  <data name="Reauthenticate_WithPasskey" xml:space="preserve">
+    <value>Bekræft med adgangsnøgle</value>
+  </data>
+  <data name="Reauthenticate_PasskeyRefused" xml:space="preserve">
+    <value>Adgangsnøglen bekræftede dig ikke. Prøv igen, eller bekræft på en anden måde.</value>
+  </data>
+  <data name="Reauthenticate_NoPassword" xml:space="preserve">
+    <value>Denne konto har ingen adgangskode. Bekræft med en adgangsnøgle eller med den udbyder, du logger ind igennem.</value>
   </data>
   <data name="AdminUsers_Recovery" xml:space="preserve">
     <value>Gendannelse</value>

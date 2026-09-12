@@ -20,7 +20,7 @@ namespace Homespool.Host.Pages.Admin.Invites;
 /// <see cref="InvitationService.RevokeAsync"/>), so a revoked invite shows here as "Expired".
 /// </summary>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
-[RequireAdminElevation]
+[RequireRecentProof]
 public class IndexModel : PageModel
 {
     private readonly InvitationService _invitationService;

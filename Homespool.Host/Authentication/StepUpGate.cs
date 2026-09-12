@@ -211,6 +211,32 @@ public sealed class StepUpGate
     /// </summary>
     public async Task<ProviderProofOutcome> RecordProviderProofAsync(HttpContext context, HSUser user)
     {
+        (ProviderProofOutcome outcome, string? providerKey) = await ReadProviderAnswerAsync(context, user);
+
+        if (outcome.Refusal is null)
+        {
+            _ceremonies.Begin(context, PasskeyCeremonies.ProviderProof, providerKey!);
+        }
+
+        return outcome;
+    }
+
+    /// <summary>
+    /// Reads the provider's answer on the way back and says whether it counts as <paramref name="user"/>
+    /// re-authenticating, starting nothing: for the page whose act is the proof itself, so there is no
+    /// later request to spend it in.
+    /// </summary>
+    public async Task<ProviderProofOutcome> VerifyProviderProofAsync(HttpContext context, HSUser user)
+    {
+        return (await ReadProviderAnswerAsync(context, user)).outcome;
+    }
+
+    /// <summary>
+    /// The shared half of the two methods above: the external cookie read and consumed, the answer
+    /// checked against the account, and the subject the provider vouched for when it counts.
+    /// </summary>
+    private async Task<(ProviderProofOutcome outcome, string? providerKey)> ReadProviderAnswerAsync(HttpContext context, HSUser user)
+    {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(user);
 
@@ -223,7 +249,7 @@ public sealed class StepUpGate
 
         if (info is null)
         {
-            return new ProviderProofOutcome("failed", null);
+            return (new ProviderProofOutcome("failed", null), null);
         }
 
         string provider = info.ProviderDisplayName ?? info.LoginProvider;
@@ -235,14 +261,12 @@ public sealed class StepUpGate
                                info.LoginProvider,
                                refusal);
 
-            return new ProviderProofOutcome(refusal, provider);
+            return (new ProviderProofOutcome(refusal, provider), null);
         }
-
-        _ceremonies.Begin(context, PasskeyCeremonies.ProviderProof, info.ProviderKey);
 
         _logger.LogInformation("User {UserId} re-authenticated at {LoginProvider}.", user.Id, info.LoginProvider);
 
-        return new ProviderProofOutcome(null, provider);
+        return (new ProviderProofOutcome(null, provider), info.ProviderKey);
     }
 
     /// <summary>

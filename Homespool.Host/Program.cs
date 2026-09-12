@@ -197,7 +197,14 @@ public static class Program
             builder.Services.AddRazorPages()
                             .AddDataAnnotationsLocalization(options =>
                                 options.DataAnnotationLocalizerProvider = (_, factory) =>
-                                    factory.Create(typeof(Localisation.SharedResource)));
+                                    factory.Create(typeof(Localisation.SharedResource)))
+
+                            // The one filter behind [RequireRecentProof]. Global because a
+                            // page filter is discovered from the page model's attributes and never
+                            // from a handler method's, and a mixed page gates one handler; inert on
+                            // every page that declares nothing, which is the declaration a reader
+                            // sees on the page itself.
+                            .AddMvcOptions(options => options.Filters.Add<Authentication.RecentProofPageFilter>());
 
             builder.Services.AddHomespoolLocalisation();
 

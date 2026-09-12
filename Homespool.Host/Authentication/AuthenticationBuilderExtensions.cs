@@ -52,10 +52,10 @@ public static class AuthenticationBuilderExtensions
             new PasskeyCeremonyLedger(services.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>().Get(Schemes.Passkey).TimeProvider));
         builder.Services.AddSingleton<PasskeyCeremonies>();
 
-        // The administration screens' own gate: not a scheme and not a policy, but read on
-        // every request into /Admin, so it lives with the authentication services rather than
-        // with the pages.
-        builder.Services.AddSingleton<AdminElevation>();
+        // The gate behind [RequireRecentProof]: not a scheme and not a policy, but read on every
+        // request into a page that declares it, so it lives with the authentication services rather
+        // than with the pages.
+        builder.Services.AddSingleton<RecentProof>();
 
         builder.Services.AddOptions<PasskeyAuthenticationOptions>(Schemes.Passkey)
                .Configure<IOptions<Middleware.SecurityOptions>>((options, security) =>

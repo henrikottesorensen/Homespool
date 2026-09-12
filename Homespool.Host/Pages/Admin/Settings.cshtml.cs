@@ -41,7 +41,7 @@ namespace Homespool.Host.Pages.Admin;
 /// </para>
 /// </remarks>
 [Authorize(Roles = AdminBootstrap.AdminRole)]
-[RequireAdminElevation]
+[RequireRecentProof]
 public class SettingsModel : PageModel
 {
     private readonly SettingsStore _store;

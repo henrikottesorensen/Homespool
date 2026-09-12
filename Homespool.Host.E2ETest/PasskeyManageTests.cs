@@ -182,7 +182,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
 
         using (admin)
         {
-            await EnrolmentFlowHelper.ElevateAsync(admin);
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
 
             HttpResponseMessage roster = await admin.GetAsync($"{AdminPath}/Index", TestContext.Current.CancellationToken);
             string rosterHtml = await roster.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -216,8 +216,8 @@ public sealed class PasskeyManageTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A live administrator session alone reaches nothing: without an elevation the screens send the
-    /// browser to the challenge, and a passkey posted at directly stays where it is.
+    /// A live administrator session alone reaches nothing: without a recent proof the screens send the
+    /// browser to prove itself, and a passkey posted at directly stays where it is.
     /// </summary>
     [Fact]
     public async Task AnAdministratorWhoHasNotConfirmedReachesNothing()
@@ -235,9 +235,9 @@ public sealed class PasskeyManageTests : IAsyncLifetime
             // Act
             HttpResponseMessage page = await admin.GetAsync(detailPath, TestContext.Current.CancellationToken);
 
-            // The antiforgery token comes from the challenge it was sent to, so the post that follows
-            // fails on the elevation rather than on a missing token.
-            HttpResponseMessage challenge = await admin.GetAsync("/Admin/Challenge", TestContext.Current.CancellationToken);
+            // The antiforgery token comes from the proof page it was sent to, so the post that follows
+            // fails on the proof rather than on a missing token.
+            HttpResponseMessage challenge = await admin.GetAsync("/Account/Reauthenticate", TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(
                 await challenge.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
@@ -251,10 +251,10 @@ public sealed class PasskeyManageTests : IAsyncLifetime
                 $"{detailPath}?handler=RevokePasskey", revokeBody, TestContext.Current.CancellationToken);
 
             // Assert
-            page.StatusCode.Should().Be(HttpStatusCode.Redirect, "an unelevated administrator is asked to confirm");
-            page.Headers.Location!.OriginalString.Should().Contain("/Admin/Challenge");
+            page.StatusCode.Should().Be(HttpStatusCode.Redirect, "an unproved administrator is asked to confirm");
+            page.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate");
             posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
-            posted.Headers.Location!.OriginalString.Should().Contain("/Admin/Challenge");
+            posted.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate");
         }
 
         (await PasskeysOfAsync(owner)).Should().ContainSingle("nothing was revoked");

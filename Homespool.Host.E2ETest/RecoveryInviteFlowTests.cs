@@ -20,7 +20,7 @@ namespace Homespool.Host.E2ETest;
 /// credentials, and that person uses it to get back in.
 /// </summary>
 /// <remarks>
-/// <b>Driven end to end because every step is a different trust boundary</b> - an elevated
+/// <b>Driven end to end because every step is a different trust boundary</b> - a proved
 /// administrator issuing, an anonymous holder of a link redeeming, and the login form afterwards.
 /// The page-model tests prove what redemption does; this proves the link an administrator is handed
 /// is one that works.
@@ -69,7 +69,7 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
 
         using (admin)
         {
-            await EnrolmentFlowHelper.ElevateAsync(admin);
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
 
             HttpResponseMessage page = await admin.GetAsync(detailPath, TestContext.Current.CancellationToken);
             string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -117,9 +117,9 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
             HttpStatusCode.Redirect, "the old one does not");
     }
 
-    /// <summary>An administrator who has not confirmed at the challenge issues nothing.</summary>
+    /// <summary>An administrator who has not proved themselves issues nothing.</summary>
     [Fact]
-    public async Task AnUnelevatedAdministratorCannotIssueARecovery()
+    public async Task AnUnprovedAdministratorCannotIssueARecovery()
     {
         // Arrange
         (HSUser subject, HttpClient subjectClient) =
@@ -133,7 +133,7 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
 
         using (admin)
         {
-            HttpResponseMessage challenge = await admin.GetAsync("/Admin/Challenge", TestContext.Current.CancellationToken);
+            HttpResponseMessage challenge = await admin.GetAsync("/Account/Reauthenticate", TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(
                 await challenge.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
@@ -149,7 +149,7 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
 
             // Assert
             issued.StatusCode.Should().Be(HttpStatusCode.Redirect);
-            issued.Headers.Location!.OriginalString.Should().Contain("/Admin/Challenge");
+            issued.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate");
         }
 
         (await SignInAsync("subject@example.com", OldPassword)).Should().Be(

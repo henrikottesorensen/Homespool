@@ -149,4 +149,17 @@ public sealed class LocalSignInTests : IDisposable
         rig.Cleared(request, IdentityConstants.TwoFactorUserIdScheme).Should().BeTrue();
         rig.Cleared(request, IdentityConstants.TwoFactorRememberMeScheme).Should().BeFalse("signing out does not forget the browser, as the framework leaves it");
     }
+
+    /// <summary>The proof goes with the session, whichever route out of it is taken.</summary>
+    [Fact]
+    public async Task SigningOutClearsTheRecentProof()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        DefaultHttpContext request = rig.NewRequest(await rig.SessionCookieAsync(user));
+
+        await LocalSchemeRig.SignInOf(request).SignOutAsync(request);
+
+        request.Response.Headers.SetCookie.ToString().Should().Contain("Homespool.RecentProof=;");
+    }
 }

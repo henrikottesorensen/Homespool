@@ -1,6 +1,7 @@
-// Signing in with a passkey: ask the server for a challenge, hand it to the browser's authenticator,
-// and post what comes back. Hand-written over navigator.credentials, because the server already
-// speaks WebAuthn's JSON and the only work left is base64url in both directions.
+// Signing in, or confirming a session, with a passkey: ask the server for a challenge, hand it to the
+// browser's authenticator, and post what comes back. Hand-written over navigator.credentials, because
+// the server already speaks WebAuthn's JSON and the only work left is base64url in both directions.
+// The login page and the re-authentication page both carry the form it drives.
 //
 // The button is hidden until this script has confirmed the browser can run a ceremony at all, since
 // there is no no-script path for WebAuthn to fall back to. The form it lives in carries the
@@ -101,9 +102,12 @@
         error.hidden = true;
         button.disabled = true;
 
-        // The remember-me choice is on the password form, and it means the same thing here.
-        var remember = document.querySelector("#account input[type=checkbox]");
-        form.elements.rememberMe.value = remember && remember.checked ? "true" : "false";
+        // The remember-me choice is on the password form, and it means the same thing here. The
+        // re-authentication page has neither: it confirms a session rather than starting one.
+        if (form.elements.rememberMe) {
+            var remember = document.querySelector("#account input[type=checkbox]");
+            form.elements.rememberMe.value = remember && remember.checked ? "true" : "false";
+        }
 
         // Built from this form so the antiforgery field travels with the challenge request.
         var body = new FormData(form);

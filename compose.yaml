@@ -1,5 +1,26 @@
+# Bounds every service's container log. Docker's default json-file driver keeps no size limit and
+# never rotates, so each service appends to one file for the life of its container, however long
+# that is - unbounded disk, and a steady stream of small writes on hardware that wears out by being
+# written to. A Raspberry Pi's SD card is the case that motivated it; a server merely runs out of disk
+# more slowly.
+#
+# Here rather than in /etc/docker/daemon.json because this file travels with the stack to every
+# deployment, where a daemon default would reach only an image that shipped one.
+#
+# What it changes is how much is KEPT, not how much is written: the same bytes still land, and the
+# oldest are discarded past 10 MB x 3 per service. `docker logs` goes on working as before.
+#
+# Applied per container at creation, so an existing deployment picks it up on the next
+# `docker compose up -d`, which recreates each service whose configuration changed.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   homespool:
+    logging: *logging
     # REGISTRY prefixes both image names, for a deployment that pulls rather than builds - set it in
     # .env and nothing here changes. Unset, which is the ordinary case, this is plain `homespool`.
     image: ${REGISTRY:+${REGISTRY}/}homespool
@@ -267,6 +288,7 @@ services:
   # its own hands out nothing. Delete the ports block below to turn live view off; the still on the
   # printer page keeps working.
   go2rtc:
+    logging: *logging
     # Pinned by digest: this is 1.9.14, the same digest pi/decode-bench.sh pins, so the sidecar
     # that runs is the sidecar that was measured. Upstream publishes no floating 1.9 or 1 tag, so
     # an exact pin is the only option that does not drift; bumping is manual and rare, and the
@@ -465,6 +487,7 @@ services:
   # ciphersuite, no response buffering, and OpenSSL rather than Go's crypto/tls. Read
   # nginx/homespool-printer.conf before substituting anything for that half.
   proxy:
+    logging: *logging
     image: ${REGISTRY:+${REGISTRY}/}homespool-proxy
     build:
       context: ./nginx
@@ -649,6 +672,7 @@ services:
   # that cadence; the major keeps patch releases flowing and makes a breaking change a deliberate
   # edit here.
   certs:
+    logging: *logging
     image: goacme/lego:v5
     profiles: ["certs"]
 

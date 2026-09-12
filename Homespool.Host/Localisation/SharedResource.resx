@@ -1763,21 +1763,6 @@
   <data name="Printers_CommandSent" xml:space="preserve">
     <value>{0} sent.</value>
   </data>
-  <data name="Printers_NoControlPermission" xml:space="preserve">
-    <value>You don’t have permission to control that printer.</value>
-  </data>
-  <data name="Printers_NotConnectedNow" xml:space="preserve">
-    <value>That printer isn’t connected right now.</value>
-  </data>
-  <data name="Printers_StillBusy" xml:space="preserve">
-    <value>That printer is still processing a previous command.</value>
-  </data>
-  <data name="Printers_NoResponse" xml:space="preserve">
-    <value>That printer didn’t respond in time.</value>
-  </data>
-  <data name="Printers_CommandFailed" xml:space="preserve">
-    <value>Something went wrong sending the command.</value>
-  </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>Too many unrecognised codes. Try again in {0}. The printer’s own code is unaffected - it is still waiting.</value>
   </data>

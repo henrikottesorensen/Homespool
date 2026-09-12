@@ -9,7 +9,6 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
@@ -17,7 +16,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -25,9 +23,10 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
-using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -35,8 +34,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test.Printers;
 
 /// <summary>
-/// The printer list: scoping to teams the user can read, enrolment status per row, and the
-/// regenerate action for a still-unbound USB-key token.
+/// The printer list: scoping to teams the user can read, enrolment status and live readings per
+/// card, and the regenerate action for a still-unbound USB-key token.
 /// </summary>
 [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                  Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
@@ -45,6 +44,8 @@ namespace Homespool.Host.Test.Printers;
                                  + "read free of another one's change tracking.")]
 public sealed class IndexModelTests : IDisposable
 {
+    private static readonly QueueSignal QueueSignal = new();
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printers-index-{Guid.NewGuid():N}.db");
 
     // A reissue offers the names the certificate covers, so these tests need a real one.
@@ -138,27 +139,33 @@ public sealed class IndexModelTests : IDisposable
             new ServiceCollection().AddLogging().AddLocalization().BuildServiceProvider()
                                    .GetRequiredService<IStringLocalizer<SharedResource>>();
 
+        // The page counts each printer's queue, so it needs the real service - and that needs a file
+        // store. Rooted in a temp directory nothing here writes to: an empty queue is the backdrop
+        // every case below wants.
+        string storeRoot = Path.Combine(Path.GetTempPath(), "homespool-printers-index-" + Guid.NewGuid().ToString("N"));
+        UserFileStore store = new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = storeRoot }),
+                                  new HostEnvironmentAccessor(storeRoot),
+                                  TimeProvider.System,
+                                  NullLogger<UserFileStore>.Instance);
+
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
         IndexModel model = new(
-            new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
+            new PrinterQueryService(context, TestTelemetryContext.For(context), access, new TeamCapabilityLookup(context), TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                                     TimeProvider.System, NullLogger<PrusaConnectService>.Instance, TestOptions.Monitor(options)),
-            new DefaultPrinterService(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), users),
+            new DefaultPrinterService(access, users),
             new ProvisioningBundleBuilder(TestOptions.Monitor(options), Options.Create(new CertificateOptions()), authority,
                                           new DnsHostAddressResolver(), TestLocaliser.Shared()),
             new TeamService(context),
+            new PrintQueueService(context, access,
+                                  new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance),
+                                  TimeProvider.System,
+                                  QueueSignal),
             users,
             TestOptions.Snapshot(options),
             connectionRegistry,
-            new PrinterCommandService(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), connectionRegistry),
-            new PrintStopService(context,
-                                 new PrinterCommandService(
-                                     new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                     connectionRegistry),
-                                 new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                 TimeProvider.System,
-                                 NullLogger<PrintStopService>.Instance),
             new PrinterStatusText(localiser),
-            new PrinterIntentText(localiser),
             localiser)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
@@ -371,40 +378,94 @@ public sealed class IndexModelTests : IDisposable
         model.RegeneratedPrinterId.Should().Be(printer.Id);
     }
 
-    // ---------- OnPostPauseAsync (catch-all fallback) ----------
+    // ---------- The card's live readings ----------
 
     /// <summary>
-    /// An exception type PrinterCommandService never throws itself - none of the typed catch clauses
-    /// in OnPostPauseAsync's shared handler match it - falls through to the generic message instead
-    /// of propagating as an unhandled exception.
+    /// A connected printer's card carries its progress, the time left and its filament, read from the
+    /// live state - and a chamber reading earns it the enclosed drawing.
     /// </summary>
     [Fact]
-    public async Task OnPostPauseAsyncFallsBackToAGenericMessageForAnUnpredictedException()
+    public async Task OnGetAsyncCarriesAConnectedPrintersLiveReadings()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        // An exception PrinterCommandService never throws itself, bypassing the actor's own
-        // correlation/timeout handling - as a WebSocket write racing a concurrent disconnect would
-        // (the actor propagates a failed socket write to the caller as the real exception).
         PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
         (IndexModel model, _, Team team) = await NewModelAsync(context, registry);
 
-        Printer printer = NewPrinter(team.Id);
+        Printer printer = NewPrinter(team.Id, "Boxed");
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
+        SeedLiveState(context, printer.Id, chamber: 31.5f, progress: 42, timeRemaining: 4320, material: "PLA");
+
+        // Connected means the link is open, not merely registered - a substitute answers false to
+        // everything until told otherwise.
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
-        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
-             .ThrowsAsync(new InvalidOperationException("socket gone"));
+        actor.IsOpen.Returns(true);
         registry.Register(printer.Id, actor, overPlaintext: false);
 
         // Act
-        IActionResult result = await model.OnPostPauseAsync(printer.Id, CancellationToken.None);
+        await model.OnGetAsync(CancellationToken.None);
 
         // Assert
-        result.Should().BeOfType<RedirectToPageResult>();
-        model.StatusMessage.Should().Be("Something went wrong sending the command.");
-        model.StatusSuccess.Should().BeFalse();
+        IndexModel.PrinterRow row = model.Printers.Single();
+        row.Connected.Should().BeTrue();
+        row.FormFactor.Should().Be(Pages.PrinterFormFactor.Enclosed);
+        row.Progress.Should().Be(42);
+        row.TimeRemaining.Should().Be(4320);
+        row.Material.Should().Be("PLA");
+        row.QueuedCount.Should().Be(0);
+    }
+
+    /// <summary>
+    /// <b>A disconnected printer keeps its filament and loses its progress.</b> The live state
+    /// persists, so every reading on it outlives the connection; a percentage on a printer nobody can
+    /// reach is a frozen reading, while what filament is loaded stays true with the power off. The
+    /// front page's tiles follow the same rule, and this is what keeps the two pages agreeing.
+    /// </summary>
+    [Fact]
+    public async Task OnGetAsyncDropsProgressForADisconnectedPrinterButKeepsItsFilament()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (IndexModel model, _, Team team) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id, "Switched off");
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        SeedLiveState(context, printer.Id, chamber: null, progress: 42, timeRemaining: 4320, material: "PETG");
+
+        // Act
+        await model.OnGetAsync(CancellationToken.None);
+
+        // Assert
+        IndexModel.PrinterRow row = model.Printers.Single();
+        row.Connected.Should().BeFalse();
+        row.FormFactor.Should().Be(Pages.PrinterFormFactor.Open);
+        row.Progress.Should().BeNull("progress on a printer nobody can reach is a frozen reading");
+        row.TimeRemaining.Should().BeNull();
+        row.Material.Should().Be("PETG", "what is loaded stays true while the power is off");
+    }
+
+    private static void SeedLiveState(HomespoolDbContext context,
+                                      int printerId,
+                                      float? chamber,
+                                      int? progress,
+                                      int? timeRemaining,
+                                      string? material)
+    {
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printerId,
+            NozzleTemperature = 25,
+            ChamberTemperature = chamber,
+            Progress = progress,
+            TimeRemaining = timeRemaining,
+            Material = material,
+        });
+
+        context.SaveChanges();
     }
 }

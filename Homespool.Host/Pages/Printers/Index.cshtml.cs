@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -17,6 +16,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -24,10 +24,16 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Pages.Printers;
 
 /// <summary>
-/// Lists printers the signed-in user can see, and offers "Regenerate" for any still-unbound USB-key
-/// provisioning token - the only way to recover the ini snippet after leaving <c>Add</c>, since the
-/// plaintext token is never stored and cannot be shown again otherwise.
+/// Every printer the signed-in user can see, one card each: the drawing and plaque the front page's
+/// tiles carry, plus the two things the tiles have no room for - making one the default, and
+/// reissuing a USB-key token. Reissuing here is the only way to recover the ini snippet after
+/// leaving <c>Add</c>, since the plaintext token is never stored and cannot be shown again otherwise.
 /// </summary>
+/// <remarks>
+/// <b>Pause, resume and stop are deliberately not here.</b> They are on the printer's own page,
+/// beside the status they act on and the printer's answer to them. A rack of stop buttons, one per
+/// printer, is a rack of ways to stop the wrong one.
+/// </remarks>
 [Authorize]
 public class IndexModel : PageModel
 {
@@ -36,31 +42,23 @@ public class IndexModel : PageModel
     private readonly DefaultPrinterService _defaults;
     private readonly ProvisioningBundleBuilder _bundles;
     private readonly TeamService _teamService;
+    private readonly PrintQueueService _queue;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrusaConnectOptions _options;
     private readonly PrinterConnectionRegistry _connectionRegistry;
-    private readonly PrinterCommandService _printerCommandService;
-    private readonly PrintStopService _printStopService;
     private readonly PrinterStatusText _statusText;
     private readonly IStringLocalizer<SharedResource> _localiser;
-
-    /// <summary>
-    /// Names an intent for a person. <see cref="IPrinterIntent.Name"/> is the type name and says so.
-    /// </summary>
-    private readonly PrinterIntentText _intents;
 
     public IndexModel(PrinterQueryService printerQueryService,
                       PrusaConnectService prusaConnectService,
                       DefaultPrinterService defaults,
                       ProvisioningBundleBuilder bundles,
                       TeamService teamService,
+                      PrintQueueService queue,
                       UserManager<HSUser> userManager,
                       IOptionsSnapshot<PrusaConnectOptions> options,
                       PrinterConnectionRegistry connectionRegistry,
-                      PrinterCommandService printerCommandService,
-                      PrintStopService printStopService,
                       PrinterStatusText statusText,
-                      PrinterIntentText intents,
                       IStringLocalizer<SharedResource> localiser)
     {
         _printerQueryService = printerQueryService;
@@ -68,13 +66,11 @@ public class IndexModel : PageModel
         _defaults = defaults;
         _bundles = bundles;
         _teamService = teamService;
+        _queue = queue;
         _userManager = userManager;
         _options = options.Value;
         _connectionRegistry = connectionRegistry;
-        _printerCommandService = printerCommandService;
-        _printStopService = printStopService;
         _statusText = statusText;
-        _intents = intents;
         _localiser = localiser;
     }
 
@@ -84,9 +80,8 @@ public class IndexModel : PageModel
     public string? StatusMessage { get; set; }
 
     /// <summary>
-    /// Whether <see cref="StatusMessage"/> reports success rather than a failure. Defaults false so
-    /// every existing caller (only <see cref="OnPostRegenerateAsync"/> sets the message today, and
-    /// only on failure) keeps rendering the warning styling unchanged.
+    /// Whether <see cref="StatusMessage"/> reports success rather than a failure. Defaults false, so
+    /// a message set without saying renders as a warning.
     /// </summary>
     [TempData]
     public bool StatusSuccess { get; set; }
@@ -106,11 +101,20 @@ public class IndexModel : PageModel
     /// <summary>The bundle a reissue just made available, shown once and then gone.</summary>
     public BundleOffer? Offer { get; private set; }
 
-    /// <summary>One row of the listing.</summary>
+    /// <summary>One card of the listing.</summary>
     /// <remarks>
+    /// <para>
     /// <b><paramref name="LiveStatus"/> is the printer's own, and null until it has ever reported.</b>
     /// Deliberately not <c>Printer.Status</c>, which is written once as <c>Unknown</c> when the row is
     /// created and never updated again - see <see cref="PrinterQueryService"/>.
+    /// </para>
+    /// <para>
+    /// <b>The four readings after it follow the front page's rule for a disconnected printer</b>:
+    /// <see cref="PrinterLiveState"/> persists, so every field on it outlives the connection, and
+    /// <paramref name="Progress"/> and <paramref name="TimeRemaining"/> are dropped when it is gone
+    /// because they describe a print nobody can watch. <paramref name="Material"/> stays: what is
+    /// loaded does not change while the power is off. See <see cref="PrinterShortcut"/>.
+    /// </para>
     /// </remarks>
     public record PrinterRow(
         Printer Printer,
@@ -119,7 +123,12 @@ public class IndexModel : PageModel
         bool AwaitingUsbProvisioning,
         bool ExpiredUsbProvisioning,
         bool Connected,
-        PrinterStatus? LiveStatus);
+        PrinterStatus? LiveStatus,
+        PrinterFormFactor FormFactor,
+        int? Progress,
+        int? TimeRemaining,
+        string? Material,
+        int QueuedCount);
 
     /// <summary>
     /// What a connected printer's status says, in a person's words rather than the enum's — and in
@@ -224,109 +233,6 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
-    public Task<IActionResult> OnPostPauseAsync(int printerId, CancellationToken cancellationToken)
-    {
-        return SendCommandAsync(printerId, new PausePrint(), cancellationToken);
-    }
-
-    public Task<IActionResult> OnPostResumeAsync(int printerId, CancellationToken cancellationToken)
-    {
-        return SendCommandAsync(printerId, new ResumePrint(), cancellationToken);
-    }
-
-    /// <summary>Stops whatever this printer is running.</summary>
-    /// <remarks>
-    /// Through <see cref="PrintStopService"/> rather than straight to
-    /// <see cref="PrinterCommandService"/>, unlike the two buttons above it: a stop is the one whose
-    /// cause the printer cannot report afterwards, so who pressed it is noted as it is sent.
-    /// </remarks>
-    public Task<IActionResult> OnPostStopAsync(int printerId, CancellationToken cancellationToken)
-    {
-        return SendCommandAsync(printerId, new StopPrint(), cancellationToken, _printStopService.StopAsync);
-    }
-
-    /// <summary>
-    /// Sends a command on behalf of the signed-in user and reports how it went in
-    /// <see cref="StatusMessage"/>.
-    /// </summary>
-    /// <remarks>
-    /// <b><c>send</c> is how it goes out</b>, for the one button needing more than
-    /// <see cref="PrinterCommandService"/> alone. Null is the ordinary path. A replacement throws the
-    /// same exceptions and returns the same <see cref="CommandOutcome"/>, so the reporting below is
-    /// unchanged either way.
-    /// </remarks>
-    private async Task<IActionResult> SendCommandAsync(int printerId,
-                                                       IPrinterIntent command,
-                                                       CancellationToken cancellationToken,
-                                                       Func<int, Caller, CancellationToken, Task<CommandOutcome?>>? send = null)
-    {
-        HSUser? user = await _userManager.GetUserAsync(User);
-
-        if (user is null)
-        {
-            // [Authorize] should make this unreachable; fail closed rather than act on an invented id.
-            return Forbid();
-        }
-
-        Caller caller = CallerResolver.For(user, User);
-
-        try
-        {
-            CommandOutcome? outcome;
-
-            if (send is null)
-            {
-                outcome = await _printerCommandService.SendCommandAsync(printerId, command, caller, cancellationToken);
-            }
-            else
-            {
-                outcome = await send(printerId, caller, cancellationToken);
-            }
-
-            // Null means the command was written and no answer is expected of it - success. Only the
-            // three buttons on this page reach here, and all of them are answered, so this is a
-            // guard rather than a live case.
-            (StatusMessage, StatusSuccess) = outcome?.EventType switch
-            {
-                PrinterEventType.Rejected or PrinterEventType.Failed =>
-                    (_localiser["Printers_CommandRejected", _intents.For(command), outcome!.Reason ?? string.Empty], false),
-                _ => (_localiser["Printers_CommandSent", _intents.For(command)], true),
-            };
-        }
-        catch (PrinterNotFoundException)
-        {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_NotFound"], false);
-        }
-        catch (TeamAccessDeniedException)
-        {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_NoControlPermission"], false);
-        }
-        catch (PrinterNotConnectedException)
-        {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_NotConnectedNow"], false);
-        }
-        catch (CommandAlreadyInFlightException)
-        {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_StillBusy"], false);
-        }
-        catch (CommandResponseTimedOutException)
-        {
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_NoResponse"], false);
-        }
-        catch (Exception) when (!cancellationToken.IsCancellationRequested)
-        {
-            // Everything above is a designed outcome PrinterCommandService can throw. This is the
-            // fallback for what it can't predict - e.g. a WebSocket write racing a disconnect
-            // (PrinterConnectionActor propagates a failed socket write to the caller as whatever
-            // the socket layer produced, rather than a typed exception).
-            // Without this, that unlikely-but-real race surfaces as an unhandled 500 instead of a
-            // message. Excluded when the request itself was cancelled - nothing will render anyway.
-            (StatusMessage, StatusSuccess) = (_localiser["Printers_CommandFailed"], false);
-        }
-
-        return RedirectToPage();
-    }
-
     private async Task LoadPrintersAsync(CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -357,20 +263,38 @@ public class IndexModel : PageModel
                                                 m => m.TeamId,
                                                 m => m.Team!.Name ?? _localiser["Common_TeamNumbered", m.TeamId].Value);
 
-        PrinterEnrolmentStatus status = await _prusaConnectService.GetEnrolmentStatusAsync(
-            printers.Select(row => row.Printer.Id).ToList(), cancellationToken);
+        List<int> ids = printers.Select(row => row.Printer.Id).ToList();
 
-        Printers = printers
-                   .Select(row => new PrinterRow(
-                               row.Printer,
-                               teamNames.TryGetValue(row.Printer.TeamId, out string? name) ?
-                                   name :
-                                   _localiser["Common_TeamNumbered", row.Printer.TeamId].Value,
-                               status.Enrolled.Contains(row.Printer.Id),
-                               status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
-                               status.ExpiredUsbProvisioning.Contains(row.Printer.Id),
-                               _connectionRegistry.IsConnected(row.Printer.Id),
-                               row.LiveState?.Status))
-                   .ToList();
+        PrinterEnrolmentStatus status = await _prusaConnectService.GetEnrolmentStatusAsync(ids, cancellationToken);
+
+        // One grouped count for the whole rack rather than a queue read per printer, the same call
+        // the front page makes for its tiles.
+        IReadOnlyDictionary<int, int> queued = await _queue.CountByPrinterAsync(ids, cancellationToken);
+
+        Printers = printers.Select(row => RowFor(row, teamNames, status, queued)).ToList();
+    }
+
+    private PrinterRow RowFor(PrinterWithState row,
+                              IReadOnlyDictionary<int, string> teamNames,
+                              PrinterEnrolmentStatus status,
+                              IReadOnlyDictionary<int, int> queued)
+    {
+        bool connected = _connectionRegistry.IsConnected(row.Printer.Id);
+
+        return new PrinterRow(
+            row.Printer,
+            teamNames.TryGetValue(row.Printer.TeamId, out string? name) ?
+                name :
+                _localiser["Common_TeamNumbered", row.Printer.TeamId].Value,
+            status.Enrolled.Contains(row.Printer.Id),
+            status.AwaitingUsbProvisioning.Contains(row.Printer.Id),
+            status.ExpiredUsbProvisioning.Contains(row.Printer.Id),
+            connected,
+            row.LiveState?.Status,
+            PrinterFormFactors.For(row.LiveState),
+            connected ? row.LiveState?.Progress : null,
+            connected ? row.LiveState?.TimeRemaining : null,
+            row.LiveState?.Material,
+            queued.TryGetValue(row.Printer.Id, out int waiting) ? waiting : 0);
     }
 }

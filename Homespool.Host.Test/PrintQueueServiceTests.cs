@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -30,6 +31,11 @@ namespace Homespool.Host.Test;
 /// anyone with <c>CanUse</c> including entries somebody else added, and merely readable with
 /// <c>CanRead</c>.
 /// </remarks>
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
+                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
+                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
+                                 + "read free of another one's change tracking.")]
 public sealed class PrintQueueServiceTests : IDisposable
 {
     private const long Alice = 1;
@@ -669,7 +675,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         return new PrintHistoryService(context,
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                       new QueueSnapshotReader(context,
+                                       new QueueSnapshotReader(context, TestTelemetryContext.For(context),
                                                                new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
                                                                TimeProvider.System),
                                        new UserNameLookup(context));

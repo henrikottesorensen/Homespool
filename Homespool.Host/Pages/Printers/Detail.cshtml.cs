@@ -825,11 +825,15 @@ public class DetailModel : PageModel
     {
         (DateTimeOffset from, DateTimeOffset to) = TemperatureWindow.For(Statistics.LiveState, _timeProvider.GetUtcNow());
 
-        ChartWindow = to - from;
         ChartFollowsJob = Statistics.LiveState?.TimePrinting is > 0;
 
         TemperatureSeries? series =
             await _printerQueryService.GetTemperatureSeriesAsync(uuid, caller, from, to, cancellationToken);
+
+        // The series' own window, not the one asked for. They differ when the store does not reach
+        // back as far as the request - a bounded telemetry window against a long print - and the
+        // label has to describe the graph beside it rather than the intention behind it.
+        ChartWindow = series is null ? to - from : series.To - series.From;
 
         Chart = series is null ? null : TemperatureChart.For(series);
     }

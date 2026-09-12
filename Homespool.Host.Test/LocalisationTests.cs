@@ -10,6 +10,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 
+using Homespool.Host.Configuration;
 using Homespool.Host.Localisation;
 using Homespool.Model;
 
@@ -599,5 +600,63 @@ public sealed class LocalisationTests
             UserCultures.InCulture(null, () => CultureInfo.CurrentCulture.Name).Should().Be("en-GB");
             UserCultures.InCulture("de-DE", () => CultureInfo.CurrentCulture.Name).Should().Be("en-GB");
         });
+    }
+
+    /// <summary>
+    /// Every editable setting has a label, and every string it names, in both languages.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The orphan test above checks the other direction, and cannot check this one.</b> It looks
+    /// for resource keys nothing in the code names, and it excludes <c>Settings_Label_</c> from that
+    /// precisely because those keys are composed at run time from <c>nameof()</c> in
+    /// <see cref="EditableSettings"/> - a grep for the literal key finds nothing. So a setting added
+    /// to the allowlist with no string passes every test and renders its own key at the reader:
+    /// <c>Settings_Label_Storage_TelemetryInMemory</c>, in the position a label goes, on the settings
+    /// page. Which is how this test came to exist.
+    /// </para>
+    /// <para>
+    /// <b>The key is composed the way the page composes it</b> - <c>Settings.cshtml</c> builds an id
+    /// from the setting's <c>Section:Key</c> path and swaps the colon for an underscore - rather than
+    /// from a second formula that could agree today and drift later.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EverySettingOnTheAllowlistHasALabelInBothLanguages()
+    {
+        IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");
+        IReadOnlyDictionary<string, string> danish = ReadResources("SharedResource.da.resx");
+
+        List<string> missing = [];
+
+        foreach (EditableSetting setting in EditableSettings.All)
+        {
+            // The label, composed; then the two keys a setting may name outright. A literal is no
+            // safer than a composed one here - both render themselves at the reader when the string
+            // is absent, and a typo in one is exactly as invisible as a string nobody wrote.
+            string[] keys =
+            [
+                "Settings_Label_" + setting.Path.Replace(':', '_'),
+                .. setting.AppliesWhenKey is null ? Array.Empty<string>() : [setting.AppliesWhenKey],
+                .. setting.ConfirmOnEnableKey is null ? Array.Empty<string>() : [setting.ConfirmOnEnableKey],
+            ];
+
+            foreach (string key in keys)
+            {
+                if (!english.ContainsKey(key))
+                {
+                    missing.Add($"{key} (en)");
+                }
+
+                if (!danish.ContainsKey(key))
+                {
+                    missing.Add($"{key} (da)");
+                }
+            }
+        }
+
+        missing.Should().BeEmpty(
+            "a setting with no label renders its own resource key where its name should be - add the "
+            + "string, in both languages, when adding the setting");
     }
 }

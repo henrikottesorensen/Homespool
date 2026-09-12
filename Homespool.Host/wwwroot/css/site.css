@@ -710,6 +710,106 @@ body.camera-maximised-open {
   outline-offset: -2px;
 }
 
+/* ---------------------------------------------------------------------------------------------
+   The printers listing: a rack of cards, in the tiles' vocabulary.
+
+   One card under another at full width, because this page is where every printer is and it reads
+   down like a list rather than across like the front page's six. A card is not a link, unlike a
+   tile: it carries forms, and a form cannot live inside an anchor, so the name is the link. */
+.printer-rack {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+}
+
+/* Drawing, plaque, controls. Three areas on a wide screen; on a phone the controls drop under the
+   other two and take the full width, where a stack of small buttons beside a drawing would leave
+   the plaque a column two words wide. minmax(0, 1fr) rather than 1fr so a long typed name shrinks
+   the plaque rather than pushing the controls off the card - .typed-name's wrap rule can only work
+   once the column is allowed to be narrower than its content. */
+.printer-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "drawing plaque"
+    "controls controls";
+  gap: .75rem 1.25rem;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: var(--bs-border-radius-lg);
+  background-color: var(--bs-body-bg);
+}
+
+@media (min-width: 768px) {
+  .printer-card {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "drawing plaque controls";
+  }
+}
+
+/* The drawing's colour comes from .printer-shortcut-drawing, which the markup carries as well, so
+   the dark-mode lift of the brand blue stays one rule. Nothing to say here but where it goes. */
+.printer-card-drawing {
+  grid-area: drawing;
+}
+
+.printer-card-plaque {
+  grid-area: plaque;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: .35rem;
+  min-width: 0;
+}
+
+/* The name and the Default badge on one line, wrapping when a long name needs it. */
+.printer-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .5rem;
+}
+
+.printer-card-name {
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+/* Where it is and whose it is: the two table columns this replaced, folded into one quiet line. */
+.printer-card-where {
+  font-size: .875rem;
+  color: var(--bs-secondary-color);
+}
+
+/* The bar and the stat rows under it, borrowed from the tile and capped in width: at the card's
+   full width a 42% bar is a foot of green, which shouts, and the rows' left and right values drift
+   a screen apart. The cap is about what a tile is wide plus a little, so the block reads the same
+   size in both places. */
+.printer-card-live {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  width: 100%;
+  max-width: 22rem;
+  margin-top: .25rem;
+}
+
+/* The buttons, right-aligned on a wide screen and left-aligned when they drop under the plaque -
+   where right-aligned would put them under nothing. */
+.printer-card-controls {
+  grid-area: controls;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35rem;
+}
+
+@media (min-width: 768px) {
+  .printer-card-controls {
+    justify-content: flex-end;
+  }
+}
+
 /* Per-tool rows on the status card. TWO FIXED COLUMNS above the breakpoint, one below - not
    auto-fit, which was the first attempt and measured out at three columns at 1000px and four at
    1280. "As many as fit" is not a design here: tool numbers are not

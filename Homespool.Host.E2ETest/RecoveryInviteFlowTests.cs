@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -117,6 +118,76 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
             HttpStatusCode.Redirect, "the old one does not");
     }
 
+    /// <summary>
+    /// A recovery is a proved password, not a way past a second factor: an account holding an
+    /// authenticator is still asked for the code before it gets a session.
+    /// </summary>
+    /// <remarks>
+    /// Ported from the adoption tests when that path was removed. The behaviour is unchanged and
+    /// still worth pinning - both paths end at the same pre-sign-in check, and a recovery that signed
+    /// somebody straight in would be the interesting bug.
+    /// </remarks>
+    [Fact]
+    public async Task ARecoveredAccountWithAnAuthenticatorIsStillAskedForTheCode()
+    {
+        // Arrange
+        (HSUser subject, HttpClient subjectClient) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "subject@example.com");
+        subjectClient.Dispose();
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser tracked = (await users.FindByIdAsync(subject.Id.ToString(CultureInfo.InvariantCulture)))!;
+
+            (await users.ResetAuthenticatorKeyAsync(tracked)).Succeeded.Should().BeTrue();
+            (await users.SetTwoFactorEnabledAsync(tracked, true)).Succeeded.Should().BeTrue();
+        }
+
+        string link = await IssueRecoveryAsync(subject, clearAuthenticator: false);
+
+        // Act
+        HttpResponseMessage redeemed = await RedeemAsync(link);
+
+        // Assert
+        redeemed.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        redeemed.Headers.Location!.OriginalString.Should().StartWith("/Account/LoginWith2fa", "the code is still owed");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, redeemed).Should()
+            .BeFalse("no session until the code is answered");
+    }
+
+    /// <summary>
+    /// An unconfirmed account is recovered and then held at confirmation, as a new account is: an
+    /// invite is not the same proof as answering mail sent to the address.
+    /// </summary>
+    [Fact]
+    public async Task AnUnconfirmedAccountIsRecoveredAndHeldAtConfirmation()
+    {
+        // Arrange
+        (HSUser subject, HttpClient subjectClient) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "subject@example.com");
+        subjectClient.Dispose();
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser tracked = (await users.FindByIdAsync(subject.Id.ToString(CultureInfo.InvariantCulture)))!;
+
+            tracked.EmailConfirmed = false;
+            (await users.UpdateAsync(tracked)).Succeeded.Should().BeTrue();
+        }
+
+        string link = await IssueRecoveryAsync(subject, clearAuthenticator: false);
+
+        // Act
+        HttpResponseMessage redeemed = await RedeemAsync(link);
+
+        // Assert
+        redeemed.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        redeemed.Headers.Location!.OriginalString.Should().StartWith(
+            "/Account/RegisterConfirmation", "the address has not answered its mail");
+    }
+
     /// <summary>An administrator who has not proved themselves issues nothing.</summary>
     [Fact]
     public async Task AnUnprovedAdministratorCannotIssueARecovery()
@@ -154,6 +225,52 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
 
         (await SignInAsync("subject@example.com", OldPassword)).Should().Be(
             HttpStatusCode.Redirect, "nothing about the account changed");
+    }
+
+    /// <summary>A proved administrator issues a recovery for <paramref name="subject"/>.</summary>
+    private async Task<string> IssueRecoveryAsync(HSUser subject, bool clearAuthenticator)
+    {
+        (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "admin@example.com", AdminBootstrap.AdminRole);
+
+        string detailPath = $"/Admin/Users/Detail/{subject.Id.ToString(CultureInfo.InvariantCulture)}";
+
+        using (admin)
+        {
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
+
+            HttpResponseMessage page = await admin.GetAsync(detailPath, TestContext.Current.CancellationToken);
+            string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            using FormUrlEncodedContent issue = new(new Dictionary<string, string>
+            {
+                ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
+                ["ClearAuthenticator"] = clearAuthenticator ? "true" : "false",
+            });
+
+            HttpResponseMessage issued =
+                await admin.PostAsync($"{detailPath}?handler=Recover", issue, TestContext.Current.CancellationToken);
+
+            return RecoveryLink(await issued.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        }
+    }
+
+    /// <summary>Redeems a recovery link as somebody holding only the link.</summary>
+    private async Task<HttpResponseMessage> RedeemAsync(string link)
+    {
+        using HttpClient holder = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        HttpResponseMessage form = await holder.GetAsync(link, TestContext.Current.CancellationToken);
+        string html = await form.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        using FormUrlEncodedContent redeem = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
+            ["Input.Password"] = NewPassword,
+            ["Input.ConfirmPassword"] = NewPassword,
+        });
+
+        return await holder.PostAsync(link, redeem, TestContext.Current.CancellationToken);
     }
 
     /// <summary>The link the page rendered, read off the response that minted it.</summary>

@@ -48,7 +48,59 @@ public static class DataServiceCollectionExtensions
             ef.AddInterceptors(new SqlitePragmaInterceptor(storage.BusyTimeoutMilliseconds));
         });
 
+        AddTelemetryData(services, storage, connectionString);
+
         return services;
+    }
+
+    /// <summary>
+    /// Registers <see cref="TelemetryDbContext"/> against either the application database or a private
+    /// in-memory one, per <see cref="StorageOptions.TelemetryInMemory"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Off, this is the same file and the same tables</b> - the context is a second door onto rows
+    /// the migration already created, so nothing about what lands on disk changes.
+    /// </para>
+    /// <para>
+    /// <b>On, telemetry is diverted to a database that never touches the disk.</b> Foreign keys are
+    /// enabled there for the same reason they are on the file: the retention sweep deletes samples in
+    /// bulk and relies on the database to take their slot rows with them.
+    /// </para>
+    /// </remarks>
+    private static void AddTelemetryData(IServiceCollection services,
+                                         StorageOptions storage,
+                                         string applicationConnectionString)
+    {
+        if (!storage.TelemetryInMemory)
+        {
+            services.AddDbContext<TelemetryDbContext>(ef =>
+            {
+                ef.UseSqlite(applicationConnectionString);
+                ef.AddInterceptors(new SqlitePragmaInterceptor(storage.BusyTimeoutMilliseconds));
+            });
+
+            return;
+        }
+
+        // Unique per host: a shared in-memory database is scoped to the process, and the end-to-end
+        // suite builds a host per test inside one. See TelemetryKeepAlive.
+        string telemetryConnectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = $"HomespoolTelemetry-{Guid.NewGuid():N}",
+            Mode = SqliteOpenMode.Memory,
+            Cache = SqliteCacheMode.Shared,
+            ForeignKeys = true,
+        }.ToString();
+
+        // Registered through a factory so the container owns the lifetime and disposes it at
+        // shutdown. It is resolved during startup, before the tables are created, because
+        // constructing it is what brings the database into existence.
+        services.AddSingleton(_ => new TelemetryKeepAlive(telemetryConnectionString));
+
+        // No pragma interceptor. Its job is the busy timeout, which is about waiting for a writer to
+        // release a file lock - there is no file here, and the shared cache serialises access itself.
+        services.AddDbContext<TelemetryDbContext>(ef => ef.UseSqlite(telemetryConnectionString));
     }
 
     /// <summary>
@@ -80,6 +132,13 @@ public static class DataServiceCollectionExtensions
         // one applying schema changes, and it must be set before Migrate() opens its read-only probe.
         EnsureWriteAheadLogging(context, logger);
 
+        // An in-memory telemetry database starts empty every time, so it is created rather than
+        // migrated - there is no history to carry forward and nothing to stamp. Before the
+        // AutoMigrate check as well: that flag decides who owns changes to the durable schema, and an
+        // operator who has taken that on has not thereby volunteered to create a database that only
+        // exists inside this process.
+        EnsureTelemetryStore(scope.ServiceProvider, storage, logger);
+
         // Also before it, and for a related reason: AutoMigrate says who applies schema changes, not
         // whether the schema is the right one. A database stamped by another build is fatal either
         // way, and with the flag off nothing else would ever notice.
@@ -97,6 +156,47 @@ public static class DataServiceCollectionExtensions
         context.Database.Migrate();
 
         logger.LogInformation("Database schema is up to date.");
+    }
+
+    /// <summary>
+    /// Creates the five telemetry tables in the in-memory database when that is where they live, and
+    /// says which of the two it was either way.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nothing is created against the application file</b>, where those tables are the migration's:
+    /// calling <c>EnsureCreated</c> on a database that already has them would at best do nothing and
+    /// at worst disagree with the migration about what they are. <b>The log line is written in both
+    /// cases</b>, because where telemetry lives decides whether it survives a restart, and a line that
+    /// appears in only one of them cannot be read - silence would mean "durable" and "this build has
+    /// no such setting" alike.
+    /// </remarks>
+    private static void EnsureTelemetryStore(IServiceProvider services, StorageOptions storage, ILogger logger)
+    {
+        if (!storage.TelemetryInMemory)
+        {
+            // Said out loud, rather than left as the absence of the line below. Where telemetry lives
+            // decides whether it survives a restart, and a log that only speaks up in one of the two
+            // cases cannot be read: silence would mean "on disk" and "this build has no such setting"
+            // alike, which is exactly the question somebody reads a startup log to answer.
+            logger.LogInformation(
+                "Telemetry is stored durably in the application database, bounded by TelemetryRetentionDays " +
+                "and EventRetentionDays. Set Storage:TelemetryInMemory to hold it in memory instead, which " +
+                "costs the history across a restart and saves the writes.");
+
+            return;
+        }
+
+        // Resolved so its construction is not deferred past the first write. It is registered as an
+        // instance, so this only asserts that the database is up.
+        services.GetRequiredService<TelemetryKeepAlive>();
+
+        TelemetryDbContext telemetry = services.GetRequiredService<TelemetryDbContext>();
+        telemetry.Database.EnsureCreated();
+
+        logger.LogInformation(
+            "Telemetry is held in memory only: samples, events and live state are bounded by MaxSamplesPerPrinter " +
+            "and MaxEventsPerPrinter, and are discarded when this process stops. Nothing is written to disk for them, " +
+            "which is the point - see StorageOptions.TelemetryInMemory. Live state alone is saved at shutdown.");
     }
 
     /// <summary>

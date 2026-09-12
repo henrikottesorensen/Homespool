@@ -739,11 +739,8 @@
   <data name="Account_CreateAccount" xml:space="preserve">
     <value>Create account</value>
   </data>
-  <data name="Account_ReactivateHelp" xml:space="preserve">
-    <value>Set a password for your account</value>
-  </data>
   <data name="Account_InviteAddressAlreadyActive" xml:space="preserve">
-    <value>That address already has an account that can sign in, so this invitation cannot be used for it.</value>
+    <value>That address already has an account, so this invitation cannot be used for it. To give somebody back an account they cannot get into, send them a recovery link from the users page instead.</value>
   </data>
   <data name="Account_CreateAccountHelp" xml:space="preserve">
     <value>Create your account.</value>
@@ -1763,21 +1760,6 @@
   <data name="Printers_CommandSent" xml:space="preserve">
     <value>{0} sent.</value>
   </data>
-  <data name="Printers_NoControlPermission" xml:space="preserve">
-    <value>You don’t have permission to control that printer.</value>
-  </data>
-  <data name="Printers_NotConnectedNow" xml:space="preserve">
-    <value>That printer isn’t connected right now.</value>
-  </data>
-  <data name="Printers_StillBusy" xml:space="preserve">
-    <value>That printer is still processing a previous command.</value>
-  </data>
-  <data name="Printers_NoResponse" xml:space="preserve">
-    <value>That printer didn’t respond in time.</value>
-  </data>
-  <data name="Printers_CommandFailed" xml:space="preserve">
-    <value>Something went wrong sending the command.</value>
-  </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>Too many unrecognised codes. Try again in {0}. The printer’s own code is unaffected - it is still waiting.</value>
   </data>
@@ -2538,6 +2520,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_AppliesOnNextSweep" xml:space="preserve">
     <value>Applies on the next sweep, within an hour</value>
   </data>
+  <data name="Settings_AppliesOnNextSweepInMemoryOnly" xml:space="preserve">
+    <value>Applies on the next sweep, and only while telemetry is held in memory</value>
+  </data>
   <data name="Settings_AppliesOnNextPrinterConnection" xml:space="preserve">
     <value>Applies when each printer next connects</value>
   </data>
@@ -2594,6 +2579,12 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Settings_Label_Storage_MaxEventsPerPrinter" xml:space="preserve">
     <value>Most events kept per printer</value>
+  </data>
+  <data name="Settings_Label_Storage_MaxSamplesPerPrinter" xml:space="preserve">
+    <value>Most samples kept per printer</value>
+  </data>
+  <data name="Settings_Label_Storage_TelemetryInMemory" xml:space="preserve">
+    <value>Keep telemetry in memory only, losing it on restart</value>
   </data>
   <data name="Settings_Label_Storage_WriteBatchSize" xml:space="preserve">
     <value>Rows buffered before writing</value>

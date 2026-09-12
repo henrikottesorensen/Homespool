@@ -40,12 +40,22 @@ namespace Homespool.Host.Queue;
 public class QueueSnapshotReader
 {
     private readonly HomespoolDbContext _dbContext;
+
+    /// <summary>
+    /// The printer's last-known state, which <c>StorageOptions.TelemetryInMemory</c> may hold in a
+    /// database of its own. Read by printer id, so the queue never has to join across the two.
+    /// </summary>
+    private readonly TelemetryDbContext _telemetry;
     private readonly PrinterConnectionRegistry _registry;
     private readonly TimeProvider _timeProvider;
 
-    public QueueSnapshotReader(HomespoolDbContext dbContext, PrinterConnectionRegistry registry, TimeProvider timeProvider)
+    public QueueSnapshotReader(HomespoolDbContext dbContext,
+                               TelemetryDbContext telemetry,
+                               PrinterConnectionRegistry registry,
+                               TimeProvider timeProvider)
     {
         _dbContext = dbContext;
+        _telemetry = telemetry;
         _registry = registry;
         _timeProvider = timeProvider;
     }
@@ -75,7 +85,7 @@ public class QueueSnapshotReader
                                             .ThenBy(queued => queued.Id)
                                             .FirstOrDefaultAsync(cancellationToken);
 
-        PrinterLiveState? live = await _dbContext.PrinterLiveStates
+        PrinterLiveState? live = await _telemetry.PrinterLiveStates
                                                  .AsNoTracking()
                                                  .SingleOrDefaultAsync(state => state.PrinterId == printerId,
                                                                        cancellationToken);

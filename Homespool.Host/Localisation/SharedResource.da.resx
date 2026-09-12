@@ -710,11 +710,8 @@
   <data name="Account_CreateAccount" xml:space="preserve">
     <value>Opret konto</value>
   </data>
-  <data name="Account_ReactivateHelp" xml:space="preserve">
-    <value>Vælg en adgangskode til din konto</value>
-  </data>
   <data name="Account_InviteAddressAlreadyActive" xml:space="preserve">
-    <value>Adressen har allerede en konto, der kan logge ind, så denne invitation kan ikke bruges til den.</value>
+    <value>Den adresse har allerede en konto, så denne invitation kan ikke bruges til den. Send i stedet et gendannelseslink fra brugersiden, hvis nogen skal have en konto tilbage, de ikke kan komme ind på.</value>
   </data>
   <data name="Account_CreateAccountHelp" xml:space="preserve">
     <value>Opret din konto.</value>
@@ -1710,21 +1707,6 @@
   <data name="Printers_CommandSent" xml:space="preserve">
     <value>{0} er afsendt.</value>
   </data>
-  <data name="Printers_NoControlPermission" xml:space="preserve">
-    <value>Du har ikke rettigheder til at styre denne printer.</value>
-  </data>
-  <data name="Printers_NotConnectedNow" xml:space="preserve">
-    <value>Printeren er ikke forbundet lige nu.</value>
-  </data>
-  <data name="Printers_StillBusy" xml:space="preserve">
-    <value>Printeren er stadig i gang med en tidligere kommando.</value>
-  </data>
-  <data name="Printers_NoResponse" xml:space="preserve">
-    <value>Printeren svarede ikke i tide.</value>
-  </data>
-  <data name="Printers_CommandFailed" xml:space="preserve">
-    <value>Noget gik galt, da kommandoen blev afsendt.</value>
-  </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
   </data>
@@ -2436,6 +2418,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_AppliesOnNextSweep" xml:space="preserve">
     <value>Træder i kraft ved næste oprydning, inden for en time</value>
   </data>
+  <data name="Settings_AppliesOnNextSweepInMemoryOnly" xml:space="preserve">
+    <value>Træder i kraft ved næste oprydning, og kun mens telemetri holdes i hukommelsen</value>
+  </data>
   <data name="Settings_AppliesOnNextPrinterConnection" xml:space="preserve">
     <value>Træder i kraft når hver printer forbinder næste gang</value>
   </data>
@@ -2491,7 +2476,13 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Gem hændelser i, dage</value>
   </data>
   <data name="Settings_Label_Storage_MaxEventsPerPrinter" xml:space="preserve">
-    <value>Flest hændelser gemt pr. printer</value>
+    <value>Antal hændelser gemt pr. printer</value>
+  </data>
+  <data name="Settings_Label_Storage_MaxSamplesPerPrinter" xml:space="preserve">
+    <value>Antal målinger gemt pr. printer</value>
+  </data>
+  <data name="Settings_Label_Storage_TelemetryInMemory" xml:space="preserve">
+    <value>Behold kun telemetri i hukommelsen. Bemærk telemetri data går tabt ved genstart af Homespool.</value>
   </data>
   <data name="Settings_Label_Storage_WriteBatchSize" xml:space="preserve">
     <value>Rækker der samles før skrivning</value>

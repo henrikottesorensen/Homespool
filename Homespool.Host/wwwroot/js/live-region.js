@@ -18,6 +18,21 @@
     // is about to be fine.
     var STALE_AFTER_MS = 30000;
 
+    // Two renders of the same thing are never byte-identical when a form is in them: the antiforgery
+    // token is a fresh ciphertext on every request, whatever the form around it says. Compared as
+    // fetched, a region with a button in it - the queue, the printers rack - was rebuilt on every poll,
+    // and the "unchanged, skip" below never once fired for either. So the comparison blanks the
+    // token's value first. What stays on screen when the swap is skipped is the token from an earlier
+    // render, and that is fine: a token stays valid for as long as the cookie beside it does, and
+    // nothing about it is single-use.
+    var TOKEN_INPUT = /<input[^>]*__RequestVerificationToken[^>]*>/g;
+
+    function comparable(html) {
+        return html.replace(TOKEN_INPUT, function (tag) {
+            return tag.replace(/value="[^"]*"/, 'value=""');
+        });
+    }
+
     function ready(fn) {
         if (document.readyState !== 'loading') {
             fn();
@@ -86,12 +101,15 @@
                 // Most polls answer with exactly what is already on screen, and replacing markup with
                 // an identical copy is not free: it destroys and rebuilds every node under the cursor.
                 // For the queue that means the reorder and remove buttons are pulled out from under a
-                // finger mid-press several times a minute. Compare first, swap only on a real change.
-                if (html === lastHtml) {
+                // finger mid-press several times a minute. Compare first - without the token, see
+                // comparable() - and swap only on a real change.
+                var next = comparable(html);
+
+                if (next === lastHtml) {
                     return;
                 }
 
-                lastHtml = html;
+                lastHtml = next;
                 region.innerHTML = html;
             }).catch(function () {
                 // Marked rather than emptied. What is on screen was true when it was fetched, and the

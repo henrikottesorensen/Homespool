@@ -45,26 +45,7 @@ else
 
     @if (Model.CanUpload)
     {
-        @* The dialog a drop raises. Empty until then: its contents come from the Conflicts handler,
-           which is what knows the printer, the file names and which of them already exist.
-
-           The form is the transport and never the trigger. The files are put into it from the
-           DataTransfer the drop carried, so the browser sends a plain multipart POST - no upload
-           progress to invent, and the antiforgery token comes along the way it does everywhere. *@
-        <form method="post" enctype="multipart/form-data" asp-page-handler="Drop" class="d-none" data-drop-form>
-            <input type="hidden" name="uuid" data-drop-form-uuid />
-            <input type="hidden" name="action" data-drop-form-action />
-            @* No multiple: a drag contributes one file. The handler still reads a list, because it is
-               an endpoint rather than a private arrangement with this script - see OnPostDropAsync. *@
-            <input type="file" name="files" data-drop-form-files />
-            <span data-drop-form-replace></span>
-        </form>
-
-        <div class="modal fade" tabindex="-1" data-drop-dialog aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content" data-drop-dialog-content></div>
-            </div>
-        </div>
+        <partial name="_TileDropForm" />
     }
 }
 

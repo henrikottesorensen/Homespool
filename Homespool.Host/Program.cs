@@ -494,6 +494,7 @@ public static class Program
             builder.Services.AddScoped<Services.DefaultPrinterService>();
             builder.Services.AddScoped<Accounts.UserNameLookup>();
             builder.Services.AddScoped<PrintQueueService>();
+            builder.Services.AddScoped<Pages.TileDrop>();
             builder.Services.AddScoped<Printing.PrintHistoryService>();
             builder.Services.AddScoped<Printing.PrintStopService>();
             builder.Services.AddScoped<Queue.QueueSnapshotReader>();

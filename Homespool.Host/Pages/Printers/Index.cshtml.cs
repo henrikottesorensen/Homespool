@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -14,6 +16,7 @@ using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
@@ -30,11 +33,19 @@ namespace Homespool.Host.Pages.Printers;
 /// leaving <c>Add</c>, since the plaintext token is never stored and cannot be shown again otherwise.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>Pause, resume and stop are deliberately not here.</b> They are on the printer's own page,
 /// beside the status they act on and the printer's answer to them. A rack of stop buttons, one per
 /// printer, is a rack of ways to stop the wrong one.
+/// </para>
+/// <para>
+/// <b>Every card is a drop target, exactly as the front page's tiles are</b> - the same script, the
+/// same dialog, the same two handlers over the same <see cref="TileDrop"/>, so a drop means one thing
+/// wherever a printer is drawn.
+/// </para>
 /// </remarks>
 [Authorize]
+[BoundedUpload] // MaxUploadBytes, applied before the body is read - see BoundedUploadAttribute.
 public class IndexModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
@@ -43,6 +54,7 @@ public class IndexModel : PageModel
     private readonly ProvisioningBundleBuilder _bundles;
     private readonly TeamService _teamService;
     private readonly PrintQueueService _queue;
+    private readonly TileDrop _drop;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrusaConnectOptions _options;
     private readonly PrinterConnectionRegistry _connectionRegistry;
@@ -55,6 +67,7 @@ public class IndexModel : PageModel
                       ProvisioningBundleBuilder bundles,
                       TeamService teamService,
                       PrintQueueService queue,
+                      TileDrop drop,
                       UserManager<HSUser> userManager,
                       IOptionsSnapshot<PrusaConnectOptions> options,
                       PrinterConnectionRegistry connectionRegistry,
@@ -67,6 +80,7 @@ public class IndexModel : PageModel
         _bundles = bundles;
         _teamService = teamService;
         _queue = queue;
+        _drop = drop;
         _userManager = userManager;
         _options = options.Value;
         _connectionRegistry = connectionRegistry;
@@ -75,6 +89,9 @@ public class IndexModel : PageModel
     }
 
     public IReadOnlyList<PrinterRow> Printers { get; private set; } = [];
+
+    /// <summary>Whether a drop has anywhere to put its bytes. False makes the cards inert targets.</summary>
+    public bool CanUpload { get; private set; }
 
     [TempData]
     public string? StatusMessage { get; set; }
@@ -147,6 +164,96 @@ public class IndexModel : PageModel
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
         await LoadPrintersAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The rack on its own, for the poll.
+    /// </summary>
+    /// <remarks>
+    /// <b>It loads exactly what the page load loads</b>, because the partial may only render state
+    /// its own handler provides - the rule the printer page's queue fragment was extracted under, and
+    /// broke. The bundle offer and the status message are outside the partial on purpose: a poll has
+    /// no offer to show and no message to repeat, and a fragment that carried either would be
+    /// blanking them every ten seconds.
+    /// </remarks>
+    public async Task<IActionResult> OnGetRackAsync(CancellationToken cancellationToken)
+    {
+        await LoadPrintersAsync(cancellationToken);
+
+        return Partial("_PrinterRack", this);
+    }
+
+    /// <summary>
+    /// Answers what a drop would collide with, before it uploads anything - the front page's handler,
+    /// word for word, so a drop on a card asks the same questions as a drop on a tile.
+    /// </summary>
+    public async Task<IActionResult> OnPostConflictsAsync(Guid uuid,
+                                                          string[] names,
+                                                          CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        PrinterWithState? row = await _printerQueryService.GetPrinterWithStateForUserAsync(uuid, caller, cancellationToken);
+
+        if (row is null)
+        {
+            return NotFound();
+        }
+
+        if (!caller.Allows(Capability.UploadOwnFiles))
+        {
+            return Forbid();
+        }
+
+        Guid? camera = await _drop.FirstCameraAsync(row.Printer.Id, caller, cancellationToken);
+        string? frame = camera is { } cameraUuid ? Url.Action("Frame", "Camera", new { uuid = cameraUuid }) : null;
+
+        return Partial("_TileDrop", await _drop.PromptAsync(row, caller, names, frame, cancellationToken));
+    }
+
+    /// <summary>
+    /// Carries out a drop: upload, then queue, then optionally make the printer ready. The front
+    /// page's handler, word for word; the bound on the upload and the refusal of ready-and-print for
+    /// a printer that does not permit remote readying are explained there.
+    /// </summary>
+    public async Task<IActionResult> OnPostDropAsync(Guid uuid,
+                                                     string action,
+                                                     List<IFormFile> files,
+                                                     string[] replace,
+                                                     CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        PrinterWithState? row = await _printerQueryService.GetPrinterWithStateForUserAsync(uuid, caller, cancellationToken);
+
+        if (row is null)
+        {
+            return NotFound();
+        }
+
+        if (TileDrop.Readies(action) && !row.Printer.RemoteReadyAllowed)
+        {
+            return Forbid();
+        }
+
+        (StatusMessage, StatusSuccess) =
+            await _drop.DropAsync(row, caller, action, files, replace, User.Identity?.Name, cancellationToken);
+
+        return RedirectToPage();
     }
 
     public async Task<IActionResult> OnPostRegenerateAsync(int printerId, CancellationToken cancellationToken)
@@ -245,10 +352,16 @@ public class IndexModel : PageModel
 
         DefaultPrinterId = user.DefaultPrinterId;
 
-        // With state, because the Status column reports what a connected printer is doing rather than
-        // only that it is enrolled. Same query shape, one join.
+        Caller caller = CallerResolver.For(user, User);
+
+        // Asked of the caller, not of a printer: uploading writes into the reader's own tree and no
+        // printer is party to it. Without it a drop has nowhere to put the bytes.
+        CanUpload = caller.Allows(Capability.UploadOwnFiles);
+
+        // With state, because the badge reports what a connected printer is doing rather than only
+        // that it is enrolled. Same query shape, one join.
         IReadOnlyList<PrinterWithState> printers =
-            await _printerQueryService.ListPrintersWithStateForUserAsync(CallerResolver.For(user, User), cancellationToken);
+            await _printerQueryService.ListPrintersWithStateForUserAsync(caller, cancellationToken);
 
         if (printers.Count == 0)
         {

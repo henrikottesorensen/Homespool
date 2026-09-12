@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 
@@ -9,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Pages;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -130,9 +134,210 @@ public sealed class PrintersPageTests : IAsyncLifetime
         client.Dispose();
     }
 
-    private static async Task<string> GetListingAsync(HttpClient client)
+    /// <summary>
+    /// <b>The poll renders the same rack.</b> A handler that returned nothing, or a partial rendering
+    /// state only the page load provides, would leave a page that looks right until it refreshes
+    /// itself - and the reader's default is exactly such a value, set outside the query that lists
+    /// the printers.
+    /// </summary>
+    [Fact]
+    public async Task ThePolledHandlerRendersTheSameRack()
     {
-        using HttpResponseMessage response = await client.GetAsync("/Printers", TestContext.Current.CancellationToken);
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "printers-poll@example.com");
+
+        (int first, _) = SeedPrinters(user.Id, "Polled One", "Polled Two");
+        await MakeDefaultAsync(client, first);
+
+        // Act
+        string page = await GetListingAsync(client);
+        string fragment = await GetAsync(client, "/Printers?handler=Rack");
+
+        // Assert
+        fragment.Should().Contain("printer-rack");
+        fragment.Should().Contain("Polled One");
+        fragment.Should().Contain("Polled Two");
+        fragment.Should().NotContain("<html", "the poll answers a fragment, not a whole page");
+        fragment.Should().Contain(">Default<", "the reader's default is loaded by the poll, not only by the page");
+        fragment.Should().Contain("handler=Default", "the buttons live inside the refreshed region");
+
+        page.Should().Contain("handler=Rack", "the page has to ask for the fragment");
+        page.Should().Contain("live-region", "without the script the rack is what the server rendered on load");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// <b>The page wires the drop up</b>: the script, the targets and the form. The handlers are
+    /// exercised below, and pass perfectly well while the markup that would reach them is missing -
+    /// which is exactly how a drop once did nothing at all on the front page.
+    /// </summary>
+    [Fact]
+    public async Task ThePageCarriesEverythingADropNeeds()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "printers-wiring@example.com");
+
+        SeedPrinters(user.Id, "Wired", "Spare");
+
+        // Act
+        string page = await GetListingAsync(client);
+
+        // Assert
+        // "tile-drop" without the extension: asp-append-version fingerprints the FILE NAME.
+        page.Should().Contain("tile-drop", "without the script a card is only a card");
+        page.Should().Contain("data-drop-target", "the cards have to be targets");
+        page.Should().Contain("data-drop-form", "the upload needs its form");
+        page.Should().Contain("handler=Drop", "and the form posts to this page, not the front page");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A drop on a card asks the same questions as a drop on a tile, from this page's own handler.
+    /// </summary>
+    [Fact]
+    public async Task TheDropDialogNamesThePrinter()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "printers-dialog@example.com");
+
+        SeedPrinters(user.Id, "Card Target", "Spare");
+        Guid uuid = UuidOf("Card Target");
+
+        // Act
+        string dialog = await PostFormAsync(client, "/Printers?handler=Conflicts", new()
+        {
+            ["uuid"] = [uuid.ToString()],
+            ["names"] = ["brand-new.gcode"],
+        });
+
+        // Assert
+        dialog.Should().Contain("Card Target", "a drop onto the wrong card has to be obvious");
+        dialog.Should().Contain("data-drop-action", "a file the store takes gets the questions");
+        dialog.Should().NotContain("<html", "the dialog is a fragment");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A drop that asks to queue lands the file in the printer's queue, and the page says so.
+    /// </summary>
+    [Fact]
+    public async Task ADropQueuesTheFileOnThePrinter()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "printers-drop@example.com");
+
+        SeedPrinters(user.Id, "Takes Drops", "Spare");
+        Guid uuid = UuidOf("Takes Drops");
+
+        // Act
+        using HttpResponseMessage response = await PostDropAsync(client, uuid, TileDrop.Queue, "part.gcode");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect, "a finished drop lands back on this page");
+        response.Headers.Location!.OriginalString.Should().Contain("/Printers", "this page, not the front page");
+        QueuedCount(uuid).Should().Be(1);
+
+        client.Dispose();
+    }
+
+    /// <summary>The uuid of a seeded printer, by the name it was seeded with.</summary>
+    private Guid UuidOf(string name)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return context.Printers.First(printer => printer.Name == name).Uuid;
+    }
+
+    /// <summary>How many files are queued on a printer, read straight from the table.</summary>
+    private int QueuedCount(Guid uuid)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = context.Printers.First(printer => printer.Uuid == uuid).Id;
+
+        return context.QueuedPrints.Count(job => job.PrinterId == printerId);
+    }
+
+    /// <summary>Posts a form to a handler, carrying the antiforgery token the listing rendered.</summary>
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification =
+                         "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
+    private static async Task<string> PostFormAsync(HttpClient client,
+                                                    string url,
+                                                    Dictionary<string, string[]> fields)
+    {
+        string page = await GetListingAsync(client);
+
+        using MultipartFormDataContent form = [];
+
+        form.Add(new StringContent(AntiforgeryTestHelper.ExtractToken(page)), "__RequestVerificationToken");
+
+        foreach ((string key, string[] values) in fields)
+        {
+            foreach (string value in values)
+            {
+                form.Add(new StringContent(value), key);
+            }
+        }
+
+        HttpResponseMessage response = await client.PostAsync(url, form, TestContext.Current.CancellationToken);
+
+        return await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Drives the drop handler the way the script does: a file, a printer and an action.</summary>
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification =
+                         "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
+    private static async Task<HttpResponseMessage> PostDropAsync(HttpClient client,
+                                                                 Guid uuid,
+                                                                 string action,
+                                                                 string fileName)
+    {
+        string page = await GetListingAsync(client);
+
+        using MultipartFormDataContent form = [];
+
+        form.Add(new StringContent(AntiforgeryTestHelper.ExtractToken(page)), "__RequestVerificationToken");
+        form.Add(new StringContent(uuid.ToString()), "uuid");
+        form.Add(new StringContent(action), "action");
+        form.Add(new ByteArrayContent([1, 2, 3]), "files", fileName);
+
+        return await client.PostAsync("/Printers?handler=Drop", form, TestContext.Current.CancellationToken);
+    }
+
+    private static async Task MakeDefaultAsync(HttpClient client, int printerId)
+    {
+        string listing = await GetListingAsync(client);
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(listing),
+        });
+
+        using HttpResponseMessage posted = await client.PostAsync(
+            $"/Printers?handler=Default&printerId={printerId}", body, TestContext.Current.CancellationToken);
+
+        posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+    }
+
+    private static Task<string> GetListingAsync(HttpClient client)
+    {
+        return GetAsync(client, "/Printers");
+    }
+
+    private static async Task<string> GetAsync(HttpClient client, string url)
+    {
+        using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
 
         response.EnsureSuccessStatusCode();
 

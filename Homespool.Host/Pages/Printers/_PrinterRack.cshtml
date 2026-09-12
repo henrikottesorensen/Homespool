@@ -1,0 +1,164 @@
+@using System.Globalization
+@model IndexModel
+
+@{
+    var culture = CultureInfo.CurrentCulture;
+}
+
+@*
+    The rack: one card per printer, in the front page's tile vocabulary. Rendered inline on first load
+    and again on every poll, so everything it reads must come from what OnGetRackAsync loads - the
+    printers, the reader's default, and nothing else. The bundle offer and the status message live
+    outside it on purpose: a poll has no offer to show and no message to repeat.
+*@
+@if (Model.Printers.Count == 0)
+{
+    <p>@Localiser["Printers_None"]</p>
+}
+else
+{
+    <div class="printer-rack">
+        @foreach (var row in Model.Printers)
+        {
+            @* A drop target like the front page's tile, and for the same reasons: data-drop-target
+               rather than a class, so the script binds to intent rather than to styling; unconditional,
+               because the gate is one level up - tile-drop.js is only served when the reader can
+               upload, and without it these attributes bind nothing. The whole card rather than the
+               drawing: it is the bigger thing to aim at, and a drop on one of its buttons is a drop,
+               not a press. *@
+            <div class="printer-card" data-drop-target data-drop-uuid="@row.Printer.Uuid">
+                @* .printer-shortcut-drawing as well as its own class, so the dark-mode lift of the
+                   brand blue is one rule shared with the tiles rather than a second copy. *@
+                <span class="printer-card-drawing printer-shortcut-drawing">
+                    <partial name="_PrinterIcon" model="row.FormFactor" />
+                </span>
+
+                <div class="printer-card-plaque">
+                    <div class="printer-card-title">
+                        @* Shared with the front page's tiles, so the two cannot call one printer two
+                           things. It also treats a whitespace name as unnamed. *@
+                        <a class="printer-card-name typed-name" asp-page="Detail" asp-route-uuid="@row.Printer.Uuid">@PrinterDisplayName.For(row.Printer)</a>
+                        @* Filled and grey: this is a resting fact about the reader, not a severity,
+                           and a rack where one card glows would compete with the status badge under
+                           it. *@
+                        @if (row.Printer.Id == Model.DefaultPrinterId)
+                        {
+                            <span class="badge text-bg-secondary">@Localiser["Printers_Default"]</span>
+                        }
+                    </div>
+
+                    @* Where it is and whose it is, on one quiet line. The team is always known;
+                       the location is whatever somebody typed, and may be nothing. *@
+                    <div class="printer-card-where typed-name">
+                        @if (!string.IsNullOrWhiteSpace(row.Printer.Location))
+                        {
+                            <text>@row.Printer.Location &middot; </text>
+                        }
+                        @row.TeamName
+                    </div>
+
+                    @* What the printer is doing beats how it was set up, whenever we can know it.
+                       Enrolment still shows when it is the most useful fact - which is when the
+                       printer is not there. Filled means present, hollow means absent, and the one
+                       exception is the absence with something for a person to do. *@
+                    @if (row.Connected)
+                    {
+                        <span class="badge @PrinterStatusBadge.For(row.LiveStatus)">@Model.StatusText(row.LiveStatus)</span>
+                    }
+                    else if (row.Enrolled)
+                    {
+                        @* Enrolled and absent. "Offline" is the actionable half; the reissue button
+                           beside it already says the credential is in place. *@
+                        <span class="badge @PrinterStatusBadge.Absent">@Localiser["PrinterStatus_Offline"]</span>
+                    }
+                    else if (row.ExpiredUsbProvisioning)
+                    {
+                        @* Its own badge, because the action changed: the stick in someone's hand no
+                           longer works, and reissuing is what fixes it. *@
+                        <span class="badge text-bg-warning">@Localiser["Printers_ExpiredUsb"]</span>
+                    }
+                    else if (row.AwaitingUsbProvisioning)
+                    {
+                        @* Filled, unlike its two neighbours: put the key in the printer. *@
+                        <span class="badge text-bg-warning">@Localiser["Printers_AwaitingUsb"]</span>
+                    }
+                    else
+                    {
+                        <span class="badge @PrinterStatusBadge.Absent">@Localiser["Printers_AwaitingAny"]</span>
+                    }
+
+                    @* The bar and the rows under it, only when there is something to put in them.
+                       Progress is already null for a disconnected printer - see PrinterRow - so a
+                       card never shows a percentage over an Offline badge. *@
+                    @if (row.Progress is not null || row.QueuedCount > 0 || !string.IsNullOrWhiteSpace(row.Material))
+                    {
+                        <div class="printer-card-live">
+                            @if (row.Progress is { } progress)
+                            {
+                                <span class="progress printer-plaque-progress" role="progressbar"
+                                      aria-label="@Localiser["Printers_Progress"]"
+                                      aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100">
+                                    <span class="progress-bar" style="width: @progress.ToString(CultureInfo.InvariantCulture)%"></span>
+                                </span>
+
+                                <span class="printer-plaque-stats">
+                                    @if (row.TimeRemaining is { } remaining)
+                                    {
+                                        <span>@Localiser["Printers_TimeLeft", PrintDuration.WithoutSeconds(Localiser, remaining)]</span>
+                                    }
+
+                                    <span class="printer-plaque-stat-end">@progress.ToString(culture)%</span>
+                                </span>
+                            }
+
+                            @if (row.QueuedCount > 0 || !string.IsNullOrWhiteSpace(row.Material))
+                            {
+                                <span class="printer-plaque-stats">
+                                    @if (row.QueuedCount > 0)
+                                    {
+                                        <span>@Plural.Format(Localiser, "Home_Queued", row.QueuedCount)</span>
+                                    }
+
+                                    @* Kept for a disconnected printer too: what is loaded does not
+                                       change while the power is off. *@
+                                    @if (!string.IsNullOrWhiteSpace(row.Material))
+                                    {
+                                        <span class="printer-plaque-stat-end typed-name">@row.Material</span>
+                                    }
+                                </span>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (row.Printer.Id != Model.DefaultPrinterId || row.AwaitingUsbProvisioning || row.Enrolled)
+                {
+                    <div class="printer-card-controls">
+                        @* Only on the cards that are not already it, so the listing's verb is always
+                           "make it this one instead". Clearing the idea altogether lives on the
+                           printer's page, which has room to say what having no default means. *@
+                        @if (row.Printer.Id != Model.DefaultPrinterId)
+                        {
+                            <form method="post" asp-page-handler="Default" asp-route-printerId="@row.Printer.Id">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Printers_MakeDefault"]</button>
+                            </form>
+                        }
+
+                        @* Offered for an enrolled printer too: reissuing here is the supported way to
+                           put a fresh credential on one that is already connected, and the only safe
+                           one - adding it again from scratch would create a second printer whose
+                           token the server refuses to bind. *@
+                        @if (row.AwaitingUsbProvisioning || row.Enrolled)
+                        {
+                            <form method="post" asp-page-handler="Regenerate" asp-route-printerId="@row.Printer.Id">
+                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                    @(row.Enrolled ? Localiser["Printers_ReissueToken"].Value : Localiser["Printers_RegenerateToken"].Value)
+                                </button>
+                            </form>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}

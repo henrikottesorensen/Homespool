@@ -172,7 +172,7 @@ public sealed class TileDropUploadLimitTests : IAsyncLifetime
 
         // Upload only: the queue is not what is under test here, and a drop that also queues would
         // make a refusal ambiguous between the bound and a printer that would not take the job.
-        form.Add(new StringContent(IndexModel.DropUpload), "action");
+        form.Add(new StringContent(TileDrop.Upload), "action");
 
         foreach ((string name, int bytes) in files)
         {

@@ -135,7 +135,7 @@ Configuration lives in two places, deliberately:
 | `TZ` | The IANA timezone timestamps are rendered in. Containers default to UTC, which is rarely right for a machine in a house. |
 | `GO2RTC_USERNAME` / `GO2RTC_PASSWORD` | Credentials for the camera sidecar's API — required if you want cameras, ignored otherwise. `setup-env.sh` generates them. |
 | `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest, and the certificate that encrypts the sign-in key ring. Required — the server refuses to start without one rather than store either key in the clear; `setup-env.sh` generates it. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers, or a key-ring certificate that signs everyone out. |
-| `PROXY_SUBNET` / `PROXY_NETWORK` / `PROXY_ADDRESS` | The stack's internal Docker network, the same range as the app knows it, and the proxy's fixed address on it - the one address whose forwarded headers are trusted. Change all three together only if the default collides with your LAN; `setup-env.sh` does. |
+| `PROXY_SUBNET` / `PROXY_NETWORK` | The network the proxy and the app share with nothing else, and the same range as the app knows it - the addresses whose forwarded headers are trusted. Change both together only if the default collides with your LAN; `setup-env.sh` does. |
 | `CAMERA_SUBNET` / `CERTS_SUBNET` | The camera sidecar's and the certificate renewer's own networks, each shared with as little as possible. Pinned so the app can name them; `setup-env.sh` moves one that collides. |
 
 [.env.example](.env.example) documents every setting in full, including the WebRTC overrides for
@@ -155,7 +155,7 @@ deployments behind a router or tunnel.
   certificate. It is sent only on names that actually hold an issued certificate, never on a
   self-signed one, so a `.lan` name or a bare address cannot lock its own users out.
 - Bringing your own reverse proxy (Traefik, Caddy, your nginx) is supported for the people-facing
-  half — put it on the stack's network and point `PROXY_ADDRESS` at it. It must pass the browser's
+  half — put it on the stack's network, which is what makes it trusted. It must pass the browser's
   own `Host` header through unchanged (Traefik and Caddy do by default; nginx needs
   `proxy_set_header Host $http_host`): the links in outgoing mail are built from that header, and
   `X-Forwarded-Host` is ignored, so a proxy that rewrites `Host` is answered with a 400 rather than

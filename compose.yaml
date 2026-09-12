@@ -26,11 +26,14 @@ services:
     # what makes X-Real-IP worth trusting when the proxy writes it: a client that could reach Kestrel
     # directly could simply write that header itself.
     #
-    # Inside the network the header is trusted from ONE address, the proxy's, pinned below. Every
-    # other container that shares a network with this one - go2rtc runs third-party code and fetches
-    # addresses people give it - can open a connection to Kestrel, since Docker networks are
-    # symmetric, but arrives as an ordinary untrusted client: whatever X-Real-IP or X-Forwarded-Proto
-    # it writes is ignored, and it needs a printer token or a sign-in like anybody else.
+    # The header is trusted from the proxy's network, and that network holds the proxy and this
+    # container and NOTHING ELSE - which is what makes trusting it the same as trusting the proxy.
+    # The sidecars are on networks of their own: go2rtc runs third-party code and fetches addresses
+    # people give it, and it can open a connection to Kestrel over the camera network, since Docker
+    # networks are symmetric, but arrives as an ordinary untrusted client: whatever X-Real-IP or
+    # X-Forwarded-Proto it writes is ignored, and it needs a printer token or a sign-in like anybody
+    # else. Not an address: the proxy's address is Docker's to hand out, and a trust pinned to a
+    # predicted address either fails to start or trusts nobody the day the prediction is wrong.
     #
     # The printer port is not served TLS from here because .NET cannot serve that TLS correctly:
     # SslStream emits records far larger than the kilobyte of plaintext the firmware holds - a real
@@ -92,12 +95,12 @@ services:
       Cameras__WebRtcPort: "${WEBRTC_PORT:-8555}"
 
 
-      # Which peer may speak for the client - the proxy, at the address pinned on it below, and
-      # nothing else. Not the network: a range trusts every container on it, and a sidecar that runs
-      # third-party code is on it too. The address must lie inside PROXY_SUBNET, and setup-env.sh
-      # moves the two together. Empty would mean the middleware is not registered at all, and links
-      # in outgoing mail would say http:// while every logged client address was the proxy's.
-      XForwarded__KnownProxies__0: "${PROXY_ADDRESS:-172.28.0.2}"
+      # Which peers may speak for the client - everything on the proxy's network, which is the proxy
+      # and nothing else; see the networks block at the bottom for the rule that keeps it so. The
+      # same range Docker allocates the network from, and setup-env.sh moves the two together. Empty
+      # would mean the middleware is not registered at all, and links in outgoing mail would say
+      # http:// while every logged client address was the proxy's.
+      XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
 
       # Which addresses exist only in here, so the provisioning page does not offer an address no
       # printer on your network can route to. The network's own range, which is also what the
@@ -604,14 +607,13 @@ services:
     group_add:
       - "1654"
 
-    # A fixed address, because it is the ONE address the application trusts forwarded headers
-    # from (XForwarded__KnownProxies above). Docker's allocator would hand this container a
-    # different address on any recreation, and a trust pinned to yesterday's address is no trust
-    # at all - the log would then say every client is the proxy. Must lie inside PROXY_SUBNET;
-    # .1 is the bridge gateway, so .2 is the first address a container can hold.
+    # Whatever address Docker hands out: the application trusts forwarded headers from this whole
+    # network (XForwarded__KnownNetworks above), which is sound because the network holds this
+    # container and the application and nothing else. Not a pinned ipv4_address - Docker does not
+    # reserve one ahead of the container that declares it, so the application, started first and
+    # allocated first, was handed the pinned address and this container could not start at all.
     networks:
-      homespool:
-        ipv4_address: "${PROXY_ADDRESS:-172.28.0.2}"
+      - homespool
 
     # service_started, not service_healthy: waiting for health kept every port closed for the whole
     # of startup, and a first boot on a Raspberry Pi migrates a database before it reports healthy -
@@ -732,11 +734,15 @@ services:
     command: run
 
 networks:
-  # Pinned rather than left to Docker's allocator, so that Certificates__ContainerNetworks can name
-  # the range and PROXY_ADDRESS can sit inside it - both stop being something the operator has to
-  # discover and become something we chose. Change the subnet if it collides with something on
-  # your host, and change PROXY_NETWORK and PROXY_ADDRESS in .env with it; setup-env.sh does all
-  # three together.
+  # THE PROXY AND THE APPLICATION, AND NOTHING ELSE JOINS THIS NETWORK. Every container on it is a
+  # trusted forwarder - the application believes X-Real-IP and X-Forwarded-Proto from any address
+  # in this range - so a third service added here could tell the application who the client is.
+  # A sidecar goes on a network of its own, as the two below do.
+  #
+  # The range is pinned rather than left to Docker's allocator, so that Certificates__ContainerNetworks
+  # and XForwarded__KnownNetworks can name it - it stops being something the operator has to
+  # discover and becomes something we chose. Change the subnet if it collides with something on
+  # your host, and change PROXY_NETWORK in .env with it; setup-env.sh does both together.
   homespool:
     ipam:
       config:

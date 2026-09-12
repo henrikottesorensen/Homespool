@@ -72,7 +72,7 @@ public static class Registration
                         + "reverse proxy, links in outgoing mail will say http://, client addresses in the log "
                         + "will be the proxy's, and the sign-in rate limit is off - it needs an address that "
                         + "names one client, and every visitor would otherwise share one window. Set "
-                        + "XForwarded:KnownProxies to the proxy's address.");
+                        + "XForwarded:KnownNetworks to the proxy's network.");
         }
 
         return builder;

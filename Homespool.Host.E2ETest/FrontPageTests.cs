@@ -305,7 +305,7 @@ public sealed class FrontPageTests : IAsyncLifetime
 
         // The attribute, not the bare word: DropReadyAndPrint is "ready", which also names the step
         // that would carry it - so a substring match passes while proving nothing.
-        dialog.Should().NotContain($"data-drop-action=\"{IndexModel.DropReadyAndPrint}\"",
+        dialog.Should().NotContain($"data-drop-action=\"{TileDrop.ReadyAndPrint}\"",
                                    "a printer nobody can reach cannot be made ready");
         dialog.Should().NotContain("data-drop-goto=\"ready\"",
                                    "and the button that leads to it is not there either");
@@ -330,7 +330,7 @@ public sealed class FrontPageTests : IAsyncLifetime
         Guid uuid = FirstUuid(user.Id, "Goes Away");
 
         // Act - posting the action the dialog would not have shown, which is what a stale page does.
-        HttpResponseMessage response = await PostDropAsync(client, uuid, IndexModel.DropReadyAndPrint, "part.gcode");
+        HttpResponseMessage response = await PostDropAsync(client, uuid, TileDrop.ReadyAndPrint, "part.gcode");
 
         // Assert
         ((int)response.StatusCode).Should().BeLessThan(500, "a printer that will not take the command is not a server fault");

@@ -20,7 +20,13 @@ else
     <div class="printer-rack">
         @foreach (var row in Model.Printers)
         {
-            <div class="printer-card">
+            @* A drop target like the front page's tile, and for the same reasons: data-drop-target
+               rather than a class, so the script binds to intent rather than to styling; unconditional,
+               because the gate is one level up - tile-drop.js is only served when the reader can
+               upload, and without it these attributes bind nothing. The whole card rather than the
+               drawing: it is the bigger thing to aim at, and a drop on one of its buttons is a drop,
+               not a press. *@
+            <div class="printer-card" data-drop-target data-drop-uuid="@row.Printer.Uuid">
                 @* .printer-shortcut-drawing as well as its own class, so the dark-mode lift of the
                    brand blue is one rule shared with the tiles rather than a second copy. *@
                 <span class="printer-card-drawing printer-shortcut-drawing">

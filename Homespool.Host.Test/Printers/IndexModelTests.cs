@@ -149,6 +149,21 @@ public sealed class IndexModelTests : IDisposable
                                   NullLogger<UserFileStore>.Instance);
 
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+        PrintFileCatalog catalog = new(store, context, NullLogger<PrintFileCatalog>.Instance);
+        PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal);
+
+        // The drop machinery, real rather than substituted: it is a sealed class, and nothing here
+        // drops anything - the page only needs one to be constructed.
+        Pages.TileDrop drop = new(queue,
+                            access,
+                            catalog,
+                            new CameraAccessService(context, new TeamCapabilityLookup(context)),
+                            TestOptions.Snapshot(new PrintFileStorageOptions { Directory = storeRoot }),
+                            new PrinterCommandService(access, connectionRegistry),
+                            connectionRegistry,
+                            new PrinterIntentText(localiser),
+                            localiser,
+                            TestLocaliser.Errors());
 
         IndexModel model = new(
             new PrinterQueryService(context, TestTelemetryContext.For(context), access, new TeamCapabilityLookup(context), TimeProvider.System),
@@ -158,10 +173,8 @@ public sealed class IndexModelTests : IDisposable
             new ProvisioningBundleBuilder(TestOptions.Monitor(options), Options.Create(new CertificateOptions()), authority,
                                           new DnsHostAddressResolver(), TestLocaliser.Shared()),
             new TeamService(context),
-            new PrintQueueService(context, access,
-                                  new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance),
-                                  TimeProvider.System,
-                                  QueueSignal),
+            queue,
+            drop,
             users,
             TestOptions.Snapshot(options),
             connectionRegistry,

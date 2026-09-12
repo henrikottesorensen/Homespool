@@ -107,13 +107,13 @@
             </ul>
 
             <div class="d-grid gap-2">
-                <button type="button" class="btn btn-outline-secondary" data-drop-action="@IndexModel.DropUpload">
+                <button type="button" class="btn btn-outline-secondary" data-drop-action="@TileDrop.Upload">
                     @Localiser["Home_DropActionUpload"]
                 </button>
 
                 @if (Model.CanPrint)
                 {
-                    <button type="button" class="btn btn-primary" data-drop-action="@IndexModel.DropQueue">
+                    <button type="button" class="btn btn-primary" data-drop-action="@TileDrop.Queue">
                         @Localiser["Home_DropActionQueue"]
                     </button>
                 }
@@ -162,7 +162,7 @@
                 <p class="text-body-secondary">@Localiser["Printers_ReadyConsequence"]</p>
 
                 <div class="d-grid gap-2">
-                    <button type="button" class="btn btn-danger" data-drop-action="@IndexModel.DropReadyAndPrint">
+                    <button type="button" class="btn btn-danger" data-drop-action="@TileDrop.ReadyAndPrint">
                         @Localiser["Printers_ReadyConfirm"]
                     </button>
 

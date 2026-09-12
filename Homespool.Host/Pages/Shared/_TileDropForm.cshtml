@@ -1,0 +1,26 @@
+@*
+    The transport for a drop, and the dialog it raises. Rendered by every page whose printers are
+    drop targets, once per page, and only when the reader can upload: without it tile-drop.js finds
+    no form and binds nothing, so a tile or card stays the plain thing it is without script.
+
+    The form is the transport and never the trigger. The files are put into it from the DataTransfer
+    the drop carried, so the browser sends a plain multipart POST to the page's own Drop handler -
+    no upload progress to invent, and the antiforgery token comes along the way it does everywhere.
+
+    The dialog is empty until a drop: its contents come from the page's Conflicts handler, which is
+    what knows the printer, the file names and which of them already exist.
+*@
+<form method="post" enctype="multipart/form-data" asp-page-handler="Drop" class="d-none" data-drop-form>
+    <input type="hidden" name="uuid" data-drop-form-uuid />
+    <input type="hidden" name="action" data-drop-form-action />
+    @* No multiple: a drag contributes one file. The handler still reads a list, because it is an
+       endpoint rather than a private arrangement with this script - see TileDrop. *@
+    <input type="file" name="files" data-drop-form-files />
+    <span data-drop-form-replace></span>
+</form>
+
+<div class="modal fade" tabindex="-1" data-drop-dialog aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" data-drop-dialog-content></div>
+    </div>
+</div>

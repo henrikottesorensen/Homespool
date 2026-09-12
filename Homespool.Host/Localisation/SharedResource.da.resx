@@ -1707,21 +1707,6 @@
   <data name="Printers_CommandSent" xml:space="preserve">
     <value>{0} er afsendt.</value>
   </data>
-  <data name="Printers_NoControlPermission" xml:space="preserve">
-    <value>Du har ikke rettigheder til at styre denne printer.</value>
-  </data>
-  <data name="Printers_NotConnectedNow" xml:space="preserve">
-    <value>Printeren er ikke forbundet lige nu.</value>
-  </data>
-  <data name="Printers_StillBusy" xml:space="preserve">
-    <value>Printeren er stadig i gang med en tidligere kommando.</value>
-  </data>
-  <data name="Printers_NoResponse" xml:space="preserve">
-    <value>Printeren svarede ikke i tide.</value>
-  </data>
-  <data name="Printers_CommandFailed" xml:space="preserve">
-    <value>Noget gik galt, da kommandoen blev afsendt.</value>
-  </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
   </data>

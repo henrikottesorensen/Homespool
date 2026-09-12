@@ -89,9 +89,10 @@ public sealed class TelemetryRetentionService : BackgroundService
         try
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
-            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+            TelemetryDbContext context = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
 
             await SweepSamplesAsync(context, cancellationToken);
+            await SweepSamplesByCountAsync(context, cancellationToken);
             await SweepEventsByAgeAsync(context, cancellationToken);
             await SweepEventsByCountAsync(context, cancellationToken);
         }
@@ -101,7 +102,7 @@ public sealed class TelemetryRetentionService : BackgroundService
         }
     }
 
-    private async Task SweepSamplesAsync(HomespoolDbContext context, CancellationToken cancellationToken)
+    private async Task SweepSamplesAsync(TelemetryDbContext context, CancellationToken cancellationToken)
     {
         if (_options.CurrentValue.TelemetryRetentionDays == 0)
         {
@@ -124,7 +125,84 @@ public sealed class TelemetryRetentionService : BackgroundService
         }
     }
 
-    private async Task SweepEventsByAgeAsync(HomespoolDbContext context, CancellationToken cancellationToken)
+    /// <summary>
+    /// Trims each printer back to <see cref="StorageOptions.MaxSamplesPerPrinter"/> rows, oldest
+    /// first. Only when telemetry is held in memory.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Days bound a disk; rows bound memory.</b> A durable store is already bounded by
+    /// <see cref="StorageOptions.TelemetryRetentionDays"/>, and applying a row cap to it as well
+    /// would silently discard history that an operator had chosen to keep - measured on the
+    /// appliance this was built for, a cap of 50,000 would have deleted 68% of its samples on the
+    /// first startup after an upgrade, with the in-memory setting switched off. An upgrade must not
+    /// throw away data because a feature nobody enabled has a default.
+    /// </para>
+    /// <para>
+    /// <b>In memory the count is the only thing that can bound anything</b>, which is what makes this
+    /// the window rather than a safety net: retention days mean nothing to a store discarded at
+    /// shutdown, and rows are what bound the memory it occupies while it runs.
+    /// </para>
+    /// <para>
+    /// <b>A row cap for the durable table is a separate question, and an open one.</b> The argument
+    /// that age alone does not bound a table - made for events, where a printer emitting at the
+    /// transport's ceiling fills a disk well inside any window an operator would pick - has never
+    /// been made for samples, and inheriting it here by analogy is what produced the defect above.
+    /// </para>
+    /// </remarks>
+    private async Task SweepSamplesByCountAsync(TelemetryDbContext context, CancellationToken cancellationToken)
+    {
+        if (!_options.CurrentValue.TelemetryInMemory)
+        {
+            _logger.LogDebug("Telemetry is stored durably, where age bounds it; skipping the sample count cap.");
+
+            return;
+        }
+
+        if (_options.CurrentValue.MaxSamplesPerPrinter <= 0)
+        {
+            _logger.LogDebug("Sample count cap is disabled (MaxSamplesPerPrinter = {Cap}); skipping sweep.",
+                             _options.CurrentValue.MaxSamplesPerPrinter);
+
+            return;
+        }
+
+        List<int> printerIds = await context.TelemetrySamples
+                                            .Select(s => s.PrinterId)
+                                            .Distinct()
+                                            .ToListAsync(cancellationToken);
+
+        foreach (int printerId in printerIds)
+        {
+            // By Id rather than Timestamp, on the event sweep's reasoning: samples arriving in the
+            // same millisecond must still have a definite oldest, or the trim removes an arbitrary
+            // subset and leaves the count wrong.
+            long threshold = await context.TelemetrySamples
+                                          .Where(s => s.PrinterId == printerId)
+                                          .OrderByDescending(s => s.Id)
+                                          .Skip(_options.CurrentValue.MaxSamplesPerPrinter - 1)
+                                          .Select(s => s.Id)
+                                          .FirstOrDefaultAsync(cancellationToken);
+
+            if (threshold == 0)
+            {
+                continue;
+            }
+
+            int deleted = await context.TelemetrySamples
+                                       .Where(s => s.PrinterId == printerId && s.Id < threshold)
+                                       .ExecuteDeleteAsync(cancellationToken);
+
+            if (deleted > 0)
+            {
+                _logger.LogInformation(
+                    "Sample cap sweep deleted {Count} sample(s) for printer {PrinterId}, keeping the newest {Cap}.",
+                    deleted, printerId, _options.CurrentValue.MaxSamplesPerPrinter);
+            }
+        }
+    }
+
+    private async Task SweepEventsByAgeAsync(TelemetryDbContext context, CancellationToken cancellationToken)
     {
         if (_options.CurrentValue.EventRetentionDays == 0)
         {
@@ -164,7 +242,7 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// trim removes an arbitrary subset and leaves the count wrong.
     /// </para>
     /// </remarks>
-    private async Task SweepEventsByCountAsync(HomespoolDbContext context, CancellationToken cancellationToken)
+    private async Task SweepEventsByCountAsync(TelemetryDbContext context, CancellationToken cancellationToken)
     {
         if (_options.CurrentValue.MaxEventsPerPrinter <= 0)
         {

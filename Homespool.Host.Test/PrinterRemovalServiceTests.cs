@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -35,6 +36,11 @@ namespace Homespool.Host.Test;
 /// keys or run cascades</b>, so the assertions about what a deleted printer takes with it would pass
 /// against a provider that had deleted nothing at all.
 /// </remarks>
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
+                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
+                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
+                                 + "read free of another one's change tracking.")]
 public sealed class PrinterRemovalServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-printerremove-{Guid.NewGuid():N}.db");
@@ -330,7 +336,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         return new PrinterRemovalService(
             context,
             new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-            new QueueSnapshotReader(context, registry, TimeProvider.System),
+            new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System),
             registry,
             telemetry ?? Substitute.For<ITelemetryEviction>(),
             NullLogger<PrinterRemovalService>.Instance);

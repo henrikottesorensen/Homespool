@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -37,6 +38,11 @@ namespace Homespool.Host.Test.Printers;
 /// The printer list: scoping to teams the user can read, enrolment status per row, and the
 /// regenerate action for a still-unbound USB-key token.
 /// </summary>
+[SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
+                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
+                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
+                                 + "read free of another one's change tracking.")]
 public sealed class IndexModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-printers-index-{Guid.NewGuid():N}.db");
@@ -133,7 +139,7 @@ public sealed class IndexModelTests : IDisposable
                                    .GetRequiredService<IStringLocalizer<SharedResource>>();
 
         IndexModel model = new(
-            new PrinterQueryService(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
+            new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System),
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                                     TimeProvider.System, NullLogger<PrusaConnectService>.Instance, TestOptions.Monitor(options)),
             new DefaultPrinterService(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), users),

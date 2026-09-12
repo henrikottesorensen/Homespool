@@ -41,6 +41,14 @@ public class PrinterQueryService
     private const int TargetPointCount = 180;
 
     private readonly HomespoolDbContext _dbContext;
+
+    /// <summary>
+    /// Live state and history, which <see cref="StorageOptions.TelemetryInMemory"/> may hold in a
+    /// database of its own. Every read of it here is by <c>PrinterId</c> alone, which is what lets it
+    /// be a separate database at all - nothing filters, orders or aggregates a printer list by a
+    /// telemetry column, so no query has to span the two.
+    /// </summary>
+    private readonly TelemetryDbContext _telemetry;
     private readonly PrinterAccessService _access;
 
     /// <summary>
@@ -53,11 +61,13 @@ public class PrinterQueryService
     private readonly TimeProvider _timeProvider;
 
     public PrinterQueryService(HomespoolDbContext dbContext,
+                               TelemetryDbContext telemetry,
                                PrinterAccessService access,
                                TeamCapabilityLookup teams,
                                TimeProvider timeProvider)
     {
         _dbContext = dbContext;
+        _telemetry = telemetry;
         _access = access;
         _teams = teams;
         _timeProvider = timeProvider;
@@ -95,16 +105,17 @@ public class PrinterQueryService
     {
         IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
-        return await _dbContext.Printers
+        List<PrinterRow> rows = await _dbContext.Printers
                                .AsNoTracking()
                                .Where(p => teams.Contains(p.TeamId))
                                .OrderBy(p => p.Id)
-                               .Select(p => new PrinterWithState(
+                               .Select(p => new PrinterRow(
                                            p,
-                                           _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
                                            _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
                                            _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                                .ToListAsync(cancellationToken);
+
+        return await PairWithLiveStateAsync(rows, cancellationToken);
     }
 
     /// <summary>
@@ -116,16 +127,75 @@ public class PrinterQueryService
     {
         IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
-        return await _dbContext.Printers
+        PrinterRow? row = await _dbContext.Printers
                          .AsNoTracking()
                          .Where(p => p.Uuid == uuid && teams.Contains(p.TeamId))
-                         .Select(p => new PrinterWithState(
+                         .Select(p => new PrinterRow(
                                      p,
-                                     _dbContext.PrinterLiveStates.SingleOrDefault(s => s.PrinterId == p.Id),
                                      _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
                                      _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                          .SingleOrDefaultAsync(cancellationToken);
+
+        if (row is null)
+        {
+            return null;
+        }
+
+        IReadOnlyList<PrinterWithState> paired = await PairWithLiveStateAsync([row], cancellationToken);
+
+        return paired[0];
     }
+
+    /// <summary>
+    /// Attaches each printer's <see cref="PrinterLiveState"/> to the rows read from the application
+    /// database.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A second query rather than the correlated subquery this used to be</b>, because live state
+    /// may not be in the same database - see <see cref="TelemetryDbContext"/>. One query for the whole
+    /// page either way, keyed on printer id, so a fleet costs two round trips rather than one plus
+    /// one per printer.
+    /// </para>
+    /// <para>
+    /// <b>Nothing is filtered or ordered by live state</b>, which is what makes the split safe: the
+    /// printers are already selected and sorted by the query above, and this only fills a field in. A
+    /// caller that wanted "every printer that is printing, most recent first" could not be served this
+    /// way and would need the two brought back together.
+    /// </para>
+    /// <para>
+    /// A printer with no row here has never connected, exactly as before.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<PrinterWithState>> PairWithLiveStateAsync(
+        IReadOnlyList<PrinterRow> rows,
+        CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return [];
+        }
+
+        List<int> printerIds = [.. rows.Select(row => row.Printer.Id)];
+
+        Dictionary<int, PrinterLiveState> liveStates = await _telemetry.PrinterLiveStates
+                                                                       .AsNoTracking()
+                                                                       .Where(state => printerIds.Contains(state.PrinterId))
+                                                                       .ToDictionaryAsync(state => state.PrinterId,
+                                                                                          cancellationToken);
+
+        return [.. rows.Select(row => new PrinterWithState(row.Printer,
+                                                           liveStates.GetValueOrDefault(row.Printer.Id),
+                                                           row.Membership,
+                                                           row.Team))];
+    }
+
+    /// <summary>
+    /// A printer with the two application-database rows that travel with it, before live state is
+    /// paired on. Exists only to carry that projection between the query and
+    /// <see cref="PairWithLiveStateAsync"/>.
+    /// </summary>
+    private sealed record PrinterRow(Printer Printer, TeamMember? Membership, Team? Team);
 
     /// <summary>
     /// A single printer by its public <see cref="Printer.Uuid"/>, or <c>null</c> if it doesn't
@@ -219,7 +289,7 @@ public class PrinterQueryService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        PrinterLiveState? liveState = await _dbContext.PrinterLiveStates
+        PrinterLiveState? liveState = await _telemetry.PrinterLiveStates
                                                       .AsNoTracking()
                                                       .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
 
@@ -259,18 +329,18 @@ public class PrinterQueryService
             return null;
         }
 
-        PrinterLiveState? liveState = await _dbContext.PrinterLiveStates
+        PrinterLiveState? liveState = await _telemetry.PrinterLiveStates
                                                       .AsNoTracking()
                                                       .SingleOrDefaultAsync(s => s.PrinterId == printer.Id, cancellationToken);
 
-        List<TelemetrySample> samples = await _dbContext.TelemetrySamples
+        List<TelemetrySample> samples = await _telemetry.TelemetrySamples
                                                         .AsNoTracking()
                                                         .Where(s => s.PrinterId == printer.Id)
                                                         .OrderByDescending(s => s.Timestamp)
                                                         .Take(RecentSampleCount)
                                                         .ToListAsync(cancellationToken);
 
-        List<PrinterEvent> events = await _dbContext.PrinterEvents
+        List<PrinterEvent> events = await _telemetry.PrinterEvents
                                                     .AsNoTracking()
                                                     .Where(e => e.PrinterId == printer.Id)
                                                     .OrderByDescending(e => e.Timestamp)
@@ -330,7 +400,7 @@ public class PrinterQueryService
         // four empty points for every real one.
         long bucketMs = Math.Max(1000, (toMs - fromMs) / TargetPointCount);
 
-        List<TemperatureBucketRow> rows = await _dbContext.Database
+        List<TemperatureBucketRow> rows = await _telemetry.Database
             .SqlQuery<TemperatureBucketRow>(
                 $"""
                  SELECT MIN("Timestamp") AS "BucketStartMs",
@@ -350,8 +420,18 @@ public class PrinterQueryService
                  """)
             .ToListAsync(cancellationToken);
 
+        // The window reported back is the one actually covered, not the one asked for. A telemetry
+        // store bounded by rows rather than by days may simply not reach back as far as the request -
+        // TemperatureWindow follows the running job, and a long print can outlast the window a memory
+        // store holds - and an axis drawn from a timestamp with no data behind it reads as telemetry
+        // that went missing rather than history that was never kept. Costs nothing: the first bucket
+        // already carries the oldest sample in range.
+        DateTimeOffset covered = rows.Count > 0 ?
+            DateTimeOffset.FromUnixTimeMilliseconds(rows[0].BucketStartMs) :
+            from;
+
         return new TemperatureSeries(
-            from,
+            covered,
             to,
             rows.Select(row => new TemperaturePoint(DateTimeOffset.FromUnixTimeMilliseconds(row.BucketStartMs),
                                                     row.Nozzle,

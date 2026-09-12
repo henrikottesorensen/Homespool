@@ -21,7 +21,7 @@ else
     <div class="row">
         <div class="col-md-4">
             <form id="registerForm" asp-route-returnUrl="@Model.ReturnUrl" method="post">
-                <h2>@(Model.Recovering ? Localiser["Account_RecoverHelp"] : Model.Reactivating ? Localiser["Account_ReactivateHelp"] : Localiser["Account_CreateAccountHelp"])</h2>
+                <h2>@(Model.Recovering ? Localiser["Account_RecoverHelp"] : Localiser["Account_CreateAccountHelp"])</h2>
                 @if (Model.Recovering)
                 {
                     <p class="text-muted">@Localiser["Account_RecoverExplanation"]</p>
@@ -38,7 +38,7 @@ else
                     <input class="form-control" value="@Model.Email" readonly autocomplete="email" aria-label="@Localiser["Account_Email"]" />
                     <label class="form-label">@Localiser["Account_Email"]</label>
                 </div>
-                @if (Model.Reactivating || Model.Recovering)
+                @if (Model.Recovering)
                 {
                     @* Already theirs. Restoring a credential does not rename an account. *@
                     <div class="form-floating mb-3">
@@ -71,7 +71,7 @@ else
                 <button id="registerSubmit" type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["Account_CreateAccount"]</button>
             </form>
 
-            @if (!Model.Reactivating && !Model.Recovering && Model.ExternalLogins.Count > 0)
+            @if (!Model.Recovering && Model.ExternalLogins.Count > 0)
             {
                 @* Accept the invitation with a provider instead of a password. The invite's id and
                    token go with the challenge, so the callback spends it on proof the invitee holds

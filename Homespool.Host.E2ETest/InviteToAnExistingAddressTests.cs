@@ -18,34 +18,31 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// Recovering an account orphaned by its identity provider: an administrator sends it an invite, and
-/// redeeming that invite gives the <em>existing</em> account a password instead of making a new one.
+/// An invite never touches an account that already exists: whatever the address holds, redeeming is
+/// refused and nothing about that account changes.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This did not work at all before, and the failure was silent in the worst way.</b>
-/// <c>RequireUniqueEmail</c> is on and invite-accept created unconditionally, so an invite sent to an
-/// orphaned account's address failed on a duplicate address — an invite that cannot be redeemed, and
-/// the only recovery route the deployment had. There is no administrator-side password reset behind
-/// it.
+/// <b>It used to adopt one.</b> An address holding a password-less account had that account taken
+/// over by the invite - a password set, every provider login removed - which existed because an
+/// account orphaned by a dead identity provider had no other way back. Two audits found what that
+/// cost: an ordinary invite could silently re-credential a <em>working</em> provider account without
+/// telling its owner, and it ignored <c>DeactivatedAt</c>, so a closed account could come back under
+/// the invite-holder's password the moment an administrator reopened it.
 /// </para>
 /// <para>
-/// <b>Only accounts with no password are adoptable</b>, which is exactly the orphaned set. That
-/// check is <b>not</b> the only thing standing between an invite and an account takeover, and an
-/// earlier version of this remark claimed it was: <c>AddPasswordAsync</c> refuses an account that
-/// already has one, so removing the check leaves the outcome unchanged. Measured, by deleting it —
-/// all three tests still passed, which is how the overclaim was caught and how the test below was
-/// found to be asserting nothing.
+/// <b>Re-credentialing an existing account is now the recovery invite's job alone</b>, which an
+/// administrator issues by naming the account, which refuses a deactivated one, and which tells the
+/// owner it happened. So this file's subject is the rule that replaced adoption: an invite creates an
+/// account or is refused, and there is no third thing it can do.
 /// </para>
 /// <para>
-/// <b>So what the check buys is a legible refusal, and that is what the test now asserts.</b> Without
-/// it the caller meets Identity's "user already has a password" on a form that never asked about
-/// passwords they hold. The two refusals are indistinguishable in stored state — same status, same
-/// unchanged account, same unspent invite — so the assertion has to read the message, and is coupled
-/// to its wording on purpose for want of anything else that separates them.
+/// <b>The last test is what keeps the first three honest.</b> A refusal that refused everything would
+/// satisfy every negative assertion here; an ordinary invite for an address nobody holds still has to
+/// create an account.
 /// </para>
 /// </remarks>
-public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
+public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
     private const string Address = "orphan@example.com";
@@ -67,10 +64,11 @@ public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The whole point: one account before, one after, now with a password and without the dead link.
+    /// The case adoption was built for, and the one that changed: an orphaned account is refused like
+    /// any other, and keeps having no password.
     /// </summary>
     [Fact]
-    public async Task RedeemingAnInviteReactivatesTheOrphanedAccountRatherThanCreatingASecond()
+    public async Task AnInviteForAnOrphanedAccountIsRefusedAndChangesNothing()
     {
         long orphanId = await CreateOrphanedAccountAsync();
         (int inviteId, string code) = await CreateInviteAsync(Address);
@@ -79,53 +77,17 @@ public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
 
         using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: null);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect, "a reactivated account is signed straight in");
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "the form comes back with the refusal on it");
 
-        (await CountAccountsForAddressAsync()).Should()
-            .Be(1, "reactivation adopts the account that exists; a second one is the bug this prevents");
+        string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        HSUser user = await FindAsync();
+        page.Should().Contain("send them a recovery link",
+                              "the refusal points at the route that does re-credential an account");
 
-        user.Id.Should().Be(orphanId, "and it is the same account, not a replacement wearing its address");
-        (await HasPasswordAsync()).Should().BeTrue("which is the whole point of sending the invite");
-        (await LoginCountAsync()).Should().Be(0, "the dead provider link goes in the same step");
-    }
-
-    /// <summary>
-    /// The account existed before it was orphaned and may still hold an authenticator; reactivating
-    /// it is a proved password, not a way past the second factor.
-    /// </summary>
-    [Fact]
-    public async Task ReactivatingAnAccountWithAnAuthenticatorStillAsksForTheCode()
-    {
-        await CreateOrphanedAccountAsync(withAuthenticator: true);
-        (int inviteId, string code) = await CreateInviteAsync(Address);
-
-        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-
-        using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: null);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        response.Headers.Location!.OriginalString.Should().StartWith("/Account/LoginWith2fa", "the code is still owed");
-        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, response).Should().BeFalse("no session until the code is answered");
-        (await HasPasswordAsync()).Should().BeTrue("the reactivation itself went through");
-    }
-
-    /// <summary>An unconfirmed orphan is reactivated and then held at confirmation, as a new account is.</summary>
-    [Fact]
-    public async Task ReactivatingAnUnconfirmedAccountHoldsItAtConfirmation()
-    {
-        await CreateOrphanedAccountAsync(confirmed: false);
-        (int inviteId, string code) = await CreateInviteAsync(Address);
-
-        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-
-        using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: null);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        response.Headers.Location!.OriginalString.Should().StartWith("/Account/RegisterConfirmation", "the address has not answered its mail");
-        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, response).Should().BeFalse();
-        (await HasPasswordAsync()).Should().BeTrue("the reactivation itself went through");
+        (await CountAccountsForAddressAsync()).Should().Be(1, "and no second account was made either");
+        (await FindAsync()).Id.Should().Be(orphanId);
+        (await HasPasswordAsync()).Should().BeFalse("an invite may not hand this account a credential");
+        (await LoginCountAsync()).Should().Be(1, "nor take its provider link away");
     }
 
     /// <summary>
@@ -151,7 +113,7 @@ public sealed class OrphanedAccountReactivationTests : IAsyncLifetime
 
         string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        page.Should().Contain("already has an account that can sign in",
+        page.Should().Contain("already has an account",
                               "the refusal names what is actually wrong; Identity's fallback talks about a "
                               + "password the caller was never asked for and does not know they have");
 

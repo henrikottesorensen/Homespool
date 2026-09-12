@@ -739,11 +739,8 @@
   <data name="Account_CreateAccount" xml:space="preserve">
     <value>Create account</value>
   </data>
-  <data name="Account_ReactivateHelp" xml:space="preserve">
-    <value>Set a password for your account</value>
-  </data>
   <data name="Account_InviteAddressAlreadyActive" xml:space="preserve">
-    <value>That address already has an account that can sign in, so this invitation cannot be used for it.</value>
+    <value>That address already has an account, so this invitation cannot be used for it. To give somebody back an account they cannot get into, send them a recovery link from the users page instead.</value>
   </data>
   <data name="Account_CreateAccountHelp" xml:space="preserve">
     <value>Create your account.</value>

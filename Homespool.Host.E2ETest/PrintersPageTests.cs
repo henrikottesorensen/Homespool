@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 
@@ -130,9 +132,63 @@ public sealed class PrintersPageTests : IAsyncLifetime
         client.Dispose();
     }
 
-    private static async Task<string> GetListingAsync(HttpClient client)
+    /// <summary>
+    /// <b>The poll renders the same rack.</b> A handler that returned nothing, or a partial rendering
+    /// state only the page load provides, would leave a page that looks right until it refreshes
+    /// itself - and the reader's default is exactly such a value, set outside the query that lists
+    /// the printers.
+    /// </summary>
+    [Fact]
+    public async Task ThePolledHandlerRendersTheSameRack()
     {
-        using HttpResponseMessage response = await client.GetAsync("/Printers", TestContext.Current.CancellationToken);
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "printers-poll@example.com");
+
+        (int first, _) = SeedPrinters(user.Id, "Polled One", "Polled Two");
+        await MakeDefaultAsync(client, first);
+
+        // Act
+        string page = await GetListingAsync(client);
+        string fragment = await GetAsync(client, "/Printers?handler=Rack");
+
+        // Assert
+        fragment.Should().Contain("printer-rack");
+        fragment.Should().Contain("Polled One");
+        fragment.Should().Contain("Polled Two");
+        fragment.Should().NotContain("<html", "the poll answers a fragment, not a whole page");
+        fragment.Should().Contain(">Default<", "the reader's default is loaded by the poll, not only by the page");
+        fragment.Should().Contain("handler=Default", "the buttons live inside the refreshed region");
+
+        page.Should().Contain("handler=Rack", "the page has to ask for the fragment");
+        page.Should().Contain("live-region", "without the script the rack is what the server rendered on load");
+
+        client.Dispose();
+    }
+
+    private static async Task MakeDefaultAsync(HttpClient client, int printerId)
+    {
+        string listing = await GetListingAsync(client);
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(listing),
+        });
+
+        using HttpResponseMessage posted = await client.PostAsync(
+            $"/Printers?handler=Default&printerId={printerId}", body, TestContext.Current.CancellationToken);
+
+        posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+    }
+
+    private static Task<string> GetListingAsync(HttpClient client)
+    {
+        return GetAsync(client, "/Printers");
+    }
+
+    private static async Task<string> GetAsync(HttpClient client, string url)
+    {
+        using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
 
         response.EnsureSuccessStatusCode();
 

@@ -149,6 +149,23 @@ public class IndexModel : PageModel
         await LoadPrintersAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// The rack on its own, for the poll.
+    /// </summary>
+    /// <remarks>
+    /// <b>It loads exactly what the page load loads</b>, because the partial may only render state
+    /// its own handler provides - the rule the printer page's queue fragment was extracted under, and
+    /// broke. The bundle offer and the status message are outside the partial on purpose: a poll has
+    /// no offer to show and no message to repeat, and a fragment that carried either would be
+    /// blanking them every ten seconds.
+    /// </remarks>
+    public async Task<IActionResult> OnGetRackAsync(CancellationToken cancellationToken)
+    {
+        await LoadPrintersAsync(cancellationToken);
+
+        return Partial("_PrinterRack", this);
+    }
+
     public async Task<IActionResult> OnPostRegenerateAsync(int printerId, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);

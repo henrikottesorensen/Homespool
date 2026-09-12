@@ -2436,6 +2436,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_AppliesOnNextSweep" xml:space="preserve">
     <value>Træder i kraft ved næste oprydning, inden for en time</value>
   </data>
+  <data name="Settings_AppliesOnNextSweepInMemoryOnly" xml:space="preserve">
+    <value>Træder i kraft ved næste oprydning, og kun mens telemetri holdes i hukommelsen</value>
+  </data>
   <data name="Settings_AppliesOnNextPrinterConnection" xml:space="preserve">
     <value>Træder i kraft når hver printer forbinder næste gang</value>
   </data>
@@ -2491,7 +2494,13 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Gem hændelser i, dage</value>
   </data>
   <data name="Settings_Label_Storage_MaxEventsPerPrinter" xml:space="preserve">
-    <value>Flest hændelser gemt pr. printer</value>
+    <value>Antal hændelser gemt pr. printer</value>
+  </data>
+  <data name="Settings_Label_Storage_MaxSamplesPerPrinter" xml:space="preserve">
+    <value>Antal målinger gemt pr. printer</value>
+  </data>
+  <data name="Settings_Label_Storage_TelemetryInMemory" xml:space="preserve">
+    <value>Behold kun telemetri i hukommelsen. Bemærk telemetri data går tabt ved genstart af Homespool.</value>
   </data>
   <data name="Settings_Label_Storage_WriteBatchSize" xml:space="preserve">
     <value>Rækker der samles før skrivning</value>

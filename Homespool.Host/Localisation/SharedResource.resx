@@ -2538,6 +2538,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_AppliesOnNextSweep" xml:space="preserve">
     <value>Applies on the next sweep, within an hour</value>
   </data>
+  <data name="Settings_AppliesOnNextSweepInMemoryOnly" xml:space="preserve">
+    <value>Applies on the next sweep, and only while telemetry is held in memory</value>
+  </data>
   <data name="Settings_AppliesOnNextPrinterConnection" xml:space="preserve">
     <value>Applies when each printer next connects</value>
   </data>
@@ -2594,6 +2597,12 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Settings_Label_Storage_MaxEventsPerPrinter" xml:space="preserve">
     <value>Most events kept per printer</value>
+  </data>
+  <data name="Settings_Label_Storage_MaxSamplesPerPrinter" xml:space="preserve">
+    <value>Most samples kept per printer</value>
+  </data>
+  <data name="Settings_Label_Storage_TelemetryInMemory" xml:space="preserve">
+    <value>Keep telemetry in memory only, losing it on restart</value>
   </data>
   <data name="Settings_Label_Storage_WriteBatchSize" xml:space="preserve">
     <value>Rows buffered before writing</value>

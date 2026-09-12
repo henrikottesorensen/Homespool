@@ -159,18 +159,30 @@ public static class DataServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Creates the five telemetry tables in the in-memory database, when that is where they live.
+    /// Creates the five telemetry tables in the in-memory database when that is where they live, and
+    /// says which of the two it was either way.
     /// </summary>
     /// <remarks>
-    /// <b>A no-op unless <see cref="StorageOptions.TelemetryInMemory"/> is set.</b> Against the
-    /// application file those tables are the migration's, and calling <c>EnsureCreated</c> on a
-    /// database that already has them would at best do nothing and at worst disagree with the
-    /// migration about what they are.
+    /// <b>Nothing is created against the application file</b>, where those tables are the migration's:
+    /// calling <c>EnsureCreated</c> on a database that already has them would at best do nothing and
+    /// at worst disagree with the migration about what they are. <b>The log line is written in both
+    /// cases</b>, because where telemetry lives decides whether it survives a restart, and a line that
+    /// appears in only one of them cannot be read - silence would mean "durable" and "this build has
+    /// no such setting" alike.
     /// </remarks>
     private static void EnsureTelemetryStore(IServiceProvider services, StorageOptions storage, ILogger logger)
     {
         if (!storage.TelemetryInMemory)
         {
+            // Said out loud, rather than left as the absence of the line below. Where telemetry lives
+            // decides whether it survives a restart, and a log that only speaks up in one of the two
+            // cases cannot be read: silence would mean "on disk" and "this build has no such setting"
+            // alike, which is exactly the question somebody reads a startup log to answer.
+            logger.LogInformation(
+                "Telemetry is stored durably in the application database, bounded by TelemetryRetentionDays " +
+                "and EventRetentionDays. Set Storage:TelemetryInMemory to hold it in memory instead, which " +
+                "costs the history across a restart and saves the writes.");
+
             return;
         }
 

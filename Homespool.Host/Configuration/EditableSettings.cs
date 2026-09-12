@@ -121,11 +121,16 @@ public static class EditableSettings
             SettingGrade.Deferred,
             AppliesWhenKey: "Settings_AppliesOnNextSweep",
             DisplaySubgroup: "Telemetry"),
+
+        // Its own badge, because the sweep that reads it declines outright unless telemetry is held
+        // in memory - days bound a disk and rows bound memory. Shown with the ordinary sweep wording
+        // it would be a field that is editable, plausible and inert, which is worse than one that
+        // says what it is waiting for.
         new(typeof(StorageOptions),
             StorageOptions.SectionName,
             nameof(StorageOptions.MaxSamplesPerPrinter),
             SettingGrade.Deferred,
-            AppliesWhenKey: "Settings_AppliesOnNextSweep",
+            AppliesWhenKey: "Settings_AppliesOnNextSweepInMemoryOnly",
             DisplaySubgroup: "Telemetry"),
 
         // Decides which database the telemetry context is opened against, in

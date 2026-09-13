@@ -187,7 +187,7 @@ public class BundleModel : PageModel
                                printer.Uuid, name, endpoint.Port);
         }
 
-        return File(bundle, MediaTypeNames.Application.Zip, FileNameFor(printer.Name, printer.Id));
+        return File(bundle, MediaTypeNames.Application.Zip, FileNameFor(printer));
     }
 
     /// <summary>
@@ -195,18 +195,23 @@ public class BundleModel : PageModel
     /// several and they are otherwise identical.
     /// </summary>
     /// <remarks>
-    /// <b>The row id in the fallback, where the log lines carry the uuid.</b> They are read by
-    /// different people: a uuid in a downloads folder is unreadable, and a name is what tells two of
-    /// these apart on a stick.
+    /// <b>Whatever the Printers page calls it</b> - the name, else the model it reported, else its
+    /// uuid - so the file on the stick and the card on the page name the printer the same way. An
+    /// unnamed printer provisioned by USB key has never connected and has no model, so the uuid is the
+    /// ordinary case there rather than a curiosity, and it is also the only name the page gives it.
+    /// A name made only of punctuation leaves nothing to slug, and falls back to the uuid too.
     /// </remarks>
-    private static string FileNameFor(string? printerName, int printerId)
+    private static string FileNameFor(Printer printer)
     {
-        string slug = new((printerName ?? string.Empty)
-                          .Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')
-                          .ToArray());
+        string slug = Slug(PrinterDisplayName.For(printer));
 
-        slug = string.Join('-', slug.Split('-', StringSplitOptions.RemoveEmptyEntries));
+        return $"homespool-{(slug.Length > 0 ? slug : Slug(printer.Uuid.ToString()))}.zip";
+    }
 
-        return string.IsNullOrEmpty(slug) ? $"homespool-printer-{printerId}.zip" : $"homespool-{slug}.zip";
+    private static string Slug(string text)
+    {
+        string dashed = new(text.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-').ToArray());
+
+        return string.Join('-', dashed.Split('-', StringSplitOptions.RemoveEmptyEntries));
     }
 }

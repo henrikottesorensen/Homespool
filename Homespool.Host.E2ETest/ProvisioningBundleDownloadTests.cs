@@ -215,6 +215,44 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// A printer with no name to slug is named in the file by its uuid - what the Printers page calls
+    /// it - and never by its row id.
+    /// </summary>
+    /// <remarks>
+    /// Empty is the ordinary USB-key case: the name is optional and a printer that has never connected
+    /// has no model either. Punctuation alone is a name the page shows but the slug drops entirely.
+    /// </remarks>
+    [Theory]
+    [InlineData("")]
+    [InlineData("???")]
+    public async Task APrinterWithNothingToSlugIsNamedByItsUuid(string name)
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, $"unnamed-{name.Length}@example.com");
+
+        using (client)
+        {
+            string html = await ProvisionAsync(client, name);
+            string uuid = HiddenFieldValue(html, "PrinterUuid");
+
+            using FormUrlEncodedContent form = new(
+            [
+                new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(html)),
+                new("Token", HiddenFieldValue(html, "Token")),
+                new("Hostname", PrinterHost),
+                new("PrinterUuid", uuid),
+            ]);
+
+            using HttpResponseMessage download =
+                await client.PostAsync("/Printers/Bundle", form, TestContext.Current.CancellationToken);
+
+            download.StatusCode.Should().Be(HttpStatusCode.OK);
+            download.Content.Headers.ContentDisposition?.FileName.Should().Be(
+                $"homespool-{uuid}.zip", "the page names an unnamed printer by its uuid, and the file follows the page");
+        }
+    }
+
     private static async Task<HttpResponseMessage> PostBundleAsync(HttpClient client, string page, string printerUuid)
     {
         using FormUrlEncodedContent form = new(

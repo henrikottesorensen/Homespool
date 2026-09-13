@@ -185,6 +185,29 @@ public class CameraOptions
     public long MaxFrameBytes { get; set; } = 4L * 1024 * 1024;
 
     /// <summary>
+    /// How many live MJPEG streams one account may have open at once. Default 5.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Each open stream costs the board for as long as it stays open, and opening one costs the
+    /// caller nothing.</b> A relayed stream holds a connection to the sidecar and a buffer that grows
+    /// to 8 MiB to hold a frame at the part limit (<see cref="MjpegDhtRelay"/>). A tab left open, or a
+    /// script looping on the URL, would otherwise hold as many as it liked.
+    /// </para>
+    /// <para>
+    /// <b>Per account rather than for the whole deployment</b>, because the account is what a runaway
+    /// belongs to: one ceiling for everybody would let a single account close live view for the rest.
+    /// Five is several cameras across a couple of tabs, which is more than one person watches.
+    /// </para>
+    /// <para>
+    /// <b>Only the MJPEG relay counts.</b> WebRTC media goes from the sidecar to the browser directly
+    /// and never passes through this process, so there is nothing of that here to bound.
+    /// </para>
+    /// </remarks>
+    [Range(1, 100)]
+    public int MaxMjpegStreamsPerUser { get; set; } = 5;
+
+    /// <summary>
     /// Whether to refuse camera sources pointing at loopback or link-local addresses. Default
     /// <see langword="true"/>.
     /// </summary>

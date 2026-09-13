@@ -48,6 +48,7 @@ public class CameraController : ControllerBase
     private readonly Go2RtcClient _streamServer;
     private readonly CameraStreamRelay _relay;
     private readonly CameraLiveAvailability _liveView;
+    private readonly MjpegStreamLimiter _streamLimiter;
     private readonly UserManager<HSUser> _userManager;
 
     public CameraController(CameraAccessService access,
@@ -55,6 +56,7 @@ public class CameraController : ControllerBase
                             Go2RtcClient streamServer,
                             CameraStreamRelay relay,
                             CameraLiveAvailability liveView,
+                            MjpegStreamLimiter streamLimiter,
                             UserManager<HSUser> userManager)
     {
         _access = access;
@@ -62,6 +64,7 @@ public class CameraController : ControllerBase
         _streamServer = streamServer;
         _relay = relay;
         _liveView = liveView;
+        _streamLimiter = streamLimiter;
         _userManager = userManager;
     }
 
@@ -199,6 +202,11 @@ public class CameraController : ControllerBase
     /// sidecar's consumer and lets the camera go idle again.
     /// </para>
     /// <para>
+    /// <b>An account may hold only <see cref="CameraOptions.MaxMjpegStreamsPerUser"/> of these at
+    /// once</b>, and one more is answered 429 before the sidecar is asked for anything. A browser shows that
+    /// the way it shows any stream that did not start, since an <c>&lt;img&gt;</c> cannot read a status.
+    /// </para>
+    /// <para>
     /// <c>EmptyHttpResult</c> stands for success in the union because the streaming has already
     /// happened by the time anything is returned: the body is written as it is read, and the result
     /// object's only job is to not touch what was streamed.
@@ -209,7 +217,7 @@ public class CameraController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
-    public async Task<Results<EmptyHttpResult, ForbiddenProblem, NotFoundProblem, ConflictProblem, BadGatewayProblem>> Stream(
+    public async Task<Results<EmptyHttpResult, ForbiddenProblem, NotFoundProblem, ConflictProblem, TooManyRequestsProblem, BadGatewayProblem>> Stream(
         Guid uuid,
         CancellationToken cancellationToken)
     {
@@ -235,6 +243,16 @@ public class CameraController : ControllerBase
             != LiveTransport.Mjpeg)
         {
             return this.ConflictProblem("This camera is not watched over MJPEG.");
+        }
+
+        // Taken before the relay opens its sidecar connection and held until the copy below ends,
+        // so what is counted is exactly what costs: the connection and its buffer. After the two
+        // checks above, so a camera the caller cannot see or cannot watch never uses one up.
+        using IDisposable? slot = _streamLimiter.TryAcquire(userId.Value);
+
+        if (slot is null)
+        {
+            return this.TooManyRequestsProblem("This account already has as many live streams open as it may. Close one and try again.");
         }
 
         // Nothing is answered until a whole frame has arrived - the relay proves the camera is

@@ -141,6 +141,11 @@ Configuration lives in two places, deliberately:
 [.env.example](.env.example) documents every setting in full, including the WebRTC overrides for
 deployments behind a router or tunnel.
 
+Running the application outside compose — `dotnet Homespool.Host.dll`, or the image on its own —
+leaves `USER_HOSTS` with nothing to feed, and the app then answers only `Host: localhost`. Set
+`AllowedHosts` to the names people browse to, semicolon-separated, as compose does. Printers need
+nothing added: the printer host and every name on the printer certificate are always allowed.
+
 ### TLS
 
 - **Browsers** get a self-signed certificate generated on first start, covering every name in

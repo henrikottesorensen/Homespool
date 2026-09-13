@@ -234,7 +234,7 @@ public class ExternalLoginModel : PageModel
 
         // Checked first, because the chain below ends by falling through to the invite gate: a result
         // nobody set would otherwise be treated as a stranger asking for an account.
-        if (!Enum.IsDefined(result) || result == ExternalSignInResult.Undefined)
+        if (!result.IsSet())
         {
             throw new InvalidOperationException($"The provider sign-in answered {result}, which no sign-in produces.");
         }

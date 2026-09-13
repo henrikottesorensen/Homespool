@@ -3,6 +3,8 @@ using System.Globalization;
 
 using Microsoft.AspNetCore.Authentication;
 
+using Homespool.Model;
+
 namespace Homespool.Host.Authentication;
 
 /// <summary>
@@ -27,13 +29,8 @@ public static class SignInRefusals
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="refusal"/> is <see cref="SignInRefusal.Undefined"/>.</exception>
     public static AuthenticateResult Fail(SignInRefusal refusal, string message, TimeSpan? retryAfter)
     {
-        if (refusal is SignInRefusal.Undefined || !Enum.IsDefined(refusal))
-        {
-            throw new ArgumentOutOfRangeException(nameof(refusal), refusal, "A refusal has to say why.");
-        }
-
         AuthenticationProperties properties = new();
-        properties.Items[Item] = refusal.ToString();
+        properties.Items[Item] = refusal.RequireSet().ToString();
 
         if (retryAfter is { } wait)
         {
@@ -66,8 +63,7 @@ public static class SignInRefusals
         // anywhere special.
         return result.Properties?.Items.TryGetValue(Item, out string? value) == true
                && Enum.TryParse(value, out SignInRefusal refusal)
-               && refusal is not SignInRefusal.Undefined
-               && Enum.IsDefined(refusal)
+               && refusal.IsSet()
             ? refusal
             : SignInRefusal.Invalid;
     }

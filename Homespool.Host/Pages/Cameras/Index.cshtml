@@ -146,10 +146,7 @@ else
        write is safe because both halves are ours - a resource string and a literal - and neither
        comes from a request. *@
     <p class="text-body-secondary small">
-        @Html.Raw(string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Localiser["Cameras_NetworkHelp"].Value,
-            "<code>rtsp://192.168.1.50/live</code>"))
+        @HtmlLocaliser["Cameras_NetworkHelp", Markup.Code("rtsp://192.168.1.50/live")]
     </p>
 
     <form method="post" asp-page-handler="AddNetwork" class="row g-2 align-items-end">
@@ -267,7 +264,7 @@ else if (Model.IsAdministrator)
 {
     <p class="text-body-secondary small mt-4">
         @Localiser["Cameras_NoneUnclaimed"]
-        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cameras_DeviceLineIn"].Value, "<code>devices:</code>", "<code>compose.yaml</code>"))
+        @HtmlLocaliser["Cameras_DeviceLineIn", Markup.Code("devices:"), Markup.Code("compose.yaml")]
     </p>
 }
 

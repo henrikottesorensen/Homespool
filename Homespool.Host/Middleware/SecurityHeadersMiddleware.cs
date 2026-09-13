@@ -19,10 +19,10 @@ namespace Homespool.Host.Middleware;
 /// from an inline block that carries the nonce minted for this response, and nothing else: not an
 /// inline block without one, not an <c>onclick</c> attribute, not a <c>javascript:</c> link, not a
 /// script tag somebody managed to write into a page. Every value the pages render is encoded, and a
-/// test scans every <c>Html.Raw</c> for the exceptions - but the next mistake in that family, whenever
-/// it comes, now produces a console violation rather than code running as the signed-in user. The
-/// same test file that scans <c>Html.Raw</c> has a sibling that refuses an inline script without a
-/// nonce and any inline handler, so the policy cannot be quietly broken by a new view either.
+/// source test refuses every way of writing a string as markup - but the next mistake in that family,
+/// whenever it comes, now produces a console violation rather than code running as the signed-in user.
+/// A sibling test refuses an inline script without a nonce and any inline handler, so the policy
+/// cannot be quietly broken by a new view either.
 /// </para>
 /// <para>
 /// <b>Only one inline block exists, and it is inline on purpose.</b> The colour-mode script in

@@ -18,15 +18,15 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// The firmware version a printer states about itself reaches two pages inside an
-/// <c>Html.Raw</c> argument, and both must render it as text.
+/// The firmware version a printer states about itself reaches two pages inside a localised sentence
+/// that carries markup, and both must render it as text.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>The version string is the printer's own claim, not ours</b> - it arrives in an <c>INFO</c>
 /// event and is stored verbatim, so it is the one half of those two sentences that a person did not
-/// write. Everything else interpolated into an <c>Html.Raw</c> in this application is a resource
-/// string or a literal, which is why the encoding is easy to lose track of here specifically.
+/// write. The sentences are built so that a value can only arrive as text, and this is the end-to-end
+/// proof on the two pages where a value is not ours.
 /// </para>
 /// <para>
 /// <b>Both payloads carry a <c>+</c>, and that is the point rather than decoration.</b> The gate in

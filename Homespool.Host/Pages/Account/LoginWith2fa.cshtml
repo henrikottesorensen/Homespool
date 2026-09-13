@@ -30,7 +30,7 @@
     </div>
 </div>
 <p>
-    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Account_NoAuthenticatorAccess"].Value, $"<a id=\"recovery-code-login\" href=\"{Url.Page("./LoginWithRecoveryCode", new { returnUrl = Model.ReturnUrl })}\">{Localiser["TwoFactor_RecoveryCodeLink"].Value}</a>"))
+    @HtmlLocaliser["Account_NoAuthenticatorAccess", Markup.Link(Url.Page("./LoginWithRecoveryCode", new { returnUrl = Model.ReturnUrl }), Localiser["TwoFactor_RecoveryCodeLink"].Value, id: "recovery-code-login")]
 </p>
 
 @section Scripts {

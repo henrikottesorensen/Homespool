@@ -53,10 +53,10 @@
 {
     <div class="alert alert-warning" role="alert">
         <strong>@Localiser["Printer_PlaintextHeading"]</strong>
-        @* Encoded, and the only half of this that is not ours: the firmware string is whatever the
-           printer said about itself in an INFO event, so it reaches Html.Raw as text rather than as
-           markup. The <code> around it is the literal half. *@
-        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printer_PlaintextBody"].Value, $"<code>{Html.Encode(Model.Firmware)}</code>"))
+        @* The only half of this that is not ours: the firmware string is whatever the printer said
+           about itself in an INFO event. Markup.Code takes it as text, so it is encoded inside the
+           <code> rather than read as markup. *@
+        @HtmlLocaliser["Printer_PlaintextBody", Markup.Code(Model.Firmware)]
     </div>
 }
 
@@ -165,10 +165,7 @@
        now, two controls to the left, so the sentence went with it. *@
     <p class="text-body-secondary small">
         @Localiser["Printers_PreheatBoth"]
-        @Html.Raw(string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Localiser["Printers_PreheatWarning"].Value,
-            $"<strong>{Localiser["Printers_CoolingIncluded"].Value}</strong>"))
+        @HtmlLocaliser["Printers_PreheatWarning", Markup.Strong(Localiser["Printers_CoolingIncluded"].Value)]
     </p>
 
     @* Said beside the button rather than only after pressing it: the unload runs for minutes and
@@ -368,14 +365,12 @@
        inside one is input based on text the system showed you - the names of menus, menu items, and
        buttons on screen. MDN's own example for it is a button. *@
     <p>
-        @Html.Raw(string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Localiser["Printers_SlicerHelp"].Value,
-            "<em>Printer Settings &rarr; Physical Printer</em>",
-            "<strong>Host Type</strong>",
-            "<strong>OctoPrint</strong>",
-            $"<a href=\"{Url.Page("/Account/Manage/ApiTokens")}\">{Localiser["Printers_ApiTokenLink"].Value}</a>",
-            "<kbd><samp>Upload and Print</samp></kbd>"))
+        @HtmlLocaliser["Printers_SlicerHelp",
+            Markup.Em("Printer Settings → Physical Printer"),
+            Markup.Strong("Host Type"),
+            Markup.Strong("OctoPrint"),
+            Markup.Link(Url.Page("/Account/Manage/ApiTokens"), Localiser["Printers_ApiTokenLink"].Value),
+            Markup.Kbd(Markup.Samp("Upload and Print"))]
     </p>
 
     <div class="input-group mb-3" data-copy>

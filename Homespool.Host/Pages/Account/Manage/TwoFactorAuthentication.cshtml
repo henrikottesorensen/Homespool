@@ -17,21 +17,21 @@
             {
                 <div class="alert alert-danger">
                     <strong>@Localiser["TwoFactor_NoCodesLeft"]</strong>
-                    <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_MustGenerate"].Value, $"<a href=\"{Url.Page("./GenerateRecoveryCodes")}\">{Localiser["TwoFactor_GenerateLink"].Value}</a>"))</p>
+                    <p>@HtmlLocaliser["TwoFactor_MustGenerate", Markup.Link(Url.Page("./GenerateRecoveryCodes"), Localiser["TwoFactor_GenerateLink"].Value)]</p>
                 </div>
             }
             else if (Model.RecoveryCodesLeft == 1)
             {
                 <div class="alert alert-danger">
                     <strong>@Localiser["TwoFactor_OneCodeLeft"]</strong>
-                    <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_CanGenerate"].Value, $"<a href=\"{Url.Page("./GenerateRecoveryCodes")}\">{Localiser["TwoFactor_GenerateLink"].Value}</a>"))</p>
+                    <p>@HtmlLocaliser["TwoFactor_CanGenerate", Markup.Link(Url.Page("./GenerateRecoveryCodes"), Localiser["TwoFactor_GenerateLink"].Value)]</p>
                 </div>
             }
             else if (Model.RecoveryCodesLeft <= 3)
             {
                 <div class="alert alert-warning">
                     <strong>You have @Model.RecoveryCodesLeft recovery codes left.</strong>
-                    <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_ShouldGenerate"].Value, $"<a href=\"{Url.Page("./GenerateRecoveryCodes")}\">{Localiser["TwoFactor_GenerateLink"].Value}</a>"))</p>
+                    <p>@HtmlLocaliser["TwoFactor_ShouldGenerate", Markup.Link(Url.Page("./GenerateRecoveryCodes"), Localiser["TwoFactor_GenerateLink"].Value)]</p>
                 </div>
             }
 

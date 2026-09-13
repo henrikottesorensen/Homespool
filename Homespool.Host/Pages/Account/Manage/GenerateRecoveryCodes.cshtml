@@ -15,7 +15,7 @@
         @Localiser["TwoFactor_LoseDeviceWarning"]
     </p>
     <p>
-        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_NewCodesKeepKeys"].Value, $"<a href=\"{Url.Page("./ResetAuthenticator")}\">{Localiser["TwoFactor_ResetKeysLink"].Value}</a>"))
+        @HtmlLocaliser["TwoFactor_NewCodesKeepKeys", Markup.Link(Url.Page("./ResetAuthenticator"), Localiser["TwoFactor_ResetKeysLink"].Value)]
     </p>
 </div>
 <div>

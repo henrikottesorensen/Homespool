@@ -52,6 +52,15 @@ locale:
 docker:
   trust_user1: y
 
+# Off. rpi-image-gen's SBOM layer is in the image-base chain and on by default, and with no syft on
+# the builder's PATH it installs one by piping https://get.anchore.io/syft into sh - an unverified
+# script, run inside the privileged builder with the repository mounted read-write. The manifest it
+# produces stays in the work volume and nothing copies it out, so the build was taking that risk for
+# a file nobody reads. If an SBOM is wanted, install a checksum-verified syft in Dockerfile.builder
+# (the layer uses one already on PATH instead of fetching) and have build.sh copy the .sbom out.
+sbom:
+  enable: n
+
 image:
   layer: image-rpios
   name: homespool-rpi-arm64

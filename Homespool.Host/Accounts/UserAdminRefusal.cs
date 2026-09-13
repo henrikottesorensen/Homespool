@@ -3,18 +3,24 @@ namespace Homespool.Host.Accounts;
 /// <summary>Why <see cref="UserAdministration"/> declined to act on an account.</summary>
 public enum UserAdminRefusal
 {
+    /// <summary>
+    /// Nobody set this. Never produced: reserved so that a value somebody forgot to assign cannot read
+    /// as an act that went through.
+    /// </summary>
+    Undefined = 0,
+
     /// <summary>It acted.</summary>
-    None = 0,
+    None = 1,
 
     /// <summary>No account carries that id. The page answers this as a 404 rather than a message.</summary>
-    NoSuchAccount = 1,
+    NoSuchAccount = 2,
 
     /// <summary>
     /// The administrator aimed at their own account. Refused for deactivation only, and not out of
     /// paternalism: an administrator who closes their own account is the one person who cannot then
     /// reopen it.
     /// </summary>
-    Self = 2,
+    Self = 3,
 
     /// <summary>
     /// The subject is the only administrator still active. Deactivating them would leave the
@@ -22,5 +28,5 @@ public enum UserAdminRefusal
     /// while an administrator account exists, deactivated or not - so the repair would be editing the
     /// database.
     /// </summary>
-    LastAdministrator = 3,
+    LastAdministrator = 4,
 }

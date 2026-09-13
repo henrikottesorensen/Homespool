@@ -9,12 +9,18 @@ namespace Homespool.Host.Authentication;
 /// </remarks>
 public enum StepUpRefusal
 {
+    /// <summary>
+    /// Nobody set this. Never produced: reserved so that a value somebody forgot to assign cannot read
+    /// as a proved account.
+    /// </summary>
+    Undefined = 0,
+
     /// <summary>The account was proved.</summary>
-    None = 0,
+    None = 1,
 
     /// <summary>The password was wrong, empty, or belonged to nobody signed in.</summary>
-    WrongPassword,
+    WrongPassword = 2,
 
     /// <summary>The account is locked out, so no password is compared until it is not.</summary>
-    LockedOut,
+    LockedOut = 3,
 }

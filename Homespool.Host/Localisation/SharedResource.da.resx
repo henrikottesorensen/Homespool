@@ -1926,6 +1926,9 @@
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>Du kan ikke tilføje et kamera til dette team.</value>
   </data>
+  <data name="Cameras_PrinterNotOnTeam" xml:space="preserve">
+    <value>Denne printer findes ikke, eller den hører ikke til kameraets team.</value>
+  </data>
   <data name="Cameras_StreamServerNoCredential" xml:space="preserve">
     <value>Kameraer er utilgængelige, indtil go2rtc-tjenesten har fået tildelt et brugernavn og en adgangskode. Sæt GO2RTC_USERNAME og GO2RTC_PASSWORD i .env, eller kør setup-env.sh, og genstart. Uden dem er tjenesten åben for alt, der kan nå den, så Homespool bruger den ikke.</value>
   </data>

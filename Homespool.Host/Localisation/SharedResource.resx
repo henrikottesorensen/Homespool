@@ -1995,6 +1995,9 @@
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>You cannot add a camera to that team.</value>
   </data>
+  <data name="Cameras_PrinterNotOnTeam" xml:space="preserve">
+    <value>That printer does not exist, or is not on the camera&apos;s team.</value>
+  </data>
   <data name="Cameras_StreamServerNoCredential" xml:space="preserve">
     <value>Cameras are unavailable until the go2rtc service is given a username and password. Set GO2RTC_USERNAME and GO2RTC_PASSWORD in .env, or run setup-env.sh, and restart. Without them the service is open to anything that can reach it, so Homespool will not use it.</value>
     <comment>go2rtc is the service's own name and stays as it is. GO2RTC_USERNAME, GO2RTC_PASSWORD, .env and setup-env.sh are file and variable names and are not translated.</comment>

@@ -38,6 +38,7 @@ public class CameraService
 {
     private readonly HomespoolDbContext _dbContext;
     private readonly CameraAccessService _access;
+    private readonly PrinterAccessService _printerAccess;
     private readonly CameraSourcePolicy _sourcePolicy;
     private readonly Go2RtcClient _streamServer;
     private readonly ICameraSnapshotFetcher _fetcher;
@@ -50,6 +51,7 @@ public class CameraService
 
     public CameraService(HomespoolDbContext dbContext,
                          CameraAccessService access,
+                         PrinterAccessService printerAccess,
                          CameraSourcePolicy sourcePolicy,
                          Go2RtcClient streamServer,
                          ICameraSnapshotFetcher fetcher,
@@ -62,6 +64,7 @@ public class CameraService
     {
         _dbContext = dbContext;
         _access = access;
+        _printerAccess = printerAccess;
         _sourcePolicy = sourcePolicy;
         _streamServer = streamServer;
         _fetcher = fetcher;
@@ -166,7 +169,7 @@ public class CameraService
                                                      int teamId,
                                                      string? name,
                                                      string source,
-                                                     int? printerId,
+                                                     Guid? printerUuid,
                                                      string? resolution,
                                                      CancellationToken cancellationToken)
     {
@@ -176,6 +179,14 @@ public class CameraService
         if (refusal is not null)
         {
             return refusal;
+        }
+
+        (int? printerId, CameraSaveOutcome? printerRefusal) =
+            await ResolvePrinterAsync(caller, printerUuid, teamId, cancellationToken).ConfigureAwait(false);
+
+        if (printerRefusal is not null)
+        {
+            return printerRefusal;
         }
 
         // After the permission check rather than before it, so that a deployment's configuration is
@@ -234,7 +245,7 @@ public class CameraService
                                                      Guid uuid,
                                                      string? name,
                                                      string source,
-                                                     int? printerId,
+                                                     Guid? printerUuid,
                                                      string? resolution,
                                                      CancellationToken cancellationToken)
     {
@@ -265,6 +276,14 @@ public class CameraService
         if (refusal is not null)
         {
             return refusal;
+        }
+
+        (int? printerId, CameraSaveOutcome? printerRefusal) =
+            await ResolvePrinterAsync(caller, printerUuid, camera.TeamId, cancellationToken).ConfigureAwait(false);
+
+        if (printerRefusal is not null)
+        {
+            return printerRefusal;
         }
 
         // After the permission check rather than before it, so that a deployment's configuration is
@@ -379,6 +398,41 @@ public class CameraService
         return permitted ?
             null :
             CameraSaveOutcome.Refused("Cameras_NotYourTeam");
+    }
+
+    /// <summary>
+    /// The printer a camera of <paramref name="teamId"/> is being pointed at, or the refusal to show.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only a printer of the camera's own team, and one the person saving may see.</b> Everybody who
+    /// can see the camera is shown the printer's name beside it, and those are the camera team's
+    /// members - so a printer from any other team, even one the person saving can see, would be named
+    /// to people who cannot. The second half stops a camera being used to read the name of a printer
+    /// the saver's own membership does not show them.
+    /// </para>
+    /// <para>
+    /// <b>A printer that does not exist gets the same answer as another team's</b>, so the form cannot
+    /// be used to learn which uuids name a printer. Asked after the permission check, so the answer is
+    /// only given to somebody who could otherwise have saved this camera.
+    /// </para>
+    /// </remarks>
+    private async Task<(int? printerId, CameraSaveOutcome? refusal)> ResolvePrinterAsync(Caller caller,
+                                                                                        Guid? printerUuid,
+                                                                                        int teamId,
+                                                                                        CancellationToken cancellationToken)
+    {
+        if (printerUuid is not Guid uuid)
+        {
+            return (null, null);
+        }
+
+        Printer? printer = await _printerAccess.FindAsync(uuid, caller, Capability.ViewPrinter, cancellationToken)
+                                               .ConfigureAwait(false);
+
+        return printer is null || printer.TeamId != teamId ?
+            (null, CameraSaveOutcome.Refused("Cameras_PrinterNotOnTeam")) :
+            (printer.Id, null);
     }
 
     /// <summary>

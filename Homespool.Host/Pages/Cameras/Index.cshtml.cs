@@ -187,7 +187,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostAddNetworkAsync(string? name,
                                                            string source,
                                                            int teamId,
-                                                           int? printerId,
+                                                           Guid? printerUuid,
                                                            CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -197,7 +197,7 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, resolution: null, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerUuid, resolution: null, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -247,7 +247,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostAddAttachedAsync(string? name,
                                                             string device,
                                                             int teamId,
-                                                            int? printerId,
+                                                            Guid? printerUuid,
                                                             string? resolution,
                                                             CancellationToken cancellationToken)
     {
@@ -262,7 +262,7 @@ public class IndexModel : PageModel
         string source = LocalCameraDevices.SourceFor(device, resolution);
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerId, resolution, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerUuid, resolution, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -273,7 +273,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostEditAsync(Guid uuid,
                                                      string? name,
                                                      string source,
-                                                     int? printerId,
+                                                     Guid? printerUuid,
                                                      string? resolution,
                                                      CancellationToken cancellationToken)
     {
@@ -284,7 +284,7 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-                                          .UpdateAsync(CallerResolver.For(userId.Value, User), uuid, name, source, printerId, resolution, cancellationToken)
+                                          .UpdateAsync(CallerResolver.For(userId.Value, User), uuid, name, source, printerUuid, resolution, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);

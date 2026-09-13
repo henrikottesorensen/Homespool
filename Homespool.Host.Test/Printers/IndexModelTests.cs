@@ -167,6 +167,7 @@ public sealed class IndexModelTests : IDisposable
 
         IndexModel model = new(
             new PrinterQueryService(context, TestTelemetryContext.For(context), access, new TeamCapabilityLookup(context), TimeProvider.System),
+            access,
             new PrusaConnectService(context, new CodeGenerator(), new TokenService(), new TeamService(context),
                                     TimeProvider.System, NullLogger<PrusaConnectService>.Instance, TestOptions.Monitor(options)),
             new DefaultPrinterService(access, users),
@@ -289,7 +290,7 @@ public sealed class IndexModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostRegenerateAsync(printer.Id, CancellationToken.None);
+        await model.OnPostRegenerateAsync(printer.Uuid, CancellationToken.None);
 
         // Assert
         model.RegeneratedPrinterId.Should().Be(printer.Id);
@@ -304,7 +305,7 @@ public sealed class IndexModelTests : IDisposable
         tokenService.VerifyToken(originalToken, stored.HashedToken).Should().BeFalse("the old token must stop working");
     }
 
-    /// <summary>An unknown printer id sets a status message rather than throwing out of the handler.</summary>
+    /// <summary>An unknown printer uuid sets a status message rather than throwing out of the handler.</summary>
     [Fact]
     public async Task OnPostRegenerateAsyncForAnUnknownPrinterSetsAStatusMessage()
     {
@@ -313,7 +314,7 @@ public sealed class IndexModelTests : IDisposable
         (IndexModel model, _, _) = await NewModelAsync(context);
 
         // Act
-        await model.OnPostRegenerateAsync(printerId: 999, CancellationToken.None);
+        await model.OnPostRegenerateAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
         model.StatusMessage.Should().NotBeNullOrEmpty();
@@ -345,11 +346,16 @@ public sealed class IndexModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostRegenerateAsync(printer.Id, CancellationToken.None);
+        await model.OnPostRegenerateAsync(printer.Uuid, CancellationToken.None);
+        string? notYours = model.StatusMessage;
+        BundleOffer? offer = model.Offer;
+
+        await model.OnPostRegenerateAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
-        model.StatusMessage.Should().NotBeNullOrEmpty();
-        model.Offer.Should().BeNull();
+        notYours.Should().NotBeNullOrEmpty();
+        notYours.Should().Be(model.StatusMessage, "a printer that is not yours must read exactly like one that does not exist");
+        offer.Should().BeNull();
     }
 
     /// <summary>
@@ -383,7 +389,7 @@ public sealed class IndexModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostRegenerateAsync(printer.Id, CancellationToken.None);
+        await model.OnPostRegenerateAsync(printer.Uuid, CancellationToken.None);
 
         // Assert
         model.StatusMessage.Should().BeNullOrEmpty();

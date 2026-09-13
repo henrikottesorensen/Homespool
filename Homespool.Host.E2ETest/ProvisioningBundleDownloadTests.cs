@@ -85,7 +85,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime
                 new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(html)),
                 new("Token", token),
                 new("Hostname", PrinterHost),
-                new("PrinterId", HiddenFieldValue(html, "PrinterId")),
+                new("PrinterUuid", HiddenFieldValue(html, "PrinterUuid")),
             ]);
 
             using HttpResponseMessage download =
@@ -95,7 +95,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime
             download.StatusCode.Should().Be(HttpStatusCode.OK);
             download.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Application.Zip);
 
-            // The POST carries a token, an address and an id - no name. So a file named after this
+            // The POST carries a token, an address and a uuid - no name. So a file named after this
             // printer is proof the name was read from its row rather than taken from the form.
             download.Content.Headers.ContentDisposition?.FileName.Should().Be("homespool-bench-printer.zip",
                                                                               "a downloads folder ends up holding several of these");
@@ -153,7 +153,7 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime
                 new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(html)),
                 new("Token", "irrelevant-but-well-formed"),
                 new("Hostname", "192.0.2.77"),
-                new("PrinterId", HiddenFieldValue(html, "PrinterId")),
+                new("PrinterUuid", HiddenFieldValue(html, "PrinterUuid")),
             ]);
 
             using HttpResponseMessage refused =
@@ -166,15 +166,16 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Another account's printer id is refused, however well-formed the rest of the POST is.
+    /// Another account's printer is refused, however well-formed the rest of the POST is - and in
+    /// exactly the words a printer that does not exist is refused in.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The token is the caller's to supply, so what is on trial here is the id beside it.</b>
+    /// <b>The token is the caller's to supply, so what is on trial here is the uuid beside it.</b>
     /// Nothing secret is handed over when this succeeds - the bundle would carry the stranger's own
     /// made-up token and be useless to any printer - but everything downstream names the printer
     /// they chose, and one of those things is the warning that records whose traffic crosses the
-    /// network in clear. An unchecked id lets any account write that line about somebody else's
+    /// network in clear. An unchecked uuid lets any account write that line about somebody else's
     /// machine, which is a log that lies in both directions at once.
     /// </para>
     /// <para>
@@ -193,33 +194,43 @@ public sealed class ProvisioningBundleDownloadTests : IAsyncLifetime
         using (owner)
         using (stranger)
         {
-            string ownersPrinterId = HiddenFieldValue(await ProvisionAsync(owner, "Owner's printer"), "PrinterId");
+            string ownersPrinterUuid = HiddenFieldValue(await ProvisionAsync(owner, "Owner's printer"), "PrinterUuid");
 
             string strangersAddPage =
                 await (await stranger.GetAsync("/Printers/Add", TestContext.Current.CancellationToken)).Content
                     .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             // Act
-            using FormUrlEncodedContent form = new(
-            [
-                new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(strangersAddPage)),
-                new("Token", "a-token-of-my-own-invention"),
-                new("Hostname", PrinterHost),
-                new("PrinterId", ownersPrinterId),
-            ]);
-
-            using HttpResponseMessage refused =
-                await stranger.PostAsync("/Printers/Bundle", form, TestContext.Current.CancellationToken);
+            using HttpResponseMessage refused = await PostBundleAsync(stranger, strangersAddPage, ownersPrinterUuid);
+            using HttpResponseMessage unknown = await PostBundleAsync(stranger, strangersAddPage, Guid.NewGuid().ToString());
 
             // Assert
             refused.StatusCode.Should().Be(HttpStatusCode.NotFound);
             refused.Content.Headers.ContentType?.MediaType.Should().NotBe(MediaTypeNames.Application.Zip);
+
+            unknown.StatusCode.Should().Be(refused.StatusCode, "a printer that is not yours must answer like one that does not exist");
+            (await unknown.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Be(
+                await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken),
+                "and say exactly the same thing while doing it");
         }
+    }
+
+    private static async Task<HttpResponseMessage> PostBundleAsync(HttpClient client, string page, string printerUuid)
+    {
+        using FormUrlEncodedContent form = new(
+        [
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+            new("Token", "a-token-of-my-own-invention"),
+            new("Hostname", PrinterHost),
+            new("PrinterUuid", printerUuid),
+        ]);
+
+        return await client.PostAsync("/Printers/Bundle", form, TestContext.Current.CancellationToken);
     }
 
     /// <summary>
     /// The first half of the flow: provision a printer, and hand back the page carrying its one-time
-    /// token and its id.
+    /// token and its uuid.
     /// </summary>
     private static async Task<string> ProvisionAsync(HttpClient client, string name = "Bench printer")
     {

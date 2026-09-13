@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
@@ -136,7 +137,7 @@ public class AddModel : PageModel
 
             await transaction.CommitAsync(cancellationToken);
 
-            Offer = await BuildOfferAsync(printer.Id, token, cancellationToken);
+            Offer = await BuildOfferAsync(printer.Uuid, token, cancellationToken);
 
             _logger.LogInformation("Printer {PrinterUuid} provisioned via USB-key by user {UserId}.", printer.Uuid, user.Id);
 
@@ -171,14 +172,14 @@ public class AddModel : PageModel
     /// is issued once and frozen, so the two can differ, and a bundle written for an address the
     /// certificate does not carry fails at the printer with nothing but "TLS error" to go on.
     /// </remarks>
-    private async Task<BundleOffer> BuildOfferAsync(int printerId,
+    private async Task<BundleOffer> BuildOfferAsync(Guid printerUuid,
                                                     string token,
                                                     CancellationToken cancellationToken)
     {
         IReadOnlyList<Certificates.PrinterAddressSuggestion> names = await _bundles.AvailableNamesAsync(cancellationToken);
 
         return new BundleOffer(
-            printerId,
+            printerUuid,
             token,
             names,
             ConnectIni.BuildSnippet(PrinterEndpoint.Default(_options), names.Count > 0 ? names[0].Value : _options.PrinterHost, token),

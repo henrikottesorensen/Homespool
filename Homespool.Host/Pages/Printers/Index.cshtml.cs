@@ -49,6 +49,7 @@ namespace Homespool.Host.Pages.Printers;
 public class IndexModel : PageModel
 {
     private readonly PrinterQueryService _printerQueryService;
+    private readonly PrinterAccessService _access;
     private readonly PrusaConnectService _prusaConnectService;
     private readonly DefaultPrinterService _defaults;
     private readonly ProvisioningBundleBuilder _bundles;
@@ -62,6 +63,7 @@ public class IndexModel : PageModel
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public IndexModel(PrinterQueryService printerQueryService,
+                      PrinterAccessService access,
                       PrusaConnectService prusaConnectService,
                       DefaultPrinterService defaults,
                       ProvisioningBundleBuilder bundles,
@@ -75,6 +77,7 @@ public class IndexModel : PageModel
                       IStringLocalizer<SharedResource> localiser)
     {
         _printerQueryService = printerQueryService;
+        _access = access;
         _prusaConnectService = prusaConnectService;
         _defaults = defaults;
         _bundles = bundles;
@@ -256,7 +259,15 @@ public class IndexModel : PageModel
         return RedirectToPage();
     }
 
-    public async Task<IActionResult> OnPostRegenerateAsync(int printerId, CancellationToken cancellationToken)
+    /// <summary>
+    /// Reissues a printer's USB-key token and shows the snippet for it, once.
+    /// </summary>
+    /// <remarks>
+    /// <b>A printer that does not exist and one the caller may not manage get the same sentence.</b>
+    /// The uuid arrives on a POST anybody signed in can make by hand, so a different answer for each
+    /// would confirm somebody else's printer exists.
+    /// </remarks>
+    public async Task<IActionResult> OnPostRegenerateAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -266,33 +277,17 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        try
-        {
-            string token = await _prusaConnectService.RegenerateProvisioningTokenAsync(printerId, CallerResolver.For(user, User));
+        Caller caller = CallerResolver.For(user, User);
 
-            RegeneratedPrinterId = printerId;
+        Printer? printer = await _access.FindAsync(uuid, caller, Capability.ManagePrinter, cancellationToken);
 
-            IReadOnlyList<Certificates.PrinterAddressSuggestion> names = await _bundles.AvailableNamesAsync(cancellationToken);
-
-            Offer = new BundleOffer(
-                printerId,
-                token,
-                names,
-                ConnectIni.BuildSnippet(PrinterEndpoint.Default(_options), names.Count > 0 ? names[0].Value : _options.PrinterHost, token),
-                _options.PrinterTls,
-                _options.LegacyPrinterPort);
-        }
-        catch (PrinterNotFoundException)
+        if (printer is null)
         {
-            StatusMessage = _localiser["Printers_NotFound"];
+            StatusMessage = _localiser["Printers_NotFoundOrNotYours"];
         }
-        catch (TeamAccessDeniedException)
+        else
         {
-            StatusMessage = _localiser["Printers_NotYours"];
-        }
-        catch (ProvisioningTokenNotFoundException)
-        {
-            StatusMessage = _localiser["Printers_NoUsbToken"];
+            await ReissueAsync(printer, caller, cancellationToken);
         }
 
         // Not a redirect: the whole point of this handler is to show a secret exactly once, and a
@@ -307,11 +302,45 @@ public class IndexModel : PageModel
         {
             Offer = Offer with
             {
-                KnownFirmware = Printers.Where(row => row.Printer.Id == printerId).Select(row => row.Printer.Firmware).FirstOrDefault(),
+                KnownFirmware = Printers.Where(row => row.Printer.Uuid == uuid).Select(row => row.Printer.Firmware).FirstOrDefault(),
             };
         }
 
         return Page();
+    }
+
+    /// <summary>
+    /// Mints the new token for a printer the caller has been found to manage, and builds the offer
+    /// around it - or sets the sentence saying why not.
+    /// </summary>
+    private async Task ReissueAsync(Printer printer, Caller caller, CancellationToken cancellationToken)
+    {
+        try
+        {
+            string token = await _prusaConnectService.RegenerateProvisioningTokenAsync(printer.Id, caller);
+
+            RegeneratedPrinterId = printer.Id;
+
+            IReadOnlyList<Certificates.PrinterAddressSuggestion> names = await _bundles.AvailableNamesAsync(cancellationToken);
+
+            Offer = new BundleOffer(
+                printer.Uuid,
+                token,
+                names,
+                ConnectIni.BuildSnippet(PrinterEndpoint.Default(_options), names.Count > 0 ? names[0].Value : _options.PrinterHost, token),
+                _options.PrinterTls,
+                _options.LegacyPrinterPort);
+        }
+        catch (Exception e) when (e is PrinterNotFoundException or TeamAccessDeniedException)
+        {
+            // The service asks again, and can still refuse either way if the printer was removed or
+            // the membership changed since the lookup above; that answer is the same sentence too.
+            StatusMessage = _localiser["Printers_NotFoundOrNotYours"];
+        }
+        catch (ProvisioningTokenNotFoundException)
+        {
+            StatusMessage = _localiser["Printers_NoUsbToken"];
+        }
     }
 
     /// <summary>
@@ -322,7 +351,7 @@ public class IndexModel : PageModel
     /// so the listing's whole vocabulary is "make it this one instead". Turning the idea off entirely
     /// is on the printer's own page, where there is room to say what it means.
     /// </remarks>
-    public async Task<IActionResult> OnPostDefaultAsync(int printerId, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostDefaultAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -332,8 +361,9 @@ public class IndexModel : PageModel
         }
 
         Caller caller = CallerResolver.For(user, User);
+        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, caller, cancellationToken);
 
-        (StatusMessage, StatusSuccess) = await _defaults.SetAsync(user, caller, printerId, cancellationToken) ?
+        (StatusMessage, StatusSuccess) = printer is not null && await _defaults.SetAsync(user, caller, printer.Id, cancellationToken) ?
             (_localiser["Printers_DefaultSaved"].Value, true) :
             (_localiser["Printers_DefaultNotSaved"].Value, false);
 

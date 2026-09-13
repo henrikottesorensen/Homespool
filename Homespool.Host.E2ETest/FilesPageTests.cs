@@ -320,7 +320,7 @@ public sealed class FilesPageTests : IAsyncLifetime
         // The page opens on nothing until an account names a default, so this test has to make one
         // to have a selected option to assert about. That the page opens empty otherwise is its own
         // test below.
-        await MakeDefaultAsync(client, await OnlyPrinterIdAsync(client));
+        await MakeDefaultAsync(client, await OnlyPrinterUuidAsync(client));
 
         // Act
         string page =
@@ -336,13 +336,14 @@ public sealed class FilesPageTests : IAsyncLifetime
         // and site.js's change listener is what makes choosing one actually retarget them.
         page.Should().Contain("data-printer-select", "site.js submits the selector on change through this hook");
 
-        // The DB id in the selector's <option> is what every row's Send/Queue form has to carry -
+        // The uuid in the selector's <option> is what every row's Send/Queue form has to carry -
         // as a route value, the same way sort and rename already are, rather than a select of its own.
-        string printerId = Regex.Match(page, """<option value="(\d+)"[^>]*selected""").Groups[1].Value;
-        printerId.Should().NotBeEmpty("the claimed printer has to be the one the selector shows chosen");
+        string printerUuid = Regex.Match(page, """<option value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"[^>]*selected""").Groups[1].Value;
+        printerUuid.Should().NotBeEmpty("the claimed printer has to be the one the selector shows chosen");
 
-        Regex.Matches(page, $"printerId={printerId}").Count.Should().BeGreaterThanOrEqualTo(
-            4, "the top selector plus both rows' Send and Queue buttons all carry the same id");
+        Regex.Matches(page, $"printerUuid={printerUuid}").Count.Should().BeGreaterThanOrEqualTo(
+            4, "the top selector plus both rows' Send and Queue buttons all carry the same uuid");
+        page.Should().NotContain("printerId=", "a printer's row id is storage, not something a page hands out");
 
         client.Dispose();
     }
@@ -372,7 +373,7 @@ public sealed class FilesPageTests : IAsyncLifetime
 
         page.Should().Contain("unaimed.gcode");
         page.Should().NotContain("handler=Send", "there is no printer to send to until somebody says which");
-        Regex.IsMatch(page, """<option value="(\d+)"[^>]*selected""").Should().BeFalse(
+        Regex.IsMatch(page, """<option value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"[^>]*selected""").Should().BeFalse(
             "a printer shown as selected is a printer the buttons would be aimed at");
 
         client.Dispose();
@@ -388,17 +389,17 @@ public sealed class FilesPageTests : IAsyncLifetime
 
         await UploadAsync(client, "aimed.gcode", 128);
 
-        string chosen = await OnlyPrinterIdAsync(client);
+        string chosen = await OnlyPrinterUuidAsync(client);
         await MakeDefaultAsync(client, chosen);
 
         string page =
             await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
                 TestContext.Current.CancellationToken);
 
-        Regex.Match(page, """<option value="(\d+)"[^>]*selected""").Groups[1].Value.Should().Be(
+        Regex.Match(page, """<option value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"[^>]*selected""").Groups[1].Value.Should().Be(
             chosen, "the account said which printer it reaches for");
 
-        page.Should().Contain($"printerId={chosen}", "and every row's buttons carry it");
+        page.Should().Contain($"printerUuid={chosen}", "and every row's buttons carry it");
 
         client.Dispose();
     }
@@ -419,23 +420,23 @@ public sealed class FilesPageTests : IAsyncLifetime
         await ClaimAPrinterAsync(client);
         await ClaimAPrinterAsync(client);
 
-        IReadOnlyList<string> ids = await PrinterIdsAsync(client);
+        IReadOnlyList<string> ids = await PrinterUuidsAsync(client);
         ids.Count.Should().Be(2, "the override case needs somewhere else to aim");
 
         await MakeDefaultAsync(client, ids[0]);
 
         string overridden =
-            await (await client.GetAsync($"/Files?printerId={ids[1]}", TestContext.Current.CancellationToken))
+            await (await client.GetAsync($"/Files?printerUuid={ids[1]}", TestContext.Current.CancellationToken))
                 .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        Regex.Match(overridden, """<option value="(\d+)"[^>]*selected""").Groups[1].Value.Should().Be(
+        Regex.Match(overridden, """<option value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"[^>]*selected""").Groups[1].Value.Should().Be(
             ids[1], "the URL is the more recent statement");
 
         string after =
             await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
                 TestContext.Current.CancellationToken);
 
-        Regex.Match(after, """<option value="(\d+)"[^>]*selected""").Groups[1].Value.Should().Be(
+        Regex.Match(after, """<option value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"[^>]*selected""").Groups[1].Value.Should().Be(
             ids[0], "a one-off choice is not a new default");
 
         client.Dispose();
@@ -444,7 +445,7 @@ public sealed class FilesPageTests : IAsyncLifetime
     /// <summary>
     /// Names a printer as this account's default by driving the listing's own button.
     /// </summary>
-    private async Task MakeDefaultAsync(HttpClient client, string printerId)
+    private async Task MakeDefaultAsync(HttpClient client, string printerUuid)
     {
         string listing =
             await (await client.GetAsync("/Printers", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
@@ -456,26 +457,26 @@ public sealed class FilesPageTests : IAsyncLifetime
         });
 
         using HttpResponseMessage response = await client.PostAsync(
-            $"/Printers?handler=Default&printerId={printerId}", form, TestContext.Current.CancellationToken);
+            $"/Printers?handler=Default&uuid={printerUuid}", form, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
     }
 
-    /// <summary>The ids the selector offers, in the order it offers them.</summary>
-    private async Task<IReadOnlyList<string>> PrinterIdsAsync(HttpClient client)
+    /// <summary>The uuids the selector offers, in the order it offers them.</summary>
+    private async Task<IReadOnlyList<string>> PrinterUuidsAsync(HttpClient client)
     {
         string page =
             await (await client.GetAsync("/Files", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(
                 TestContext.Current.CancellationToken);
 
-        return Regex.Matches(page, """<option value="(\d+)""")
+        return Regex.Matches(page, """<option value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})""")
                     .Select(match => match.Groups[1].Value)
                     .ToList();
     }
 
-    private async Task<string> OnlyPrinterIdAsync(HttpClient client)
+    private async Task<string> OnlyPrinterUuidAsync(HttpClient client)
     {
-        IReadOnlyList<string> ids = await PrinterIdsAsync(client);
+        IReadOnlyList<string> ids = await PrinterUuidsAsync(client);
 
         return ids.Should().ContainSingle("this caller claimed exactly one printer").Subject;
     }
@@ -509,7 +510,7 @@ public sealed class FilesPageTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A printer id typed into the form by hand finds nothing rather than someone else's machine -
+    /// A printer uuid typed into the form by hand finds nothing rather than someone else's machine -
     /// the send handler resolves it in the caller's own list, which is what scopes it.
     /// </summary>
     [Fact]
@@ -527,7 +528,7 @@ public sealed class FilesPageTests : IAsyncLifetime
         using FormUrlEncodedContent form = new(new List<KeyValuePair<string, string>>
         {
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
-            new("printerId", "4242"),
+            new("printerUuid", Guid.NewGuid().ToString()),
         });
 
         using HttpResponseMessage response = await client.PostAsync(

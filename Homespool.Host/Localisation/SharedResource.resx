@@ -273,11 +273,8 @@
   <data name="Common_Status" xml:space="preserve">
     <value>Status</value>
   </data>
-  <data name="Printers_NotFound" xml:space="preserve">
-    <value>That printer no longer exists.</value>
-  </data>
-  <data name="Printers_NotYours" xml:space="preserve">
-    <value>You don&apos;t have permission to manage that printer.</value>
+  <data name="Printers_NotFoundOrNotYours" xml:space="preserve">
+    <value>That printer does not exist, or is not yours to manage.</value>
   </data>
   <data name="Printers_NoUsbToken" xml:space="preserve">
     <value>That printer was never set up with a USB key, so there is no token to reissue.</value>

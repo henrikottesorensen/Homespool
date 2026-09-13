@@ -147,8 +147,8 @@ public sealed class PrintersPageTests : IAsyncLifetime
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "printers-poll@example.com");
 
-        (int first, _) = SeedPrinters(user.Id, "Polled One", "Polled Two");
-        await MakeDefaultAsync(client, first);
+        SeedPrinters(user.Id, "Polled One", "Polled Two");
+        await MakeDefaultAsync(client, UuidOf("Polled One"));
 
         // Act
         string page = await GetListingAsync(client);
@@ -315,7 +315,7 @@ public sealed class PrintersPageTests : IAsyncLifetime
         return await client.PostAsync("/Printers?handler=Drop", form, TestContext.Current.CancellationToken);
     }
 
-    private static async Task MakeDefaultAsync(HttpClient client, int printerId)
+    private static async Task MakeDefaultAsync(HttpClient client, Guid uuid)
     {
         string listing = await GetListingAsync(client);
 
@@ -325,7 +325,7 @@ public sealed class PrintersPageTests : IAsyncLifetime
         });
 
         using HttpResponseMessage posted = await client.PostAsync(
-            $"/Printers?handler=Default&printerId={printerId}", body, TestContext.Current.CancellationToken);
+            $"/Printers?handler=Default&uuid={uuid}", body, TestContext.Current.CancellationToken);
 
         posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
     }

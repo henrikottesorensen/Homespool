@@ -255,11 +255,8 @@
   <data name="Common_Status" xml:space="preserve">
     <value>Status</value>
   </data>
-  <data name="Printers_NotFound" xml:space="preserve">
-    <value>Denne printer findes ikke længere.</value>
-  </data>
-  <data name="Printers_NotYours" xml:space="preserve">
-    <value>Du har ikke rettigheder til at administrere denne printer.</value>
+  <data name="Printers_NotFoundOrNotYours" xml:space="preserve">
+    <value>Denne printer findes ikke, eller du må ikke administrere den.</value>
   </data>
   <data name="Printers_NoUsbToken" xml:space="preserve">
     <value>Denne printer blev aldrig sat op med en USB-nøgle, så der er intet token at genudstede.</value>

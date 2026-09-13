@@ -14,9 +14,25 @@
 # UUID below is a *default and it goes stale*: it names whichever printer was enrolled when this was
 # last used, and the pre-release migration is regenerated in place, so any schema change empties the
 # database and mints new ones. Pass UUID=... or take it from GET /api/v1/printers.
+#
+# BASE must be a loopback address. The token carries every scope and goes over plain HTTP.
+# RIG_ALLOW_REMOTE=1 lifts the check.
 set -euo pipefail
 
 BASE="${BASE:-http://localhost:5052}"
+
+if [ "${RIG_ALLOW_REMOTE:-}" != 1 ] && ! python3 -c '
+import ipaddress, sys, urllib.parse
+host = urllib.parse.urlsplit(sys.argv[1]).hostname or ""
+try:
+    loopback = ipaddress.ip_address(host).is_loopback
+except ValueError:
+    loopback = host == "localhost"
+sys.exit(0 if loopback else 1)' "$BASE"; then
+    echo "BASE=$BASE is not a loopback address. Set RIG_ALLOW_REMOTE=1 to send the token there anyway." >&2
+    exit 1
+fi
+
 UUID="${UUID:-3D3C8175-C6CB-4A02-8B78-E2CA9ED54FF6}"   # the MK3.5 as of 2026-07-27, printer id 2
 TEAM="${TEAM:-1}"
 RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,10 +50,8 @@ fi
 
 AUTH="Authorization: Bearer $TOKEN"
 
-# What this replaced, and why it is worth the note: the whole sign-in half of this script is gone -
-# no cookie jar, no scraping __RequestVerificationToken off the login page, no password prompt (the
-# rig password ends in '!', which zsh history-expands inside double quotes), and no five-attempt
-# lockout to blunder into. One header does it.
+# One header is the whole sign-in: no cookie jar, no scraping __RequestVerificationToken off the
+# login page, no password to handle, and no five-attempt lockout to blunder into.
 
 # Verify rather than assume. A wrong token is a clean 401 here, where carrying on would produce a
 # confusing JSON parse error two steps later.

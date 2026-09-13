@@ -23,6 +23,14 @@
 # can call /api/v1 with a single `Authorization: Bearer` header instead of repeating the sign-in and
 # antiforgery dance below. This script still has to do that dance itself: it
 # starts from an empty server where no account, and therefore no token, exists yet.
+#
+# The account it creates is the server's administrator, so its password is not written in this file.
+# It is PASSWORD if set, otherwise rig/password, which the first run generates. sdk-claim.py shares
+# that file.
+#
+# BASE and PRINTER_BASE must be loopback addresses. Running this against a real server would give it
+# an administrator whose password sits in a file on this machine and crosses the network over plain
+# HTTP. RIG_ALLOW_REMOTE=1 lifts the check when that is really what you want.
 set -euo pipefail
 
 TOKEN="${1:?usage: enrol.sh <setup-token>}"
@@ -44,10 +52,59 @@ PRINTER_TYPE="${PRINTER_TYPE:-1.3.5}"
 # asks for a username, and posting Input.Email to the login form silently signs nobody in.
 USERNAME="${USERNAME:-rig}"
 EMAIL="${EMAIL:-rig@example.com}"
-PASSWORD="${PASSWORD:-Correct-Horse-Battery-Staple-1!}"
 RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="${OUT:-$RIG_DIR/identity.json}"
 API_TOKEN_OUT="${API_TOKEN_OUT:-$RIG_DIR/api-token}"
+PASSWORD_FILE="${PASSWORD_FILE:-$RIG_DIR/password}"
+
+require_loopback() {
+    if [ "${RIG_ALLOW_REMOTE:-}" = 1 ]; then
+        return
+    fi
+
+    # A URL with no scheme has no hostname to parse and is refused rather than guessed at.
+    if ! python3 -c '
+import ipaddress, sys, urllib.parse
+host = urllib.parse.urlsplit(sys.argv[1]).hostname or ""
+try:
+    loopback = ipaddress.ip_address(host).is_loopback
+except ValueError:
+    loopback = host == "localhost"
+sys.exit(0 if loopback else 1)' "$2"; then
+        echo "$1=$2 is not a loopback address. Set RIG_ALLOW_REMOTE=1 to enrol against it anyway." >&2
+        exit 1
+    fi
+}
+
+require_loopback BASE "$BASE"
+require_loopback PRINTER_BASE "$PRINTER_BASE"
+
+if [ -z "${PASSWORD:-}" ]; then
+    if [ ! -e "$PASSWORD_FILE" ]; then
+        # Identity's composition rules are still on, so a draw is kept only if it has an upper, a
+        # lower, a digit and a symbol. The URL-safe alphabet has no '!' for a shell to expand.
+        # O_EXCL and 0600 at creation, so the file is never briefly readable and never overwritten.
+        python3 - "$PASSWORD_FILE" <<'PY'
+import os, re, secrets, sys
+while True:
+    password = secrets.token_urlsafe(24)
+    if all(re.search(c, password) for c in ("[A-Z]", "[a-z]", "[0-9]", "[-_]")):
+        break
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write(password + "\n")
+PY
+        echo "==> generated a password for $USERNAME in $PASSWORD_FILE"
+    fi
+
+    PASSWORD="$(cat "$PASSWORD_FILE")"
+
+    if [ -z "$PASSWORD" ]; then
+        echo "$PASSWORD_FILE is empty - delete it to generate a new one, or set PASSWORD." >&2
+        exit 1
+    fi
+fi
+
 JAR="$(mktemp)"
 
 # A 50-character fingerprint, as the firmware sends on /p/register; the WebSocket upgrade later
@@ -105,7 +162,8 @@ API_TOKEN="$(curl -sS -c "$JAR" -b "$JAR" \
     | sed 's/.*>\(.*\)<.*/\1/')"
 
 if [ -z "$API_TOKEN" ]; then
-    echo "no API token was issued - is /Account/Manage/ApiTokens reachable?" >&2
+    echo "no API token was issued - is /Account/Manage/ApiTokens reachable, and was the server fresh?" >&2
+    echo "(an existing administrator only signs in with the password it was created with)" >&2
     exit 1
 fi
 

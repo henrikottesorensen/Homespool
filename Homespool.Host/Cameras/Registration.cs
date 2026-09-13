@@ -73,6 +73,9 @@ public static class Registration
         // Opens the live MJPEG stream and proves a frame arrived before the endpoint answers.
         services.AddSingleton<CameraStreamRelay>();
 
+        // Singleton because it is the count of what is open across every request.
+        services.AddSingleton<MjpegStreamLimiter>();
+
         // Writes the sidecar's WebRTC configuration. Singleton because it holds nothing per request
         // and both its callers - startup, and the settings page - want the same one.
         services.AddSingleton<WebRtcSidecarWriter>();

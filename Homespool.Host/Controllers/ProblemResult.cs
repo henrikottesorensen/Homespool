@@ -128,6 +128,20 @@ public sealed class PayloadTooLargeProblem : ProblemResult, IEndpointMetadataPro
     }
 }
 
+/// <summary>A 429 with a <see cref="ProblemDetails"/> body.</summary>
+public sealed class TooManyRequestsProblem : ProblemResult, IEndpointMetadataProvider
+{
+    internal TooManyRequestsProblem(ProblemDetails details)
+        : base(details)
+    {
+    }
+
+    static void IEndpointMetadataProvider.PopulateMetadata(MethodInfo method, EndpointBuilder builder)
+    {
+        Document(builder, StatusCodes.Status429TooManyRequests);
+    }
+}
+
 /// <summary>A 500 with a <see cref="ProblemDetails"/> body.</summary>
 public sealed class InternalServerErrorProblem : ProblemResult, IEndpointMetadataProvider
 {
@@ -200,6 +214,11 @@ internal static class ProblemResults
     public static PayloadTooLargeProblem PayloadTooLargeProblem(this ControllerBase controller, string detail)
     {
         return new(controller.Details(StatusCodes.Status413PayloadTooLarge, detail));
+    }
+
+    public static TooManyRequestsProblem TooManyRequestsProblem(this ControllerBase controller, string detail)
+    {
+        return new(controller.Details(StatusCodes.Status429TooManyRequests, detail));
     }
 
     public static InternalServerErrorProblem InternalServerErrorProblem(this ControllerBase controller, string detail)

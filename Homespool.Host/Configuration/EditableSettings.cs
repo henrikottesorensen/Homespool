@@ -144,12 +144,13 @@ public static class EditableSettings
         // Builds a PeriodicTimer once when the writer's loop starts, at TelemetryWriter:462.
         new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteFlushIntervalSeconds), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
-        // Cameras - all read at the point of use, in CameraFrameCache, CameraSnapshotFetcher and
-        // CameraSourcePolicy.
+        // Cameras - all read at the point of use, in CameraFrameCache, CameraSnapshotFetcher,
+        // CameraSourcePolicy and MjpegStreamLimiter.TryAcquire.
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.RefreshFloorSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxAgeSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.TimeoutSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxFrameBytes), SettingGrade.Live),
+        new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxMjpegStreamsPerUser), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.WebRtcStunServer), SettingGrade.Live),
 
         // Asked about before it is turned on: it is the one setting here that makes this deployment

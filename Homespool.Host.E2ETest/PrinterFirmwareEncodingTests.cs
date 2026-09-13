@@ -138,7 +138,7 @@ public sealed class PrinterFirmwareEncodingTests : IAsyncLifetime
             });
 
             using HttpResponseMessage reissued = await client.PostAsync(
-                $"/Printers?handler=Regenerate&printerId={printer.Id}", body, TestContext.Current.CancellationToken);
+                $"/Printers?handler=Regenerate&uuid={printer.Uuid}", body, TestContext.Current.CancellationToken);
 
             reissued.StatusCode.Should().Be(HttpStatusCode.OK);
 

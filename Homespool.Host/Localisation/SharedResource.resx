@@ -273,11 +273,8 @@
   <data name="Common_Status" xml:space="preserve">
     <value>Status</value>
   </data>
-  <data name="Printers_NotFound" xml:space="preserve">
-    <value>That printer no longer exists.</value>
-  </data>
-  <data name="Printers_NotYours" xml:space="preserve">
-    <value>You don&apos;t have permission to manage that printer.</value>
+  <data name="Printers_NotFoundOrNotYours" xml:space="preserve">
+    <value>That printer does not exist, or is not yours to manage.</value>
   </data>
   <data name="Printers_NoUsbToken" xml:space="preserve">
     <value>That printer was never set up with a USB key, so there is no token to reissue.</value>
@@ -1994,6 +1991,9 @@
   </data>
   <data name="Cameras_NotYourTeam" xml:space="preserve">
     <value>You cannot add a camera to that team.</value>
+  </data>
+  <data name="Cameras_PrinterNotOnTeam" xml:space="preserve">
+    <value>That printer does not exist, or is not on the camera&apos;s team.</value>
   </data>
   <data name="Cameras_StreamServerNoCredential" xml:space="preserve">
     <value>Cameras are unavailable until the go2rtc service is given a username and password. Set GO2RTC_USERNAME and GO2RTC_PASSWORD in .env, or run setup-env.sh, and restart. Without them the service is open to anything that can reach it, so Homespool will not use it.</value>

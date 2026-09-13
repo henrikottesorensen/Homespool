@@ -147,7 +147,7 @@ public class IndexModel : PageModel
     /// somebody who has neither chosen a printer for this visit nor set a default: there is nothing
     /// to aim at, so there is nothing to press.
     /// </remarks>
-    public int? SelectedPrinterId { get; private set; }
+    public Guid? SelectedPrinterUuid { get; private set; }
 
     /// <summary>
     /// Which direction a column starts in when nobody has chosen one.
@@ -184,11 +184,11 @@ public class IndexModel : PageModel
     /// "ascending". A plain <c>bool</c> made the two the same thing, which opened the page on the
     /// oldest upload however loudly the defaults below said otherwise.
     /// </remarks>
-    public async Task OnGetAsync(string? sort, bool? desc, string? rename, int? printerId, CancellationToken cancellationToken)
+    public async Task OnGetAsync(string? sort, bool? desc, string? rename, Guid? printerUuid, CancellationToken cancellationToken)
     {
         Load(sort, desc);
         await LoadPrintersAsync(cancellationToken);
-        SelectedPrinterId = await ResolveSelectedPrinterIdAsync(printerId, cancellationToken);
+        SelectedPrinterUuid = await ResolveSelectedPrinterAsync(printerUuid, cancellationToken);
 
         // Only offer to rename something that is actually there, so a stale link is an ordinary page
         // rather than an input editing nothing.
@@ -222,9 +222,9 @@ public class IndexModel : PageModel
     /// printer the page is not naming - which is the failure this method exists to remove.
     /// </para>
     /// </remarks>
-    private async Task<int?> ResolveSelectedPrinterIdAsync(int? requested, CancellationToken cancellationToken)
+    private async Task<Guid?> ResolveSelectedPrinterAsync(Guid? requested, CancellationToken cancellationToken)
     {
-        if (requested is not null && Printers.Any(printer => printer.Id == requested))
+        if (requested is not null && Printers.Any(printer => printer.Uuid == requested))
         {
             return requested;
         }
@@ -238,7 +238,7 @@ public class IndexModel : PageModel
 
         int? stored = await _defaults.ResolveAsync(user, CallerResolver.For(user, User), cancellationToken);
 
-        return stored is not null && Printers.Any(printer => printer.Id == stored) ? stored : null;
+        return Printers.FirstOrDefault(printer => printer.Id == stored)?.Uuid;
     }
 
     /// <summary>
@@ -270,7 +270,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostUploadAsync(IFormFile? file,
                                                        string? sort,
                                                        bool? desc,
-                                                       int? printerId,
+                                                       Guid? printerUuid,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -284,7 +284,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_ChooseFile"], false);
 
-            return RedirectToSelf(sort, desc, printerId);
+            return RedirectToSelf(sort, desc, printerUuid);
         }
 
         if (file.Length > _options.MaxUploadBytes)
@@ -294,7 +294,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) =
                 (_localiser["Files_TooLarge", ByteSize.Format(_options.MaxUploadBytes, _localiser)], false);
 
-            return RedirectToSelf(sort, desc, printerId);
+            return RedirectToSelf(sort, desc, printerUuid);
         }
 
         PendingUpload staged;
@@ -309,7 +309,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
 
-            return RedirectToSelf(sort, desc, printerId);
+            return RedirectToSelf(sort, desc, printerUuid);
         }
 
         try
@@ -326,14 +326,14 @@ public class IndexModel : PageModel
             PendingName = staged.FileName;
         }
 
-        return RedirectToSelf(sort, desc, printerId);
+        return RedirectToSelf(sort, desc, printerUuid);
     }
 
     /// <summary>Answers the replace question with yes, using bytes already on disk.</summary>
     public async Task<IActionResult> OnPostReplaceAsync(string token,
                                                         string? sort,
                                                         bool? desc,
-                                                        int? printerId,
+                                                        Guid? printerUuid,
                                                         CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -350,11 +350,11 @@ public class IndexModel : PageModel
             (_localiser["Files_UploadGone"], false) :
             (_localiser["Files_Replaced", stored.FileName], true);
 
-        return RedirectToSelf(sort, desc, printerId);
+        return RedirectToSelf(sort, desc, printerUuid);
     }
 
     /// <summary>Answers it with no, and throws the staged bytes away now rather than at the sweep.</summary>
-    public IActionResult OnPostDiscard(string token, string? sort, bool? desc, int? printerId)
+    public IActionResult OnPostDiscard(string token, string? sort, bool? desc, Guid? printerUuid)
     {
         long? userId = UserId();
 
@@ -366,7 +366,7 @@ public class IndexModel : PageModel
         _files.Discard(CallerResolver.For(userId.Value, User), token);
         (StatusMessage, StatusSuccess) = (_localiser["Files_Discarded"], true);
 
-        return RedirectToSelf(sort, desc, printerId);
+        return RedirectToSelf(sort, desc, printerUuid);
     }
 
     /// <summary>
@@ -395,7 +395,7 @@ public class IndexModel : PageModel
     /// would mean guessing which was meant.
     /// </remarks>
     public async Task<IActionResult> OnPostQueueAsync(string name,
-                                                      int printerId,
+                                                      Guid printerUuid,
                                                       string? sort,
                                                       bool? desc,
                                                       CancellationToken cancellationToken)
@@ -408,20 +408,22 @@ public class IndexModel : PageModel
         }
 
         // Same ownership rule as Send: the printer has to be one of the caller's own, found in the
-        // list already scoped to them rather than fetched by the id the form supplied.
+        // list already scoped to them rather than fetched by the uuid the form supplied.
         await LoadPrintersAsync(cancellationToken);
 
-        if (!Printers.Any(candidate => candidate.Id == printerId))
+        Printer? printer = Printers.FirstOrDefault(candidate => candidate.Uuid == printerUuid);
+
+        if (printer is null)
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
-            return RedirectToSelf(sort, desc, printerId);
+            return RedirectToSelf(sort, desc, printerUuid);
         }
 
         try
         {
             EnqueueOutcome outcome =
-                await _queue.EnqueueAsync(printerId, CallerResolver.For(userId.Value, User), name, cancellationToken);
+                await _queue.EnqueueAsync(printer.Id, CallerResolver.For(userId.Value, User), name, cancellationToken);
 
             // Queued either way - the loop is what stops a print that must not happen, and this is
             // the moment to say so while somebody is still looking at the screen.
@@ -439,11 +441,11 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterReadOnly"], false);
         }
 
-        return RedirectToSelf(sort, desc, printerId);
+        return RedirectToSelf(sort, desc, printerUuid);
     }
 
     public async Task<IActionResult> OnPostSendAsync(string name,
-                                                     int printerId,
+                                                     Guid printerUuid,
                                                      string? sort,
                                                      bool? desc,
                                                      CancellationToken cancellationToken)
@@ -461,7 +463,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_NoSuchFile", name], false);
 
-            return RedirectToSelf(sort, desc, printerId);
+            return RedirectToSelf(sort, desc, printerUuid);
         }
 
         if (file.Length >= uint.MaxValue)
@@ -469,21 +471,21 @@ public class IndexModel : PageModel
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
             (StatusMessage, StatusSuccess) = (_localiser["Files_OverFourGiB"], false);
 
-            return RedirectToSelf(sort, desc, printerId);
+            return RedirectToSelf(sort, desc, printerUuid);
         }
 
-        // Looked up in the caller's own list rather than fetched by the id the form supplied. That
-        // list is already scoped to them, so this *is* the ownership check - a printer id typed into
+        // Looked up in the caller's own list rather than fetched by the uuid the form supplied. That
+        // list is already scoped to them, so this *is* the ownership check - a printer uuid typed into
         // the form by hand finds nothing rather than someone else's machine.
         await LoadPrintersAsync(cancellationToken);
 
-        Printer? printer = Printers.FirstOrDefault(candidate => candidate.Id == printerId);
+        Printer? printer = Printers.FirstOrDefault(candidate => candidate.Uuid == printerUuid);
 
         if (printer is null)
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
-            return RedirectToSelf(sort, desc, printerId);
+            return RedirectToSelf(sort, desc, printerUuid);
         }
 
         try
@@ -525,14 +527,14 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_localiser["Files_SendFailed"], false);
         }
 
-        return RedirectToSelf(sort, desc, printerId);
+        return RedirectToSelf(sort, desc, printerUuid);
     }
 
     public async Task<IActionResult> OnPostRenameAsync(string name,
                                                        string newName,
                                                        string? sort,
                                                        bool? desc,
-                                                       int? printerId,
+                                                       Guid? printerUuid,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -561,7 +563,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 
-        return RedirectToSelf(sort, desc, printerId);
+        return RedirectToSelf(sort, desc, printerUuid);
     }
 
     /// <summary>
@@ -575,7 +577,7 @@ public class IndexModel : PageModel
     public async Task<IActionResult> OnPostDeleteAsync(string name,
                                                        string? sort,
                                                        bool? desc,
-                                                       int? printerId,
+                                                       Guid? printerUuid,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -592,7 +594,7 @@ public class IndexModel : PageModel
             _ => (_localiser["Files_NoSuchFile", name], false),
         };
 
-        return RedirectToSelf(sort, desc, printerId);
+        return RedirectToSelf(sort, desc, printerUuid);
     }
 
     /// <summary>
@@ -613,9 +615,9 @@ public class IndexModel : PageModel
         return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
     }
 
-    private IActionResult RedirectToSelf(string? sort, bool? desc, int? printerId)
+    private IActionResult RedirectToSelf(string? sort, bool? desc, Guid? printerUuid)
     {
-        return RedirectToPage(new { sort, desc, printerId });
+        return RedirectToPage(new { sort, desc, printerUuid });
     }
 
     private async Task LoadPrintersAsync(CancellationToken cancellationToken)

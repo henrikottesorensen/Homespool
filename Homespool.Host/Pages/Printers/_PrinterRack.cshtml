@@ -139,7 +139,7 @@ else
                            printer's page, which has room to say what having no default means. *@
                         @if (row.Printer.Id != Model.DefaultPrinterId)
                         {
-                            <form method="post" asp-page-handler="Default" asp-route-printerId="@row.Printer.Id">
+                            <form method="post" asp-page-handler="Default" asp-route-uuid="@row.Printer.Uuid">
                                 <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Printers_MakeDefault"]</button>
                             </form>
                         }
@@ -150,7 +150,7 @@ else
                            token the server refuses to bind. *@
                         @if (row.AwaitingUsbProvisioning || row.Enrolled)
                         {
-                            <form method="post" asp-page-handler="Regenerate" asp-route-printerId="@row.Printer.Id">
+                            <form method="post" asp-page-handler="Regenerate" asp-route-uuid="@row.Printer.Uuid">
                                 <button type="submit" class="btn btn-sm btn-outline-secondary">
                                     @(row.Enrolled ? Localiser["Printers_ReissueToken"].Value : Localiser["Printers_RegenerateToken"].Value)
                                 </button>

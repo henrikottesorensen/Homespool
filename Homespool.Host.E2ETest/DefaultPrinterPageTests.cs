@@ -146,10 +146,11 @@ public sealed class DefaultPrinterPageTests : IAsyncLifetime
                 await (await client.GetAsync("/Printers", TestContext.Current.CancellationToken)).Content
                     .ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-            listing.Should().Contain($"printerId={printers[1].Id}",
+            listing.Should().Contain($"uuid={printers[1].Uuid}",
                                      "the other printer is the one that can still be made the default");
-            listing.Should().NotContain($"handler=Default&amp;printerId={printers[0].Id}",
+            listing.Should().NotContain($"handler=Default&amp;uuid={printers[0].Uuid}",
                                         "the printer that already is it has nothing to offer");
+            listing.Should().NotContain("printerId=", "a printer's row id is storage, not something a page hands out");
         }
     }
 
@@ -176,7 +177,7 @@ public sealed class DefaultPrinterPageTests : IAsyncLifetime
             });
 
             using HttpResponseMessage posted = await client.PostAsync(
-                $"/Printers?handler=Default&printerId={printers[1].Id}", body, TestContext.Current.CancellationToken);
+                $"/Printers?handler=Default&uuid={printers[1].Uuid}", body, TestContext.Current.CancellationToken);
 
             posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
             (await ReadDefaultAsync(user.Id)).Should().Be(printers[1].Id);
@@ -210,7 +211,7 @@ public sealed class DefaultPrinterPageTests : IAsyncLifetime
             });
 
             using HttpResponseMessage posted = await client.PostAsync(
-                $"/Printers?handler=Default&printerId={theirs[0].Id}", body, TestContext.Current.CancellationToken);
+                $"/Printers?handler=Default&uuid={theirs[0].Uuid}", body, TestContext.Current.CancellationToken);
 
             posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
             (await ReadDefaultAsync(user.Id)).Should().Be(

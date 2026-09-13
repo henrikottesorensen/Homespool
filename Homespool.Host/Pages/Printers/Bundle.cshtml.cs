@@ -12,7 +12,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Authorisation;
-using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -78,7 +77,7 @@ public class BundleModel : PageModel
     /// </summary>
     /// <param name="token">The one-time provisioning token, posted back because nothing else holds it.</param>
     /// <param name="hostname">The address to write into the ini.</param>
-    /// <param name="printerId">
+    /// <param name="printerUuid">
     /// Which printer. Checked against the caller, and then the only thing this handler knows about
     /// it — the name in the file and in the instructions is read from the row, not posted.
     /// </param>
@@ -94,7 +93,7 @@ public class BundleModel : PageModel
     /// </remarks>
     public async Task<IActionResult> OnPostAsync(string token,
                                                  string hostname,
-                                                 int printerId,
+                                                 Guid printerUuid,
                                                  bool legacy,
                                                  bool legacyConfirmed,
                                                  CancellationToken cancellationToken)
@@ -121,23 +120,15 @@ public class BundleModel : PageModel
         // printer in the file and in the instructions, so nothing posted here decides what the
         // bundle says about the machine it is for.
         //
-        // Both refusals become one answer below, where the service tells them apart: this id
+        // One answer for a printer that does not exist and one the caller may not manage: this uuid
         // arrives on a hand-made POST rather than from something that already resolved it, so
-        // telling them apart would enumerate other people's printers for the price of a POST.
-        Printer printer;
+        // telling them apart would confirm other people's printers for the price of a POST.
+        Printer? printer = await _access.FindAsync(printerUuid,
+                                                   CallerResolver.For(user, User),
+                                                   Capability.ManagePrinter,
+                                                   cancellationToken);
 
-        try
-        {
-            printer = await _access.RequireAsync(printerId,
-                                                 CallerResolver.For(user, User),
-                                                 Capability.ManagePrinter,
-                                                 cancellationToken);
-        }
-        catch (PrinterNotFoundException)
-        {
-            return NotFound();
-        }
-        catch (TeamAccessDeniedException)
+        if (printer is null)
         {
             return NotFound();
         }
@@ -196,7 +187,7 @@ public class BundleModel : PageModel
                                printer.Uuid, name, endpoint.Port);
         }
 
-        return File(bundle, MediaTypeNames.Application.Zip, FileNameFor(printer.Name, printerId));
+        return File(bundle, MediaTypeNames.Application.Zip, FileNameFor(printer));
     }
 
     /// <summary>
@@ -204,18 +195,23 @@ public class BundleModel : PageModel
     /// several and they are otherwise identical.
     /// </summary>
     /// <remarks>
-    /// <b>The row id in the fallback, where the log lines carry the uuid.</b> They are read by
-    /// different people: a uuid in a downloads folder is unreadable, and a name is what tells two of
-    /// these apart on a stick.
+    /// <b>Whatever the Printers page calls it</b> - the name, else the model it reported, else its
+    /// uuid - so the file on the stick and the card on the page name the printer the same way. An
+    /// unnamed printer provisioned by USB key has never connected and has no model, so the uuid is the
+    /// ordinary case there rather than a curiosity, and it is also the only name the page gives it.
+    /// A name made only of punctuation leaves nothing to slug, and falls back to the uuid too.
     /// </remarks>
-    private static string FileNameFor(string? printerName, int printerId)
+    private static string FileNameFor(Printer printer)
     {
-        string slug = new((printerName ?? string.Empty)
-                          .Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-')
-                          .ToArray());
+        string slug = Slug(PrinterDisplayName.For(printer));
 
-        slug = string.Join('-', slug.Split('-', StringSplitOptions.RemoveEmptyEntries));
+        return $"homespool-{(slug.Length > 0 ? slug : Slug(printer.Uuid.ToString()))}.zip";
+    }
 
-        return string.IsNullOrEmpty(slug) ? $"homespool-printer-{printerId}.zip" : $"homespool-{slug}.zip";
+    private static string Slug(string text)
+    {
+        string dashed = new(text.Select(c => char.IsLetterOrDigit(c) ? char.ToLowerInvariant(c) : '-').ToArray());
+
+        return string.Join('-', dashed.Split('-', StringSplitOptions.RemoveEmptyEntries));
     }
 }

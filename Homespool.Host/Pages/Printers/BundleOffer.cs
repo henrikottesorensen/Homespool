@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 using Homespool.Host.Certificates;
@@ -20,7 +21,7 @@ namespace Homespool.Host.Pages.Printers;
 /// means reissuing.
 /// </para>
 /// </remarks>
-/// <param name="PrinterId">
+/// <param name="PrinterUuid">
 /// Which printer this provisions. The download posts it back and the handler checks it against the
 /// caller before building anything — which is also where the printer's name comes from, so this
 /// offer carries no copy of one.
@@ -42,7 +43,7 @@ namespace Homespool.Host.Pages.Printers;
 /// yet.
 /// </param>
 public sealed record BundleOffer(
-    int PrinterId,
+    Guid PrinterUuid,
     string Token,
     IReadOnlyList<PrinterAddressSuggestion> Names,
     string Snippet,

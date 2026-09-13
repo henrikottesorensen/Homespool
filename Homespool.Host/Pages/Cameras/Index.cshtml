@@ -120,11 +120,11 @@ else
 
         <div class="col-md-2">
             <label class="form-label" for="edit-printer">@Localiser["Common_Printer"]</label>
-            <select class="form-select" id="edit-printer" name="printerId">
+            <select class="form-select" id="edit-printer" name="printerUuid">
                 <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
-                    <option value="@printer.Id" selected="@(printer.Id == Model.Editing.PrinterId)">
+                    <option value="@printer.Uuid" selected="@(printer.Id == Model.Editing.PrinterId)">
                         @(printer.Name ?? printer.Model ?? printer.Uuid.ToString())
                     </option>
                 }
@@ -176,11 +176,11 @@ else
 
         <div class="col-md-2">
             <label class="form-label" for="add-printer">@Localiser["Common_Printer"]</label>
-            <select class="form-select" id="add-printer" name="printerId">
+            <select class="form-select" id="add-printer" name="printerUuid">
                 <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
-                    <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                    <option value="@printer.Uuid">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
                 }
             </select>
         </div>
@@ -240,11 +240,11 @@ else
 
         <div class="col-md-2">
             <label class="form-label" for="attach-printer">@Localiser["Common_Printer"]</label>
-            <select class="form-select" id="attach-printer" name="printerId">
+            <select class="form-select" id="attach-printer" name="printerUuid">
                 <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
-                    <option value="@printer.Id">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                    <option value="@printer.Uuid">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
                 }
             </select>
         </div>

@@ -1,3 +1,5 @@
+using System;
+
 using AwesomeAssertions;
 
 using Homespool.Host.PrusaConnect;
@@ -101,7 +103,7 @@ public class PrinterEndpointTests
     public void OnlyAStatedCapableVersionArguesAgainstTheLegacyEndpoint(string? firmware, bool expected)
     {
         Pages.Printers.BundleOffer offer = new(
-            PrinterId: 1,
+            PrinterUuid: Guid.NewGuid(),
             Token: "t",
             Names: [],
             Snippet: string.Empty,
@@ -123,7 +125,7 @@ public class PrinterEndpointTests
     public void TheChoiceIsOfferedOnlyWhereItMeansSomething(bool tlsEnabled, int? legacyPort, bool expected)
     {
         Pages.Printers.BundleOffer offer = new(
-            PrinterId: 1,
+            PrinterUuid: Guid.NewGuid(),
             Token: "t",
             Names: [],
             Snippet: string.Empty,

@@ -453,6 +453,125 @@ if test_case "upgrade refuses a database another process holds"; then
 fi
 
 # ------------------------------------------------------------------------------------------------
+# adopt, and what reaches its SQL from the command line
+#
+# Two things an operator types end up inside SQL text: the database paths, in ATTACH and in the
+# .backup dot-command, and --team, in the INSERT ... SELECT. The paths below carry a single quote, a
+# double quote and a backslash, one of each quoting layer's special characters, because a directory
+# name is the operator's to choose and an apostrophe in one is ordinary.
+# ------------------------------------------------------------------------------------------------
+
+# A database adopt can read from or write into: teams, printers with a team, their credentials and
+# cameras. seed=1 is the old database, holding a printer, its credential and a camera in team 7;
+# seed=0 is a new one set up by first run, holding teams 1 and 2 and nothing else.
+make_adopt_db() {
+    local path=$1 seed=$2
+
+    sqlite3 "$path" <<'SQL'
+CREATE TABLE "Teams" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_Teams" PRIMARY KEY AUTOINCREMENT,
+    "Name" TEXT NOT NULL
+);
+CREATE TABLE "Printers" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_Printers" PRIMARY KEY AUTOINCREMENT,
+    "Uuid" TEXT NOT NULL,
+    "TeamId" INTEGER NOT NULL,
+    CONSTRAINT "FK_Printers_Teams_TeamId" FOREIGN KEY ("TeamId") REFERENCES "Teams" ("Id") ON DELETE CASCADE
+);
+CREATE TABLE "PrusaConnectAuthentication" (
+    "PrinterId" INTEGER NOT NULL CONSTRAINT "PK_PrusaConnectAuthentication" PRIMARY KEY,
+    "Fingerprint" TEXT NOT NULL,
+    CONSTRAINT "FK_PrusaConnectAuthentication_Printers_PrinterId" FOREIGN KEY ("PrinterId") REFERENCES "Printers" ("Id") ON DELETE CASCADE
+);
+CREATE TABLE "Cameras" (
+    "Id" INTEGER NOT NULL CONSTRAINT "PK_Cameras" PRIMARY KEY AUTOINCREMENT,
+    "Name" TEXT NOT NULL,
+    "TeamId" INTEGER NOT NULL,
+    CONSTRAINT "FK_Cameras_Teams_TeamId" FOREIGN KEY ("TeamId") REFERENCES "Teams" ("Id") ON DELETE CASCADE
+);
+SQL
+
+    if [ "$seed" = "1" ]; then
+        sqlite3 "$path" <<'SQL'
+INSERT INTO "Teams" VALUES (7, 'the old team');
+INSERT INTO "Printers" VALUES (1, 'uuid-one', 7);
+INSERT INTO "PrusaConnectAuthentication" VALUES (1, 'fingerprint-one');
+INSERT INTO "Cameras" VALUES (1, 'bed cam', 7);
+SQL
+    else
+        sqlite3 "$path" <<'SQL'
+INSERT INTO "Teams" VALUES (1, 'first');
+INSERT INTO "Teams" VALUES (2, 'second');
+SQL
+    fi
+}
+
+if test_case "adopt carries printer, credential and camera into the named team, whatever the path"; then
+    dir="$scratch/it's \"a\\b\""
+    mkdir -p "$dir"
+    make_adopt_db "$dir/old.sqlite" 1
+    make_adopt_db "$dir/new.sqlite" 0
+
+    out="$("$script" adopt "$dir/old.sqlite" "$dir/new.sqlite" --team 2 --with-cameras 2>&1)"
+    status=$?
+
+    assert_eq "0" "$status" "succeeds"
+    assert_eq "1|uuid-one|2" "$(sqlite3 "$dir/new.sqlite" 'SELECT * FROM "Printers";')" "printer carried, into team 2"
+    assert_eq "1|fingerprint-one" "$(sqlite3 "$dir/new.sqlite" 'SELECT * FROM "PrusaConnectAuthentication";')" "credential carried"
+    assert_eq "1|bed cam|2" "$(sqlite3 "$dir/new.sqlite" 'SELECT * FROM "Cameras";')" "camera carried, into team 2"
+    assert_eq "0" "$(sqlite3 "$dir/new.sqlite.before-carry-enrolment" 'SELECT COUNT(*) FROM "Printers";')" \
+        "the backup was written beside it, before the insert"
+    refute_says "$out" "Error"
+fi
+
+if test_case "adopt refuses a --team that is not a team id, before touching anything"; then
+    make_adopt_db "$scratch/old.sqlite" 1
+    make_adopt_db "$scratch/new.sqlite" 0
+    before="$(sqlite3 "$scratch/new.sqlite" .dump)"
+
+    out="$("$script" adopt "$scratch/old.sqlite" "$scratch/new.sqlite" \
+        --team '1 FROM old."Printers"; DROP TABLE "Teams"; SELECT 1' --with-cameras 2>&1)"
+    status=$?
+
+    assert_eq "2" "$status" "a usage error"
+    assert_says "$out" "--team wants a team's numeric id"
+    assert_eq "$before" "$(sqlite3 "$scratch/new.sqlite" .dump)" "the new database is untouched"
+    if [ -e "$scratch/new.sqlite.before-carry-enrolment" ]; then
+        fail "took a backup, so it got as far as acting"
+    else
+        passed=$((passed + 1))
+    fi
+fi
+
+if test_case "adopt refuses --team with no value"; then
+    make_adopt_db "$scratch/old.sqlite" 1
+    make_adopt_db "$scratch/new.sqlite" 0
+
+    out="$("$script" adopt "$scratch/old.sqlite" "$scratch/new.sqlite" --team 2>&1)"
+    status=$?
+
+    assert_eq "2" "$status" "a usage error"
+    assert_says "$out" "--team wants a team's numeric id"
+fi
+
+if test_case "upgrade works on a path with quotes in it"; then
+    # write_upgrade_sql ATTACHes the reference by path, and the backup is a dot-command, so both
+    # quoting layers are on this path too.
+    dir="$scratch/it's \"a\\b\""
+    mkdir -p "$dir"
+    make_db "$dir/old.sqlite" "20260820162112_InitialCreate" "" "" 1
+    make_db "$dir/new.sqlite" "20260821010838_InitialCreate" '    "Location" TEXT NULL' "" 0
+
+    out="$("$script" upgrade "$dir/old.sqlite" "$dir/new.sqlite" 2>&1)"
+    status=$?
+
+    assert_eq "0" "$status" "succeeds"
+    assert_eq "20260821010838_InitialCreate" "$(stamp_of "$dir/old.sqlite")" "stamped"
+    assert_eq "20260820162112_InitialCreate" \
+        "$(stamp_of "$dir/old.sqlite.before-carry-enrolment")" "and the backup is where it says"
+fi
+
+# ------------------------------------------------------------------------------------------------
 # The real schema
 #
 # Everything above uses a four-table fixture. This one uses the thirty-odd tables the application

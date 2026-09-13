@@ -93,6 +93,23 @@ cleanup() {
 
 trap cleanup EXIT
 
+# A path, or any value, as an SQL string literal: in single quotes, with each quote inside it doubled.
+# ATTACH takes its file name this way, and a directory name with an apostrophe in it is ordinary.
+sql_text() {
+    local quote="'"
+    printf "'%s'" "${1//$quote/$quote$quote}"
+}
+
+# A path as the argument to a sqlite3 dot-command, which the shell parses itself rather than as SQL.
+# Single quotes there are taken literally and cannot contain one, so the path is double-quoted, where
+# the shell resolves backslash escapes: a backslash, a double quote and a newline are escaped.
+dot_arg() {
+    local escaped=${1//\\/\\\\}
+    escaped=${escaped//\"/\\\"}
+    escaped=${escaped//$'\n'/\\n}
+    printf '"%s"' "$escaped"
+}
+
 require_sqlite() {
     if ! command -v sqlite3 >/dev/null 2>&1; then
         echo "carry-enrolment: sqlite3 is not installed. On the appliance:" >&2
@@ -479,7 +496,7 @@ do_upgrade() {
         return 0
     fi
 
-    sqlite3 "$old" ".backup '$old.before-carry-enrolment'"
+    sqlite3 "$old" ".backup $(dot_arg "$old.before-carry-enrolment")"
     echo "  backup: $old.before-carry-enrolment"
 
     write_upgrade_sql "$old" "$new" "$work" > "$work/upgrade.sql"
@@ -525,7 +542,7 @@ do_upgrade() {
 write_upgrade_sql() {
     local old=$1 new=$2 out=$3
 
-    echo "ATTACH DATABASE '$new' AS ref;"
+    echo "ATTACH DATABASE $(sql_text "$new") AS ref;"
     echo "BEGIN IMMEDIATE;"
 
     while read -r table; do
@@ -564,13 +581,27 @@ do_adopt() {
     local team="" cameras=0
     while [ $# -gt 0 ]; do
         case "$1" in
-            --team) team=${2:-}; shift 2 ;;
+            --team)
+                [ $# -ge 2 ] || { echo "carry-enrolment: --team wants a team's numeric id" >&2; exit 2; }
+                team=$2
+                shift 2
+                ;;
             --with-cameras) cameras=1; shift ;;
             *) echo "carry-enrolment: unknown option $1" >&2; exit 2 ;;
         esac
     done
 
     [ -n "$old" ] && [ -n "$new" ] || { echo "usage: carry-enrolment.sh adopt <old.sqlite> <new.sqlite> [--team <id>] [--with-cameras]" >&2; exit 2; }
+
+    # The id is written into the INSERT ... SELECT as a number, so it has to be one - checked here,
+    # before the backup, rather than quoted, because a quoted non-number is still not a team.
+    case "$team" in
+        *[!0-9]*)
+            echo "carry-enrolment: --team wants a team's numeric id, not: $team" >&2
+            exit 2
+            ;;
+    esac
+
     exists "$old"; exists "$new"; require_sqlite
     refuse_if_busy "$new"
 
@@ -602,12 +633,12 @@ do_adopt() {
     printer_select=$printer_list
 
     echo "Adopting the printer from $old into $new (team $team)"
-    sqlite3 "$new" ".backup '$new.before-carry-enrolment'"
+    sqlite3 "$new" ".backup $(dot_arg "$new.before-carry-enrolment")"
     echo "  backup: $new.before-carry-enrolment"
 
     sqlite3 "$new" <<SQL
 PRAGMA foreign_keys = ON;
-ATTACH DATABASE '$old' AS old;
+ATTACH DATABASE $(sql_text "$old") AS old;
 BEGIN;
 
 INSERT INTO "Printers" ($printer_list, "TeamId")
@@ -627,7 +658,7 @@ SQL
 
         sqlite3 "$new" <<SQL
 PRAGMA foreign_keys = ON;
-ATTACH DATABASE '$old' AS old;
+ATTACH DATABASE $(sql_text "$old") AS old;
 BEGIN;
 INSERT INTO "Cameras" ($camera_list, "TeamId") SELECT $camera_list, $team FROM old."Cameras";
 COMMIT;

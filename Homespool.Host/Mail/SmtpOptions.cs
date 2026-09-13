@@ -73,18 +73,19 @@ public class SmtpOptions
     /// application.
     /// </para>
     /// <para>
-    /// <b>Empty is the ordinary state for a password that arrived any other way</b> - written by the
-    /// migration one-shot, typed into the file by hand, or still coming from the environment. Such a
-    /// value is used as it stands and protected on its next save, which is the whole of the upgrade
-    /// path and the same adopt-on-save rule a camera credential follows.
+    /// <b>Empty is the ordinary state for a password that arrived any other way</b> - typed into the
+    /// file by hand, or set in the environment of a run outside the shipped stack. Such a value is
+    /// used as it stands and protected on its next save through the administration screen, the same
+    /// adopt-on-save rule a camera credential follows.
     /// </para>
     /// </remarks>
     public string ProtectedPassword { get; set; } = string.Empty;
 
     /// <summary>Password for SMTP AUTH.</summary>
     /// <remarks>
-    /// Supply this through user-secrets, an environment variable or a Docker secret rather than appsettings.json,
-    /// which is committed. The compose stack should pass it as <c>Smtp__Password</c>.
+    /// On the shipped stack it is set on the administration screen, which stores it as
+    /// <see cref="ProtectedPassword"/>. Outside it, supply it through user-secrets or an environment
+    /// variable rather than appsettings.json, which is committed.
     /// </remarks>
     public string Password { get; set; } = string.Empty;
 

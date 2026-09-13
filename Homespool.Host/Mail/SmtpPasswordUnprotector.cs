@@ -45,8 +45,8 @@ public sealed class SmtpPasswordUnprotector : IPostConfigureOptions<SmtpOptions>
 
         if (string.IsNullOrEmpty(options.ProtectedPassword))
         {
-            // Nothing stored encrypted. Whatever Password already holds arrived from the environment,
-            // the migration one-shot or a hand edit, and is used as it stands.
+            // Nothing stored encrypted. Whatever Password already holds arrived from the environment
+            // or a hand edit, and is used as it stands.
             return;
         }
 

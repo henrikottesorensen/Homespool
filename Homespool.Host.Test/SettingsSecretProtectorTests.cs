@@ -115,8 +115,8 @@ public class SmtpPasswordUnprotectorTests
     }
 
     /// <summary>
-    /// The upgrade path: a password written by the migration one-shot, or typed into the file by
-    /// hand, is used as it stands rather than being cleared for not being encrypted.
+    /// A password typed into the file by hand, or set in the environment, is used as it stands rather
+    /// than being cleared for not being encrypted.
     /// </summary>
     [Fact]
     public void APlainPasswordWithNoStoredSecretIsLeftAlone()

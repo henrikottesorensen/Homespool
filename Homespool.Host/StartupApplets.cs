@@ -1,7 +1,6 @@
 using System;
 
 using Homespool.Data;
-using Homespool.Host.Configuration;
 
 namespace Homespool.Host;
 
@@ -78,14 +77,6 @@ public static class StartupApplets
             // against it. See Homespool.Data.SchemaWriter.
             case SchemaWriter.Argument:
                 exitCode = SchemaWriter.Write(args.Length > 1 ? args[1] : null);
-
-                return true;
-
-            // The editable settings this deployment currently carries in its environment, written to
-            // the file that now owns them. A one-shot for the upgrade that moved them out of
-            // compose.yaml.
-            case SettingsWriter.Argument:
-                exitCode = SettingsWriter.Write(args.Length > 1 ? args[1] : null);
 
                 return true;
 

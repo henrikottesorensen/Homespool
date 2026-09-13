@@ -66,10 +66,7 @@ public class RecentProofDeclarationTests
             "the proof is earned under /Account, so no administration page needs to be reachable without one");
     }
 
-    /// <summary>
-    /// The account pages that are exempt, by name. Three of them are exempt only until the next change
-    /// moves their own checks behind the proof, and their reasons say so.
-    /// </summary>
+    /// <summary>The account pages that are exempt, by name: the ones that read, and the one that takes the password itself.</summary>
     [Fact]
     public void TheExemptAccountManagementPagesAreTheOnesNamedHere()
     {
@@ -78,10 +75,21 @@ public class RecentProofDeclarationTests
             "ChangePasswordModel",
             "LanguageModel",
             "ShowRecoveryCodesModel",
-            "TwoFactorAuthenticationModel",
-            "Disable2faModel",
-            "EnableAuthenticatorModel",
-            "ExternalLoginsModel");
+            "TwoFactorAuthenticationModel");
+    }
+
+    /// <summary>
+    /// The one gated act outside the two folders: removing a printer, on a page with two dozen
+    /// handlers that want nothing more than a session. Pinned by name because no folder rule reaches
+    /// it.
+    /// </summary>
+    [Fact]
+    public void RemovingAPrinterDeclaresTheProof()
+    {
+        typeof(Homespool.Host.Pages.Printers.DetailModel)
+            .GetMethod(nameof(Homespool.Host.Pages.Printers.DetailModel.OnPostRemoveAsync))!
+            .GetCustomAttribute<RequireRecentProofAttribute>(inherit: true)
+            .Should().NotBeNull("removing a printer destroys what the deployment knows about it");
     }
 
     /// <summary>The proof page itself is exempt, and says why.</summary>

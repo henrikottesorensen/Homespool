@@ -29,8 +29,20 @@ using Microsoft.Extensions.Logging;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
+/// <summary>
+/// Sets an authenticator app up: the seed and its QR code, and the first code that proves the app
+/// holds it - behind a recent proof that the person at the keyboard holds the account.
+/// </summary>
+/// <remarks>
+/// <b>The seed is a credential, so showing it is gated.</b> A live session that could read the
+/// account's existing key could enrol it into an app of its own, and every code gate on the account
+/// would then be a gate it holds the key to. So the page asks for <see cref="RecentProof"/> before it
+/// renders anything, GET included. The code posted back is verified through the same scheme the
+/// step-ups use, but it is enrolment - the app proving it holds the seed - and not a proof of the
+/// person, which is why it stays beside the gate rather than replacing it.
+/// </remarks>
 [Authorize]
-[NoRecentProof("Enrolment verifies its own code; gating the seed on a recent proof is the next change.")]
+[RequireRecentProof]
 public class EnableAuthenticatorModel : PageModel
 {
     private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";

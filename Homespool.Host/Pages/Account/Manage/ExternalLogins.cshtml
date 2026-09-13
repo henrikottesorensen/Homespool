@@ -7,6 +7,14 @@
 <h1>@ViewData["Title"]</h1>
 <partial name="_StatusMessage" for="StatusMessage" />
 
+@* Linking and removing both take a recent proof - removing the last login of a provider-only account
+   sets a password, which is a takeover in the wrong hands - so every act on this page waits for one.
+   The filter refuses the posts either way; this is the courtesy of saying so first. *@
+@if (!Model.Proved && (Model.CurrentLogins.Count > 0 || Model.OtherLogins.Count > 0))
+{
+    <partial name="_ConfirmFirst" model="@Url.Page("./ExternalLogins")" />
+}
+
 @if (Model.CurrentLogins.Count > 0)
 {
     <h2 class="h5">@Localiser["Manage_LinkedLogins"]</h2>
@@ -17,7 +25,7 @@
             <tr>
                 <td>@login.ProviderDisplayName</td>
                 <td>
-                    @if (!Model.RemovalNeedsAPassword)
+                    @if (Model.Proved && !Model.RemovalNeedsAPassword)
                     {
                         <form id="@($"remove-login-{login.LoginProvider}")" method="post" asp-page-handler="RemoveLogin">
                             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
@@ -41,29 +49,32 @@
     <h2 class="h5">@Localiser["Manage_RemoveLastLoginHeading"]</h2>
     <p id="removal-needs-password" class="text-info">@Localiser["Manage_RemoveLastLoginExplanation"]</p>
 
-    <div class="row">
-        <div class="col-md-6">
-            <form id="swap-login-for-password-form" method="post" asp-page-handler="RemoveLogin">
-                <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
-                <input name="loginProvider" type="hidden" value="@Model.CurrentLogins[0].LoginProvider" />
-                <input name="providerKey" type="hidden" value="@Model.CurrentLogins[0].ProviderKey" />
-                <div class="form-floating mb-3">
-                    <input asp-for="Input.NewPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Manage_EnterNewPasswordPlaceholder"]" />
-                    <label asp-for="Input.NewPassword" class="form-label"></label>
-                    <span asp-validation-for="Input.NewPassword" class="text-danger"></span>
-                </div>
-                <div class="form-floating mb-3">
-                    <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Manage_ConfirmNewPasswordPlaceholder"]" />
-                    <label asp-for="Input.ConfirmPassword" class="form-label"></label>
-                    <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
-                </div>
-                <button type="submit" class="btn btn-outline-danger">@Localiser["Manage_RemoveLoginAndSetPassword"]</button>
-            </form>
+    @if (Model.Proved)
+    {
+        <div class="row">
+            <div class="col-md-6">
+                <form id="swap-login-for-password-form" method="post" asp-page-handler="RemoveLogin">
+                    <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+                    <input name="loginProvider" type="hidden" value="@Model.CurrentLogins[0].LoginProvider" />
+                    <input name="providerKey" type="hidden" value="@Model.CurrentLogins[0].ProviderKey" />
+                    <div class="form-floating mb-3">
+                        <input asp-for="Input.NewPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Manage_EnterNewPasswordPlaceholder"]" />
+                        <label asp-for="Input.NewPassword" class="form-label"></label>
+                        <span asp-validation-for="Input.NewPassword" class="text-danger"></span>
+                    </div>
+                    <div class="form-floating mb-3">
+                        <input asp-for="Input.ConfirmPassword" class="form-control" autocomplete="new-password" aria-required="true" placeholder="@Localiser["Manage_ConfirmNewPasswordPlaceholder"]" />
+                        <label asp-for="Input.ConfirmPassword" class="form-label"></label>
+                        <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
+                    </div>
+                    <button type="submit" class="btn btn-outline-danger">@Localiser["Manage_RemoveLoginAndSetPassword"]</button>
+                </form>
+            </div>
         </div>
-    </div>
+    }
 }
 
-@if (Model.OtherLogins.Count > 0)
+@if (Model.OtherLogins.Count > 0 && Model.Proved)
 {
     <h2 class="h5">@Localiser["Manage_AddAnotherLogin"]</h2>
     <form id="link-login-form" method="post" asp-page-handler="LinkLogin">

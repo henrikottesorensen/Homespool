@@ -565,30 +565,22 @@
                         <p>@Localiser["Printers_RemoveWarning"]</p>
                         <p class="text-body-secondary small">@Localiser["Printers_RemoveKnocking"]</p>
 
-                        <label class="form-label" for="remove-confirmation">
-                            @Localiser["Printers_RemoveConfirmLabel", printerName]
-                        </label>
-                        @* No autocomplete: the browser offering the name back would undo the point of
-                           asking for it. *@
-                        <input class="form-control" id="remove-confirmation" name="confirmation"
-                               autocomplete="off" required />
-
-                        @* Present only for an account that has an authenticator - which makes this a
-                           higher bar for people who opted in rather than a floor for everybody. The
-                           server checks GetTwoFactorEnabledAsync again on the post, so a field
-                           deleted from the DOM buys nothing.
-
-                           inputmode numeric and one-time-code so a phone offers the keypad and the
-                           OS can autofill it; autocomplete is off on the name above for the opposite
-                           reason - a browser offering the printer's name back would undo the point of
-                           asking for it. *@
-                        @if (Model.RemovalNeedsCode)
+                        @if (Model.RemovalProved)
                         {
-                            <label class="form-label mt-2" for="remove-code">
-                                @Localiser["Account_AuthenticatorCode"]
+                            <label class="form-label" for="remove-confirmation">
+                                @Localiser["Printers_RemoveConfirmLabel", printerName]
                             </label>
-                            <input class="form-control" id="remove-code" name="code"
-                                   inputmode="numeric" autocomplete="one-time-code" required />
+                            @* No autocomplete: the browser offering the name back would undo the point of
+                               asking for it. *@
+                            <input class="form-control" id="remove-confirmation" name="confirmation"
+                                   autocomplete="off" required />
+                        }
+                        else
+                        {
+                            @* Destroying what this deployment knows about a printer takes a recent
+                               proof, from every account; the handler refuses the post without one, so
+                               the dialog offers the way to prove instead of the name field. *@
+                            <partial name="_ConfirmFirst" model="@Url.Page("./Detail", new { uuid })" />
                         }
                     </div>
 
@@ -597,7 +589,10 @@
                             @Localiser["Common_Cancel"]
                         </button>
 
-                        <button type="submit" class="btn btn-danger">@Localiser["Printers_RemoveButton"]</button>
+                        @if (Model.RemovalProved)
+                        {
+                            <button type="submit" class="btn btn-danger">@Localiser["Printers_RemoveButton"]</button>
+                        }
                     </div>
                 </form>
             </div>

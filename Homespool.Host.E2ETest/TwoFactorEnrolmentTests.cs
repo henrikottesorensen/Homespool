@@ -68,6 +68,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         using HttpClient client = CreateClient();
 
+        await ProveAsync(client, jar);
         string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/EnableAuthenticator");
 
         using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/EnableAuthenticator", new()
@@ -171,47 +172,53 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Turning two-factor off demands the current authenticator code, not just a live session - a
-    /// walk-up on an unlocked browser must not be able to switch the second factor off first.
+    /// Turning two-factor off takes a recent proof, not just a live session - a walk-up on an unlocked
+    /// browser must not be able to switch the second factor off first. The whole page is gated, so
+    /// even opening it sends an unproved session to prove.
     /// </summary>
     [Fact]
-    public async Task DisablingTwoFactorWithoutTheCurrentCodeIsRefused()
+    public async Task DisablingTwoFactorWithoutAProofIsRefused()
     {
         (HSUser user, CookieJar jar) = await SeedAsync("keeps2fa@example.com", withTwoFactor: true);
 
         using HttpClient client = CreateClient();
 
-        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/Disable2fa");
+        using HttpResponseMessage opened = await GetAsync(client, jar, "/Account/Manage/Disable2fa");
+
+        // A token from a page this session may read, so the post below is refused on the proof rather
+        // than on antiforgery.
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Reauthenticate");
 
         using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/Disable2fa", new()
         {
             ["__RequestVerificationToken"] = token,
         });
 
+        opened.StatusCode.Should().Be(HttpStatusCode.Redirect, "the page itself waits for a proof");
+        opened.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate");
         post.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        post.Headers.Location!.OriginalString.Should().Contain("Disable2fa",
-                                                               "a refusal comes back to the form, not to the page that says it worked");
+        post.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate", "a refused post is sent to prove, not to the page that says it worked");
 
         (await TwoFactorEnabledAsync(user.Id))
-            .Should().BeTrue("without the code, the second factor stays on");
+            .Should().BeTrue("without a proof, the second factor stays on");
     }
 
     /// <summary>
-    /// The counterweight: the gate can be passed. A bug that refused every code, correct ones
-    /// included, would leave the suite green while making two-factor impossible to turn off.
+    /// The counterweight: the gate can be passed. A gate that refused everybody would leave the suite
+    /// green while making two-factor impossible to turn off.
     /// </summary>
     [Fact]
-    public async Task DisablingTwoFactorWithTheCurrentCodeSucceeds()
+    public async Task DisablingTwoFactorWithAProofSucceeds()
     {
         (HSUser user, CookieJar jar) = await SeedAsync("drops2fa@example.com", withTwoFactor: true);
 
         using HttpClient client = CreateClient();
 
+        await ProveAsync(client, jar);
         string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/Disable2fa");
 
         using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/Disable2fa", new()
         {
-            ["code"] = await CurrentCodeAsync(user.Id),
             ["__RequestVerificationToken"] = token,
         });
 
@@ -222,11 +229,11 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The lockout is checked before the code, so a locked-out account is refused even with a correct
-    /// one - which is what makes six digits under the account lockout a control at all.
+    /// A locked-out account cannot earn a proof - the password scheme refuses it before comparing
+    /// anything - and so cannot reach the page that turns two-factor off.
     /// </summary>
     [Fact]
-    public async Task ALockedOutAccountCannotDisableTwoFactorEvenWithTheRightCode()
+    public async Task ALockedOutAccountCannotProveAndSoCannotDisableTwoFactor()
     {
         (HSUser user, CookieJar jar) = await SeedAsync("lockedout2fa@example.com", withTwoFactor: true);
 
@@ -239,17 +246,20 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         using HttpClient client = CreateClient();
 
-        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/Disable2fa");
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Reauthenticate");
 
-        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/Disable2fa", new()
+        using HttpResponseMessage proof = await PostAsync(client, jar, "/Account/Reauthenticate", new()
         {
-            ["code"] = await CurrentCodeAsync(user.Id),
+            ["Input.Password"] = SeededPassword,
             ["__RequestVerificationToken"] = token,
         });
 
-        post.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        using HttpResponseMessage opened = await GetAsync(client, jar, "/Account/Manage/Disable2fa");
+
+        proof.StatusCode.Should().Be(HttpStatusCode.OK, "a refused proof renders the page again rather than redirecting on");
+        opened.StatusCode.Should().Be(HttpStatusCode.Redirect, "no proof was earned, so the page still waits for one");
         (await TwoFactorEnabledAsync(user.Id))
-            .Should().BeTrue("a locked-out account is refused before its code is even compared");
+            .Should().BeTrue("a locked-out account is refused before its password is even compared");
     }
 
     private async Task<bool> TwoFactorEnabledAsync(long userId)

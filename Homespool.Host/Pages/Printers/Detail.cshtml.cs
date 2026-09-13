@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -61,7 +60,7 @@ public class DetailModel : PageModel
     private readonly PrinterQueryService _printerQueryService;
     private readonly PrinterRemovalService _removalService;
     private readonly DefaultPrinterService _defaults;
-    private readonly LocalSignInRules _rules;
+    private readonly RecentProof _proof;
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrinterFilamentService _filament;
@@ -86,7 +85,7 @@ public class DetailModel : PageModel
     public DetailModel(PrinterQueryService printerQueryService,
                        PrinterRemovalService removalService,
                        DefaultPrinterService defaults,
-                       LocalSignInRules rules,
+                       RecentProof proof,
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrinterFilamentService filament,
@@ -111,7 +110,7 @@ public class DetailModel : PageModel
         _printerQueryService = printerQueryService;
         _removalService = removalService;
         _defaults = defaults;
-        _rules = rules;
+        _proof = proof;
         _queueService = queueService;
         _preheat = preheat;
         _filament = filament;
@@ -421,17 +420,14 @@ public class DetailModel : PageModel
     public bool IsDefaultPrinter { get; private set; }
 
     /// <summary>
-    /// Whether this account has an authenticator, and so must confirm a removal with a code as well
-    /// as the typed name.
+    /// Whether the person has proved themselves recently, so the removal form is worth showing. False
+    /// puts the way to prove in the dialog instead; the handler refuses the post either way.
     /// </summary>
     /// <remarks>
-    /// <b>It raises the bar for accounts that opted in; it does not set one.</b> An account without
-    /// two-factor gets the typed name and nothing more, so this is not a guarantee about removal in
-    /// general - it is a guarantee about accounts that already carry a second factor. Turning
-    /// <c>Security:RequireTwoFactor</c> on is what makes it a floor for everybody, because
-    /// <c>TwoFactorEnrolmentMiddleware</c> then holds accounts until they enrol.
+    /// A removal is destructive and takes the proof from every account, two-factor or not: the act is
+    /// the same act whoever performs it, and the proof accepts whichever credential the account holds.
     /// </remarks>
-    public bool RemovalNeedsCode { get; private set; }
+    public bool RemovalProved { get; private set; }
 
     /// <summary>
     /// The address to paste into a slicer's print-host field for this printer.
@@ -618,10 +614,9 @@ public class DetailModel : PageModel
 
         CanManage = await _access.AllowsAsync(Statistics.Printer.Id, caller, Capability.ManagePrinter, cancellationToken);
 
-        // Only asked when the control it gates would be rendered - an account that cannot manage the
-        // printer never sees the removal disclosure, so its authenticator state is nobody's business
-        // here.
-        RemovalNeedsCode = CanManage && await _userManager.GetTwoFactorEnabledAsync(user);
+        // Only read when the control it gates would be rendered; reading slides the window, and an
+        // account that cannot manage the printer never sees the removal disclosure.
+        RemovalProved = CanManage && _proof.IsProved(HttpContext, user.Id);
 
         // Compared against what is stored, not resolved: the printer in front of us is one the caller
         // can see, so if the stored id names it the switch is on.
@@ -1132,10 +1127,17 @@ public class DetailModel : PageModel
     /// the name, not to test their shift key, and an ordinal comparison keeps a Turkish locale from
     /// deciding what two names mean.
     /// </para>
+    /// <para>
+    /// <b>And a recent proof, from every account.</b> Removing a printer destroys what this deployment
+    /// knows about it, which is the kind of act a session somebody else got hold of must not be able
+    /// to perform; the filter behind <see cref="RequireRecentProofAttribute"/> sends an unproved post
+    /// to prove first and never replays it. The name is still asked for, because the proof says who is
+    /// at the keyboard and the name says they read which printer this is.
+    /// </para>
     /// </remarks>
+    [RequireRecentProof]
     public async Task<IActionResult> OnPostRemoveAsync(Guid uuid,
                                                        string? confirmation,
-                                                       string? code,
                                                        CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -1155,39 +1157,11 @@ public class DetailModel : PageModel
 
         string name = DisplayNameFor(printer);
 
-        // The name first, and the code second, deliberately. A wrong name is not a guess at a secret
-        // - it is on the heading of the page the form sits on - so counting it would let somebody
-        // back the step-up off without ever attempting the thing the backoff protects.
         if (!string.Equals(confirmation?.Trim(), name, StringComparison.OrdinalIgnoreCase))
         {
             (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveNameMismatch", name].Value, false);
 
             return RedirectToPage(new { uuid });
-        }
-
-        // Authenticator codes only. A recovery code is for getting back into an account, and reaching
-        // for one here would mean spending a single-use credential to confirm a routine act - while
-        // widening what an unattended session can do to exactly what this exists to stop.
-        if (await _userManager.GetTwoFactorEnabledAsync(user))
-        {
-            // A step-up on the signed-in account through the code scheme: a wrong code backs off the
-            // account's step-ups, never its sign-in, and a backed-off or locked-out account is refused
-            // before its code is compared.
-            AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.Totp, new TotpStepUpCredential(code));
-
-            if (!stepUp.Succeeded)
-            {
-                if (stepUp.Refusal() == SignInRefusal.LockedOut)
-                {
-                    (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveLockedOut", BackoffWait.Format(_localiser, stepUp.RetryAfter() ?? TimeSpan.Zero)].Value, false);
-
-                    return RedirectToPage(new { uuid });
-                }
-
-                (StatusMessage, StatusSuccess) = (_localiser["Printers_RemoveCodeInvalid"].Value, false);
-
-                return RedirectToPage(new { uuid });
-            }
         }
 
         try

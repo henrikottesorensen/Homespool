@@ -200,10 +200,12 @@ public class DetailModel : PageModel
     /// a re-key - so an account whose owner has lost everything had no way back at all.
     /// </para>
     /// <para>
-    /// <b>Not for your own account.</b> An administrator recovering themselves would be clearing
-    /// their own second factor on a password alone, which is exactly what <c>Manage/Disable2fa</c>
-    /// refuses by demanding a live code. The route out of your own lost authenticator is the recovery
-    /// codes, or another administrator.
+    /// <b>Not for your own account.</b> An administrator on this page has already proved themselves,
+    /// and their own account has its own routes behind that proof - <c>Manage/ResetAuthenticator</c>
+    /// and <c>Manage/Disable2fa</c> - which say what they do to the account. A recovery issued to
+    /// yourself would be the same outcome by a path built for somebody else, mailed as an invite. The
+    /// route out for an administrator who can no longer prove anything is the recovery codes, or
+    /// another administrator.
     /// </para>
     /// <para>
     /// <b>Refused for a closed account</b>, because the sign-in gate would refuse the result: an

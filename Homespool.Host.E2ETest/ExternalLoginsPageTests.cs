@@ -97,6 +97,28 @@ public sealed class ExternalLoginsPageTests : IAsyncLifetime
                                  "a plain remove button here is the lockout this page exists to prevent");
     }
 
+    /// <summary>
+    /// The takeover this page must not allow: a provider-only session that has not proved itself posts
+    /// the swap with a password of its choosing. It is sent to prove, and the account keeps its provider
+    /// and gains no password.
+    /// </summary>
+    [Fact]
+    public async Task AnUnprovedSessionCannotSwapTheLastProviderForAPassword()
+    {
+        using HttpClient client = await SignedInAsync(withPassword: false, withLogin: true, proved: false);
+
+        string page = await client.GetStringAsync("/Account/Manage/ExternalLogins", TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage response = await PostRemoveAsync(client, page, NewPassword);
+
+        page.Should().NotContain("swap-login-for-password-form", "the swap is offered only once proved");
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate", "the post is sent to prove first");
+
+        (await HasPasswordAsync()).Should().BeFalse("no password the caller chose was set");
+        (await LoginCountAsync()).Should().Be(1, "and the owner's provider is still linked");
+    }
+
     /// <summary>The swap itself: the password lands and the provider goes, together.</summary>
     [Fact]
     public async Task RemovingTheLastProviderSetsThePasswordAndUnlinksInOneStep()
@@ -158,7 +180,17 @@ public sealed class ExternalLoginsPageTests : IAsyncLifetime
                                       TestContext.Current.CancellationToken);
     }
 
-    private async Task<HttpClient> SignedInAsync(bool withPassword, bool withLogin)
+    /// <summary>
+    /// A client signed in as the test account, proved unless <paramref name="proved"/> says otherwise,
+    /// and with its password then removed when <paramref name="withPassword"/> is false.
+    /// </summary>
+    /// <remarks>
+    /// The proof is earned before the password goes, because a password is the one credential the
+    /// proof page can be driven with here; a provider-only account proves at its provider, which this
+    /// suite fakes at the store rather than drives. The proof belongs to the account and outlives the
+    /// credential that earned it, as it would in a browser.
+    /// </remarks>
+    private async Task<HttpClient> SignedInAsync(bool withPassword, bool withLogin, bool proved = true)
     {
         await CreateUserAsync(withLogin);
 
@@ -177,6 +209,11 @@ public sealed class ExternalLoginsPageTests : IAsyncLifetime
             await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
 
         signIn.StatusCode.Should().Be(HttpStatusCode.Redirect, "signing in is setup here, not the subject");
+
+        if (proved)
+        {
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+        }
 
         // Removed after signing in, because the sign-in form is the only way to get a cookie and it
         // needs a password. What is under test is the state, not how an account reaches it.

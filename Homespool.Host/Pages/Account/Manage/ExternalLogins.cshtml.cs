@@ -58,14 +58,26 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// an account that already exists and is signed in. They are different questions, which is why this
 /// page carries its own callback rather than reusing that one.
 /// </para>
+/// <para>
+/// <b>Linking and removing both take a recent proof.</b> A linked provider is a durable sign-in that a
+/// password change never touches, so a session somebody else got hold of must not be able to attach
+/// one. And removing is not the harmless direction it looks: on a provider-only account, removing the
+/// last login sets a password <i>the caller chooses</i> and unlinks the provider the owner signs in
+/// with, which is a complete takeover in one post. So both handlers carry
+/// <see cref="RequireRecentProofAttribute"/> - a provider-only account proves by a fresh round trip to
+/// that same provider. The link callback cannot carry it: it arrives as a cross-site navigation from
+/// the provider, which the proof's <c>Strict</c> cookie is withheld from, and it is bound to the
+/// account by the expected-account item instead, after a proof was demanded at the start of the same
+/// round trip.
+/// </para>
 /// </remarks>
 [Authorize]
-[NoRecentProof("Linking a provider is gated in the next change; removing one is what a stolen session would least want.")]
 public class ExternalLoginsModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
     private readonly ExternalSignIn _externalSignIn;
+    private readonly RecentProof _proof;
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<ExternalLoginsModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
@@ -73,6 +85,7 @@ public class ExternalLoginsModel : PageModel
     public ExternalLoginsModel(UserManager<HSUser> userManager,
                                LocalSignIn signIn,
                                ExternalSignIn externalSignIn,
+                               RecentProof proof,
                                UnitOfWork unitOfWork,
                                ILogger<ExternalLoginsModel> logger,
                                IStringLocalizer<SharedResource> localiser)
@@ -80,10 +93,14 @@ public class ExternalLoginsModel : PageModel
         _userManager = userManager;
         _signIn = signIn;
         _externalSignIn = externalSignIn;
+        _proof = proof;
         _unitOfWork = unitOfWork;
         _logger = logger;
         _localiser = localiser;
     }
+
+    /// <summary>Whether the person has proved themselves recently, so the link and remove controls are worth showing.</summary>
+    public bool Proved { get; private set; }
 
     /// <summary>The providers already attached to this account.</summary>
     public IList<UserLoginInfo> CurrentLogins { get; set; }
@@ -145,6 +162,7 @@ public class ExternalLoginsModel : PageModel
     /// earlier attempt would be picked up by the callback below and linked instead of the identity the
     /// person is about to authenticate as.
     /// </remarks>
+    [RequireRecentProof]
     public async Task<IActionResult> OnPostLinkLoginAsync(string provider)
     {
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
@@ -192,6 +210,7 @@ public class ExternalLoginsModel : PageModel
         return RedirectToPage();
     }
 
+    [RequireRecentProof]
     public async Task<IActionResult> OnPostRemoveLoginAsync(string loginProvider, string providerKey,
                                                             CancellationToken cancellationToken)
     {
@@ -276,6 +295,7 @@ public class ExternalLoginsModel : PageModel
                       .ToList();
 
         HasPassword = await _userManager.HasPasswordAsync(user);
+        Proved = _proof.IsProved(HttpContext, user.Id);
     }
 
     private void AddErrors(IdentityResult result)

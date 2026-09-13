@@ -90,11 +90,50 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime
 
         using HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
-        string destination = response.Headers.Location?.OriginalString ?? string.Empty;
+        // The path alone: the enrolment page now sends an unproved session to prove, and that
+        // redirect names enrolment as its return address, which is the opposite of a bounce.
+        string destination = response.Headers.Location?.OriginalString.Split('?')[0] ?? string.Empty;
 
         destination.Should().NotContain("EnableAuthenticator",
                                         "{0} is how an account satisfies the requirement or leaves, so the gate "
                                         + "must not bounce it back to enrolment", path);
+    }
+
+    /// <summary>
+    /// The whole journey a held account takes: enrolment asks for a proof, the proof page is reachable
+    /// from inside the hold, and once proved the enrolment page renders.
+    /// </summary>
+    /// <remarks>
+    /// <b>Written for the loop this closes.</b> The enrolment page gained a proof requirement and the
+    /// proof page was not on the hold's list, so each sent the account to the other and it could never
+    /// enrol - every per-page test stayed green, because each redirect on its own was correct.
+    /// </remarks>
+    [Fact]
+    public async Task AHeldAccountCanProveAndReachEnrolment()
+    {
+        using HttpClient client = await SignedInAsync();
+
+        using HttpResponseMessage enrol = await client.GetAsync("/Account/Manage/EnableAuthenticator", TestContext.Current.CancellationToken);
+        string proofPath = enrol.Headers.Location!.OriginalString;
+
+        using HttpResponseMessage proofPage = await client.GetAsync(proofPath, TestContext.Current.CancellationToken);
+        string html = await proofPage.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["Input.Password"] = Password,
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
+        });
+
+        using HttpResponseMessage proved = await client.PostAsync(proofPath, body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage enrolAgain = await client.GetAsync(proved.Headers.Location!.OriginalString, TestContext.Current.CancellationToken);
+
+        enrol.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        proofPath.Should().StartWith("/Account/Reauthenticate", "the enrolment page shows a seed, so it asks for a proof first");
+        proofPage.StatusCode.Should().Be(HttpStatusCode.OK, "the proof page is reachable from inside the hold");
+        proved.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        proved.Headers.Location!.OriginalString.Should().Contain("EnableAuthenticator", "the proof returns to where the account was going");
+        enrolAgain.StatusCode.Should().Be(HttpStatusCode.OK, "and enrolment then renders, rather than asking again");
     }
 
     /// <summary>A signed-in browser call to the API is refused rather than redirected to a page.</summary>

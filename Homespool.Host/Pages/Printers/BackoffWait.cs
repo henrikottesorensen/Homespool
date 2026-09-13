@@ -12,10 +12,9 @@ namespace Homespool.Host.Pages.Printers;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Shared rather than copied</b>, which is the same argument the claim page already made about
-/// the resource keys underneath it: two copies of one sentence drift apart in translation, and a
-/// formatter is a sentence with arithmetic attached. It was private to <c>ClaimModel</c> until the
-/// printer-removal confirmation needed the identical thing, 2026-08-26.
+/// <b>Shared rather than copied</b> between the claim page and the step-up refusals, which is the
+/// same argument the claim page already made about the resource keys underneath it: two copies of one
+/// sentence drift apart in translation, and a formatter is a sentence with arithmetic attached.
 /// </para>
 /// <para>
 /// Static and localiser-taking, following <see cref="PrintDuration"/>: nothing here has state, and a

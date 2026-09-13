@@ -7,6 +7,8 @@ using System.Text;
 
 using AwesomeAssertions;
 
+using libbgcode.NET;
+
 using Homespool.Host.PrintFiles.GCode;
 
 namespace Homespool.Host.Test;
@@ -34,6 +36,14 @@ namespace Homespool.Host.Test;
 /// here is the seam: dispatch between the two containers, the three-outcome contract, the
 /// interpretation of what the blocks say, and a mutation sweep pinning that nothing thrown in the
 /// library escapes the adapter.
+/// </para>
+/// <para>
+/// <b>Two seeds of the sweep are the real file re-containered</b>, its printer block written through
+/// the library's writer as deflate and as heatshrink. No slicer compresses that block, so a sweep
+/// over slicer output alone never runs either decompressor: the reader stops at the printer block,
+/// and the compressed blocks behind it are only ever walked past. A mutated declared size, a
+/// corrupted stream or a truncation inside a compressed payload is what those two seeds put in
+/// front of the adapter, on the version of the library the build actually restored.
 /// </para>
 /// </remarks>
 public class GCodeMetadataReaderTests
@@ -231,10 +241,36 @@ public class GCodeMetadataReaderTests
     }
 
     /// <summary>
+    /// The printer block compressed, which no slicer does today and the specification allows. Read
+    /// to the same values as the uncompressed original, so the two seeds below are known to put the
+    /// decompressor on the reader's path rather than merely in the file.
+    /// </summary>
+    [Theory]
+    [InlineData(BgcodeCompression.Deflate)]
+    [InlineData(BgcodeCompression.Heatshrink11)]
+    [InlineData(BgcodeCompression.Heatshrink12)]
+    public void ReadsACompressedPrinterBlock(BgcodeCompression compression)
+    {
+        GCodeMetadata? metadata = Read(RecontaineredRealFile(compression));
+
+        metadata.Should().NotBeNull();
+        metadata!.PrinterModel.Should().Be("COREONE");
+        metadata.NozzleDiameters.Should().Equal(0.4f);
+        metadata.FilamentTypes.Should().Equal("PLA");
+        metadata.NozzleHighFlow.Should().Equal(true);
+    }
+
+    /// <summary>
     /// The exception contract under mutation: whatever the bytes, <c>Read</c> answers with
     /// metadata or null and never throws. Distilled from a fuzzing pass that found a seek throwing
     /// on an array-backed stream; the seed is fixed so a failure reproduces exactly.
     /// </summary>
+    /// <remarks>
+    /// The last two seeds are the real binary file with its printer block re-written as deflate and
+    /// as heatshrink, since the slicer's own output never makes the reader decompress anything. Their
+    /// bytes come from the library's writer rather than a committed file, so they follow the library
+    /// version the build restored - which is the thing a regression there would change.
+    /// </remarks>
     [Fact]
     [SuppressMessage("Security", "CA5394:Do not use insecure randomness",
                      Justification = "The randomness generates hostile test inputs; a fixed seed making failures reproducible is the point.")]
@@ -246,6 +282,8 @@ public class GCodeMetadataReaderTests
             File.ReadAllBytes(FixturePath("metadata-coreone-hf04-pla.bgcode")),
             File.ReadAllBytes(FixturePath("metadata-mk35-04-pla.gcode")),
             File.ReadAllBytes(FixturePath("metadata-mk35-binary-named-gcode.gcode")),
+            RecontaineredRealFile(BgcodeCompression.Deflate),
+            RecontaineredRealFile(BgcodeCompression.Heatshrink12),
         ];
         uint[] interestingSizes = [0, 1, (1024 * 1024) - 1, 1024 * 1024, (1024 * 1024) + 1, int.MaxValue, uint.MaxValue];
 
@@ -316,6 +354,48 @@ public class GCodeMetadataReaderTests
     private static GCodeMetadata? ReadFixture(string name)
     {
         return GCodeMetadataReader.ReadFile(FixturePath(name));
+    }
+
+    /// <summary>
+    /// The real CORE One file with its first two metadata blocks carried over verbatim and the
+    /// printer block stored under <paramref name="compression"/>, followed by the print, slicer and
+    /// G-code blocks the writer insists on, so the shape past the point the reader stops is still
+    /// a file's.
+    /// </summary>
+    private static byte[] RecontaineredRealFile(BgcodeCompression compression)
+    {
+        using FileStream original = File.OpenRead(FixturePath("metadata-coreone-hf04-pla.bgcode"));
+
+        BgcodeReader reader = BgcodeReader.Open(original)
+                              ?? throw new InvalidOperationException("The fixture is not a readable binary G-code file.");
+
+        string fileMetadata = TextOf(reader, BgcodeBlockType.FileMetadata);
+        string printerMetadata = TextOf(reader, BgcodeBlockType.PrinterMetadata);
+
+        using MemoryStream output = new();
+
+        using (BgcodeWriter writer = new(output, leaveOpen: true))
+        {
+            writer.WriteFileMetadata(fileMetadata);
+            writer.WritePrinterMetadata(printerMetadata, compression);
+            writer.WritePrintMetadata("filament used [g]=0.08\n");
+            writer.WriteSlicerMetadata("; printer_model = COREONE\n");
+            writer.WriteGCode("G28 ; home\nG1 X10 Y10 F3000\nM104 S200\n");
+        }
+
+        return output.ToArray();
+    }
+
+    /// <summary>The next block's text, which must be of <paramref name="type"/>: the fixture's shape is known.</summary>
+    private static string TextOf(BgcodeReader reader, BgcodeBlockType type)
+    {
+        BgcodeBlock block = reader.NextBlock()
+                            ?? throw new InvalidOperationException($"The fixture ends before its {type} block.");
+
+        block.Type.Should().Be(type, "the fixture's blocks come in the specification's order");
+
+        return reader.ReadText(block)
+               ?? throw new InvalidOperationException($"The fixture's {type} block could not be read.");
     }
 
     private static string FixturePath(string name)

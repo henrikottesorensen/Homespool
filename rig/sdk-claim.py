@@ -13,9 +13,19 @@ administrator already exists, which is why a second run signs in instead.
 
 `rig/enrol.sh` does this same dance in shell for the firmware rig, and mints an API token besides.
 This is the smaller Python half, kept separate because the SDK rig needs a claim and nothing else.
+
+The account is the server's administrator, so its password is not written in this file. It is
+PASSWORD if set, otherwise rig/password, which the first run generates and `rig/enrol.sh` shares.
+The server must be a loopback address, or this would hand a real server an administrator whose
+password crosses the network over plain HTTP. RIG_ALLOW_REMOTE=1 lifts the check.
 """
+import ipaddress
+import os
 import re
+import secrets
 import sys
+import urllib.parse
+from pathlib import Path
 
 import requests
 
@@ -25,7 +35,45 @@ CODE = sys.argv[3]
 
 EMAIL = "sdk@example.com"
 USERNAME = "sdkadmin"
-PASSWORD = "Correct-Horse-Battery-Staple-1!"
+PASSWORD_FILE = Path(os.environ.get("PASSWORD_FILE", Path(__file__).resolve().parent / "password"))
+
+
+def is_loopback(url):
+    # A URL with no scheme has no hostname to parse and is refused rather than guessed at.
+    host = urllib.parse.urlsplit(url).hostname or ""
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return host == "localhost"
+
+
+def rig_password():
+    if os.environ.get("PASSWORD"):
+        return os.environ["PASSWORD"]
+
+    if not PASSWORD_FILE.exists():
+        # Identity's composition rules are still on, so a draw is kept only if it has an upper, a
+        # lower, a digit and a symbol. O_EXCL and 0600 at creation, so the file is never briefly
+        # readable and never overwritten.
+        while True:
+            password = secrets.token_urlsafe(24)
+            if all(re.search(c, password) for c in ("[A-Z]", "[a-z]", "[0-9]", "[-_]")):
+                break
+        fd = os.open(PASSWORD_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(password + "\n")
+        print(f"== generated a password for {USERNAME} in {PASSWORD_FILE} ==")
+
+    password = PASSWORD_FILE.read_text().strip()
+    if not password:
+        raise SystemExit(f"{PASSWORD_FILE} is empty - delete it to generate a new one, or set PASSWORD.")
+    return password
+
+
+if os.environ.get("RIG_ALLOW_REMOTE") != "1" and not is_loopback(BASE):
+    raise SystemExit(f"{BASE} is not a loopback address. Set RIG_ALLOW_REMOTE=1 to claim against it anyway.")
+
+PASSWORD = rig_password()
 
 session = requests.Session()
 
@@ -69,6 +117,7 @@ print("== claim the code ==")
 page = session.get(BASE + "/Printers/Claim")
 if "Input.Code" not in page.text:
     print(f"  cannot reach the claim page (HTTP {page.status_code}) - not signed in?")
+    print("  an existing administrator only signs in with the password it was created with")
     raise SystemExit(1)
 
 team = re.search(r'name="Input\.TeamId"[^>]*>.*?<option[^>]*value="(\d+)"', page.text, re.S)

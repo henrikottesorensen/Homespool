@@ -16,13 +16,22 @@
 # include/common/printer_model_data.hpp.
 #
 # Does the whole first-run dance so a rig session needs no browser: create the administrator, sign
-# in, mint an API token, register a printer, claim it, then poll for the issued token. Every step is
-# the same HTTP a real client would make; nothing reaches into the database.
+# in, prove the password again, mint an API token, register a printer, claim it, then poll for the
+# issued token. Every step is the same HTTP a real client would make; nothing reaches into the
+# database.
 #
 # Also writes rig/api-token - a personal access token for this account, so that any *later* script
 # can call /api/v1 with a single `Authorization: Bearer` header instead of repeating the sign-in and
 # antiforgery dance below. This script still has to do that dance itself: it
 # starts from an empty server where no account, and therefore no token, exists yet.
+#
+# The account it creates is the server's administrator, so its password is not written in this file.
+# It is PASSWORD if set, otherwise rig/password, which the first run generates. sdk-claim.py shares
+# that file.
+#
+# BASE and PRINTER_BASE must be loopback addresses. Running this against a real server would give it
+# an administrator whose password sits in a file on this machine and crosses the network over plain
+# HTTP. RIG_ALLOW_REMOTE=1 lifts the check when that is really what you want.
 set -euo pipefail
 
 TOKEN="${1:?usage: enrol.sh <setup-token>}"
@@ -44,10 +53,59 @@ PRINTER_TYPE="${PRINTER_TYPE:-1.3.5}"
 # asks for a username, and posting Input.Email to the login form silently signs nobody in.
 USERNAME="${USERNAME:-rig}"
 EMAIL="${EMAIL:-rig@example.com}"
-PASSWORD="${PASSWORD:-Correct-Horse-Battery-Staple-1!}"
 RIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT="${OUT:-$RIG_DIR/identity.json}"
 API_TOKEN_OUT="${API_TOKEN_OUT:-$RIG_DIR/api-token}"
+PASSWORD_FILE="${PASSWORD_FILE:-$RIG_DIR/password}"
+
+require_loopback() {
+    if [ "${RIG_ALLOW_REMOTE:-}" = 1 ]; then
+        return
+    fi
+
+    # A URL with no scheme has no hostname to parse and is refused rather than guessed at.
+    if ! python3 -c '
+import ipaddress, sys, urllib.parse
+host = urllib.parse.urlsplit(sys.argv[1]).hostname or ""
+try:
+    loopback = ipaddress.ip_address(host).is_loopback
+except ValueError:
+    loopback = host == "localhost"
+sys.exit(0 if loopback else 1)' "$2"; then
+        echo "$1=$2 is not a loopback address. Set RIG_ALLOW_REMOTE=1 to enrol against it anyway." >&2
+        exit 1
+    fi
+}
+
+require_loopback BASE "$BASE"
+require_loopback PRINTER_BASE "$PRINTER_BASE"
+
+if [ -z "${PASSWORD:-}" ]; then
+    if [ ! -e "$PASSWORD_FILE" ]; then
+        # Identity's composition rules are still on, so a draw is kept only if it has an upper, a
+        # lower, a digit and a symbol. The URL-safe alphabet has no '!' for a shell to expand.
+        # O_EXCL and 0600 at creation, so the file is never briefly readable and never overwritten.
+        python3 - "$PASSWORD_FILE" <<'PY'
+import os, re, secrets, sys
+while True:
+    password = secrets.token_urlsafe(24)
+    if all(re.search(c, password) for c in ("[A-Z]", "[a-z]", "[0-9]", "[-_]")):
+        break
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write(password + "\n")
+PY
+        echo "==> generated a password for $USERNAME in $PASSWORD_FILE"
+    fi
+
+    PASSWORD="$(cat "$PASSWORD_FILE")"
+
+    if [ -z "$PASSWORD" ]; then
+        echo "$PASSWORD_FILE is empty - delete it to generate a new one, or set PASSWORD." >&2
+        exit 1
+    fi
+fi
+
 JAR="$(mktemp)"
 
 # A 50-character fingerprint, as the firmware sends on /p/register; the WebSocket upgrade later
@@ -93,15 +151,35 @@ for scope in ViewPrinter ControlPrinter ManagePrinter Print ViewQueue ViewHistor
     SCOPE_ARGS="$SCOPE_ARGS --data-urlencode Input.Scope=$scope"
 done
 
+echo "==> proving the password again"
+# The token page wants a recent proof, which a sign-in does not give: a browser is redirected to
+# Account/Reauthenticate and back. Success is that redirect back. A refused password re-renders the
+# page, and a session that never signed in is redirected to the login page instead.
+PROVED_AT="$(curl -sS -c "$JAR" -b "$JAR" -o /dev/null -w '%{redirect_url}' \
+    --data-urlencode "__RequestVerificationToken=$(form_token /Account/Reauthenticate)" \
+    --data-urlencode "Input.Password=$PASSWORD" \
+    "$BASE/Account/Reauthenticate?returnUrl=%2FAccount%2FManage%2FApiTokens")"
+
+case "$PROVED_AT" in
+    */Account/Manage/ApiTokens) ;;
+    *)
+        echo "the password was not accepted - was the server fresh? An existing administrator only" >&2
+        echo "signs in with the password it was created with." >&2
+        exit 1
+        ;;
+esac
+
 echo "==> minting an API token"
 # The one-time secret is rendered into the page that creates it and never stored, so it is scraped
-# from that response rather than fetched afterwards - there is no afterwards.
+# from that response rather than fetched afterwards - there is no afterwards. `|| true` because a
+# grep that matches nothing fails the pipeline, and pipefail would end the script here with no word
+# of why; the empty check below is what says so.
 API_TOKEN="$(curl -sS -c "$JAR" -b "$JAR" \
     --data-urlencode "__RequestVerificationToken=$(form_token /Account/Manage/ApiTokens)" \
     --data-urlencode "Input.Name=rig" \
     $SCOPE_ARGS \
     "$BASE/Account/Manage/ApiTokens" \
-    | grep -o '<code id="created-token">[^<]*</code>' \
+    | { grep -o '<code id="created-token">[^<]*</code>' || true; } \
     | sed 's/.*>\(.*\)<.*/\1/')"
 
 if [ -z "$API_TOKEN" ]; then

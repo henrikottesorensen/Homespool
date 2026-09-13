@@ -34,6 +34,13 @@ the next proxy restart.
 sudo ./acme/install.sh /opt/homespool
 ```
 
+**The installer refuses a deployment that an account outside the `docker` group could change.** The
+timers run `docker compose` as root from that directory, so whoever can edit `compose.yaml`, `.env`
+or an override file there — or rename the directory or anything above it — could run anything as
+root. Root and `docker` members can do that already, so a deployment they own is accepted, including
+a checkout that is group-writable under its owner's own group. The refusal names each path and why;
+`sudo chown root:` or `chmod go-w` on it, then run the installer again.
+
 Then three things, in any order:
 
 **1. Provider credentials** in `/etc/lego/dns.env` (created empty, `0600`, outside the checkout —

@@ -1,10 +1,16 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Duende.IdentityModel;
+
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
@@ -14,7 +20,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The proof the Manage pages demand before an act a live session alone may not perform.
+/// The password half of the proof page's engine, and what it makes of a provider's answer.
 /// </summary>
 /// <remarks>
 /// <b>The case worth writing first is the one that fails open.</b> An account with no password has no
@@ -51,7 +57,7 @@ public sealed class StepUpGateTests : IDisposable
         DefaultHttpContext request = rig.NewRequest(await rig.SessionCookieAsync(user));
 
         // Act
-        StepUpResult result = await GateOf(request).ProveAsync(request, user, LocalSchemeRig.Password);
+        StepUpResult result = await GateOf(request).PasswordAsync(request, LocalSchemeRig.Password);
 
         // Assert
         result.Succeeded.Should().BeTrue();
@@ -67,7 +73,7 @@ public sealed class StepUpGateTests : IDisposable
 
         // Act
         DefaultHttpContext wrong = rig.NewRequest(await rig.SessionCookieAsync(user));
-        StepUpResult refused = await GateOf(wrong).ProveAsync(wrong, user, "not the password");
+        StepUpResult refused = await GateOf(wrong).PasswordAsync(wrong, "not the password");
 
         // Assert
         refused.Refusal.Should().Be(StepUpRefusal.WrongPassword);
@@ -91,11 +97,11 @@ public sealed class StepUpGateTests : IDisposable
         {
             DefaultHttpContext wrong = rig.NewRequest(await rig.SessionCookieAsync(user));
 
-            await GateOf(wrong).ProveAsync(wrong, user, "not the password");
+            await GateOf(wrong).PasswordAsync(wrong, "not the password");
         }
 
         DefaultHttpContext right = rig.NewRequest(await rig.SessionCookieAsync(user));
-        StepUpResult refused = await GateOf(right).ProveAsync(right, user, LocalSchemeRig.Password);
+        StepUpResult refused = await GateOf(right).PasswordAsync(right, LocalSchemeRig.Password);
 
         // Assert
         refused.Refusal.Should().Be(StepUpRefusal.LockedOut,
@@ -108,6 +114,10 @@ public sealed class StepUpGateTests : IDisposable
                               + "session back");
     }
 
+    /// <summary>
+    /// An account with no password is refused whatever is posted: the scheme has nothing to compare
+    /// and says so as a wrong password, never as a proof.
+    /// </summary>
     [Fact]
     public async Task AnAccountWithNoPasswordIsRefusedRatherThanLetThrough()
     {
@@ -117,32 +127,44 @@ public sealed class StepUpGateTests : IDisposable
         HSUser user = await rig.AddUserAsync("federated@homespool.example.net");
         (await rig.Users.RemovePasswordAsync(user)).Succeeded.Should().BeTrue();
 
-        DefaultHttpContext request = rig.NewRequest(await rig.SessionCookieAsync(user));
+        DefaultHttpContext nothing = rig.NewRequest(await rig.SessionCookieAsync(user));
+        DefaultHttpContext theOldOne = rig.NewRequest(await rig.SessionCookieAsync(user));
 
-        // Act - nothing to check, and no provider round trip has been taken.
-        StepUpResult result = await GateOf(request).ProveAsync(request, user, password: null);
+        // Act - nothing, and the password the account used to have.
+        StepUpResult empty = await GateOf(nothing).PasswordAsync(nothing, password: null);
+        StepUpResult stale = await GateOf(theOldOne).PasswordAsync(theOldOne, LocalSchemeRig.Password);
 
         // Assert
-        result.Succeeded.Should().BeFalse("no password to check is not the same as a proved account");
-        result.Refusal.Should().Be(StepUpRefusal.NoProviderProof);
+        empty.Succeeded.Should().BeFalse("no password to check is not the same as a proved account");
+        stale.Succeeded.Should().BeFalse("the password the account no longer has proves nothing");
+        (await GateOf(nothing).UsesPasswordAsync(user)).Should().BeFalse("the page asks this before offering the field");
     }
 
     [Fact]
-    public async Task APasswordIsNotAcceptedFromAnAccountThatHasNone()
+    public void AProvidersAnswerCountsOnlyForTheSubjectTheAccountSignsInWith()
     {
-        // Arrange
-        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        DateTimeOffset now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
+        UserLoginInfo[] logins = [new(Schemes.ExternalOidc, "subject-1", "Dex")];
 
-        HSUser user = await rig.AddUserAsync("federated@homespool.example.net");
-        (await rig.Users.RemovePasswordAsync(user)).Succeeded.Should().BeTrue();
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: null), logins, now)
+                     .Should().BeNull("the subject matches and the provider reported no sign-in time, so it is taken at its word");
+        StepUpGate.ProviderProofRefusal(Answer("subject-2", authTime: null), logins, now)
+                     .Should().Be("mismatch", "another account at the same provider is not this account re-authenticating");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddSeconds(-30)), logins, now)
+                     .Should().BeNull("a sign-in half a minute ago is what max_age=0 asked for");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddMinutes(-10)), logins, now)
+                     .Should().Be("stale", "the provider reused a session it already had instead of asking again");
+    }
 
-        DefaultHttpContext request = rig.NewRequest(await rig.SessionCookieAsync(user));
+    private static ExternalLoginInfo Answer(string subject, DateTimeOffset? authTime)
+    {
+        List<Claim> claims = [new(JwtClaimTypes.Subject, subject)];
 
-        // Act - the password the account used to have, posted at the form anyway.
-        StepUpResult result = await GateOf(request).ProveAsync(request, user, LocalSchemeRig.Password);
+        if (authTime is { } time)
+        {
+            claims.Add(new Claim(JwtClaimTypes.AuthenticationTime, time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+        }
 
-        // Assert
-        result.Refusal.Should().Be(StepUpRefusal.NoProviderProof,
-                                   "the branch is chosen by what the account holds, not by what was posted");
+        return new ExternalLoginInfo(new ClaimsPrincipal(new ClaimsIdentity(claims, "test")), Schemes.ExternalOidc, subject, "Dex");
     }
 }

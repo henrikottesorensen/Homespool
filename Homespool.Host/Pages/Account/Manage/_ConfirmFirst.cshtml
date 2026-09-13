@@ -1,0 +1,7 @@
+@* The act on this page wants a recent proof, and the person has not given one yet: say so and send
+   them to the one page that takes every credential the account holds, with the way back. The
+   filter behind [RequireRecentProof] still refuses the POST without it - this is the courtesy, not
+   the control. *@
+@model string
+<p class="form-text">@Localiser["StepUp_ConfirmFirstWhy"]</p>
+<a class="btn btn-primary" asp-page="/Account/Reauthenticate" asp-route-returnUrl="@Model">@Localiser["StepUp_ConfirmFirst"]</a>

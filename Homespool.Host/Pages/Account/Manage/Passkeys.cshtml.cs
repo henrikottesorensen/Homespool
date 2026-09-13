@@ -3,14 +3,10 @@ using System.Buffers.Text;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -21,7 +17,6 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
-using Homespool.Host.Pages.Printers;
 using Homespool.Host.RateLimiting;
 using Homespool.Model.Entities;
 
@@ -40,20 +35,15 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// here is refused for it.
 /// </para>
 /// <para>
-/// <b>Adding one takes the current password.</b> A session is not enough: a cookie somebody else got
-/// hold of, or a browser left unlocked, would otherwise mint a durable, phishing-resistant sign-in
-/// that a later password change does not touch. So the challenge is issued only after the password
-/// is proved - demanded of the <see cref="Schemes.UserPassword"/> scheme as a step-up on the signed-in
-/// account, so a wrong guess backs off the account's step-ups as every other does and this page holds
-/// no password check of its own. The five-minute ceremony is what the password unlocks; the answer needs
-/// no second proof. <b>An account created through an external
-/// provider has no password to prove, and re-authenticates at the provider instead</b>: a challenge
-/// to the provider's scheme with <c>max_age=0</c> and <c>prompt=login</c>, a callback that checks the
-/// subject is the one this account already signs in with and that any <c>auth_time</c> the provider
-/// reports is recent, and a five-minute proof kept the way a ceremony is, spent by the registration.
-/// A provider that ignores <c>max_age</c> and reports no <c>auth_time</c> - dex's mock connector is
-/// one - still has to complete the round trip in the caller's own browser, which a stolen cookie
-/// cannot; what it does not defend is an unlocked browser at a provider that never asks again.
+/// <b>Adding one takes a recent proof.</b> A session is not enough: a cookie somebody else got hold
+/// of, or a browser left unlocked, would otherwise mint a durable, phishing-resistant sign-in that a
+/// later password change does not touch. The handler that starts the ceremony carries
+/// <see cref="RequireRecentProofAttribute"/>; the proof is earned at <c>Account/Reauthenticate</c>
+/// with any credential the account holds - the password, another passkey, or the account's provider -
+/// and this page holds no check of its own. The view offers the way there instead of the add form
+/// while the proof is missing, because the script asks for the ceremony with <c>fetch</c> and would
+/// otherwise follow the filter's redirect into a page it cannot read. The five-minute ceremony is what
+/// the proof unlocks; the answer needs no second proof.
 /// </para>
 /// <para>
 /// <b>Removing the last one is allowed.</b> A passkey is a complete sign-in beside whatever else the
@@ -62,8 +52,8 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// device. <b>A password change or reset leaves passkeys standing</b>, unlike API tokens, which a
 /// reset deletes: they are the person's own daily sign-in, not a machine's, and nothing can add one
 /// without the password,
-/// so what a change cannot rule out is only a passkey added by somebody who knew it - which both
-/// password pages tell the person to go and look for.
+/// so what a change cannot rule out is only a passkey added by somebody who proved themselves on
+/// this browser - which both password pages tell the person to go and look for.
 /// </para>
 /// <para>
 /// <b>Offered only where the relying-party id covers the host</b>, as the login page's button is:
@@ -82,32 +72,26 @@ public class PasskeysModel : PageModel
     public const int NameMaxLength = 64;
 
     private readonly UserManager<HSUser> _users;
-    private readonly LocalSignInRules _rules;
-    private readonly ExternalSignIn _externalSignIn;
+    private readonly RecentProof _proof;
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly PasskeyCeremonies _ceremonies;
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _options;
-    private readonly TimeProvider _timeProvider;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<PasskeysModel> _logger;
 
     public PasskeysModel(UserManager<HSUser> users,
-                         LocalSignInRules rules,
-                         ExternalSignIn externalSignIn,
+                         RecentProof proof,
                          IPasskeyHandler<HSUser> engine,
                          PasskeyCeremonies ceremonies,
                          IOptionsMonitor<PasskeyAuthenticationOptions> options,
-                         TimeProvider timeProvider,
                          IStringLocalizer<SharedResource> localiser,
                          ILogger<PasskeysModel> logger)
     {
         _users = users;
-        _rules = rules;
-        _externalSignIn = externalSignIn;
+        _proof = proof;
         _engine = engine;
         _ceremonies = ceremonies;
         _options = options;
-        _timeProvider = timeProvider;
         _localiser = localiser;
         _logger = logger;
     }
@@ -120,11 +104,8 @@ public class PasskeysModel : PageModel
     /// <summary>Whether a passkey can be added from the host this request arrived on.</summary>
     public bool PasskeysAvailable { get; private set; }
 
-    /// <summary>Whether the account has a password to prove before adding; a provider account has none.</summary>
-    public bool HasPassword { get; private set; }
-
-    /// <summary>The external providers this account signs in through, for an account without a password to prove.</summary>
-    public IReadOnlyList<AuthenticationScheme> Providers { get; private set; } = [];
+    /// <summary>Whether the person has proved themselves recently, so the add form is worth showing.</summary>
+    public bool Proved { get; private set; }
 
     /// <summary>The relying-party id, for saying which address to come back by; null when none is configured.</summary>
     public string? ServerDomain { get; private set; }
@@ -137,10 +118,6 @@ public class PasskeysModel : PageModel
         [StringLength(NameMaxLength, ErrorMessage = "Passkeys_NameInvalid")]
         [Display(Name = "Passkeys_NameLabel")]
         public string? Name { get; set; }
-
-        [DataType(DataType.Password)]
-        [Display(Name = "Passkeys_PasswordLabel")]
-        public string? Password { get; set; }
     }
 
     /// <summary>
@@ -185,11 +162,11 @@ public class PasskeysModel : PageModel
     }
 
     /// <summary>
-    /// The first half of adding a passkey: the password proved, creation options for the browser, and
-    /// a ceremony started. A POST so the antiforgery token guards it; 404 where passkeys are withheld;
-    /// 401 with a message for a wrong password and 429 with one while the account is locked out, which
-    /// the script shows in place of the generic cancelled text.
+    /// The first half of adding a passkey: creation options for the browser, and a ceremony started.
+    /// A POST so the antiforgery token guards it; 404 where passkeys are withheld. The recent proof is
+    /// the filter's to demand, before this runs.
     /// </summary>
+    [RequireRecentProof]
     public async Task<IActionResult> OnPostBeginRegistrationAsync(CancellationToken cancellationToken)
     {
         HSUser? user = await _users.GetUserAsync(User);
@@ -197,60 +174,6 @@ public class PasskeysModel : PageModel
         if (user is null || !Scheme.Covers(Request.Host))
         {
             return NotFound();
-        }
-
-        if (!await _users.HasPasswordAsync(user))
-        {
-            // No password to prove: the proof is the provider round trip, kept as a ceremony and
-            // spent here, so one confirmation adds one passkey.
-            PasskeyCeremonies.Outcome proof = _ceremonies.Take(HttpContext, PasskeyCeremonies.ProviderProof);
-
-            if (!proof.Succeeded)
-            {
-                _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, proof.Reason);
-
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_ProviderNotConfirmed"]);
-            }
-
-            // The proof names the subject the provider vouched for, and it must be one THIS account
-            // signs in with. The cookie is bound to the browser, not to the account: a proof earned
-            // for one account and then presented with another account's session cookie is not that
-            // account's proof.
-            IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
-
-            if (logins.All(login => !string.Equals(login.ProviderKey, proof.EngineState, StringComparison.Ordinal)))
-            {
-                _logger.LogWarning("Passkey registration refused for user {UserId}: the provider proof was for another account.", user.Id);
-
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_ProviderNotConfirmed"]);
-            }
-
-            if (_ceremonies.Spend(proof) is { } notSpent)
-            {
-                _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, notSpent);
-
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_ProviderNotConfirmed"]);
-            }
-        }
-        else
-        {
-            // The scheme checks the password against the signed-in account and backs a wrong one off
-            // with every other step-up; a backed-off or locked-out account is refused before its
-            // password is compared.
-            AuthenticateResult stepUp = await HttpContext.AuthenticateWithAsync(Schemes.UserPassword, new PasswordCredential(Input.Password));
-
-            if (!stepUp.Succeeded)
-            {
-                if (stepUp.Refusal() == SignInRefusal.LockedOut)
-                {
-                    return Refusal(StatusCodes.Status429TooManyRequests,
-                                   _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, stepUp.RetryAfter() ?? TimeSpan.Zero)]);
-                }
-
-                _logger.LogInformation("Passkey registration refused for user {UserId}: the password step-up failed.", user.Id);
-
-                return Refusal(StatusCodes.Status401Unauthorized, _localiser["StepUp_PasswordWrong"]);
-            }
         }
 
         PasskeyCreationOptionsResult creation = await _engine.MakeCreationOptionsAsync(
@@ -270,103 +193,9 @@ public class PasskeysModel : PageModel
     }
 
     /// <summary>
-    /// For an account without a password: sends the person to re-authenticate at the provider this
-    /// account signs in through, asking the provider to make them sign in afresh.
-    /// </summary>
-    /// <remarks>
-    /// <c>max_age=0</c> is the standard's way of saying "now", and makes a conforming provider return
-    /// <c>auth_time</c>; <c>prompt=login</c> says the same thing to providers that read that instead.
-    /// The external cookie is cleared first so that a stale provider identity cannot be what the
-    /// callback finds.
-    /// </remarks>
-    public async Task<IActionResult> OnPostReauthenticateAsync(string? provider)
-    {
-        HSUser? user = await _users.GetUserAsync(User);
-
-        if (user is null || string.IsNullOrEmpty(provider))
-        {
-            return NotFound();
-        }
-
-        // A password account proves its password; the provider round trip is for the accounts that
-        // have nothing else, and only against a provider the account actually holds a login for.
-        if (await _users.HasPasswordAsync(user)
-            || (await _users.GetLoginsAsync(user)).All(login => !string.Equals(login.LoginProvider, provider, StringComparison.Ordinal)))
-        {
-            return NotFound();
-        }
-
-        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
-
-        string redirectUrl = Url.Page("/Account/Manage/Passkeys", pageHandler: "Reauthenticated")!;
-        AuthenticationProperties external = ExternalSignIn.ChallengeProperties(
-            provider, redirectUrl, user.Id.ToString(CultureInfo.InvariantCulture));
-
-        OpenIdConnectChallengeProperties challenge = new(external.Items, external.Parameters)
-        {
-            MaxAge = TimeSpan.Zero,
-            Prompt = "login",
-        };
-
-        return new ChallengeResult(provider, challenge);
-    }
-
-    /// <summary>
-    /// The provider's answer: the subject it vouches for must be the one this account signs in with,
-    /// and any sign-in time it reports must be recent. Then a proof is started for the registration
-    /// to spend.
-    /// </summary>
-    public async Task<IActionResult> OnGetReauthenticatedAsync()
-    {
-        HSUser? user = await _users.GetUserAsync(User);
-
-        if (user is null)
-        {
-            return NotFound();
-        }
-
-        // Keyed on the signed-in account, as the account-linking callback is, so a callback carrying
-        // somebody else's external cookie is not read as this account's.
-        ExternalLoginInfo? info = await _externalSignIn.InfoAsync(HttpContext, user.Id.ToString(CultureInfo.InvariantCulture));
-
-        // Consumed either way: a provider identity is not left lying around for another page to find.
-        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
-
-        if (info is null)
-        {
-            StatusMessage = _localiser["StepUp_ProviderFailed"];
-
-            return RedirectToPage();
-        }
-
-        IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
-        string? refusal = StepUpGate.ProviderProofRefusal(info, logins, _timeProvider.GetUtcNow());
-
-        if (refusal is not null)
-        {
-            _logger.LogWarning("Provider re-authentication refused for user {UserId} via {LoginProvider}: {Reason}.",
-                               user.Id,
-                               info.LoginProvider,
-                               refusal);
-
-            StatusMessage = _localiser[refusal == "mismatch" ? "StepUp_ProviderMismatch" : "StepUp_ProviderStale", info.ProviderDisplayName ?? info.LoginProvider];
-
-            return RedirectToPage();
-        }
-
-        _ceremonies.Begin(HttpContext, PasskeyCeremonies.ProviderProof, info.ProviderKey);
-
-        _logger.LogInformation("User {UserId} re-authenticated at {LoginProvider} to add a passkey.", user.Id, info.LoginProvider);
-
-        StatusMessage = _localiser["Passkeys_ProviderConfirmed", info.ProviderDisplayName ?? info.LoginProvider];
-
-        return RedirectToPage();
-    }
-
-    /// <summary>
     /// The second half: the browser's attestation, verified against the ceremony started above and
-    /// stored under the name given. The password was proved when the ceremony began, and the ceremony
-    /// cookie is the proof it was.
+    /// stored under the name given. The proof was demanded when the ceremony began, and the ceremony
+    /// cookie is the evidence it was.
     /// </summary>
     public async Task<IActionResult> OnPostRegisterAsync(string? credential)
     {
@@ -537,12 +366,6 @@ public class PasskeysModel : PageModel
         return Page();
     }
 
-    /// <summary>A refusal the script can show: a status the browser will not follow, and the sentence to display.</summary>
-    private static JsonResult Refusal(int status, string message)
-    {
-        return new JsonResult(new { message }) { StatusCode = status };
-    }
-
     private static bool TryDecode(string? id, out byte[] credentialId)
     {
         credentialId = [];
@@ -575,17 +398,8 @@ public class PasskeysModel : PageModel
 
         Passkeys = [.. await _users.GetPasskeysAsync(user)];
         PasskeysAvailable = Scheme.Covers(Request.Host);
-        HasPassword = await _users.HasPasswordAsync(user);
+        Proved = _proof.IsProved(HttpContext, user.Id);
         ServerDomain = Scheme.IsConfigured ? Scheme.ServerDomain!.Trim() : null;
-
-        if (!HasPassword)
-        {
-            IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
-
-            Providers = (await _externalSignIn.ProvidersAsync())
-                        .Where(scheme => logins.Any(login => string.Equals(login.LoginProvider, scheme.Name, StringComparison.Ordinal)))
-                        .ToList();
-        }
 
         return true;
     }

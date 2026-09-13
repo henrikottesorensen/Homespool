@@ -7,6 +7,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
+using Homespool.Host.Authentication;
+
 namespace Homespool.Host.Pages.Account.Manage;
 
 /// <summary>
@@ -34,6 +36,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
+[NoRecentProof("Shows codes the gated page just minted; it mints nothing itself.")]
 public class ShowRecoveryCodesModel : PageModel
 {
     /// <summary>The codes to display, handed over by the page that generated them.</summary>

@@ -60,6 +60,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
+[NoRecentProof("Linking a provider is gated in the next change; removing one is what a stolen session would least want.")]
 public class ExternalLoginsModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

@@ -113,8 +113,8 @@
                 }
 
                 if (!response.ok) {
-                    // A wrong password or a backoff answers with the sentence to show; anything
-                    // else gets the generic one.
+                    // A refusal that answers with a sentence to show is shown; anything else gets
+                    // the generic one.
                     return response.json().then(function (body) {
                         throw new Error(body && body.message ? body.message : "");
                     }, function () {
@@ -133,11 +133,6 @@
                 }
 
                 form.elements.credential.value = toCredentialJson(credential);
-
-                // The password was proved when the ceremony began; it has no business in the answer.
-                if (form.elements["Input.Password"]) {
-                    form.elements["Input.Password"].value = "";
-                }
 
                 // A native submit from here on: the server answers with a redirect or the page with
                 // its message.

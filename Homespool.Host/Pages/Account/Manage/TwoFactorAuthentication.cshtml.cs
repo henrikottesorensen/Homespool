@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Pages.Account.Manage;
 
 [Authorize]
+[NoRecentProof("Reads the state and forgets this browser, which only makes the next sign-in ask more.")]
 public class TwoFactorAuthenticationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

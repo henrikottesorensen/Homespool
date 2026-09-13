@@ -74,10 +74,11 @@ fail in; **Tick all** is there for the rare key that genuinely wants everything.
 **A token with no capabilities is refused.** You will be asked to choose at least one rather than
 handed a credential that fails on its first call.
 
-**Creating a token asks for your password** — or, for an account that signs in through a provider,
-a fresh confirmation there. A token is a complete sign-in for everything it names and it does not
-expire, so a browser session on its own is not enough to mint one, for the same reason it is not
-enough to add a passkey.
+**Creating a token asks you to confirm it is you first** — with your password, a passkey, or a fresh
+confirmation at the provider you sign in through, whichever the account has; one confirmation is good
+for ten minutes. A token is a complete sign-in for everything it names and it does not expire, so a
+browser session on its own is not enough to mint one, for the same reason it is not enough to add a
+passkey.
 
 **A token can never do more than you can.** What it may do is what your memberships allow *and* what
 its scope names — narrowing only. Ticking `ManagePrinter` on a token does not let it manage a printer

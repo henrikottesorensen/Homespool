@@ -31,6 +31,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
+[NoRecentProof("A display preference, which a session may set.")]
 public class LanguageModel : PageModel
 {
     /// <summary>The form value meaning "no stored preference".</summary>

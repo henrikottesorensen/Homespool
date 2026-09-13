@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Pages.Account.Manage;
 
 [Authorize]
+[NoRecentProof("Takes the current password itself, which is the proof.")]
 public class ChangePasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

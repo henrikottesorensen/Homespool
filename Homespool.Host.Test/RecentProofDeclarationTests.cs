@@ -12,9 +12,9 @@ using Homespool.Host.Authentication;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// Every page under <c>Pages/Admin</c> says what it wants of a recent proof:
-/// <see cref="RequireRecentProofAttribute"/> or an explicit
-/// <see cref="NoRecentProofAttribute"/>, never silence.
+/// Every page under <c>Pages/Admin</c> and <c>Pages/Account/Manage</c> says what it wants of a recent
+/// proof: <see cref="RequireRecentProofAttribute"/> on the class or on at least one handler, or an
+/// explicit <see cref="NoRecentProofAttribute"/> with its reason - never silence.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,18 +22,16 @@ namespace Homespool.Host.Test;
 /// it to a new page automatically, and <c>Program.cs</c> declines exactly that for authorisation, so
 /// that a reader auditing one page can see what protects it by looking at it. The cost of the
 /// per-page declaration is that somebody can forget; this is the test that refuses to let them, and
-/// it is <c>AuthorizationDeclarationTests</c>' shape applied to the second decision an
-/// administration page makes.
+/// it is <c>AuthorizationDeclarationTests</c>' shape applied to the second decision these pages make.
 /// </para>
 /// <para>
-/// <b>Silence defaults to open</b>, which is the whole reason to insist. A new page under
-/// <c>/Admin</c> with no attribute is reachable by any administrator whose session somebody else got
-/// hold of, and nothing about it would look wrong in review.
+/// <b>Silence defaults to open</b>, which is the whole reason to insist. A new page in either folder
+/// with no declaration is reachable by any session somebody else got hold of, and nothing about it
+/// would look wrong in review. Every blind audit so far found one.
 /// </para>
 /// <para>
-/// <b>What it does not check:</b> that an exemption is <i>right</i>. None exists under <c>/Admin</c>
-/// today - the proof page lives under <c>/Account</c> - and the first one to appear fails the second
-/// test below, which is the conversation worth having; the attribute takes a reason for it.
+/// <b>The exemptions are named</b>, so that adding one is a change to this file and a conversation,
+/// and the attribute takes a reason so the conversation is written down.
 /// </para>
 /// </remarks>
 public class RecentProofDeclarationTests
@@ -41,39 +39,52 @@ public class RecentProofDeclarationTests
     [Fact]
     public void EveryAdministrationPageDeclaresWhatItWantsOfTheProof()
     {
-        // Arrange
-        List<Type> pages = AdministrationPages();
+        List<Type> pages = PagesUnder("Homespool.Host.Pages.Admin");
 
-        // Act
-        List<string> silent = pages
-                              .Where(page => page.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true) is null
-                                             && page.GetCustomAttribute<NoRecentProofAttribute>(inherit: false) is null)
-                              .Select(page => page.FullName!)
-                              .ToList();
-
-        // Assert
         pages.Should().NotBeEmpty("a reflection test that finds nothing passes for the wrong reason");
-        silent.Should().BeEmpty(
+        Silent(pages).Should().BeEmpty(
             "a page under /Admin with no declaration is open to any administrator session - "
             + "add [RequireRecentProof], or [NoRecentProof(\"why\")] if it is the exception");
     }
 
-    /// <summary>
-    /// Nothing under <c>/Admin</c> is exempt. If a page ever is, this fails, which is the
-    /// conversation worth having.
-    /// </summary>
+    [Fact]
+    public void EveryAccountManagementPageDeclaresWhatItWantsOfTheProof()
+    {
+        List<Type> pages = PagesUnder("Homespool.Host.Pages.Account.Manage");
+
+        pages.Should().NotBeEmpty();
+        Silent(pages).Should().BeEmpty(
+            "a page under /Account/Manage with no declaration is open to any session somebody else got hold of - "
+            + "add [RequireRecentProof] to the class or the handler that acts, or [NoRecentProof(\"why\")] if it is the exception");
+    }
+
+    /// <summary>Nothing under <c>/Admin</c> is exempt. If a page ever is, this fails, which is the conversation worth having.</summary>
     [Fact]
     public void NoAdministrationPageIsExemptFromTheProof()
     {
-        List<string> exempt = AdministrationPages()
-                              .Where(page => page.GetCustomAttribute<NoRecentProofAttribute>(inherit: false) is not null)
-                              .Select(page => page.Name)
-                              .ToList();
-
-        exempt.Should().BeEmpty("the proof is earned under /Account, so no administration page needs to be reachable without one");
+        Exempt(PagesUnder("Homespool.Host.Pages.Admin")).Should().BeEmpty(
+            "the proof is earned under /Account, so no administration page needs to be reachable without one");
     }
 
-    /// <summary>The proof page itself is the one exemption anywhere, and says why.</summary>
+    /// <summary>
+    /// The account pages that are exempt, by name. Three of them are exempt only until the next change
+    /// moves their own checks behind the proof, and their reasons say so.
+    /// </summary>
+    [Fact]
+    public void TheExemptAccountManagementPagesAreTheOnesNamedHere()
+    {
+        Exempt(PagesUnder("Homespool.Host.Pages.Account.Manage")).Should().BeEquivalentTo(
+            "IndexModel",
+            "ChangePasswordModel",
+            "LanguageModel",
+            "ShowRecoveryCodesModel",
+            "TwoFactorAuthenticationModel",
+            "Disable2faModel",
+            "EnableAuthenticatorModel",
+            "ExternalLoginsModel");
+    }
+
+    /// <summary>The proof page itself is exempt, and says why.</summary>
     [Fact]
     public void TheProofPageDeclaresItsOwnExemption()
     {
@@ -83,12 +94,34 @@ public class RecentProofDeclarationTests
             .And.Subject.As<NoRecentProofAttribute>().Reason.Should().NotBeNullOrWhiteSpace();
     }
 
-    private static List<Type> AdministrationPages()
+    private static List<string> Silent(IEnumerable<Type> pages)
+    {
+        return pages.Where(page => !Declares(page) && page.GetCustomAttribute<NoRecentProofAttribute>(inherit: false) is null)
+                    .Select(page => page.FullName!)
+                    .ToList();
+    }
+
+    private static List<string> Exempt(IEnumerable<Type> pages)
+    {
+        return pages.Where(page => page.GetCustomAttribute<NoRecentProofAttribute>(inherit: false) is not null)
+                    .Select(page => page.Name)
+                    .ToList();
+    }
+
+    /// <summary>On the class, or on any handler method - the two places the filter reads.</summary>
+    private static bool Declares(Type page)
+    {
+        return page.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true) is not null
+               || page.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+                      .Any(method => method.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true) is not null);
+    }
+
+    private static List<Type> PagesUnder(string ns)
     {
         return [.. typeof(Homespool.Host.Pages.Admin.SettingsModel).Assembly
                                                                    .GetTypes()
                                                                    .Where(type => type is { IsClass: true, IsAbstract: false }
                                                                                   && typeof(PageModel).IsAssignableFrom(type)
-                                                                                  && type.Namespace?.StartsWith("Homespool.Host.Pages.Admin", StringComparison.Ordinal) == true)];
+                                                                                  && type.Namespace?.StartsWith(ns, StringComparison.Ordinal) == true)];
     }
 }

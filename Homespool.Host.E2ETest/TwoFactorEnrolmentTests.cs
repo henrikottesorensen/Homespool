@@ -105,11 +105,11 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         using HttpClient client = CreateClient();
 
+        await ProveAsync(client, jar);
         string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/ResetAuthenticator");
 
         using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/ResetAuthenticator", new()
         {
-            ["Input.Password"] = SeededPassword,
             ["__RequestVerificationToken"] = token,
         });
 
@@ -269,10 +269,11 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     /// </summary>
     /// <summary>
     /// The reset is what <c>Disable2fa</c>'s code requirement would otherwise be worth nothing
-    /// against: both end with two-factor off, so a session alone must not be able to take either.
+    /// against: both end with two-factor off, so a session alone must not be able to take either. The
+    /// whole page is gated, so even opening it sends an unproved session to prove first.
     /// </summary>
     [Fact]
-    public async Task ResettingTheAuthenticatorKeyIsRefusedWithoutThePassword()
+    public async Task ResettingTheAuthenticatorKeyIsRefusedWithoutAProof()
     {
         (HSUser user, CookieJar jar) = await SeedAsync("reset-unproved@example.com", withTwoFactor: true);
 
@@ -280,18 +281,22 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         using HttpClient client = CreateClient();
 
-        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/ResetAuthenticator");
+        using HttpResponseMessage opened = await GetAsync(client, jar, "/Account/Manage/ResetAuthenticator");
+
+        // A token from a page this session may read, so the post below is refused on the proof rather
+        // than on antiforgery.
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Reauthenticate");
 
         using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/ResetAuthenticator", new()
         {
-            ["Input.Password"] = "not the password",
             ["__RequestVerificationToken"] = token,
         });
 
+        opened.StatusCode.Should().Be(HttpStatusCode.Redirect, "the page itself waits for a proof");
+        opened.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate");
         post.StatusCode.Should().Be(HttpStatusCode.Redirect);
         post.Headers.Location!.OriginalString
-            .Should().NotContain("/Account/Manage/EnableAuthenticator",
-                                 "a refused reset goes back to the page it was refused on, not on to the next step");
+            .Should().Contain("/Account/Reauthenticate", "a refused reset is sent to prove, not on to the next step");
 
         using IServiceScope scope = _factory.Services.CreateScope();
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
@@ -324,6 +329,24 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         }
 
         return (user, jar);
+    }
+
+    /// <summary>
+    /// Earns <paramref name="jar"/>'s session a recent proof at <c>Account/Reauthenticate</c>, the way
+    /// <see cref="EnrolmentFlowHelper.ReauthenticateAsync"/> does for a client that carries its own
+    /// cookies.
+    /// </summary>
+    private async Task ProveAsync(HttpClient client, CookieJar jar)
+    {
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Reauthenticate");
+
+        using HttpResponseMessage proved = await PostAsync(client, jar, "/Account/Reauthenticate", new()
+        {
+            ["Input.Password"] = SeededPassword,
+            ["__RequestVerificationToken"] = token,
+        });
+
+        proved.StatusCode.Should().Be(HttpStatusCode.Redirect, "the proof is setup for a test, not what it verifies");
     }
 
     private async Task<string> AuthenticatorKeyAsync(long userId)

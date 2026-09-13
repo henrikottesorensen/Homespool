@@ -51,6 +51,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
+[NoRecentProof("Still asks for the authenticator code itself; moving it behind the proof is the next change.")]
 public class Disable2faModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

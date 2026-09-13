@@ -18,42 +18,30 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Authentication;
 
 /// <summary>
-/// Proving, on a page the session has already reached, that the person at the keyboard holds the
-/// account: the password where there is one, and a fresh round trip to the account's own identity
-/// provider where there is not.
+/// The credentials <c>Account/Reauthenticate</c> proves an account by, other than a passkey: the
+/// password where there is one, and a fresh round trip to the account's own identity provider where
+/// there is not. The page composes; this verifies.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>A session is not a proof of anything but continuity.</b> It says a browser signed in once; the
-/// acts these pages perform - clearing the second factor, minting recovery codes, moving the address
-/// a password reset goes to - are the acts a walk-up on an unlocked browser wants, and each of them
-/// outlives the session that did it. So the credential is asked for again at the act, and the act is
-/// what a stolen cookie can no longer perform.
+/// acts behind <see cref="RequireRecentProofAttribute"/> - clearing the second factor, minting
+/// recovery codes, moving the address a password reset goes to, closing somebody's account - are the
+/// acts a walk-up on an unlocked browser wants, and each of them outlives the session that did it. So
+/// a credential is asked for again, on one page, and <see cref="RecentProof"/> remembers that it was.
 /// </para>
 /// <para>
-/// <b>Not the authenticator code, on the pages that can re-key it.</b> The code proves possession of
-/// the device, and the page that resets the key exists for the person whose device is gone -
-/// demanding a code there would shut the door on the only people who need it. The password is the
-/// credential that survives a lost phone, which is why it is the one asked for.
-/// </para>
-/// <para>
-/// <b>And not a recovery code</b>, though it is tempting on exactly these pages:
-/// <see cref="Schemes.RecoveryCode"/> is for getting back into an account rather than for confirming
-/// an act inside one, and spending one here would let a code minted for the locked-out case be the
-/// key to minting ten more.
+/// <b>Not the authenticator code.</b> The code proves possession of the device, and the page that
+/// resets the key exists for the person whose device is gone - demanding a code would shut the door on
+/// the only people who need it. The password, a passkey or the provider are what survive a lost phone.
+/// <b>And not a recovery code</b>: <see cref="Schemes.RecoveryCode"/> is for getting back into an
+/// account rather than for confirming an act inside one.
 /// </para>
 /// <para>
 /// <b>An account created through a provider has no password by rule</b>, so for it the proof is a
 /// fresh authentication at that provider - <c>prompt=login</c> and <c>max_age=0</c>, bound to a login
-/// this account actually holds, and spent once. That is the same shape <c>Manage/Passkeys</c> uses,
-/// and it is here rather than there so the four pages cannot drift in what they accept.
-/// </para>
-/// <para>
-/// <b>The proof is carried by <see cref="PasskeyCeremonies"/>, whose cookie is scoped to the page
-/// that issued it.</b> A proof earned on one page is therefore not spendable on another: each page
-/// sends the person to the provider itself and reads the answer back on its own path. That is a
-/// property of the cookie rather than a check here, and it is the reason no page has to name which
-/// act a proof was for.
+/// this account actually holds - and <see cref="ProviderProofRefusal"/> checks the answer rather than
+/// trusting the request, because a provider is free to ignore both.
 /// </para>
 /// </remarks>
 public sealed class StepUpGate
@@ -68,19 +56,16 @@ public sealed class StepUpGate
 
     private readonly UserManager<HSUser> _users;
     private readonly ExternalSignIn _externalSignIn;
-    private readonly PasskeyCeremonies _ceremonies;
     private readonly TimeProvider _time;
     private readonly ILogger<StepUpGate> _logger;
 
     public StepUpGate(UserManager<HSUser> users,
                       ExternalSignIn externalSignIn,
-                      PasskeyCeremonies ceremonies,
                       TimeProvider time,
                       ILogger<StepUpGate> logger)
     {
         _users = users;
         _externalSignIn = externalSignIn;
-        _ceremonies = ceremonies;
         _time = time;
         _logger = logger;
     }
@@ -92,18 +77,6 @@ public sealed class StepUpGate
     public Task<bool> UsesPasswordAsync(HSUser user)
     {
         return _users.HasPasswordAsync(user);
-    }
-
-    /// <summary>
-    /// Proves <paramref name="user"/> by whichever credential it has: the password when there is one,
-    /// the provider proof when there is not. <b>The one entry point the pages call</b>, so which
-    /// credential answers for which account is decided here rather than four times over.
-    /// </summary>
-    public async Task<StepUpResult> ProveAsync(HttpContext context, HSUser user, string? password)
-    {
-        return await UsesPasswordAsync(user)
-            ? await PasswordAsync(context, password)
-            : await ProviderProofAsync(context, user);
     }
 
     /// <summary>
@@ -131,46 +104,6 @@ public sealed class StepUpGate
         return stepUp.Refusal() == SignInRefusal.LockedOut
             ? StepUpResult.Refused(StepUpRefusal.LockedOut, stepUp.RetryAfter())
             : StepUpResult.Refused(StepUpRefusal.WrongPassword);
-    }
-
-    /// <summary>
-    /// Spends the provider proof this request carries, for an account with no password: it must have
-    /// been earned on this page, be unexpired, name a login <paramref name="user"/> holds, and not
-    /// have been spent already.
-    /// </summary>
-    public async Task<StepUpResult> ProviderProofAsync(HttpContext context, HSUser user)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(user);
-
-        PasskeyCeremonies.Outcome proof = _ceremonies.Take(context, PasskeyCeremonies.ProviderProof);
-
-        if (!proof.Succeeded)
-        {
-            _logger.LogInformation("Step-up refused for user {UserId}: {Reason}.", user.Id, proof.Reason);
-
-            return StepUpResult.Refused(StepUpRefusal.NoProviderProof);
-        }
-
-        // The cookie is bound to the browser and not to the account, so a proof earned for one account
-        // and presented with another account's session is not that account's proof.
-        IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
-
-        if (logins.All(login => !string.Equals(login.ProviderKey, proof.EngineState, StringComparison.Ordinal)))
-        {
-            _logger.LogWarning("Step-up refused for user {UserId}: the provider proof was for another account.", user.Id);
-
-            return StepUpResult.Refused(StepUpRefusal.NoProviderProof);
-        }
-
-        if (_ceremonies.Spend(proof) is { } notSpent)
-        {
-            _logger.LogInformation("Step-up refused for user {UserId}: {Reason}.", user.Id, notSpent);
-
-            return StepUpResult.Refused(StepUpRefusal.NoProviderProof);
-        }
-
-        return StepUpResult.Proved;
     }
 
     /// <summary>
@@ -205,37 +138,11 @@ public sealed class StepUpGate
     }
 
     /// <summary>
-    /// Reads the provider's answer on the way back and, when it counts, starts the proof for the act
-    /// on this page to spend. The outcome names the provider, for the sentence the page shows, and why
-    /// there is no proof when there is none.
-    /// </summary>
-    public async Task<ProviderProofOutcome> RecordProviderProofAsync(HttpContext context, HSUser user)
-    {
-        (ProviderProofOutcome outcome, string? providerKey) = await ReadProviderAnswerAsync(context, user);
-
-        if (outcome.Refusal is null)
-        {
-            _ceremonies.Begin(context, PasskeyCeremonies.ProviderProof, providerKey!);
-        }
-
-        return outcome;
-    }
-
-    /// <summary>
-    /// Reads the provider's answer on the way back and says whether it counts as <paramref name="user"/>
-    /// re-authenticating, starting nothing: for the page whose act is the proof itself, so there is no
-    /// later request to spend it in.
+    /// Reads the provider's answer on the way back - consuming the external cookie either way - and
+    /// says whether it counts as <paramref name="user"/> re-authenticating: the subject must be one
+    /// the account signs in with, and any sign-in time the provider reports must be recent.
     /// </summary>
     public async Task<ProviderProofOutcome> VerifyProviderProofAsync(HttpContext context, HSUser user)
-    {
-        return (await ReadProviderAnswerAsync(context, user)).outcome;
-    }
-
-    /// <summary>
-    /// The shared half of the two methods above: the external cookie read and consumed, the answer
-    /// checked against the account, and the subject the provider vouched for when it counts.
-    /// </summary>
-    private async Task<(ProviderProofOutcome outcome, string? providerKey)> ReadProviderAnswerAsync(HttpContext context, HSUser user)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(user);
@@ -249,7 +156,7 @@ public sealed class StepUpGate
 
         if (info is null)
         {
-            return (new ProviderProofOutcome("failed", null), null);
+            return new ProviderProofOutcome("failed", null);
         }
 
         string provider = info.ProviderDisplayName ?? info.LoginProvider;
@@ -261,12 +168,12 @@ public sealed class StepUpGate
                                info.LoginProvider,
                                refusal);
 
-            return (new ProviderProofOutcome(refusal, provider), null);
+            return new ProviderProofOutcome(refusal, provider);
         }
 
         _logger.LogInformation("User {UserId} re-authenticated at {LoginProvider}.", user.Id, info.LoginProvider);
 
-        return (new ProviderProofOutcome(null, provider), info.ProviderKey);
+        return new ProviderProofOutcome(null, provider);
     }
 
     /// <summary>

@@ -239,20 +239,18 @@ public sealed class ApiTokensPageTests : IDisposable
     }
 
     /// <summary>
-    /// A model for a signed-in password account, with the create form filled in and the right
-    /// password typed - so every test that mints reaches the mint, and the one that types the wrong
-    /// password says so itself.
+    /// A model for a signed-in account with the create form filled in. The recent proof the create
+    /// handler wants is the filter's to demand and is not part of the model, so every test here
+    /// reaches the mint.
     /// </summary>
     private async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(
         HomespoolDbContext context,
-        string name,
-        string? password = LocalSchemeRig.Password)
+        string name)
     {
         (UserManager<HSUser> users, _, _, IServiceProvider provider) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        // A scope per request, as a real request has: the step-up authenticates through scoped
-        // handlers that memoise their first answer.
+        // A scope per request, as a real request has.
         IServiceScope scope = provider.CreateScope();
         _scopes.Add(scope);
 
@@ -267,9 +265,7 @@ public sealed class ApiTokensPageTests : IDisposable
 
         ApiTokensModel model = new(new ApiTokenService(context),
                                    users,
-                                   scope.ServiceProvider.GetRequiredService<StepUpGate>(),
-                                   new StepUpText(TestLocaliser.Shared()),
-                                   scope.ServiceProvider.GetRequiredService<ExternalSignIn>(),
+                                   scope.ServiceProvider.GetRequiredService<RecentProof>(),
                                    NullLogger<ApiTokensModel>.Instance,
                                    TestLocaliser.Shared(),
                                    new CapabilityText(TestLocaliser.Shared()))
@@ -280,34 +276,10 @@ public sealed class ApiTokensPageTests : IDisposable
             {
                 Name = name,
                 Scope = [.. CapabilitySet.Everything],
-                Password = password,
             },
         };
 
         return (model, httpContext);
-    }
-
-    /// <summary>
-    /// The password stands in front of the mint: a session alone, or a wrong guess, mints nothing and
-    /// the form comes back saying why, with the name still in it.
-    /// </summary>
-    [Theory]
-    [InlineData("not-the-current-password")]
-    [InlineData(null)]
-    public async Task ATokenIsNotMintedWithoutTheRightPassword(string? password)
-    {
-        // Arrange
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        (ApiTokensModel model, _) = await NewModelAsync(context, "laptop", password);
-
-        // Act
-        await model.OnPostAsync(TestContext.Current.CancellationToken);
-
-        // Assert
-        context.ApiTokens.Should().BeEmpty("the step-up refused the mint");
-        model.CreatedToken.Should().BeNull();
-        model.ModelState.IsValid.Should().BeFalse("the refusal is reported on the form");
-        model.Input.Name.Should().Be("laptop", "what was typed survives the retry");
     }
 
     /// <summary>

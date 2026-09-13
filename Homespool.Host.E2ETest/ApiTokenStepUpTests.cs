@@ -14,14 +14,14 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// Minting a personal access token takes the account's password, not only a live session.
+/// Minting a personal access token takes a recent proof, not only a live session.
 /// </summary>
 /// <remarks>
 /// A token is a complete sign-in for everything its scope names, and a password change leaves it
-/// standing - so a session somebody else got hold of must not be able to mint one. The page asks
-/// for the password through the same step-up gate the passkey and authenticator pages use; what is
-/// pinned here is that the gate is actually in front of the create, both ways round: the right
-/// password mints, and a wrong or missing one mints nothing and says so.
+/// standing - so a session somebody else got hold of must not be able to mint one. The create handler
+/// is behind the same proof every gated page uses; what is pinned here is that the gate is actually in
+/// front of the create, both ways round: a proved session mints, and an unproved one is sent to prove
+/// and mints nothing.
 /// </remarks>
 public sealed class ApiTokenStepUpTests : IAsyncLifetime
 {
@@ -47,7 +47,7 @@ public sealed class ApiTokenStepUpTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TheRightPasswordMintsATokenAndShowsItOnce()
+    public async Task AProvedSessionMintsATokenAndShowsItOnce()
     {
         // Arrange
         (HSUser _, HttpClient client) =
@@ -55,8 +55,10 @@ public sealed class ApiTokenStepUpTests : IAsyncLifetime
 
         using (client)
         {
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
             // Act
-            using HttpResponseMessage response = await CreateAsync(client, EnrolmentFlowHelper.AccountPassword);
+            using HttpResponseMessage response = await CreateAsync(client);
             string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             // Assert
@@ -70,32 +72,7 @@ public sealed class ApiTokenStepUpTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task TheWrongPasswordMintsNothingAndSaysSo()
-    {
-        // Arrange
-        (HSUser _, HttpClient client) =
-            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "guesser@example.com");
-
-        using (client)
-        {
-            // Act
-            using HttpResponseMessage response = await CreateAsync(client, "not-the-current-password");
-            string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-            // Assert
-            response.StatusCode.Should().Be(HttpStatusCode.OK, "the form comes back rather than redirecting");
-            page.Should().NotContain(ApiTokenService.Prefix, "no secret is shown");
-            page.Should().Contain("That is not your password.", "the refusal says what was wrong");
-            page.Should().Contain("value=\"nightly-build\"", "the name typed survives the retry");
-
-            using IServiceScope scope = _factory.Services.CreateScope();
-            scope.ServiceProvider.GetRequiredService<Homespool.Data.HomespoolDbContext>()
-                 .ApiTokens.Should().BeEmpty("a wrong password mints nothing");
-        }
-    }
-
-    [Fact]
-    public async Task NoPasswordAtAllMintsNothing()
+    public async Task AnUnprovedSessionIsSentToProveAndMintsNothing()
     {
         // Arrange
         (HSUser _, HttpClient client) =
@@ -104,21 +81,38 @@ public sealed class ApiTokenStepUpTests : IAsyncLifetime
         using (client)
         {
             // Act
-            using HttpResponseMessage response = await CreateAsync(client, password: null);
-            string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            using HttpResponseMessage response = await CreateAsync(client);
 
             // Assert
-            response.StatusCode.Should().Be(HttpStatusCode.OK);
-            page.Should().NotContain(ApiTokenService.Prefix, "no secret is shown");
+            response.StatusCode.Should().Be(HttpStatusCode.Redirect, "the form as a session alone would submit it is sent to prove first");
+            response.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate");
 
             using IServiceScope scope = _factory.Services.CreateScope();
             scope.ServiceProvider.GetRequiredService<Homespool.Data.HomespoolDbContext>()
-                 .ApiTokens.Should().BeEmpty("the form as a session alone would submit it mints nothing");
+                 .ApiTokens.Should().BeEmpty("nothing is minted without a proof");
         }
     }
 
-    /// <summary>A complete create form - a name and one capability - with whatever password is given.</summary>
-    private static async Task<HttpResponseMessage> CreateAsync(HttpClient client, string? password)
+    /// <summary>The page offers the create button only to a proved session, and the way to prove otherwise.</summary>
+    [Fact]
+    public async Task TheCreateButtonWaitsForAProof()
+    {
+        (HSUser _, HttpClient client) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "reader@example.com");
+
+        using (client)
+        {
+            string before = await client.GetStringAsync("/Account/Manage/ApiTokens", TestContext.Current.CancellationToken);
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+            string after = await client.GetStringAsync("/Account/Manage/ApiTokens", TestContext.Current.CancellationToken);
+
+            before.Should().Contain("/Account/Reauthenticate", "the unproved page links to the proof");
+            after.Should().NotContain("/Account/Reauthenticate", "the proved page offers the act itself");
+        }
+    }
+
+    /// <summary>A complete create form - a name and one capability.</summary>
+    private static async Task<HttpResponseMessage> CreateAsync(HttpClient client)
     {
         string opened = await client.GetStringAsync("/Account/Manage/ApiTokens", TestContext.Current.CancellationToken);
 
@@ -128,11 +122,6 @@ public sealed class ApiTokenStepUpTests : IAsyncLifetime
             new("Input.Name", "nightly-build"),
             new("Input.Scope", Capability.Print.ToString()),
         ];
-
-        if (password is not null)
-        {
-            fields.Add(new("Input.Password", password));
-        }
 
         using FormUrlEncodedContent form = new(fields);
 

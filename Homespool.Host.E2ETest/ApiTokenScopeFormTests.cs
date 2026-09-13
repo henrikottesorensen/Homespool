@@ -211,6 +211,9 @@ public sealed class ApiTokenScopeFormTests : IAsyncLifetime
 
         using (client)
         {
+            // Proved, so what refuses the mint below is the empty scope and nothing before it.
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
             string opened = await client.GetStringAsync("/Account/Manage/ApiTokens",
                                                         TestContext.Current.CancellationToken);
 

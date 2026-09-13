@@ -3,7 +3,6 @@ using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -37,15 +36,14 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// Revocation does redirect, because there is nothing secret to carry.
 /// </para>
 /// <para>
-/// <b>Creating one takes the current password.</b> A session is not enough: a token is a complete
-/// sign-in for everything its scope names, it has no expiry, and a password change leaves it
-/// standing - so a cookie somebody else got hold of, or a browser left unlocked, would otherwise mint
-/// a credential that outlives the session that minted it. The password is demanded through
-/// <see cref="StepUpGate"/>, as the passkey page demands it before a registration: a wrong guess
-/// backs off the account's step-ups rather than its sign-in, and an account created through a
-/// provider re-authenticates there instead, with the proof scoped to this page. Revoking takes
-/// nothing extra, because removing a credential is what the holder of a stolen session would least
-/// want to do.
+/// <b>Creating one takes a recent proof.</b> A session is not enough: a token is a complete sign-in
+/// for everything its scope names, it has no expiry, and a password change leaves it standing - so a
+/// cookie somebody else got hold of, or a browser left unlocked, would otherwise mint a credential
+/// that outlives the session that minted it. The create handler alone carries
+/// <see cref="RequireRecentProofAttribute"/>; the proof is earned at <c>Account/Reauthenticate</c>
+/// with any credential the account holds, and the view offers the way there before the button.
+/// Revoking takes nothing extra, because removing a credential is what the holder of a stolen session
+/// would least want to do.
 /// </para>
 /// </remarks>
 [Authorize]
@@ -53,39 +51,27 @@ public class ApiTokensModel : PageModel
 {
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
-    private readonly StepUpGate _stepUp;
-    private readonly StepUpText _stepUpText;
-    private readonly ExternalSignIn _externalSignIn;
+    private readonly RecentProof _proof;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ApiTokensModel> _logger;
 
     public ApiTokensModel(ApiTokenService tokens,
                           UserManager<HSUser> userManager,
-                          StepUpGate stepUp,
-                          StepUpText stepUpText,
-                          ExternalSignIn externalSignIn,
+                          RecentProof proof,
                           ILogger<ApiTokensModel> logger,
                           IStringLocalizer<SharedResource> localiser,
                           CapabilityText capabilities)
     {
         _tokens = tokens;
         _userManager = userManager;
-        _stepUp = stepUp;
-        _stepUpText = stepUpText;
-        _externalSignIn = externalSignIn;
+        _proof = proof;
         _localiser = localiser;
         _logger = logger;
         Capabilities = capabilities;
     }
 
-    /// <summary>
-    /// Whether this account proves itself with a password. False puts the provider round trip on the
-    /// page instead, because there is no password to ask for.
-    /// </summary>
-    public bool UsesPassword { get; private set; }
-
-    /// <summary>The providers a password-less account can be sent to, for the button that sends it.</summary>
-    public IReadOnlyList<AuthenticationScheme> Providers { get; private set; } = [];
+    /// <summary>Whether the person has proved themselves recently, so the create button is worth showing.</summary>
+    public bool Proved { get; private set; }
 
     /// <summary>Names the capabilities for both the form and the listing, so the two cannot disagree.</summary>
     public CapabilityText Capabilities { get; }
@@ -131,12 +117,6 @@ public class ApiTokensModel : PageModel
         /// </remarks>
         [MinLength(1, ErrorMessage = "Tokens_ScopeRequired")]
         public IList<Capability> Scope { get; set; } = [];
-
-        /// <summary>The proof that the person at the keyboard holds the account, not only a session.</summary>
-        /// <remarks>Not required by attribute: an account created through a provider has none, and proves itself at the provider instead.</remarks>
-        [DataType(DataType.Password)]
-        [Display(Name = "Account_Password")]
-        public string? Password { get; set; }
     }
 
     public async Task<IActionResult> OnGetAsync(CancellationToken cancellationToken)
@@ -151,6 +131,7 @@ public class ApiTokensModel : PageModel
         return await LoadAsync(cancellationToken) ? Page() : NotFound();
     }
 
+    [RequireRecentProof]
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -162,21 +143,6 @@ public class ApiTokensModel : PageModel
 
         if (!ModelState.IsValid)
         {
-            await LoadAsync(user, cancellationToken);
-
-            return Page();
-        }
-
-        // Proved before anything is minted, and refused in the form rather than through a redirect,
-        // so the name and scope just typed survive the retry. The password never does: the field is
-        // not re-rendered with a value.
-        StepUpResult proof = await _stepUp.ProveAsync(HttpContext, user, Input.Password);
-
-        if (!proof.Succeeded)
-        {
-            _logger.LogInformation("API token creation refused for user {UserId}: {Refusal}.", user.Id, proof.Refusal);
-
-            ModelState.AddModelError(string.Empty, _stepUpText.Describe(proof));
             await LoadAsync(user, cancellationToken);
 
             return Page();
@@ -209,43 +175,6 @@ public class ApiTokensModel : PageModel
         await LoadAsync(user, cancellationToken);
 
         return Page();
-    }
-
-    /// <summary>
-    /// Sends a password-less account to its provider to re-authenticate, coming back to
-    /// <see cref="OnGetReauthenticatedAsync"/> on this page - so the proof it earns is scoped to this
-    /// page and cannot be spent on another.
-    /// </summary>
-    public async Task<IActionResult> OnPostReauthenticateAsync(string provider)
-    {
-        HSUser? user = await _userManager.GetUserAsync(User);
-
-        if (user is null)
-        {
-            return NotFound();
-        }
-
-        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
-
-        string? redirectUrl = Url.Page("/Account/Manage/ApiTokens", pageHandler: "Reauthenticated");
-        AuthenticationProperties? challenge = await _stepUp.ProviderChallengeAsync(user, provider, redirectUrl!);
-
-        return challenge is null ? NotFound() : new ChallengeResult(provider, challenge);
-    }
-
-    /// <summary>The provider's answer, which becomes the proof the create below spends.</summary>
-    public async Task<IActionResult> OnGetReauthenticatedAsync()
-    {
-        HSUser? user = await _userManager.GetUserAsync(User);
-
-        if (user is null)
-        {
-            return NotFound();
-        }
-
-        StatusMessage = _stepUpText.Describe(await _stepUp.RecordProviderProofAsync(HttpContext, user));
-
-        return RedirectToPage();
     }
 
     /// <summary>
@@ -343,7 +272,6 @@ public class ApiTokensModel : PageModel
     private async Task LoadAsync(HSUser user, CancellationToken cancellationToken)
     {
         Tokens = await _tokens.ListAsync(user.Id, cancellationToken);
-        UsesPassword = await _stepUp.UsesPasswordAsync(user);
-        Providers = UsesPassword ? [] : await _externalSignIn.ProvidersAsync();
+        Proved = _proof.IsProved(HttpContext, user.Id);
     }
 }

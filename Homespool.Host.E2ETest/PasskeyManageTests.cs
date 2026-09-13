@@ -36,7 +36,6 @@ public sealed class PasskeyManageTests : IAsyncLifetime
     private const string Origin = "http://localhost";
     private const string ManagePath = "/Account/Manage/Passkeys";
     private const string AdminPath = "/Admin/Users";
-    private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
 
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("passkey-manage");
     private HomespoolFactory _factory = null!;
@@ -60,16 +59,27 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         _scratch.Dispose();
     }
 
+    /// <summary>
+    /// The add form is offered to a proved session, and the way to prove to one that has not: a
+    /// passkey is a durable sign-in, and the script that starts the ceremony cannot follow a redirect.
+    /// </summary>
     [Fact]
-    public async Task TheManagePageOffersToAddAPasskey()
+    public async Task TheManagePageOffersToAddAPasskeyOnceProved()
     {
         (_, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
 
         using (client)
         {
+            HttpResponseMessage before = await client.GetAsync(ManagePath, TestContext.Current.CancellationToken);
+            string unproved = await before.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
             HttpResponseMessage page = await client.GetAsync(ManagePath, TestContext.Current.CancellationToken);
             string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
+            before.StatusCode.Should().Be(HttpStatusCode.OK, "the page itself is readable; only the add is gated");
+            unproved.Should().NotContain("id=\"passkey-register-form\"").And.Contain("/Account/Reauthenticate");
             page.StatusCode.Should().Be(HttpStatusCode.OK);
             html.Should().Contain("id=\"passkey-register-form\"");
             html.Should().Contain("You have no passkeys yet.");
@@ -106,16 +116,18 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         {
             client.DefaultRequestHeaders.Add("Origin", Origin);
 
+            // Proved first: the add form, and the antiforgery token in it, are offered only then.
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
             HttpResponseMessage page = await client.GetAsync(ManagePath, TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
             using FormUrlEncodedContent beginBody = new(new Dictionary<string, string>
             {
                 ["__RequestVerificationToken"] = token,
-                ["Input.Password"] = Password,
             });
             HttpResponseMessage begin = await client.PostAsync($"{ManagePath}?handler={PasskeysModel.BeginRegistrationHandler}", beginBody, TestContext.Current.CancellationToken);
-            begin.StatusCode.Should().Be(HttpStatusCode.OK, "the current password unlocks the ceremony");
+            begin.StatusCode.Should().Be(HttpStatusCode.OK, "a recent proof unlocks the ceremony");
             string creationOptions = await begin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             using JsonDocument options = JsonDocument.Parse(creationOptions);

@@ -22,47 +22,32 @@ else
 {
     <div class="row">
         <div class="col-md-6">
-            @if (!Model.HasPassword)
+            @if (!Model.Proved)
             {
-                @* No password to prove, so the provider does the proving: a round trip that ends back
-                   here with a five-minute confirmation the add below spends. Its own form, since a form
-                   cannot nest in the add form. *@
-                <p class="form-text">@Localiser["Passkeys_ProviderWhy", Model.Providers.Count > 0 ? (Model.Providers[0].DisplayName ?? Model.Providers[0].Name) : Localiser["StepUp_YourProvider"].Value]</p>
-                @foreach (var scheme in Model.Providers)
-                {
-                    <form method="post" asp-page-handler="Reauthenticate" class="mb-3">
-                        <input type="hidden" name="provider" value="@scheme.Name" />
-                        <button type="submit" class="btn btn-outline-primary">@Localiser["StepUp_ProviderConfirm", scheme.DisplayName ?? scheme.Name]</button>
-                    </form>
-                }
+                @* A passkey is a durable sign-in, so adding one takes a recent proof - and the form is
+                   withheld rather than offered, because the script asks for the ceremony with fetch
+                   and cannot follow the filter's redirect to the proof page. *@
+                <partial name="_ConfirmFirst" model="@Url.Page("./Passkeys")" />
             }
-
-            @* The button stays hidden until passkeys.js finds a browser that can run the ceremony;
-               there is no no-script path for WebAuthn. The form posts the attestation the script
-               fills in, so the antiforgery token guards both the challenge and the answer. *@
-            <form id="passkey-register-form" method="post" asp-page-handler="Register"
-                  data-passkey-options="@Url.Page("./Passkeys", PasskeysModel.BeginRegistrationHandler)"
-                  data-passkey-cancelled="@Localiser["Passkeys_Cancelled"]">
-                <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
-                <div class="form-floating mb-3">
-                    <input asp-for="Input.Name" class="form-control" autocomplete="off" maxlength="@PasskeysModel.NameMaxLength" placeholder="@Localiser["Passkeys_NamePlaceholder"]" />
-                    <label asp-for="Input.Name" class="form-label"></label>
-                    <span asp-validation-for="Input.Name" class="text-danger"></span>
-                </div>
-                @if (Model.HasPassword)
-                {
-                    @* The password unlocks the ceremony: a session alone must not be able to add a
-                       sign-in that outlives it. An account from an external provider has none to give. *@
-                    <div class="form-floating mb-1">
-                        <input asp-for="Input.Password" class="form-control" autocomplete="current-password" placeholder="@Localiser["Common_PasswordPlaceholder"]" />
-                        <label asp-for="Input.Password" class="form-label"></label>
+            else
+            {
+                @* The button stays hidden until passkeys.js finds a browser that can run the ceremony;
+                   there is no no-script path for WebAuthn. The form posts the attestation the script
+                   fills in, so the antiforgery token guards both the challenge and the answer. *@
+                <form id="passkey-register-form" method="post" asp-page-handler="Register"
+                      data-passkey-options="@Url.Page("./Passkeys", PasskeysModel.BeginRegistrationHandler)"
+                      data-passkey-cancelled="@Localiser["Passkeys_Cancelled"]">
+                    <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+                    <div class="form-floating mb-3">
+                        <input asp-for="Input.Name" class="form-control" autocomplete="off" maxlength="@PasskeysModel.NameMaxLength" placeholder="@Localiser["Passkeys_NamePlaceholder"]" />
+                        <label asp-for="Input.Name" class="form-label"></label>
+                        <span asp-validation-for="Input.Name" class="text-danger"></span>
                     </div>
-                    <p class="form-text mb-3">@Localiser["Passkeys_PasswordWhy"]</p>
-                }
-                <input type="hidden" name="@PasskeyCredential.FormField" value="" />
-                <button id="passkey-add" type="submit" class="w-100 btn btn-lg btn-primary" hidden>@Localiser["Passkeys_Add"]</button>
-                <p id="passkey-error" class="text-danger mt-2" role="alert" hidden></p>
-            </form>
+                    <input type="hidden" name="@PasskeyCredential.FormField" value="" />
+                    <button id="passkey-add" type="submit" class="w-100 btn btn-lg btn-primary" hidden>@Localiser["Passkeys_Add"]</button>
+                    <p id="passkey-error" class="text-danger mt-2" role="alert" hidden></p>
+                </form>
+            }
         </div>
     </div>
 }
@@ -115,7 +100,7 @@ else
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
-    @if (Model.PasskeysAvailable)
+    @if (Model.PasskeysAvailable && Model.Proved)
     {
         <script src="~/js/passkeys.js" asp-append-version="true"></script>
     }

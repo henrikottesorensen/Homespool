@@ -3,15 +3,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Duende.IdentityModel;
-
-using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -23,7 +19,6 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
 using Homespool.Data;
-using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Model.Entities;
@@ -208,200 +203,6 @@ public sealed class PasskeysPageTests : IDisposable
         (await rig.Users.GetPasskeysAsync(user)).Should().BeEmpty("a ceremony is spent for the operation it was started for");
     }
 
-    // ---------- the password gate ----------
-    [Fact]
-    public async Task AWrongPasswordRefusesToStartACeremony()
-    {
-        // Arrange
-        await using Rig rig = await Rig.CreateAsync(this);
-        HSUser user = await rig.AddUserAsync("owner@example.com");
-        (PasskeysModel model, DefaultHttpContext request) = rig.NewModel(user, password: "not it"); // betterleaks:allow
-
-        // Act
-        IActionResult result = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
-
-        // Assert
-        JsonResult refusal = result.Should().BeOfType<JsonResult>().Subject;
-        refusal.StatusCode.Should().Be(401);
-        request.Response.Headers.SetCookie.ToString().Should().BeEmpty("no ceremony starts on a wrong password");
-    }
-
-    /// <summary>
-    /// The step-up goes through the password scheme, so wrong guesses back off the account's step-ups
-    /// - never its sign-in - and even the right password is refused while the backoff lasts.
-    /// </summary>
-    [Fact]
-    public async Task RepeatedWrongPasswordsBackOffTheStepUpNotTheAccount()
-    {
-        // Arrange
-        await using Rig rig = await Rig.CreateAsync(this);
-        HSUser user = await rig.AddUserAsync("owner@example.com");
-        int threshold = new AttemptLimitOptions().MaxFailedAttempts;
-
-        // The allowance, and one past it: the backoff starts on the failure that exceeds it.
-        for (int i = 0; i <= threshold; i += 1)
-        {
-            (PasskeysModel wrong, _) = rig.NewModel(user, password: "not it"); // betterleaks:allow
-            await wrong.OnPostBeginRegistrationAsync(CancellationToken.None);
-        }
-
-        (PasskeysModel model, _) = rig.NewModel(user);
-
-        // Act
-        IActionResult result = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
-
-        // Assert
-        result.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(429);
-        (await rig.Users.IsLockedOutAsync(user)).Should().BeFalse("a session holder guessing here must not lock the owner out of signing in");
-    }
-
-    /// <summary>
-    /// An account made through a provider has no password to prove and is not asked for one; it is
-    /// asked to re-authenticate at the provider instead, and a registration without that proof is
-    /// refused.
-    /// </summary>
-    [Fact]
-    public async Task AnAccountWithoutAPasswordNeedsTheProvidersConfirmation()
-    {
-        // Arrange
-        await using Rig rig = await Rig.CreateAsync(this);
-        HSUser user = await rig.AddProviderUserAsync("provider@example.com", "subject-1");
-        (PasskeysModel model, _) = rig.NewModel(user, password: null);
-
-        // Act
-        IActionResult page = await model.OnGetAsync();
-        IActionResult begin = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
-
-        // Assert
-        page.Should().BeOfType<PageResult>();
-        model.HasPassword.Should().BeFalse();
-        begin.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(401, "nothing has confirmed the person at the provider");
-    }
-
-    /// <summary>The provider's confirmation is a five-minute proof the registration spends, once.</summary>
-    [Fact]
-    public async Task AProvidersConfirmationUnlocksOneRegistration()
-    {
-        // Arrange
-        await using Rig rig = await Rig.CreateAsync(this);
-        HSUser user = await rig.AddProviderUserAsync("provider@example.com", "subject-1");
-
-        (_, DefaultHttpContext proofRequest) = rig.NewModel(user, password: null);
-        rig.Ceremonies.Begin(proofRequest, PasskeyCeremonies.ProviderProof, "subject-1");
-        string proof = Rig.CookieOf(proofRequest);
-
-        (PasskeysModel first, _) = rig.NewModel(user, cookie: proof, password: null);
-        (PasskeysModel second, _) = rig.NewModel(user, cookie: proof, password: null);
-
-        // Act
-        IActionResult begin = await first.OnPostBeginRegistrationAsync(CancellationToken.None);
-        IActionResult again = await second.OnPostBeginRegistrationAsync(CancellationToken.None);
-
-        // Assert
-        begin.Should().BeOfType<ContentResult>();
-        again.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(401, "the proof was spent by the first registration");
-    }
-
-    /// <summary>
-    /// A proof is the provider vouching for one subject, and it counts only for the account that
-    /// signs in as that subject. One account's proof presented with another account's session - a
-    /// cookie swapped in the same browser - unlocks nothing.
-    /// </summary>
-    [Fact]
-    public async Task AProofForAnotherAccountUnlocksNothing()
-    {
-        // Arrange
-        await using Rig rig = await Rig.CreateAsync(this);
-        HSUser insider = await rig.AddProviderUserAsync("insider@example.com", "subject-insider");
-        HSUser victim = await rig.AddProviderUserAsync("victim@example.com", "subject-victim");
-
-        (_, DefaultHttpContext proofRequest) = rig.NewModel(insider, password: null);
-        rig.Ceremonies.Begin(proofRequest, PasskeyCeremonies.ProviderProof, "subject-insider");
-
-        (PasskeysModel model, _) = rig.NewModel(victim, cookie: Rig.CookieOf(proofRequest), password: null);
-
-        // Act
-        IActionResult begin = await model.OnPostBeginRegistrationAsync(CancellationToken.None);
-
-        // Assert
-        begin.Should().BeOfType<JsonResult>().Which.StatusCode.Should().Be(401, "the provider vouched for the insider, not for this account");
-    }
-
-    /// <summary>
-    /// The re-authentication challenge asks the provider for a fresh sign-in, in both of the words
-    /// providers understand, and goes only to a provider the account holds a login for.
-    /// </summary>
-    [Fact]
-    public async Task ReauthenticatingChallengesTheProviderForAFreshSignIn()
-    {
-        // Arrange
-        await using Rig rig = await Rig.CreateAsync(this);
-        HSUser user = await rig.AddProviderUserAsync("provider@example.com", "subject-1");
-        (PasskeysModel model, _) = rig.NewModel(user, password: null);
-
-        // Act
-        IActionResult result = await model.OnPostReauthenticateAsync(Schemes.ExternalOidc);
-        IActionResult other = await model.OnPostReauthenticateAsync("some-other-provider");
-
-        // Assert
-        ChallengeResult challenge = result.Should().BeOfType<ChallengeResult>().Subject;
-        challenge.AuthenticationSchemes.Should().Equal(Schemes.ExternalOidc);
-        OpenIdConnectChallengeProperties properties = challenge.Properties.Should().BeOfType<OpenIdConnectChallengeProperties>().Subject;
-        properties.MaxAge.Should().Be(TimeSpan.Zero);
-        properties.Prompt.Should().Be("login");
-        properties.Items.Should().ContainKey(ExternalSignIn.ExpectedAccountItem).WhoseValue.Should().Be(user.Id.ToString(CultureInfo.InvariantCulture));
-        other.Should().BeOfType<NotFoundResult>("the account holds no login with that provider");
-    }
-
-    /// <summary>
-    /// A password account is not sent to a provider even if it also holds a login there: its password
-    /// is the proof.
-    /// </summary>
-    [Fact]
-    public async Task APasswordAccountIsNotSentToAProvider()
-    {
-        // Arrange
-        await using Rig rig = await Rig.CreateAsync(this);
-        HSUser user = await rig.AddUserAsync("owner@example.com");
-        (await rig.Users.AddLoginAsync(user, new UserLoginInfo(Schemes.ExternalOidc, "subject-9", "Dex"))).Succeeded.Should().BeTrue();
-        (PasskeysModel model, _) = rig.NewModel(user);
-
-        // Act
-        IActionResult result = await model.OnPostReauthenticateAsync(Schemes.ExternalOidc);
-
-        // Assert
-        result.Should().BeOfType<NotFoundResult>();
-    }
-
-    // ---------- what the provider's answer must say ----------
-    [Fact]
-    public void AProvidersAnswerCountsOnlyForTheSubjectTheAccountSignsInWith()
-    {
-        DateTimeOffset now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
-        UserLoginInfo[] logins = [new(Schemes.ExternalOidc, "subject-1", "Dex")];
-
-        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: null), logins, now)
-                     .Should().BeNull("the subject matches and the provider reported no sign-in time, so it is taken at its word");
-        StepUpGate.ProviderProofRefusal(Answer("subject-2", authTime: null), logins, now)
-                     .Should().Be("mismatch", "another account at the same provider is not this account re-authenticating");
-        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddSeconds(-30)), logins, now)
-                     .Should().BeNull("a sign-in half a minute ago is what max_age=0 asked for");
-        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddMinutes(-10)), logins, now)
-                     .Should().Be("stale", "the provider reused a session it already had instead of asking again");
-    }
-
-    private static ExternalLoginInfo Answer(string subject, DateTimeOffset? authTime)
-    {
-        List<Claim> claims = [new(JwtClaimTypes.Subject, subject)];
-
-        if (authTime is { } time)
-        {
-            claims.Add(new Claim(JwtClaimTypes.AuthenticationTime, time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
-        }
-
-        return new ExternalLoginInfo(new ClaimsPrincipal(new ClaimsIdentity(claims, "test")), Schemes.ExternalOidc, subject, "Dex");
-    }
-
     // ---------- renaming and removing ----------
     [Fact]
     public async Task RenamingChangesTheName()
@@ -564,10 +365,10 @@ public sealed class PasskeysPageTests : IDisposable
         }
 
         /// <summary>
-        /// The page model over a request from <paramref name="user"/>, signed in, on <paramref name="host"/>,
-        /// with <paramref name="password"/> typed into the add form - the right one unless a test says otherwise.
+        /// The page model over a request from <paramref name="user"/>, signed in, on <paramref name="host"/>.
+        /// The recent proof the add handler wants is the filter's to demand and is not part of the model.
         /// </summary>
-        public (PasskeysModel model, DefaultHttpContext request) NewModel(HSUser user, string? cookie = null, string host = RelyingPartyId, string? password = Password)
+        public (PasskeysModel model, DefaultHttpContext request) NewModel(HSUser user, string? cookie = null, string host = RelyingPartyId)
         {
             // A scope per request, as a real request has: the handler provider and the handlers it
             // caches are scoped, and a handler answers a second request with its first, memoised
@@ -590,36 +391,19 @@ public sealed class PasskeysPageTests : IDisposable
             IdentityTestHarness.SignInAsPrincipal(request, user);
 
             PasskeysModel model = new(Users,
-                                      scope.ServiceProvider.GetRequiredService<LocalSignInRules>(),
-                                      scope.ServiceProvider.GetRequiredService<ExternalSignIn>(),
+                                      scope.ServiceProvider.GetRequiredService<RecentProof>(),
                                       Engine,
                                       Ceremonies,
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),
-                                      TimeProvider.System,
                                       TestLocaliser.Shared(),
                                       NullLogger<PasskeysModel>.Instance)
             {
                 PageContext = IdentityTestHarness.NewPageContext(request),
                 Url = IdentityTestHarness.NewUrlHelper(request),
-                Input = new PasskeysModel.InputModel { Password = password },
+                Input = new PasskeysModel.InputModel(),
             };
 
             return (model, request);
-        }
-
-        /// <summary>An account made through a provider: no password, one login.</summary>
-        public async Task<HSUser> AddProviderUserAsync(string email, string subject)
-        {
-            HSUser user = new(IdentityTestHarness.UsernameFor(email))
-            {
-                Email = email,
-                EmailConfirmed = true,
-            };
-
-            (await Users.CreateAsync(user)).Succeeded.Should().BeTrue();
-            (await Users.AddLoginAsync(user, new UserLoginInfo(Schemes.ExternalOidc, subject, "Dex"))).Succeeded.Should().BeTrue();
-
-            return user;
         }
 
         public async Task<HSUser> AddUserAsync(string email)

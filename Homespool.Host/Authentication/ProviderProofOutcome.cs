@@ -2,8 +2,8 @@ namespace Homespool.Host.Authentication;
 
 /// <summary>What came back from sending a password-less account to its provider.</summary>
 /// <param name="Refusal">
-/// Why the round trip earned no proof - <c>"failed"</c>, <c>"mismatch"</c> or <c>"stale"</c> - or
-/// <see langword="null"/> when a proof is now waiting to be spent.
+/// Why the round trip did not count - <c>"failed"</c>, <c>"mismatch"</c> or <c>"stale"</c> - or
+/// <see langword="null"/> when the account re-authenticated.
 /// </param>
 /// <param name="Provider">
 /// What to call the provider in the sentence the page shows, or <see langword="null"/> when the round

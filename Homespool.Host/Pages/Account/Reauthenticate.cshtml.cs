@@ -118,7 +118,7 @@ public class ReauthenticateModel : PageModel
     public class InputModel
     {
         [DataType(DataType.Password)]
-        [Display(Name = "Passkeys_PasswordLabel")]
+        [Display(Name = "Reauthenticate_YourPassword")]
         public string? Password { get; set; }
     }
 

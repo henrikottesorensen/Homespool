@@ -21,6 +21,7 @@ using Microsoft.Extensions.Localization;
 namespace Homespool.Host.Pages.Account.Manage;
 
 [Authorize]
+[NoRecentProof("Edits the profile, which a session may do; nothing here outlives it.")]
 public class IndexModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;

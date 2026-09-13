@@ -29,8 +29,6 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class EmailChangeFlowTests : IAsyncLifetime
 {
-    private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
-
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("emailchange");
     private readonly CapturingSink _logs = new();
     private HomespoolFactory _factory = null!;
@@ -81,11 +79,12 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             string page = await pageResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(page);
 
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
             // Act
             using FormUrlEncodedContent body = new(new Dictionary<string, string>
             {
                 ["Input.NewEmail"] = "changed@example.com",
-                ["Input.Password"] = Password,
                 ["__RequestVerificationToken"] = token,
             });
 
@@ -98,9 +97,9 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
 
             string after = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
 
-            after.Should().NotContain(Localised("StepUp_PasswordWrong"),
-                                      "a refused step-up redirects to this same page, so a test that only checks the "
-                                      + "redirect would pass without the change ever being requested");
+            after.Should().Contain(Localised("Manage_EmailChangeSent"),
+                                   "a refused change also answers with a redirect, so a test that only checks the "
+                                   + "redirect would pass without the change ever being requested");
 
             _logs.Failures.Should().BeEmpty("building the confirmation link must not throw");
         }
@@ -120,10 +119,11 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             string page = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(page);
 
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
             using FormUrlEncodedContent body = new(new Dictionary<string, string>
             {
                 ["Input.NewEmail"] = "after@example.com",
-                ["Input.Password"] = Password,
                 ["__RequestVerificationToken"] = token,
             });
 
@@ -183,10 +183,11 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
 
     /// <summary>
     /// The address is where a forgotten password is sent, so a session alone must not be able to move
-    /// it: the wrong password gets no confirmation link, and the account keeps the address it had.
+    /// it: without a recent proof the post is sent to prove first, no confirmation link goes out, and
+    /// the account keeps the address it had.
     /// </summary>
     [Fact]
-    public async Task ChangingTheAddressIsRefusedWithoutThePassword()
+    public async Task ChangingTheAddressIsRefusedWithoutAProof()
     {
         // Arrange
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "stay@example.com");
@@ -199,7 +200,6 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             using FormUrlEncodedContent body = new(new Dictionary<string, string>
             {
                 ["Input.NewEmail"] = "attacker@example.com",
-                ["Input.Password"] = "not the password",
                 ["__RequestVerificationToken"] = token,
             });
 
@@ -209,10 +209,7 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
 
             // Assert
             response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-
-            string after = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
-
-            after.Should().Contain(Localised("StepUp_PasswordWrong"), "the refusal is what the reader is told");
+            response.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate", "the act waits for a proof");
 
             using IServiceScope scope = _factory.Services.CreateScope();
             UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();

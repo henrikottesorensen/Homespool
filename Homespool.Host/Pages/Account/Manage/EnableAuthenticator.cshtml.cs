@@ -30,6 +30,7 @@ using Microsoft.Extensions.Logging;
 namespace Homespool.Host.Pages.Account.Manage;
 
 [Authorize]
+[NoRecentProof("Enrolment verifies its own code; gating the seed on a recent proof is the next change.")]
 public class EnableAuthenticatorModel : PageModel
 {
     private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";

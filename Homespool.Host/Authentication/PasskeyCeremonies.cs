@@ -44,12 +44,6 @@ public sealed class PasskeyCeremonies
     public const string Attestation = "attestation";
 
     /// <summary>
-    /// Not a WebAuthn ceremony but the same shape: the mark an account without a password earns by
-    /// re-authenticating at its provider, which a registration then spends in place of a password.
-    /// </summary>
-    public const string ProviderProof = "provider-proof";
-
-    /// <summary>
     /// What <see cref="Take"/> found: the engine's state to answer with, or why there is none, and
     /// what <see cref="Spend"/> needs to record the answer.
     /// </summary>

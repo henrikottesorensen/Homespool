@@ -11,11 +11,10 @@ namespace Homespool.Host.Localisation;
 /// What a refused step-up is told to the person who was refused.
 /// </summary>
 /// <remarks>
-/// <b>One place, because four pages refuse for the same three reasons.</b> A wrong password says so
-/// plainly; a lockout carries the wait, which is the only part of it a reader can act on; a missing
-/// provider proof is an instruction rather than a failure, since the round trip is still there to be
-/// taken. The sentences say nothing about which act was refused - the page the reader is looking at
-/// has already said that.
+/// <b>One place for the proof page's refusals.</b> A wrong password says so plainly; a lockout carries
+/// the wait, which is the only part of it a reader can act on; a provider's answer that did not count
+/// says why. The sentences say nothing about which act was refused - the page the reader was sent
+/// from has already said that.
 /// </remarks>
 public class StepUpText
 {
@@ -42,22 +41,22 @@ public class StepUpText
             StepUpRefusal.LockedOut =>
                 _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, result.RetryAfter ?? TimeSpan.Zero)],
             StepUpRefusal.WrongPassword => _localiser["StepUp_PasswordWrong"],
-            StepUpRefusal.NoProviderProof => _localiser["StepUp_ProviderNotConfirmed"],
             _ => throw new ArgumentException("A proved step-up has nothing to say.", nameof(result)),
         };
     }
 
     /// <summary>
-    /// What to tell the reader who has just come back from their provider - that they are confirmed
-    /// and for how long, or why the round trip did not count.
+    /// What to tell the reader who has just come back from their provider and was not confirmed: why
+    /// the round trip did not count.
     /// </summary>
+    /// <exception cref="ArgumentException"><paramref name="outcome"/> confirmed the account.</exception>
     public string Describe(ProviderProofOutcome outcome)
     {
         string provider = outcome.Provider ?? _localiser["StepUp_YourProvider"].Value;
 
         return outcome.Refusal switch
         {
-            null => _localiser["StepUp_ProviderConfirmed", provider].Value,
+            null => throw new ArgumentException("A confirmed provider answer has nothing to say.", nameof(outcome)),
             "mismatch" => _localiser["StepUp_ProviderMismatch", provider].Value,
             "stale" => _localiser["StepUp_ProviderStale", provider].Value,
             _ => _localiser["StepUp_ProviderFailed"].Value,

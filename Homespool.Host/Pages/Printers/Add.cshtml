@@ -18,7 +18,7 @@
 @if (!Model.PrinterAddressConfigured)
 {
     <div class="alert alert-warning" role="alert">
-        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_NoPublicAddress"].Value, "<code>PrusaConnect:PrinterHost</code>"))
+        @HtmlLocaliser["Printers_NoPublicAddress", Markup.Code("PrusaConnect:PrinterHost")]
     </div>
 }
 

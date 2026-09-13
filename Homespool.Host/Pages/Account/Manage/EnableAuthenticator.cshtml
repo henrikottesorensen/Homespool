@@ -11,12 +11,12 @@
     <ol class="list">
         <li>
             <p>
-                @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_DownloadApp"].Value, "<a href=\"https://go.microsoft.com/fwlink/?Linkid=825072\">Android</a>", "<a href=\"https://go.microsoft.com/fwlink/?Linkid=825073\">iOS</a>", "<a href=\"https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&amp;hl=en\">Android</a>", "<a href=\"https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8\">iOS</a>"))
+                @HtmlLocaliser["TwoFactor_DownloadApp", Markup.Link("https://go.microsoft.com/fwlink/?Linkid=825072", "Android"), Markup.Link("https://go.microsoft.com/fwlink/?Linkid=825073", "iOS"), Markup.Link("https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&hl=en", "Android"), Markup.Link("https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8", "iOS")]
             </p>
         </li>
         <li>
-            <p>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_ScanKeyInto"].Value, $"<kbd>{Html.Encode(Model.SharedKey)}</kbd>"))</p>
-            <div class="alert alert-info">@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_LearnQr"].Value, $"<a href=\"https://go.microsoft.com/fwlink/?Linkid=852423\">{Localiser["TwoFactor_EnableQrLink"].Value}</a>"))</div>
+            <p>@HtmlLocaliser["TwoFactor_ScanKeyInto", Markup.Kbd(Model.SharedKey)]</p>
+            <div class="alert alert-info">@HtmlLocaliser["TwoFactor_LearnQr", Markup.Link("https://go.microsoft.com/fwlink/?Linkid=852423", Localiser["TwoFactor_EnableQrLink"].Value)]</div>
             <div id="qrCode"></div>
             <div id="qrCodeData" data-url="@Model.AuthenticatorUri"></div>
         </li>

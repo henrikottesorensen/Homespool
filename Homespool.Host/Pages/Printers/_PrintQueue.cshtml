@@ -9,10 +9,7 @@
 @if (Model.Queue.Count == 0)
 {
     <p>
-        @Html.Raw(string.Format(
-            System.Globalization.CultureInfo.CurrentCulture,
-            Localiser["Printers_NothingQueued"].Value,
-            $"<a href=\"{Url.Page("/Files/Index")}\">{Localiser["Files_Title"].Value}</a>"))
+        @HtmlLocaliser["Printers_NothingQueued", Markup.Link(Url.Page("/Files/Index"), Localiser["Files_Title"].Value)]
     </p>
 }
 else

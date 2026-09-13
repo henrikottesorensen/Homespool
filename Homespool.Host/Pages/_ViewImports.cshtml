@@ -10,6 +10,12 @@
    shorter name can still inject their own. *@
 @inject IStringLocalizer<SharedResource> Localiser
 
+@* For a sentence with an element inside it. The resource is written as HTML and every argument is
+   encoded unless it is already IHtmlContent, which is what Markup's fragments are - so a value
+   reaches the page as text however it is passed. The key must be a literal: a key with no resource
+   is written back as the sentence, as HTML. *@
+@inject Microsoft.AspNetCore.Mvc.Localization.IHtmlLocalizer<SharedResource> HtmlLocaliser
+
 @* The nonce this response's Content-Security-Policy admits. The one inline script, in _Layout,
    carries it; a view that adds another must too, or the browser refuses it - and a test refuses
    the view first. *@

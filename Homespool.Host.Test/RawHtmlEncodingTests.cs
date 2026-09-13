@@ -2,234 +2,160 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 using AwesomeAssertions;
 
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// What may be interpolated into an <c>Html.Raw</c> argument: a resource string, a generated URL, or
-/// something explicitly encoded. Nothing else.
+/// Nothing in the application writes a string as markup. A sentence that carries an element is built
+/// with <c>HtmlLocaliser</c> and <c>Markup</c>, which encode every value they are given.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why the rule needs enforcing at all.</b> Sentences carrying markup are single resource strings
-/// with a <c>{0}</c> in them, so that a translator can move the fragment, and the fragment is composed
-/// at the call site - which makes <c>Html.Raw</c> correct exactly as long as both halves are ours. A
-/// printer's stated firmware version is not ours, and reaches those sentences.
+/// <b>Why a ban rather than a rule about what may be interpolated.</b> A text scanner can only inspect
+/// the shapes it knows, and a string reaches markup in more shapes than it can list: a bare argument to
+/// <c>string.Format</c>, a localised string with arguments, a variable handed straight to
+/// <c>Html.Raw</c>. A token that is not in the tree cannot be misused, and finding one is something a
+/// text scan does reliably.
 /// </para>
 /// <para>
-/// <b>So this is a test rather than a written-down conclusion.</b> A claim about every view in the
-/// tree stops being true the moment somebody adds a view, and nobody editing one page goes looking
-/// for the paragraph that vouched for all of them.
+/// <b>Why the resource half is allowed to be markup.</b> <c>HtmlLocaliser</c> writes the resource as
+/// HTML, because that is where a translator puts the sentence; the resources are ours. What would
+/// break that is a key that is not ours - a key with no resource is written back as the sentence -
+/// so its keys must be literals, and it must be the one declared in <c>_ViewImports</c>.
 /// </para>
 /// <para>
-/// <b>Why a URL passes unencoded.</b> <c>Url.Page</c> percent-encodes the route values it is given,
-/// so its result cannot carry a <c>&lt;</c> or a quote out of one - it is generated, not passed
-/// through. An <c>&amp;</c> between two query values reaches the browser bare, which is untidy rather
-/// than dangerous, and encoding it is a separate argument from this one.
-/// </para>
-/// <para>
-/// <b>There is deliberately no exemption list.</b> A hole carrying something operator-configured or
-/// generated - a certificate name, the OIDC provider's display name, a TOTP key - is not reachable by
-/// an unprivileged caller and is still encoded rather than excused. Exempting one restores the thing
-/// this replaces: a promise about a call site, kept by whoever remembers to check it.
+/// <b>One file may take markup, and only as a type.</b> <c>Markup.Kbd</c> wraps another element, which
+/// means appending it as HTML; that is allowed in <c>Pages/Markup.cs</c> for an argument declared as
+/// <c>IHtmlContent</c>, and nowhere else. <c>MarkupTests</c> shows every element there encodes its text.
 /// </para>
 /// </remarks>
 public sealed class RawHtmlEncodingTests
 {
-    /// <summary>
-    /// The three shapes an interpolation hole may take. A resource string is ours by definition; the
-    /// other two say so at the call site.
-    /// </summary>
-    private static readonly string[] Permitted =
+    private const string MarkupFile = "Homespool.Host/Pages/Markup.cs";
+    private const string ViewImports = "Homespool.Host/Pages/_ViewImports.cshtml";
+
+    /// <summary>Each way of writing a string into a page as markup, and what it does.</summary>
+    private static readonly (Regex pattern, string reason)[] Sinks =
     [
-        "Localiser[",
-        "Html.Encode(",
-        "Url.Page(",
-        "Url.Action(",
+        (new(@"\bHtml\.Raw\s*\(", RegexOptions.Compiled), "writes its argument as markup"),
+        (new(@"(?<![A-Za-z_])HtmlString\b", RegexOptions.Compiled), "wraps a string as markup"),
+        (new(@"(?<![A-Za-z_])HtmlFormattableString\b", RegexOptions.Compiled), "writes its format string as markup"),
+        (new(@"(?<![A-Za-z_])LocalizedHtmlString\s*\(", RegexOptions.Compiled), "writes its value as markup"),
+        (new(@"\bMarkupString\b", RegexOptions.Compiled), "wraps a string as markup"),
+        (new(@"\bSetHtmlContent\s*\(", RegexOptions.Compiled), "sets a tag helper's content as markup"),
+        (new(@"\bAppendHtml(Line)?\s*\(", RegexOptions.Compiled), "appends markup"),
+        (new(@"\bHtmlLocaliser\s*\[(?!\s*"")", RegexOptions.Compiled), "writes a missing key back as markup, so the key must be a literal"),
+        (new(@"\b(IHtmlLocalizer|IViewLocalizer)\b(<[^>]*>)?\s+[A-Za-z_]\w*", RegexOptions.Compiled),
+         "is an HTML localiser under another name, whose keys nothing checks"),
+        (new(@"Service\s*<\s*(IHtmlLocalizer|IViewLocalizer)\b", RegexOptions.Compiled),
+         "is an HTML localiser under another name, whose keys nothing checks"),
     ];
 
-    /// <summary>
-    /// No view interpolates anything unencoded into markup it then hands to <c>Html.Raw</c>.
-    /// </summary>
     [Fact]
-    public void EveryInterpolationIntoRawMarkupIsOursOrEncoded()
+    public void NothingWritesAStringAsMarkup()
     {
         List<string> offences = [];
 
-        foreach (string path in Views())
+        foreach (string path in Sources())
         {
-            string text = File.ReadAllText(path);
-            string name = Path.GetFileName(path);
+            string relative = Relative(path);
+            string[] lines = File.ReadAllLines(path);
 
-            foreach ((int line, string argument) in RawArguments(text))
+            for (int index = 0; index < lines.Length; index++)
             {
-                foreach (string hole in Holes(argument))
+                foreach ((Regex pattern, string reason) in Sinks)
                 {
-                    if (Permitted.Any(shape => hole.StartsWith(shape, StringComparison.Ordinal)))
+                    foreach (Match match in pattern.Matches(lines[index]))
                     {
-                        continue;
+                        if (!IsTheSanctionedUse(relative, lines[index], match))
+                        {
+                            offences.Add($"{relative}:{index + 1} {match.Value.Trim()} - {reason}");
+                        }
                     }
-
-                    offences.Add($"{name}:{line} interpolates {hole}");
                 }
             }
         }
 
         offences.Should().BeEmpty(
-            "a value interpolated into an Html.Raw argument is markup, so anything that is not a "
-            + "resource string or a generated URL has to go through Html.Encode first");
+            "a sentence with an element in it is HtmlLocaliser[\"Key\", Markup.Code(value)], which encodes the value; "
+            + "anything that writes a string as markup is the mistake that put a printer's firmware string on a page as HTML");
     }
 
     /// <summary>
-    /// The test above can only bite while it still finds the calls, and a Razor file is scanned as
-    /// text rather than parsed - so this pins the number it sees. A drop to zero would leave it
-    /// green and blind, which is the failure mode a scanner has and an ordinary test does not.
+    /// The one exemption takes markup only as a type: every <c>AppendHtml</c> in <c>Markup.cs</c> is
+    /// handed a parameter declared <c>IHtmlContent</c>, so a string cannot reach it without failing to
+    /// compile.
     /// </summary>
     [Fact]
-    public void TheScanStillFindsTheCallsItIsMeantToCheck()
+    public void MarkupAppendsHtmlOnlyFromAnHtmlContentParameter()
     {
-        int holes = Views().Sum(path => RawArguments(File.ReadAllText(path))
-                                        .Sum(call => Holes(call.argument).Count));
+        string text = File.ReadAllText(Path.Combine(SourceRoot(), MarkupFile));
 
-        holes.Should().BeGreaterThan(20, "the views interpolate this many values into Html.Raw arguments, "
-                                         + "and a scan finding none of them would pass while proving nothing");
+        List<string> appended = Regex.Matches(text, @"\bAppendHtml\s*\(\s*(\w+)\s*\)").Select(match => match.Groups[1].Value).ToList();
+
+        appended.Should().NotBeEmpty("Markup.Kbd wraps another element, and this is what checks how");
+        Regex.Matches(text, @"\bAppendHtml(Line)?\s*\(").Count.Should().Be(appended.Count,
+                                                                            "every call appends a bare identifier and nothing else");
+
+        foreach (string parameter in appended.Distinct())
+        {
+            Regex.Matches(text, $@"(\w+)\s+{Regex.Escape(parameter)}\s*[,)=]")
+                 .Select(match => match.Groups[1].Value)
+                 .Should().OnlyContain(type => type == "IHtmlContent",
+                                       $"'{parameter}' is appended as markup, so it may only ever be declared as IHtmlContent");
+        }
     }
 
-    private static IEnumerable<string> Views()
+    /// <summary>
+    /// A ban passes trivially if the scan reads nothing, so this pins what it reads: the views, the
+    /// code, and the calls the key rule exists to check.
+    /// </summary>
+    [Fact]
+    public void TheScanStillReadsWhatItIsMeantToCheck()
     {
-        return Directory.EnumerateFiles(Path.Combine(SourceRoot(), "Homespool.Host"), "*.cshtml",
-                                        SearchOption.AllDirectories)
-                        .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-                                                      StringComparison.Ordinal)
-                                       && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
-                                                         StringComparison.Ordinal))
+        List<string> sources = Sources().ToList();
+
+        sources.Count(path => path.EndsWith(".cshtml", StringComparison.Ordinal)).Should().BeGreaterThan(50);
+        sources.Count(path => path.EndsWith(".cs", StringComparison.Ordinal)).Should().BeGreaterThan(300);
+        sources.Select(Relative).Should().Contain([MarkupFile, ViewImports]);
+
+        sources.Sum(path => Regex.Matches(File.ReadAllText(path), @"\bHtmlLocaliser\s*\[\s*""").Count)
+               .Should().BeGreaterThan(30, "the views build this many sentences with elements in them");
+    }
+
+    /// <summary>
+    /// The exemptions, each in the one file it belongs to: <c>Markup.Kbd</c>'s append, which the test
+    /// above constrains, and the <c>HtmlLocaliser</c> declaration itself.
+    /// </summary>
+    private static bool IsTheSanctionedUse(string relative, string line, Match match)
+    {
+        if (relative == MarkupFile && match.Value.StartsWith("AppendHtml", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return relative == ViewImports
+               && line.TrimStart().StartsWith("@inject ", StringComparison.Ordinal)
+               && Regex.IsMatch(match.Value, @"^IHtmlLocalizer<SharedResource>\s+HtmlLocaliser$");
+    }
+
+    private static IEnumerable<string> Sources()
+    {
+        string separator = Path.DirectorySeparatorChar.ToString();
+
+        return Directory.EnumerateFiles(Path.Combine(SourceRoot(), "Homespool.Host"), "*.*", SearchOption.AllDirectories)
+                        .Where(path => path.EndsWith(".cshtml", StringComparison.Ordinal) || path.EndsWith(".cs", StringComparison.Ordinal))
+                        .Where(path => !path.Contains($"{separator}obj{separator}", StringComparison.Ordinal)
+                                       && !path.Contains($"{separator}bin{separator}", StringComparison.Ordinal))
                         .Order(StringComparer.Ordinal);
     }
 
-    /// <summary>
-    /// The argument text of every <c>Html.Raw(...)</c> call, with its line number. Parenthesis
-    /// depth is counted outside string literals, so a call spanning several lines - which the longer
-    /// ones do - comes back whole.
-    /// </summary>
-    private static List<(int line, string argument)> RawArguments(string text)
+    private static string Relative(string path)
     {
-        const string opener = "Html.Raw(";
-
-        List<(int, string)> calls = [];
-
-        for (int at = text.IndexOf(opener, StringComparison.Ordinal); at >= 0;
-             at = text.IndexOf(opener, at + 1, StringComparison.Ordinal))
-        {
-            int start = at + opener.Length;
-            int index = start;
-            int depth = 1;
-            bool inString = false;
-            bool escaped = false;
-
-            while (index < text.Length && depth > 0)
-            {
-                char c = text[index];
-
-                if (escaped)
-                {
-                    escaped = false;
-                }
-                else if (c == '\\')
-                {
-                    escaped = true;
-                }
-                else if (c == '"')
-                {
-                    inString = !inString;
-                }
-                else if (!inString && c == '(')
-                {
-                    depth++;
-                }
-                else if (!inString && c == ')')
-                {
-                    depth--;
-                }
-
-                index++;
-            }
-
-            calls.Add((text.Take(at).Count(c => c == '\n') + 1, text[start..(index - 1)]));
-        }
-
-        return calls;
-    }
-
-    /// <summary>
-    /// Every <c>{...}</c> hole in every interpolated literal inside one argument. Braces are counted
-    /// so a hole containing an object initialiser - a route-value bag - comes back as one hole
-    /// rather than being cut in half.
-    /// </summary>
-    private static List<string> Holes(string argument)
-    {
-        List<string> holes = [];
-
-        for (int at = argument.IndexOf("$\"", StringComparison.Ordinal); at >= 0;
-             at = argument.IndexOf("$\"", at + 1, StringComparison.Ordinal))
-        {
-            int index = at + 2;
-            bool escaped = false;
-
-            while (index < argument.Length)
-            {
-                char c = argument[index];
-
-                if (escaped)
-                {
-                    escaped = false;
-                    index++;
-                    continue;
-                }
-
-                if (c == '\\')
-                {
-                    escaped = true;
-                    index++;
-                    continue;
-                }
-
-                if (c == '"')
-                {
-                    break;
-                }
-
-                if (c == '{')
-                {
-                    int depth = 1;
-                    int end = index + 1;
-
-                    while (end < argument.Length && depth > 0)
-                    {
-                        if (argument[end] == '{')
-                        {
-                            depth++;
-                        }
-                        else if (argument[end] == '}')
-                        {
-                            depth--;
-                        }
-
-                        end++;
-                    }
-
-                    holes.Add(argument[(index + 1)..(end - 1)].Trim());
-                    index = end;
-
-                    continue;
-                }
-
-                index++;
-            }
-        }
-
-        return holes;
+        return Path.GetRelativePath(SourceRoot(), path).Replace(Path.DirectorySeparatorChar, '/');
     }
 
     private static string SourceRoot()

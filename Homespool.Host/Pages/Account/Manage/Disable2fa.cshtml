@@ -12,7 +12,7 @@
         <strong>@Localiser["TwoFactor_DisableOnly"]</strong>
     </p>
     <p>
-        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["TwoFactor_DisableKeepsKeys"].Value, $"<a href=\"{Url.Page("./ResetAuthenticator")}\">{Localiser["TwoFactor_ResetKeysLink"].Value}</a>"))
+        @HtmlLocaliser["TwoFactor_DisableKeepsKeys", Markup.Link(Url.Page("./ResetAuthenticator"), Localiser["TwoFactor_ResetKeysLink"].Value)]
     </p>
 </div>
 

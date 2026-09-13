@@ -8,7 +8,7 @@
 <partial name="_StatusMessage" for="StatusMessage" />
 
 <p class="text-muted">
-    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Tokens_Explanation"].Value, "<code>Authorization: Bearer &lt;token&gt;</code>"))
+    @HtmlLocaliser["Tokens_Explanation", Markup.Code("Authorization: Bearer <token>")]
 </p>
 
 @if (Model.CreatedToken is not null)

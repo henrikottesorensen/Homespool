@@ -27,10 +27,7 @@
 }
 
 <p>
-    @Html.Raw(string.Format(
-        System.Globalization.CultureInfo.CurrentCulture,
-        Localiser["Cert_Explanation"].Value,
-        $"<strong>{Localiser["Cert_Once"].Value}</strong>"))
+    @HtmlLocaliser["Cert_Explanation", Markup.Strong(Localiser["Cert_Once"].Value)]
 </p>
 
 @if (Model.Covered.Count == 0)
@@ -93,7 +90,7 @@
                     <td>
                         @if (Model.ConfiguredHost is null)
                         {
-                            <em>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_NotConfiguredFor"].Value, "<code>PrusaConnect:PrinterHost</code>"))</em>
+                            <em>@HtmlLocaliser["Cert_NotConfiguredFor", Markup.Code("PrusaConnect:PrinterHost")]</em>
                         }
                         else
                         {
@@ -126,7 +123,7 @@
 @if (Model.ConfiguredHostResolvesOnlyToLoopback)
 {
     <div class="alert alert-warning" role="alert">
-        @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_LoopbackOnly"].Value, $"<code>{Html.Encode(Model.ConfiguredHost)}</code>", "<code>127.0.1.1</code>", "<code>/etc/hosts</code>"))
+        @HtmlLocaliser["Cert_LoopbackOnly", Markup.Code(Model.ConfiguredHost), Markup.Code("127.0.1.1"), Markup.Code("/etc/hosts")]
     </div>
 }
 
@@ -160,7 +157,7 @@ else if (Model.Uncovered.Count > 0)
                         <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
                                id="keep-@name" />
                         <label class="form-check-label" for="keep-@name">
-                            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_Keep"].Value, $"<code>{Html.Encode(name)}</code>"))
+                            @HtmlLocaliser["Cert_Keep", Markup.Code(name)]
                             <span class="badge text-bg-secondary ms-1">@Localiser["Cert_CannotConfirm"]</span>
                         </label>
                     </div>
@@ -175,7 +172,7 @@ else if (Model.Uncovered.Count > 0)
                         <input class="form-check-input" type="checkbox" name="KeepNames" value="@name"
                                id="keep-@name" />
                         <label class="form-check-label" for="keep-@name">
-                            @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_Keep"].Value, $"<code>{Html.Encode(name)}</code>"))
+                            @HtmlLocaliser["Cert_Keep", Markup.Code(name)]
                             <span class="badge text-bg-secondary ms-1">@Localiser["Cert_ResolvesToNothing"]</span>
                         </label>
                     </div>
@@ -189,6 +186,6 @@ else if (Model.Uncovered.Count > 0)
 </form>
 
 <p class="form-text mt-2">
-    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Cert_ReissueNeedsReload"].Value, $"<strong>{Localiser["Cert_ProxyReloaded"].Value}</strong>"))<code>docker compose exec
+    @HtmlLocaliser["Cert_ReissueNeedsReload", Markup.Strong(Localiser["Cert_ProxyReloaded"].Value)]<code>docker compose exec
     proxy nginx -s reload</code> - @Localiser["Cert_ReloadExplanation"]
 </p>

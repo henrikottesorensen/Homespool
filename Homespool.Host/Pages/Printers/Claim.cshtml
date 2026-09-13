@@ -7,7 +7,7 @@
 <h1>@ViewData["Title"]</h1>
 
 <p>
-    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_ClaimSteps"].Value, "<em>Settings &rarr; Network &rarr; Prusa Connect &rarr; Add Printer to Connect</em>"))
+    @HtmlLocaliser["Printers_ClaimSteps", Markup.Em("Settings → Network → Prusa Connect → Add Printer to Connect")]
 </p>
 
 @* The printer's registration dialog is hardcoded to Prusa's production instance - the QR URL and the
@@ -15,10 +15,10 @@
    every published firmware release - the QR is not a gate. So this
    warning is permanent, not a workaround for something Prusa might fix. *@
 <div class="alert alert-warning" role="alert">
-    <strong>@Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_IgnoreQr"].Value, "<em>prusa.io/add</em>"))</strong>
+    <strong>@HtmlLocaliser["Printers_IgnoreQr", Markup.Em("prusa.io/add")]</strong>
     @Localiser["Printers_ClaimQrWarning"]
     <hr />
-    @Html.Raw(string.Format(System.Globalization.CultureInfo.CurrentCulture, Localiser["Printers_ClaimWrongServer"].Value, "<code>prusa_printer_settings.ini</code>", $"<em>{Localiser["Printers_ClaimThem"].Value}</em>"))
+    @HtmlLocaliser["Printers_ClaimWrongServer", Markup.Code("prusa_printer_settings.ini"), Markup.Em(Localiser["Printers_ClaimThem"].Value)]
 </div>
 
 <div class="row">

@@ -7,7 +7,9 @@ using System.Text.Unicode;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.Mvc.Localization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.WebEncoders;
 
 namespace Homespool.Host.Localisation;
@@ -31,6 +33,13 @@ public static class Registration
         // No ResourcesPath: the .resx files sit beside SharedResource, so the manifest name is the
         // type's own full name and there is no path convention to get subtly wrong.
         services.AddLocalization();
+
+        // The localiser for a sentence with markup in it: the resource is written as HTML and every
+        // argument that is not already IHtmlContent is encoded. Registered by hand rather than through
+        // AddViewLocalization, which also adds a view location expander that looks for Index.da.cshtml
+        // beside every view - a second way to localise a page that nothing here uses.
+        services.TryAddSingleton<IHtmlLocalizerFactory, HtmlLocalizerFactory>();
+        services.TryAddTransient(typeof(IHtmlLocalizer<>), typeof(HtmlLocalizer<>));
 
         services.Configure<RequestLocalizationOptions>(ConfigureCultures);
 

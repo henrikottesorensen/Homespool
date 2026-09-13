@@ -345,7 +345,8 @@ public class DetailModel : PageModel
             UserAdminRefusal.None => describe(result),
             UserAdminRefusal.Self => _localiser["AdminUsers_RefusedSelf"].Value,
             UserAdminRefusal.LastAdministrator => _localiser["AdminUsers_RefusedLastAdmin"].Value,
-            _ => _localiser["AdminUsers_Gone"].Value,
+            UserAdminRefusal.NoSuchAccount => _localiser["AdminUsers_Gone"].Value,
+            _ => throw new InvalidOperationException($"User administration answered {result.Refusal}, which no act produces."),
         };
 
         return RedirectToPage(new { id });

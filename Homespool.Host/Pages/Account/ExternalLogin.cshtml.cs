@@ -231,6 +231,14 @@ public class ExternalLoginModel : PageModel
 
         // Sign in the user with this external login provider if the user already has a login.
         ExternalSignInResult result = await _externalSignIn.SignInAsync(HttpContext, info, isPersistent: false);
+
+        // Checked first, because the chain below ends by falling through to the invite gate: a result
+        // nobody set would otherwise be treated as a stranger asking for an account.
+        if (!result.IsSet())
+        {
+            throw new InvalidOperationException($"The provider sign-in answered {result}, which no sign-in produces.");
+        }
+
         if (result == ExternalSignInResult.Succeeded)
         {
             // Null-conditional because ClaimsPrincipal.Identity is IIdentity? - but the reachable

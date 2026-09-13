@@ -7,12 +7,18 @@ namespace Homespool.Host.Authentication;
 /// </summary>
 public enum SignInRefusal
 {
+    /// <summary>
+    /// Nobody set this. Never carried by a refusal: <see cref="SignInRefusals.Fail(SignInRefusal, string)"/>
+    /// throws on it, and <see cref="SignInRefusals.Refusal"/> reads it as <see cref="Invalid"/>.
+    /// </summary>
+    Undefined = 0,
+
     /// <summary>The credential was wrong, or absent where it was required.</summary>
-    Invalid = 0,
+    Invalid = 1,
 
     /// <summary>The account is locked out, before or as a result of this attempt.</summary>
-    LockedOut = 1,
+    LockedOut = 2,
 
     /// <summary>The credential was right and the account may still not sign in - unconfirmed, typically.</summary>
-    NotAllowed = 2,
+    NotAllowed = 3,
 }

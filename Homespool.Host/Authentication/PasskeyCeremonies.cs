@@ -194,7 +194,8 @@ public sealed class PasskeyCeremonies
             PasskeyCeremonyLedger.SpendResult.Spent => null,
             PasskeyCeremonyLedger.SpendResult.AlreadySpent => "the ceremony was answered by a concurrent request",
             PasskeyCeremonyLedger.SpendResult.BeforeThisProcess => "the ceremony was issued before this server started",
-            _ => "the ceremony ledger is full",
+            PasskeyCeremonyLedger.SpendResult.Full => "the ceremony ledger is full",
+            PasskeyCeremonyLedger.SpendResult other => throw new InvalidOperationException($"The ceremony ledger answered {other}, which no spend produces."),
         };
     }
 

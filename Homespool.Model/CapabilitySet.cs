@@ -45,7 +45,7 @@ public sealed class CapabilitySet : IReadOnlyCollection<Capability>
     /// </para>
     /// </remarks>
     public static readonly CapabilitySet Everything =
-        new([.. Enum.GetValues<Capability>().Where(capability => capability != Capability.Undefined)], []);
+        new([.. Enum.GetValues<Capability>().Where(capability => capability.IsSet())], []);
 
     private readonly ImmutableHashSet<Capability> _granted;
 
@@ -90,8 +90,7 @@ public sealed class CapabilitySet : IReadOnlyCollection<Capability>
         {
             // Case-sensitive on purpose: the writer is this class, so a difference in case means
             // something else wrote the column, which is exactly what Unrecognised exists to report.
-            if (Enum.TryParse(name, out Capability capability) && capability != Capability.Undefined
-                && Enum.IsDefined(capability))
+            if (Enum.TryParse(name, out Capability capability) && capability.IsSet())
             {
                 granted.Add(capability);
             }
@@ -154,16 +153,16 @@ public sealed class CapabilitySet : IReadOnlyCollection<Capability>
     /// before this rule existed keeps exactly what it says.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentException"><c>Undefined</c> is not a grant and cannot be stored.</exception>
+    /// <exception cref="ArgumentException"><c>Undefined</c>, or a number no capability carries, is not a grant and cannot be stored.</exception>
     public static string Format(IEnumerable<Capability> capabilities)
     {
         ArgumentNullException.ThrowIfNull(capabilities);
 
         HashSet<Capability> closed = [.. capabilities];
 
-        if (closed.Contains(Capability.Undefined))
+        if (closed.Any(capability => !capability.IsSet()))
         {
-            throw new ArgumentException("Undefined is not a capability and cannot be stored.", nameof(capabilities));
+            throw new ArgumentException("Only a capability somebody set can be stored.", nameof(capabilities));
         }
 
         // A fixpoint rather than one pass. Implications are one level deep today - the base views
@@ -194,15 +193,10 @@ public sealed class CapabilitySet : IReadOnlyCollection<Capability>
     /// uninitialised field, a deserialised zero or a forgotten argument - a programming error, not a
     /// refusal. Answering false would be safe and silent, which is how it would survive to production.
     /// </remarks>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="capability"/> is Undefined.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="capability"/> is Undefined, or a number no capability carries.</exception>
     public bool Allows(Capability capability)
     {
-        if (capability == Capability.Undefined)
-        {
-            throw new ArgumentOutOfRangeException(nameof(capability), capability, "Undefined is not a capability.");
-        }
-
-        return _granted.Contains(capability);
+        return _granted.Contains(capability.RequireSet());
     }
 
     /// <summary>

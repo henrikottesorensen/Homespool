@@ -67,17 +67,23 @@ public sealed class PasskeyCeremonyLedger
     /// <summary>What a spend came to.</summary>
     public enum SpendResult
     {
+        /// <summary>
+        /// Nobody set this. Never produced: reserved so that a value somebody forgot to assign cannot
+        /// read as an answered ceremony, which would let a replay through.
+        /// </summary>
+        Undefined = 0,
+
         /// <summary>Recorded; the ceremony is answered and cannot be again.</summary>
-        Spent = 0,
+        Spent = 1,
 
         /// <summary>Already recorded: this is a replay.</summary>
-        AlreadySpent = 1,
+        AlreadySpent = 2,
 
         /// <summary>Issued before this process started, so whether it was answered is unknowable.</summary>
-        BeforeThisProcess = 2,
+        BeforeThisProcess = 3,
 
         /// <summary>The ledger holds its maximum of live entries.</summary>
-        Full = 3,
+        Full = 4,
     }
 
     /// <summary>When this ledger began remembering; a ceremony issued earlier is refused.</summary>

@@ -3,6 +3,8 @@ using System.Globalization;
 
 using Microsoft.AspNetCore.Authentication;
 
+using Homespool.Model;
+
 namespace Homespool.Host.Authentication;
 
 /// <summary>
@@ -24,10 +26,11 @@ public static class SignInRefusals
     /// A refusal that says how long it lasts: a lockout or a backoff with <paramref name="retryAfter"/>
     /// left to run, for a page that tells the person when to try again.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="refusal"/> is <see cref="SignInRefusal.Undefined"/>.</exception>
     public static AuthenticateResult Fail(SignInRefusal refusal, string message, TimeSpan? retryAfter)
     {
         AuthenticationProperties properties = new();
-        properties.Items[Item] = refusal.ToString();
+        properties.Items[Item] = refusal.RequireSet().ToString();
 
         if (retryAfter is { } wait)
         {
@@ -56,8 +59,11 @@ public static class SignInRefusals
     {
         ArgumentNullException.ThrowIfNull(result);
 
+        // An unset or unknown reason reads as a wrong credential - the refusal that sends nobody
+        // anywhere special.
         return result.Properties?.Items.TryGetValue(Item, out string? value) == true
                && Enum.TryParse(value, out SignInRefusal refusal)
+               && refusal.IsSet()
             ? refusal
             : SignInRefusal.Invalid;
     }

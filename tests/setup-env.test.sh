@@ -942,6 +942,30 @@ if test_case "the seeded .env is not world-readable even before the chmod"; then
     assert_eq "600" "$seeded_mode" "the seed copy carries its mode from the moment it exists"
 fi
 
+if test_case "an interrupted apply leaves no temp files behind"; then
+    # The pairs file holds every pending value, the password included, and the patched copy holds
+    # the whole .env - so both have to go however the run ends, not only when it reaches the rm.
+    #
+    # The interruption lands in the one place both exist: an awk stub that recognises the patching
+    # pass by its pairs-file argument and signals the script, which is its parent. Every other awk
+    # call goes to the real one. TERM rather than INT because a background process ignores SIGINT,
+    # so an INT sent this way would test nothing; bash runs the EXIT trap for both.
+    dir="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-e2e.XXXXXX")"
+    cp "$repo_root/.env.example" "$repo_root/setup-env.sh" "$dir/"
+    mkdir -p "$dir/bin" "$dir/tmp"
+    printf '#!/bin/sh\ncase "$*" in *setup-env-pairs.*) kill -TERM "$PPID"; exit 1 ;; esac\nexec %s "$@"\n' \
+        "$(PATH="$system_path" command -v awk)" > "$dir/bin/awk"
+    chmod +x "$dir/bin/awk"
+
+    # The braces carry the redirect to this shell's own "Terminated" report, not only the script's.
+    { TMPDIR="$dir/tmp" PATH="$dir/bin:$real_path" \
+        "$BASH" "$dir/setup-env.sh" --set GO2RTC_PASSWORD=hunter2; } >/dev/null 2>&1
+    status=$?
+
+    assert_eq "143" "$status" "the run was interrupted in the patching pass"
+    assert_eq "" "$(ls -A "$dir/tmp")" "and nothing it made in TMPDIR is left"
+fi
+
 # ------------------------------------------------------------------------------------------------
 # --no-prompt and --no-overwrite
 #

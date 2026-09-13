@@ -553,7 +553,27 @@ unreachable_ranges() {
 # Per-run, per-process, and cleaned up on the way out: see unreachable_ranges for why it cannot be
 # a variable.
 docker_warning_marker="${TMPDIR:-/tmp}/setup-env-docker-warned.$$"
-trap 'rm -f "$docker_warning_marker"' EXIT
+
+# Temporary files to remove however the run ends, one path per line. EXIT rather than a trap per
+# signal, because bash runs the EXIT trap when TERM, HUP or a Ctrl+C ends the script too - checked
+# on 3.2 and 5.x, INT delivered to the process group the way a terminal sends it. It matters because
+# apply's pairs file holds every pending value, the passwords included.
+temp_files=""
+
+remove_on_exit() {
+    temp_files="$temp_files$1
+"
+}
+
+remove_temp_files() {
+    local path
+    while IFS= read -r path; do
+        [ -z "$path" ] || rm -f "$path"
+    done <<< "$docker_warning_marker
+$temp_files"
+}
+
+trap remove_temp_files EXIT
 
 # Whether this is running inside a container rather than on the host. /.dockerenv is written by
 # Docker itself; the cgroup path covers runtimes that do not, and Podman.
@@ -2063,9 +2083,14 @@ apply() {
     # The pending pairs, escaped, in a file of their own so awk can read them as its first input.
     # One pass over .env rather than one pass per key: the old shape rewrote the whole file once for
     # every answer, which is six rewrites of a 190-line file to change six lines.
+    #
+    # Registered as each is made, so an interrupted run takes them with it; the rm below still runs,
+    # because a sourced caller like the test suite calls this many times in one long-lived shell.
     local pairs tmp key value
     pairs="$(mktemp "${TMPDIR:-/tmp}/setup-env-pairs.XXXXXX")"
+    remove_on_exit "$pairs"
     tmp="$(mktemp "${TMPDIR:-/tmp}/setup-env.XXXXXX")"
+    remove_on_exit "$tmp"
     while IFS= read -r line; do
         [ -n "$line" ] || continue
         key="${line%%=*}"

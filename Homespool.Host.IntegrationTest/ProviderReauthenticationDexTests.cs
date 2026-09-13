@@ -22,51 +22,59 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.IntegrationTest;
 
 /// <summary>
-/// An account without a password adds a passkey by re-authenticating at its provider first: the
-/// whole round trip against a real dex, then the registration the provider's confirmation unlocks.
+/// An account without a password proves itself at its provider, against a real dex: the proof unlocks
+/// what it gates, and a provider's answer is only ever read by the flow that asked for it.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>What dex's mock connector does and does not do</b>, measured before this was written: it
 /// accepts <c>max_age=0</c> and <c>prompt=login</c> without complaint, signs nobody in because it has
-/// no login screen, and reports no <c>auth_time</c>. So this test proves the round trip, the
-/// subject check and the proof's single use; the "asked again" half is the provider's promise, and
+/// no login screen, reports no <c>auth_time</c>, and always vouches for the same subject. So these
+/// prove the round trip and the subject check; the "asked again" half is the provider's promise, and
 /// the page takes a provider that reports no sign-in time at its word.
+/// </para>
+/// <para>
+/// <b>The fixed subject is what makes the second test possible.</b> An account linked to some other
+/// subject, sent round to dex, comes back with an answer naming a stranger - which is exactly "signs in
+/// at the provider as somebody else", the step the walk-around needs.
+/// </para>
 /// </remarks>
-public sealed class PasskeyProviderProofDexTests
+public sealed class ProviderReauthenticationDexTests
 {
     /// <summary>The fixed subject dex's mock connector vouches for, read off a real id token.</summary>
     private const string MockSubject = "Cg0wLTM4NS0yODA4OS0wEgRtb2Nr";
 
+    private const string PasskeysPath = "/Account/Manage/Passkeys";
+
     private static readonly Uri AppBaseAddress = new("https://localhost/");
 
     [RequiresDexFact]
-    public async Task AProviderAccountConfirmsAtTheProviderAndThenAddsAPasskey()
+    public async Task AProviderAccountProvesAtTheProviderAndThenAddsAPasskey()
     {
         using Fixture fixture = new();
         HSUser user = await fixture.CreateProviderUserAsync(MockSubject);
         using HttpClient client = await fixture.SignInAsAsync(user);
         using FakeAuthenticator authenticator = new() { Origin = "https://localhost" };
 
-        // The page offers the provider's confirmation and not a password.
-        string page = await client.GetStringAsync("/Account/Manage/Passkeys", TestContext.Current.CancellationToken);
-        page.Should().Contain("handler=Reauthenticate").And.NotContain("Input.Password");
+        // Unproved, the page offers the way to prove rather than the add form.
+        string before = await client.GetStringAsync(PasskeysPath, TestContext.Current.CancellationToken);
+        before.Should().Contain("/Account/Reauthenticate").And.NotContain("passkey-register-form");
 
-        // Without the confirmation, no ceremony.
+        // The round trip, started from the proof page's provider button and returned to its handler.
+        using HttpResponseMessage signin = await fixture.DriveProviderRoundTripAsync(
+            client, "/Account/Reauthenticate", PasskeysPath, "Provider", TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage returned = await client.GetAsync(signin.Headers.Location, TestContext.Current.CancellationToken);
+        returned.StatusCode.Should().Be(HttpStatusCode.Redirect, "a confirmed round trip is a proof, and the proof returns to where it was going");
+        returned.Headers.Location!.OriginalString.Should().Contain(PasskeysPath);
+
+        // Proved, the add form is offered and the ceremony starts.
+        string page = await client.GetStringAsync(PasskeysPath, TestContext.Current.CancellationToken);
+        page.Should().Contain("passkey-register-form");
         string token = AntiforgeryTestHelper.ExtractToken(page);
-        using HttpResponseMessage refused = await BeginAsync(client, token);
-        refused.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "nothing has confirmed the person at the provider");
 
-        // The round trip: the page challenges dex, dex answers, the handler consumes the code, the
-        // page's callback checks the subject and starts the proof.
-        using HttpResponseMessage callback = await fixture.DriveReauthenticationAsync(client, token, TestContext.Current.CancellationToken);
-        callback.StatusCode.Should().Be(HttpStatusCode.Redirect, "a confirmed round trip lands back on the page");
-        callback.Headers.Location!.OriginalString.Should().Contain("/Account/Manage/Passkeys");
-
-        string confirmed = await client.GetStringAsync("/Account/Manage/Passkeys", TestContext.Current.CancellationToken);
-        confirmed.Should().Contain("confirmed you", "the status line says the provider vouched for the person");
-
-        // Now the ceremony, and the registration it leads to.
-        using HttpResponseMessage begin = await BeginAsync(client, token);
+        using FormUrlEncodedContent beginBody = new(new Dictionary<string, string> { ["__RequestVerificationToken"] = token });
+        using HttpResponseMessage begin = await client.PostAsync($"{PasskeysPath}?handler={PasskeysModel.BeginRegistrationHandler}", beginBody, TestContext.Current.CancellationToken);
         begin.StatusCode.Should().Be(HttpStatusCode.OK, "the provider's confirmation unlocks the ceremony");
         string creationOptions = await begin.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
@@ -77,28 +85,43 @@ public sealed class PasskeyProviderProofDexTests
             [PasskeyCredential.FormField] = authenticator.Attest(creationOptions),
         });
 
-        using HttpResponseMessage registered = await client.PostAsync("/Account/Manage/Passkeys?handler=Register", registerBody, TestContext.Current.CancellationToken);
+        using HttpResponseMessage registered = await client.PostAsync($"{PasskeysPath}?handler=Register", registerBody, TestContext.Current.CancellationToken);
         registered.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
         (await fixture.PasskeyCountAsync(user)).Should().Be(1);
-
-        // And the confirmation was spent: a second registration is refused until the provider is
-        // asked again.
-        using HttpResponseMessage spent = await BeginAsync(client, token);
-        spent.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    private static async Task<HttpResponseMessage> BeginAsync(HttpClient client, string token)
+    /// <summary>
+    /// The walk-around the flow item closes, against a real provider: a session on a provider-only
+    /// account starts a re-authentication, which needs no proof, and dex answers for a different
+    /// subject. Opening the link callback with that answer, instead of returning to the proof page,
+    /// links nothing.
+    /// </summary>
+    [RequiresDexFact]
+    public async Task AReauthenticationsAnswerCannotBeLinkedAtTheLinkCallback()
     {
-        using FormUrlEncodedContent body = new(new Dictionary<string, string> { ["__RequestVerificationToken"] = token });
+        using Fixture fixture = new();
+        HSUser victim = await fixture.CreateProviderUserAsync("some-other-subject");
+        using HttpClient client = await fixture.SignInAsAsync(victim);
 
-        return await client.PostAsync($"/Account/Manage/Passkeys?handler={PasskeysModel.BeginRegistrationHandler}", body, TestContext.Current.CancellationToken);
+        using HttpResponseMessage signin = await fixture.DriveProviderRoundTripAsync(
+            client, "/Account/Reauthenticate", "/Account/Manage", "Provider", TestContext.Current.CancellationToken);
+
+        signin.Headers.Location!.OriginalString.Should().Contain("ProviderReturned", "the provider sends the answer back to the proof page");
+
+        // Act - the answer is taken to the link callback instead.
+        using HttpResponseMessage linked = await client.GetAsync("/Account/Manage/ExternalLogins?handler=LinkLoginCallback", TestContext.Current.CancellationToken);
+
+        // Assert
+        linked.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        (await fixture.LoginsAsync(victim)).Should().ContainSingle()
+            .Which.ProviderKey.Should().Be("some-other-subject", "the stranger dex vouched for was not linked");
     }
 
     /// <summary>A host configured against dex with passkeys bound to localhost, and a dex client to walk its hops.</summary>
     private sealed class Fixture : IDisposable
     {
-        private readonly ScratchDirectory _scratch = ScratchDirectory.Create("passkey-proof");
+        private readonly ScratchDirectory _scratch = ScratchDirectory.Create("provider-proof");
         private readonly HomespoolFactory _factory;
         private readonly HttpClientHandler _dexHandler;
         private readonly HttpClient _dex;
@@ -125,7 +148,7 @@ public sealed class PasskeyProviderProofDexTests
             scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
         }
 
-        /// <summary>An account with no password and one login: the provider's subject.</summary>
+        /// <summary>An account with no password and one login: <paramref name="subject"/> at the provider.</summary>
         public async Task<HSUser> CreateProviderUserAsync(string subject)
         {
             using IServiceScope scope = _factory.Services.CreateScope();
@@ -172,19 +195,37 @@ public sealed class PasskeyProviderProofDexTests
             return (await users.GetPasskeysAsync(tracked)).Count;
         }
 
-        /// <summary>
-        /// Posts the page's re-authentication, walks dex's hops by hand as the sibling suite does, hands
-        /// the code to the handler's callback, and returns the page callback's answer.
-        /// </summary>
-        public async Task<HttpResponseMessage> DriveReauthenticationAsync(HttpClient app, string token, CancellationToken cancellationToken)
+        public async Task<IList<UserLoginInfo>> LoginsAsync(HSUser user)
         {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser tracked = (await users.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)))!;
+
+            return await users.GetLoginsAsync(tracked);
+        }
+
+        /// <summary>
+        /// Posts <paramref name="handler"/> on <paramref name="pagePath"/> with the page's antiforgery
+        /// token and <paramref name="returnUrl"/>, walks dex's hops by hand as the sibling suite does,
+        /// hands the code to the provider handler's callback, and returns that callback's answer - the
+        /// redirect to the page's own return handler, not yet followed, with the external cookie set.
+        /// </summary>
+        public async Task<HttpResponseMessage> DriveProviderRoundTripAsync(HttpClient app,
+                                                                           string pagePath,
+                                                                           string returnUrl,
+                                                                           string handler,
+                                                                           CancellationToken cancellationToken)
+        {
+            string query = $"?returnUrl={Uri.EscapeDataString(returnUrl)}";
+            string page = await app.GetStringAsync(pagePath + query, cancellationToken);
+
             using FormUrlEncodedContent body = new(new Dictionary<string, string>
             {
-                ["__RequestVerificationToken"] = token,
+                ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(page),
                 ["provider"] = Schemes.ExternalOidc,
             });
 
-            using HttpResponseMessage challenge = await app.PostAsync("/Account/Manage/Passkeys?handler=Reauthenticate", body, cancellationToken);
+            using HttpResponseMessage challenge = await app.PostAsync($"{pagePath}{query}&handler={handler}", body, cancellationToken);
 
             challenge.StatusCode.Should().Be(HttpStatusCode.Redirect, "a provider account is sent to its provider");
             challenge.Headers.Location!.Query.Should().Contain("max_age=0").And.Contain("prompt=login",
@@ -210,7 +251,7 @@ public sealed class PasskeyProviderProofDexTests
                 }
             }
 
-            using HttpResponseMessage signin = await app.GetAsync(next.PathAndQuery, cancellationToken);
+            HttpResponseMessage signin = await app.GetAsync(next.PathAndQuery, cancellationToken);
 
             signin.StatusCode.Should().Be(HttpStatusCode.Redirect,
                                           "the handler consumes the code and hands off to the page's callback, but answered {0}: {1}",
@@ -219,7 +260,7 @@ public sealed class PasskeyProviderProofDexTests
                                               ? string.Empty
                                               : await signin.Content.ReadAsStringAsync(cancellationToken));
 
-            return await app.GetAsync(signin.Headers.Location, cancellationToken);
+            return signin;
         }
 
         public void Dispose()

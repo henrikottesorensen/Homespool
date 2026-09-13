@@ -169,7 +169,7 @@ public class ExternalLoginsModel : PageModel
 
         string redirectUrl = Url.Page("./ExternalLogins", pageHandler: "LinkLoginCallback");
         AuthenticationProperties properties =
-            ExternalSignIn.ChallengeProperties(provider, redirectUrl, _userManager.GetUserId(User));
+            ExternalSignIn.ChallengeProperties(provider, redirectUrl, ExternalRoundTrip.Link, _userManager.GetUserId(User));
 
         return new ChallengeResult(provider, properties);
     }
@@ -183,8 +183,12 @@ public class ExternalLoginsModel : PageModel
         }
 
         // Keyed on the signed-in account, so a callback carrying somebody else's external cookie
-        // cannot attach their provider identity to this account.
-        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, user.Id.ToString(CultureInfo.InvariantCulture));
+        // cannot attach their provider identity to this account - and on the link flow, so an answer
+        // from a round trip that needed no proof cannot be linked here. This callback carries no
+        // [RequireRecentProof] of its own: it arrives by a cross-site redirect the proof cookie is
+        // withheld from, and the proof was demanded when the link flow began, which only the flow
+        // item can tell apart from any other round trip for this account.
+        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.Link, user.Id.ToString(CultureInfo.InvariantCulture));
         if (info == null)
         {
             StatusMessage = _localiser["Manage_ExternalLoginLinkError"];

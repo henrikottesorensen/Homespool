@@ -128,7 +128,7 @@ public sealed class StepUpGate
         }
 
         AuthenticationProperties external = ExternalSignIn.ChallengeProperties(
-            provider, redirectUrl, user.Id.ToString(CultureInfo.InvariantCulture));
+            provider, redirectUrl, ExternalRoundTrip.Reauthenticate, user.Id.ToString(CultureInfo.InvariantCulture));
 
         return new OpenIdConnectChallengeProperties(external.Items, external.Parameters)
         {
@@ -149,7 +149,7 @@ public sealed class StepUpGate
 
         // Keyed on the signed-in account, as the account-linking callback is, so a callback carrying
         // somebody else's external cookie is not read as this account's.
-        ExternalLoginInfo? info = await _externalSignIn.InfoAsync(context, user.Id.ToString(CultureInfo.InvariantCulture));
+        ExternalLoginInfo? info = await _externalSignIn.InfoAsync(context, ExternalRoundTrip.Reauthenticate, user.Id.ToString(CultureInfo.InvariantCulture));
 
         // Consumed either way: a provider identity is not left lying around for another page to find.
         await context.SignOutAsync(IdentityConstants.ExternalScheme);

@@ -198,7 +198,7 @@ public class ExternalLoginModel : PageModel
 
         // Request a redirect to the external login provider.
         string redirectUrl = Url.Page("./ExternalLogin", pageHandler: "Callback", values: new { returnUrl });
-        AuthenticationProperties properties = ExternalSignIn.ChallengeProperties(provider, redirectUrl);
+        AuthenticationProperties properties = ExternalSignIn.ChallengeProperties(provider, redirectUrl, ExternalRoundTrip.SignIn);
 
         // An invite presented here rides through the provider and back, so the callback can spend it
         // without trusting anything the provider says about who this is. Not validated yet - the round
@@ -222,7 +222,7 @@ public class ExternalLoginModel : PageModel
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 
-        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext);
+        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);
         if (info == null)
         {
             ErrorMessage = _localiser["Account_ExternalLoginError"];
@@ -356,7 +356,7 @@ public class ExternalLoginModel : PageModel
         returnUrl = returnUrl ?? Url.Content("~/");
 
         // Get the information about the user from the external login provider
-        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext);
+        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);
         if (info == null)
         {
             ErrorMessage = _localiser["Account_ExternalLoginConfirmError"];

@@ -36,10 +36,18 @@ namespace Homespool.Host.Authentication;
 /// one that a reader gets wrong.
 /// </para>
 /// <para>
-/// <b>Two items ride the challenge round trip</b>: which provider was challenged, since the callback
-/// path is one for all of them, and, when a signed-in account is linking or re-authenticating, which
-/// account expects the answer, so a callback carrying somebody else's external cookie is not read as
-/// this account's. The framework calls the second an XSRF key; it is an expected-account check.
+/// <b>Three items ride the challenge round trip</b>: which provider was challenged, since the callback
+/// path is one for all of them; which flow asked, so each callback reads only its own flow's answer;
+/// and, when a signed-in account is linking or re-authenticating, which account expects the answer, so
+/// a callback carrying somebody else's external cookie is not read as this account's. The framework
+/// calls the last an XSRF key; it is an expected-account check. The flow is not optional company for
+/// it: the account alone cannot tell a link from a re-authentication of that same account, and the
+/// two are gated differently - see <see cref="ExternalRoundTrip"/>.
+/// </para>
+/// <para>
+/// <b>The items are protected with the rest of the properties</b>, by the provider handler's state
+/// parameter on the way out and by the external cookie on the way back, so a client cannot change
+/// which flow it is in.
 /// </para>
 /// </remarks>
 public sealed class ExternalSignIn
@@ -49,6 +57,9 @@ public sealed class ExternalSignIn
 
     /// <summary>The challenge item naming the account the answer is for, when a signed-in account asked.</summary>
     public const string ExpectedAccountItem = "Homespool.External.ExpectedAccount";
+
+    /// <summary>The challenge item naming the flow that asked, one of <see cref="ExternalRoundTrip"/>.</summary>
+    public const string RoundTripItem = "Homespool.External.RoundTrip";
 
     private readonly IAuthenticationSchemeProvider _schemes;
     private readonly UserManager<HSUser> _users;
@@ -80,15 +91,30 @@ public sealed class ExternalSignIn
 
     /// <summary>
     /// The properties a challenge to <paramref name="provider"/> carries: where to come back to, which
-    /// provider was asked, and, for a signed-in account linking or re-authenticating, which account
-    /// expects the answer.
+    /// provider was asked, which flow asked, and, for a signed-in account linking or re-authenticating,
+    /// which account expects the answer.
     /// </summary>
-    public static AuthenticationProperties ChallengeProperties(string provider, string? redirectUrl, string? expectedAccountId = null)
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="roundTrip"/> names no flow.</exception>
+    /// <exception cref="ArgumentException">
+    /// A link or a re-authentication names no account: both are answers for a signed-in account, and
+    /// one that named none would be read by nobody.
+    /// </exception>
+    public static AuthenticationProperties ChallengeProperties(string provider,
+                                                               string? redirectUrl,
+                                                               ExternalRoundTrip roundTrip,
+                                                               string? expectedAccountId = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(provider);
+        RequireNamed(roundTrip);
+
+        if (roundTrip is not ExternalRoundTrip.SignIn && string.IsNullOrEmpty(expectedAccountId))
+        {
+            throw new ArgumentException($"A {roundTrip} round trip is for a signed-in account and must name it.", nameof(expectedAccountId));
+        }
 
         AuthenticationProperties properties = new() { RedirectUri = redirectUrl };
         properties.Items[LoginProviderItem] = provider;
+        properties.Items[RoundTripItem] = roundTrip.ToString();
 
         if (expectedAccountId is not null)
         {
@@ -100,18 +126,35 @@ public sealed class ExternalSignIn
 
     /// <summary>
     /// The provider's answer, read from the external cookie, or <see langword="null"/> when there is
-    /// none, it names no provider or subject, or it was meant for an account other than
+    /// none, it names no provider or subject, it was started by a flow other than
+    /// <paramref name="roundTrip"/>, or it was meant for an account other than
     /// <paramref name="expectedAccountId"/>.
     /// </summary>
-    public async Task<ExternalLoginInfo?> InfoAsync(HttpContext context, string? expectedAccountId = null)
+    /// <remarks>
+    /// <b>An answer that names no flow is refused by every reader.</b> Only a round trip started before
+    /// flows were named carries none, and it costs that person one more trip to the provider.
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="roundTrip"/> names no flow.</exception>
+    public async Task<ExternalLoginInfo?> InfoAsync(HttpContext context, ExternalRoundTrip roundTrip, string? expectedAccountId = null)
     {
         ArgumentNullException.ThrowIfNull(context);
+        RequireNamed(roundTrip);
 
         AuthenticateResult external = await context.AuthenticateAsync(IdentityConstants.ExternalScheme);
         IDictionary<string, string?>? items = external.Properties?.Items;
 
         if (external.Principal is null || items is null || !items.TryGetValue(LoginProviderItem, out string? provider) || provider is null)
         {
+            return null;
+        }
+
+        if (!items.TryGetValue(RoundTripItem, out string? askedBy) || !string.Equals(askedBy, roundTrip.ToString(), StringComparison.Ordinal))
+        {
+            _logger.LogWarning("An external answer from {LoginProvider} was refused: started by {AskedBy}, read by {RoundTrip}.",
+                               provider,
+                               askedBy ?? "no flow",
+                               roundTrip);
+
             return null;
         }
 
@@ -176,5 +219,18 @@ public sealed class ExternalSignIn
         await _signIn.SignInAsync(context, user, isPersistent, info.LoginProvider);
 
         return ExternalSignInResult.Succeeded;
+    }
+
+    /// <summary>
+    /// Refuses <see cref="ExternalRoundTrip.Undefined"/>, and anything outside the enum, at both ends of
+    /// a round trip. A thrown exception rather than a refusal, because no caller legitimately asks: a
+    /// default somebody forgot to set is a bug to see, not an answer to hide.
+    /// </summary>
+    private static void RequireNamed(ExternalRoundTrip roundTrip)
+    {
+        if (roundTrip is not (ExternalRoundTrip.SignIn or ExternalRoundTrip.Link or ExternalRoundTrip.Reauthenticate))
+        {
+            throw new ArgumentOutOfRangeException(nameof(roundTrip), roundTrip, "A round trip has to name the flow that started it.");
+        }
     }
 }

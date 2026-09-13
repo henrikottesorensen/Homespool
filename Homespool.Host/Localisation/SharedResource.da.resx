@@ -2736,6 +2736,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Reauthenticate_NoPassword" xml:space="preserve">
     <value>Denne konto har ingen adgangskode. Bekræft med en adgangsnøgle eller med den udbyder, du logger ind igennem.</value>
   </data>
+  <data name="Reauthenticate_BeforeEnrolment" xml:space="preserve">
+    <value>Opsætning af en tofaktorapp viser din godkendelsesnøgle, så du bliver spurgt igen, selvom du lige har logget ind.</value>
+  </data>
   <data name="AdminUsers_Recovery" xml:space="preserve">
     <value>Gendannelse</value>
   </data>

@@ -131,6 +131,7 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime
         enrol.StatusCode.Should().Be(HttpStatusCode.Redirect);
         proofPath.Should().StartWith("/Account/Reauthenticate", "the enrolment page shows a seed, so it asks for a proof first");
         proofPage.StatusCode.Should().Be(HttpStatusCode.OK, "the proof page is reachable from inside the hold");
+        html.Should().Contain("id=\"before-enrolment\"", "the page says why it asks again straight after the sign-in");
         proved.StatusCode.Should().Be(HttpStatusCode.Redirect);
         proved.Headers.Location!.OriginalString.Should().Contain("EnableAuthenticator", "the proof returns to where the account was going");
         enrolAgain.StatusCode.Should().Be(HttpStatusCode.OK, "and enrolment then renders, rather than asking again");

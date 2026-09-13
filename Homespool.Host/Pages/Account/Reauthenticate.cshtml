@@ -16,6 +16,13 @@
     <div class="col-md-6">
         <p class="text-muted">@Localiser["Reauthenticate_Explanation"]</p>
 
+        @if (Model.BeforeEnrolment)
+        {
+            @* Said here because the person most likely typed this same password seconds ago to sign
+               in, and a second prompt with no reason reads as the first one having failed. *@
+            <p id="before-enrolment" class="text-muted">@Localiser["Reauthenticate_BeforeEnrolment"]</p>
+        }
+
         @if (Model.UsesPassword)
         {
             <form id="password-form" method="post" asp-route-returnUrl="@Model.ReturnUrl" class="mb-3">

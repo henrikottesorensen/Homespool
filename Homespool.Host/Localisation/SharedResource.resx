@@ -2835,6 +2835,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Reauthenticate_NoPassword" xml:space="preserve">
     <value>This account has no password. Confirm with a passkey or with the provider you sign in through.</value>
   </data>
+  <data name="Reauthenticate_BeforeEnrolment" xml:space="preserve">
+    <value>Setting up an authenticator app shows your authenticator key, so you are asked again even though you have just signed in.</value>
+  </data>
   <data name="AdminUsers_Recovery" xml:space="preserve">
     <value>Recovery</value>
   </data>

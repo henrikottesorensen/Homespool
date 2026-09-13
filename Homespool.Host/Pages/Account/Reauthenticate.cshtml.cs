@@ -65,6 +65,9 @@ namespace Homespool.Host.Pages.Account;
 [NoRecentProof("This is where a recent proof is earned; requiring one would redirect it to itself.")]
 public class ReauthenticateModel : PageModel
 {
+    /// <summary>The authenticator setup page, which a person held by the two-factor requirement is sent to.</summary>
+    public const string EnrolmentPage = "/Account/Manage/EnableAuthenticator";
+
     private readonly UserManager<HSUser> _users;
     private readonly RecentProof _proof;
     private readonly LocalSignInRules _rules;
@@ -111,6 +114,19 @@ public class ReauthenticateModel : PageModel
 
     /// <summary>Whether this account has a passkey, and the relying-party id covers the host it is on.</summary>
     public bool PasskeysAvailable { get; private set; }
+
+    /// <summary>
+    /// Whether the person is on their way to setting up an authenticator, so the page says why it asks
+    /// even straight after a sign-in.
+    /// </summary>
+    /// <remarks>
+    /// <b>For the account the two-factor requirement holds.</b> It has just typed its password to sign
+    /// in and is asked again seconds later, because the setup page shows a secret and a sign-in is not
+    /// a proof. The repeat is deliberate; a sentence saying so is cheaper than the person wondering
+    /// whether the first attempt failed. Read from where the proof will return to, which the setup
+    /// page's redirect always names.
+    /// </remarks>
+    public bool BeforeEnrolment { get; private set; }
 
     /// <summary>The identity providers this account signs in through.</summary>
     public IReadOnlyList<AuthenticationScheme> Providers { get; private set; } = [];
@@ -306,6 +322,9 @@ public class ReauthenticateModel : PageModel
 
     private async Task LoadAsync(HSUser user)
     {
+        BeforeEnrolment = ReturnUrl is not null
+                          && Url.IsLocalUrl(ReturnUrl)
+                          && new PathString(ReturnUrl.Split('?')[0]).StartsWithSegments(EnrolmentPage, StringComparison.OrdinalIgnoreCase);
         UsesPassword = await _stepUp.UsesPasswordAsync(user);
         PasskeysAvailable = Scheme.Covers(Request.Host) && (await _users.GetPasskeysAsync(user)).Count > 0;
 

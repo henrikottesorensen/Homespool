@@ -204,6 +204,29 @@ public sealed class ReauthenticatePageTests : IDisposable
     }
 
     /// <summary>
+    /// The line saying why a held account is asked again appears only on the way to authenticator
+    /// setup, and not for an address that merely mentions it.
+    /// </summary>
+    [Theory]
+    [InlineData("/Account/Manage/EnableAuthenticator", true)]
+    [InlineData("/account/manage/enableauthenticator?x=1", true)]
+    [InlineData("/Admin/Settings", false)]
+    [InlineData("/Admin/Settings?next=/Account/Manage/EnableAuthenticator", false)]
+    [InlineData("/Account/Manage/EnableAuthenticatorSomethingElse", false)]
+    [InlineData(null, false)]
+    public async Task ThePageSaysWhyOnlyOnTheWayToAuthenticatorSetup(string? returnUrl, bool expected)
+    {
+        await using Rig rig = await Rig.CreateAsync(_databasePath);
+        HSUser user = await rig.Schemes.AddUserAsync("owner@example.com");
+        (ReauthenticateModel model, _) = await rig.PageAsync(user, password: null);
+        model.ReturnUrl = returnUrl;
+
+        await model.OnGetAsync();
+
+        model.BeforeEnrolment.Should().Be(expected);
+    }
+
+    /// <summary>
     /// A return address off this site is not followed - the page would be an open redirect - and the
     /// account pages are where a proof with nowhere to go ends up.
     /// </summary>

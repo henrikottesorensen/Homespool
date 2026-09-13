@@ -1,10 +1,12 @@
 #nullable disable
 
+using System;
 using System.Threading.Tasks;
 
 using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
@@ -13,6 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Pages.Account;
@@ -32,24 +35,40 @@ namespace Homespool.Host.Pages.Account;
 /// client, which may not be the browser holding the session, and the token is what proves the
 /// request is genuine.
 /// </para>
+/// <para>
+/// <b>The old address is told once the change lands.</b> The address is where a forgotten password is
+/// sent, so moving it is the last step of a takeover, and the confirmation link goes only to the new
+/// address - which is the attacker's own if they chose it. Without a notice the owner learns of it when
+/// a reset they did not ask for never arrives. Sent when the change is applied rather than when it is
+/// requested, because a request that is never confirmed changes nothing, and written in the account's
+/// language rather than the request's, because whoever follows the link is not necessarily its owner.
+/// The notice does not name the new address: its job is to raise the alarm, and the administrator who
+/// answers it sees the address on the account.
+/// </para>
 /// </remarks>
 [AllowAnonymous]
 public class ConfirmEmailChangeModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
-    private readonly IOptions<Mail.SmtpOptions> _smtp;
+    private readonly IOptions<SmtpOptions> _smtp;
+    private readonly IEmailSender _emailSender;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly ILogger<ConfirmEmailChangeModel> _logger;
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
                                    LocalSignIn signIn,
-                                   IOptions<Mail.SmtpOptions> smtp,
-                                   IStringLocalizer<SharedResource> localiser)
+                                   IOptions<SmtpOptions> smtp,
+                                   IEmailSender emailSender,
+                                   IStringLocalizer<SharedResource> localiser,
+                                   ILogger<ConfirmEmailChangeModel> logger)
     {
         _userManager = userManager;
         _signIn = signIn;
         _smtp = smtp;
+        _emailSender = emailSender;
         _localiser = localiser;
+        _logger = logger;
     }
 
     [TempData]
@@ -93,6 +112,9 @@ public class ConfirmEmailChangeModel : PageModel
             return Page();
         }
 
+        // Read before the change, which overwrites it: the notice goes to the address being left.
+        string previous = user.Email;
+
         // One round trip, so no transaction: SaveChangesAsync is already transactional.
         // It used to need one because the username was the email and had to
         // move with it - two UserManager calls that could half-land, leaving an account signing in
@@ -128,9 +150,37 @@ public class ConfirmEmailChangeModel : PageModel
         // against a principal that no longer matches the user.
         await _signIn.RefreshSignInAsync(HttpContext, user);
 
+        await TellThePreviousAddressAsync(user, previous, email);
+
         StatusMessage = _localiser["Account_EmailChangeThanks"].Value + AlertRecipientNotice(await IsAlertRecipientAsync(user));
 
         return Page();
+    }
+
+    /// <summary>
+    /// Mails <paramref name="previous"/> that the account's address has moved, when there was one and
+    /// it is not the address just confirmed.
+    /// </summary>
+    /// <remarks>
+    /// <b>A failed send does not undo the change</b>, and the page does not mention the notice either
+    /// way: the reader here is whoever holds the new address, and the notice is not for them. A failure
+    /// is logged, since it means the owner was not told.
+    /// </remarks>
+    private async Task TellThePreviousAddressAsync(HSUser user, string previous, string confirmed)
+    {
+        if (string.IsNullOrEmpty(previous) || string.Equals(previous, confirmed, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        (string subject, string body) = UserCultures.InCulture(user.Language, () => (
+            _localiser["Email_AddressChangedSubject"].Value,
+            _localiser["Email_AddressChangedBody"].Value));
+
+        if (await _emailSender.SendEmailAsync(previous, subject, body) == EmailSendResult.Failed)
+        {
+            _logger.LogWarning("The address of user {UserId} changed, and the notice to the previous address could not be sent.", user.Id);
+        }
     }
 
     /// <summary>

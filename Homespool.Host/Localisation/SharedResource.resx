@@ -2889,4 +2889,10 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Email_RecoveredBody" xml:space="preserve">
     <value>A recovery link issued by an administrator was just used to set a new password on your account. If that was not you, tell whoever runs this Homespool straight away.</value>
   </data>
+  <data name="Email_AddressChangedSubject" xml:space="preserve">
+    <value>Your Homespool email address was changed</value>
+  </data>
+  <data name="Email_AddressChangedBody" xml:space="preserve">
+    <value>The email address on your Homespool account was just changed, so password resets and notices will no longer come here. If that was not you, tell whoever runs this Homespool straight away.</value>
+  </data>
 </root>

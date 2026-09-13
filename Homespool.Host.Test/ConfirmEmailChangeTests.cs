@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
@@ -26,7 +27,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// Confirming an email change moves the address, and moves nothing else.
+/// Confirming an email change moves the address, moves nothing else, and tells the address it left.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -112,11 +113,19 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         return user;
     }
 
-    private static ConfirmEmailChangeModel NewModel(UserManager<HSUser> users,
-                                                    LocalSignIn signIn,
-                                                    DefaultHttpContext httpContext)
+    /// <summary>What the page mailed, for the test that built it.</summary>
+    private CapturingEmailSender Mail { get; } = new();
+
+    private ConfirmEmailChangeModel NewModel(UserManager<HSUser> users,
+                                             LocalSignIn signIn,
+                                             DefaultHttpContext httpContext)
     {
-        return new ConfirmEmailChangeModel(users, signIn, Options.Create(new SmtpOptions()), TestLocaliser.Shared())
+        return new ConfirmEmailChangeModel(users,
+                                           signIn,
+                                           Options.Create(new SmtpOptions()),
+                                           Mail,
+                                           TestLocaliser.Shared(),
+                                           NullLogger<ConfirmEmailChangeModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
@@ -195,6 +204,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         reloaded.UserName.Should().Be("mover");
 
         model.StatusMessage.Should().Be("Error changing email.");
+        Mail.SentEmails.Should().BeEmpty("nothing changed, so there is nothing to tell anybody");
     }
 
     /// <summary>
@@ -235,5 +245,89 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         reloaded.Email.Should().Be("mover@example.com", "a write the database refused must leave the address where it was");
 
         model.StatusMessage.Should().Be("Error changing email.");
+        Mail.SentEmails.Should().BeEmpty("nothing changed, so there is nothing to tell anybody");
+    }
+
+    /// <summary>
+    /// <b>The takeover's last step is announced to the owner.</b> The confirmation link went to the new
+    /// address alone, so the old one is the only place the owner can hear about it - and hears nothing
+    /// that points the reader at the new one.
+    /// </summary>
+    [Fact]
+    public async Task AConfirmedChangeTellsTheAddressItLeftAndOnlyThatAddress()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
+            IdentityTestHarness.BuildIdentityServices(context);
+
+        HSUser user = await AddUserAsync(users, "henrik", "before@example.com");
+        string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
+
+        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+
+        // Act
+        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
+
+        // Assert
+        (string email, string subject, string body) notice = Mail.SentEmails.Should().ContainSingle().Subject;
+        notice.email.Should().Be("before@example.com");
+        notice.subject.Should().Be("Your Homespool email address was changed");
+        notice.body.Should().NotContain("after@example.com", "the notice raises the alarm; it does not tell whoever reads the old mailbox where the account went");
+    }
+
+    /// <summary>
+    /// Written in the account's language, not the request's: whoever follows the link from a mail
+    /// client is not necessarily the account's owner, and the notice is for the owner.
+    /// </summary>
+    [Fact]
+    public async Task TheNoticeIsWrittenInTheAccountsLanguage()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
+            IdentityTestHarness.BuildIdentityServices(context);
+
+        HSUser user = await AddUserAsync(users, "henrik", "before@example.com");
+        user.Language = "da";
+        (await users.UpdateAsync(user)).Succeeded.Should().BeTrue();
+
+        string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
+        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+
+        // Act
+        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
+
+        // Assert
+        Mail.SentEmails.Should().ContainSingle().Which.subject.Should().Be("E-mailadressen på din Homespool-konto er ændret");
+    }
+
+    /// <summary>
+    /// A notice that could not be sent does not undo the change: the address moved, and refusing to
+    /// believe that would leave the account and the page disagreeing about where it is.
+    /// </summary>
+    [Fact]
+    public async Task ANoticeThatCannotBeSentLeavesTheChangeInPlace()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
+            IdentityTestHarness.BuildIdentityServices(context);
+
+        HSUser user = await AddUserAsync(users, "henrik", "before@example.com");
+        string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
+        Mail.Result = EmailSendResult.Failed;
+
+        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+
+        // Act
+        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
+
+        // Assert
+        HSUser reloaded = await context.Users.AsNoTracking()
+                                       .SingleAsync(u => u.Id == user.Id, TestContext.Current.CancellationToken);
+
+        reloaded.Email.Should().Be("after@example.com");
+        model.StatusMessage.Should().StartWith("Thank you");
     }
 }

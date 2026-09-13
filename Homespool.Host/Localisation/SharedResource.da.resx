@@ -2790,4 +2790,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Email_RecoveredBody" xml:space="preserve">
     <value>Et gendannelseslink udstedt af en administrator er netop blevet brugt til at vælge en ny adgangskode på din konto. Hvis det ikke var dig, så sig det til den, der driver denne Homespool, med det samme.</value>
   </data>
+  <data name="Email_AddressChangedSubject" xml:space="preserve">
+    <value>E-mailadressen på din Homespool-konto er ændret</value>
+  </data>
+  <data name="Email_AddressChangedBody" xml:space="preserve">
+    <value>E-mailadressen på din Homespool-konto er netop blevet ændret, så nulstilling af adgangskode og beskeder kommer ikke længere hertil. Hvis det ikke var dig, så sig det til den, der driver denne Homespool, med det samme.</value>
+  </data>
 </root>

@@ -221,9 +221,11 @@ public class LoginModel : PageModel
 
         // The password scheme does the checking - lookup by either identifier, the decoy verification
         // for an identifier nobody holds, the pre-sign-in check, and a wrong password counted toward
-        // the lockout. Counting matters because this form has no rate limiting of its own and people
-        // do expose self-hosted printer servers to the internet whatever the advice says; Identity's
-        // defaults apply, five failures then five minutes.
+        // the lockout. Counting matters because nothing else bounds guesses at one account: the SignIn
+        // limit this page carries is per address, bounds the hashing rather than the guessing, and is
+        // off unless a proxy is trusted - SignInRateLimit says why. People do expose self-hosted
+        // printer servers to the internet whatever the advice says; Identity's defaults apply, five
+        // failures then five minutes.
         //
         // What that costs reaches well past this form, because the lockout is the account's and every
         // scheme consults it before signing anything in: for those five minutes the account's passkey,

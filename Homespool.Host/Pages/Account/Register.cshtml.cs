@@ -123,9 +123,8 @@ public class RegisterModel : PageModel
     /// the reason this exists (Henrik, 2026-08-22).
     /// </para>
     /// <para>
-    /// <b>Not offered when reactivating.</b> That flow exists because a provider went away, and it
-    /// removes the dead links; offering to accept with a provider there would be offering the thing
-    /// that just failed.
+    /// <b>Not offered on a recovery.</b> The provider path only ever creates an account and never reads
+    /// <c>RecoversUserId</c>, so a recovery is redeemed with a password on this page and nowhere else.
     /// </para>
     /// </remarks>
     public IList<AuthenticationScheme> ExternalLogins { get; private set; } = [];
@@ -372,9 +371,9 @@ public class RegisterModel : PageModel
     /// always retaining one is what keeps a deployment from locking itself out.
     /// </para>
     /// <para>
-    /// <b>An account with no password loses its provider logins</b>, exactly as reactivation does and
-    /// for the same reason: a password beside a live provider link is the parallel credential the
-    /// account rules refuse, so a recovery of a provider account is a swap rather than an addition.
+    /// <b>An account with no password loses its provider logins.</b> A password beside a live provider
+    /// link is the parallel credential the account rules refuse, so a recovery of a provider account is
+    /// a swap rather than an addition.
     /// An account that already had a password keeps whatever it holds; the recovery is not a tidy-up.
     /// </para>
     /// <para>

@@ -16,8 +16,9 @@
 # include/common/printer_model_data.hpp.
 #
 # Does the whole first-run dance so a rig session needs no browser: create the administrator, sign
-# in, mint an API token, register a printer, claim it, then poll for the issued token. Every step is
-# the same HTTP a real client would make; nothing reaches into the database.
+# in, prove the password again, mint an API token, register a printer, claim it, then poll for the
+# issued token. Every step is the same HTTP a real client would make; nothing reaches into the
+# database.
 #
 # Also writes rig/api-token - a personal access token for this account, so that any *later* script
 # can call /api/v1 with a single `Authorization: Bearer` header instead of repeating the sign-in and
@@ -150,20 +151,39 @@ for scope in ViewPrinter ControlPrinter ManagePrinter Print ViewQueue ViewHistor
     SCOPE_ARGS="$SCOPE_ARGS --data-urlencode Input.Scope=$scope"
 done
 
+echo "==> proving the password again"
+# The token page wants a recent proof, which a sign-in does not give: a browser is redirected to
+# Account/Reauthenticate and back. Success is that redirect back. A refused password re-renders the
+# page, and a session that never signed in is redirected to the login page instead.
+PROVED_AT="$(curl -sS -c "$JAR" -b "$JAR" -o /dev/null -w '%{redirect_url}' \
+    --data-urlencode "__RequestVerificationToken=$(form_token /Account/Reauthenticate)" \
+    --data-urlencode "Input.Password=$PASSWORD" \
+    "$BASE/Account/Reauthenticate?returnUrl=%2FAccount%2FManage%2FApiTokens")"
+
+case "$PROVED_AT" in
+    */Account/Manage/ApiTokens) ;;
+    *)
+        echo "the password was not accepted - was the server fresh? An existing administrator only" >&2
+        echo "signs in with the password it was created with." >&2
+        exit 1
+        ;;
+esac
+
 echo "==> minting an API token"
 # The one-time secret is rendered into the page that creates it and never stored, so it is scraped
-# from that response rather than fetched afterwards - there is no afterwards.
+# from that response rather than fetched afterwards - there is no afterwards. `|| true` because a
+# grep that matches nothing fails the pipeline, and pipefail would end the script here with no word
+# of why; the empty check below is what says so.
 API_TOKEN="$(curl -sS -c "$JAR" -b "$JAR" \
     --data-urlencode "__RequestVerificationToken=$(form_token /Account/Manage/ApiTokens)" \
     --data-urlencode "Input.Name=rig" \
     $SCOPE_ARGS \
     "$BASE/Account/Manage/ApiTokens" \
-    | grep -o '<code id="created-token">[^<]*</code>' \
+    | { grep -o '<code id="created-token">[^<]*</code>' || true; } \
     | sed 's/.*>\(.*\)<.*/\1/')"
 
 if [ -z "$API_TOKEN" ]; then
-    echo "no API token was issued - is /Account/Manage/ApiTokens reachable, and was the server fresh?" >&2
-    echo "(an existing administrator only signs in with the password it was created with)" >&2
+    echo "no API token was issued - is /Account/Manage/ApiTokens reachable?" >&2
     exit 1
 fi
 

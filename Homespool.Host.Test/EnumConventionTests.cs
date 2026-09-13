@@ -105,6 +105,34 @@ public class EnumConventionTests
     }
 
     /// <summary>
+    /// <b>"Is this a member somebody set" is spelled one way.</b> Six places once wrote it three ways -
+    /// <c>Enum.IsDefined</c> with <c>Undefined</c> excluded before, after, or by listing every member - and
+    /// a list of members silently refuses the next one added. <c>EnumValues.IsSet</c> is the spelling;
+    /// a bare <c>Enum.IsDefined</c> anywhere else is the old habit coming back.
+    /// </summary>
+    /// <remarks>
+    /// The fake printer is exempt: it deliberately references no Model, so it cannot call the helper,
+    /// and it has no such check today. A place where <c>Undefined</c> really is a value to accept rather
+    /// than refuse should compare against it by name, which this does not forbid.
+    /// </remarks>
+    [Fact]
+    public void NothingSpellsTheSetCheckByHand()
+    {
+        string root = SourceRoot();
+        string helper = Path.Combine("Homespool.Model", "EnumValues.cs");
+
+        List<string> offenders = [.. SourceProjects.Where(project => !project.StartsWith("Homespool.FakePrinter", StringComparison.Ordinal))
+                                                   .SelectMany(project => Directory.EnumerateFiles(Path.Combine(root, project), "*.cs", SearchOption.AllDirectories))
+                                                   .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                                                                  && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                                                   .Where(path => Path.GetRelativePath(root, path) != helper)
+                                                   .Where(path => StripComments(File.ReadAllText(path)).Contains("Enum.IsDefined(", StringComparison.Ordinal))
+                                                   .Select(path => Path.GetRelativePath(root, path))];
+
+        offenders.Should().BeEmpty("use IsSet() or RequireSet() from EnumValues, which also refuses Undefined");
+    }
+
+    /// <summary>
     /// The three defaults that used to read as success now read as nothing: an unset step-up result is
     /// not a proof, and an unset administration result is not an act that went through.
     /// </summary>

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -105,7 +106,7 @@ public sealed class ExternalSignIn
                                                                string? expectedAccountId = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(provider);
-        RequireNamed(roundTrip);
+        roundTrip.RequireSet();
 
         if (roundTrip is not ExternalRoundTrip.SignIn && string.IsNullOrEmpty(expectedAccountId))
         {
@@ -138,7 +139,7 @@ public sealed class ExternalSignIn
     public async Task<ExternalLoginInfo?> InfoAsync(HttpContext context, ExternalRoundTrip roundTrip, string? expectedAccountId = null)
     {
         ArgumentNullException.ThrowIfNull(context);
-        RequireNamed(roundTrip);
+        roundTrip.RequireSet();
 
         AuthenticateResult external = await context.AuthenticateAsync(IdentityConstants.ExternalScheme);
         IDictionary<string, string?>? items = external.Properties?.Items;
@@ -219,18 +220,5 @@ public sealed class ExternalSignIn
         await _signIn.SignInAsync(context, user, isPersistent, info.LoginProvider);
 
         return ExternalSignInResult.Succeeded;
-    }
-
-    /// <summary>
-    /// Refuses <see cref="ExternalRoundTrip.Undefined"/>, and anything outside the enum, at both ends of
-    /// a round trip. A thrown exception rather than a refusal, because no caller legitimately asks: a
-    /// default somebody forgot to set is a bug to see, not an answer to hide.
-    /// </summary>
-    private static void RequireNamed(ExternalRoundTrip roundTrip)
-    {
-        if (roundTrip is not (ExternalRoundTrip.SignIn or ExternalRoundTrip.Link or ExternalRoundTrip.Reauthenticate))
-        {
-            throw new ArgumentOutOfRangeException(nameof(roundTrip), roundTrip, "A round trip has to name the flow that started it.");
-        }
     }
 }

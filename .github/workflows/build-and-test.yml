@@ -87,6 +87,12 @@ jobs:
       - name: Test the certificate renewal script
         run: ./tests/acme-renew-cert.test.sh
 
+      # Which deployments the installer refuses because an account outside the docker group could
+      # change what the root timers run. `id` and `getent` are stubs, so the runner's own docker
+      # membership decides nothing.
+      - name: Test the certificate installer's ownership check
+        run: ./tests/acme-install.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

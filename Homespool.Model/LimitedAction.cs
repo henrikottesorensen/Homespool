@@ -80,8 +80,8 @@ public enum LimitedAction
     /// <summary>
     /// A step-up on the signed-in account: the password or the authenticator code typed again, inside
     /// a session, before an act the session alone may not do - adding a passkey, removing a printer,
-    /// turning two-factor off, enrolling an authenticator. One counter for all of them, kept by the
-    /// credential schemes themselves.
+    /// turning two-factor off, enrolling an authenticator, changing the password. One counter for all
+    /// of them, kept by the credential schemes themselves.
     /// </summary>
     /// <remarks>
     /// <b>Backed off here rather than counted toward the account lockout, deliberately.</b> A step-up

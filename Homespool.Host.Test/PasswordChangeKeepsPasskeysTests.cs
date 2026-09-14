@@ -9,11 +9,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
@@ -64,7 +66,10 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
         await SeedPasskeyAsync(users, user, "phone");
         await SeedPasskeyAsync(users, user, "laptop");
 
-        ChangePasswordModel model = new(users, signIn, TestLocaliser.Shared(),
+        ChangePasswordModel model = new(users, signIn,
+                                        httpContext.RequestServices.GetRequiredService<StepUpGate>(),
+                                        new StepUpText(TestLocaliser.Shared()),
+                                        TestLocaliser.Shared(),
                                         NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
@@ -96,7 +101,10 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
         HSUser user = await AddUserAsync(users, "nokeys@example.com");
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ChangePasswordModel model = new(users, signIn, TestLocaliser.Shared(),
+        ChangePasswordModel model = new(users, signIn,
+                                        httpContext.RequestServices.GetRequiredService<StepUpGate>(),
+                                        new StepUpText(TestLocaliser.Shared()),
+                                        TestLocaliser.Shared(),
                                         NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

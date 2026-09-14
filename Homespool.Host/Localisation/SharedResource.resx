@@ -220,6 +220,9 @@
   <data name="Manage_VerificationSendFailed" xml:space="preserve">
     <value>Could not send the verification email - contact your administrator.</value>
   </data>
+  <data name="Manage_EmailSendCooldown" xml:space="preserve">
+    <value>An email was sent from here less than a minute ago. Wait a moment and try again.</value>
+  </data>
   <data name="Account_InvalidUserName" xml:space="preserve">
     <value>&apos;{0}&apos; is not a usable username. Use letters and digits, and - . _ only; an email address cannot be a username.</value>
     <comment>Replaces Identity&apos;s own wording, which describes a rule this application does not apply. The three punctuation marks are listed literally and must survive translation. Letters of any alphabet are accepted; the alphabet rule has its own message, Account_UsernameMixesScripts.</comment>

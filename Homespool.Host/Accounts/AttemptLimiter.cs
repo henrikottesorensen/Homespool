@@ -15,7 +15,8 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// Bounds how fast one account can guess at one <see cref="LimitedAction"/>, with an exponential
-/// backoff that always self-heals.
+/// backoff that always self-heals - or, for an action that is not a guess, holds it to a fixed
+/// cooldown after each use.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -136,6 +137,53 @@ public class AttemptLimiter
                                + "{FailedAttempts} failed attempts.",
                                userId, action, seconds, attempt.FailedCount);
         }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Holds this account off <paramref name="action"/> for <paramref name="duration"/> from
+    /// <paramref name="now"/>, whatever it did before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A fixed wait after every use, for an action that is not a guess.</b> Nothing is counted and
+    /// the wait never grows, so the owner is never held off for longer than <paramref name="duration"/>;
+    /// <see cref="RemainingLockoutAsync"/> reads it like any backoff, and
+    /// <see cref="ResetAllAsync"/> clears it with the rest.
+    /// </para>
+    /// <para>
+    /// <b>For a cooldown-only action.</b> It overwrites the lockout end, so on an action whose
+    /// failures are also counted it could shorten a longer backoff already running.
+    /// </para>
+    /// <para>
+    /// Saves on its own, like <see cref="RecordFailedAttemptAsync"/>: the caller starts the cooldown
+    /// before doing the thing it bounds, and whether that then succeeds does not return the use.
+    /// </para>
+    /// </remarks>
+    /// <param name="userId">The account that just used the action.</param>
+    /// <param name="action">Which action was used.</param>
+    /// <param name="now">The current time, taken once by the caller.</param>
+    /// <param name="duration">How long the account must wait before using it again.</param>
+    /// <param name="cancellationToken">Cancels the save.</param>
+    public async Task StartCooldownAsync(long userId,
+                                         LimitedAction action,
+                                         DateTimeOffset now,
+                                         TimeSpan duration,
+                                         CancellationToken cancellationToken)
+    {
+        UserActionAttempt? attempt = await _dbContext.UserActionAttempts
+                                                     .SingleOrDefaultAsync(
+                                                         a => a.UserId == userId && a.Action == action,
+                                                         cancellationToken);
+
+        if (attempt is null)
+        {
+            attempt = new UserActionAttempt { UserId = userId, Action = action };
+            _dbContext.UserActionAttempts.Add(attempt);
+        }
+
+        attempt.LockoutEnd = now.Add(duration);
 
         await _dbContext.SaveChangesAsync(cancellationToken);
     }

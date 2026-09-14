@@ -3,7 +3,7 @@ using System;
 namespace Homespool.Model.Entities;
 
 /// <summary>
-/// One account's failed-attempt count and backoff for one <see cref="LimitedAction"/>.
+/// One account's failed-attempt count and backoff, or its cooldown, for one <see cref="LimitedAction"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,7 +16,8 @@ namespace Homespool.Model.Entities;
 /// <b>A row exists only once an account has failed something.</b> The common case is no row at all,
 /// so the table stays roughly empty rather than growing a pair of zeroes for every account that
 /// never gets anything wrong - and clearing a count deletes the row rather than zeroing it, so it
-/// returns to that state.
+/// returns to that state. A cooldown-only action is the exception: its row is written by the first
+/// use, carries no count, and is left in place once the wait elapses, to be overwritten by the next.
 /// </para>
 /// </remarks>
 public class UserActionAttempt

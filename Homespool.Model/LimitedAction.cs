@@ -1,7 +1,8 @@
 namespace Homespool.Model;
 
 /// <summary>
-/// An action whose failures are counted and backed off per account.
+/// An action bounded per account - its failures counted and backed off, or each use followed by a
+/// cooldown.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,7 +13,9 @@ namespace Homespool.Model;
 /// The two email members bound a <em>spend</em> rather than a guess: the anonymous forms that mail a
 /// known address are counted per target account, because the address is the only stable handle an
 /// anonymous caller offers and the cost lands on that account's inbox and the deployment's SMTP
-/// quota either way.
+/// quota either way. The two members sent from the signed-in address page are not counted at all:
+/// each send starts a fixed cooldown, since the caller is known and a flat wait bounds the rate
+/// without ever holding the owner off for longer than that.
 /// </para>
 /// <para>
 /// <b>Members are pinned and zero is reserved.</b> This one is persisted as text in
@@ -93,4 +96,27 @@ public enum LimitedAction
     /// password.
     /// </remarks>
     StepUp = 7,
+
+    /// <summary>
+    /// A change-of-address link sent from <c>Pages/Account/Manage/Email</c>, to the address typed into
+    /// it. Held to a fixed cooldown after each send rather than counted.
+    /// </summary>
+    /// <remarks>
+    /// The recipient is whoever the signed-in account names, so this is the one form here that can
+    /// point the deployment's mail at a third party. The recent proof decides who may send; this
+    /// decides how often.
+    /// </remarks>
+    ChangeEmail = 8,
+
+    /// <summary>
+    /// A verification email the signed-in account sends to its own address, from
+    /// <c>Pages/Account/Manage/Email</c>. Held to a fixed cooldown after each send rather than counted.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="SendConfirmationEmail"/>, though it is the same mail: that counter is spent by
+    /// anonymous callers who know the address, and a short cooldown written into its row could cut a
+    /// longer backoff short. Separate from <see cref="ChangeEmail"/> so that verifying and then
+    /// correcting an address does not mean waiting between the two.
+    /// </remarks>
+    SendVerificationEmail = 9,
 }

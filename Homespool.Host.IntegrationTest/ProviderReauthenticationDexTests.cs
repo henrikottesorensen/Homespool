@@ -30,8 +30,9 @@ namespace Homespool.Host.IntegrationTest;
 /// <b>What dex's mock connector does and does not do</b>, measured before this was written: it
 /// accepts <c>max_age=0</c> and <c>prompt=login</c> without complaint, signs nobody in because it has
 /// no login screen, reports no <c>auth_time</c>, and always vouches for the same subject. So these
-/// prove the round trip and the subject check; the "asked again" half is the provider's promise, and
-/// the page takes a provider that reports no sign-in time at its word.
+/// prove the round trip, the subject check, and that the provider handler stamps this server's
+/// <c>auth_time</c> on the answer - without it the proof is refused; the "asked again" half is the
+/// provider's promise, and the page takes a provider that reports no sign-in time at its word.
 /// </para>
 /// <para>
 /// <b>The fixed subject is what makes the second test possible.</b> An account linked to some other

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -123,6 +124,51 @@ public sealed class ExternalSignIn
         }
 
         return properties;
+    }
+
+    /// <summary>
+    /// Restates the times on a provider's answer as it arrives: the provider's own <c>auth_time</c>, when
+    /// it sent one, becomes <see cref="HSClaimTypes.ExternalAuthenticationTime"/>, and <c>auth_time</c> is
+    /// set to <paramref name="now"/>, the moment the answer came back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>So <c>auth_time</c> is always present, and always this server's clock.</b> A provider is not
+    /// obliged to report when it signed somebody in, and a check that runs only when it does is a check
+    /// a provider switches off by leaving the claim out. The claim written here is issued by the local
+    /// authority; the moved one keeps the provider as its issuer.
+    /// </para>
+    /// <para>
+    /// <b>Whatever the provider sent under either name is replaced</b>, so a provider can neither supply
+    /// this server's time nor add a second one for a reader to pick the wrong one of.
+    /// </para>
+    /// </remarks>
+    public static void RestateAuthenticationTime(ClaimsPrincipal principal, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+
+        if (principal.Identity is not ClaimsIdentity primary)
+        {
+            throw new ArgumentException("A provider's answer carries an identity.", nameof(principal));
+        }
+
+        foreach (ClaimsIdentity identity in principal.Identities)
+        {
+            foreach (Claim claim in identity.FindAll(HSClaimTypes.ExternalAuthenticationTime).ToList())
+            {
+                identity.RemoveClaim(claim);
+            }
+
+            foreach (Claim claim in identity.FindAll(JwtClaimTypes.AuthenticationTime).ToList())
+            {
+                identity.RemoveClaim(claim);
+                identity.AddClaim(new Claim(HSClaimTypes.ExternalAuthenticationTime, claim.Value, claim.ValueType, claim.Issuer, claim.OriginalIssuer));
+            }
+        }
+
+        primary.AddClaim(new Claim(JwtClaimTypes.AuthenticationTime,
+                                   now.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+                                   ClaimValueTypes.Integer64));
     }
 
     /// <summary>

@@ -2614,7 +2614,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Det var en anden {0}-konto end den, denne konto logger ind med.</value>
   </data>
   <data name="StepUp_ProviderStale" xml:space="preserve">
-    <value>{0} bad dig ikke om at logge ind igen lige nu. Prøv igen.</value>
+    <value>{0} bad dig ikke om at logge ind igen. Log ud hos {0}, og prøv så igen.</value>
   </data>
   <data name="Nav_Users" xml:space="preserve">
     <value>Brugere</value>

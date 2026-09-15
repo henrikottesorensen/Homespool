@@ -237,6 +237,6 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
         string code = await users.GenerateChangeEmailTokenAsync(user, newEmail);
         code = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(System.Text.Encoding.UTF8.GetBytes(code));
 
-        return $"/Account/ConfirmEmailChange?userId={userId}&email={Uri.EscapeDataString(newEmail)}&code={code}";
+        return $"/Account/ConfirmEmailChange?userUuid={user.Uuid}&email={Uri.EscapeDataString(newEmail)}&code={code}";
     }
 }

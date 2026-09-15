@@ -106,7 +106,7 @@ else
                 <td>@token.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 <td class="text-end">
                     <form method="post" asp-page-handler="Revoke">
-                        <input type="hidden" name="id" value="@token.Id" />
+                        <input type="hidden" name="uuid" value="@token.Uuid" />
                         <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Tokens_Revoke"]</button>
                     </form>
                 </td>

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading;
@@ -41,6 +42,8 @@ public class CreateModel : PageModel
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<CreateModel> _logger;
 
+    private IReadOnlyList<Team> _teams = [];
+
     public CreateModel(InvitationService invitationService,
                        TeamService teamService,
                        UserManager<HSUser> userManager,
@@ -75,7 +78,7 @@ public class CreateModel : PageModel
         public string Email { get; set; } = string.Empty;
 
         [Display(Name = "Common_Team")]
-        public int? TeamId { get; set; }
+        public Guid? TeamUuid { get; set; }
 
         [Range(1, 8760, ErrorMessage = "Validation_ExpiryRange")]
         [Display(Name = "Invites_ExpiresIn")]
@@ -103,16 +106,32 @@ public class CreateModel : PageModel
             return Forbid();
         }
 
+        // Found in the list the picker was built from, so the form names a team by its uuid and the
+        // invitation still stores the key.
+        int? teamId = null;
+
+        if (Input.TeamUuid is Guid teamUuid)
+        {
+            teamId = _teams.FirstOrDefault(team => team.Uuid == teamUuid)?.Id;
+
+            if (teamId is null)
+            {
+                ModelState.AddModelError($"{nameof(Input)}.{nameof(Input.TeamUuid)}", _localiser["Invites_NoSuchTeam"]);
+
+                return Page();
+            }
+        }
+
         DateTimeOffset? expiresAt = Input.ExpiresInHours is int hours ? DateTimeOffset.UtcNow + TimeSpan.FromHours(hours) : null;
 
         (Invitation invitation, string plaintextToken) = await _invitationService.CreateAsync(
-            Input.Email, Input.TeamId, admin.Id, expiresAt, cancellationToken);
+            Input.Email, teamId, admin.Id, expiresAt, cancellationToken);
 
         string code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(plaintextToken));
         AcceptLink = Url.Page(
             "/Account/Register",
             pageHandler: null,
-            values: new { inviteId = invitation.Id, code },
+            values: new { inviteUuid = invitation.Uuid, code },
             protocol: Request.Scheme);
 
         // Composed in the administrator's language, which is the request's, because an invitee has no
@@ -132,8 +151,8 @@ public class CreateModel : PageModel
         EmailSent = sendResult == EmailSendResult.Sent;
 
         _logger.LogInformation(
-            "Invitation {InviteId} created for {Email} by admin {AdminId}; email sent: {EmailSent}.",
-            invitation.Id, Input.Email, admin.Id, EmailSent);
+            "Invitation {InviteUuid} created for {Email} by admin {AdminId}; email sent: {EmailSent}.",
+            invitation.Uuid, Input.Email, admin.Id, EmailSent);
 
         // Reset the form for the next invite, but keep AcceptLink shown.
         ModelState.Clear();
@@ -149,10 +168,12 @@ public class CreateModel : PageModel
             new SelectListItem(_localiser["Invites_NewAccountOwnTeam"], string.Empty),
         ];
 
-        foreach (Team team in await _teamService.GetAllTeamsAsync(cancellationToken))
+        _teams = await _teamService.GetAllTeamsAsync(cancellationToken);
+
+        foreach (Team team in _teams)
         {
             options.Add(new SelectListItem(
-                            team.Name ?? _localiser["Common_TeamNumbered", team.Id].Value, team.Id.ToString()));
+                            team.Name ?? _localiser["Common_TeamNumbered", team.Id].Value, team.Uuid.ToString()));
         }
 
         TeamOptions = options;

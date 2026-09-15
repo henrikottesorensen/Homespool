@@ -102,7 +102,7 @@ public class ClaimModel : PageModel
         public string Code { get; set; } = string.Empty;
 
         [Display(Name = "Common_Team")]
-        public int? TeamId { get; set; }
+        public Guid? TeamUuid { get; set; }
     }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
@@ -157,7 +157,7 @@ public class ClaimModel : PageModel
             await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             Printer printer = await _prusaConnectService.ClaimPrinterAsync(
-                code, Input.Name, Input.Location, Input.TeamId, CallerResolver.For(user, User));
+                code, Input.Name, Input.Location, Input.TeamUuid, CallerResolver.For(user, User));
 
             // Inside the transaction the claim was made in, so a rollback takes the reset with it.
             await _attemptLimiter.ResetAsync(user.Id, LimitedAction.ClaimPrinter, cancellationToken);

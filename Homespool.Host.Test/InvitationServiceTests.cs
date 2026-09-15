@@ -152,7 +152,7 @@ public sealed class InvitationServiceTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         // Act
-        Invitation? validated = await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None);
+        Invitation? validated = await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None);
 
         // Assert
         validated.Should().NotBeNull();
@@ -179,16 +179,16 @@ public sealed class InvitationServiceTests : IDisposable
 
         (Invitation used, string usedToken) = await service.CreateAsync(
             "used@example.com", null, 1, null, CancellationToken.None);
-        Invitation usedTracked = (await service.ValidateAsync(used.Id, usedToken, CancellationToken.None))!;
+        Invitation usedTracked = (await service.ValidateAsync(used.Uuid, usedToken, CancellationToken.None))!;
         await service.MarkUsedAsync(usedTracked, CancellationToken.None);
 
         // Assert
-        (await service.ValidateAsync(outstanding.Id, "not-the-right-token", CancellationToken.None)).Should().BeNull();
-        (await service.ValidateAsync(-1, outstandingToken, CancellationToken.None)).Should().BeNull("unknown id");
-        (await service.ValidateAsync(expired.Id, expiredToken, CancellationToken.None)).Should().BeNull("expired");
-        (await service.ValidateAsync(used.Id, usedToken, CancellationToken.None)).Should().BeNull("already used");
-        (await service.ValidateAsync(outstanding.Id, null, CancellationToken.None)).Should().BeNull("null token");
-        (await service.ValidateAsync(outstanding.Id, string.Empty, CancellationToken.None)).Should().BeNull("empty token");
+        (await service.ValidateAsync(outstanding.Uuid, "not-the-right-token", CancellationToken.None)).Should().BeNull();
+        (await service.ValidateAsync(Guid.NewGuid(), outstandingToken, CancellationToken.None)).Should().BeNull("unknown uuid");
+        (await service.ValidateAsync(expired.Uuid, expiredToken, CancellationToken.None)).Should().BeNull("expired");
+        (await service.ValidateAsync(used.Uuid, usedToken, CancellationToken.None)).Should().BeNull("already used");
+        (await service.ValidateAsync(outstanding.Uuid, null, CancellationToken.None)).Should().BeNull("null token");
+        (await service.ValidateAsync(outstanding.Uuid, string.Empty, CancellationToken.None)).Should().BeNull("empty token");
     }
 
     // ---------- MarkUsedAsync ----------
@@ -207,7 +207,7 @@ public sealed class InvitationServiceTests : IDisposable
         (Invitation invitation, string plaintext) = await service.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
-        Invitation tracked = (await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None))!;
+        Invitation tracked = (await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None))!;
 
         // Act
         await service.MarkUsedAsync(tracked, CancellationToken.None);
@@ -217,7 +217,7 @@ public sealed class InvitationServiceTests : IDisposable
             await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.UsedAt.Should().NotBeNull();
 
-        (await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull();
+        (await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should().BeNull();
     }
 
     // ---------- RevokeAsync ----------
@@ -236,29 +236,29 @@ public sealed class InvitationServiceTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         // Act
-        await service.RevokeAsync(invitation.Id, CancellationToken.None);
+        await service.RevokeAsync(invitation.Uuid, CancellationToken.None);
 
         // Assert
         Invitation stored =
             await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.ExpiresAt.Should().BeOnOrBefore(DateTimeOffset.UtcNow);
 
-        (await service.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should().BeNull();
+        (await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should().BeNull();
     }
 
     /// <summary>
-    /// Revoking an unknown id is a no-op rather than a failure - there is nothing for the admin action
+    /// Revoking an unknown uuid is a no-op rather than a failure - there is nothing for the admin action
     /// to have raced against.
     /// </summary>
     [Fact]
-    public async Task RevokeAsyncDoesNothingForAnUnknownId()
+    public async Task RevokeAsyncDoesNothingForAnUnknownUuid()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         InvitationService service = NewService(context);
 
         // Act
-        Func<Task> revoke = () => service.RevokeAsync(-1, CancellationToken.None);
+        Func<Task> revoke = () => service.RevokeAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
         await revoke.Should().NotThrowAsync();

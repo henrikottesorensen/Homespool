@@ -46,7 +46,7 @@ public class IndexModel : PageModel
     }
 
     /// <summary>One account, as the roster shows it.</summary>
-    /// <param name="Id">The account, for the link to its detail page.</param>
+    /// <param name="Uuid">The account, for the link to its detail page.</param>
     /// <param name="UserName">What the interface calls this person.</param>
     /// <param name="Email">The address sign-in also accepts, and where recovery mail goes.</param>
     /// <param name="EmailConfirmed">An unconfirmed address is one this account cannot yet sign in on.</param>
@@ -57,7 +57,7 @@ public class IndexModel : PageModel
     /// <param name="Tokens">How many API tokens are outstanding.</param>
     /// <param name="Deactivated">Whether an administrator has closed this account.</param>
     /// <param name="LockedOut">Whether failed sign-ins are currently holding it out.</param>
-    public sealed record Row(long Id,
+    public sealed record Row(Guid Uuid,
                              string UserName,
                              string? Email,
                              bool EmailConfirmed,
@@ -94,7 +94,7 @@ public class IndexModel : PageModel
         Rows =
         [
             .. accounts.Select(account => new Row(
-                                   account.Id,
+                                   account.Uuid,
                                    account.UserName ?? string.Empty,
                                    account.Email,
                                    account.EmailConfirmed,

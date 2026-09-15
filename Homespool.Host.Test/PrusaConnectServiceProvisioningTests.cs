@@ -107,7 +107,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         // Act
-        (Printer printer, string token) = await service.ProvisionPrinterAsync("Bench printer", "Workshop", teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string token) = await service.ProvisionPrinterAsync("Bench printer", "Workshop", teamUuid: null, caller: Caller.Unscoped(1));
 
         // Assert
         printer.TeamId.Should().Be(defaultTeam.TeamId);
@@ -138,7 +138,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         // Act
-        (Printer printer, string token) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string token) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // Assert
         PrusaConnectProvisioning stored =
@@ -168,7 +168,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         // Act
-        (Printer _, string token) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer _, string token) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // Assert
         token.Length.Should().BeLessThanOrEqualTo(PrusaConnectConstants.PrinterTokenLength);
@@ -189,7 +189,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         TeamMember managed = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: false);
 
         // Act
-        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: managed.TeamId, caller: Caller.Unscoped(1));
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: managed.Team!.Uuid, caller: Caller.Unscoped(1));
 
         // Assert
         printer.TeamId.Should().Be(managed.TeamId);
@@ -215,7 +215,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
             await AddTeamAsync(context, userId: 1, canManage: false, isDefault: false);
 
         // Act
-        Func<Task> provision = () => service.ProvisionPrinterAsync(null, null, teamId: target.TeamId, caller: Caller.Unscoped(1));
+        Func<Task> provision = () => service.ProvisionPrinterAsync(null, null, teamUuid: target.Team!.Uuid, caller: Caller.Unscoped(1));
 
         // Assert
         await provision.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -236,7 +236,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         // Act
-        Func<Task> provision = () => service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        Func<Task> provision = () => service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // Assert
         await provision.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -256,7 +256,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
         // Act
-        await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // Assert
         (await context.PrusaConnectRegistrations.AnyAsync(TestContext.Current.CancellationToken)).Should()
@@ -285,7 +285,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         PrusaConnectProvisioning stale =
             await context.PrusaConnectProvisionings.SingleAsync(TestContext.Current.CancellationToken);
@@ -321,8 +321,8 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
 
-        (Printer fresh, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
-        (Printer expired, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer fresh, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
+        (Printer expired, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         PrusaConnectProvisioning aged = await context.PrusaConnectProvisionings
                                                      .SingleAsync(p => p.PrinterId == expired.Id, TestContext.Current.CancellationToken);
@@ -352,7 +352,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        (Printer printer, string original) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string original) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // Act
         string reissued = await service.RegenerateProvisioningTokenAsync(printer.Id, caller: Caller.Unscoped(1));
@@ -390,7 +390,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // a genuine member of the printer's own team, but without CanManage
         context.TeamMembers.Add(new TeamMember
@@ -422,7 +422,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true);
 
@@ -507,7 +507,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // first contact: the token is promoted into the enrolled table and the provisioning row goes
         TokenService tokenService = new();
@@ -558,7 +558,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         context.PrusaConnectProvisionings.RemoveRange(context.PrusaConnectProvisionings);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -585,7 +585,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         PrusaConnectService service = NewService(context);
 
         await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamId: null, caller: Caller.Unscoped(1));
+        (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
         {

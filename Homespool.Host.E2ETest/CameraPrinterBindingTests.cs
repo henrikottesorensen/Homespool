@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
@@ -114,6 +113,39 @@ public sealed class CameraPrinterBindingTests : IAsyncLifetime
             (await StoredPrinterIdsAsync()).Should().BeEmpty("neither refusal may leave a camera behind");
             foreignError.Should().NotBeEmpty();
             foreignError.Should().Be(unknownError, "a printer on another team must read exactly like one that does not exist");
+        }
+    }
+
+    /// <summary>
+    /// A team the saver is not in and a team uuid that names nothing are both refused, nothing is
+    /// stored, and the two refusals read the same.
+    /// </summary>
+    /// <remarks>
+    /// The form names a team by its uuid, so a refusal that differed between the two would confirm
+    /// which uuids name somebody else's team.
+    /// </remarks>
+    [Fact]
+    public async Task AnotherTeamIsRefusedInTheWordsAnUnknownOneIs()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-team-adder@example.com");
+        (HSUser owner, HttpClient ownerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-team-owner@example.com");
+
+        using (client)
+        using (ownerClient)
+        {
+            Guid theirTeam = await TeamUuidAsync(await TeamIdAsync(owner));
+
+            using HttpResponseMessage foreign = await PostAddNetworkAsync(client, theirTeam, printerUuid: string.Empty);
+            string foreignError = await ErrorShownAsync(client);
+
+            using HttpResponseMessage unknown = await PostAddNetworkAsync(client, Guid.NewGuid(), printerUuid: string.Empty);
+            string unknownError = await ErrorShownAsync(client);
+
+            (await StoredPrinterIdsAsync()).Should().BeEmpty("neither refusal may leave a camera behind");
+            foreignError.Should().NotBeEmpty();
+            foreignError.Should().Be(unknownError, "another team must read exactly like a team that does not exist");
         }
     }
 
@@ -312,7 +344,24 @@ public sealed class CameraPrinterBindingTests : IAsyncLifetime
         return match.Success ? match.Groups[1].Value : string.Empty;
     }
 
-    private static async Task<HttpResponseMessage> PostAddNetworkAsync(HttpClient client, int teamId, string printerUuid)
+    /// <summary>The uuid the Cameras form names a team by.</summary>
+    private async Task<Guid> TeamUuidAsync(int teamId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return await context.Teams
+                            .Where(team => team.Id == teamId)
+                            .Select(team => team.Uuid)
+                            .SingleAsync(TestContext.Current.CancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> PostAddNetworkAsync(HttpClient client, int teamId, string printerUuid)
+    {
+        return await PostAddNetworkAsync(client, await TeamUuidAsync(teamId), printerUuid);
+    }
+
+    private static async Task<HttpResponseMessage> PostAddNetworkAsync(HttpClient client, Guid teamUuid, string printerUuid)
     {
         string page = await GetPageAsync(client);
 
@@ -321,7 +370,7 @@ public sealed class CameraPrinterBindingTests : IAsyncLifetime
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
             new("name", "bound"),
             new("source", Source),
-            new("teamId", teamId.ToString(CultureInfo.InvariantCulture)),
+            new("teamUuid", teamUuid.ToString()),
             new("printerUuid", printerUuid),
         ]);
 

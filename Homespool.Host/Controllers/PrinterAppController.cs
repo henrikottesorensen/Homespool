@@ -89,7 +89,7 @@ public class PrinterAppController : ControllerBase
         try
         {
             Printer printer = await _prusaConnectService.ClaimPrinterAsync(
-                body.Code, body.Name, body.Location, body.TeamId, CallerResolver.For(user, User));
+                body.Code, body.Name, body.Location, body.TeamUuid, CallerResolver.For(user, User));
 
             await transaction.CommitAsync(cancellationToken);
 

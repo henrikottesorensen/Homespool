@@ -1864,6 +1864,9 @@
   <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
     <value>New account (its own team)</value>
   </data>
+  <data name="Invites_NoSuchTeam" xml:space="preserve">
+    <value>That team no longer exists.</value>
+  </data>
   <data name="Cameras_SecondsAgo" xml:space="preserve">
     <value>{0}s ago</value>
   </data>

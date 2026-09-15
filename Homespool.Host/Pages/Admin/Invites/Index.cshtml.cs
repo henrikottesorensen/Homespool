@@ -66,9 +66,9 @@ public class IndexModel : PageModel
         _teamNames = names;
     }
 
-    public async Task<IActionResult> OnPostRevokeAsync(int id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRevokeAsync(Guid uuid, CancellationToken cancellationToken)
     {
-        await _invitationService.RevokeAsync(id, cancellationToken);
+        await _invitationService.RevokeAsync(uuid, cancellationToken);
         StatusMessage = _localiser["Invites_Revoked"];
 
         return RedirectToPage();

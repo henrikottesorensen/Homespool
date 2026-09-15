@@ -117,9 +117,9 @@ public sealed class RegisterModelTests : IDisposable
         return WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(plaintext));
     }
 
-    private static void SetInvite(RegisterModel model, int inviteId, string plaintextToken)
+    private static void SetInvite(RegisterModel model, Guid inviteUuid, string plaintextToken)
     {
-        model.InviteId = inviteId;
+        model.InviteUuid = inviteUuid;
         model.Code = EncodeCode(plaintextToken);
     }
 
@@ -150,7 +150,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
 
         // Act
         await model.OnGetAsync(returnUrl: null, CancellationToken.None);
@@ -176,30 +176,30 @@ public sealed class RegisterModelTests : IDisposable
 
         (Invitation used, string usedToken) = await invitationService.CreateAsync(
             "used@example.com", null, 1, null, CancellationToken.None);
-        Invitation usedTracked = (await invitationService.ValidateAsync(used.Id, usedToken, CancellationToken.None))!;
+        Invitation usedTracked = (await invitationService.ValidateAsync(used.Uuid, usedToken, CancellationToken.None))!;
         await invitationService.MarkUsedAsync(usedTracked, CancellationToken.None);
 
-        // Assert: unknown id
+        // Assert: unknown uuid
         (RegisterModel unknown, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(unknown, -1, outstandingToken);
+        SetInvite(unknown, Guid.NewGuid(), outstandingToken);
         await unknown.OnGetAsync(null, CancellationToken.None);
         unknown.InviteValid.Should().BeFalse();
 
         // Assert: wrong token
         (RegisterModel wrongToken, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(wrongToken, outstanding.Id, "not-the-right-token");
+        SetInvite(wrongToken, outstanding.Uuid, "not-the-right-token");
         await wrongToken.OnGetAsync(null, CancellationToken.None);
         wrongToken.InviteValid.Should().BeFalse();
 
         // Assert: expired
         (RegisterModel expiredModel, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(expiredModel, expired.Id, expiredToken);
+        SetInvite(expiredModel, expired.Uuid, expiredToken);
         await expiredModel.OnGetAsync(null, CancellationToken.None);
         expiredModel.InviteValid.Should().BeFalse();
 
         // Assert: used
         (RegisterModel usedModel, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(usedModel, used.Id, usedToken);
+        SetInvite(usedModel, used.Uuid, usedToken);
         await usedModel.OnGetAsync(null, CancellationToken.None);
         usedModel.InviteValid.Should().BeFalse();
     }
@@ -220,7 +220,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, DefaultHttpContext httpContext, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
 
         // Act
@@ -235,7 +235,7 @@ public sealed class RegisterModelTests : IDisposable
 
         httpContext.Response.Headers.Should().ContainKey("Set-Cookie", "signing in writes the auth cookie");
 
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
             .BeNull("the invite is spent");
     }
 
@@ -253,7 +253,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, CapturingEmailSender emailSender) = NewModel(context, invitationService, smtpConfigured: true);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
 
         // Act
@@ -269,7 +269,7 @@ public sealed class RegisterModelTests : IDisposable
 
         emailSender.SentEmails.Should().ContainSingle(e => e.email == "invitee@example.com" && e.subject == "Confirm your email");
 
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
             .BeNull("the invite is spent regardless of the confirmation path");
     }
 
@@ -291,7 +291,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", existingTeam.Id, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
 
         // Act
@@ -322,7 +322,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
 
         // Act
@@ -353,14 +353,14 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
 
         await model.OnGetAsync(null, CancellationToken.None);
         model.InviteValid.Should().BeTrue("sanity check: the invite was good at GET time");
 
         // Someone else raced this invite between the GET and the submit.
-        Invitation tracked = (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None))!;
+        Invitation tracked = (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None))!;
         await invitationService.MarkUsedAsync(tracked, CancellationToken.None);
 
         // Act
@@ -384,7 +384,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
         model.ModelState.AddModelError(nameof(RegisterModel.InputModel.ConfirmPassword),
                                        "The password and confirmation password do not match.");
@@ -398,7 +398,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
             .Be(0);
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
             .NotBeNull("an invite is never spent by a rejected submission");
     }
 
@@ -421,7 +421,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
 
         // Act
@@ -433,7 +433,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
             .Be(1, "no second row for the duplicate email");
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
             .NotBeNull("the failed attempt must not spend the invite");
     }
 
@@ -476,7 +476,7 @@ public sealed class RegisterModelTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         (RegisterModel model, _, _) = NewModel(context, invitationService, smtpConfigured: false);
-        SetInvite(model, invitation.Id, plaintext);
+        SetInvite(model, invitation.Uuid, plaintext);
         SetValidInput(model);
 
         // Act
@@ -489,7 +489,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
             .Be(0, "the whole transaction rolled back, including the user row");
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
             .NotBeNull("a rolled-back accept must not spend the invite");
     }
 }

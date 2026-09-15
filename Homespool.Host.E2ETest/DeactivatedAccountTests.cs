@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -71,7 +70,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
 
-        string detailPath = $"/Admin/Users/Detail/{subject.Id.ToString(CultureInfo.InvariantCulture)}";
+        string detailPath = $"/Admin/Users/Detail/{subject.Uuid}";
 
         // Act
         using (admin)
@@ -119,7 +118,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
 
-        string detailPath = $"/Admin/Users/Detail/{subject.Id.ToString(CultureInfo.InvariantCulture)}";
+        string detailPath = $"/Admin/Users/Detail/{subject.Uuid}";
 
         // Act
         using (admin)

@@ -153,7 +153,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
+        await model.OnGetAsync(user.Uuid, "after@example.com", code);
 
         // Assert
         HSUser reloaded = await context.Users.AsNoTracking()
@@ -189,7 +189,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        IActionResult result = await model.OnGetAsync(mover.Id.ToString(), "taken@example.com", code);
+        IActionResult result = await model.OnGetAsync(mover.Uuid, "taken@example.com", code);
 
         // Assert
         result.Should().BeOfType<PageResult>();
@@ -234,7 +234,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        IActionResult result = await model.OnGetAsync(mover.Id.ToString(), "taken@example.com", code);
+        IActionResult result = await model.OnGetAsync(mover.Uuid, "taken@example.com", code);
 
         // Assert
         result.Should().BeOfType<PageResult>();
@@ -267,7 +267,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
+        await model.OnGetAsync(user.Uuid, "after@example.com", code);
 
         // Assert
         (string email, string subject, string body) notice = Mail.SentEmails.Should().ContainSingle().Subject;
@@ -296,7 +296,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
+        await model.OnGetAsync(user.Uuid, "after@example.com", code);
 
         // Assert
         Mail.SentEmails.Should().ContainSingle().Which.subject.Should().Be("E-mailadressen på din Homespool-konto er ændret");
@@ -321,7 +321,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
 
         // Act
-        await model.OnGetAsync(user.Id.ToString(), "after@example.com", code);
+        await model.OnGetAsync(user.Uuid, "after@example.com", code);
 
         // Assert
         HSUser reloaded = await context.Users.AsNoTracking()

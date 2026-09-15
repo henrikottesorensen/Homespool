@@ -136,23 +136,23 @@ public class InvitationService
     }
 
     /// <summary>
-    /// Loads invite <paramref name="inviteId"/> and returns it only if it is outstanding (not used, not
+    /// Loads invite <paramref name="inviteUuid"/> and returns it only if it is outstanding (not used, not
     /// expired) <b>and</b> <paramref name="plaintextToken"/> verifies against its stored hash. Returns
     /// <c>null</c> on any failure without distinguishing which — a wrong token, a used invite, an
-    /// expired one and an unknown id are indistinguishable to the caller, so nothing here is an oracle.
+    /// expired one and an unknown uuid are indistinguishable to the caller, so nothing here is an oracle.
     /// </summary>
     /// <remarks>
     /// The returned entity is tracked by the request-scoped context, so a caller inside a transaction
     /// can pass it straight to <see cref="MarkUsedAsync"/> to spend it atomically.
     /// </remarks>
-    public async Task<Invitation?> ValidateAsync(int inviteId, string? plaintextToken, CancellationToken cancellationToken)
+    public async Task<Invitation?> ValidateAsync(Guid inviteUuid, string? plaintextToken, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(plaintextToken))
         {
             return null;
         }
 
-        Invitation? invitation = await _dbContext.Invitations.FindAsync([inviteId], cancellationToken);
+        Invitation? invitation = await _dbContext.Invitations.SingleOrDefaultAsync(i => i.Uuid == inviteUuid, cancellationToken);
 
         if (invitation is null || invitation.UsedAt is not null || invitation.ExpiresAt <= DateTimeOffset.UtcNow)
         {
@@ -176,7 +176,7 @@ public class InvitationService
     /// <remarks>
     /// <para>
     /// <b>Why this exists at all, rather than the caller reusing <see cref="ValidateAsync"/>:</b> the
-    /// stored hash is salted, so an invite cannot be located from a token — the id has to come from
+    /// stored hash is salted, so an invite cannot be located from a token — the uuid has to come from
     /// the accept link. A caller arriving from an identity provider has neither, which is precisely
     /// what makes the address the only thing left to match on, and why the trade is documented on the
     /// option rather than here.
@@ -234,13 +234,13 @@ public class InvitationService
     }
 
     /// <summary>
-    /// Revokes invite <paramref name="inviteId"/> by expiring it now — a soft revoke that keeps the row
+    /// Revokes invite <paramref name="inviteUuid"/> by expiring it now — a soft revoke that keeps the row
     /// for audit and needs no dedicated status column. A revoked invite reads as "expired". No-op if the
-    /// id is unknown or the invite is already used/expired.
+    /// uuid is unknown or the invite is already used/expired.
     /// </summary>
-    public async Task RevokeAsync(int inviteId, CancellationToken cancellationToken)
+    public async Task RevokeAsync(Guid inviteUuid, CancellationToken cancellationToken)
     {
-        Invitation? invitation = await _dbContext.Invitations.FindAsync([inviteId], cancellationToken);
+        Invitation? invitation = await _dbContext.Invitations.SingleOrDefaultAsync(i => i.Uuid == inviteUuid, cancellationToken);
 
         if (invitation is null)
         {

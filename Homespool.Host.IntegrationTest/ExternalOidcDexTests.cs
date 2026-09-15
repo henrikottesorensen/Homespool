@@ -156,7 +156,7 @@ public sealed class ExternalOidcDexTests
 
         using HttpResponseMessage callback = await fixture.DriveProviderSignInAsync(
             TestContext.Current.CancellationToken,
-            invitation.Id,
+            invitation.Uuid,
             WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token)));
 
         callback.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -257,10 +257,10 @@ public sealed class ExternalOidcDexTests
         /// when an invite authorised one, or the redirect back to the login page when nothing did.
         /// </summary>
         /// <param name="cancellationToken">Cancels every leg.</param>
-        /// <param name="inviteId">An invite to carry through the provider, or null for the plain flow.</param>
-        /// <param name="code">The invite's Base64Url token, required when <paramref name="inviteId"/> is given.</param>
+        /// <param name="inviteUuid">An invite to carry through the provider, or null for the plain flow.</param>
+        /// <param name="code">The invite's Base64Url token, required when <paramref name="inviteUuid"/> is given.</param>
         public async Task<HttpResponseMessage> DriveProviderSignInAsync(CancellationToken cancellationToken,
-                                                                        int? inviteId = null,
+                                                                        Guid? inviteUuid = null,
                                                                         string? code = null)
         {
             string loginPage = await _app.GetStringAsync("/Account/Login", cancellationToken);
@@ -271,9 +271,9 @@ public sealed class ExternalOidcDexTests
                 ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(loginPage),
             };
 
-            if (inviteId is int id)
+            if (inviteUuid is Guid uuid)
             {
-                form["inviteId"] = id.ToString(CultureInfo.InvariantCulture);
+                form["inviteUuid"] = uuid.ToString();
                 form["code"] = code!;
             }
 

@@ -32,6 +32,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     Language = table.Column<string>(type: "TEXT", maxLength: 16, nullable: true),
                     DefaultPrinterId = table.Column<int>(type: "INTEGER", nullable: true),
                     DeactivatedAt = table.Column<long>(type: "INTEGER", nullable: true),
@@ -73,6 +74,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: true),
                     CreatedBy = table.Column<long>(type: "INTEGER", nullable: false),
                     CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
@@ -109,6 +111,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     UserId = table.Column<long>(type: "INTEGER", nullable: false),
                     TokenHash = table.Column<string>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
@@ -288,6 +291,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     HashedToken = table.Column<string>(type: "TEXT", nullable: false),
                     Email = table.Column<string>(type: "TEXT", nullable: false),
                     CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
@@ -797,6 +801,12 @@ namespace Homespool.Data.Migrations
                 column: "UserId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_ApiTokens_Uuid",
+                table: "ApiTokens",
+                column: "Uuid",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_AspNetRoleClaims_RoleId",
                 table: "AspNetRoleClaims",
                 column: "RoleId");
@@ -834,6 +844,12 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_AspNetUsers_Uuid",
+                table: "AspNetUsers",
+                column: "Uuid",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "UserNameIndex",
                 table: "AspNetUsers",
                 column: "NormalizedUserName",
@@ -865,6 +881,12 @@ namespace Homespool.Data.Migrations
                 name: "IX_Invitations_TeamId",
                 table: "Invitations",
                 column: "TeamId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Invitations_Uuid",
+                table: "Invitations",
+                column: "Uuid",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_PrinterEvents_PrinterId_JobId",
@@ -976,6 +998,12 @@ namespace Homespool.Data.Migrations
                 column: "UserId",
                 unique: true,
                 filter: "\"IsDefault\"");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Teams_Uuid",
+                table: "Teams",
+                column: "Uuid",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_TelemetrySamples_PrinterId_Timestamp",

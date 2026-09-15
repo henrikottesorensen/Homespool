@@ -19,6 +19,13 @@ public class Invitation
 {
     public int Id { get; set; }
 
+    /// <summary>
+    /// The invite's public identifier - the one the accept link and the revoke button carry, since
+    /// <see cref="Id"/> counts up. Minted at construction, as <see cref="Team.Uuid"/> is and for the
+    /// same reason.
+    /// </summary>
+    public Guid Uuid { get; set; } = Guid.NewGuid();
+
     /// <summary>Hash of the invite token. The plaintext is never stored.</summary>
     public required string HashedToken { get; set; }
 

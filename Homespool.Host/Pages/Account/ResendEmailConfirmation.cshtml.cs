@@ -108,13 +108,12 @@ public class ResendEmailConfirmationModel : PageModel
         await _attemptLimiter.RecordFailedAttemptAsync(
             user.Id, LimitedAction.SendConfirmationEmail, now, cancellationToken);
 
-        string userId = await _userManager.GetUserIdAsync(user);
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
         string callbackUrl = Url.Page(
             "/Account/ConfirmEmail",
             pageHandler: null,
-            values: new { userId = userId, code = code },
+            values: new { userUuid = user.Uuid, code = code },
             protocol: Request.Scheme);
 
         // The account's language, not the request's: this page is anonymous, so the browser asking

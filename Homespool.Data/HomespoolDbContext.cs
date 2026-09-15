@@ -163,6 +163,12 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // the columns off the table, so the application never stores a number it cannot use.
             entity.Ignore(e => e.PhoneNumber);
             entity.Ignore(e => e.PhoneNumberConfirmed);
+
+            // The public identifier, as on Printer: looked up by the administration pages and the
+            // confirmation links, so it must be unique. Deliberately not the key - Id is what every
+            // Identity table and every foreign key to an account carries.
+            entity.HasIndex(e => e.Uuid)
+                  .IsUnique();
         });
 
         builder.Entity<IdentityUserPasskey<long>>(entity =>
@@ -368,6 +374,13 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
+        builder.Entity<Team>(entity =>
+        {
+            // The public identifier, as on Printer: the team pickers and the API name a team by it.
+            entity.HasIndex(e => e.Uuid)
+                  .IsUnique();
+        });
+
         builder.Entity<TeamMember>(entity =>
         {
             // One row per user per team.
@@ -405,6 +418,10 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.HasIndex(e => e.HashedToken)
                   .IsUnique();
 
+            // The public identifier the accept link and the revoke button carry, as on Printer.
+            entity.HasIndex(e => e.Uuid)
+                  .IsUnique();
+
             // A nullable team target: null invites mint a new account with its own default team,
             // non-null ones join an existing team. Restrict so an invite cannot outlive its target
             // team silently — a dangling team id would send accept down the wrong branch.
@@ -422,6 +439,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // unsalted SHA-384 of 32 random bytes, a collision means the same secret was issued twice,
             // which the index turns into a failed insert rather than a silent ambiguity.
             entity.HasIndex(e => e.TokenHash)
+                  .IsUnique();
+
+            // The public identifier the revoke button carries, as on Printer. Names a token; the hash
+            // above is what authenticates one.
+            entity.HasIndex(e => e.Uuid)
                   .IsUnique();
 
             // The management page lists a person's own tokens, and nothing ever lists them all.

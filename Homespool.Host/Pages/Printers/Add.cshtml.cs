@@ -91,7 +91,7 @@ public class AddModel : PageModel
         public string? Location { get; set; }
 
         [Display(Name = "Common_Team")]
-        public int? TeamId { get; set; }
+        public Guid? TeamUuid { get; set; }
     }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)
@@ -133,7 +133,7 @@ public class AddModel : PageModel
         try
         {
             (Printer printer, string token) = await _prusaConnectService.ProvisionPrinterAsync(
-                Input.Name, Input.Location, Input.TeamId, CallerResolver.For(user, User));
+                Input.Name, Input.Location, Input.TeamUuid, CallerResolver.For(user, User));
 
             await transaction.CommitAsync(cancellationToken);
 

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -71,11 +72,11 @@ public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
     public async Task AnInviteForAnOrphanedAccountIsRefusedAndChangesNothing()
     {
         long orphanId = await CreateOrphanedAccountAsync();
-        (int inviteId, string code) = await CreateInviteAsync(Address);
+        (Guid inviteUuid, string code) = await CreateInviteAsync(Address);
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: null);
+        using HttpResponseMessage response = await AcceptAsync(client, inviteUuid, code, username: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the form comes back with the refusal on it");
 
@@ -103,11 +104,11 @@ public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
     public async Task AnInviteForAnAddressThatAlreadySignsInIsRefused()
     {
         await CreateWorkingAccountAsync();
-        (int inviteId, string code) = await CreateInviteAsync(Address);
+        (Guid inviteUuid, string code) = await CreateInviteAsync(Address);
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: null);
+        using HttpResponseMessage response = await AcceptAsync(client, inviteUuid, code, username: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the form comes back with the refusal on it");
 
@@ -138,11 +139,11 @@ public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
     [Fact]
     public async Task AnInviteForANewAddressStillCreatesAnAccount()
     {
-        (int inviteId, string code) = await CreateInviteAsync("newcomer@example.com");
+        (Guid inviteUuid, string code) = await CreateInviteAsync("newcomer@example.com");
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        using HttpResponseMessage response = await AcceptAsync(client, inviteId, code, username: "newcomer");
+        using HttpResponseMessage response = await AcceptAsync(client, inviteUuid, code, username: "newcomer");
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
@@ -152,14 +153,14 @@ public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
         (await users.FindByEmailAsync("newcomer@example.com")).Should().NotBeNull("ordinary invites are unaffected");
     }
 
-    private async Task<HttpResponseMessage> AcceptAsync(HttpClient client, int inviteId, string code, string? username)
+    private async Task<HttpResponseMessage> AcceptAsync(HttpClient client, Guid inviteUuid, string code, string? username)
     {
-        string page = await client.GetStringAsync($"/Account/Register?InviteId={inviteId}&Code={code}",
+        string page = await client.GetStringAsync($"/Account/Register?InviteUuid={inviteUuid}&Code={code}",
                                                   TestContext.Current.CancellationToken);
 
         Dictionary<string, string> form = new()
         {
-            ["InviteId"] = inviteId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["InviteUuid"] = inviteUuid.ToString(),
             ["Code"] = code,
             ["Input.Password"] = Password,
             ["Input.ConfirmPassword"] = Password,
@@ -173,7 +174,7 @@ public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
 
         using FormUrlEncodedContent body = new(form);
 
-        return await client.PostAsync($"/Account/Register?InviteId={inviteId}&Code={code}", body,
+        return await client.PostAsync($"/Account/Register?InviteUuid={inviteUuid}&Code={code}", body,
                                       TestContext.Current.CancellationToken);
     }
 
@@ -217,14 +218,14 @@ public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
         (await users.CreateAsync(user, Password)).Succeeded.Should().BeTrue();
     }
 
-    private async Task<(int inviteId, string code)> CreateInviteAsync(string email)
+    private async Task<(Guid inviteUuid, string code)> CreateInviteAsync(string email)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
         (Invitation invitation, string token) = await scope.ServiceProvider.GetRequiredService<InvitationService>()
             .CreateAsync(email, teamId: null, invitedBy: 1, expiresAt: null, TestContext.Current.CancellationToken);
 
-        return (invitation.Id, WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token)));
+        return (invitation.Uuid, WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token)));
     }
 
     private async Task<HSUser> FindAsync()

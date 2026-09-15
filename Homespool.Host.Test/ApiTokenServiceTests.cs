@@ -235,7 +235,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         (ApiToken created, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
-        bool revoked = await service.RevokeAsync(user.Id, created.Id, CancellationToken.None);
+        bool revoked = await service.RevokeAsync(user.Id, created.Uuid, CancellationToken.None);
         ApiToken? found = await service.FindByCredentialAsync(plaintext, CancellationToken.None);
 
         // Assert
@@ -246,8 +246,8 @@ public sealed class ApiTokenServiceTests : IDisposable
     // ---------- RevokeAsync / ListAsync ----------
 
     /// <summary>
-    /// Someone else's token id is not revocable, and the answer does not distinguish that from a token
-    /// that never existed - so this cannot be used to probe for other people's ids.
+    /// Someone else's token is not revocable, and the answer does not distinguish that from a token
+    /// that never existed - so this cannot be used to probe for other people's tokens.
     /// </summary>
     [Fact]
     public async Task RevokeAsyncWillNotDeleteAnotherUsersToken()
@@ -261,12 +261,12 @@ public sealed class ApiTokenServiceTests : IDisposable
         (ApiToken token, string plaintext) = await service.CreateAsync(owner.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         // Act
-        bool revoked = await service.RevokeAsync(other.Id, token.Id, CancellationToken.None);
+        bool revoked = await service.RevokeAsync(other.Id, token.Uuid, CancellationToken.None);
 
         // Assert
         revoked.Should().BeFalse();
         (await service.FindByCredentialAsync(plaintext, CancellationToken.None)).Should().NotBeNull("the owner's token survives");
-        (await service.RevokeAsync(other.Id, 9999, CancellationToken.None)).Should().BeFalse("an unknown id answers the same way");
+        (await service.RevokeAsync(other.Id, Guid.NewGuid(), CancellationToken.None)).Should().BeFalse("an unknown uuid answers the same way");
     }
 
     /// <summary>A person sees their own tokens, newest first, and nobody else's.</summary>

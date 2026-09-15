@@ -228,13 +228,13 @@ public sealed class IndexModelTests : IDisposable
         IndexModel model = new(invitationService, new TeamService(context), TestLocaliser.Shared());
 
         // Act
-        IActionResult result = await model.OnPostRevokeAsync(invitation.Id, CancellationToken.None);
+        IActionResult result = await model.OnPostRevokeAsync(invitation.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().Be("Invitation revoked.");
 
-        (await invitationService.ValidateAsync(invitation.Id, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
             .BeNull("revoking soft-expires the invite");
     }
 }

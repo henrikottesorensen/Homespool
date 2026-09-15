@@ -65,7 +65,7 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
 
-        string detailPath = $"/Admin/Users/Detail/{subject.Id.ToString(CultureInfo.InvariantCulture)}";
+        string detailPath = $"/Admin/Users/Detail/{subject.Uuid}";
         string link;
 
         using (admin)
@@ -200,7 +200,7 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
 
-        string detailPath = $"/Admin/Users/Detail/{subject.Id.ToString(CultureInfo.InvariantCulture)}";
+        string detailPath = $"/Admin/Users/Detail/{subject.Uuid}";
 
         using (admin)
         {
@@ -233,7 +233,7 @@ public sealed class RecoveryInviteFlowTests : IAsyncLifetime
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
 
-        string detailPath = $"/Admin/Users/Detail/{subject.Id.ToString(CultureInfo.InvariantCulture)}";
+        string detailPath = $"/Admin/Users/Detail/{subject.Uuid}";
 
         using (admin)
         {

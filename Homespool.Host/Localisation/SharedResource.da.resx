@@ -1812,6 +1812,9 @@
   <data name="Invites_NewAccountOwnTeam" xml:space="preserve">
     <value>Ny konto (sit eget team)</value>
   </data>
+  <data name="Invites_NoSuchTeam" xml:space="preserve">
+    <value>Dette team eksisterer ikke længere.</value>
+  </data>
   <data name="Cameras_SecondsAgo" xml:space="preserve">
     <value>for {0} sek. siden</value>
   </data>

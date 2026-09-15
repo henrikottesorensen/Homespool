@@ -21,6 +21,17 @@ public class Team
     public int Id { get; set; }
 
     /// <summary>
+    /// The team's public identifier - the one a form, a URL or an API payload carries. <see cref="Id"/>
+    /// is a storage key that counts up, so it stays out of anything a person can edit and resubmit.
+    /// </summary>
+    /// <remarks>
+    /// Minted when the object is constructed rather than by whichever service saves it, so no path
+    /// that creates a team can leave it at <see cref="Guid.Empty"/>, which the unique index would then
+    /// turn into a failed insert on the second one. A row read back overwrites it with the stored value.
+    /// </remarks>
+    public Guid Uuid { get; set; } = Guid.NewGuid();
+
+    /// <summary>
     /// User-chosen display name. Null means the user has not named it — resolve for display as
     /// <c>Name ?? "&lt;CreatedBy display name&gt;'s team"</c>.
     /// </summary>

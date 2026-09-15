@@ -166,13 +166,26 @@ public class CameraService
     /// network camera. See <see cref="Camera.Resolution"/>.
     /// </remarks>
     public async Task<CameraSaveOutcome> CreateAsync(Caller caller,
-                                                     int teamId,
+                                                     Guid teamUuid,
                                                      string? name,
                                                      string source,
                                                      Guid? printerUuid,
                                                      string? resolution,
                                                      CancellationToken cancellationToken)
     {
+        int? namedTeamId = await _dbContext.Teams
+                                           .Where(team => team.Uuid == teamUuid)
+                                           .Select(team => (int?)team.Id)
+                                           .SingleOrDefaultAsync(cancellationToken)
+                                           .ConfigureAwait(false);
+
+        // The refusal a team the caller is not in gets, so the form cannot tell a stranger's team
+        // from one that does not exist.
+        if (namedTeamId is not int teamId)
+        {
+            return CameraSaveOutcome.Refused("Cameras_NotYourTeam");
+        }
+
         CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, teamId, source, cancellationToken)
             .ConfigureAwait(false);
 

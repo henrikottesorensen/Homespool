@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
@@ -124,20 +125,33 @@ public sealed class AttachedCameraHandlerTests : IAsyncLifetime
             .Should().Be(0, because);
     }
 
-    private static async Task<HttpResponseMessage> PostAttachedAsync(HttpClient client,
-                                                                    int teamId,
-                                                                    string device,
-                                                                    string? resolution = null)
+    /// <summary>The uuid the Cameras form names a team by.</summary>
+    private async Task<Guid> TeamUuidAsync(int teamId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return await context.Teams
+                            .Where(team => team.Id == teamId)
+                            .Select(team => team.Uuid)
+                            .SingleAsync(TestContext.Current.CancellationToken);
+    }
+
+    private async Task<HttpResponseMessage> PostAttachedAsync(HttpClient client,
+                                                             int teamId,
+                                                             string device,
+                                                             string? resolution = null)
     {
         string page = await (await client.GetAsync("/Cameras", TestContext.Current.CancellationToken))
             .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Guid teamUuid = await TeamUuidAsync(teamId);
 
         using FormUrlEncodedContent form = new(
         [
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
             new("name", "forged"),
             new("device", device),
-            new("teamId", teamId.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            new("teamUuid", teamUuid.ToString()),
             new("resolution", resolution ?? string.Empty),
         ]);
 

@@ -163,10 +163,10 @@ else
 
         <div class="col-md-2">
             <label class="form-label" for="add-team">@Localiser["Common_Team"]</label>
-            <select class="form-select" id="add-team" name="teamId">
+            <select class="form-select" id="add-team" name="teamUuid">
                 @foreach (var team in Model.Teams)
                 {
-                    <option value="@team.Id">@(team.Name ?? $"Team {team.Id}")</option>
+                    <option value="@team.Uuid">@(team.Name ?? Localiser["Common_TeamNumbered", team.Id].Value)</option>
                 }
             </select>
         </div>
@@ -227,10 +227,10 @@ else
 
         <div class="col-md-2">
             <label class="form-label" for="attach-team">@Localiser["Common_Team"]</label>
-            <select class="form-select" id="attach-team" name="teamId">
+            <select class="form-select" id="attach-team" name="teamUuid">
                 @foreach (var team in Model.Teams)
                 {
-                    <option value="@team.Id">@(team.Name ?? $"Team {team.Id}")</option>
+                    <option value="@team.Uuid">@(team.Name ?? Localiser["Common_TeamNumbered", team.Id].Value)</option>
                 }
             </select>
         </div>

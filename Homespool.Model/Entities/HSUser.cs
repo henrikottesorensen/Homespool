@@ -22,7 +22,20 @@ public class HSUser : IdentityUser<long>
     public HSUser()
     {
         SecurityStamp = Guid.NewGuid().ToString();
+        Uuid = Guid.NewGuid();
     }
+
+    /// <summary>
+    /// The account's public identifier - the one the administration pages, the confirmation links and
+    /// <c>GET /api/v1/user</c> carry. <c>Id</c> is a storage key that counts up, so it stays out of
+    /// anything a person can edit and resubmit.
+    /// </summary>
+    /// <remarks>
+    /// Minted in the constructor beside <see cref="IdentityUser{TKey}.SecurityStamp"/>, so every path
+    /// that creates an account has one without being told to - Identity's own creation does not know
+    /// the column exists. A row read back overwrites it with the stored value.
+    /// </remarks>
+    public Guid Uuid { get; set; }
 
     /// <summary>
     /// The language this account reads Homespool in, as a culture name (<c>en</c>, <c>da</c>), or

@@ -1,4 +1,4 @@
-@page "{id:long}"
+@page "{uuid:guid}"
 @model DetailModel
 @{
     ViewData["Title"] = Model.UserName;
@@ -80,16 +80,16 @@
         {
             @if (!Model.IsSelf)
             {
-                <button type="submit" class="btn btn-outline-danger" asp-page-handler="Deactivate" asp-route-id="@Model.Id">@Localiser["AdminUsers_Deactivate"]</button>
+                <button type="submit" class="btn btn-outline-danger" asp-page-handler="Deactivate" asp-route-uuid="@Model.Uuid">@Localiser["AdminUsers_Deactivate"]</button>
             }
         }
         else
         {
-            <button type="submit" class="btn btn-outline-primary" asp-page-handler="Reactivate" asp-route-id="@Model.Id">@Localiser["AdminUsers_Reactivate"]</button>
+            <button type="submit" class="btn btn-outline-primary" asp-page-handler="Reactivate" asp-route-uuid="@Model.Uuid">@Localiser["AdminUsers_Reactivate"]</button>
         }
 
-        <button type="submit" class="btn btn-outline-danger" asp-page-handler="RevokeTokens" asp-route-id="@Model.Id">@Localiser["AdminUsers_RevokeTokens"]</button>
-        <button type="submit" class="btn btn-outline-secondary" asp-page-handler="ClearLockout" asp-route-id="@Model.Id">@Localiser["AdminUsers_ClearLockout"]</button>
+        <button type="submit" class="btn btn-outline-danger" asp-page-handler="RevokeTokens" asp-route-uuid="@Model.Uuid">@Localiser["AdminUsers_RevokeTokens"]</button>
+        <button type="submit" class="btn btn-outline-secondary" asp-page-handler="ClearLockout" asp-route-uuid="@Model.Uuid">@Localiser["AdminUsers_ClearLockout"]</button>
     </div>
 
     @if (!Model.IsSelf && Model.DeactivatedAt is null)
@@ -103,7 +103,7 @@
                 <label class="form-check-label" for="clear-authenticator">@Localiser["AdminUsers_ClearAuthenticator"]</label>
             </div>
 
-            <button type="submit" class="btn btn-outline-primary" asp-page-handler="Recover" asp-route-id="@Model.Id">@Localiser["AdminUsers_SendRecovery"]</button>
+            <button type="submit" class="btn btn-outline-primary" asp-page-handler="Recover" asp-route-uuid="@Model.Uuid">@Localiser["AdminUsers_SendRecovery"]</button>
 
             @if (!string.IsNullOrEmpty(Model.RecoveryLink))
             {
@@ -162,7 +162,7 @@
                         @if (!Model.IsSelf)
                         {
                             <button type="submit" class="btn btn-sm btn-outline-danger"
-                                    asp-page-handler="RevokePasskey" asp-route-id="@Model.Id"
+                                    asp-page-handler="RevokePasskey" asp-route-uuid="@Model.Uuid"
                                     name="credentialId" value="@passkey.Id">@Localiser["AdminPasskeys_Revoke"]</button>
                         }
                     </td>

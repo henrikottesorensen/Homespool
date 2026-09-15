@@ -229,7 +229,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
         ApiTokenService tokens = new(context);
 
         (ApiToken token, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
-        await tokens.RevokeAsync(user.Id, token.Id, CancellationToken.None);
+        await tokens.RevokeAsync(user.Id, token.Uuid, CancellationToken.None);
 
         (ApiTokenAuthenticationHandler handler, _) = await NewHandlerAsync(context, $"Bearer {plaintext}");
 

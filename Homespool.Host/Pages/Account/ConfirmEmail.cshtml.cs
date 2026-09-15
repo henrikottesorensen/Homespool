@@ -3,6 +3,7 @@
 
 #nullable disable
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 
 namespace Homespool.Host.Pages.Account;
@@ -38,17 +40,17 @@ public class ConfirmEmailModel : PageModel
     [TempData]
     public string StatusMessage { get; set; }
 
-    public async Task<IActionResult> OnGetAsync(string userId, string code, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(Guid? userUuid, string code, CancellationToken cancellationToken)
     {
-        if (userId == null || code == null)
+        if (userUuid == null || code == null)
         {
             return RedirectToPage("/Index");
         }
 
-        HSUser user = await _userManager.FindByIdAsync(userId);
+        HSUser user = await _userManager.Users.SingleOrDefaultAsync(candidate => candidate.Uuid == userUuid, cancellationToken);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{userId}'.");
+            return NotFound($"Unable to load user with UUID '{userUuid}'.");
         }
 
         string token = EmailedToken.Decode(code);

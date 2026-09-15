@@ -160,7 +160,7 @@ public sealed class CreateModelTests : IDisposable
 
         model.AcceptLink.Should().NotBeNullOrEmpty();
         model.AcceptLink.Should().Contain("/Account/Register");
-        ExtractQueryValue(model.AcceptLink!, "inviteId").Should().Be(stored.Id.ToString());
+        ExtractQueryValue(model.AcceptLink!, "inviteUuid").Should().Be(stored.Uuid.ToString());
 
         model.EmailSent.Should().BeTrue();
         emailSender.SentEmails.Should().ContainSingle(e => e.email == "invitee@example.com");
@@ -187,7 +187,7 @@ public sealed class CreateModelTests : IDisposable
         string code = ExtractQueryValue(model.AcceptLink!, "code")!;
         string plaintext = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
 
-        (await invitationService.ValidateAsync(stored.Id, plaintext, CancellationToken.None)).Should().NotBeNull();
+        (await invitationService.ValidateAsync(stored.Uuid, plaintext, CancellationToken.None)).Should().NotBeNull();
     }
 
     /// <summary>Selecting an existing team binds the invite to it instead of minting a new-account invite.</summary>
@@ -202,7 +202,7 @@ public sealed class CreateModelTests : IDisposable
 
         (CreateModel model, _, _) = await NewModelAsync(context);
         model.Input.Email = "invitee@example.com";
-        model.Input.TeamId = team.Id;
+        model.Input.TeamUuid = team.Uuid;
 
         // Act
         await model.OnPostAsync(CancellationToken.None);
@@ -210,6 +210,29 @@ public sealed class CreateModelTests : IDisposable
         // Assert
         Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
         stored.TeamId.Should().Be(team.Id);
+    }
+
+    /// <summary>
+    /// A team uuid naming no team is refused on the form and mints nothing, rather than reaching the
+    /// insert and failing there on the foreign key.
+    /// </summary>
+    [Fact]
+    public async Task OnPostAsyncRefusesATeamUuidThatNamesNoTeam()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (CreateModel model, _, _) = await NewModelAsync(context);
+        model.Input.Email = "invitee@example.com";
+        model.Input.TeamUuid = Guid.NewGuid();
+
+        // Act
+        IActionResult result = await model.OnPostAsync(CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+        model.ModelState.IsValid.Should().BeFalse();
+        model.AcceptLink.Should().BeNull();
+        (await context.Invitations.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 
     /// <summary>An explicit expiry is honored instead of the configured default.</summary>

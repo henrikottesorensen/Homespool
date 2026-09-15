@@ -34,7 +34,7 @@ public static class TeamOptionSelectListBuilder
                .Where(m => CapabilitySet.Parse(m.Capabilities).Allows(Capability.ManagePrinter))
                .Select(m => new SelectListItem(
                             m.Team?.Name ?? localiser["Common_TeamNumbered", m.TeamId].Value,
-                            m.TeamId.ToString(),
+                            m.Team!.Uuid.ToString(),
                             m.IsDefault))
                .ToList();
     }

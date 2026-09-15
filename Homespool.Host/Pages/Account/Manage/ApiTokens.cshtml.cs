@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
@@ -232,7 +233,7 @@ public class ApiTokensModel : PageModel
         return await LoadAsync(cancellationToken) ? Page() : NotFound();
     }
 
-    public async Task<IActionResult> OnPostRevokeAsync(long id, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostRevokeAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -243,11 +244,11 @@ public class ApiTokensModel : PageModel
 
         // False means it was not this user's to revoke - which covers "already gone" too, and says the
         // same thing either way rather than reporting on the existence of other people's tokens.
-        bool revoked = await _tokens.RevokeAsync(user.Id, id, cancellationToken);
+        bool revoked = await _tokens.RevokeAsync(user.Id, uuid, cancellationToken);
 
         if (revoked)
         {
-            _logger.LogInformation("User {UserId} revoked API token {TokenId}.", user.Id, id);
+            _logger.LogInformation("User {UserId} revoked API token {TokenUuid}.", user.Id, uuid);
         }
 
         StatusMessage = revoked ? _localiser["Manage_TokenRevoked"] : _localiser["Manage_TokenGone"];

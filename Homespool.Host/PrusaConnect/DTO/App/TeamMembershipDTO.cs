@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -15,7 +16,7 @@ namespace Homespool.Host.PrusaConnect.DTO.App;
 /// </remarks>
 public class TeamMembershipDTO
 {
-    public required int Id { get; set; }
+    public required Guid Uuid { get; set; }
 
     public string? Name { get; set; }
 
@@ -26,7 +27,7 @@ public class TeamMembershipDTO
     {
         return new()
         {
-            Id = member.TeamId,
+            Uuid = member.Team!.Uuid,
             Name = member.Team?.Name,
             Capabilities = CapabilitySet.Parse(member.Capabilities)
                                         .Granted

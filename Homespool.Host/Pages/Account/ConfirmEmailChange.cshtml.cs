@@ -89,17 +89,17 @@ public class ConfirmEmailChangeModel : PageModel
         return isAlertRecipient ? " " + _localiser["Account_AlertRecipientNotice"].Value : string.Empty;
     }
 
-    public async Task<IActionResult> OnGetAsync(string userId, string email, string code)
+    public async Task<IActionResult> OnGetAsync(Guid? userUuid, string email, string code)
     {
-        if (userId == null || email == null || code == null)
+        if (userUuid == null || email == null || code == null)
         {
             return RedirectToPage("/Index");
         }
 
-        HSUser user = await _userManager.FindByIdAsync(userId);
+        HSUser user = await _userManager.Users.SingleOrDefaultAsync(candidate => candidate.Uuid == userUuid);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{userId}'.");
+            return NotFound($"Unable to load user with UUID '{userUuid}'.");
         }
 
         string token = EmailedToken.Decode(code);

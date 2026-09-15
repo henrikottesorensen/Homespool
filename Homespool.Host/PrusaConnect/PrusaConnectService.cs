@@ -304,7 +304,7 @@ public class PrusaConnectService
     /// first claim created, rather than letting the last write win.
     /// </para>
     /// </remarks>
-    public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, int? teamId, Caller caller)
+    public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, Guid? teamUuid, Caller caller)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
@@ -327,7 +327,7 @@ public class PrusaConnectService
             return await LinkClaimToEnrolledPrinterAsync(registration, enrolled, caller);
         }
 
-        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, caller);
+        int resolvedTeamId = await ResolveTeamForWriteAsync(teamUuid, caller);
 
         Printer printer = NewPrinter(name, location, resolvedTeamId, now);
 
@@ -405,12 +405,12 @@ public class PrusaConnectService
     /// </summary>
     public async Task<(Printer printer, string token)> ProvisionPrinterAsync(string? name,
                                                                              string? location,
-                                                                             int? teamId,
+                                                                             Guid? teamUuid,
                                                                              Caller caller)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
-        int resolvedTeamId = await ResolveTeamForWriteAsync(teamId, caller);
+        int resolvedTeamId = await ResolveTeamForWriteAsync(teamUuid, caller);
 
         Printer printer = NewPrinter(name, location, resolvedTeamId, now);
         await _dbContext.Printers.AddAsync(printer);
@@ -573,22 +573,23 @@ public class PrusaConnectService
     /// Resolves the team a newly-added printer lands in, and refuses a caller who may not put one
     /// there. Adding a printer is a structural change to the team, the same tier as inviting a member,
     /// so it needs <see cref="Capability.ManagePrinter"/> on both the credential and the membership -
-    /// whether the team is named in <paramref name="teamId"/> or taken as the caller's default.
+    /// whether the team is named in <paramref name="teamUuid"/> or taken as the caller's default.
     /// </summary>
     /// <remarks>
-    /// <b>Both branches end in <see cref="RequireManageAsync"/>, and that is the point.</b> A caller
+    /// <b>Both branches end in <see cref="RequireManage"/>, and that is the point.</b> A caller
     /// who names no team has named no permitted one either, so the default team is not exempt from the
     /// check the explicit branch runs. Its membership is Manager at creation
     /// (<c>TeamProvisioning.AddDefaultTeam</c>) and nothing today can lower it or make a weaker
     /// membership default - but that is an invariant of the code writing memberships, not of this
     /// method, and a member editor would inherit it.
     /// </remarks>
-    private async Task<int> ResolveTeamForWriteAsync(int? teamId, Caller caller)
+    private async Task<int> ResolveTeamForWriteAsync(Guid? teamUuid, Caller caller)
     {
-        if (teamId is int explicitTeamId)
+        if (teamUuid is Guid namedTeam)
         {
-            await RequireManageAsync(explicitTeamId, caller);
-            return explicitTeamId;
+            TeamMember? named = await _teamService.GetMemberAsync(namedTeam, caller.UserId, CancellationToken.None);
+            RequireManage(named, caller);
+            return named!.TeamId;
         }
 
         TeamMember? defaultMembership = await _teamService.GetDefaultTeamMembershipAsync(caller.UserId, CancellationToken.None);
@@ -600,21 +601,26 @@ public class PrusaConnectService
             throw new TeamAccessDeniedException();
         }
 
-        await RequireManageAsync(defaultMembership.TeamId, caller);
+        RequireManage(defaultMembership, caller);
 
         return defaultMembership.TeamId;
     }
 
     private async Task RequireManageAsync(int teamId, Caller caller)
     {
-        TeamMember? membership = await _teamService.GetMemberAsync(teamId, caller.UserId, CancellationToken.None);
+        RequireManage(await _teamService.GetMemberAsync(teamId, caller.UserId, CancellationToken.None), caller);
+    }
 
+    private static void RequireManage(TeamMember? membership, Caller caller)
+    {
         // Told apart, so a narrowed token is not mistaken for missing team access.
         if (!caller.Allows(Capability.ManagePrinter))
         {
             throw CredentialScopeDeniedException.For(Capability.ManagePrinter);
         }
 
+        // A team that does not exist and a team the caller is not in both arrive here as null, and get
+        // the same refusal.
         if (membership is null || !CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManagePrinter))
         {
             throw new TeamAccessDeniedException();

@@ -82,6 +82,19 @@ public class TeamService
     }
 
     /// <summary>
+    /// <paramref name="userId"/>'s membership of the team a form or a payload named by
+    /// <see cref="Team.Uuid"/>, or null.
+    /// </summary>
+    /// <remarks>
+    /// Null answers a team that does not exist and a team the account is not in alike, so a caller
+    /// refusing on null cannot be used to learn which uuids name somebody else's team.
+    /// </remarks>
+    public Task<TeamMember?> GetMemberAsync(Guid teamUuid, long userId, CancellationToken cancellationToken)
+    {
+        return _dbContext.TeamMembers.SingleOrDefaultAsync(m => m.Team!.Uuid == teamUuid && m.UserId == userId, cancellationToken);
+    }
+
+    /// <summary>
     /// The caller's default team membership - where a printer claim lands when it doesn't name a
     /// team. Every account has exactly one, enforced by the filtered unique
     /// index on <c>(UserId) WHERE IsDefault</c>.

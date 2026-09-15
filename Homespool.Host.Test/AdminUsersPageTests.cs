@@ -113,7 +113,7 @@ public sealed class AdminUsersPageTests : IDisposable
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
-        IActionResult result = await model.OnGetAsync(subject.Id, CancellationToken.None);
+        IActionResult result = await model.OnGetAsync(subject.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<PageResult>();
@@ -135,7 +135,7 @@ public sealed class AdminUsersPageTests : IDisposable
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
-        IActionResult result = await model.OnGetAsync(9999, CancellationToken.None);
+        IActionResult result = await model.OnGetAsync(Guid.NewGuid(), CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<NotFoundResult>();
@@ -153,7 +153,7 @@ public sealed class AdminUsersPageTests : IDisposable
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
-        IActionResult result = await model.OnPostDeactivateAsync(subject.Id, CancellationToken.None);
+        IActionResult result = await model.OnPostDeactivateAsync(subject.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
@@ -171,7 +171,7 @@ public sealed class AdminUsersPageTests : IDisposable
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
-        IActionResult result = await model.OnPostDeactivateAsync(admin.Id, CancellationToken.None);
+        IActionResult result = await model.OnPostDeactivateAsync(admin.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
@@ -194,7 +194,7 @@ public sealed class AdminUsersPageTests : IDisposable
         model.ClearAuthenticator = true;
 
         // Act
-        IActionResult result = await model.OnPostRecoverAsync(admin.Id, CancellationToken.None);
+        IActionResult result = await model.OnPostRecoverAsync(admin.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<PageResult>();
@@ -221,7 +221,7 @@ public sealed class AdminUsersPageTests : IDisposable
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
-        IActionResult result = await model.OnPostRecoverAsync(subject.Id, CancellationToken.None);
+        IActionResult result = await model.OnPostRecoverAsync(subject.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<PageResult>();
@@ -242,7 +242,7 @@ public sealed class AdminUsersPageTests : IDisposable
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
-        IActionResult result = await model.OnPostRecoverAsync(subject.Id, CancellationToken.None);
+        IActionResult result = await model.OnPostRecoverAsync(subject.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<PageResult>();
@@ -268,7 +268,7 @@ public sealed class AdminUsersPageTests : IDisposable
 
         // Act
         IActionResult result = await model.OnPostRevokePasskeyAsync(
-            subject.Id, Base64Url.EncodeToString(phone.CredentialId), CancellationToken.None);
+            subject.Uuid, Base64Url.EncodeToString(phone.CredentialId), CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
@@ -290,9 +290,9 @@ public sealed class AdminUsersPageTests : IDisposable
 
         // Act
         IActionResult goneResult = await gone.OnPostRevokePasskeyAsync(
-            subject.Id, Base64Url.EncodeToString(Guid.NewGuid().ToByteArray()), CancellationToken.None);
+            subject.Uuid, Base64Url.EncodeToString(Guid.NewGuid().ToByteArray()), CancellationToken.None);
         IActionResult malformedResult = await malformed.OnPostRevokePasskeyAsync(
-            subject.Id, "not base64url!", CancellationToken.None);
+            subject.Uuid, "not base64url!", CancellationToken.None);
 
         // Assert
         goneResult.Should().BeOfType<RedirectToPageResult>();
@@ -312,7 +312,7 @@ public sealed class AdminUsersPageTests : IDisposable
 
         // Act
         IActionResult result = await model.OnPostRevokePasskeyAsync(
-            admin.Id, Base64Url.EncodeToString(phone.CredentialId), CancellationToken.None);
+            admin.Uuid, Base64Url.EncodeToString(phone.CredentialId), CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
@@ -338,7 +338,7 @@ public sealed class AdminUsersPageTests : IDisposable
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
-        IActionResult result = await model.OnPostClearLockoutAsync(subject.Id, CancellationToken.None);
+        IActionResult result = await model.OnPostClearLockoutAsync(subject.Uuid, CancellationToken.None);
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();

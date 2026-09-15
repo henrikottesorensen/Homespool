@@ -283,7 +283,7 @@ public sealed class RecoveryInviteTests : IDisposable
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Url = IdentityTestHarness.NewUrlHelper(httpContext),
-            InviteId = invite.Id,
+            InviteUuid = invite.Uuid,
             Code = Microsoft.AspNetCore.WebUtilities.WebEncoders.Base64UrlEncode(
                 System.Text.Encoding.UTF8.GetBytes(plaintextToken)),
             Input = new RegisterModel.InputModel

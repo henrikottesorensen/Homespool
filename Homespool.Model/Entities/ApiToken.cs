@@ -58,6 +58,13 @@ public class ApiToken
     public long Id { get; set; }
 
     /// <summary>
+    /// The token's public identifier - the one the revoke button carries, since <see cref="Id"/> counts
+    /// up. Names the row, never authenticates it: that is <see cref="TokenHash"/>. Minted at
+    /// construction, as <see cref="Team.Uuid"/> is and for the same reason.
+    /// </summary>
+    public Guid Uuid { get; set; } = Guid.NewGuid();
+
+    /// <summary>
     /// The user this token acts as. Its rights are theirs, narrowed by <see cref="Scope"/> and never
     /// exceeding them.
     /// </summary>

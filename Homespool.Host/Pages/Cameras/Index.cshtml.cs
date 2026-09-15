@@ -186,7 +186,7 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostAddNetworkAsync(string? name,
                                                            string source,
-                                                           int teamId,
+                                                           Guid teamUuid,
                                                            Guid? printerUuid,
                                                            CancellationToken cancellationToken)
     {
@@ -197,7 +197,7 @@ public class IndexModel : PageModel
         }
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerUuid, resolution: null, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamUuid, name, source, printerUuid, resolution: null, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);
@@ -246,7 +246,7 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostAddAttachedAsync(string? name,
                                                             string device,
-                                                            int teamId,
+                                                            Guid teamUuid,
                                                             Guid? printerUuid,
                                                             string? resolution,
                                                             CancellationToken cancellationToken)
@@ -262,7 +262,7 @@ public class IndexModel : PageModel
         string source = LocalCameraDevices.SourceFor(device, resolution);
 
         CameraSaveOutcome outcome = await _cameras
-                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamId, name, source, printerUuid, resolution, cancellationToken)
+                                          .CreateAsync(CallerResolver.For(userId.Value, User), teamUuid, name, source, printerUuid, resolution, cancellationToken)
                                           .ConfigureAwait(false);
 
         Report(outcome);

@@ -190,7 +190,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         UserPasskeyInfo passkey = await SeedPasskeyAsync(owner, "phone");
 
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "admin@example.com", AdminBootstrap.AdminRole);
-        string detailPath = $"{AdminPath}/Detail/{owner.Id.ToString(CultureInfo.InvariantCulture)}";
+        string detailPath = $"{AdminPath}/Detail/{owner.Uuid}";
 
         using (admin)
         {
@@ -240,7 +240,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         UserPasskeyInfo passkey = await SeedPasskeyAsync(owner, "phone");
 
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "admin@example.com", AdminBootstrap.AdminRole);
-        string detailPath = $"{AdminPath}/Detail/{owner.Id.ToString(CultureInfo.InvariantCulture)}";
+        string detailPath = $"{AdminPath}/Detail/{owner.Uuid}";
 
         using (admin)
         {

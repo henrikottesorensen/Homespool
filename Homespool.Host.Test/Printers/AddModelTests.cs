@@ -229,7 +229,7 @@ public sealed class AddModelTests : IDisposable
         context.Teams.Add(someoneElses);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        model.Input.TeamId = someoneElses.Id;
+        model.Input.TeamUuid = someoneElses.Uuid;
 
         // Act
         await model.OnPostAsync(CancellationToken.None);

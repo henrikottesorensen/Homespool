@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -17,7 +18,7 @@ namespace Homespool.Host.PrusaConnect.DTO.App;
 /// </remarks>
 public class UserReadDTO
 {
-    public required long Id { get; set; }
+    public required Guid Uuid { get; set; }
 
     public required string Name { get; set; }
 
@@ -29,7 +30,7 @@ public class UserReadDTO
     {
         return new()
         {
-            Id = user.Id,
+            Uuid = user.Uuid,
             Name = user.UserName ?? user.Email ?? string.Empty,
             Email = user.Email,
             Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),

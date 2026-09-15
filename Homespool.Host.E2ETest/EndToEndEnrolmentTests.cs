@@ -125,7 +125,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
                 JsonDocument.Parse(
                     await (await appClient.GetAsync("/api/v1/user", TestContext.Current.CancellationToken)).Content
                         .ReadAsStringAsync(TestContext.Current.CancellationToken));
-            user.RootElement.GetProperty("id").GetInt64().Should().Be(claimer.Id);
+            user.RootElement.GetProperty("uuid").GetGuid().Should().Be(claimer.Uuid);
             user.RootElement.GetProperty("teams").GetArrayLength().Should().Be(1, "every account has exactly one default team");
 
             // ---------- app: GET /api/v1/printers ----------
@@ -135,6 +135,9 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
                 JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             list.RootElement.GetArrayLength().Should().Be(1);
             list.RootElement[0].GetProperty("uuid").GetGuid().Should().Be(uuid);
+            list.RootElement[0].GetProperty("teamUuid").GetGuid().Should().Be(
+                user.RootElement.GetProperty("teams")[0].GetProperty("uuid").GetGuid(),
+                "a claim without a team lands in the claimer's default team, and both payloads name it by uuid");
 
             // ---------- app: GET /api/v1/printers/{uuid} ----------
             HttpResponseMessage getResponse =

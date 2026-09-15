@@ -86,9 +86,9 @@ public class RegisterModel : PageModel
         _apiTokens = apiTokens;
     }
 
-    /// <summary>Invite id, carried in the accept link and echoed back on post via a hidden field.</summary>
+    /// <summary>Invite uuid, carried in the accept link and echoed back on post via a hidden field.</summary>
     [BindProperty(SupportsGet = true)]
-    public int InviteId { get; set; }
+    public Guid InviteUuid { get; set; }
 
     /// <summary>The Base64Url-encoded invite token from the accept link.</summary>
     [BindProperty(SupportsGet = true)]
@@ -188,7 +188,7 @@ public class RegisterModel : PageModel
     {
         ReturnUrl = returnUrl;
 
-        Invitation invitation = await _invitationService.ValidateAsync(InviteId, DecodeToken(Code), cancellationToken);
+        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), cancellationToken);
 
         InviteValid = invitation is not null;
         Email = invitation?.Email;
@@ -244,7 +244,7 @@ public class RegisterModel : PageModel
 
         // Re-validate on post: the token could be tampered with, and the invite could have expired or
         // been spent since the form was rendered.
-        Invitation invitation = await _invitationService.ValidateAsync(InviteId, DecodeToken(Code), cancellationToken);
+        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), cancellationToken);
 
         if (invitation is null)
         {
@@ -338,13 +338,13 @@ public class RegisterModel : PageModel
         }
         catch (DbUpdateException ex)
         {
-            _logger.LogError(ex, "Failed to accept invitation {InviteId}; rolling back the account.", InviteId);
+            _logger.LogError(ex, "Failed to accept invitation {InviteUuid}; rolling back the account.", InviteUuid);
             ModelState.AddModelError(string.Empty, _localiser["Account_RegistrationFailed"]);
 
             return Page();
         }
 
-        _logger.LogInformation("Invitation {InviteId} accepted; account created for {Email}.", InviteId, invitation.Email);
+        _logger.LogInformation("Invitation {InviteUuid} accepted; account created for {Email}.", InviteUuid, invitation.Email);
 
         // Follow AccountConfirmationPolicy: when SMTP is configured the account is
         // unconfirmed, so send the confirmation mail and hold at RegisterConfirmation; otherwise it is
@@ -463,15 +463,15 @@ public class RegisterModel : PageModel
         }
         catch (DbUpdateException ex)
         {
-            _logger.LogError(ex, "Failed to redeem recovery invitation {InviteId}; rolling back.", InviteId);
+            _logger.LogError(ex, "Failed to redeem recovery invitation {InviteUuid}; rolling back.", InviteUuid);
             ModelState.AddModelError(string.Empty, _localiser["Account_RegistrationFailed"]);
 
             return Page();
         }
 
         _logger.LogWarning(
-            "Recovery invitation {InviteId} redeemed for user {UserId}; two-factor cleared: {ClearedTwoFactor}; {RevokedTokenCount} API tokens revoked.",
-            InviteId,
+            "Recovery invitation {InviteUuid} redeemed for user {UserId}; two-factor cleared: {ClearedTwoFactor}; {RevokedTokenCount} API tokens revoked.",
+            InviteUuid,
             subject.Id,
             invitation.ClearsTwoFactor,
             revoked);
@@ -522,13 +522,12 @@ public class RegisterModel : PageModel
     /// </summary>
     private async Task<IActionResult> HoldForConfirmationAsync(HSUser user, string email, string returnUrl)
     {
-        string userId = await _userManager.GetUserIdAsync(user);
         string confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         confirmToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmToken));
         string callbackUrl = Url.Page(
             "/Account/ConfirmEmail",
             pageHandler: null,
-            values: new { userId, code = confirmToken, returnUrl },
+            values: new { userUuid = user.Uuid, code = confirmToken, returnUrl },
             protocol: Request.Scheme);
 
         // The request's culture, and correct: whoever accepted the invitation is whoever reads this.

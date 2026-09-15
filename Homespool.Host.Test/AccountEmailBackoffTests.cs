@@ -244,7 +244,7 @@ public sealed class AccountEmailBackoffTests : IDisposable
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
         };
 
-        await model.OnGetAsync(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        await model.OnGetAsync(user.Uuid,
                                WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token)),
                                TestContext.Current.CancellationToken);
 

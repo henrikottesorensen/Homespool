@@ -61,7 +61,7 @@ public sealed class MalformedEmailedCodeTests : IAsyncLifetime
             _factory, "badconfirm@example.com");
 
         using HttpResponseMessage response = await client.GetAsync(
-            $"/Account/ConfirmEmail?userId={user.Id}&code={NotACode}",
+            $"/Account/ConfirmEmail?userUuid={user.Uuid}&code={NotACode}",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError,
@@ -78,7 +78,7 @@ public sealed class MalformedEmailedCodeTests : IAsyncLifetime
             _factory, "badchange@example.com");
 
         using HttpResponseMessage response = await client.GetAsync(
-            $"/Account/ConfirmEmailChange?userId={user.Id}&email=new@example.com&code={NotACode}",
+            $"/Account/ConfirmEmailChange?userUuid={user.Uuid}&email=new@example.com&code={NotACode}",
             TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError);

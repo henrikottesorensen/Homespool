@@ -6,7 +6,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
 using System.Text;
@@ -46,9 +45,9 @@ public class ExternalLoginModel : PageModel
     /// the same protected properties as <c>XsrfId</c>, so the provider never sees them and the
     /// callback cannot be handed a different invite than the one the challenge began with.
     /// </summary>
-    private const string InviteIdKey = "homespool.invite_id";
+    private const string InviteUuidKey = "homespool.invite_uuid";
 
-    /// <summary><see cref="InviteIdKey"/>'s companion, the Base64Url token from the accept link.</summary>
+    /// <summary><see cref="InviteUuidKey"/>'s companion, the Base64Url token from the accept link.</summary>
     private const string InviteTokenKey = "homespool.invite_token";
 
     private readonly LocalSignIn _signIn;
@@ -186,7 +185,7 @@ public class ExternalLoginModel : PageModel
     /// short JWT names this codebase uses stop matching.
     /// </para>
     /// </remarks>
-    public async Task<IActionResult> OnPostAsync(string provider, string returnUrl = null, int? inviteId = null,
+    public async Task<IActionResult> OnPostAsync(string provider, string returnUrl = null, Guid? inviteUuid = null,
                                                  string code = null)
     {
         IEnumerable<AuthenticationScheme> external = await _externalSignIn.ProvidersAsync();
@@ -203,9 +202,9 @@ public class ExternalLoginModel : PageModel
         // An invite presented here rides through the provider and back, so the callback can spend it
         // without trusting anything the provider says about who this is. Not validated yet - the round
         // trip takes time, and a check now would be a check on stale state; the callback does it.
-        if (inviteId is int id && !string.IsNullOrEmpty(code))
+        if (inviteUuid is Guid uuid && !string.IsNullOrEmpty(code))
         {
-            properties.Items[InviteIdKey] = id.ToString(CultureInfo.InvariantCulture);
+            properties.Items[InviteUuidKey] = uuid.ToString();
             properties.Items[InviteTokenKey] = code;
         }
 
@@ -320,11 +319,11 @@ public class ExternalLoginModel : PageModel
         IDictionary<string, string> items = info.AuthenticationProperties?.Items;
 
         if (items is not null
-            && items.TryGetValue(InviteIdKey, out string idText)
+            && items.TryGetValue(InviteUuidKey, out string uuidText)
             && items.TryGetValue(InviteTokenKey, out string token)
-            && int.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int inviteId))
+            && Guid.TryParse(uuidText, out Guid inviteUuid))
         {
-            return await _invitationService.ValidateAsync(inviteId, DecodeToken(token), cancellationToken);
+            return await _invitationService.ValidateAsync(inviteUuid, DecodeToken(token), cancellationToken);
         }
 
         if (!_oidc.AllowInviteMatchByEmail || !ProviderVerifiedTheAddress(info.Principal))
@@ -450,8 +449,8 @@ public class ExternalLoginModel : PageModel
             return Page();
         }
 
-        _logger.LogInformation("Invitation {InviteId} accepted through {LoginProvider}; account created for {Email}.",
-                               invitation.Id, info.LoginProvider, invitation.Email);
+        _logger.LogInformation("Invitation {InviteUuid} accepted through {LoginProvider}; account created for {Email}.",
+                               invitation.Uuid, info.LoginProvider, invitation.Email);
 
         // AccountConfirmationPolicy decides this, exactly as on Register: with SMTP configured the
         // account is unconfirmed and holds at RegisterConfirmation. The provider having verified the
@@ -459,13 +458,12 @@ public class ExternalLoginModel : PageModel
         // an external sign-in is not the place to make it two.
         if (!user.EmailConfirmed)
         {
-            string userId = await _userManager.GetUserIdAsync(user);
             string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
             string callbackUrl = Url.Page(
                 "/Account/ConfirmEmail",
                 pageHandler: null,
-                values: new { userId = userId, code = code, returnUrl },
+                values: new { userUuid = user.Uuid, code = code, returnUrl },
                 protocol: Request.Scheme);
 
             // The request's culture, and correct: the person registering is the person who

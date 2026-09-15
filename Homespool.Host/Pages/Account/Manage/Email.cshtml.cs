@@ -171,13 +171,12 @@ public class EmailModel : PageModel
                 return RedirectToPage();
             }
 
-            string userId = await _userManager.GetUserIdAsync(user);
             string code = await _userManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
             string callbackUrl = Url.Page(
                 "/Account/ConfirmEmailChange",
                 pageHandler: null,
-                values: new { userId = userId, email = Input.NewEmail, code = code },
+                values: new { userUuid = user.Uuid, email = Input.NewEmail, code = code },
                 protocol: Request.Scheme);
 
             // The request's culture, and correct without a lookup: the signed-in user is changing
@@ -218,14 +217,13 @@ public class EmailModel : PageModel
             return RedirectToPage();
         }
 
-        string userId = await _userManager.GetUserIdAsync(user);
         string email = await _userManager.GetEmailAsync(user);
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
         string callbackUrl = Url.Page(
             "/Account/ConfirmEmail",
             pageHandler: null,
-            values: new { userId = userId, code = code },
+            values: new { userUuid = user.Uuid, code = code },
             protocol: Request.Scheme);
         EmailSendResult sendResult = await _emailSender.SendEmailAsync(
             email,

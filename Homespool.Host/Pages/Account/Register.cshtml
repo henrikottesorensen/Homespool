@@ -32,7 +32,7 @@ else
                 }
                 <hr />
                 <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
-                <input type="hidden" asp-for="InviteId" />
+                <input type="hidden" asp-for="InviteUuid" />
                 <input type="hidden" asp-for="Code" />
                 <div class="form-floating mb-3">
                     <input class="form-control" value="@Model.Email" readonly autocomplete="email" aria-label="@Localiser["Account_Email"]" />
@@ -70,13 +70,13 @@ else
 
             @if (!Model.Recovering && Model.ExternalLogins.Count > 0)
             {
-                @* Accept the invitation with a provider instead of a password. The invite's id and
+                @* Accept the invitation with a provider instead of a password. The invite's uuid and
                    token go with the challenge, so the callback spends it on proof the invitee holds
                    the emailed secret - see RegisterModel.ExternalLogins. *@
                 <hr />
                 <h2 class="h5">@Localiser["Account_OrAcceptWith"]</h2>
                 <form id="invite-external-form" asp-page="./ExternalLogin" asp-route-returnUrl="@Model.ReturnUrl" method="post">
-                    <input type="hidden" name="inviteId" value="@Model.InviteId" />
+                    <input type="hidden" name="inviteUuid" value="@Model.InviteUuid" />
                     <input type="hidden" name="code" value="@Model.Code" />
                     @foreach (var provider in Model.ExternalLogins)
                     {

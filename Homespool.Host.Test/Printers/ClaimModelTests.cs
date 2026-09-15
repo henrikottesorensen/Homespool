@@ -261,7 +261,7 @@ public sealed class ClaimModelTests : IDisposable
 
         string code = await SeedClaimableCodeAsync(context, "FP-WRONG-TEAM");
         model.Input.Code = code;
-        model.Input.TeamId = someoneElses.Id;
+        model.Input.TeamUuid = someoneElses.Uuid;
 
         // Act
         IActionResult result = await model.OnPostAsync(CancellationToken.None);

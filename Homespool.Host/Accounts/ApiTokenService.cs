@@ -126,16 +126,16 @@ public class ApiTokenService
     }
 
     /// <summary>
-    /// Deletes token <paramref name="tokenId"/>, which is what revocation is here. Returns false if it
+    /// Deletes token <paramref name="tokenUuid"/>, which is what revocation is here. Returns false if it
     /// does not exist <em>or</em> belongs to someone else — the two are deliberately indistinguishable,
-    /// so this cannot be used to probe for other people's token ids.
+    /// so this cannot be used to probe for other people's tokens.
     /// </summary>
-    public async Task<bool> RevokeAsync(long userId, long tokenId, CancellationToken cancellationToken)
+    public async Task<bool> RevokeAsync(long userId, Guid tokenUuid, CancellationToken cancellationToken)
     {
         // Ownership is in the query rather than checked after loading: a token belonging to another
         // user is not found at all, so there is no path on which the wrong row reaches the delete.
         ApiToken? token = await _dbContext.ApiTokens
-                                          .SingleOrDefaultAsync(t => t.Id == tokenId && t.UserId == userId, cancellationToken);
+                                          .SingleOrDefaultAsync(t => t.Uuid == tokenUuid && t.UserId == userId, cancellationToken);
 
         if (token is null)
         {

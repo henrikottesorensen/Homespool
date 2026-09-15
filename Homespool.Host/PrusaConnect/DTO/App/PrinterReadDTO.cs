@@ -105,7 +105,12 @@ public class PrinterReadDTO
 
     public required string Material { get; set; }
 
-    public required int TeamId { get; set; }
+    /// <summary>The owning team's <see cref="Team.Uuid"/>, or null when the printer was mapped without its team.</summary>
+    /// <remarks>
+    /// Every query that answers the API loads the team, so a client sees null only if a mapping skips
+    /// it - which is a bug to fix rather than a state to handle.
+    /// </remarks>
+    public Guid? TeamUuid { get; set; }
 
     /// <summary>
     /// The owning team's name, or null when nobody has named it - which is every team created by
@@ -115,7 +120,7 @@ public class PrinterReadDTO
     /// <b>Passed through rather than resolved.</b> Two fallbacks already exist and disagree:
     /// <see cref="Team.Name"/>'s own remarks describe <c>Name ?? "&lt;creator&gt;'s team"</c>, while
     /// <c>Pages/Printers/Index</c> renders <c>Name ?? "Team #{id}"</c>. Inventing a third here would
-    /// make the API a third opinion on a display question. A client holds <see cref="TeamId"/> and can
+    /// make the API a third opinion on a display question. A client holds <see cref="TeamUuid"/> and can
     /// render whichever it prefers; what it cannot do is recover a real name we declined to send.
     /// </remarks>
     public string? TeamName { get; set; }
@@ -161,7 +166,7 @@ public class PrinterReadDTO
             // Not printer.Status - see the remarks on this class.
             State = (liveState?.Status ?? PrinterStatus.Unknown).ToConnectState(),
             Material = printer.LoadedMaterial ?? "UNKNOWN",
-            TeamId = printer.TeamId,
+            TeamUuid = printer.Team?.Uuid,
             CreatedAt = printer.CreatedAt,
             UpdatedAt = printer.UpdatedAt,
         };
@@ -183,6 +188,7 @@ public class PrinterReadDTO
 
         PrinterReadDTO dto = FromEntity(printer.Printer, printer.LiveState);
 
+        dto.TeamUuid = printer.Team?.Uuid ?? dto.TeamUuid;
         dto.TeamName = printer.Team?.Name;
         dto.Capabilities = CapabilitySet.Parse(printer.Membership?.Capabilities)
                                         .Granted

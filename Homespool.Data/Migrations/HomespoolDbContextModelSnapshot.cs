@@ -15,7 +15,7 @@ namespace Homespool.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.11");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
 
             modelBuilder.Entity("Homespool.Model.Entities.ApiToken", b =>
                 {
@@ -43,12 +43,18 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("UserId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid>("Uuid")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TokenHash")
                         .IsUnique();
 
                     b.HasIndex("UserId");
+
+                    b.HasIndex("Uuid")
+                        .IsUnique();
 
                     b.ToTable("ApiTokens");
                 });
@@ -164,6 +170,9 @@ namespace Homespool.Data.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Uuid")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("NormalizedEmail")
@@ -173,6 +182,9 @@ namespace Homespool.Data.Migrations
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
+
+                    b.HasIndex("Uuid")
+                        .IsUnique();
 
                     b.ToTable("AspNetUsers", (string)null);
                 });
@@ -212,12 +224,18 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("UsedAt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid>("Uuid")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
 
                     b.HasIndex("HashedToken")
                         .IsUnique();
 
                     b.HasIndex("TeamId");
+
+                    b.HasIndex("Uuid")
+                        .IsUnique();
 
                     b.ToTable("Invitations");
                 });
@@ -838,7 +856,13 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
+                    b.Property<Guid>("Uuid")
+                        .HasColumnType("TEXT");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("Uuid")
+                        .IsUnique();
 
                     b.ToTable("Teams");
                 });

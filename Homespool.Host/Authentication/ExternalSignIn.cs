@@ -243,17 +243,14 @@ public sealed class ExternalSignIn
             return ExternalSignInResult.NoAccount;
         }
 
-        switch (await _rules.PreSignInCheckAsync(user))
+        // The account's standing, not the password lockout: a provider's answer cannot be guessed at
+        // the login form, and a lockout that reached it would let a wrong password every five minutes
+        // keep a provider-only account out - LocalSignInRules.PreSignInCheckAsync has the rule.
+        if (await _rules.StandingCheckAsync(user) is not null)
         {
-            case SignInRefusal.LockedOut:
-                _logger.LogInformation("Provider sign-in refused for user {UserId}: locked out.", user.Id);
+            _logger.LogInformation("Provider sign-in refused for user {UserId}: the account may not sign in.", user.Id);
 
-                return ExternalSignInResult.LockedOut;
-
-            case SignInRefusal.NotAllowed:
-                _logger.LogInformation("Provider sign-in refused for user {UserId}: the account may not sign in.", user.Id);
-
-                return ExternalSignInResult.NotAllowed;
+            return ExternalSignInResult.NotAllowed;
         }
 
         if (await _signIn.OwesSecondFactorAsync(context, user))

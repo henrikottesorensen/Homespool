@@ -227,11 +227,11 @@ public class LoginModel : PageModel
         // printer servers to the internet whatever the advice says; Identity's defaults apply, five
         // failures then five minutes.
         //
-        // What that costs reaches well past this form, because the lockout is the account's and every
-        // scheme consults it before signing anything in: for those five minutes the account's passkey,
-        // its authenticator code, its recovery codes, its external provider and its API tokens are all
-        // refused too. So someone who knows an address can stop that account's scripts and its own way
-        // back in, not only its password - accepted, but wider than a login-form nuisance.
+        // What that costs stops at the guessable secrets: for those five minutes the account's password,
+        // its authenticator code and its recovery codes are refused, and nothing else is. Its passkey,
+        // its external provider and its API tokens consult the account's standing and not the lockout,
+        // so someone who knows an address can make the owner wait five minutes to type a password, and
+        // cannot stop the account's scripts or its other ways in - LocalSignInRules.PreSignInCheckAsync.
         AuthenticateResult password = await HttpContext.AuthenticateWithAsync(Schemes.UserPassword,
                                                                               new UserPasswordCredential(Input.Login, Input.Password));
 

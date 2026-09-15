@@ -94,6 +94,28 @@ public sealed class ExternalOidcDexTests
     }
 
     /// <summary>
+    /// The password lockout is the password path's: an account five wrong passwords have locked out
+    /// still signs in through its provider, against the real provider. Otherwise whoever knows the
+    /// username could keep a provider-only account out with one wrong password every five minutes.
+    /// </summary>
+    [RequiresDexFact]
+    public async Task ALockedOutAccountStillSignsInThroughItsProvider()
+    {
+        using Fixture fixture = new(allowInviteMatchByEmail: false);
+        HSUser user = await fixture.CreateLockedOutProviderUserAsync();
+
+        using HttpResponseMessage callback = await fixture.DriveProviderSignInAsync(TestContext.Current.CancellationToken);
+
+        callback.StatusCode.Should().Be(HttpStatusCode.Redirect, "a linked account is signed in and sent on its way");
+        callback.Headers.Location!.OriginalString.Should().NotContain("/Account/Lockout", "a provider's answer cannot be guessed, so the lockout does not reach it")
+                .And.NotContain("/Account/Login", "the account exists and signed in");
+        callback.Headers.GetValues("Set-Cookie").Should().Contain(cookie => cookie.StartsWith(".AspNetCore.Identity.Application", StringComparison.Ordinal),
+                                                                   "a sign-in writes the application cookie");
+
+        (await fixture.FindUserAsync(user.Email!)).Should().NotBeNull();
+    }
+
+    /// <summary>
     /// With the option on and the provider asserting it verified the address, an outstanding invite for
     /// that address is claimable — and is spent exactly once.
     /// </summary>
@@ -250,6 +272,24 @@ public sealed class ExternalOidcDexTests
             using IServiceScope scope = _factory.Services.CreateScope();
 
             return await scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>().FindByEmailAsync(email);
+        }
+
+        /// <summary>
+        /// An account with no password, dex's mock subject as its one login, and a password lockout
+        /// running for the next five minutes - as five wrong passwords at the login form would leave it.
+        /// </summary>
+        public async Task<HSUser> CreateLockedOutProviderUserAsync()
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+
+            HSUser user = new("kilgore") { Email = DexFixture.MockEmail, EmailConfirmed = true };
+
+            (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
+            (await users.AddLoginAsync(user, new UserLoginInfo(Schemes.ExternalOidc, DexFixture.MockSubject, "Dex"))).Succeeded.Should().BeTrue();
+            (await users.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5))).Succeeded.Should().BeTrue();
+
+            return user;
         }
 
         /// <summary>

@@ -43,7 +43,7 @@ namespace Homespool.Host.IntegrationTest;
 public sealed class ProviderReauthenticationDexTests
 {
     /// <summary>The fixed subject dex's mock connector vouches for, read off a real id token.</summary>
-    private const string MockSubject = "Cg0wLTM4NS0yODA4OS0wEgRtb2Nr";
+    private const string MockSubject = DexFixture.MockSubject;
 
     private const string PasskeysPath = "/Account/Manage/Passkeys";
 

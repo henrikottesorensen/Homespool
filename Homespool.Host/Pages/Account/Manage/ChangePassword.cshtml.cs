@@ -26,16 +26,22 @@ public class ChangePasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
+    private readonly StepUpGate _stepUp;
+    private readonly StepUpText _stepUpText;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ChangePasswordModel> _logger;
 
     public ChangePasswordModel(UserManager<HSUser> userManager,
                                LocalSignIn signIn,
+                               StepUpGate stepUp,
+                               StepUpText stepUpText,
                                IStringLocalizer<SharedResource> localiser,
                                ILogger<ChangePasswordModel> logger)
     {
         _userManager = userManager;
         _signIn = signIn;
+        _stepUp = stepUp;
+        _stepUpText = stepUpText;
         _localiser = localiser;
         _logger = logger;
     }
@@ -60,16 +66,14 @@ public class ChangePasswordModel : PageModel
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>This used to redirect to <c>./SetPassword</c>, a page that has never existed in this
-    /// codebase</b> — Identity.UI took it with the package. An unresolvable <c>RedirectToPage</c>
-    /// throws in the executor rather than answering, so the account menu's <i>Password</i> entry
-    /// answered <b>500</b> for exactly the accounts an external provider creates. Nothing reached it
-    /// before external OIDC was built, because every other creation path sets a password.
+    /// <b>The scaffolded page redirects such an account to <c>./SetPassword</c>, and this one answers
+    /// instead.</b> That page went with the Identity.UI package, and an unresolvable
+    /// <c>RedirectToPage</c> throws in the executor rather than answering - a <b>500</b> for exactly the
+    /// accounts an external provider creates, since every other creation path sets a password.
     /// </para>
     /// <para>
-    /// <b>The page was not restored, deliberately: an account whose credential is the provider does
-    /// not get a local one</b> (Henrik, 2026-08-22). So there is nothing to redirect to and nothing
-    /// to offer — only something to say. <c>ForgotPassword</c> is gated for the same reason and by the
+    /// <b>An account whose credential is the provider does not get a local one</b>, so there is nothing
+    /// to offer - only something to say. <c>ForgotPassword</c> is gated for the same reason and by the
     /// same test; between them there is no route to a password for such an account.
     /// </para>
     /// </remarks>
@@ -127,6 +131,17 @@ public class ChangePasswordModel : PageModel
     /// Changes the password, and changes nothing else the account holds.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>The current password is a step-up, and is counted as one.</b> It is checked through
+    /// <see cref="StepUpGate.PasswordAsync"/> before anything is changed, so a wrong one backs off the
+    /// account's step-ups and a backed-off account is refused before the password is compared. Passed
+    /// straight to <c>ChangePasswordAsync</c>, which counts nothing, it could be guessed at request rate
+    /// by whoever holds the session - and this page asks for no recent proof precisely because the
+    /// current password is the proof. The account lockout is left alone, as on every step-up: a session
+    /// holder guessing here must not be able to lock the owner out of signing in. An account that is
+    /// already locked out is refused here too, for as long as the lockout lasts.
+    /// </para>
+    /// <para>
     /// <b>A password change does not revoke this account's API tokens</b>, and the asymmetry with
     /// <c>Account/ResetPassword</c>, which does, is the point. Reaching this form takes the current
     /// password inside a live session, so it is overwhelmingly a rotation by somebody in possession
@@ -134,6 +149,7 @@ public class ChangePasswordModel : PageModel
     /// reset path is where somebody locked out of a compromised account arrives, and there the tokens
     /// go. An account whose tokens must die while its owner still holds it has two other routes: the
     /// owner revokes them on <c>Manage/ApiTokens</c>, or an administrator does on <c>Admin/Users</c>.
+    /// </para>
     /// </remarks>
     public async Task<IActionResult> OnPostAsync()
     {
@@ -157,6 +173,15 @@ public class ChangePasswordModel : PageModel
 
         if (!ModelState.IsValid)
         {
+            return Page();
+        }
+
+        StepUpResult proof = await _stepUp.PasswordAsync(HttpContext, Input.OldPassword);
+
+        if (!proof.Succeeded)
+        {
+            ModelState.AddModelError(string.Empty, _stepUpText.Describe(proof));
+
             return Page();
         }
 

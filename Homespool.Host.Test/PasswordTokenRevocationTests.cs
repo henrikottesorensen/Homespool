@@ -10,11 +10,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
@@ -112,7 +114,10 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         (_, string first) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
         await tokens.CreateAsync(user.Id, "ci", CapabilitySet.Everything, CancellationToken.None);
 
-        ChangePasswordModel model = new(users, signIn, TestLocaliser.Shared(),
+        ChangePasswordModel model = new(users, signIn,
+                                        httpContext.RequestServices.GetRequiredService<StepUpGate>(),
+                                        new StepUpText(TestLocaliser.Shared()),
+                                        TestLocaliser.Shared(),
                                         NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
@@ -156,7 +161,10 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         ApiTokenService tokens = new(context);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
-        ChangePasswordModel model = new(users, signIn, TestLocaliser.Shared(),
+        ChangePasswordModel model = new(users, signIn,
+                                        httpContext.RequestServices.GetRequiredService<StepUpGate>(),
+                                        new StepUpText(TestLocaliser.Shared()),
+                                        TestLocaliser.Shared(),
                                         NullLogger<ChangePasswordModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

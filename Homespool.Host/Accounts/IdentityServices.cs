@@ -35,10 +35,11 @@ namespace Homespool.Host.Accounts;
 /// what the unit-test harness has to replicate.
 /// </para>
 /// <para>
-/// <b>Same registrations, same order, same lifetimes, with three marked departures</b>:
+/// <b>Same registrations, same order, same lifetimes, with four marked departures</b>:
 /// <see cref="UsernameValidator"/> runs beside the framework's user validator,
 /// <see cref="SecurityStampValidatorOptions.ValidationInterval"/> is shortened from the framework's
-/// default, and the user store is <see cref="HSUserStore"/> - each commented where it is added, and
+/// default, the user store is <see cref="HSUserStore"/>, and the user manager is
+/// <see cref="HSUserManager"/> - each commented where it is added, and
 /// all here rather than in <c>Program</c> because the test harness must apply the same rules. The one thing the framework does that this cannot is walk the
 /// type hierarchy to pick a store: <c>AddEntityFrameworkStores</c> reflects over the context to find
 /// the six framework entity types, where <see cref="AddHomespoolStores"/> simply names the ones
@@ -104,7 +105,10 @@ public static class IdentityServices
 
         // The WebAuthn engine behind the Passkey scheme, which drives it directly.
         services.TryAddScoped<IPasskeyHandler<HSUser>, PasskeyHandler<HSUser>>();
-        services.TryAddScoped<UserManager<HSUser>>();
+
+        // The fourth departure: the failed count and the lockout it starts are saved without the user
+        // validators, so an account whose name stopped validating still locks out.
+        services.TryAddScoped<UserManager<HSUser>, HSUserManager>();
         services.TryAddScoped<RoleManager<IdentityRole<long>>>();
 
         services.Configure(configure);

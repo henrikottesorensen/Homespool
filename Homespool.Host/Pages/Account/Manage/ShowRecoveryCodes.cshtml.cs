@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -25,10 +26,9 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// be an answer.
 /// </para>
 /// <para>
-/// <b>What this page does not mean: that the codes are unreadable at rest.</b> The framework's
-/// <c>UserStore</c> keeps them verbatim, semicolon-joined, in <c>AspNetUserTokens</c>, and redeeming
-/// one is a string comparison rather than a hash verification. Anyone holding the database holds every
-/// unspent code, so a database copy is a full second factor and has to be treated as one.
+/// <b>This is also the only moment the codes exist in the clear.</b> <see cref="HSUserStore"/> keeps
+/// only their hashes, so nothing - this page, an administrator, the database - can recover a code once
+/// the request that showed it is over.
 /// </para>
 /// <para>
 /// The page therefore has no handler but <see cref="OnGet"/>: there is nothing to post, and the only

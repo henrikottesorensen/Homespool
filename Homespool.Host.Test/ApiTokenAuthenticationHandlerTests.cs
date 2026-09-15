@@ -272,11 +272,12 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// A token is the account's credential, so a locked-out account's token is refused for as long as
-    /// the lockout lasts - and works again once it has passed.
+    /// The password lockout is the password path's: a locked-out owner's token keeps working, while a
+    /// deactivated owner's is refused. Otherwise a wrong password every five minutes, from anyone who
+    /// knows the username, would stop the account's scripts.
     /// </summary>
     [Fact]
-    public async Task ALockedOutOwnersTokenIsRefusedUntilTheLockoutLifts()
+    public async Task ALockedOutOwnersTokenStillWorksAndADeactivatedOwnersDoesNot()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -289,15 +290,15 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
         (ApiTokenAuthenticationHandler locked, _) = await NewHandlerAsync(context, $"Bearer {plaintext}");
         AuthenticateResult whileLocked = await locked.AuthenticateAsync();
 
-        user.LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(-1);
+        user.DeactivatedAt = DateTimeOffset.UtcNow;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-        (ApiTokenAuthenticationHandler lifted, _) = await NewHandlerAsync(context, $"Bearer {plaintext}");
-        AuthenticateResult afterwards = await lifted.AuthenticateAsync();
+        (ApiTokenAuthenticationHandler deactivated, _) = await NewHandlerAsync(context, $"Bearer {plaintext}");
+        AuthenticateResult afterwards = await deactivated.AuthenticateAsync();
 
         // Assert
-        whileLocked.Succeeded.Should().BeFalse("the account is locked out, and its token with it");
-        whileLocked.Failure!.Message.Should().Be("Invalid API token.", "the same refusal as any other, so the token is not an oracle for the lockout");
-        afterwards.Succeeded.Should().BeTrue();
+        whileLocked.Succeeded.Should().BeTrue("a token cannot be guessed at the login form, so the password lockout does not reach it");
+        afterwards.Succeeded.Should().BeFalse("the account's standing still decides");
+        afterwards.Failure!.Message.Should().Be("Invalid API token.", "the same refusal as any other, so the token is not an oracle for the account's standing");
     }
 
     /// <summary>

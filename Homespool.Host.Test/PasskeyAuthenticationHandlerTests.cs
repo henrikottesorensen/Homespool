@@ -149,12 +149,13 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// The account is known only once the assertion names it, and the pre-sign-in check runs right
-    /// then: a locked-out account's good assertion is refused with the reason, nothing is stored or
-    /// minted, and the ceremony is spent all the same so the answer cannot be replayed later.
+    /// The password lockout is the password path's: a locked-out account's good assertion signs in
+    /// as if nothing were locked, and the sign count moves on as for any accepted assertion. Otherwise
+    /// a wrong password every five minutes, from anyone who knows the username, would keep a passkey
+    /// out too.
     /// </summary>
     [Fact]
-    public async Task ALockedOutAccountsGoodAssertionIsRefusedBeforeAnythingIsStored()
+    public async Task ALockedOutAccountsGoodAssertionStillSignsIn()
     {
         // Arrange
         await using Rig rig = await Rig.CreateAsync(this);
@@ -174,10 +175,9 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         UserPasskeyInfo? stored = await rig.Users.GetPasskeyAsync(user, authenticator.CredentialId);
 
         // Assert
-        result.Succeeded.Should().BeFalse();
-        result.Refusal().Should().Be(SignInRefusal.LockedOut, "the page routes to the lockout page on this");
-        stored!.SignCount.Should().Be(3, "a refused ceremony writes nothing back");
-        rig.Ledger.Spent.Should().Be(1, "the assertion verified, so it is spent all the same: the same answer must not sign in once the lockout lifts");
+        result.Succeeded.Should().BeTrue("a passkey cannot be guessed at the login form, so the password lockout does not reach it");
+        stored!.SignCount.Should().Be(4, "an accepted assertion moves the sign count on");
+        rig.Ledger.Spent.Should().Be(1);
     }
 
     [Fact]

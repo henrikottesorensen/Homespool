@@ -123,15 +123,23 @@ public sealed class LocalSignInRules
     }
 
     /// <summary>
-    /// The framework's pre-sign-in check: <see cref="SignInRefusal.NotAllowed"/> for an account that
-    /// may not sign in, <see cref="SignInRefusal.LockedOut"/> for one that is locked out, or
-    /// <see langword="null"/> when a credential may be believed.
+    /// The framework's pre-sign-in check for a guessable secret: <see cref="SignInRefusal.NotAllowed"/>
+    /// for an account that may not sign in, <see cref="SignInRefusal.LockedOut"/> for one that is
+    /// locked out, or <see langword="null"/> when the credential may be compared.
     /// </summary>
+    /// <remarks>
+    /// <b>The lockout is the password path's, and only a handler that compares a guessable secret
+    /// consults it</b> - the password, the authenticator code and the recovery code, whose wrong
+    /// answers are what it counts. A passkey, an API token or a provider's answer cannot be guessed at
+    /// the login form, so they take <see cref="StandingCheckAsync"/> instead: otherwise whoever knows
+    /// a username could keep every credential on the account failing with one wrong password every
+    /// five minutes, and stop its scripts and its owner's own way back in.
+    /// </remarks>
     public async Task<SignInRefusal?> PreSignInCheckAsync(HSUser user)
     {
-        if (!await CanSignInAsync(user))
+        if (await StandingCheckAsync(user) is { } refusal)
         {
-            return SignInRefusal.NotAllowed;
+            return refusal;
         }
 
         if (_users.SupportsUserLockout && await _users.IsLockedOutAsync(user))
@@ -140,6 +148,16 @@ public sealed class LocalSignInRules
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The account's standing alone: <see cref="SignInRefusal.NotAllowed"/> for an account that may
+    /// not sign in - deactivated, or unconfirmed where confirmation is required - or
+    /// <see langword="null"/> when it may. Never the lockout; <see cref="PreSignInCheckAsync"/> says why.
+    /// </summary>
+    public async Task<SignInRefusal?> StandingCheckAsync(HSUser user)
+    {
+        return await CanSignInAsync(user) ? null : SignInRefusal.NotAllowed;
     }
 
     /// <summary>

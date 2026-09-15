@@ -267,11 +267,6 @@ public class ExternalLoginModel : PageModel
             return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, RememberMe = false });
         }
 
-        if (result == ExternalSignInResult.LockedOut)
-        {
-            return RedirectToPage("./Lockout");
-        }
-
         // No account is linked, so this is a creation - and registration is invite-only. Whether the
         // provider authenticated somebody is not the question; whether an invite says they may have an
         // account here is.

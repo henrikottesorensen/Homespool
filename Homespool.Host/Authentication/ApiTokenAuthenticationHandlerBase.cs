@@ -153,12 +153,13 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
             return AuthenticateResult.Fail("Invalid API token.");
         }
 
-        // A token is the account's credential, so the account's standing decides: a locked-out
-        // account's token is refused for as long as the lockout lasts, and an
-        // account that may not sign in - unconfirmed - could never have minted one, but is refused
-        // the same way rather than trusted to stay unreachable. The same invalid-token 401 as below,
-        // for the same reason.
-        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        // A token is the account's credential, so the account's standing decides: a deactivated
+        // account's token is refused, and an unconfirmed one could never have minted a token but is
+        // refused the same way rather than trusted to stay unreachable. The password lockout is not
+        // consulted - a token cannot be guessed at the login form, and a lockout that reached it would
+        // let whoever knows a username stop the account's scripts with a wrong password every five
+        // minutes. The same invalid-token 401 as below, for the same reason.
+        if (await _rules.StandingCheckAsync(user) is { } refusal)
         {
             Logger.LogWarning("API token {TokenId} refused: user {UserId} may not sign in ({Refusal}).", token.Id, token.UserId, refusal);
 

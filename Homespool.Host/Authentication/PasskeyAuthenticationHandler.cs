@@ -214,12 +214,13 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         HSUser user = result.User!;
         UserPasskeyInfo passkey = result.Passkey!;
 
-        // The account is known only now, once the assertion has named it; the framework's pre-sign-in
-        // check runs here, before anything is stored or minted, so a locked-out or unconfirmed
-        // account's assertion changes nothing - though the ceremony above is spent all the same, so
-        // the answer cannot be replayed once a lockout lifts. The refusal carries why, for the page
-        // to route on.
-        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        // The account is known only now, once the assertion has named it; its standing is checked
+        // here, before anything is stored or minted, so an unconfirmed or deactivated account's
+        // assertion changes nothing - though the ceremony above is spent all the same, so the answer
+        // cannot be replayed once the account may sign in. The password lockout is not consulted: an
+        // assertion cannot be guessed, and LocalSignInRules.PreSignInCheckAsync says what consulting
+        // it here would hand an attacker. The refusal carries why, for the page to route on.
+        if (await _rules.StandingCheckAsync(user) is { } refusal)
         {
             Logger.LogInformation("Passkey assertion refused for user {UserId}: {Refusal}.", user.Id, refusal);
 

@@ -44,4 +44,10 @@ internal static class DexFixture
     /// makes the address door reachable at all.
     /// </summary>
     public const string MockEmail = "kilgore@kilgore.trout";
+
+    /// <summary>
+    /// The subject the <c>mockCallback</c> connector vouches for, read from a real id token: an account
+    /// linked to this signs in through dex, and one linked to anything else does not.
+    /// </summary>
+    public const string MockSubject = "Cg0wLTM4NS0yODA4OS0wEgRtb2Nr";
 }

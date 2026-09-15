@@ -21,7 +21,6 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
-using Homespool.Host.Pages.Printers;
 using Homespool.Host.RateLimiting;
 using Homespool.Model.Entities;
 
@@ -222,11 +221,8 @@ public class ReauthenticateModel : PageModel
 
         if (!assertion.Succeeded)
         {
-            if (assertion.Refusal() == SignInRefusal.LockedOut)
-            {
-                return await RefusedAsync(user, _localiser["StepUp_LockedOut", BackoffWait.Format(_localiser, await _rules.RemainingLockoutAsync(user))]);
-            }
-
+            // Never the lockout: the passkey scheme checks the account's standing and not the password
+            // lockout, so a refusal here is a wrong assertion or an account that may not sign in.
             _logger.LogInformation("Re-authentication refused for user {UserId}: the passkey assertion was refused.", user.Id);
 
             return await RefusedAsync(user, _localiser["Reauthenticate_PasskeyRefused"]);

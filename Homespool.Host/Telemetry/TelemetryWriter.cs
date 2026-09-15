@@ -1379,49 +1379,56 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <remarks>
-    /// <b>Read from the application database rather than the telemetry one, and that is the whole
-    /// point when telemetry is held in memory.</b> With it on disk the two are the same rows, so this
-    /// is the same read it always was. In memory the telemetry store begins empty every time, and what
-    /// this finds is the live state written back at the last clean shutdown - which is what lets a
-    /// printer that is switched off still show what it last reported after a restart, instead of
-    /// reappearing as one that has never connected.
+    /// <para>
+    /// <b>The store first, because whether a row exists there is what the first flush turns on.</b> An
+    /// entry marked present issues an <c>UPDATE</c>, one marked absent an <c>INSERT</c>, and either
+    /// guess wrong fails silently or for ever - so the answer has to come from the database the flush
+    /// writes to. On disk that is the application database. In memory it is the store startup seeded
+    /// from the last shutdown's save, which is how a restart keeps what each printer last reported.
+    /// </para>
+    /// <para>
+    /// <b>Then the application database, for its values only.</b> Reached in memory when seeding had no
+    /// row for this printer or failed: the saved row still carries what the printer last said, which
+    /// keeps a slim first message from blanking fields it does not carry - but it is not in the store,
+    /// so the entry is marked absent and the flush inserts. On disk this second read cannot find
+    /// anything the first did not.
+    /// </para>
     /// </remarks>
     private async Task<LiveStateCacheEntry> HydrateAsync(int printerId, CancellationToken cancellationToken)
     {
         using IServiceScope scope = _scopeFactory.CreateScope();
-        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-        await ApplyWriterCommandTimeoutAsync(context, budget: null, cancellationToken);
 
-        PrinterLiveState? existing = await context.PrinterLiveStates
+        TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
+        await ApplyWriterCommandTimeoutAsync(telemetry, budget: null, cancellationToken);
+
+        PrinterLiveState? stored = await telemetry.PrinterLiveStates
                                                   .Include(s => s.Slots)
                                                   .AsNoTracking()
                                                   .FirstOrDefaultAsync(s => s.PrinterId == printerId, cancellationToken);
 
-        if (existing is not null)
+        if (stored is not null)
         {
-            // The values come from the application database; whether a ROW exists is a question about
-            // the telemetry one, and in memory those are different databases. A memory store begins
-            // every process empty, so the first flush after hydration has to INSERT - marking this
-            // entry as already present would issue an UPDATE matching no rows, silently, and the
-            // printer's live state would never appear in the store anything reads.
-            bool rowExistsInStore = !_options.TelemetryInMemory;
+            LiveStateCacheEntry hydrated = new() { State = stored, ExistsInDatabase = true };
 
-            LiveStateCacheEntry hydrated = new() { State = existing, ExistsInDatabase = rowExistsInStore };
-
-            if (rowExistsInStore)
+            foreach (PrinterLiveSlotState slot in stored.Slots)
             {
-                foreach (PrinterLiveSlotState slot in existing.Slots)
-                {
-                    hydrated.ExistingSlotNumbers.Add(slot.SlotNumber);
-                }
+                hydrated.ExistingSlotNumbers.Add(slot.SlotNumber);
             }
 
             return hydrated;
         }
 
+        HomespoolDbContext application = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+        await ApplyWriterCommandTimeoutAsync(application, budget: null, cancellationToken);
+
+        PrinterLiveState? saved = await application.PrinterLiveStates
+                                                   .Include(s => s.Slots)
+                                                   .AsNoTracking()
+                                                   .FirstOrDefaultAsync(s => s.PrinterId == printerId, cancellationToken);
+
         return new LiveStateCacheEntry
         {
-            State = new PrinterLiveState { PrinterId = printerId },
+            State = saved ?? new PrinterLiveState { PrinterId = printerId },
             ExistsInDatabase = false,
         };
     }

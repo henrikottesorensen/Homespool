@@ -12,7 +12,9 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
@@ -53,6 +55,8 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
         Cache = SqliteCacheMode.Shared,
         ForeignKeys = true,
     }.ToString();
+
+    private readonly FakeLogCollector _logs = new();
 
     private TelemetryKeepAlive? _keepAlive;
     private ServiceProvider? _provider;
@@ -257,11 +261,14 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
     }
 
     /// <summary>
-    /// <b>The writer starts from what was saved, rather than treating a restart as a first sighting.</b>
-    /// Hydrating from the application database is the other half of the shutdown writeback: without
-    /// it the row would be read back by nothing and a printer would still appear to have never
-    /// connected.
+    /// <b>With nothing restored into the store, the writer still starts from what was saved</b>,
+    /// rather than treating a restart as a first sighting.
     /// </summary>
+    /// <remarks>
+    /// The fallback path: this writer is built without the startup restore, so the store is empty and
+    /// the saved row is found in the application database instead. It is how a printer the restore
+    /// had no row for, or a restore that failed, still keeps what it last reported.
+    /// </remarks>
     [Fact]
     public async Task AWriterStartingUpHydratesLastKnownStateFromTheFile()
     {
@@ -343,6 +350,152 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
         // the assertion, since a memory database that was never created has no tables at all.
         telemetry.TelemetrySamples.Count().Should().Be(0);
         telemetry.PrinterLiveStates.Count().Should().Be(0);
+    }
+
+    /// <summary>
+    /// <b>Startup restores what the last shutdown saved into the in-memory store</b>, slots included,
+    /// so every reader of live state sees it before the printer has said anything.
+    /// </summary>
+    /// <remarks>
+    /// The store begins every process empty. Unrestored, the printer page reads as never connected
+    /// and the queue's first pass - seconds after startup, long before a mid-print printer reconnects -
+    /// finds no state for it at all.
+    /// </remarks>
+    [Fact]
+    public async Task StartupRestoresTheLastShutdownsSaveIntoTheMemoryStore()
+    {
+        // Arrange
+        await SaveShutdownStateAsync();
+
+        // Act
+        StartAsTheApplicationDoes();
+
+        // Assert
+        using IServiceScope scope = _provider!.CreateScope();
+        TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
+
+        PrinterLiveState? restored = await telemetry.PrinterLiveStates
+                                                    .AsNoTracking()
+                                                    .Include(state => state.Slots)
+                                                    .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        restored.Should().NotBeNull("the shutdown save is only worth something if it is read back");
+        restored!.Status.Should().Be(PrinterStatus.Printing);
+        restored.Material.Should().Be("PETG");
+        restored.Slots.Should().ContainSingle(slot => slot.SlotNumber == 1 && slot.Material == "PETG");
+    }
+
+    /// <summary>
+    /// <b>The first flush after a restore updates the restored row</b>, rather than inserting a second
+    /// one beside it.
+    /// </summary>
+    /// <remarks>
+    /// The writer decides between <c>INSERT</c> and <c>UPDATE</c> from whether it found a row, and a
+    /// restored row has to count. Marked absent, the insert collides with it, the flush fails and is
+    /// retried for ever, and the printer's new status never reaches the store - silently, which is
+    /// why this asserts the status arriving rather than the absence of an error.
+    /// </remarks>
+    [Fact]
+    public async Task TheFirstFlushAfterAStartupRestoreUpdatesTheRestoredRow()
+    {
+        // Arrange - restored as startup does, then a writer on the same services
+        await SaveShutdownStateAsync();
+        StartAsTheApplicationDoes();
+        ServiceProvider provider = _provider!;
+
+        _writer = new TelemetryWriter(provider.GetRequiredService<IServiceScopeFactory>(),
+                                      TestOptions.Monitor(new StorageOptions
+                                      {
+                                          TelemetryInMemory = true,
+                                          WriteBatchSize = 1,
+                                          WriteFlushIntervalSeconds = 0.05,
+                                      }),
+                                      NullLogger<TelemetryWriter>.Instance,
+                                      TimeProvider.System);
+
+        await _writer.StartAsync(CancellationToken.None);
+
+        // Act - a slim message, carrying no material
+        _writer.Enqueue(1, DateTimeOffset.UtcNow, PrusaTelemetryMapping.ToUpdate(new TelemetryDTO { Status = "IDLE" }));
+
+        // Assert
+        bool updated = await WaitUntilAsync(async () =>
+        {
+            using IServiceScope scope = provider.CreateScope();
+            TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
+
+            List<PrinterLiveState> rows = await telemetry.PrinterLiveStates
+                                                         .AsNoTracking()
+                                                         .ToListAsync(TestContext.Current.CancellationToken);
+
+            return rows is [{ Status: PrinterStatus.Idle, Material: "PETG" }];
+        }, TimeSpan.FromSeconds(5));
+
+        updated.Should().BeTrue("the restored row is the one to update, keeping what the slim message did not say");
+    }
+
+    /// <summary>
+    /// <b>A fresh install starts in memory without a failed restore.</b>
+    /// </summary>
+    /// <remarks>
+    /// The restore reads the application database's live state, which does not exist until the
+    /// migration has run. Done before it, startup survives - the failure is caught - but every fresh
+    /// install logs a warning about state it never had, and a stale database is read before the guard
+    /// has checked its schema.
+    /// </remarks>
+    [Fact]
+    public void AFreshInstallStartsInMemoryWithoutAFailedRestore()
+    {
+        // Act - nothing on disk at all
+        StartAsTheApplicationDoes();
+
+        // Assert
+        _logs.GetSnapshot()
+             .Where(record => record.Level >= LogLevel.Warning)
+             .Select(record => record.Message)
+             .Should().BeEmpty("there is nothing to restore, and nothing should have been tried before the tables existed");
+    }
+
+    /// <summary>
+    /// Services built and started the way <c>Program.cs</c> builds them, with the setting on, logs
+    /// captured.
+    /// </summary>
+    private void StartAsTheApplicationDoes()
+    {
+        IConfiguration configuration = new ConfigurationBuilder()
+                                       .AddInMemoryCollection(new Dictionary<string, string?>
+                                       {
+                                           ["ConnectionStrings:HomespoolDb"] = $"Data Source={_databasePath}",
+                                           ["Storage:TelemetryInMemory"] = "true",
+                                       })
+                                       .Build();
+
+        ServiceCollection services = new();
+        services.AddLogging(builder => builder.AddProvider(new FakeLoggerProvider(_logs)));
+        services.AddHomespoolData(configuration);
+
+        _provider = services.BuildServiceProvider();
+        _provider.MigrateHomespoolData();
+    }
+
+    /// <summary>What a clean shutdown leaves in the application database: a printer mid-print, with one slot.</summary>
+    private async Task SaveShutdownStateAsync()
+    {
+        await SeedPrinterAsync();
+
+        await using HomespoolDbContext context = NewApplicationContext();
+
+        PrinterLiveState state = new()
+        {
+            PrinterId = 1,
+            Status = PrinterStatus.Printing,
+            Material = "PETG",
+            LastSeenAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+        };
+        state.Slots.Add(new PrinterLiveSlotState { PrinterId = 1, SlotNumber = 1, Material = "PETG" });
+
+        context.PrinterLiveStates.Add(state);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)

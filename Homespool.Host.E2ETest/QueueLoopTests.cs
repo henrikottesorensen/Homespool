@@ -123,6 +123,26 @@ public sealed class QueueLoopTests : IAsyncLifetime
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
     }
 
+    /// <summary>
+    /// Stops the host and starts another on the same database and content root - a restart.
+    /// </summary>
+    /// <remarks>
+    /// Disposed asynchronously so the old host's hosted services stop the way a container's do,
+    /// which is when live state held in memory is saved for the next process to restore.
+    /// </remarks>
+    private async Task RestartHostAsync(bool telemetryInMemory)
+    {
+        await _factory.DisposeAsync();
+
+        _root.ConfigurationOverrides["Storage:TelemetryInMemory"] = telemetryInMemory ? "true" : "false";
+        _factory = _root.WithWebHostBuilder(_ => { });
+
+        _ = _factory.Server;
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+    }
+
     private static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
     {
         DateTime deadline = DateTime.UtcNow + timeout;
@@ -311,6 +331,89 @@ public sealed class QueueLoopTests : IAsyncLifetime
         await AdvanceAsync(printerId);
 
         // Assert - closed, and no longer the active print
+        PrintJob finished = await SingleJobAsync(printerId);
+        finished.State.Should().Be(PrintState.Finished);
+        finished.EndedAt.Should().NotBeNull();
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A print running across a restart is still the running print afterwards, and ends as itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>With telemetry held in memory, the order a real restart produces is fixed</b>: the new process
+    /// starts with an empty store, its first queue pass runs seconds after startup, and the printer is
+    /// seconds to minutes from reconnecting. A pass that reads the silence as "stopped printing"
+    /// closes the running print <c>Unknown</c> every time. So the pass here is driven while the printer
+    /// is still gone, rather than left to race it.
+    /// </para>
+    /// <para>
+    /// <b>The same fake reconnects</b>, because the print is the device's state and has to outlive the
+    /// connection, as it does on hardware.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task APrintRunningAcrossARestartIsStillThePrintAfterwards()
+    {
+        // Arrange - telemetry in memory, and a print under way
+        await RestartHostAsync(telemetryInMemory: true);
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "across.bgcode");
+        await EnqueueAsync(printerId, userId, "across.bgcode");
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintState.Printing),
+                              TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        int? firmwareJobId = (await SingleJobAsync(printerId)).FirmwareJobId;
+        firmwareJobId.Should().NotBeNull("the arrangement depends on the row carrying the printer's job");
+
+        // Act - restart, and let the new process's first pass run before the printer is back
+        await RestartHostAsync(telemetryInMemory: true);
+        await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        Registry.IsConnected(printerId).Should().BeFalse("the pass has to run before the printer reconnects");
+        await AdvanceAsync(printerId);
+
+        // Assert - still the running print
+        PrintJob afterRestart = await SingleJobAsync(printerId);
+        afterRestart.State.Should().Be(PrintState.Printing, "a printer not yet heard from has not said its print ended");
+        afterRestart.EndedAt.Should().BeNull();
+        afterRestart.FirmwareJobId.Should().Be(firmwareJobId);
+
+        // Act - the printer comes back, still printing, and then finishes
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Printing), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue("the reconnected printer reports the print it never stopped");
+
+        fake.Device.FinishPrint().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Finished), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        // Assert - it ends as itself
         PrintJob finished = await SingleJobAsync(printerId);
         finished.State.Should().Be(PrintState.Finished);
         finished.EndedAt.Should().NotBeNull();
@@ -948,11 +1051,16 @@ public sealed class QueueLoopTests : IAsyncLifetime
                               TestContext.Current.CancellationToken);
     }
 
+    /// <remarks>
+    /// Through the telemetry context, which is where the loop reads live state. Held in memory, the
+    /// application database's copy is written only at shutdown, so a status polled there would be
+    /// the last process's and would look current.
+    /// </remarks>
     private async Task<bool> StatusIsAsync(int printerId, PrinterStatus status)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+        return await scope.ServiceProvider.GetRequiredService<TelemetryDbContext>()
                           .PrinterLiveStates.AnyAsync(
                               state => state.PrinterId == printerId && state.Status == status,
                               TestContext.Current.CancellationToken);

@@ -48,6 +48,9 @@ internal sealed class LocalSchemeRig : IAsyncDisposable
 
     public UserManager<HSUser> Users => _provider.GetRequiredService<UserManager<HSUser>>();
 
+    /// <summary>The tracked context every scope shares, for writing a row the way no manager would.</summary>
+    public HomespoolDbContext Context => _context;
+
     public static async Task<LocalSchemeRig> CreateAsync(string databasePath, Action<IServiceCollection>? configure = null)
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()

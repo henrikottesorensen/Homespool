@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
@@ -9,6 +10,8 @@ using Duende.IdentityModel;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
@@ -43,6 +46,41 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
     private static UserPasswordCredential Credential(string? login, string? password)
     {
         return new UserPasswordCredential(login, password);
+    }
+
+    /// <summary>
+    /// An account named <c>scope</c> that every update now fails to validate, through no change of its
+    /// own: another account was renamed past the manager to the same word in Cyrillic, and the
+    /// lookalike check refuses both.
+    /// </summary>
+    private static async Task<HSUser> RefusedByTheUserValidatorsAsync(LocalSchemeRig rig)
+    {
+        HSUser user = await rig.AddUserAsync("scope@example.com");
+        HSUser other = await rig.AddUserAsync("other@example.com");
+
+        other.UserName = "ѕсоре";
+        other.NormalizedUserName = other.UserName.ToUpperInvariant();
+        await rig.Context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IdentityResult update = await rig.Users.UpdateAsync(user);
+        update.Errors.Should().Contain(error => error.Code == "UserNameLooksLikeAnother",
+                                       "the account must be one the validators refuse, and an ordinary update still is");
+
+        return user;
+    }
+
+    /// <summary>
+    /// The failed count and lockout end as stored. The rig's context is shared and tracks the account,
+    /// so asking the manager would answer with whatever was set in memory, saved or not.
+    /// </summary>
+    private static async Task<(int count, DateTimeOffset? lockoutEnd)> StoredLockoutAsync(LocalSchemeRig rig, HSUser user)
+    {
+        var stored = await rig.Context.Users.AsNoTracking()
+                              .Where(u => u.Id == user.Id)
+                              .Select(u => new { u.AccessFailedCount, u.LockoutEnd })
+                              .SingleAsync(TestContext.Current.CancellationToken);
+
+        return (stored.AccessFailedCount, stored.LockoutEnd);
     }
 
     [Fact]
@@ -182,6 +220,49 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
 
         request.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
         request.Response.Headers.Location.ToString().Should().BeEmpty("the login page is where a password is asked for, and nothing routes there through this scheme");
+    }
+
+    // ---------- an account the user validators refuse ----------
+    [Fact]
+    public async Task AnAccountTheUserValidatorsRefuseStillLocksOut()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await RefusedByTheUserValidatorsAsync(rig);
+        int allowed = rig.Users.Options.Lockout.MaxFailedAccessAttempts;
+
+        AuthenticateResult last = AuthenticateResult.NoResult();
+
+        for (int i = 0; i < allowed; i += 1)
+        {
+            last = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential("scope", "not it")); // betterleaks:allow
+        }
+
+        (int _, DateTimeOffset? lockoutEnd) = await StoredLockoutAsync(rig, user);
+
+        lockoutEnd.Should().NotBeNull("the lockout has to reach the database, where the next request reads it")
+                  .And.BeAfter(DateTimeOffset.UtcNow);
+        last.Refusal().Should().Be(SignInRefusal.LockedOut, "the attempt that reached the limit reports the lockout it caused");
+    }
+
+    /// <summary>
+    /// The other half: once a wrong password is counted, the right one has a count to reset, and a
+    /// reset that ran the validators would refuse the owner their own password.
+    /// </summary>
+    [Fact]
+    public async Task AnAccountTheUserValidatorsRefuseStillSignsInAfterAWrongPassword()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await RefusedByTheUserValidatorsAsync(rig);
+
+        await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential("scope", "not it")); // betterleaks:allow
+        (int counted, DateTimeOffset? _) = await StoredLockoutAsync(rig, user);
+
+        AuthenticateResult right = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential("scope", LocalSchemeRig.Password));
+        (int reset, DateTimeOffset? _) = await StoredLockoutAsync(rig, user);
+
+        counted.Should().Be(1);
+        right.Succeeded.Should().BeTrue();
+        reset.Should().Be(0);
     }
 
     // ---------- the step-up ----------

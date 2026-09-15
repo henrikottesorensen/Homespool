@@ -1806,6 +1806,9 @@
   <data name="Account_InvalidRecoveryCode" xml:space="preserve">
     <value>Invalid recovery code entered.</value>
   </data>
+  <data name="Account_TwoFactorSignInExpired" xml:space="preserve">
+    <value>The sign-in timed out before the code was entered. Sign in again.</value>
+  </data>
   <data name="Account_RegistrationFailed" xml:space="preserve">
     <value>Could not complete registration. Please try again.</value>
   </data>

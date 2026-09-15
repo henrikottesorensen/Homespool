@@ -1755,6 +1755,9 @@
   <data name="Account_InvalidRecoveryCode" xml:space="preserve">
     <value>Forkert gendannelseskode.</value>
   </data>
+  <data name="Account_TwoFactorSignInExpired" xml:space="preserve">
+    <value>Login udløb, før koden blev indtastet. Log ind igen.</value>
+  </data>
   <data name="Account_RegistrationFailed" xml:space="preserve">
     <value>Registreringen kunne ikke gennemføres. Prøv igen.</value>
   </data>

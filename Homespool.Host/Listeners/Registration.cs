@@ -1,12 +1,17 @@
 using System;
+using System.Linq;
+using System.Net;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HostFiltering;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 using Serilog;
+
+using Homespool.Host.Middleware;
 
 namespace Homespool.Host.Listeners;
 
@@ -93,11 +98,44 @@ public static class Registration
 
             listeners.Validate();
 
-            options.ListenAnyIP(listeners.UserPort);
+            // Which interfaces, before which ports: the ones facing the trusted proxy and loopback,
+            // or every interface when no proxy is trusted. ListenerBinding says why a container on
+            // the camera sidecar's network must not have a socket there.
+            ListenerBinding binding = ListenerBinding.Resolve(
+                options.ApplicationServices.GetRequiredService<IOptions<XForwardedOptions>>().Value,
+                ListenerBinding.Local());
+
+            if (binding.IsAny)
+            {
+                Log.Information("No proxy is trusted, so the listeners bind every interface.");
+            }
+            else
+            {
+                Log.Information("The listeners bind {Addresses} - the interfaces facing the trusted proxy, and loopback; "
+                                + "no other interface gets a socket.",
+                                binding.Addresses.Select(address => address.ToString()).ToArray());
+            }
+
+            void Bind(int port, Action<ListenOptions>? configure = null)
+            {
+                if (binding.IsAny)
+                {
+                    options.ListenAnyIP(port, configure ?? (_ => { }));
+
+                    return;
+                }
+
+                foreach (IPAddress address in binding.Addresses)
+                {
+                    options.Listen(address, port, configure ?? (_ => { }));
+                }
+            }
+
+            Bind(listeners.UserPort);
 
             if (listeners.UserHttpsPort is int userHttpsPort)
             {
-                options.ListenAnyIP(userHttpsPort, listen => listen.UseHttps());
+                Bind(userHttpsPort, listen => listen.UseHttps());
             }
 
             // Plain HTTP, and the same line whichever way the deployment is configured. With
@@ -105,7 +143,7 @@ public static class Registration
             // published; with it off, this port is published directly and the wire is readable. The
             // difference is what sits in front, which is compose.yaml's business rather than this
             // process's - so there is one listener here and no branch.
-            options.ListenAnyIP(listeners.PrinterPort);
+            Bind(listeners.PrinterPort);
 
             // The legacy listener, and only when a deployment has asked for one. Bound here rather
             // than conditioned further out so that "is there a plain printer listener" has exactly one
@@ -122,12 +160,12 @@ public static class Registration
                             + "unset Listeners:LegacyPrinterPort to close it.",
                             legacyPrinterPort);
 
-                options.ListenAnyIP(legacyPrinterPort);
+                Bind(legacyPrinterPort);
             }
 
             // Plain HTTP and never anything else - see ListenerOptions.TransferPort. The one listener
             // whose being unencrypted is the design rather than a proxy's business.
-            options.ListenAnyIP(listeners.TransferPort);
+            Bind(listeners.TransferPort);
         });
 
         return builder;

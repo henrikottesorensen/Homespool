@@ -255,7 +255,10 @@ services:
       - /dev:/hostdev:ro
 
     # Two networks: the proxy's, and the camera sidecar's. The sidecar is reached by service name
-    # over the second, and is on nothing else - see its own networks: line.
+    # over the second, and is on nothing else - see its own networks: line. The listeners bind only
+    # the interface on the first (the one inside XForwarded__KnownNetworks) and loopback, so the
+    # sidecar has no socket of ours to reach back to: a Docker network is symmetric, and this is
+    # what makes the second one one-way.
     networks:
       - homespool
       - homespool-cameras

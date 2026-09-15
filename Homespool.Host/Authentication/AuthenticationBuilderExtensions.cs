@@ -262,6 +262,18 @@ public static class AuthenticationBuilderExtensions
             options.MapInboundClaims = false;
             options.TokenValidationParameters.NameClaimType = JwtClaimTypes.Name;
             options.TokenValidationParameters.RoleClaimType = JwtClaimTypes.Role;
+
+            // The last event before the answer is signed in to the external cookie, after the userinfo
+            // claims have been merged, so nothing can add a provider's auth_time behind it.
+            options.Events.OnTicketReceived = context =>
+            {
+                if (context.Principal is { } principal)
+                {
+                    ExternalSignIn.RestateAuthenticationTime(principal, context.HttpContext.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow());
+                }
+
+                return Task.CompletedTask;
+            };
         });
 
         return builder;

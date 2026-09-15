@@ -2716,7 +2716,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>That was a different {0} account from the one this account signs in with.</value>
   </data>
   <data name="StepUp_ProviderStale" xml:space="preserve">
-    <value>{0} did not ask you to sign in again just now. Try again.</value>
+    <value>{0} did not ask you to sign in again. Sign out at {0}, then try again.</value>
   </data>
   <data name="Nav_Users" xml:space="preserve">
     <value>Users</value>

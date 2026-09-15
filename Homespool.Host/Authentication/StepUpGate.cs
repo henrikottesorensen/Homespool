@@ -140,7 +140,8 @@ public sealed class StepUpGate
     /// <summary>
     /// Reads the provider's answer on the way back - consuming the external cookie either way - and
     /// says whether it counts as <paramref name="user"/> re-authenticating: the subject must be one
-    /// the account signs in with, and any sign-in time the provider reports must be recent.
+    /// the account signs in with, the answer must be read soon after it came back, and any sign-in time
+    /// the provider reports must be recent.
     /// </summary>
     public async Task<ProviderProofOutcome> VerifyProviderProofAsync(HttpContext context, HSUser user)
     {
@@ -179,9 +180,19 @@ public sealed class StepUpGate
     /// <summary>
     /// Why a provider's answer does not count as this account re-authenticating, or
     /// <see langword="null"/> when it does: <c>"mismatch"</c> when the subject is not one this account
-    /// signs in with, <c>"stale"</c> when the provider reports a sign-in older than
-    /// <see cref="MaxProviderProofAge"/>. A provider that reports no sign-in time is taken at its word.
+    /// signs in with; <c>"failed"</c> when the answer carries no <c>auth_time</c>, which this server
+    /// writes on every answer that came through the provider handler; <c>"stale"</c> when that
+    /// <c>auth_time</c>, or the sign-in the provider reports in
+    /// <see cref="HSClaimTypes.ExternalAuthenticationTime"/>, is older than
+    /// <see cref="MaxProviderProofAge"/>.
     /// </summary>
+    /// <remarks>
+    /// <b>A provider that reports no sign-in time of its own is taken at its word</b>, and so is one
+    /// whose report is not a time. This server's <c>auth_time</c> bounds how long its answer may wait to
+    /// be read; only the provider's time can show that it answered from a session it already had rather
+    /// than asking again, and refusing every provider that does not say would refuse accounts that have
+    /// no other way to prove themselves.
+    /// </remarks>
     public static string? ProviderProofRefusal(ExternalLoginInfo info, IEnumerable<UserLoginInfo> logins, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(info);
@@ -195,15 +206,31 @@ public sealed class StepUpGate
             return "mismatch";
         }
 
-        string? authTime = info.Principal.FindFirstValue(JwtClaimTypes.AuthenticationTime);
+        if (UnixTime(info.Principal, JwtClaimTypes.AuthenticationTime) is not { } answered)
+        {
+            return "failed";
+        }
 
-        if (authTime is not null
-            && long.TryParse(authTime, NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)
-            && now - DateTimeOffset.FromUnixTimeSeconds(seconds) > MaxProviderProofAge)
+        if (now - answered > MaxProviderProofAge
+            || (UnixTime(info.Principal, HSClaimTypes.ExternalAuthenticationTime) is { } reported && now - reported > MaxProviderProofAge))
         {
             return "stale";
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The instant a claim of <paramref name="claimType"/> names in Unix seconds, or
+    /// <see langword="null"/> when there is none or it is not one - including a number outside what
+    /// <see cref="DateTimeOffset"/> can hold, which a provider is free to send.
+    /// </summary>
+    private static DateTimeOffset? UnixTime(ClaimsPrincipal principal, string claimType)
+    {
+        return long.TryParse(principal.FindFirstValue(claimType), NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)
+               && seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds()
+               && seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds()
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+            : null;
     }
 }

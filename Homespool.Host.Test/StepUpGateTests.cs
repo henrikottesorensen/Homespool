@@ -146,25 +146,61 @@ public sealed class StepUpGateTests : IDisposable
         DateTimeOffset now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
         UserLoginInfo[] logins = [new(Schemes.ExternalOidc, "subject-1", "Dex")];
 
-        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: null), logins, now)
-                     .Should().BeNull("the subject matches and the provider reported no sign-in time, so it is taken at its word");
-        StepUpGate.ProviderProofRefusal(Answer("subject-2", authTime: null), logins, now)
-                     .Should().Be("mismatch", "another account at the same provider is not this account re-authenticating");
-        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddSeconds(-30)), logins, now)
-                     .Should().BeNull("a sign-in half a minute ago is what max_age=0 asked for");
-        StepUpGate.ProviderProofRefusal(Answer("subject-1", authTime: now.AddMinutes(-10)), logins, now)
-                     .Should().Be("stale", "the provider reused a session it already had instead of asking again");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", now.AddSeconds(-5)), logins, now)
+                  .Should().BeNull("the subject matches and the answer is fresh");
+        StepUpGate.ProviderProofRefusal(Answer("subject-2", now.AddSeconds(-5)), logins, now)
+                  .Should().Be("mismatch", "another account at the same provider is not this account re-authenticating");
     }
 
-    private static ExternalLoginInfo Answer(string subject, DateTimeOffset? authTime)
+    [Fact]
+    public void AProvidersAnswerCountsOnlyWhenThisServerTimedItAndItIsRecent()
+    {
+        DateTimeOffset now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
+        UserLoginInfo[] logins = [new(Schemes.ExternalOidc, "subject-1", "Dex")];
+
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", answered: null), logins, now)
+                  .Should().Be("failed", "an answer without this server's auth_time did not come through the provider handler");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", now - StepUpGate.MaxProviderProofAge), logins, now)
+                  .Should().BeNull("the limit itself still counts");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", now.AddMinutes(-10)), logins, now)
+                  .Should().Be("stale", "an answer that waited ten minutes to be read is not a proof of now");
+    }
+
+    [Fact]
+    public void AProvidersOwnSignInTimeIsCheckedWhenItReportsOne()
+    {
+        DateTimeOffset now = new(2026, 9, 5, 12, 0, 0, TimeSpan.Zero);
+        UserLoginInfo[] logins = [new(Schemes.ExternalOidc, "subject-1", "Dex")];
+
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", now.AddSeconds(-5), Seconds(now.AddSeconds(-30))), logins, now)
+                  .Should().BeNull("a sign-in half a minute ago is what max_age=0 asked for");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", now.AddSeconds(-5), Seconds(now.AddMinutes(-10))), logins, now)
+                  .Should().Be("stale", "the provider reused a session it already had instead of asking again");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", now.AddSeconds(-5), "not a time"), logins, now)
+                  .Should().BeNull("a report that is not a time is no report, and is taken at its word");
+        StepUpGate.ProviderProofRefusal(Answer("subject-1", now.AddSeconds(-5), long.MaxValue.ToString(CultureInfo.InvariantCulture)), logins, now)
+                  .Should().BeNull("a number no date can hold is no report either, rather than an exception");
+    }
+
+    private static ExternalLoginInfo Answer(string subject, DateTimeOffset? answered, string? reported = null)
     {
         List<Claim> claims = [new(JwtClaimTypes.Subject, subject)];
 
-        if (authTime is { } time)
+        if (answered is { } time)
         {
-            claims.Add(new Claim(JwtClaimTypes.AuthenticationTime, time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture)));
+            claims.Add(new Claim(JwtClaimTypes.AuthenticationTime, Seconds(time)));
+        }
+
+        if (reported is not null)
+        {
+            claims.Add(new Claim(HSClaimTypes.ExternalAuthenticationTime, reported));
         }
 
         return new ExternalLoginInfo(new ClaimsPrincipal(new ClaimsIdentity(claims, "test")), Schemes.ExternalOidc, subject, "Dex");
+    }
+
+    private static string Seconds(DateTimeOffset time)
+    {
+        return time.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
     }
 }

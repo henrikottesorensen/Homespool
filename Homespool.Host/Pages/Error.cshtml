@@ -1,0 +1,15 @@
+@page
+@model ErrorModel
+@{
+    ViewData["Title"] = Localiser["Error_Title"].Value;
+}
+
+<h1>@ViewData["Title"]</h1>
+<p>@Localiser["Error_Explanation"]</p>
+
+<dl>
+    <dt>@Localiser["Error_Reference"]</dt>
+    <dd><code>@Model.TraceId</code></dd>
+</dl>
+
+<p><a asp-page="/Index">@Localiser["Error_BackToStart"]</a></p>

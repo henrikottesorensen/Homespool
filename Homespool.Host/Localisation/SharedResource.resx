@@ -2901,4 +2901,16 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Email_AddressChangedBody" xml:space="preserve">
     <value>The email address on your Homespool account was just changed, so password resets and notices will no longer come here. If that was not you, tell whoever runs this Homespool straight away.</value>
   </data>
+  <data name="Error_Title" xml:space="preserve">
+    <value>Something went wrong</value>
+  </data>
+  <data name="Error_Explanation" xml:space="preserve">
+    <value>Homespool could not finish this request. If it keeps happening, the reference below finds what went wrong in the server&apos;s log.</value>
+  </data>
+  <data name="Error_Reference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="Error_BackToStart" xml:space="preserve">
+    <value>Back to the front page</value>
+  </data>
 </root>

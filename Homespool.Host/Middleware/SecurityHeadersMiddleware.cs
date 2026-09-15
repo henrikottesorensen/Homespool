@@ -42,9 +42,11 @@ namespace Homespool.Host.Middleware;
 /// <c>base</c> tag that re-points every relative script URL.
 /// </para>
 /// <para>
-/// <b>Swagger UI in Development is the one carve-out.</b> It serves its own page with inline
-/// scripts that carry no nonce, so under <c>/swagger</c>, and only when the environment is
-/// Development, the policy names framing alone. Production has no Swagger, so production has no
+/// <b>Two carve-outs, both Development only.</b> Swagger UI and the framework's developer exception
+/// page each serve their own inline scripts with no nonce, so under <c>/swagger</c>, and on a 500,
+/// the policy names framing and base alone. The 500 is how the exception page is recognised: it
+/// leaves nothing else on the request to tell it apart, and in Development nothing else answers
+/// 500 with a page of ours. Production has neither Swagger nor that page, so production has no
 /// carve-out.
 /// </para>
 /// <para>
@@ -68,12 +70,20 @@ namespace Homespool.Host.Middleware;
 /// new later. A rule with no exceptions is also a rule a test can state in one line.
 /// </para>
 /// <para>
-/// Set on the way in, before <c>next</c>, because headers are committed the moment a response starts
-/// writing. Setting them afterwards silently loses them on exactly the responses that have a body -
-/// a rendered page, the health report - while still appearing to work on a bodyless 404 or 401,
-/// whose headers are untouched when control comes back. That asymmetry is measured, not assumed:
-/// with the write moved after <c>next</c>, the page and health cases fail and the 404 and 401 cases
-/// pass.
+/// Written as the response starts, from a callback registered on the way in, because headers are
+/// committed the moment a response starts writing. Setting them after <c>next</c> returns silently
+/// loses them on exactly the responses that have a body - a rendered page, the health report - while
+/// still appearing to work on a bodyless 404 or 401, whose headers are untouched when control comes
+/// back. That asymmetry is measured, not assumed: with the write moved after <c>next</c>, the page and
+/// health cases fail and the 404 and 401 cases pass.
+/// </para>
+/// <para>
+/// <b>Not written before <c>next</c> either, though that would reach every response.</b> An
+/// exception handler clears the response before it re-runs the pipeline for its error page, headers
+/// included, and re-runs only what was registered after it - so headers written before <c>next</c>
+/// would be missing from the error page, while a starting callback survives the clear. Measured with
+/// the framework's handler: an eagerly written header absent from the error response, a callback's
+/// header present.
 /// </para>
 /// <para>
 /// HSTS is not here. It is a deployment setting the proxy applies only to names served with an
@@ -93,28 +103,38 @@ public sealed class SecurityHeadersMiddleware : IMiddleware
         _environment = environment;
     }
 
-    public async Task InvokeAsync(HttpContext context, RequestDelegate next)
+    public Task InvokeAsync(HttpContext context, RequestDelegate next)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
 
-        IHeaderDictionary headers = context.Response.Headers;
+        // On the way in, not in the callback: an error page re-run changes the request's path while
+        // it renders, and the path this answers for is the one that arrived.
+        bool swagger = _environment.IsDevelopment()
+                       && context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase);
 
-        headers.XContentTypeOptions = "nosniff";
-        headers.XFrameOptions = "DENY";
-        headers.ContentSecurityPolicy = Policy(context);
+        context.Response.OnStarting(() =>
+        {
+            IHeaderDictionary headers = context.Response.Headers;
 
-        // By name: IHeaderDictionary types the other three but not this one, and Referer - the
-        // request header it is easy to reach for instead - is a different header entirely.
-        headers["Referrer-Policy"] = "same-origin";
+            headers.XContentTypeOptions = "nosniff";
+            headers.XFrameOptions = "DENY";
+            headers.ContentSecurityPolicy = Policy(context, swagger);
 
-        await next(context);
+            // By name: IHeaderDictionary types the other three but not this one, and Referer - the
+            // request header it is easy to reach for instead - is a different header entirely.
+            headers["Referrer-Policy"] = "same-origin";
+
+            return Task.CompletedTask;
+        });
+
+        return next(context);
     }
 
-    private string Policy(HttpContext context)
+    private string Policy(HttpContext context, bool swagger)
     {
-        if (_environment.IsDevelopment()
-            && context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase))
+        if (swagger
+            || (_environment.IsDevelopment() && context.Response.StatusCode == StatusCodes.Status500InternalServerError))
         {
             return FramingAndBase;
         }

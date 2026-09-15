@@ -2802,4 +2802,16 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Email_AddressChangedBody" xml:space="preserve">
     <value>E-mailadressen på din Homespool-konto er netop blevet ændret, så nulstilling af adgangskode og beskeder kommer ikke længere hertil. Hvis det ikke var dig, så sig det til den, der driver denne Homespool, med det samme.</value>
   </data>
+  <data name="Error_Title" xml:space="preserve">
+    <value>Noget gik galt</value>
+  </data>
+  <data name="Error_Explanation" xml:space="preserve">
+    <value>Homespool kunne ikke gennemføre denne forespørgsel. Sker det igen, finder referencen herunder fejlen i serverens log.</value>
+  </data>
+  <data name="Error_Reference" xml:space="preserve">
+    <value>Reference</value>
+  </data>
+  <data name="Error_BackToStart" xml:space="preserve">
+    <value>Tilbage til forsiden</value>
+  </data>
 </root>

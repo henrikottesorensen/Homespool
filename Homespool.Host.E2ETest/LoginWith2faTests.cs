@@ -353,4 +353,61 @@ public sealed class LoginWith2faTests : IAsyncLifetime
             return await client.PostAsync("/Account/LoginWithRecoveryCode", body, TestContext.Current.CancellationToken);
         }
     }
+
+    /// <summary>
+    /// A browser with nothing pending - the password step's cookie ran out, or was never written - is
+    /// sent back to the login page with the return address it came with, and the login page says why.
+    /// </summary>
+    [Theory]
+    [InlineData("/Account/LoginWith2fa")]
+    [InlineData("/Account/LoginWithRecoveryCode")]
+    public async Task OpeningACodePageWithNothingPendingGoesBackToTheLoginPage(string page)
+    {
+        // Arrange
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync($"{page}?returnUrl=%2FPrinters", TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect, "nothing is pending, so there is no code to ask for");
+        response.Headers.Location!.OriginalString.Should().Be("/Account/Login?ReturnUrl=%2FPrinters");
+
+        HttpResponseMessage login = await client.GetAsync(response.Headers.Location, TestContext.Current.CancellationToken);
+        (await login.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should()
+            .Contain("The sign-in timed out before the code was entered.");
+    }
+
+    /// <summary>
+    /// A code posted with nothing pending goes back to the login page too - including an empty one,
+    /// which would otherwise be answered with a validation message on a page that cannot be finished.
+    /// </summary>
+    [Theory]
+    [InlineData("/Account/LoginWith2fa", "Input.TwoFactorCode", "000000")]
+    [InlineData("/Account/LoginWith2fa", "Input.TwoFactorCode", "")]
+    [InlineData("/Account/LoginWithRecoveryCode", "Input.RecoveryCode", "AAAAA-BBBBB")]
+    [InlineData("/Account/LoginWithRecoveryCode", "Input.RecoveryCode", "")]
+    public async Task PostingACodeWithNothingPendingGoesBackToTheLoginPage(string page, string field, string code)
+    {
+        // Arrange
+        await CreateTwoFactorEnabledUserAsync();
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        HttpResponseMessage loginGet = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+        string token = AntiforgeryTestHelper.ExtractToken(await loginGet.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            [field] = code,
+        });
+
+        // Act
+        HttpResponseMessage response = await client.PostAsync(page, body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect, "nothing is pending, so there is no account to present the code for");
+        response.Headers.Location!.OriginalString.Should().Be("/Account/Login");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, response).Should().BeFalse();
+    }
 }

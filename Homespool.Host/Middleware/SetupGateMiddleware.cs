@@ -69,6 +69,10 @@ public sealed class SetupGateMiddleware : IMiddleware
             || path.StartsWithSegments("/openapi", StringComparison.OrdinalIgnoreCase)
             || path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase)
 
+            // A failure before setup is re-run as the error page, and redirecting that to /setup would
+            // hide the failure - or loop, when /setup is what failed. Opened directly, it is a 404.
+            || path.StartsWithSegments(ErrorPageScope.Path, StringComparison.OrdinalIgnoreCase)
+
             // Not navigable, and a container is never "not started yet" from a monitor's point of
             // view just because nobody has created the first administrator. Redirecting this to
             // /setup would make a fresh deployment answer probes with a 302 instead of its health -

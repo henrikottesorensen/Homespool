@@ -62,6 +62,10 @@ public sealed class TwoFactorEnrolmentMiddleware
     /// enrolment to the proof and straight back again, for ever. Letting it through opens nothing: the
     /// page grants the proof cookie and then returns to wherever the account was going, which is here.
     /// </para>
+    /// <para>
+    /// The error page, because a failure is re-run as it: redirected, the account would be shown the
+    /// enrolment page in place of the failure, and a failure on the enrolment page would loop.
+    /// </para>
     /// </remarks>
     private static readonly string[] Allowed =
     [
@@ -74,6 +78,7 @@ public sealed class TwoFactorEnrolmentMiddleware
         "/Account/LoginWithRecoveryCode",
         "/Account/AccessDenied",
         "/Account/Lockout",
+        ErrorPageScope.Path,
     ];
 
     private readonly RequestDelegate _next;

@@ -3,7 +3,6 @@
 
 #nullable disable
 
-using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
@@ -54,6 +53,10 @@ public class LoginWith2faModel : PageModel
 
     public string ReturnUrl { get; set; }
 
+    /// <summary>The sentence the login page shows when this page sends somebody back to it.</summary>
+    [TempData]
+    public string ErrorMessage { get; set; }
+
     public class InputModel
     {
         [Required]
@@ -68,11 +71,10 @@ public class LoginWith2faModel : PageModel
 
     public async Task<IActionResult> OnGetAsync(bool rememberMe, string returnUrl = null)
     {
-        // Ensure the user has gone through the username & password screen first.
         HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
-            throw new InvalidOperationException("Unable to load two-factor authentication user.");
+            return SignInAgain(returnUrl);
         }
 
         ReturnUrl = returnUrl;
@@ -83,18 +85,20 @@ public class LoginWith2faModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(bool rememberMe, string returnUrl = null)
     {
+        // Before the form is validated: a code field that is empty or malformed is not worth
+        // correcting when nothing is pending to present it for.
+        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
+        if (user is null)
+        {
+            return SignInAgain(returnUrl);
+        }
+
         if (!ModelState.IsValid)
         {
             return Page();
         }
 
         returnUrl ??= Url.Content("~/");
-
-        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
-        if (user is null)
-        {
-            throw new InvalidOperationException("Unable to load two-factor authentication user.");
-        }
 
         // The scheme verifies the code for the pending account, counts a wrong one toward the lockout
         // and resets the count on a right one; the code is presented as typed and normalised there.
@@ -126,5 +130,17 @@ public class LoginWith2faModel : PageModel
         ModelState.AddModelError(string.Empty, _localiser["Account_InvalidAuthenticatorCode"]);
 
         return Page();
+    }
+
+    /// <summary>
+    /// Back to the password step, saying why. Nothing is pending on this browser: the short-lived
+    /// cookie the password step wrote ran out while the person fetched their authenticator, or it
+    /// was never written. The two look the same from here, and the answer to both is the login page.
+    /// </summary>
+    private RedirectToPageResult SignInAgain(string returnUrl)
+    {
+        ErrorMessage = _localiser["Account_TwoFactorSignInExpired"];
+
+        return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
     }
 }

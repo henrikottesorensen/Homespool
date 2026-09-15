@@ -3,7 +3,6 @@
 
 #nullable disable
 
-using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
@@ -53,6 +52,10 @@ public class LoginWithRecoveryCodeModel : PageModel
 
     public string ReturnUrl { get; set; }
 
+    /// <summary>The sentence the login page shows when this page sends somebody back to it.</summary>
+    [TempData]
+    public string ErrorMessage { get; set; }
+
     public class InputModel
     {
         [BindProperty]
@@ -64,11 +67,10 @@ public class LoginWithRecoveryCodeModel : PageModel
 
     public async Task<IActionResult> OnGetAsync(string returnUrl = null)
     {
-        // Ensure the user has gone through the username & password screen first.
         HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
-            throw new InvalidOperationException("Unable to load two-factor authentication user.");
+            return SignInAgain(returnUrl);
         }
 
         ReturnUrl = returnUrl;
@@ -78,15 +80,17 @@ public class LoginWithRecoveryCodeModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(string returnUrl = null)
     {
-        if (!ModelState.IsValid)
-        {
-            return Page();
-        }
-
+        // Before the form is validated: a code field that is empty is not worth correcting when
+        // nothing is pending to present it for.
         HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
-            throw new InvalidOperationException("Unable to load two-factor authentication user.");
+            return SignInAgain(returnUrl);
+        }
+
+        if (!ModelState.IsValid)
+        {
+            return Page();
         }
 
         AuthenticateResult code = await HttpContext.AuthenticateWithAsync(Schemes.RecoveryCode, new RecoveryCodeCredential(Input.RecoveryCode));
@@ -112,5 +116,17 @@ public class LoginWithRecoveryCodeModel : PageModel
         ModelState.AddModelError(string.Empty, _localiser["Account_InvalidRecoveryCode"]);
 
         return Page();
+    }
+
+    /// <summary>
+    /// Back to the password step, saying why. Nothing is pending on this browser: the short-lived
+    /// cookie the password step wrote ran out while the person looked for their recovery codes, or
+    /// it was never written. The two look the same from here, and the answer to both is the login page.
+    /// </summary>
+    private RedirectToPageResult SignInAgain(string returnUrl)
+    {
+        ErrorMessage = _localiser["Account_TwoFactorSignInExpired"];
+
+        return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
     }
 }

@@ -68,7 +68,7 @@ public sealed class SecurityHeaderTests : IAsyncLifetime
     // A page that exists and renders.
     [InlineData("/Account/Login")]
 
-    // Answered before any endpoint runs, which is what proves the headers are set on the way in.
+    // Answered before any endpoint runs, which is what proves the headers do not wait on one.
     [InlineData("/no/such/path")]
     [InlineData("/api/v1/printers")]
 

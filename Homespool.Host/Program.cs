@@ -625,6 +625,21 @@ public static class Program
             // Requests handled before in the pipeline are NOT logged.
             app.UseSerilogRequestLogging();
 
+            // A failure a person meets in a browser is answered with the error page and its trace id;
+            // everything machine-facing keeps the bare 500 (ErrorPageScope). Development keeps the
+            // framework's developer exception page instead, which WebApplication registers on its own.
+            //
+            // Inside the request logging, so Serilog logs the 500 once, for the path that failed,
+            // rather than a second time for the re-run. The handler re-runs only what is registered
+            // after it and clears the response first, which is why the security headers are written
+            // as the response starts rather than on the way in. And outside ClientGoneMiddleware, so a
+            // client that went away is still a 499 and never an error page.
+            if (!app.Environment.IsDevelopment())
+            {
+                app.UseWhen(Middleware.ErrorPageScope.Covers,
+                            branch => branch.UseExceptionHandler(Middleware.ErrorPageScope.Path));
+            }
+
             // INSIDE the request logging, deliberately. It absorbs the cancellation and sets 499, and
             // Serilog reads the status on the way back out - registered outside it instead, Serilog
             // would already have logged the 500 and the unhandled exception it exists to prevent.

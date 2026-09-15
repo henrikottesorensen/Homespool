@@ -24,7 +24,11 @@ namespace Homespool.Host.Authentication;
 /// <c>SignInManager.TwoFactorRecoveryCodeSignInAsync</c> at v10.0.11 is the transcription source. As
 /// there, a wrong code is not counted against the lockout: the codes are random and long, and the
 /// framework's reasoning that brute force is not the risk holds. A redeemed code is spent by the
-/// store, so the same one cannot answer twice.
+/// store, so the same one cannot answer twice. A redeemed code resets the failed count, as a right
+/// authenticator code does: the framework does it in <c>DoTwoFactorSignInAsync</c>, which both of
+/// its code sign-ins share, so it is easy to miss from this method alone. Without it a recovered
+/// account keeps the count somebody holding its password ran up, one guess from a lockout. As
+/// there, a reset that fails refuses the sign-in with the code already spent.
 /// </remarks>
 public sealed class RecoveryCodeAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
@@ -79,6 +83,15 @@ public sealed class RecoveryCodeAuthenticationHandler : AuthenticationHandler<Au
         if (!redeemed.Succeeded)
         {
             Logger.LogInformation("Recovery code refused for user {UserId}: not one of the account's unspent codes.", user.Id);
+
+            return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid recovery code.");
+        }
+
+        IdentityResult reset = await _users.ResetAccessFailedCountAsync(user);
+
+        if (!reset.Succeeded)
+        {
+            Logger.LogWarning("Recovery code refused for user {UserId}: the failed count could not be reset.", user.Id);
 
             return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid recovery code.");
         }

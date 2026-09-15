@@ -226,6 +226,36 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
         again.Succeeded.Should().BeFalse("a redeemed code is spent");
     }
 
+    /// <summary>
+    /// A wrong recovery code is not counted, and a right one clears the count wrong authenticator
+    /// codes ran up, so a recovered account is not left one guess from a lockout.
+    /// </summary>
+    [Fact]
+    public async Task AWrongRecoveryCodeIsNotCountedAndARightOneResetsTheCount()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        await rig.EnableAuthenticatorAsync(user);
+        string code = (await rig.Users.GenerateNewTwoFactorRecoveryCodesAsync(user, 2))!.First();
+        string pending = await rig.PendingTwoFactorCookieAsync(user);
+        int primed = rig.Users.Options.Lockout.MaxFailedAccessAttempts - 1;
+
+        for (int i = 0; i < primed; i += 1)
+        {
+            await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(pending), Schemes.Totp, Code("000000"));
+        }
+
+        AuthenticateResult wrong = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(pending), Schemes.RecoveryCode, Recovery("not-a-code"));
+        int afterWrong = await rig.Users.GetAccessFailedCountAsync(user);
+        AuthenticateResult right = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(pending), Schemes.RecoveryCode, Recovery(code));
+
+        wrong.Succeeded.Should().BeFalse();
+        afterWrong.Should().Be(primed, "a wrong recovery code is not counted");
+        right.Succeeded.Should().BeTrue(right.Failure?.Message);
+        (await rig.Users.GetAccessFailedCountAsync(user)).Should().Be(0);
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeFalse();
+    }
+
     /// <summary>A recovery code is for getting back in, not for confirming an act: the session is not a source for it.</summary>
     [Fact]
     public async Task ARecoveryCodeIsNotAcceptedOnAStepUp()

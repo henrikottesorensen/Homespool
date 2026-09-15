@@ -166,6 +166,15 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     public Dictionary<string, string?> ConfigurationOverrides { get; } = [];
 
     /// <summary>
+    /// Whether this host holds telemetry in memory, read from <see cref="ConfigurationOverrides"/> so the
+    /// setting and the harness cannot disagree about it.
+    /// </summary>
+    private bool TelemetryInMemory =>
+        ConfigurationOverrides.TryGetValue("Storage:TelemetryInMemory", out string? value)
+        && bool.TryParse(value, out bool inMemory)
+        && inMemory;
+
+    /// <summary>
     /// Every service descriptor the real application registered.
     /// </summary>
     /// <remarks>
@@ -277,15 +286,23 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // would have every read of live state, samples and events answered by a different one -
             // and the host would still start, which is what makes it worth doing here rather than
             // discovering per test.
-            ServiceDescriptor? telemetryDescriptor =
-                services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<TelemetryDbContext>));
-
-            if (telemetryDescriptor is not null)
+            //
+            // Except when a test has asked for telemetry in memory, where the application has already
+            // registered the context against a store of its own and redirecting it would silently
+            // switch the setting back off: everything under test would read and write the file, and a
+            // restart would find the state the in-memory store is defined by not having.
+            if (!TelemetryInMemory)
             {
-                services.Remove(telemetryDescriptor);
-            }
+                ServiceDescriptor? telemetryDescriptor =
+                    services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<TelemetryDbContext>));
 
-            services.AddDbContext<TelemetryDbContext>(options => options.UseSqlite(_connectionString));
+                if (telemetryDescriptor is not null)
+                {
+                    services.Remove(telemetryDescriptor);
+                }
+
+                services.AddDbContext<TelemetryDbContext>(options => options.UseSqlite(_connectionString));
+            }
 
             // Everything that keeps a file resolves its configured, relative directory against this.
             // Replacing it is what isolates uploads, certificates and whatever comes next, in one

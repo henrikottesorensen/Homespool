@@ -155,6 +155,19 @@ public sealed class QueueAdvancer : BackgroundService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<QueueAdvancer> _logger;
 
+    /// <summary>
+    /// When this process began, on the advancer's own clock - the line between what the printer has
+    /// said to this run and what an earlier run left behind.
+    /// </summary>
+    /// <remarks>
+    /// Live state can predate the process. With telemetry held in memory the store is seeded at
+    /// startup from what the last shutdown saved, and that save can be days old if a more recent one
+    /// failed; with it on disk the row is simply whatever was last written. Either way a status is
+    /// only the printer's word about now if it arrived after this. See the open-print arm of
+    /// <see cref="ReconcilePrintAsync"/>.
+    /// </remarks>
+    private readonly DateTimeOffset _startedAt;
+
     /// <summary>Last <c>PrinterEvent</c> id examined per printer - see the class remarks.</summary>
     private readonly Dictionary<int, long> _watermarks = [];
 
@@ -204,6 +217,7 @@ public sealed class QueueAdvancer : BackgroundService
         _signal = signal;
         _timeProvider = timeProvider;
         _logger = logger;
+        _startedAt = timeProvider.GetUtcNow();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -685,6 +699,24 @@ public sealed class QueueAdvancer : BackgroundService
             return null;
         }
 
+        // An open print ends only on something the printer has said to this process. No live state,
+        // or live state older than the process, is a printer not yet heard from - after a restart it
+        // is every printer, for the seconds to minutes a Buddy printer takes to reconnect - and the
+        // queue's first pass runs long before that. Read as "stopped printing", that silence closes a
+        // running print's row on every restart where telemetry does not outlive the process.
+        //
+        // Freshness rather than connectivity, deliberately. A printer that reported Stopped and was
+        // then switched off has said how its print ended, and that report is still acted on; what
+        // waits is only a status nobody here has heard it give. No bound on the wait, which is what a
+        // durable live state saying Printing always amounted to for a printer that never came back.
+        if (live is null || live.LastSeenAt < _startedAt)
+        {
+            _logger.LogDebug("[{PrinterId}] {FileName} is open and the printer has not reported since startup; waiting to hear from it.",
+                             printerId, active.FileName);
+
+            return active;
+        }
+
         // Busy belongs in this stall set on hardware evidence: a filament runout opens with
         // several seconds of BUSY carrying no job id before it settles into ATTENTION (MK3.5,
         // observed live 2026-08-28), and reading that excursion as an ending closed a row mid-print
@@ -699,9 +731,12 @@ public sealed class QueueAdvancer : BackgroundService
             PrinterStatus.Finished => PrintState.Finished,
             PrinterStatus.Stopped => PrintState.Stopped,
 
-            // Idle, Ready, Error, or the printer having gone quiet. It stopped printing and did not
-            // say how, which is what Unknown is for rather than a guess at Finished.
-            _ => PrintState.Unknown,
+            // Idle, Ready, Error, or an Unknown the printer actually reported - never an absence,
+            // which the guard above has already turned into a wait. It stopped printing and did not
+            // say how, so ask before settling for Unknown: firmware keeps the outcome of its last
+            // two jobs, and this is the ordinary shape of a print that ended while nobody here was
+            // listening - the printer comes back already Ready, its Finished screen long dismissed.
+            _ => await AskPriorOutcomeAsync(scope, printerId, active, cancellationToken) ?? PrintState.Unknown,
         };
 
         Close(active, outcome, now);

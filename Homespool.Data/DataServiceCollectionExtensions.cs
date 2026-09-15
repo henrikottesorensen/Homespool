@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 
@@ -9,6 +10,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Model.Entities;
 
 namespace Homespool.Data;
 
@@ -144,18 +147,24 @@ public static class DataServiceCollectionExtensions
         // way, and with the flag off nothing else would ever notice.
         MigrationHistoryGuard.Verify(context);
 
-        if (!storage.AutoMigrate)
+        if (storage.AutoMigrate)
+        {
+            logger.LogInformation("Applying pending database migrations.");
+
+            context.Database.Migrate();
+
+            logger.LogInformation("Database schema is up to date.");
+        }
+        else
         {
             logger.LogInformation("Automatic migration is disabled; skipping. Apply migrations manually.");
-
-            return;
         }
 
-        logger.LogInformation("Applying pending database migrations.");
-
-        context.Database.Migrate();
-
-        logger.LogInformation("Database schema is up to date.");
+        // After the schema has been verified and migrated, and on both paths: the seed reads
+        // PrinterLiveStates from the application database, which on a fresh install does not exist
+        // until the migration has run, and on a stale one must not be read before the guard has said
+        // it is the schema this build expects.
+        SeedTelemetryStore(scope.ServiceProvider, storage, context, logger);
     }
 
     /// <summary>
@@ -196,7 +205,66 @@ public static class DataServiceCollectionExtensions
         logger.LogInformation(
             "Telemetry is held in memory only: samples, events and live state are bounded by MaxSamplesPerPrinter " +
             "and MaxEventsPerPrinter, and are discarded when this process stops. Nothing is written to disk for them, " +
-            "which is the point - see StorageOptions.TelemetryInMemory. Live state alone is saved at shutdown.");
+            "which is the point - see StorageOptions.TelemetryInMemory. Live state alone is saved at shutdown and restored at startup.");
+    }
+
+    /// <summary>
+    /// Copies each printer's last-known state, as the previous process saved it at shutdown, into an
+    /// in-memory telemetry store that begins empty.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What makes the shutdown save worth anything.</b> The store is what every reader of live state
+    /// reads - the printer page, the queue - and it starts each process with nothing in it. Unseeded,
+    /// a printer reads as never connected until it next reports, which for one that is switched off is
+    /// indefinitely, and the queue's first pass, seconds after startup, sees no state for printers that
+    /// are mid-print and a minute or more from reconnecting.
+    /// </para>
+    /// <para>
+    /// <b>Seeded rows are what the printer said to an earlier process, and nothing more.</b> Readers that
+    /// act on live state have to tell the two apart; the queue does, by when the report arrived.
+    /// </para>
+    /// <para>
+    /// <b>A failure is logged, never thrown.</b> Startup should not die because a copy of a cache could
+    /// not be made, and nothing that decides anything depends on it: an open print waits for its
+    /// printer rather than ending, and the writer falls back to the saved row when a printer speaks.
+    /// </para>
+    /// </remarks>
+    private static void SeedTelemetryStore(IServiceProvider services,
+                                           StorageOptions storage,
+                                           HomespoolDbContext application,
+                                           ILogger logger)
+    {
+        if (!storage.TelemetryInMemory)
+        {
+            return;
+        }
+
+        try
+        {
+            List<PrinterLiveState> saved = [.. application.PrinterLiveStates
+                                                          .AsNoTracking()
+                                                          .Include(state => state.Slots)];
+
+            if (saved.Count == 0)
+            {
+                return;
+            }
+
+            TelemetryDbContext telemetry = services.GetRequiredService<TelemetryDbContext>();
+            telemetry.PrinterLiveStates.AddRange(saved);
+            telemetry.SaveChanges();
+
+            logger.LogInformation(
+                "Restored last-known state for {PrinterCount} printer(s) from the last shutdown, so they read as last seen rather than never connected.",
+                saved.Count);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                e,
+                "Could not restore last-known printer state into the in-memory telemetry store; printers will read as never connected until they next report.");
+        }
     }
 
     /// <summary>

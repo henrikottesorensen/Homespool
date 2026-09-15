@@ -1270,6 +1270,191 @@ public sealed class QueueAdvancerTests : IDisposable
         (await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken)).EndedAt.Should().BeNull();
     }
 
+    /// <summary>
+    /// An open print on a printer this process has not heard from is not ended.
+    /// </summary>
+    /// <remarks>
+    /// The restart case. With telemetry held in memory the store starts empty, the queue's first pass
+    /// runs seconds after listening, and a printer takes seconds to minutes to reconnect - so the pass
+    /// always sees no live state, and reading that as "stopped printing" closed the row every time.
+    /// </remarks>
+    [Fact]
+    public async Task AnOpenPrintOnAPrinterNotYetHeardFromIsNotEnded()
+    {
+        // Arrange - an open print, no live state, nothing connected
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+
+        context.PrinterLiveStates.RemoveRange(context.PrinterLiveStates);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await ShouldStillBePrintingAsync(context, "a printer that has said nothing has not said its print ended");
+    }
+
+    /// <summary>
+    /// A printer that has connected but not yet reported is still not heard from.
+    /// </summary>
+    /// <remarks>
+    /// The seconds between the socket opening and the first sample being stored. Connectivity is
+    /// not the question; what the printer has said is.
+    /// </remarks>
+    [Fact]
+    public async Task AnOpenPrintWaitsThroughTheGapBetweenConnectingAndTheFirstReport()
+    {
+        // Arrange - connected, but no live state yet
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+
+        context.PrinterLiveStates.RemoveRange(context.PrinterLiveStates);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await ShouldStillBePrintingAsync(context, "a socket is not a report");
+    }
+
+    /// <summary>
+    /// A status left over from before this process started does not end a print.
+    /// </summary>
+    /// <remarks>
+    /// Live state can be older than the process - seeded at startup from what a shutdown saved, which
+    /// is days old if a more recent save failed. An <c>Idle</c> from then says nothing about the print
+    /// opened since, and "no live state at all" would not catch it.
+    /// </remarks>
+    [Fact]
+    public async Task AStatusLeftOverFromBeforeStartupDoesNotEndAPrint()
+    {
+        // Arrange - the printer last said Idle, and then the process restarted
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Idle);
+
+        _clock.Advance(TimeSpan.FromMinutes(5));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await ShouldStillBePrintingAsync(context, "an old report is not the printer speaking about now");
+    }
+
+    /// <summary>
+    /// A printer that reported <c>Stopped</c> and then went away has said how its print ended, and the
+    /// row closes on it.
+    /// </summary>
+    /// <remarks>
+    /// Why the rule is what the printer has said rather than whether it is connected: cancelled at
+    /// the panel and switched off before the next pass, it still told us.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterThatSaidStoppedAndThenWentAwayIsRecordedAsStopped()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, PrinterStatus.Stopped, jobId: 790);
+
+        // Act - and nothing is connected
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.State.Should().Be(PrintState.Stopped, "the printer said so before it went");
+        job.EndedAt.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// An <c>Unknown</c> the printer actually reported still closes the row, so the wait is not read as
+    /// "Unknown never closes".
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownThePrinterReportsStillEndsThePrint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, PrinterStatus.Unknown, jobId: null);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.State.Should().Be(PrintState.Unknown, "a reported status is a report, whatever its value");
+        job.EndedAt.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// A print that ended while nobody here was listening is settled by asking the printer, not
+    /// recorded as <c>Unknown</c>.
+    /// </summary>
+    /// <remarks>
+    /// The printer comes back already <c>Ready</c>, its Finished screen dismissed, which says it
+    /// stopped printing and not how. Firmware keeps the outcome of its last two jobs.
+    /// </remarks>
+    [Fact]
+    public async Task APrintThatEndedWhileNobodyWasListeningIsSettledByAskingThePrinter()
+    {
+        // Arrange - the printer reconnects Ready and remembers the job finishing
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+        ConnectRememberingJobOutcome("FIN_OK");
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, PrinterStatus.Ready, jobId: null);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.State.Should().Be(PrintState.Finished, "the printer remembered how it ended");
+    }
+
+    /// <summary>One open print on the test printer, with the firmware job id and authority a promoted row carries.</summary>
+    private async Task<HomespoolDbContext> OpenPrintAsync(PrinterStatus status)
+    {
+        HomespoolDbContext context = await SeedAsync(arrived: true, status: status);
+
+        context.QueuedPrints.RemoveRange(context.QueuedPrints);
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "frame.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            StartedAt = _clock.GetUtcNow(),
+            CommandedAt = _clock.GetUtcNow(),
+            FirmwareJobId = 790,
+            State = PrintState.Printing,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return context;
+    }
+
+    private static async Task ShouldStillBePrintingAsync(HomespoolDbContext context, string because)
+    {
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().BeNull(because);
+        job.State.Should().Be(PrintState.Printing);
+    }
+
     /// <summary>Overwrites what the printer is last known to have said.</summary>
     /// <remarks>
     /// <c>LastSeenAt</c> moves with it, deliberately: a live state that has not been refreshed since

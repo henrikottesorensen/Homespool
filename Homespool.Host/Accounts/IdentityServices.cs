@@ -35,11 +35,11 @@ namespace Homespool.Host.Accounts;
 /// what the unit-test harness has to replicate.
 /// </para>
 /// <para>
-/// <b>Same registrations, same order, same lifetimes, with two marked departures</b>:
-/// <see cref="UsernameValidator"/> runs beside the framework's user validator, and
+/// <b>Same registrations, same order, same lifetimes, with three marked departures</b>:
+/// <see cref="UsernameValidator"/> runs beside the framework's user validator,
 /// <see cref="SecurityStampValidatorOptions.ValidationInterval"/> is shortened from the framework's
-/// default - both commented where they are added, and both here rather than in <c>Program</c>
-/// because the test harness must apply the same rules. The one thing the framework does that this cannot is walk the
+/// default, and the user store is <see cref="HSUserStore"/> - each commented where it is added, and
+/// all here rather than in <c>Program</c> because the test harness must apply the same rules. The one thing the framework does that this cannot is walk the
 /// type hierarchy to pick a store: <c>AddEntityFrameworkStores</c> reflects over the context to find
 /// the six framework entity types, where <see cref="AddHomespoolStores"/> simply names the ones
 /// <see cref="HomespoolDbContext"/> inherits. A change to that base class therefore has to be
@@ -131,17 +131,17 @@ public static class IdentityServices
     /// <remarks>
     /// <see cref="HomespoolDbContext"/> derives from <see cref="IdentityDbContext{TUser, TRole, TKey}"/>,
     /// which fills in the framework's own claim, user-role, login, role-claim, token and passkey
-    /// entities over the key type; the store takes the same six, in its own parameter order. The passkey
-    /// entity is part of the store's contract whether or not the context maps its table.
+    /// entities over the key type; the store takes the same six, in its own parameter order - the user
+    /// store through <see cref="HSUserStore"/>'s base class. The passkey entity is part of the store's
+    /// contract whether or not the context maps its table.
     /// </remarks>
     public static IdentityBuilder AddHomespoolStores(this IdentityBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.Services.TryAddScoped<IUserStore<HSUser>,
-            UserStore<HSUser, IdentityRole<long>, HomespoolDbContext, long,
-                IdentityUserClaim<long>, IdentityUserRole<long>, IdentityUserLogin<long>,
-                IdentityUserToken<long>, IdentityRoleClaim<long>, IdentityUserPasskey<long>>>();
+        // The third departure: the framework's store, with the authenticator key encrypted and the
+        // recovery codes hashed rather than kept as given.
+        builder.Services.TryAddScoped<IUserStore<HSUser>, HSUserStore>();
 
         builder.Services.TryAddScoped<IRoleStore<IdentityRole<long>>,
             RoleStore<IdentityRole<long>, HomespoolDbContext, long, IdentityUserRole<long>, IdentityRoleClaim<long>>>();

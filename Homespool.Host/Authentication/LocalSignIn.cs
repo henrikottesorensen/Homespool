@@ -135,8 +135,8 @@ public sealed class LocalSignIn
     }
 
     /// <summary>
-    /// A fresh principal for <paramref name="user"/> from the claims factory, carrying the method and
-    /// provider claims <paramref name="current"/> was signed in with.
+    /// A fresh principal for <paramref name="user"/> from the claims factory, carrying the method,
+    /// provider and passkey claims <paramref name="current"/> was signed in with.
     /// </summary>
     public async Task<ClaimsPrincipal> RebuiltPrincipalAsync(HSUser user, ClaimsPrincipal current)
     {
@@ -147,7 +147,9 @@ public sealed class LocalSignIn
 
         if (fresh.Identity is ClaimsIdentity identity)
         {
-            foreach (Claim carried in current.FindAll(claim => claim.Type is JwtClaimTypes.AuthenticationMethod or JwtClaimTypes.IdentityProvider))
+            foreach (Claim carried in current.FindAll(claim => claim.Type is JwtClaimTypes.AuthenticationMethod
+                                                                          or JwtClaimTypes.IdentityProvider
+                                                                          or HSClaimTypes.PasskeyCredentialId))
             {
                 identity.AddClaim(new Claim(carried.Type, carried.Value));
             }

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -9,7 +10,9 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -209,6 +212,79 @@ public sealed class UserAdministrationTests : IDisposable
         subject.DeactivatedAt.Should().BeNull("revoking tokens is not closing the account");
     }
 
+    [Fact]
+    public async Task RevokingAPasskeyTakesThatOneLeavesTheRestAndSaysWhoDidIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
+        UserPasskeyInfo laptop = await SeedPasskeyAsync(users, subject, "laptop");
+        FakeLogger<UserAdministration> logger = new();
+
+        // Act
+        UserAdminResult result = await Administration(context, provider, logger)
+            .RevokePasskeyAsync(admin.Id, subject.Id, phone.CredentialId, CancellationToken.None);
+
+        // Assert
+        result.Succeeded.Should().BeTrue();
+        result.Affected.Should().Be(1, "the count is what tells the page it was revoked rather than already gone");
+        (await users.GetPasskeysAsync(subject)).Should().ContainSingle().Which.CredentialId.Should().Equal(laptop.CredentialId);
+
+        FakeLogRecord record = logger.Collector.GetSnapshot().Should().ContainSingle().Subject;
+        record.Level.Should().Be(LogLevel.Warning);
+        record.StructuredState.Should().Contain(property => property.Key == "AdministratorId" && property.Value == admin.Id.ToString(CultureInfo.InvariantCulture));
+        record.StructuredState.Should().Contain(property => property.Key == "UserId" && property.Value == subject.Id.ToString(CultureInfo.InvariantCulture));
+        record.StructuredState.Should().Contain(property => property.Key == "PasskeyName" && property.Value == "phone");
+    }
+
+    /// <summary>
+    /// A credential id names one passkey anywhere, so the account in the request is what stops an
+    /// administrator on one account's page revoking a passkey that belongs to another.
+    /// </summary>
+    [Fact]
+    public async Task RevokingAnotherAccountsPasskeyThroughThisAccountRevokesNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        HSUser bystander = await AddUserAsync(users, "bystander@example.com");
+        UserPasskeyInfo theirs = await SeedPasskeyAsync(users, bystander, "theirs");
+        FakeLogger<UserAdministration> logger = new();
+
+        // Act
+        UserAdminResult result = await Administration(context, provider, logger)
+            .RevokePasskeyAsync(admin.Id, subject.Id, theirs.CredentialId, CancellationToken.None);
+
+        // Assert
+        result.Succeeded.Should().BeTrue("already gone is not a refusal");
+        result.Affected.Should().Be(0);
+        (await users.GetPasskeysAsync(bystander)).Should().ContainSingle();
+        logger.Collector.GetSnapshot().Should().BeEmpty("nothing was revoked");
+    }
+
+    [Fact]
+    public async Task AnAdministratorCannotRevokeTheirOwnPasskey()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        UserPasskeyInfo phone = await SeedPasskeyAsync(users, admin, "phone");
+
+        // Act
+        UserAdminResult result = await Administration(context, provider)
+            .RevokePasskeyAsync(admin.Id, admin.Id, phone.CredentialId, CancellationToken.None);
+
+        // Assert
+        result.Refusal.Should().Be(UserAdminRefusal.Self);
+        (await users.GetPasskeysAsync(admin)).Should().ContainSingle();
+    }
+
     /// <summary>
     /// Both halves of being held out: the lockout a wrong password builds, and the backoffs a flood
     /// of reset mail builds - which the account's owner cannot clear by succeeding at anything.
@@ -260,21 +336,25 @@ public sealed class UserAdministrationTests : IDisposable
         UserAdminResult deactivate = await administration.DeactivateAsync(admin.Id, 9999, CancellationToken.None);
         UserAdminResult revoke = await administration.RevokeTokensAsync(admin.Id, 9999, CancellationToken.None);
         UserAdminResult lockout = await administration.ClearLockoutAsync(admin.Id, 9999, CancellationToken.None);
+        UserAdminResult passkey = await administration.RevokePasskeyAsync(admin.Id, 9999, [1, 2, 3], CancellationToken.None);
 
         // Assert
         deactivate.Refusal.Should().Be(UserAdminRefusal.NoSuchAccount);
         revoke.Refusal.Should().Be(UserAdminRefusal.NoSuchAccount);
         lockout.Refusal.Should().Be(UserAdminRefusal.NoSuchAccount);
+        passkey.Refusal.Should().Be(UserAdminRefusal.NoSuchAccount);
     }
 
-    private static UserAdministration Administration(HomespoolDbContext context, IServiceProvider provider)
+    private static UserAdministration Administration(HomespoolDbContext context,
+                                                     IServiceProvider provider,
+                                                     ILogger<UserAdministration>? logger = null)
     {
         return new UserAdministration(context,
                                       new ApiTokenService(context),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),
                                       TimeProvider.System,
-                                      NullLogger<UserAdministration>.Instance);
+                                      logger ?? NullLogger<UserAdministration>.Instance);
     }
 
     private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string email)
@@ -289,6 +369,28 @@ public sealed class UserAdministrationTests : IDisposable
         created.Succeeded.Should().BeTrue(string.Join("; ", created.Errors.Select(e => e.Description)));
 
         return user;
+    }
+
+    private static async Task<UserPasskeyInfo> SeedPasskeyAsync(UserManager<HSUser> users, HSUser user, string name)
+    {
+        UserPasskeyInfo passkey = new(
+            credentialId: Guid.NewGuid().ToByteArray(),
+            publicKey: [1, 2, 3],
+            createdAt: DateTimeOffset.UtcNow,
+            signCount: 0,
+            transports: null,
+            isUserVerified: true,
+            isBackupEligible: false,
+            isBackedUp: false,
+            attestationObject: [],
+            clientDataJson: [])
+        {
+            Name = name,
+        };
+
+        (await users.AddOrUpdatePasskeyAsync(user, passkey)).Succeeded.Should().BeTrue();
+
+        return passkey;
     }
 
     /// <summary>

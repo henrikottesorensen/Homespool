@@ -1,5 +1,9 @@
+using System;
+using System.Buffers.Text;
 using System.Security.Claims;
 using System.Threading.Tasks;
+
+using Duende.IdentityModel;
 
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
@@ -16,10 +20,21 @@ namespace Homespool.Host.Authentication;
 /// renewed; a stale one is ended.
 /// </summary>
 /// <remarks>
-/// The rebuilt principal keeps the method and provider the session was signed in with, through
-/// <see cref="LocalSignIn.RebuiltPrincipalAsync"/>. The framework's validator rebuilt from the
+/// <para>
+/// The rebuilt principal keeps the method, provider and passkey the session was signed in with,
+/// through <see cref="LocalSignIn.RebuiltPrincipalAsync"/>. The framework's validator rebuilt from the
 /// factory alone and noted, in a comment, that the authentication method was lost; a page that asks
 /// how someone signed in should not get a different answer after half an hour.
+/// </para>
+/// <para>
+/// <b>A session signed in with a passkey also needs that passkey to still be on the account.</b> A
+/// passkey is revoked because the device it lives on is gone, and that device is usually signed in:
+/// removing the credential without ending its session would leave the lost phone exactly as useful
+/// as before. The stamp cannot do this - moving it signs out every browser the owner has, including
+/// the one they are revoking from - so the session carries
+/// <see cref="HSClaimTypes.PasskeyCredentialId"/> and is checked against the passkey itself. A
+/// passkey session without that claim cannot be checked, and is ended rather than trusted.
+/// </para>
 /// </remarks>
 public sealed class SessionStampValidator : StampValidator
 {
@@ -42,7 +57,46 @@ public sealed class SessionStampValidator : StampValidator
 
         HSUser? user = await Users.GetUserAsync(principal);
 
-        return user is not null && await StampMatchesAsync(user, principal) ? user : null;
+        if (user is null || !await StampMatchesAsync(user, principal))
+        {
+            return null;
+        }
+
+        if (principal.HasClaim(JwtClaimTypes.AuthenticationMethod, PasskeyAuthenticationHandler.AuthenticationMethod)
+            && !await PasskeyRemainsAsync(user, principal))
+        {
+            Logger.LogInformation("A session of user {UserId} was ended: the passkey it signed in with is no longer on the account.", user.Id);
+
+            return null;
+        }
+
+        return user;
+    }
+
+    /// <summary>
+    /// Whether the passkey <paramref name="principal"/> names is still one of <paramref name="user"/>'s.
+    /// </summary>
+    private async Task<bool> PasskeyRemainsAsync(HSUser user, ClaimsPrincipal principal)
+    {
+        string? encoded = principal.FindFirstValue(HSClaimTypes.PasskeyCredentialId);
+
+        if (encoded is null)
+        {
+            return false;
+        }
+
+        byte[] credentialId;
+
+        try
+        {
+            credentialId = Base64Url.DecodeFromChars(encoded);
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+
+        return await Users.GetPasskeyAsync(user, credentialId) is not null;
     }
 
     /// <inheritdoc/>

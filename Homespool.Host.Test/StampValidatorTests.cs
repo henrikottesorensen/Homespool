@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Text;
 using System.IO;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -52,15 +53,12 @@ public sealed class StampValidatorTests : IDisposable
     }
 
     [Fact]
-    public async Task AnAgedSessionWithTheSameStampIsRebuiltKeepingItsMethod()
+    public async Task AnAgedSessionWithTheSameStampIsRebuiltKeepingItsMethodAndPasskey()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
-        DefaultHttpContext signIn = rig.NewRequest();
-        ClaimsPrincipal principal = await rig.PrincipalOf(user);
-        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, PasskeyAuthenticationHandler.AuthenticationMethod));
-        await LocalSchemeRig.SignInOf(signIn).SignInAsync(signIn, principal, isPersistent: false);
-        string cookie = rig.CookieOf(signIn, IdentityConstants.ApplicationScheme);
+        UserPasskeyInfo phone = await SeedPasskeyAsync(rig, user);
+        string cookie = await PasskeySessionCookieAsync(rig, user, Base64Url.EncodeToString(phone.CredentialId));
 
         // A claim added to the account: something the factory reads and that, unlike a rename or a new
         // address, leaves the security stamp where it is.
@@ -74,6 +72,55 @@ public sealed class StampValidatorTests : IDisposable
         ClaimsPrincipal rebuilt = session.Principal!;
         rebuilt.FindFirstValue(JwtClaimTypes.NickName).Should().Be("the owner", "the principal is rebuilt from the account");
         rebuilt.FindFirstValue(JwtClaimTypes.AuthenticationMethod).Should().Be(PasskeyAuthenticationHandler.AuthenticationMethod, "how the person signed in survives the rebuild");
+        rebuilt.FindFirstValue(HSClaimTypes.PasskeyCredentialId).Should().Be(Base64Url.EncodeToString(phone.CredentialId), "the renewed cookie must still name the passkey, or the next check could not end it");
+    }
+
+    /// <summary>
+    /// The lost-device case: the passkey is removed from another browser, and only the sessions that
+    /// signed in with it end - not the owner's session on a second passkey, and not their password
+    /// session, which is the one they are most likely revoking from.
+    /// </summary>
+    [Fact]
+    public async Task AnAgedSessionWhosePasskeyWasRemovedIsEndedAndNoOtherSessionIs()
+    {
+        await using LocalSchemeRig rig = await RigAsync();
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        UserPasskeyInfo phone = await SeedPasskeyAsync(rig, user);
+        UserPasskeyInfo laptop = await SeedPasskeyAsync(rig, user);
+        string phoneSession = await PasskeySessionCookieAsync(rig, user, Base64Url.EncodeToString(phone.CredentialId));
+        string laptopSession = await PasskeySessionCookieAsync(rig, user, Base64Url.EncodeToString(laptop.CredentialId));
+        string passwordSession = await rig.SessionCookieAsync(user);
+
+        await rig.Users.RemovePasskeyAsync(user, phone.CredentialId);
+        _clock.Advance(PastTheInterval);
+
+        DefaultHttpContext onPhone = rig.NewRequest(phoneSession);
+        DefaultHttpContext onLaptop = rig.NewRequest(laptopSession);
+        DefaultHttpContext withPassword = rig.NewRequest(passwordSession);
+
+        (await onPhone.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeFalse("the passkey this session signed in with is gone");
+        rig.Cleared(onPhone, IdentityConstants.ApplicationScheme).Should().BeTrue();
+        (await onLaptop.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeTrue("a different passkey signed this one in");
+        (await withPassword.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeTrue("removing a passkey is not changing the account's stamp");
+    }
+
+    /// <summary>
+    /// A passkey session that does not say which passkey - one issued before sessions named it - cannot
+    /// be checked, and a revoke would silently miss it, so it is ended rather than trusted.
+    /// </summary>
+    [Fact]
+    public async Task AnAgedPasskeySessionThatNamesNoPasskeyIsEnded()
+    {
+        await using LocalSchemeRig rig = await RigAsync();
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        await SeedPasskeyAsync(rig, user);
+        string session = await PasskeySessionCookieAsync(rig, user, credentialId: null);
+        _clock.Advance(PastTheInterval);
+
+        DefaultHttpContext later = rig.NewRequest(session);
+
+        (await later.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeFalse();
+        rig.Cleared(later, IdentityConstants.ApplicationScheme).Should().BeTrue();
     }
 
     [Fact]
@@ -129,5 +176,45 @@ public sealed class StampValidatorTests : IDisposable
         (await LocalSchemeRig.RulesOf(later).IsTwoFactorClientRememberedAsync(later, user)).Should().BeFalse();
         rig.Cleared(later, IdentityConstants.TwoFactorRememberMeScheme).Should().BeTrue();
         rig.Cleared(later, IdentityConstants.ApplicationScheme).Should().BeTrue("the framework ends the session on a stale remembered browser, and so does this");
+    }
+
+    /// <summary>
+    /// The application cookie for <paramref name="user"/> as a passkey sign-in writes it, naming
+    /// <paramref name="credentialId"/> - or, when that is null, naming no passkey at all.
+    /// </summary>
+    private static async Task<string> PasskeySessionCookieAsync(LocalSchemeRig rig, HSUser user, string? credentialId)
+    {
+        DefaultHttpContext signIn = rig.NewRequest();
+        ClaimsPrincipal principal = await rig.PrincipalOf(user);
+        ClaimsIdentity identity = (ClaimsIdentity)principal.Identity!;
+        identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, PasskeyAuthenticationHandler.AuthenticationMethod));
+
+        if (credentialId is not null)
+        {
+            identity.AddClaim(new Claim(HSClaimTypes.PasskeyCredentialId, credentialId));
+        }
+
+        await LocalSchemeRig.SignInOf(signIn).SignInAsync(signIn, principal, isPersistent: false);
+
+        return rig.CookieOf(signIn, IdentityConstants.ApplicationScheme);
+    }
+
+    private static async Task<UserPasskeyInfo> SeedPasskeyAsync(LocalSchemeRig rig, HSUser user)
+    {
+        UserPasskeyInfo passkey = new(
+            credentialId: Guid.NewGuid().ToByteArray(),
+            publicKey: [1, 2, 3],
+            createdAt: DateTimeOffset.UtcNow,
+            signCount: 0,
+            transports: null,
+            isUserVerified: true,
+            isBackupEligible: false,
+            isBackedUp: false,
+            attestationObject: [],
+            clientDataJson: []);
+
+        (await rig.Users.AddOrUpdatePasskeyAsync(user, passkey)).Succeeded.Should().BeTrue();
+
+        return passkey;
     }
 }

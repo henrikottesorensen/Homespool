@@ -16,9 +16,9 @@ public enum UserAdminRefusal
     NoSuchAccount = 2,
 
     /// <summary>
-    /// The administrator aimed at their own account. Refused for deactivation only, and not out of
+    /// The administrator aimed at their own account. Refused for deactivation, and not out of
     /// paternalism: an administrator who closes their own account is the one person who cannot then
-    /// reopen it.
+    /// reopen it. Refused for a passkey revoke too, because their own passkeys have their own page.
     /// </summary>
     Self = 3,
 

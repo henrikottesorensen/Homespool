@@ -712,6 +712,12 @@
   <data name="AdminPasskeys_Revoked" xml:space="preserve">
     <value>Passkey revoked.</value>
   </data>
+  <data name="AdminPasskeys_RefusedSelf" xml:space="preserve">
+    <value>You cannot revoke your own passkeys here: remove one from your own Passkeys page.</value>
+  </data>
+  <data name="AdminPasskeys_OwnPasskeys" xml:space="preserve">
+    <value>These are your own passkeys. Remove one from {0}.</value>
+  </data>
   <data name="Account_SignInWithProviderTitle" xml:space="preserve">
     <value>Sign in with {0}</value>
   </data>
@@ -2770,7 +2776,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>Deactivating closes an account: no password, passkey, authenticator code or API token is accepted afterwards, and its tokens are deleted rather than suspended. The account keeps its name, its teams and its history, and can be reopened here — accounts are never deleted, so that the record of who printed and who stopped a print stays true. A browser already signed in keeps working for up to five minutes.</value>
   </data>
   <data name="AdminUsers_PasskeysExplanation" xml:space="preserve">
-    <value>Revoke a passkey if its owner has lost the device it lives on; they can still sign in with their password and enrol another.</value>
+    <value>Revoke a passkey if its owner has lost the device it lives on: a browser signed in with it is signed out within minutes, and they can still sign in with their password and enrol another.</value>
   </data>
   <data name="AdminUsers_PasskeySynced" xml:space="preserve">
     <value>Synced across the owner's devices</value>

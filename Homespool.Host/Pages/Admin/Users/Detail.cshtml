@@ -134,7 +134,14 @@
     }
     else
     {
-        <p class="text-muted">@Localiser["AdminUsers_PasskeysExplanation"]</p>
+        @if (Model.IsSelf)
+        {
+            <p class="text-muted">@HtmlLocaliser["AdminPasskeys_OwnPasskeys", Markup.Link(Url.Page("/Account/Manage/Passkeys"), Localiser["Manage_Passkeys"].Value)]</p>
+        }
+        else
+        {
+            <p class="text-muted">@Localiser["AdminUsers_PasskeysExplanation"]</p>
+        }
         <table class="table">
             <thead>
                 <tr>
@@ -152,9 +159,12 @@
                     <td>@passkey.CreatedAt.ToLocalTime().ToString(timestamp, System.Globalization.CultureInfo.InvariantCulture)</td>
                     <td class="small">@(passkey.Synced ? Localiser["AdminUsers_PasskeySynced"] : Localiser["Passkeys_DeviceBound"])</td>
                     <td class="text-end">
-                        <button type="submit" class="btn btn-sm btn-outline-danger"
-                                asp-page-handler="RevokePasskey" asp-route-id="@Model.Id"
-                                name="credentialId" value="@passkey.Id">@Localiser["AdminPasskeys_Revoke"]</button>
+                        @if (!Model.IsSelf)
+                        {
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    asp-page-handler="RevokePasskey" asp-route-id="@Model.Id"
+                                    name="credentialId" value="@passkey.Id">@Localiser["AdminPasskeys_Revoke"]</button>
+                        }
                     </td>
                 </tr>
             }

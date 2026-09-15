@@ -301,6 +301,26 @@ public sealed class AdminUsersPageTests : IDisposable
     }
 
     [Fact]
+    public async Task RevokingYourOwnPasskeyIsRefusedWithTheWayToYourOwnPage()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        UserPasskeyInfo phone = await SeedPasskeyAsync(users, admin, "phone");
+        (DetailModel model, _) = NewDetail(context, provider, users, admin);
+
+        // Act
+        IActionResult result = await model.OnPostRevokePasskeyAsync(
+            admin.Id, Base64Url.EncodeToString(phone.CredentialId), CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>();
+        model.StatusMessage.Should().Be("You cannot revoke your own passkeys here: remove one from your own Passkeys page.");
+        (await users.GetPasskeysAsync(admin)).Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task ClearingALockoutLetsTheAccountSignInAgain()
     {
         // Arrange

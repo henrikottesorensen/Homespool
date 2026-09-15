@@ -17,4 +17,11 @@ public static class HSClaimTypes
     /// server's - when that answer came back. <c>ExternalSignIn.RestateAuthenticationTime</c> writes both.
     /// </summary>
     public const string ExternalAuthenticationTime = "external_auth_time";
+
+    /// <summary>
+    /// The passkey a session was signed in with: its credential id, base64url-encoded. The session
+    /// lasts only as long as the passkey does, so removing a lost device's passkey also signs that
+    /// device out.
+    /// </summary>
+    public const string PasskeyCredentialId = "passkey-credential-id";
 }

@@ -157,6 +157,7 @@ public class DetailModel : PageModel
                                   1 => _localiser["AdminUsers_DeactivatedOneToken"].Value,
                                   _ => _localiser["AdminUsers_DeactivatedTokens", result.Affected].Value,
                               },
+                              _localiser["AdminUsers_RefusedSelf"].Value,
                               cancellationToken);
     }
 
@@ -165,6 +166,7 @@ public class DetailModel : PageModel
         return await ActAsync(id,
                               administratorId => _administration.ReactivateAsync(administratorId, id, cancellationToken),
                               _ => _localiser["AdminUsers_Reactivated"].Value,
+                              refusedSelf: null,
                               cancellationToken);
     }
 
@@ -178,6 +180,7 @@ public class DetailModel : PageModel
                                   1 => _localiser["AdminUsers_RevokedOneToken"].Value,
                                   _ => _localiser["AdminUsers_RevokedTokens", result.Affected].Value,
                               },
+                              refusedSelf: null,
                               cancellationToken);
     }
 
@@ -186,6 +189,7 @@ public class DetailModel : PageModel
         return await ActAsync(id,
                               administratorId => _administration.ClearLockoutAsync(administratorId, id, cancellationToken),
                               _ => _localiser["AdminUsers_LockoutCleared"].Value,
+                              refusedSelf: null,
                               cancellationToken);
     }
 
@@ -273,24 +277,11 @@ public class DetailModel : PageModel
 
     /// <summary>
     /// Removes one of this account's passkeys - the recovery path for somebody whose device is gone,
-    /// who then signs in with their password and enrols another.
+    /// who then signs in some other way and enrols another. Refused for your own account, whose
+    /// passkeys have their own page.
     /// </summary>
     public async Task<IActionResult> OnPostRevokePasskeyAsync(long id, string? credentialId, CancellationToken cancellationToken)
     {
-        HSUser? administrator = await _users.GetUserAsync(User);
-
-        if (administrator is null)
-        {
-            return NotFound();
-        }
-
-        HSUser? subject = await _users.FindByIdAsync(id.ToString(CultureInfo.InvariantCulture));
-
-        if (subject is null)
-        {
-            return NotFound();
-        }
-
         byte[] key;
 
         try
@@ -302,18 +293,13 @@ public class DetailModel : PageModel
             return NotFound();
         }
 
-        if (await _users.GetPasskeyAsync(subject, key) is null)
-        {
-            StatusMessage = _localiser["Passkeys_Gone"].Value;
-
-            return RedirectToPage(new { id });
-        }
-
-        await _users.RemovePasskeyAsync(subject, key);
-
-        StatusMessage = _localiser["AdminPasskeys_Revoked"].Value;
-
-        return RedirectToPage(new { id });
+        return await ActAsync(id,
+                              administratorId => _administration.RevokePasskeyAsync(administratorId, id, key, cancellationToken),
+                              result => result.Affected == 0
+                                  ? _localiser["Passkeys_Gone"].Value
+                                  : _localiser["AdminPasskeys_Revoked"].Value,
+                              _localiser["AdminPasskeys_RefusedSelf"].Value,
+                              cancellationToken);
     }
 
     /// <summary>
@@ -321,9 +307,18 @@ public class DetailModel : PageModel
     /// happened - including why it was refused, which is a decision the service makes and this only
     /// puts into words.
     /// </summary>
+    /// <param name="id">The account acted on.</param>
+    /// <param name="act">The act, given the administrator's id.</param>
+    /// <param name="describe">What to say when it went through.</param>
+    /// <param name="refusedSelf">
+    /// What to say when the act refuses the administrator's own account, which each act that refuses
+    /// it explains differently; <see langword="null"/> for an act that never does.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the reads and the act.</param>
     private async Task<IActionResult> ActAsync(long id,
                                                Func<long, Task<UserAdminResult>> act,
                                                Func<UserAdminResult, string> describe,
+                                               string? refusedSelf,
                                                CancellationToken cancellationToken)
     {
         HSUser? administrator = await _users.GetUserAsync(User);
@@ -343,7 +338,7 @@ public class DetailModel : PageModel
         StatusMessage = result.Refusal switch
         {
             UserAdminRefusal.None => describe(result),
-            UserAdminRefusal.Self => _localiser["AdminUsers_RefusedSelf"].Value,
+            UserAdminRefusal.Self when refusedSelf is not null => refusedSelf,
             UserAdminRefusal.LastAdministrator => _localiser["AdminUsers_RefusedLastAdmin"].Value,
             UserAdminRefusal.NoSuchAccount => _localiser["AdminUsers_Gone"].Value,
             _ => throw new InvalidOperationException($"User administration answered {result.Refusal}, which no act produces."),

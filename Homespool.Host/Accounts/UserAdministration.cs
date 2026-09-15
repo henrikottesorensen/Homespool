@@ -3,11 +3,13 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Authentication;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -15,7 +17,7 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// What an administrator may do to somebody else's account: close it, reopen it, revoke its API
-/// tokens, and lift the backoffs holding it out.
+/// tokens or one of its passkeys, and lift the backoffs holding it out.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -36,14 +38,9 @@ namespace Homespool.Host.Accounts;
 /// manager's update path runs the user validators, so closing a compromised account could fail
 /// because its username stopped validating against somebody else's - which is exactly the moment the
 /// act must not fail. The same reasoning <see cref="AttemptLimiter"/> already applies to a counter
-/// bump, and it matters more here.
-/// </para>
-/// <para>
-/// <b>"In this class" is load-bearing.</b> Not every administrative act is routed through here:
-/// <c>Admin/Users/Detail</c>'s passkey revoke calls <c>UserManager.RemovePasskeyAsync</c> directly,
-/// so it runs the validators this class exists to avoid - and it discards the <c>IdentityResult</c>,
-/// reporting the revoke as done whether or not it happened. An act that must not fail, or must not
-/// fail quietly, belongs here rather than on a page.
+/// bump, and it matters more here. <c>UserManager.RemovePasskeyAsync</c> is the sharpest case: the
+/// store saves the deletion before the validators run, so a refusal comes back as a failed result for
+/// a passkey that is already gone, and the result says nothing about whether it was revoked.
 /// </para>
 /// </remarks>
 public sealed class UserAdministration
@@ -206,6 +203,63 @@ public sealed class UserAdministration
                            administratorId,
                            revoked,
                            userId);
+
+        return UserAdminResult.Done(revoked);
+    }
+
+    /// <summary>
+    /// Removes one of <paramref name="userId"/>'s passkeys, and says whether there was one to remove -
+    /// the recovery path for somebody whose device is gone, who then signs in some other way and
+    /// enrols another.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The device's sessions end with it</b>, though not in this method: a session signed in with
+    /// a passkey names it, and <see cref="SessionStampValidator"/> ends one whose passkey is no longer
+    /// on the account when it next re-checks the cookie. The owner's other browsers are untouched.
+    /// </para>
+    /// <para>
+    /// <b>Refused for your own account.</b> An administrator's own passkeys have their own page, which
+    /// is where the owner of any account removes one; this screen is for the case where the owner
+    /// cannot.
+    /// </para>
+    /// <para>
+    /// <b>The delete's row count is the answer</b>, not a lookup before it, so a passkey removed by
+    /// somebody else in between reads as already gone rather than as revoked twice. The name is read
+    /// first only for the log line.
+    /// </para>
+    /// </remarks>
+    public async Task<UserAdminResult> RevokePasskeyAsync(long administratorId,
+                                                          long userId,
+                                                          byte[] credentialId,
+                                                          CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        if (!await _dbContext.Users.AnyAsync(u => u.Id == userId, cancellationToken))
+        {
+            return UserAdminResult.Refused(UserAdminRefusal.NoSuchAccount);
+        }
+
+        if (userId == administratorId)
+        {
+            return UserAdminResult.Refused(UserAdminRefusal.Self);
+        }
+
+        IQueryable<IdentityUserPasskey<long>> passkey = _dbContext.Set<IdentityUserPasskey<long>>()
+                                                                  .Where(p => p.UserId == userId && p.CredentialId == credentialId);
+
+        string? name = (await passkey.AsNoTracking().SingleOrDefaultAsync(cancellationToken))?.Data.Name;
+
+        int revoked = await passkey.ExecuteDeleteAsync(cancellationToken);
+
+        if (revoked > 0)
+        {
+            _logger.LogWarning("Administrator {AdministratorId} revoked passkey {PasskeyName} of user {UserId}.",
+                               administratorId,
+                               LogText.Clean(name),
+                               userId);
+        }
 
         return UserAdminResult.Done(revoked);
     }

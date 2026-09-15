@@ -47,8 +47,10 @@ namespace Homespool.Host.Authentication;
 /// <b>The principal is built by the same factory the sign-in cookie uses</b>, as the token schemes do,
 /// so a passkey-authenticated request is indistinguishable downstream from a cookie-authenticated
 /// one. It carries <see cref="JwtClaimTypes.AuthenticationMethod"/> as <see cref="AuthenticationMethod"/>
-/// for whoever wants to know how the caller was authenticated, and the ticket's properties name the
-/// credential that answered under <see cref="CredentialIdProperty"/>.
+/// for whoever wants to know how the caller was authenticated, and
+/// <see cref="HSClaimTypes.PasskeyCredentialId"/> naming the credential that answered. That one is a
+/// claim rather than a ticket property because it has to reach the session cookie: the stamp check
+/// ends a session whose passkey has since been removed.
 /// </para>
 /// <para>
 /// <b>The relying-party id gates both ends.</b> A challenge from a host the id does not cover answers
@@ -74,12 +76,6 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
     /// the account through the credential's user handle - a discoverable credential's sign-in.
     /// </summary>
     public const string UserIdProperty = $"{PasskeyPrefix}.UserId";
-
-    /// <summary>
-    /// The ticket property naming the credential that signed, base64url-encoded, for a caller that
-    /// wants to say which passkey it was.
-    /// </summary>
-    public const string CredentialIdProperty = $"{PasskeyPrefix}.CredentialId";
 
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly UserManager<HSUser> _users;
@@ -258,14 +254,12 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         if (principal.Identity is ClaimsIdentity identity)
         {
             identity.AddClaim(new Claim(JwtClaimTypes.AuthenticationMethod, AuthenticationMethod));
+            identity.AddClaim(new Claim(HSClaimTypes.PasskeyCredentialId, Base64Url.EncodeToString(passkey.CredentialId)));
         }
-
-        AuthenticationProperties properties = new();
-        properties.Items[CredentialIdProperty] = Base64Url.EncodeToString(passkey.CredentialId);
 
         Logger.LogInformation("Passkey {PasskeyName} authenticated user {UserId}.", passkey.Name ?? "(unnamed)", user.Id);
 
-        return AuthenticateResult.Success(new AuthenticationTicket(principal, properties, Scheme.Name));
+        return AuthenticateResult.Success(new AuthenticationTicket(principal, Scheme.Name));
     }
 
     /// <inheritdoc/>

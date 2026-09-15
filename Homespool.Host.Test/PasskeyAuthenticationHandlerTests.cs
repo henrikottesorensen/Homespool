@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Text;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -500,7 +501,7 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         result.Principal!.Identity!.IsAuthenticated.Should().BeTrue();
         result.Principal.FindFirstValue(JwtClaimTypes.Subject).Should().Be(user.Id.ToString());
         result.Principal.FindFirstValue(JwtClaimTypes.AuthenticationMethod).Should().Be(PasskeyAuthenticationHandler.AuthenticationMethod);
-        result.Ticket.Properties.Items.Should().ContainKey(PasskeyAuthenticationHandler.CredentialIdProperty);
+        result.Principal.FindFirstValue(HSClaimTypes.PasskeyCredentialId).Should().Be(Base64Url.EncodeToString(authenticator.CredentialId), "the session names the passkey, so removing it can end the session");
         stored!.SignCount.Should().Be(4, "the ceremony is not complete until the counter is written back");
     }
 

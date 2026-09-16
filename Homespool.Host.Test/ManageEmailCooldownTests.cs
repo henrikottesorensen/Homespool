@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -172,6 +173,34 @@ public sealed class ManageEmailCooldownTests : IDisposable
             .OnPostChangeEmailAsync(TestContext.Current.CancellationToken);
 
         sender.SentEmails.Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// Both sends are written in the account's language. The culture provider usually agrees for a
+    /// signed-in request, but the page keeps the rule itself rather than leaning on the middleware.
+    /// </summary>
+    [Fact]
+    public async Task BothSendsAreWrittenInTheAccountsLanguage()
+    {
+        using RequestCulture request = RequestCulture.English();
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
+            IdentityTestHarness.BuildIdentityServices(context);
+
+        HSUser user = await SeedSignedInUserAsync(users, httpContext, "dane@example.com");
+        user.Language = "da";
+        (await users.UpdateAsync(user)).Succeeded.Should().BeTrue();
+        FakeTimeProvider time = new(Start);
+        CapturingEmailSender sender = new();
+
+        await NewModel(context, users, httpContext, sender, time, newEmail: null)
+            .OnPostSendVerificationEmailAsync(TestContext.Current.CancellationToken);
+        await NewModel(context, users, httpContext, sender, time, "moved@example.com")
+            .OnPostChangeEmailAsync(TestContext.Current.CancellationToken);
+
+        sender.SentEmails.Select(sent => sent.subject).Should().Equal(
+            "Bekræft din e-mailadresse",
+            "Bekræft din e-mailadresse");
     }
 
     private static EmailModel NewModel(HomespoolDbContext context,

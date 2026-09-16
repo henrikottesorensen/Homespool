@@ -250,6 +250,61 @@ public sealed class RecoveryInviteTests : IDisposable
         (await users.CheckPasswordAsync(subject, NewPassword)).Should().BeTrue("the first redemption stands and the second did nothing");
     }
 
+    /// <summary>
+    /// The notice is for the account's owner, and the browser redeeming the link is the one that may
+    /// not be theirs - so it is written in the account's language, not the request's.
+    /// </summary>
+    [Fact]
+    public async Task TheOwnersNoticeIsWrittenInTheAccountsLanguage()
+    {
+        // Arrange
+        using RequestCulture request = RequestCulture.English();
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser subject = await AddUserAsync(users, "subject@example.com", language: "da");
+        InvitationService invitations = NewInvitationService(context);
+
+        (Invitation invite, string token) = await invitations.CreateRecoveryAsync(
+            subject.Id, subject.Email!, clearsTwoFactor: false, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        (RegisterModel model, CapturingEmailSender mail) = NewModel(context, users, provider, invitations, invite, token);
+
+        // Act
+        await model.OnPostAsync(returnUrl: null, CancellationToken.None);
+
+        // Assert
+        mail.SentEmails.Should().ContainSingle().Which.subject.Should().Be("Din Homespool-adgangskode er nulstillet");
+    }
+
+    /// <summary>
+    /// A recovered account whose address was never confirmed is held for confirmation, and that mail
+    /// goes to the account too - so it is in the account's language, like the notice beside it.
+    /// </summary>
+    [Fact]
+    public async Task AnUnconfirmedAccountsConfirmationMailIsInTheAccountsLanguage()
+    {
+        // Arrange
+        using RequestCulture request = RequestCulture.English();
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser subject = await AddUserAsync(users, "subject@example.com", language: "da", confirmed: false);
+        InvitationService invitations = NewInvitationService(context);
+
+        (Invitation invite, string token) = await invitations.CreateRecoveryAsync(
+            subject.Id, subject.Email!, clearsTwoFactor: false, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        (RegisterModel model, CapturingEmailSender mail) = NewModel(context, users, provider, invitations, invite, token);
+
+        // Act
+        IActionResult result = await model.OnPostAsync(returnUrl: null, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().Be("RegisterConfirmation");
+        mail.SentEmails.Select(sent => sent.subject).Should().Equal(
+            "Din Homespool-adgangskode er nulstillet",
+            "Bekræft din e-mailadresse");
+    }
+
     private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
         return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
@@ -296,12 +351,16 @@ public sealed class RecoveryInviteTests : IDisposable
         return (model, mail);
     }
 
-    private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string email)
+    private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users,
+                                                   string email,
+                                                   string? language = null,
+                                                   bool confirmed = true)
     {
         HSUser user = new(IdentityTestHarness.UsernameFor(email))
         {
             Email = email,
-            EmailConfirmed = true,
+            EmailConfirmed = confirmed,
+            Language = language,
         };
 
         IdentityResult created = await users.CreateAsync(user, OldPassword);

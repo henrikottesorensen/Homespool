@@ -351,7 +351,9 @@ public class RegisterModel : PageModel
         // already confirmed and we can sign straight in.
         if (!user.EmailConfirmed)
         {
-            return await HoldForConfirmationAsync(user, invitation.Email, returnUrl);
+            // No stored language to prefer: the account was created above without one, and the person
+            // who accepted the invitation is the person who reads this.
+            return await HoldForConfirmationAsync(user, invitation.Email, language: null, returnUrl);
         }
 
         await _signIn.SignInAsync(HttpContext, user, isPersistent: false);
@@ -477,11 +479,17 @@ public class RegisterModel : PageModel
             revoked);
 
         // The owner's only signal, if this recovery was not theirs. Sent to the account's own address
-        // rather than the invite's, which is the same string today and need not stay so.
-        await _emailSender.SendEmailAsync(
-            subject.Email,
-            _localiser["Email_RecoveredSubject"],
-            _localiser["Email_RecoveredBody"]);
+        // rather than the invite's, which is the same string today and need not stay so, and written in
+        // the account's language: the browser redeeming the link is exactly the one that may not be
+        // the owner's. The page says nothing about the notice either way, for the same reason.
+        (string noticeSubject, string noticeBody) = UserCultures.InCulture(subject.Language, () => (
+            _localiser["Email_RecoveredSubject"].Value,
+            _localiser["Email_RecoveredBody"].Value));
+
+        if (await _emailSender.SendEmailAsync(subject.Email, noticeSubject, noticeBody) == EmailSendResult.Failed)
+        {
+            _logger.LogWarning("User {UserId} was recovered, and the notice to the account's address could not be sent.", subject.Id);
+        }
 
         // What follows a proved password anywhere else: the account may be locked out or unconfirmed,
         // and a recovery is not a way around either.
@@ -493,7 +501,7 @@ public class RegisterModel : PageModel
                 return RedirectToPage("./Lockout");
 
             case SignInRefusal.NotAllowed when !subject.EmailConfirmed:
-                return await HoldForConfirmationAsync(subject, subject.Email, returnUrl);
+                return await HoldForConfirmationAsync(subject, subject.Email, subject.Language, returnUrl);
 
             case SignInRefusal.NotAllowed:
                 ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
@@ -520,7 +528,14 @@ public class RegisterModel : PageModel
     /// Sends <paramref name="user"/> the confirmation mail and holds at <c>RegisterConfirmation</c>:
     /// the account is not signed in until the address answers.
     /// </summary>
-    private async Task<IActionResult> HoldForConfirmationAsync(HSUser user, string email, string returnUrl)
+    /// <param name="user">The account to confirm.</param>
+    /// <param name="email">The address the mail goes to.</param>
+    /// <param name="language">
+    /// The account's stored language, or null to write in the request's - which is right only when
+    /// the account has none yet.
+    /// </param>
+    /// <param name="returnUrl">Where to go once confirmed.</param>
+    private async Task<IActionResult> HoldForConfirmationAsync(HSUser user, string email, string language, string returnUrl)
     {
         string confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         confirmToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmToken));
@@ -530,12 +545,11 @@ public class RegisterModel : PageModel
             values: new { userUuid = user.Uuid, code = confirmToken, returnUrl },
             protocol: Request.Scheme);
 
-        // The request's culture, and correct: whoever accepted the invitation is whoever reads this.
-        // The account exists by now but has chosen no language yet.
-        EmailSendResult sendResult = await _emailSender.SendEmailAsync(
-            email,
-            _localiser["Email_ConfirmSubject"],
-            _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
+        (string subject, string body) = UserCultures.InCulture(language, () => (
+            _localiser["Email_ConfirmSubject"].Value,
+            _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)].Value));
+
+        EmailSendResult sendResult = await _emailSender.SendEmailAsync(email, subject, body);
 
         bool emailFailed = sendResult == EmailSendResult.Failed;
 

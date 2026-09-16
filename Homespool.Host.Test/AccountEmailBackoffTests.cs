@@ -224,6 +224,29 @@ public sealed class AccountEmailBackoffTests : IDisposable
         result.Should().BeOfType<PageResult>("the same page and the same sentence as a successful resend");
     }
 
+    /// <summary>
+    /// The resend form is anonymous, so the browser asking need not be the account's owner's: the mail
+    /// is written in the account's language, not the request's.
+    /// </summary>
+    [Fact]
+    public async Task AResendIsWrittenInTheAccountsLanguage()
+    {
+        using RequestCulture request = RequestCulture.English();
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
+            IdentityTestHarness.BuildIdentityServices(context);
+
+        HSUser user = await SeedUserAsync(users, "dane@example.com", confirmed: false);
+        user.Language = "da";
+        (await users.UpdateAsync(user)).Succeeded.Should().BeTrue();
+        CapturingEmailSender sender = new();
+
+        await NewResendModel(context, users, httpContext, sender, "dane@example.com")
+            .OnPostAsync(TestContext.Current.CancellationToken);
+
+        sender.SentEmails.Should().ContainSingle().Which.subject.Should().Be("Bekræft din e-mailadresse");
+    }
+
     /// <summary>Confirming the address clears the resend counter.</summary>
     [Fact]
     public async Task ConfirmingTheAddressClearsTheBackoff()

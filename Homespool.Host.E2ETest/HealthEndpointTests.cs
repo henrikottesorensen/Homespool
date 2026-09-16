@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Mime;
@@ -7,6 +8,8 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc.Testing;
+
+using Homespool.Host.Accounts;
 
 namespace Homespool.Host.E2ETest;
 
@@ -59,11 +62,63 @@ public sealed class HealthEndpointTests : IAsyncLifetime
                                         "a monitoring probe has no credentials and arrives before the first administrator exists");
     }
 
+    /// <summary>
+    /// An anonymous caller is told the overall status and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// The report maps the deployment - certificate names, resolved addresses, the WebRTC candidate,
+    /// which parts are exposed - and the proxy's address filter admits the whole LAN. Not even each
+    /// check's name and status: which check is failing is itself a description.
+    /// </remarks>
     [Fact]
-    public async Task HealthReportsTheWriterStateAsJson()
+    public async Task AnAnonymousCallerIsToldTheStatusAndNothingElse()
     {
         // Arrange
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        response.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Application.Json);
+        response.Headers.CacheControl!.NoStore.Should().BeTrue("a proxy must never hand one caller's answer to another");
+
+        using JsonDocument document = JsonDocument.Parse(body);
+
+        document.RootElement.EnumerateObject().Select(property => property.Name).Should().Equal(
+            ["status"], "the report behind the status is for administrators");
+
+        // Degraded, not Healthy: a test host has no camera sidecar credential, which is the
+        // aggregate's worst entry and is meant to be.
+        document.RootElement.GetProperty("status").GetString().Should().Be("Degraded");
+    }
+
+    /// <summary>
+    /// Being signed in is not enough - the report is for the people who run the deployment.
+    /// </summary>
+    [Fact]
+    public async Task ASignedInUserWhoIsNotAnAdministratorIsToldTheStatusOnly()
+    {
+        // Arrange
+        using HttpClient client = (await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "user@example.com")).client;
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        using JsonDocument document = JsonDocument.Parse(body);
+
+        document.RootElement.EnumerateObject().Select(property => property.Name).Should().Equal(["status"]);
+    }
+
+    [Fact]
+    public async Task AnAdministratorIsShownTheWriterStateAsJson()
+    {
+        // Arrange
+        using HttpClient client = (await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "admin@example.com", AdminBootstrap.AdminRole)).client;
 
         // Act
         HttpResponseMessage response = await client.GetAsync("/health", TestContext.Current.CancellationToken);

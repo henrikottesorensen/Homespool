@@ -313,7 +313,8 @@ services:
     # only for faults a restart would fix - it deliberately stays healthy while the database is
     # rejecting writes, because restarting would not fix that and would discard everything still
     # buffered. /health is the fuller report and the one to point monitoring at. Alert on /health;
-    # never restart on it.
+    # never restart on it. A monitor is told the overall status and nothing more; the report behind
+    # it goes to a signed-in administrator only, since it maps the deployment for whoever asks.
 
   # go2rtc reads cameras, so Homespool does not have to know how: go2rtc ingests RTSP, ONVIF, HTTP
   # and V4L2 and re-serves every one of them as a plain JPEG over HTTP,

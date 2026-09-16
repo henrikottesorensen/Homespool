@@ -25,10 +25,13 @@ namespace Homespool.Host.ViewComponents;
 /// stops being purely a rendering of the health report - which its own remarks used to promise.
 /// </para>
 /// <para>
-/// Running the checks per render is cheap by construction - they read in-memory counters, no
-/// database round trip - and this deliberately does not cache. A banner that lags the problem by a
-/// polling interval would be worse than none while someone is actively looking at whether the thing
-/// they just fixed took effect.
+/// <b>Running the checks per render is not free, and this deliberately does not cache.</b> Every page
+/// an administrator loads resolves the configured printer host (the certificate and exposure checks
+/// each do) and, with a printer on the plaintext listener, queries the database. That is accepted
+/// because only administrators pay it, and a banner that lags the problem by a polling interval would
+/// be worse than none while someone is actively looking at whether the thing they just fixed took
+/// effect. The anonymous status on <c>/health</c> is the one that is cached, for the opposite reason:
+/// its callers are nobody in particular.
 /// </para>
 /// </remarks>
 public sealed class HealthBannerViewComponent : ViewComponent

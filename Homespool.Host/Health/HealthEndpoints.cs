@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Cameras;
 using Homespool.Host.Certificates;
 using Homespool.Host.Listeners;
@@ -73,6 +74,8 @@ public static class HealthEndpoints
                 // from a feature that was never built.
                 .AddCheck<WebRtcCandidateHealthCheck>("camera-live-view");
 
+        services.AddSingleton<HealthStatusCache>();
+
         return services;
     }
 
@@ -81,26 +84,31 @@ public static class HealthEndpoints
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Anonymous by design</b>: a monitoring system holds no credentials, so this is mapped outside
-    /// authentication.
+    /// <b>Anonymous, but only the status is.</b> A monitoring system holds no credentials, so both
+    /// endpoints are mapped outside authentication - and a monitor alerts on the status code, which is
+    /// all it needs. The report behind it is for the people who run the deployment: a check describes
+    /// what an operator would need in order to act, which across the six here means the configured
+    /// printer host and the addresses it resolves to, the names the printer certificate covers against
+    /// the names this machine now answers to, the WebRTC candidate browsers are handed, and sentences
+    /// saying which part of the deployment is exposed and how. That is a map of the network and a list
+    /// of its weak points, and anybody on the same network can ask. So <see cref="HealthEndpointPath"/>
+    /// answers an administrator's cookie with the whole report and everybody else with the overall
+    /// status alone - not even each check's own status, since which check is failing is itself a
+    /// description. The administrator test is the banner's, which already shows the same descriptions
+    /// to the same people.
     /// </para>
     /// <para>
-    /// <b>The body is thinner than a session but not thin.</b> A check reports what an operator would
-    /// need in order to act on it, which across the six here means the configured printer host and the
-    /// addresses it resolves to, the names the printer certificate covers against the names this
-    /// machine now answers to, the WebRTC candidate browsers are handed, and counts of printers on the
-    /// plaintext listener and of cameras configured. No credential, no token, no printer serial and
-    /// nothing about a user or a job - so what it hands a stranger is reconnaissance of an internal
-    /// network rather than a secret. The answer to that is a horizon rather than a credential: the
-    /// proxy admits private ranges only, and <c>nginx/homespool-health-access.conf</c> carries the
-    /// reasoning and the one limit it has.
+    /// The proxy additionally admits private ranges only, in
+    /// <c>nginx/homespool-health-access.conf</c>. That is no longer what keeps the report private;
+    /// it keeps the endpoint off the internet.
     /// </para>
     /// <para>
     /// <see cref="HealthEndpointPath"/> is everything, for monitoring and for humans. Alert on it;
     /// never restart on it. <c>/health/live</c> is the safe target for anything that can kill the
     /// container - a Kubernetes livenessProbe, a Swarm healthcheck, an autoheal sidecar - because it
     /// reports only faults a restart fixes, so a rejecting database can never trigger a restart loop
-    /// that discards the buffered telemetry with every cycle.
+    /// that discards the buffered telemetry with every cycle. Its body is the liveness check's fixed
+    /// sentence, which says nothing about the deployment, so it stays whole for everyone.
     /// </para>
     /// <para>
     /// <c>/health/live</c> is also the right target for a startupProbe: migrations and admin bootstrap
@@ -114,16 +122,61 @@ public static class HealthEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        app.MapHealthChecks(HealthEndpointPath, new HealthCheckOptions
-        {
-            ResponseWriter = WriteHealthResponseAsync,
-        }).SegregateByListener();
+        // Map rather than MapGet, as MapHealthChecks does: a probe may well send HEAD.
+        app.Map(HealthEndpointPath, ServeHealthAsync).SegregateByListener();
 
         app.MapHealthChecks($"{HealthEndpointPath}/live", new HealthCheckOptions
         {
             Predicate = registration => registration.Tags.Contains(LivenessTag),
             ResponseWriter = WriteHealthResponseAsync,
         }).SegregateByListener();
+    }
+
+    /// <summary>
+    /// Answers <see cref="HealthEndpointPath"/>: the whole report, fresh, to an administrator, and the
+    /// cached overall status to anybody else.
+    /// </summary>
+    /// <remarks>
+    /// Written by hand because <c>MapHealthChecks</c> runs every check before its response writer can
+    /// see who is asking, so it can neither skip the work for a cached caller nor share it. What it
+    /// does is reproduced: Healthy and Degraded are 200, Unhealthy is 503, and the response is marked
+    /// uncacheable, so a proxy never serves one caller's report to another. An administrator is never
+    /// served the cache - somebody checking whether the thing they just fixed took effect needs the
+    /// answer now.
+    /// </remarks>
+    private static async Task ServeHealthAsync(HttpContext context)
+    {
+        HealthReport? report = null;
+        HealthStatus status;
+
+        if (context.User.IsInRole(AdminBootstrap.AdminRole))
+        {
+            report = await context.RequestServices.GetRequiredService<HealthCheckService>()
+                                  .CheckHealthAsync(context.RequestAborted);
+            status = report.Status;
+        }
+        else
+        {
+            status = await context.RequestServices.GetRequiredService<HealthStatusCache>()
+                                  .GetStatusAsync(context.RequestAborted);
+        }
+
+        context.Response.StatusCode = status == HealthStatus.Unhealthy ?
+            StatusCodes.Status503ServiceUnavailable :
+            StatusCodes.Status200OK;
+
+        context.Response.Headers.CacheControl = "no-store, no-cache";
+        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers.Expires = "Thu, 01 Jan 1970 00:00:00 GMT";
+
+        if (report is not null)
+        {
+            await WriteHealthResponseAsync(context, report);
+            return;
+        }
+
+        context.Response.ContentType = MediaTypeNames.Application.Json;
+        await context.Response.WriteAsync(JsonSerializer.Serialize(new { status = status.ToString() }));
     }
 
     /// <summary>

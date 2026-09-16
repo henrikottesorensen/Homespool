@@ -268,7 +268,8 @@ while true; do
         break
     fi
 
-    curl -s --max-time 2 "$BASE/health" > "$RUN/h.json" 2>/dev/null
+    # With the setup cookie: the counters are in the report, which only an administrator is shown.
+    curl -s --max-time 2 -b "$RUN/cookies" "$BASE/health" > "$RUN/h.json" 2>/dev/null
     python3 - "$RUN/h.json" "$ELAPSED" >> "$RUN/health.csv" <<'PY' || true
 import json, sys
 try:

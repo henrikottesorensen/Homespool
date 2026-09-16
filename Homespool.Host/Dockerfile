@@ -123,7 +123,8 @@ COPY --from=publish /app/publish .
 # /health/live, not /health. Docker marks the container unhealthy on failure, and orchestrators that
 # act on that (Swarm, autoheal sidecars) restart it - so this must only fail for faults a restart
 # fixes. A database rejecting writes is not one: restarting discards everything still buffered.
-# Scrape /health for that, from something that alerts rather than restarts.
+# Scrape /health for that, from something that alerts rather than restarts. Anonymously it answers
+# with the overall status only; the full report needs an administrator's sign-in.
 #
 # Deliberately no --location: the app excludes /health from HTTPS redirection, because curl --fail
 # treats a 307 as success and would otherwise report healthy without ever reaching the endpoint.

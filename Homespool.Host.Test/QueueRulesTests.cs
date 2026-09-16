@@ -343,6 +343,61 @@ public class QueueRulesTests
     }
 
     /// <summary>
+    /// A transfer the printer kept refusing holds under its own reason, never the one that routes back
+    /// into the transfer path.
+    /// </summary>
+    /// <remarks>
+    /// The fall-through to <see cref="QueueWaitReason.InsufficientSpace"/> would send the advancer
+    /// straight back to offering the file, which is the loop this hold exists to end.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(AllStates))]
+    public void ARepeatedlyRefusedTransferHoldsUnderItsOwnReason(PrinterStatus status)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(status, arrived: false, path: null) with
+            {
+                HoldReason = PrintHoldReason.TransferRefused,
+                TransferRetryPending = true,
+            });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.TransferRefused);
+        QueueWaitDescription.For(action, "benchy.bgcode").Should().BeNull("the hold banner carries the sentence");
+    }
+
+    /// <summary>
+    /// Between refused attempts the decision is a wait, so a page does not say "sending" while the
+    /// loop is deliberately not sending.
+    /// </summary>
+    [Fact]
+    public void ARefusedTransferWaitingOutItsDelayIsNotReportedAsAboutToBeSent()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Idle, arrived: false, path: null) with { TransferRetryPending = true });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.TransferRetrying);
+        QueueWaitDescription.NeedsAPerson(action.Reason).Should().BeFalse("the loop clears this itself");
+    }
+
+    /// <summary>
+    /// A pending retry is about sending, so once the file has arrived it no longer applies.
+    /// </summary>
+    /// <remarks>
+    /// Guards the ordering: a stale refusal on a row whose file is now on the drive must not stop the
+    /// print.
+    /// </remarks>
+    [Fact]
+    public void APendingRetryDoesNotStopAFileThatHasArrived()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: true, path: "/usb/A~1.BGC") with { TransferRetryPending = true });
+
+        action.Kind.Should().Be(QueueActionKind.Print);
+    }
+
+    /// <summary>
     /// The page stays quiet where something else already speaks: an active print announces itself, and
     /// the space banner carries its own numbers.
     /// </summary>
@@ -356,6 +411,7 @@ public class QueueRulesTests
     public void OnlyTheReasonsNothingElseCoversGetASentence(QueueWaitReason reason)
     {
         bool expected = reason is QueueWaitReason.Transferring
+                               or QueueWaitReason.TransferRetrying
                                or QueueWaitReason.AwaitingPrinterPath
                                or QueueWaitReason.PrinterNotAvailable;
 

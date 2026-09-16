@@ -124,7 +124,8 @@ public class QueueSnapshotReader
                           onPrinter?.PrinterPath),
             IsTransferInFlight(onPrinter),
             printInFlight,
-            CompatibilityHold(head.PrintFile, printer, tools) ?? onPrinter?.HoldReason);
+            CompatibilityHold(head.PrintFile, printer, tools) ?? onPrinter?.HoldReason,
+            TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()));
     }
 
     /// <summary>

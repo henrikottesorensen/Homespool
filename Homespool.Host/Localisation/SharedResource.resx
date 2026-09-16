@@ -2062,6 +2062,10 @@
     <value>The printer was asked to print {0} and never said whether it did. It is printing something it will not name, so this is holding rather than risk printing the same thing twice. Check the printer: cancel this print if it already ran, or queue it again if it did not.</value>
     <comment>{0} is the file name. The only hold about something we do not know rather than something we do, so it says what was not established and hands the decision over. Both actions are named because either can be right and nothing here can tell which.</comment>
   </data>
+  <data name="Queue_HoldTransferRefused" xml:space="preserve">
+    <value>The printer refused {0} {1} times in a row, each time saying &quot;{2}&quot;. Trying again has not changed its answer, so the queue has stopped. Check the printer page, then cancel this print, or queue it again to retry.</value>
+    <comment>{0} is the file name, {1} how many refusals (always more than one), {2} the printer's own words, untranslated and quoted as sent. Queueing it again is what lifts this hold and starts a fresh set of attempts.</comment>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle. It has been queued, but it will not start until the printer reports that a hardened nozzle is fitted.</value>
     <comment>Queued rather than refused: fitting a hardened nozzle and letting the printer say so releases it with nothing pressed here.</comment>
@@ -2087,6 +2091,14 @@
   </data>
   <data name="Queue_WaitTransferringUnnamed" xml:space="preserve">
     <value>Sending the next file to the printer.</value>
+    <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
+  </data>
+  <data name="Queue_WaitTransferRetrying" xml:space="preserve">
+    <value>The printer refused {0}. Trying again shortly.</value>
+    <comment>{0} is the file name. A wait of seconds to a couple of minutes between attempts; after several identical refusals the queue holds instead.</comment>
+  </data>
+  <data name="Queue_WaitTransferRetryingUnnamed" xml:space="preserve">
+    <value>The printer refused the next file. Trying again shortly.</value>
     <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">

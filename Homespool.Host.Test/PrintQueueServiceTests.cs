@@ -187,6 +187,69 @@ public sealed class PrintQueueServiceTests : IDisposable
         jobs.Select(job => job.PrintFileId).Distinct().Should().HaveCount(1);
     }
 
+    /// <summary>
+    /// Queueing a file again lifts the holds whose exit is a person, and only those - with a fresh
+    /// refusal count, so the next attempt is not re-held at once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Two holds say "look, then decide"</b>: an unresolved print start, and a transfer the printer
+    /// kept refusing. Asking for the file again is that decision. The other holds are conditions the
+    /// loop re-checks itself, and wanting the file more changes none of them, so they stay.
+    /// </para>
+    /// <para>
+    /// The count matters as much as the reason: left at the bound, the very next identical refusal
+    /// would re-hold, and the re-queue would have bought one attempt instead of a fresh set.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(PrintHoldReason.PrintStartUnresolved, true)]
+    [InlineData(PrintHoldReason.TransferRefused, true)]
+    [InlineData(PrintHoldReason.InsufficientSpace, false)]
+    [InlineData(PrintHoldReason.FileExistsDifferentSize, false)]
+    public async Task QueueingAgainLiftsOnlyTheHoldsAPersonClears(PrintHoldReason hold, bool lifted)
+    {
+        // Arrange - the file queued once and held
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode");
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = printer.Id,
+            PrintFileId = file.Id,
+            HoldReason = hold,
+            BlockedAt = DateTimeOffset.UnixEpoch,
+            TransferRefusalCount = TransferRetryRules.HoldAfter,
+            TransferRefusedAt = DateTimeOffset.UnixEpoch,
+            TransferRefusalCode = "STORAGE_FAILURE",
+            TransferRefusalReason = "Failed to create directory",
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        if (lifted)
+        {
+            row.HoldReason.Should().BeNull("queueing again is somebody saying they have looked");
+            row.TransferRefusalCount.Should().BeNull("a lifted hold starts a fresh set of attempts");
+            row.TransferRefusalReason.Should().BeNull("no stale words may outlive the hold they explained");
+        }
+        else
+        {
+            row.HoldReason.Should().Be(hold, "wanting the file more does not change the printer");
+        }
+    }
+
     [Fact]
     public async Task QueueingAFileTheCallerDoesNotHaveIsRefused()
     {
@@ -508,6 +571,48 @@ public sealed class PrintQueueServiceTests : IDisposable
         hold.Should().NotBeNull("a held queue that explains nothing is the failure this exists to prevent");
         hold!.Key.Should().Be("Queue_HoldAbrasiveFilament");
         hold.Arguments.Should().Equal("abrasive.gcode");
+    }
+
+    /// <summary>
+    /// A queue held on a refused transfer says so on the page, with the printer's own words in it.
+    /// </summary>
+    /// <remarks>
+    /// The words are the point of the hold - a person reads "Failed to create directory" once and
+    /// acts - so the test is that they reach the sentence, and that the code stands in when a printer
+    /// sent none.
+    /// </remarks>
+    [Theory]
+    [InlineData("Failed to create directory", "Failed to create directory")]
+    [InlineData(null, "STORAGE_FAILURE")]
+    public async Task AQueueHeldOnARefusedTransferQuotesThePrinter(string? words, string quoted)
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+        await UploadAsync(context, "plus+sign.gcode");
+        await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "plus+sign.gcode",
+                                             TestContext.Current.CancellationToken);
+
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = printer.Id,
+            PrintFileId = file.Id,
+            HoldReason = PrintHoldReason.TransferRefused,
+            BlockedAt = DateTimeOffset.UnixEpoch,
+            TransferRefusalCount = TransferRetryRules.HoldAfter,
+            TransferRefusedAt = DateTimeOffset.UnixEpoch,
+            TransferRefusalCode = "STORAGE_FAILURE",
+            TransferRefusalReason = words,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        MessageKey? hold = await NewHistory(context).GetHoldReasonAsync(printer.Id, Caller.Unscoped(Alice),
+                                                                        TestContext.Current.CancellationToken);
+
+        hold.Should().NotBeNull();
+        hold!.Key.Should().Be("Queue_HoldTransferRefused");
+        hold.Arguments.Should().Equal("plus+sign.gcode", TransferRetryRules.HoldAfter, quoted);
     }
 
     /// <summary>Nothing wrong, nothing said - the banner stays off.</summary>

@@ -17,6 +17,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -309,8 +310,8 @@ public sealed class QueueAdvancer : BackgroundService
     /// Lifts a hold, and clears what was recorded about it.
     /// </summary>
     /// <remarks>
-    /// One place, because a hold is now four fields rather than one and leaving a stale byte count
-    /// behind a cleared reason would put a number on a page that describes nothing.
+    /// One place, because a hold is several fields rather than one and leaving a stale byte count or
+    /// refusal behind a cleared reason would put words on a page that describe nothing.
     /// </remarks>
     private static void ClearHold(PrintFileOnPrinter onPrinter)
     {
@@ -318,6 +319,7 @@ public sealed class QueueAdvancer : BackgroundService
         onPrinter.HoldPrinterFreeBytes = null;
         onPrinter.HoldPrinterFileBytes = null;
         onPrinter.BlockedAt = null;
+        TransferRetryRules.Forget(onPrinter);
     }
 
     private static Task<List<int>> PrintersNeedingAPassAsync(HomespoolDbContext dbContext,
@@ -1280,22 +1282,33 @@ public sealed class QueueAdvancer : BackgroundService
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 // Classified on MachineReason, not on the prose: the code is a fixed vocabulary and
-                // the wording is free to change between releases.
+                // the wording is free to change between releases. Both are the printer's text, so
+                // both are cleaned before they reach a log line.
                 _logger.LogInformation(
                     "[{PrinterId}] refused the transfer of {FileName}: {Reason} [{MachineReason}]",
-                    printerId, file.FileName, outcome.Reason, outcome.MachineReason);
+                    printerId, file.FileName, LogText.Clean(outcome.Reason), LogText.Clean(outcome.MachineReason));
 
                 // Cleared whatever the reason, so the next tick decides afresh rather than waiting
-                // out the staleness timeout on a transfer that never started. For everything except
-                // FILE_EXISTS that is the whole response - usually the single system-wide transfer
-                // slot being busy, where trying again is exactly right.
+                // out the staleness timeout on a transfer that never started.
                 onPrinter.TransferStartedAt = null;
 
                 if (outcome.MachineReason == FileExistsCode)
                 {
+                    TransferRetryRules.Forget(onPrinter);
                     await ReconcileExistingFileAsync(scope, printerId, head, file, onPrinter, cancellationToken);
                 }
+                else if (!TransferRetryRules.IsBusySlot(outcome.MachineReason, outcome.Reason))
+                {
+                    RecordRefusal(dbContext, printerId, head, onPrinter, outcome);
+                }
 
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+            else if (outcome is not null && onPrinter.TransferRefusalCount is not null)
+            {
+                // Taken, so whatever was refusing it has stopped. Only on an answer: a null outcome is
+                // the absence of one, which says nothing about the refusals before it.
+                TransferRetryRules.Forget(onPrinter);
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
         }
@@ -1323,6 +1336,76 @@ public sealed class QueueAdvancer : BackgroundService
             onPrinter.TransferStartedAt = null;
             await dbContext.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Counts a refusal that says something about this file, and holds the queue once the printer has
+    /// given the same answer <see cref="TransferRetryRules.HoldAfter"/> times running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Any code counts, including ones nobody has seen.</b> The default for an unrecognised refusal
+    /// is still to retry - a string nobody has read is not grounds for throwing a print away - and
+    /// this is what stops that default running for ever. Until the bound, the snapshot reports
+    /// <see cref="QueueWaitReason.TransferRetrying"/> for the wait <see cref="TransferRetryRules.WaitAfter"/>
+    /// sets, so the next attempt is spaced rather than immediate.
+    /// </para>
+    /// <para>
+    /// <b>History gets one row, on the transition</b>, carrying the printer's own words, as the space
+    /// hold does. The rules never route this hold back here, so the transition happens once per hold.
+    /// </para>
+    /// </remarks>
+    private void RecordRefusal(HomespoolDbContext dbContext,
+                               int printerId,
+                               QueuedPrint head,
+                               PrintFileOnPrinter onPrinter,
+                               CommandOutcome outcome)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        int count = TransferRetryRules.CountAfter(onPrinter, outcome.MachineReason, outcome.Reason);
+
+        onPrinter.TransferRefusalCount = count;
+        onPrinter.TransferRefusedAt = now;
+        onPrinter.TransferRefusalCode = TransferRetryRules.Bound(outcome.MachineReason,
+                                                                 PrintFileOnPrinter.TransferRefusalCodeMaxLength);
+        onPrinter.TransferRefusalReason = TransferRetryRules.Bound(outcome.Reason,
+                                                                   PrintFileOnPrinter.TransferRefusalReasonMaxLength);
+
+        if (count < TransferRetryRules.HoldAfter)
+        {
+            _logger.LogDebug("[{PrinterId}] refusal {Count} of {HoldAfter} for {FileName}; trying again in {Wait}",
+                             printerId, count, TransferRetryRules.HoldAfter, head.PrintFile!.Name,
+                             TransferRetryRules.WaitAfter(count));
+
+            return;
+        }
+
+        onPrinter.HoldReason = PrintHoldReason.TransferRefused;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = now;
+
+        // The printer's words, not a sentence of ours: PrintJob.Reason records what was said at the
+        // time, and HandleRefusal writes a refused print's reason the same way.
+        dbContext.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            TrackingId = head.TrackingId,
+            FileName = head.PrintFile!.Name,
+            Digest = head.PrintFile.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
+            StartedAt = now,
+            EndedAt = now,
+            State = PrintState.Failed,
+            Reason = onPrinter.TransferRefusalReason ?? onPrinter.TransferRefusalCode,
+        });
+
+        _logger.LogWarning(
+            "[{PrinterId}] refused the transfer of {FileName} {Count} times running with the same answer, "
+            + "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
+            printerId, head.PrintFile.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
+            LogText.Clean(onPrinter.TransferRefusalCode));
     }
 
     /// <summary>

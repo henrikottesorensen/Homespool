@@ -538,6 +538,10 @@ namespace Homespool.Data.Migrations
                     HoldPrinterFreeBytes = table.Column<long>(type: "INTEGER", nullable: true),
                     HoldPrinterFileBytes = table.Column<long>(type: "INTEGER", nullable: true),
                     BlockedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    TransferRefusalCount = table.Column<int>(type: "INTEGER", nullable: true),
+                    TransferRefusedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    TransferRefusalCode = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
+                    TransferRefusalReason = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     ArrivedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     PrinterPath = table.Column<string>(type: "TEXT", nullable: true)
                 },

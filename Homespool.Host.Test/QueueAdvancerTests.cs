@@ -846,6 +846,224 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A transfer refused the same way every time is retried on the schedule, then held with the
+    /// printer's words - and not offered again however long the hold stands.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect, measured on hardware</b>: <c>STORAGE_FAILURE</c> with <i>"Failed to create
+    /// directory"</i>, retried roughly 1 500 times at six-second intervals through two renames, a
+    /// deletion and a power cycle. Six attempts, then a hold a person can read, is the replacement.
+    /// </remarks>
+    [Fact]
+    public async Task ARefusalThatNeverChangesHoldsTheQueueAfterTheBound()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        TransferCounter offers = ConnectRefusingTransfer(_ => ("STORAGE_FAILURE", "Failed to create directory"));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - one pass per attempt, each after its wait has run out
+        for (int attempt = 1; attempt <= TransferRetryRules.HoldAfter; attempt++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(TransferRetryRules.WaitAfter(attempt));
+        }
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        offers.Count.Should().Be(TransferRetryRules.HoldAfter, "each pass after its wait is one attempt");
+        row.HoldReason.Should().Be(PrintHoldReason.TransferRefused);
+        row.TransferRefusalCount.Should().Be(TransferRetryRules.HoldAfter);
+        row.TransferRefusalReason.Should().Be("Failed to create directory", "the printer's words are the useful part");
+        row.TransferRefusalCode.Should().Be("STORAGE_FAILURE");
+
+        PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        recorded.State.Should().Be(PrintState.Failed, "history gets one row, on the transition");
+        recorded.Reason.Should().Be("Failed to create directory");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "a hold is not a cancellation");
+
+        // And the hold stands: an hour later the file has still not been offered again.
+        _clock.Advance(TimeSpan.FromHours(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        offers.Count.Should().Be(TransferRetryRules.HoldAfter, "retrying is what has already failed");
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// After a refusal the next pass waits out the delay rather than offering the file again at once.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedTransferIsNotOfferedAgainBeforeItsWait()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        TransferCounter offers = ConnectRefusingTransfer(_ => ("STORAGE_FAILURE", "Failed to create directory"));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act and assert
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        offers.Count.Should().Be(1);
+
+        _clock.Advance(TransferRetryRules.WaitAfter(1) - TimeSpan.FromSeconds(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        offers.Count.Should().Be(1, "the wait has not run out");
+
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        offers.Count.Should().Be(2, "and once it has, the file is offered again");
+    }
+
+    /// <summary>
+    /// A busy transfer slot never counts, from either client, however long it lasts.
+    /// </summary>
+    /// <remarks>
+    /// Somebody else's large transfer can hold the slot for longer than the whole retry budget, and
+    /// the queue behind it only has to wait. The code-less row is the Python SDK, which sends the
+    /// words and no machine reason.
+    /// </remarks>
+    [Theory]
+    [InlineData("TRANSFER_IN_PROGRESS", "Another transfer in progress")]
+    [InlineData(null, "Another transfer in progress")]
+    public async Task ABusyTransferSlotNeverHoldsTheQueue(string? code, string reason)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        TransferCounter offers = ConnectRefusingTransfer(_ => (code, reason));
+        using QueueAdvancer advancer = NewAdvancer();
+        int passes = TransferRetryRules.HoldAfter * 2;
+
+        // Act
+        for (int pass = 0; pass < passes; pass++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(QueueAdvancer.PollInterval);
+        }
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().BeNull("a taken slot says nothing about this file");
+        row.TransferRefusalCount.Should().BeNull("and so is not counted at all");
+        offers.Count.Should().Be(passes, "nor spaced out - the slot may free up on the next pass");
+    }
+
+    /// <summary>
+    /// A refusal that keeps changing is a situation still moving, so it keeps being retried.
+    /// </summary>
+    [Fact]
+    public async Task ARefusalThatKeepsChangingIsNotHeld()
+    {
+        // Arrange - two different answers, alternating
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        TransferCounter offers = ConnectRefusingTransfer(attempt => attempt % 2 == 0 ?
+                                                             ("STORAGE_FAILURE", "Failed to create directory") :
+                                                             ("NOT_READY", "Printer not ready"));
+        using QueueAdvancer advancer = NewAdvancer();
+        int attempts = TransferRetryRules.HoldAfter * 2;
+
+        // Act
+        for (int attempt = 0; attempt < attempts; attempt++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(TransferRetryRules.WaitAfter(1));
+        }
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        offers.Count.Should().Be(attempts);
+        row.HoldReason.Should().BeNull("only an unchanging answer is the signal");
+        row.TransferRefusalCount.Should().Be(1, "each change starts the count over");
+    }
+
+    /// <summary>A transfer the printer finally takes forgets the refusals before it.</summary>
+    [Fact]
+    public async Task AnAcceptedTransferForgetsEarlierRefusals()
+    {
+        // Arrange - refused five times, the last one long enough ago that the wait is over
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        await WriteFileOnDiskAsync("queued.bgcode");
+
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferRefusalCount = TransferRetryRules.HoldAfter - 1,
+            TransferRefusedAt = _clock.GetUtcNow(),
+            TransferRefusalCode = "STORAGE_FAILURE",
+            TransferRefusalReason = "Failed to create directory",
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        _clock.Advance(TransferRetryRules.WaitAfter(TransferRetryRules.HoldAfter - 1));
+        ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.TransferStartedAt.Should().NotBeNull("the transfer is under way");
+        row.TransferRefusalCount.Should().BeNull("a later failure must start from one, not from five");
+        row.TransferRefusalReason.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A printer that refuses every transfer offer with whatever <paramref name="answer"/> gives for
+    /// that attempt, counting the offers.
+    /// </summary>
+    /// <param name="answer">The machine reason and words for the zero-based attempt number.</param>
+    private TransferCounter ConnectRefusingTransfer(Func<int, (string? code, string? reason)> answer)
+    {
+        TransferCounter counter = new();
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call =>
+             {
+                 if (call.Arg<ISendableCommand>() is not (StartConnectDownload or StartEncryptedDownload))
+                 {
+                     // The free-space question: refused, which the loop reads as "unknown, so room".
+                     return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                                  new CommandOutcome(PrinterEventType.Rejected, null)));
+                 }
+
+                 (string? code, string? reason) = answer(counter.Count++);
+
+                 return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                              new CommandOutcome(PrinterEventType.Rejected, reason)
+                                                                  { MachineReason = code }));
+             });
+
+        _registry.Register(PrinterId, actor, overPlaintext: false);
+
+        return counter;
+    }
+
+    /// <summary>How many transfer offers a printer has been sent.</summary>
+    private sealed class TransferCounter
+    {
+        public int Count { get; set; }
+    }
+
+    /// <summary>
     /// A printer that never answers a <c>START_PRINT</c>: the entry stays queued <b>and</b> the row
     /// records that we asked.
     /// </summary>

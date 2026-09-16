@@ -103,4 +103,26 @@ public enum QueueWaitReason
     /// </para>
     /// </remarks>
     PrinterBusy = 8,
+
+    /// <summary>
+    /// The printer refused the last attempt to send the head, and the loop is waiting before it tries
+    /// again.
+    /// </summary>
+    /// <remarks>
+    /// A wait of seconds to a couple of minutes, set by <see cref="TransferRetryRules.WaitAfter"/>. It
+    /// is its own reason rather than a <see cref="QueueActionKind.Transfer"/> the advancer quietly
+    /// skips, so that a page reading the decision does not say "sending" while nothing is being sent.
+    /// </remarks>
+    TransferRetrying = 9,
+
+    /// <summary>
+    /// The printer refused the head's transfer the same way too many times running, and the queue
+    /// holds until a person acts - see <see cref="PrintHoldReason.TransferRefused"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not routed back into the transfer path</b>, unlike <see cref="InsufficientSpace"/>: retrying
+    /// is what has already failed. No sentence of its own either, because the hold banner carries one
+    /// with the printer's words in it.
+    /// </remarks>
+    TransferRefused = 10,
 }

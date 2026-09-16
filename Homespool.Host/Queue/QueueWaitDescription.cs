@@ -47,13 +47,16 @@ public static class QueueWaitDescription
             QueueWaitReason.Transferring => fileName is null ?
                 MessageKey.For("Queue_WaitTransferringUnnamed") :
                 MessageKey.For("Queue_WaitTransferring", fileName),
+            QueueWaitReason.TransferRetrying => fileName is null ?
+                MessageKey.For("Queue_WaitTransferRetryingUnnamed") :
+                MessageKey.For("Queue_WaitTransferRetrying", fileName),
             QueueWaitReason.AwaitingPrinterPath => MessageKey.For("Queue_WaitAwaitingPath"),
             QueueWaitReason.PrinterNotAvailable => MessageKey.For("Queue_WaitPrinterNotReady"),
 
-            // InsufficientSpace has its own banner, carrying the two numbers; PrintStarting is already
-            // on the page as the active print; PrinterBusy is the status card itself, showing a
-            // progress bar, an attention reason or an error. All of them would be a second voice
-            // saying the same thing.
+            // InsufficientSpace and TransferRefused have their own banners, carrying the numbers or
+            // the printer's words; PrintStarting is already on the page as the active print;
+            // PrinterBusy is the status card itself, showing a progress bar, an attention reason or
+            // an error. All of them would be a second voice saying the same thing.
             _ => null,
         };
     }

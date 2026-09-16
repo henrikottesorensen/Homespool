@@ -54,6 +54,23 @@ public static class Program
         {
             WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+            // Credentials the container is handed as files - one file per key, named for the key it
+            // fills, so Certificates__AuthorityPassphrase on disk becomes
+            // Certificates:AuthorityPassphrase here. It sits above the environment variables and
+            // below the writable settings file, which keeps the ordering below exactly as it reads.
+            //
+            // Why a file at all: a value passed as an environment variable is readable through
+            // `docker inspect`, through /proc/<pid>/environ, and by every child process that
+            // inherits it, and it is one process dump away from a log. A file is readable by this
+            // uid and no other.
+            //
+            // OPTIONAL, and normally absent: only the shipped compose stack mounts this directory.
+            // A development run, a test host and a bare `dotnet run` find nothing here and take
+            // their values from the environment or from user secrets as they always have. A
+            // missing file is a key nobody set, which is the empty value every reader already
+            // refuses on - so nothing needs a second spelling for "unset".
+            builder.Configuration.AddKeyPerFile("/run/secrets", optional: true);
+
             // The one writable configuration source, and it is layered LAST - above the environment
             // variables - so a value an administrator saved wins over one an environment variable
             // carries. That ordering is not a preference: compose substitutes its own default into

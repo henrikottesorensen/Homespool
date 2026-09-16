@@ -133,13 +133,19 @@ Configuration lives in two places, deliberately:
 | `PRINTER_PORT` | The TLS port printers connect to (default 15443). Written into every provisioning bundle, typed by no one. |
 | `TRANSFER_PORT` | Port for file downloads on the pre-WebSocket transport. Plain HTTP by design — the file body is already encrypted, but its integrity isn't verified, so don't expose this port beyond your LAN. |
 | `TZ` | The IANA timezone timestamps are rendered in. Containers default to UTC, which is rarely right for a machine in a house. |
-| `GO2RTC_USERNAME` / `GO2RTC_PASSWORD` | Credentials for the camera sidecar's API — required if you want cameras, ignored otherwise. `setup-env.sh` generates them. |
-| `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest, and the certificate that encrypts the sign-in key ring. Required — the server refuses to start without one rather than store either key in the clear; `setup-env.sh` generates it. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers, or a key-ring certificate that signs everyone out. |
+| `GO2RTC_USERNAME` / `GO2RTC_PASSWORD` | Credentials for the camera sidecar's API — required if you want cameras, ignored otherwise. `setup-env.sh` generates them. The password reaches both containers as a file rather than as an environment variable, so it is in neither `docker inspect` nor any command line; **the line must be present even when empty**, or `docker compose up` refuses to start those services. |
+| `CA_PASSPHRASE` | Encrypts the printer CA's private key at rest, and the certificate that encrypts the sign-in key ring. Required — the server refuses to start without one rather than store either key in the clear; `setup-env.sh` generates it. Like the camera password it reaches the container as a file, so it is not in the application's environment or in `docker inspect`. **Never change or lose it once set** — the server refuses to start rather than mint a CA that strands your printers, or a key-ring certificate that signs everyone out. |
 | `PROXY_SUBNET` / `PROXY_NETWORK` | The network the proxy and the app share with nothing else, and the same range as the app knows it - the addresses whose forwarded headers are trusted, and the one interface the app's listeners bind (plus loopback), so a sidecar on another of its networks has no socket to reach. The app refuses to start if no interface lies inside the range. Change both together only if the default collides with your LAN; `setup-env.sh` does. |
 | `CAMERA_SUBNET` / `CERTS_SUBNET` | The camera sidecar's and the certificate renewer's own networks, each shared with as little as possible. Pinned so the app can name them; `setup-env.sh` moves one that collides. |
 
 [.env.example](.env.example) documents every setting in full, including the WebRTC overrides for
 deployments behind a router or tunnel.
+
+**Changing `GO2RTC_PASSWORD` or `CA_PASSPHRASE` takes `docker compose up -d --force-recreate`.**
+Both reach their containers as files rather than as environment variables, and a changed file is
+not something compose recreates a container for: an ordinary `docker compose up -d` reports
+`Running` and leaves the old value in place. Every other setting here still takes effect on a
+plain `up -d`.
 
 Running the application outside compose — `dotnet Homespool.Host.dll`, or the image on its own —
 leaves `USER_HOSTS` with nothing to feed, and the app then answers only `Host: localhost`. Set

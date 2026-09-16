@@ -62,9 +62,10 @@ public sealed class CameraCredentialHealthCheck : IHealthCheck
             {
                 return HealthCheckResult.Degraded(
                     "The camera stream server's credential contains a double quote or a backslash, which cannot "
-                    + "survive the JSON command line it is passed on - the sidecar receives a different value than "
-                    + "this process does, so every camera will answer 401 while both halves look correctly "
-                    + "configured. Regenerate it with `openssl rand -base64 24`, whose output contains neither.");
+                    + "survive the configuration file it reaches the sidecar in - the sidecar receives a different "
+                    + "value than this process does, so every camera will answer 401 while both halves look "
+                    + "correctly configured. Regenerate it with `openssl rand -base64 24`, whose output contains "
+                    + "neither.");
             }
 
             return HealthCheckResult.Healthy("The camera stream server has a credential.");

@@ -1581,10 +1581,10 @@ ensure_go2rtc_credential() {
 
     if [ -n "$password" ]; then
         # Set by hand, so it never went through random_password's alphabet. A " or a \ cannot reach
-        # the sidecar intact - it is interpolated into a JSON string on that container's command
-        # line - and the backslash is the dangerous one, because it fails silently: the sidecar
-        # receives a different value than Homespool does and answers 401 to everything while both
-        # halves look correctly configured.
+        # the sidecar intact - it is substituted into a quoted line of YAML in that container's
+        # configuration - and the failure is quiet either way: the sidecar receives a different
+        # value than Homespool does, or no usable configuration at all, and answers 401 to
+        # everything while both halves look correctly configured.
         #
         # Warned rather than replaced. Overwriting a credential somebody chose is not this script's
         # call, and it patches rather than regenerates by design. Homespool's own health check says
@@ -1655,7 +1655,17 @@ video_group_id() {
 # Beside .env rather than off $repo_root, because that is the directory compose resolves
 # ./go2rtc.yaml against, and it is what a test can point somewhere harmless.
 #
-# An existing file is never touched: it holds the cameras this deployment already has.
+#   It must NOT BE EMPTY, which is the one that changed when the sidecar's password moved off its
+#   command line and into a second configuration file. With more than one file to read, an empty
+#   first one leaves go2rtc merging into a nil map, and the startup write Homespool makes - the
+#   WebRTC candidate - panics that request inside the sidecar: the write is lost, live view stays
+#   off, and the sidecar keeps running as though nothing happened. `streams: {}` is the smallest
+#   thing that is not empty, and go2rtc rewrites the file over it exactly as it would any other.
+#   Measured on 1.9.14; an empty file is fine with one config file and fatal to that request with
+#   two, which is why this predates nothing and needs no migration beyond the next line.
+#
+# An existing file is seeded only when it is empty - anything in it is the cameras this deployment
+# already has, and is never touched.
 ensure_go2rtc_config_file() {
     local config gid
     config="$(dirname "$env_file")/go2rtc.yaml"
@@ -1672,23 +1682,43 @@ ensure_go2rtc_config_file() {
         gid=44
     fi
 
-    [ -e "$config" ] && return 0
+    [ -s "$config" ] && return 0
 
-    local fmt
+    local fmt existing=false
+    [ -e "$config" ] && existing=true
 
     # This is the one thing here that writes outside .env, so it is also the one thing that has to
     # honour --dry-run itself: the plan machinery below never sees it, and the script promises that
     # a dry run writes nothing.
     if $dry_run; then
-        fmt=$"--dry-run: %s would be created for the camera sidecar."
+        if $existing; then
+            fmt=$"--dry-run: %s is empty, and would be given a starting point the camera sidecar can write over."
+        else
+            fmt=$"--dry-run: %s would be created for the camera sidecar."
+        fi
+
         say "$(printf "$fmt" "$config")"
         return 0
     fi
 
-    # Empty is a valid starting point - go2rtc reads it, starts, and writes the first camera in.
-    if ! : > "$config" 2>/dev/null; then
-        fmt=$"Could not create %s, which the camera sidecar needs before it starts. Create it yourself - otherwise Docker makes a directory of that name and the sidecar fails on it."
+    # Not empty, for the reason in the comment above this function. go2rtc rewrites this whole file
+    # when Homespool registers a camera, so what is in it now only has to parse.
+    if ! printf 'streams: {}\n' > "$config" 2>/dev/null; then
+        if $existing; then
+            fmt=$"%s is empty and could not be written to. Put a line saying: streams: {} in it yourself - an empty file makes the camera sidecar lose the settings Homespool writes at startup, and live camera view stays off."
+        else
+            fmt=$"Could not create %s, which the camera sidecar needs before it starts. Create it yourself - otherwise Docker makes a directory of that name and the sidecar fails on it."
+        fi
+
         warn "$(printf "$fmt" "$config")"
+        return 0
+    fi
+
+    # An existing file keeps the ownership it has: it was created by a deployment that is already
+    # running, and the sidecar has been writing it or has not, which this cannot improve on.
+    if $existing; then
+        fmt=$"%s was empty, and now holds a starting point the camera sidecar can write over."
+        say "$(printf "$fmt" "$config")"
         return 0
     fi
 

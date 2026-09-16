@@ -1526,8 +1526,17 @@ if test_case "the sidecar config file is created beside .env"; then
     use_temp_env "PRINTER_HOST="
     ensure_go2rtc_config_file >/dev/null 2>&1
     assert_succeeds test -f "$temp_env_dir/go2rtc.yaml"
-    # Empty is deliberate and is what go2rtc starts on; anything else would be a config we invented.
-    assert_eq "0" "$(wc -c < "$temp_env_dir/go2rtc.yaml" | tr -d ' ')" "created empty"
+    # Not empty, and that is the whole point of the line: go2rtc is started with a second config
+    # file for its password, and an empty first one makes it panic on the write Homespool does at
+    # startup. `streams: {}` is the least we can invent - the sidecar rewrites the file over it.
+    assert_eq "streams: {}" "$(cat "$temp_env_dir/go2rtc.yaml")" "created with something to parse"
+fi
+
+if test_case "an existing but empty sidecar config is seeded"; then
+    use_temp_env "PRINTER_HOST="
+    : > "$temp_env_dir/go2rtc.yaml"
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    assert_eq "streams: {}" "$(cat "$temp_env_dir/go2rtc.yaml")" "the file an older wizard left empty is filled in"
 fi
 
 if test_case "an existing sidecar config is never touched"; then

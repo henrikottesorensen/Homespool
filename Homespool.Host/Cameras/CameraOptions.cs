@@ -93,11 +93,12 @@ public class CameraOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The two halves travel by different roads and the roads disagree.</b> Compose hands this
-    /// process the value as a plain YAML environment variable, and hands the sidecar the same value
-    /// interpolated into a <i>JSON</i> string on its command line. A <c>"</c> makes that JSON
-    /// invalid; a <c>\</c> is read as a JSON escape, so <c>has\back</c> arrives at the sidecar as
-    /// <c>has</c>, backspace, <c>ack</c> while arriving here intact.
+    /// <b>The two halves travel by different roads and the roads disagree.</b> Compose writes the
+    /// value into both containers as a file, which this process reads whole and unaltered. The
+    /// sidecar instead substitutes its file into a double-quoted <i>YAML</i> scalar in its
+    /// configuration. A <c>"</c> ends that scalar early and the file no longer parses; a <c>\</c>
+    /// is read as a YAML escape, so <c>has\back</c> becomes something else there while arriving
+    /// here intact.
     /// </para>
     /// <para>
     /// <b>The backslash case is why this is checked rather than documented alone.</b> It fails

@@ -96,11 +96,11 @@ services:
       # itself is configured here, because Homespool registers cameras with the sidecar itself.
       Cameras__StreamServerBaseUrl: "${CAMERA_STREAM_SERVER_BASE_URL:-http://go2rtc:1984}"
 
-      # The same pair the go2rtc service is started with, from the same .env values - one source, two
-      # readers, so they cannot disagree. Empty password means the sidecar is unauthenticated, which
-      # is what a deployment that never published its port already had.
+      # The username half of the pair the go2rtc service is started with, from the same .env value -
+      # one source, two readers, so they cannot disagree. The password half is a secret and arrives
+      # as a file; see the secrets: block below. Empty password means the sidecar is
+      # unauthenticated, which is what a deployment that never published its port already had.
       Cameras__ApiUsername: "${GO2RTC_USERNAME:-}"
-      Cameras__ApiPassword: "${GO2RTC_PASSWORD:-}"
 
       # An override for the address a browser is told to send WebRTC media to, and empty is the
       # ordinary case: Homespool derives it by resolving PrinterHost - the only route to this
@@ -142,12 +142,8 @@ services:
       Certificates__ContainerNetworks__2: "${CAMERA_SUBNET:-172.29.0.0/16}"
       Certificates__ContainerNetworks__3: "${CERTS_SUBNET:-172.30.0.0/16}"
 
-      # Encrypts the printer CA's private key on the data volume. The value living here - in .env,
-      # outside that volume - is the point: a copied data/ backup alone then no longer carries the
-      # key every provisioned printer trusts. Required: with it empty the server refuses to start
-      # rather than store the key in the clear. Never change or drop it once set; the server
-      # likewise refuses rather than mint a replacement CA that would strand the fleet.
-      Certificates__AuthorityPassphrase: "${CA_PASSPHRASE:-}"
+      # The passphrase encrypting the printer CA's private key is NOT here: it is a secret and
+      # arrives as a file, like the sidecar's credential. See the secrets: block below.
 
       # Which Host headers this process answers at all - the proxy refuses an unknown Host, and this
       # is the same rule inside the application, because a proxy is not the only way to reach it.
@@ -254,6 +250,48 @@ services:
       # as "this container can read the host's /dev tree" when weighing what else goes in there.
       - /dev:/hostdev:ro
 
+    # The two credentials this container holds, as files rather than environment variables. Each
+    # file is named for the configuration key it fills, and the application reads the directory with
+    # the key-per-file provider: Certificates__AuthorityPassphrase becomes
+    # Certificates:AuthorityPassphrase, and a missing file is a key nobody set - which is the same
+    # empty value the environment used to carry, so every refusal below reads as it always did.
+    #
+    # What it buys: the values are gone from the container's environment, from `docker inspect`, and
+    # from any child process's inherited environment. What it does not buy is anything against
+    # something running INSIDE this container, which can read the files exactly as the application
+    # does - the uid below is the application's own.
+    #
+    # The values still come from .env, so nothing about deploying changes. Compose reads each one
+    # from its own process environment and writes the file into the container: no host file to
+    # create, own or keep in step, and the mode and owner below are honoured (a secret with a
+    # `file:` source silently keeps the host file's owner instead, which a container that is not
+    # root then cannot read).
+    #
+    # A VARIABLE THAT IS NOT SET AT ALL FAILS `docker compose up`, naming the variable and the
+    # secret. `down`, `ps` and `config` keep working, so the deployment is not stuck. setup-env.sh
+    # generates both, and .env.example documents them; a deployment that wants no cameras still
+    # needs a GO2RTC_PASSWORD line, empty if it likes. Set-but-empty mounts no file at all, and is
+    # how "no credential" is spelled.
+    # 1654 is the uid the image runs as - APP_UID in the aspnet base image, and what the Dockerfile's
+    # USER line takes. A file this user cannot read is a key nobody set.
+    secrets:
+      # The sidecar's API credential, the same value go2rtc itself is given below.
+      - source: go2rtc-password
+        target: Cameras__ApiPassword
+        uid: "1654"
+        mode: 0400
+
+      # Encrypts the printer CA's private key on the data volume, and the certificate behind the
+      # sign-in key ring with it. That the value lives in .env - outside that volume - is the point:
+      # a copied data/ backup alone then carries neither the key every provisioned printer trusts
+      # nor the means to mint a session. Required: without it the server refuses to start rather
+      # than store either key in the clear. Never change or drop it once set; the server likewise
+      # refuses rather than mint a replacement CA that would strand the fleet.
+      - source: ca-passphrase
+        target: Certificates__AuthorityPassphrase
+        uid: "1654"
+        mode: 0400
+
     # Two networks: the proxy's, and the camera sidecar's. The sidecar is reached by service name
     # over the second, and is on nothing else - see its own networks: line. The listeners bind only
     # the interface on the first (the one inside XForwarded__KnownNetworks) and loopback, so the
@@ -303,11 +341,12 @@ services:
     # Plain, not -hardware: that variant is linux/amd64 ONLY and would not pull on a Pi at all.
     image: alexxit/go2rtc@sha256:675c318b23c06fd862a61d262240c9a63436b4050d177ffc68a32710d9e05bae  # 1.9.14
 
-    # The credential is on the command line rather than in go2rtc.yaml, because Homespool rewrites
-    # that file when it registers a camera. It is one credential for the whole API - not the access
-    # control; Homespool still proxies every viewing path and applies the per-camera check. It is
-    # required all the same: an unauthenticated go2rtc runs command sources for anything that can
-    # reach it.
+    # The credential is not in go2rtc.yaml, because Homespool rewrites that file when it registers a
+    # camera, and it is not on the command line either, where every account on the host could read
+    # it out of /proc/<pid>/cmdline: it arrives as a file of its own, and the command below says
+    # how. It is one credential for the whole API - not the access control; Homespool still proxies
+    # every viewing path and applies the per-camera check. It is required all the same: an
+    # unauthenticated go2rtc runs command sources for anything that can reach it.
     #
     # So `listen` is empty unless a username is set, and an uncredentialled deployment then runs no
     # API at all rather than an open one. That is go2rtc's own rule made visible: it installs its
@@ -360,16 +399,58 @@ services:
       # the candidate and ice_servers are written by Homespool over /api/config at startup, because
       # a value frozen into a command line cannot follow this machine's address. ice_servers
       # defaults to empty: left alone, go2rtc contacts a third-party STUN server unprompted.
-      - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","local_auth":true,"allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
+      - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","local_auth":true,"allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
 
       # DEVELOPER: swap the line above for this one to get the web interface back - it is how
       # stream types get tested by hand, and omitting allow_paths entirely is how go2rtc means
-      # "unrestricted". One line swapped rather than a second -c: whether a second '{"api":{...}}'
-      # merges with this one or replaces it is untested, and if it replaced it the credential would
-      # go with it. It keeps `listen` and `local_auth`, so the two lines differ in allow_paths and
-      # nothing else - dropping either of those would quietly reopen the sidecar rather than widen
-      # it, which is not what swapping this line is meant to buy.
-      # - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","password":"${GO2RTC_PASSWORD:-}","local_auth":true}}'
+      # "unrestricted". One line swapped rather than a second -c, so that the two lines differ in
+      # allow_paths and nothing else - dropping `listen` or `local_auth` while swapping would
+      # quietly reopen the sidecar rather than widen it, which is not what this is meant to buy.
+      # - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","local_auth":true}}'
+
+      # THE PASSWORD, and the only reason there is a third -c: it is the one value here worth
+      # keeping off a command line, where every account on the host can read it out of
+      # /proc/<pid>/cmdline. Separate api: keys given on separate -c sources are merged rather than
+      # replaced (measured), so this fills in the password and changes nothing else above.
+      #
+      # The file itself holds no secret - it holds go2rtc's own placeholder, which go2rtc resolves
+      # against $CREDENTIALS_DIRECTORY below. `$$` is how compose is told to leave a `$` alone, so
+      # what reaches the container is the literal ${GO2RTC_PASSWORD:}; the configs: block at the
+      # bottom of this file is where the text lives.
+      #
+      # THE EMPTY DEFAULT AFTER THE COLON IS LOAD-BEARING. An unresolvable ${VAR} is left standing
+      # as literal text, and go2rtc would then accept the string "${GO2RTC_PASSWORD}" as the
+      # password - a credential published in this file, for anyone who reads the repository. With
+      # the colon it resolves to empty instead, which is the lockout an empty password has always
+      # meant here. Measured on 1.9.14, both ways.
+      - -c
+      - /run/go2rtc/api-credential.yaml
+
+    # Where go2rtc looks up a ${NAME} it cannot find in its environment: one file per name, named
+    # for the variable. It is systemd's credentials convention, which go2rtc implements, and it is
+    # what lets the password reach this container without ever being an environment variable of its
+    # own - so it is in neither `docker inspect` nor /proc/<pid>/environ, and no camera process
+    # go2rtc spawns inherits it.
+    environment:
+      CREDENTIALS_DIRECTORY: /run/secrets
+
+    # The password, as a file this user can read and nobody else can. Same .env value the
+    # application gets, written by compose into both containers, so the two still cannot drift.
+    # Set-but-empty mounts no file, which leaves the placeholder resolving to empty - see the
+    # command above for why that is the safe direction.
+    secrets:
+      - source: go2rtc-password
+        target: GO2RTC_PASSWORD
+        uid: "65532"
+        mode: 0400
+
+    # The placeholder file the third -c reads. Generated by compose rather than kept in the
+    # repository, so there is no new file for a deployment to create, own, or keep in step.
+    configs:
+      - source: go2rtc-api-credential
+        target: /run/go2rtc/api-credential.yaml
+        uid: "65532"
+        mode: 0444
 
     # Named, because Cameras__StreamServerBaseUrl points at it by name rather than by address.
     hostname: go2rtc
@@ -429,12 +510,22 @@ services:
     # where that is arranged - read it before changing either.
     user: "65532:${GO2RTC_VIDEO_GID:-44}"
 
-    # The root filesystem is written to only by a process that has been told what to write, so it
-    # does not need to be writable. /config is a volume and stays writable under this - which
-    # matters, because registering a camera is a config write: go2rtc persists a stream to its
-    # config file, and a read-only /config answers 400 to the registration and 500 to /api/config,
-    # in both cases with nothing in its log.
-    read_only: true
+    # NOT read_only, and that is a trade taken deliberately: compose cannot write a secret or a
+    # generated config into a read-only service at all - it refuses with "`file` is the sole
+    # supported option" - so keeping the flag would mean keeping the sidecar's password on its
+    # command line, where every account on the host can read it.
+    #
+    # What the flag was buying here is smaller than it looks, and was measured rather than assumed:
+    # under this user, with every capability dropped, the only path it takes away is /var/tmp.
+    # /tmp is a tmpfs either way (below), and /dev/shm stays writable under read_only regardless;
+    # nothing else in the image is writable by uid 65532, because the image's own files are root's.
+    #
+    # /tmp stays a tmpfs so that scratch writes land in memory rather than on the card, which on a
+    # Raspberry Pi is the difference this line was really making.
+    #
+    # What must stay writable either way is /config: registering a camera is a config write, and a
+    # /config this user cannot write answers 400 to the registration and 500 to /api/config, in both
+    # cases with nothing in the sidecar's log. The volumes block below is where that is arranged.
     tmpfs:
       - /tmp
 
@@ -449,7 +540,7 @@ services:
       # is missing, and go2rtc then fails on a directory where it wanted its configuration. From
       # nothing:
       #
-      #   install -o 65532 -g 44 -m 664 /dev/null ./go2rtc.yaml
+      #   printf 'streams: {}\n' > ./go2rtc.yaml && chown 65532:44 ./go2rtc.yaml && chmod 664 ./go2rtc.yaml
       #
       # The requirement is only that the file be WRITABLE by the identity in `user:` above, by owner
       # or by group - the line above is one way to satisfy it, not the shape it has to have. A file
@@ -458,9 +549,16 @@ services:
       # rewrite keeps whatever ownership it found. If cameras save but never appear, check this
       # first.
       #
-      # An empty file is a valid starting point - go2rtc reads it, starts, and writes the first
-      # camera into it. Do not edit it by hand: it is rewritten by the sidecar whenever Homespool
-      # registers a camera, and a camera described in two places is described wrongly in one of them.
+      # IT MUST NOT BE EMPTY, and that is newer than the rest of this comment: the sidecar is now
+      # started with more than one configuration file (the password is in the third -c), and with
+      # more than one, an empty first file leaves go2rtc merging into a nil map. The write
+      # Homespool makes at startup then panics that request inside the sidecar - the WebRTC
+      # candidate is lost, live view stays off, and the sidecar goes on running as though nothing
+      # happened, with the panic the only trace. `streams: {}` is enough; setup-env.sh writes it,
+      # and seeds a file it finds empty. Measured on 1.9.14, one file against two.
+      #
+      # Do not edit it by hand: it is rewritten by the sidecar whenever Homespool registers a
+      # camera, and a camera described in two places is described wrongly in one of them.
       #
       # Measured rather than assumed, because the failure would be silent: go2rtc rewrites this file
       # IN PLACE, same inode, so mounting the single file holds. Were it to write a temporary file
@@ -759,6 +857,49 @@ services:
       - homespool-proxy-certs:/certs
 
     command: run
+
+# The two credentials in .env that reach a container as a file instead of as an environment
+# variable, and the one generated file that reads one of them.
+#
+# `environment:` is the source, not `file:`, and the difference decides everything about how these
+# behave. Compose reads the named variable from its own environment - .env included, which is why
+# nothing about deploying changes - and writes the value into the container itself. With a `file:`
+# source it would bind-mount a host file instead, keeping that file's owner and mode and ignoring
+# the uid and mode each service asks for, so a container that is not root could not read its own
+# secret; every service here runs as somebody.
+#
+# Consequences worth knowing before editing these, all measured on compose v5.3.1:
+#
+#   - A variable that is not set at all fails `docker compose up` for the services that use it,
+#     naming both the variable and the secret. `down`, `ps` and `config` are unaffected.
+#   - Set-but-empty is not an error and mounts NO FILE. Each reader treats the absence as empty,
+#     which is what an empty value meant before this, so "no credential" still says itself.
+#   - `docker compose config` still prints .env's values, as it always has. This changes what a
+#     container carries, not what the file renders to.
+#   - CHANGING A VALUE IN .env DOES NOT REACH A RUNNING CONTAINER. A secret's content is not part of
+#     what compose compares when it decides whether to recreate a service, so `docker compose up -d`
+#     reports "Running" and the old credential stays live - where an environment variable would have
+#     forced a recreation by changing the container's configuration. ROTATING ONE TAKES
+#     `docker compose up -d --force-recreate`, and it takes it for both readers at once: recreate
+#     only the application and it authenticates to a sidecar still holding the old password.
+secrets:
+  go2rtc-password:
+    environment: GO2RTC_PASSWORD
+  ca-passphrase:
+    environment: CA_PASSPHRASE
+
+configs:
+  # Read by the sidecar's third -c. It carries go2rtc's own placeholder and no value: `$$` keeps
+  # compose from substituting, so the container receives the literal ${GO2RTC_PASSWORD:}, and
+  # go2rtc fills it from the file in $CREDENTIALS_DIRECTORY.
+  #
+  # NEVER let this content go empty. Compose treats an empty `content:` as no content at all, falls
+  # back to a `file:` source with an empty path, and mounts THE WHOLE PROJECT DIRECTORY - .env
+  # included - into the container at the target path. Measured; there is no warning.
+  go2rtc-api-credential:
+    content: |
+      api:
+        password: "$${GO2RTC_PASSWORD:}"
 
 networks:
   # THE PROXY AND THE APPLICATION, AND NOTHING ELSE JOINS THIS NETWORK. Every container on it is a

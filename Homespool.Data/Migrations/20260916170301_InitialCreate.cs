@@ -568,7 +568,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    TrackingId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    PrintUuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     FileName = table.Column<string>(type: "TEXT", nullable: false),
                     Digest = table.Column<string>(type: "TEXT", nullable: true),
@@ -668,7 +668,7 @@ namespace Homespool.Data.Migrations
                 {
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    TrackingId = table.Column<Guid>(type: "TEXT", nullable: false),
+                    PrintUuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
                     Position = table.Column<int>(type: "INTEGER", nullable: false),
@@ -943,9 +943,9 @@ namespace Homespool.Data.Migrations
                 columns: new[] { "PrinterId", "StartedAt" });
 
             migrationBuilder.CreateIndex(
-                name: "IX_PrintJobs_TrackingId",
+                name: "IX_PrintJobs_PrintUuid",
                 table: "PrintJobs",
-                column: "TrackingId");
+                column: "PrintUuid");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectAuthentication_FingerPrintKey",
@@ -991,9 +991,9 @@ namespace Homespool.Data.Migrations
                 column: "PrintFileId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_QueuedPrints_TrackingId",
+                name: "IX_QueuedPrints_PrintUuid",
                 table: "QueuedPrints",
-                column: "TrackingId",
+                column: "PrintUuid",
                 unique: true);
 
             migrationBuilder.CreateIndex(

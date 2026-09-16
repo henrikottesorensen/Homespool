@@ -54,7 +54,7 @@ public sealed class QueueAdvancerTests : IDisposable
     private const long OnDiskLength = 11;
 
     /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
-    private static readonly Guid QueuedTrackingId = new("11111111-2222-3333-4444-555555555555");
+    private static readonly Guid QueuedPrintUuid = new("11111111-2222-3333-4444-555555555555");
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-advancer-{Guid.NewGuid():N}.db");
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.UnixEpoch.AddYears(56));
@@ -447,7 +447,7 @@ public sealed class QueueAdvancerTests : IDisposable
         failure.State.Should().Be(PrintState.Failed);
         failure.Reason.Should().Be("Forbidden path");
         failure.EndedAt.Should().NotBeNull("nothing printed, so it opens and closes together");
-        failure.TrackingId.Should().Be(QueuedTrackingId,
+        failure.PrintUuid.Should().Be(QueuedPrintUuid,
                                        "the refusal is findable by the handle the enqueue returned - the row used to exist and be unreachable");
     }
 
@@ -1131,7 +1131,7 @@ public sealed class QueueAdvancerTests : IDisposable
         adopted.State.Should().Be(PrintState.Printing,
                                   "the telemetry that identified the print is the telemetry that says it is printing");
         adopted.FirmwareJobId.Should().Be(724, "the two id spaces are mapped here or not at all");
-        adopted.TrackingId.Should().Be(QueuedTrackingId, "the intention and the print it produced stay connected");
+        adopted.PrintUuid.Should().Be(QueuedPrintUuid, "the intention and the print it produced stay connected");
 
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
             "now - and only now - has the entry done its job");
@@ -1377,7 +1377,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         adopted.State.Should().Be(PrintState.Printing);
         adopted.FirmwareJobId.Should().Be(737);
-        adopted.TrackingId.Should().Be(QueuedTrackingId, "the intention and the print it produced stay connected");
+        adopted.PrintUuid.Should().Be(QueuedPrintUuid, "the intention and the print it produced stay connected");
         adopted.QueuedByUserId.Should().Be(1);
         adopted.PrinterPath.Should().Be("/usb/QUEUED~1.BGC");
         adopted.CommandedAt.Should().BeNull("no command of ours started this print, and null is that record");
@@ -1846,7 +1846,7 @@ public sealed class QueueAdvancerTests : IDisposable
         {
             PrinterId = PrinterId,
             PrintFileId = file.Id,
-            TrackingId = QueuedTrackingId,
+            PrintUuid = QueuedPrintUuid,
             Position = 0,
             QueuedByUserId = 1,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),

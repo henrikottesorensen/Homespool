@@ -884,7 +884,7 @@ public sealed class QueueAdvancer : BackgroundService
         PrintJob adopted = new()
         {
             PrinterId = printerId,
-            TrackingId = claimed.Entry.TrackingId,
+            PrintUuid = claimed.Entry.PrintUuid,
             FileName = claimed.Entry.PrintFile!.Name,
             Digest = claimed.Entry.PrintFile.Digest,
             QueuedByUserId = claimed.Entry.QueuedByUserId,
@@ -941,7 +941,7 @@ public sealed class QueueAdvancer : BackgroundService
     {
         QueuedPrint? entry = await dbContext.QueuedPrints
                                             .SingleOrDefaultAsync(queued => queued.PrinterId == printerId
-                                                                            && queued.TrackingId == commanded.TrackingId,
+                                                                            && queued.PrintUuid == commanded.PrintUuid,
                                                                   cancellationToken);
 
         bool connected = _registry.IsConnected(printerId);
@@ -1390,7 +1390,7 @@ public sealed class QueueAdvancer : BackgroundService
         dbContext.PrintJobs.Add(new PrintJob
         {
             PrinterId = printerId,
-            TrackingId = head.TrackingId,
+            PrintUuid = head.PrintUuid,
             FileName = head.PrintFile!.Name,
             Digest = head.PrintFile.Digest,
             QueuedByUserId = head.QueuedByUserId,
@@ -1609,7 +1609,7 @@ public sealed class QueueAdvancer : BackgroundService
             dbContext.PrintJobs.Add(new PrintJob
             {
                 PrinterId = printerId,
-                TrackingId = head.TrackingId,
+                PrintUuid = head.PrintUuid,
                 FileName = head.PrintFile.Name,
                 Digest = head.PrintFile.Digest,
                 QueuedByUserId = head.QueuedByUserId,
@@ -1665,7 +1665,7 @@ public sealed class QueueAdvancer : BackgroundService
         PrintJob commanded = new()
         {
             PrinterId = printerId,
-            TrackingId = head.TrackingId,
+            PrintUuid = head.PrintUuid,
             FileName = head.PrintFile!.Name,
             Digest = head.PrintFile.Digest,
             QueuedByUserId = head.QueuedByUserId,

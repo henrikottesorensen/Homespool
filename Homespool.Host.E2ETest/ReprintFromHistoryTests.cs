@@ -62,7 +62,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     [Fact]
     public async Task PrintingAgainQueuesTheFile()
     {
-        (Guid uuid, Guid tracking, HttpClient client) = await SeedAsync("reprint-ok@example.com", "benchy.bgcode");
+        (Guid uuid, Guid printUuid, HttpClient client) = await SeedAsync("reprint-ok@example.com", "benchy.bgcode");
 
         using (client)
         {
@@ -71,7 +71,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
             string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
             page.Should().Contain("handler=Reprint", "the history row carries the button");
 
-            using HttpResponseMessage posted = await PostReprintAsync(client, uuid, page, tracking);
+            using HttpResponseMessage posted = await PostReprintAsync(client, uuid, page, printUuid);
             posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
             (await QueuedNamesAsync(uuid)).Should().ContainSingle().Which.Should().Be("benchy.bgcode");
@@ -85,13 +85,13 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     [Fact]
     public async Task PrintingAgainWithoutTheFileRefuses()
     {
-        (Guid uuid, Guid tracking, HttpClient client) = await SeedAsync("reprint-gone@example.com", "deleted.bgcode");
+        (Guid uuid, Guid printUuid, HttpClient client) = await SeedAsync("reprint-gone@example.com", "deleted.bgcode");
 
         using (client)
         {
             string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
 
-            using HttpResponseMessage posted = await PostReprintAsync(client, uuid, page, tracking);
+            using HttpResponseMessage posted = await PostReprintAsync(client, uuid, page, printUuid);
             posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
             (await QueuedNamesAsync(uuid)).Should().BeEmpty("there is no such file to queue");
@@ -149,7 +149,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     [Fact]
     public async Task SomebodyElsesPrintIsRefusedIfPostedAnyway()
     {
-        (Guid uuid, Guid tracking, HttpClient client) = await SeedAsync("reprint-forged@example.com", "benchy.bgcode",
+        (Guid uuid, Guid printUuid, HttpClient client) = await SeedAsync("reprint-forged@example.com", "benchy.bgcode",
                                                                         queuedBySomebodyElse: true);
 
         using (client)
@@ -158,7 +158,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
 
             string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
 
-            using HttpResponseMessage posted = await PostReprintAsync(client, uuid, page, tracking);
+            using HttpResponseMessage posted = await PostReprintAsync(client, uuid, page, printUuid);
             posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
             (await QueuedNamesAsync(uuid)).Should().BeEmpty("the row belongs to somebody else");
@@ -177,11 +177,11 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     private static async Task<HttpResponseMessage> PostReprintAsync(HttpClient client,
                                                                     Guid uuid,
                                                                     string page,
-                                                                    Guid trackingId)
+                                                                    Guid printUuid)
     {
         Dictionary<string, string> fields = new()
         {
-            ["id"] = trackingId.ToString(),
+            ["printUuid"] = printUuid.ToString(),
             ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(page),
         };
 
@@ -220,7 +220,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
                             .ToListAsync(TestContext.Current.CancellationToken);
     }
 
-    private async Task<(Guid uuid, Guid tracking, HttpClient client)> SeedAsync(string email,
+    private async Task<(Guid uuid, Guid printUuid, HttpClient client)> SeedAsync(string email,
                                                                                 string printedFile,
                                                                                 string? capabilities = null,
                                                                                 bool queuedBySomebodyElse = false)
@@ -252,7 +252,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        Guid tracking = Guid.NewGuid();
+        Guid printUuid = Guid.NewGuid();
 
         context.PrintJobs.Add(new PrintJob
         {
@@ -264,11 +264,11 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
 
             // A user id nobody here holds, which is the whole of what makes a row somebody else's.
             QueuedByUserId = queuedBySomebodyElse ? user.Id + 1000 : user.Id,
-            TrackingId = tracking,
+            PrintUuid = printUuid,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        return (uuid, tracking, client);
+        return (uuid, printUuid, client);
     }
 }

@@ -68,14 +68,14 @@ public class PrintQueueController : ControllerBase
     }
 
     /// <summary>
-    /// What this printer will print, in order. <c>GET /api/v1/printers/{uuid}/queue</c>.
+    /// What this printer will print, in order. <c>GET /api/v1/printers/{printerUuid}/queue</c>.
     /// </summary>
     [HttpGet]
-    [Route("printers/{uuid:guid}/queue")]
-    public async Task<Results<Ok<PrintQueueReadDTO>, ForbiddenProblem, NotFoundProblem>> List(Guid uuid,
+    [Route("printers/{printerUuid:guid}/queue")]
+    public async Task<Results<Ok<PrintQueueReadDTO>, ForbiddenProblem, NotFoundProblem>> List(Guid printerUuid,
                                                                                             CancellationToken cancellationToken)
     {
-        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(printerUuid, cancellationToken);
 
         if (caller is null)
         {
@@ -113,7 +113,7 @@ public class PrintQueueController : ControllerBase
 
     /// <summary>
     /// Adds one of the caller's files to the end of the queue.
-    /// <c>POST /api/v1/printers/{uuid}/queue</c>.
+    /// <c>POST /api/v1/printers/{printerUuid}/queue</c>.
     /// </summary>
     /// <remarks>
     /// <b>Queueing is not sending.</b> Nothing is transferred here and no command reaches the printer -
@@ -121,15 +121,15 @@ public class PrintQueueController : ControllerBase
     /// start the print. <c>POST printers/{uuid}/files</c> is the call that sends a file right now.
     /// </remarks>
     [HttpPost]
-    [Route("printers/{uuid:guid}/queue")]
+    [Route("printers/{printerUuid:guid}/queue")]
     public async Task<Results<Created<QueuedPrintReadDTO>, ForbiddenProblem, NotFoundProblem>> Enqueue(
-        Guid uuid,
+        Guid printerUuid,
         [FromBody] EnqueueRequest body,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
 
-        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(printerUuid, cancellationToken);
 
         if (caller is null)
         {
@@ -151,7 +151,7 @@ public class PrintQueueController : ControllerBase
 
             // Location is the queue the entry now sits in - the same URL CreatedAtAction would have
             // composed, built through the same helper.
-            return TypedResults.Created(Url.Action(nameof(List), new { uuid }), created);
+            return TypedResults.Created(Url.Action(nameof(List), new { printerUuid }), created);
         }
         catch (PrintFileNotFoundException e)
         {
@@ -165,18 +165,18 @@ public class PrintQueueController : ControllerBase
 
     /// <summary>
     /// Moves a queued print to a new position, counting from zero. An index past either end is clamped.
-    /// <c>PATCH /api/v1/printers/{uuid}/queue/{trackingId}</c>.
+    /// <c>PATCH /api/v1/printers/{printerUuid}/queue/{printUuid}</c>.
     /// </summary>
     [HttpPatch]
-    [Route("printers/{uuid:guid}/queue/{trackingId:guid}")]
-    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem>> Move(Guid uuid,
-                                                                                 Guid trackingId,
+    [Route("printers/{printerUuid:guid}/queue/{printUuid:guid}")]
+    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem>> Move(Guid printerUuid,
+                                                                                 Guid printUuid,
                                                                                  [FromBody] MoveRequest body,
                                                                                  CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(body);
 
-        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(printerUuid, cancellationToken);
 
         if (caller is null)
         {
@@ -190,7 +190,7 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            bool found = await _queue.MoveAsync(trackingId, caller, body.Position, cancellationToken);
+            bool found = await _queue.MoveAsync(printer.Id, printUuid, caller, body.Position, cancellationToken);
 
             if (!found)
             {
@@ -206,7 +206,7 @@ public class PrintQueueController : ControllerBase
     }
 
     /// <summary>
-    /// Cancels a queued print. <c>DELETE /api/v1/printers/{uuid}/queue/{trackingId}</c>.
+    /// Cancels a queued print. <c>DELETE /api/v1/printers/{printerUuid}/queue/{printUuid}</c>.
     /// </summary>
     /// <remarks>
     /// <b>This never stops a print that has already started.</b> Once the loop has taken an entry it
@@ -214,12 +214,12 @@ public class PrintQueueController : ControllerBase
     /// people.
     /// </remarks>
     [HttpDelete]
-    [Route("printers/{uuid:guid}/queue/{trackingId:guid}")]
-    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem>> Cancel(Guid uuid,
-                                                                                   Guid trackingId,
+    [Route("printers/{printerUuid:guid}/queue/{printUuid:guid}")]
+    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem>> Cancel(Guid printerUuid,
+                                                                                   Guid printUuid,
                                                                                    CancellationToken cancellationToken)
     {
-        (Printer? printer, Caller? caller) = await ResolveAsync(uuid, cancellationToken);
+        (Printer? printer, Caller? caller) = await ResolveAsync(printerUuid, cancellationToken);
 
         if (caller is null)
         {
@@ -233,7 +233,7 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            bool found = await _queue.CancelAsync(trackingId, caller, cancellationToken);
+            bool found = await _queue.CancelAsync(printer.Id, printUuid, caller, cancellationToken);
 
             if (!found)
             {
@@ -257,7 +257,7 @@ public class PrintQueueController : ControllerBase
     /// telling them apart would confirm the existence of other people's printers. The same rule
     /// <see cref="PrinterController"/> follows.
     /// </remarks>
-    private async Task<(Printer? printer, Caller? caller)> ResolveAsync(Guid uuid, CancellationToken cancellationToken)
+    private async Task<(Printer? printer, Caller? caller)> ResolveAsync(Guid printerUuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -267,7 +267,7 @@ public class PrintQueueController : ControllerBase
         }
 
         Caller caller = CallerResolver.For(user, User);
-        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, caller, cancellationToken);
+        Printer? printer = await _printers.GetPrinterForUserAsync(printerUuid, caller, cancellationToken);
 
         return (printer, caller);
     }

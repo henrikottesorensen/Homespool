@@ -46,10 +46,10 @@ public class PrintJob
     /// <para>
     /// <b>Deliberately not unique.</b> One intention can produce several rows - a full-drive hold
     /// writes a <c>Failed</c> row while the entry stays queued and later prints - so the handle maps
-    /// to everything that became of the enqueue, newest last. See <see cref="QueuedPrint.TrackingId"/>.
+    /// to everything that became of the enqueue, newest last. See <see cref="QueuedPrint.PrintUuid"/>.
     /// </para>
     /// </remarks>
-    public Guid TrackingId { get; set; }
+    public Guid PrintUuid { get; set; }
 
     /// <summary>Which printer ran it.</summary>
     /// <remarks>

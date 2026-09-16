@@ -117,12 +117,12 @@ public class PrintHistoryService
     /// One finished print on this printer, by the handle it has carried since it was queued.
     /// </summary>
     /// <remarks>
-    /// <b>Keyed on <see cref="PrintJob.TrackingId"/> rather than the row id</b>, matching the queue's
+    /// <b>Keyed on <see cref="PrintJob.PrintUuid"/> rather than the row id</b>, matching the queue's
     /// own controls: it is the handle minted at enqueue and carried through every stage, so it is what
     /// a page already has to hand and the only one worth putting in a form.
     /// </remarks>
     public async Task<PrintJob?> FindAsync(int printerId,
-                                           Guid trackingId,
+                                           Guid printUuid,
                                            Caller caller,
                                            CancellationToken cancellationToken)
     {
@@ -130,7 +130,7 @@ public class PrintHistoryService
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
-                               .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.TrackingId == trackingId,
+                               .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.PrintUuid == printUuid,
                                                      cancellationToken);
     }
 

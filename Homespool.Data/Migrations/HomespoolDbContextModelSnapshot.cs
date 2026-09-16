@@ -372,6 +372,9 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("FirmwareJobId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid>("PrintUuid")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("PrinterId")
                         .HasColumnType("INTEGER");
 
@@ -398,16 +401,13 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("StoppedByUserId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid>("TrackingId")
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
+
+                    b.HasIndex("PrintUuid");
 
                     b.HasIndex("PrinterId")
                         .IsUnique()
                         .HasFilter("\"EndedAt\" IS NULL");
-
-                    b.HasIndex("TrackingId");
 
                     b.HasIndex("PrinterId", "StartedAt");
 
@@ -828,6 +828,9 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("PrintFileId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<Guid>("PrintUuid")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("PrinterId")
                         .HasColumnType("INTEGER");
 
@@ -842,14 +845,11 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("QueuedByUserId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid>("TrackingId")
-                        .HasColumnType("TEXT");
-
                     b.HasKey("Id");
 
                     b.HasIndex("PrintFileId");
 
-                    b.HasIndex("TrackingId")
+                    b.HasIndex("PrintUuid")
                         .IsUnique();
 
                     b.HasIndex("PrinterId", "Position");

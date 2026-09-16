@@ -154,6 +154,45 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The URL names the printer being acted on, so an entry queued on a different printer is not
+    /// there - even for a caller who could move or cancel it through its own printer's URL.
+    /// </summary>
+    [Fact]
+    public async Task AnEntryIsNotFoundUnderAnotherPrintersQueue()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "wrong-printer@example.com");
+
+        Guid holder = await AddPrinterAsync(user.Id);
+        Guid other = await AddPrinterAsync(user.Id);
+        await UploadAsync(client, "first.bgcode");
+        await UploadAsync(client, "second.bgcode");
+
+        await EnqueueAsync(client, holder, "first.bgcode");
+        Guid second = await EnqueueAsync(client, holder, "second.bgcode");
+
+        // Act
+        using HttpResponseMessage moved = await client.PatchAsJsonAsync(
+            $"/api/v1/printers/{other}/queue/{second}", new { position = 0 },
+            TestContext.Current.CancellationToken);
+        using HttpResponseMessage cancelled = await client.DeleteAsync($"/api/v1/printers/{other}/queue/{second}",
+                                                                       TestContext.Current.CancellationToken);
+
+        // Assert
+        moved.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        cancelled.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        using JsonDocument payload = await ListAsync(client, holder);
+
+        JsonElement untouched = payload.RootElement.GetProperty("prints");
+        untouched.GetArrayLength().Should().Be(2);
+        untouched[1].GetProperty("printUuid").GetGuid().Should().Be(second);
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Deleting a queued file is refused, so that tidying up files cannot silently cancel a print -
     /// and the queue is shared, so the print may not even be the deleter's own.
     /// </summary>
@@ -278,9 +317,9 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime
         using JsonDocument payload =
             JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
-        // trackingId, not id: the row's own key never leaves the app, and this handle is the one
-        // that survives START_PRINT into history. See QueuedPrint.TrackingId.
-        return payload.RootElement.GetProperty("trackingId").GetGuid();
+        // printUuid, not id: the row's own key never leaves the app, and this handle is the one
+        // that survives START_PRINT into history. See QueuedPrint.PrintUuid.
+        return payload.RootElement.GetProperty("printUuid").GetGuid();
     }
 
     private static async Task<JsonDocument> ListAsync(HttpClient client, Guid uuid)

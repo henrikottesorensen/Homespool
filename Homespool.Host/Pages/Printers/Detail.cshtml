@@ -458,7 +458,7 @@
                                 @if (Model.CanReprint(job))
                                 {
                                     <form method="post" asp-page-handler="Reprint" asp-route-uuid="@uuid">
-                                        <input type="hidden" name="id" value="@job.TrackingId" />
+                                        <input type="hidden" name="printUuid" value="@job.PrintUuid" />
                                         <button type="submit" class="btn btn-sm btn-outline-secondary"
                                                 aria-label="@Localiser["Printers_ReprintFile", job.FileName]">@Localiser["Printers_Reprint"]</button>
                                     </form>

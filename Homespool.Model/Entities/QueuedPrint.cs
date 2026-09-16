@@ -40,19 +40,26 @@ public class QueuedPrint
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The <see cref="Printer.Uuid"/> pattern applied to the lifecycle</b> (Henrik, 2026-08-04): a
-    /// public random identifier for anything that leaves the app, a private surrogate key for
-    /// machinery. Minted at enqueue, copied onto every <see cref="PrintJob"/> row this entry
-    /// produces - the started print, a terminal refusal, a full-drive hold - in the same
-    /// <c>SaveChanges</c> that consumes or records against the entry, so it cannot dangle.
+    /// <b>The <see cref="Printer.Uuid"/> pattern applied to the lifecycle</b>: a public random
+    /// identifier for anything that leaves the app, a private surrogate key for machinery. Minted at
+    /// enqueue, copied onto every <see cref="PrintJob"/> row this entry produces - the started print,
+    /// a terminal refusal, a full-drive hold - in the same <c>SaveChanges</c> that consumes or records
+    /// against the entry, so it cannot dangle.
     /// </para>
     /// <para>
-    /// <b>It names the intention, not the print.</b> One entry can produce several history rows - the
-    /// hold writes a <c>Failed</c> row while the entry stays queued - and the handle finds them all,
-    /// which is the point: "what became of the thing I enqueued" is a history, possibly plural.
+    /// <b>It names the print that was asked for, not one attempt at it.</b> One entry can produce
+    /// several history rows - the hold writes a <c>Failed</c> row while the entry stays queued - and
+    /// the handle finds them all, which is the point: "what became of the thing I enqueued" is a
+    /// history, possibly plural.
+    /// </para>
+    /// <para>
+    /// <b>Unique across every printer, and still looked up together with one.</b> A caller always
+    /// reaches an entry through a printer's route, so the lookup takes that printer too: an entry
+    /// on another printer is not found there, rather than acted on under a URL naming the wrong
+    /// printer.
     /// </para>
     /// </remarks>
-    public Guid TrackingId { get; set; }
+    public Guid PrintUuid { get; set; }
 
     /// <summary>The printer whose queue this sits in.</summary>
     /// <remarks>

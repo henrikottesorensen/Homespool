@@ -104,7 +104,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                      TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool moved = await queue.MoveAsync(third.TrackingId, Caller.Unscoped(Alice), 0, TestContext.Current.CancellationToken);
+        bool moved = await queue.MoveAsync(printer.Id, third.PrintUuid, Caller.Unscoped(Alice), 0, TestContext.Current.CancellationToken);
 
         // Assert
         moved.Should().BeTrue();
@@ -130,7 +130,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
 
         // Act
-        await queue.MoveAsync(first.TrackingId, Caller.Unscoped(Alice), 99, TestContext.Current.CancellationToken);
+        await queue.MoveAsync(printer.Id, first.PrintUuid, Caller.Unscoped(Alice), 99, TestContext.Current.CancellationToken);
 
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
@@ -156,7 +156,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                       TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        await queue.CancelAsync(second.TrackingId, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+        await queue.CancelAsync(printer.Id, second.PrintUuid, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode", TestContext.Current.CancellationToken);
 
         // Assert
@@ -321,7 +321,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeTrue();
@@ -347,7 +347,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeTrue();
@@ -373,7 +373,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        Func<Task> act = () => queue.CancelAsync(job.TrackingId, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
+        Func<Task> act = () => queue.CancelAsync(printer.Id, job.PrintUuid, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -385,14 +385,80 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, canUse: true);
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        bool cancelled = await queue.CancelAsync(Guid.NewGuid(), Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(printer.Id, Guid.NewGuid(), Caller.Unscoped(Alice),
+                                                 TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// An entry is found only in the queue of the printer it was named through. The caller may
+    /// control both printers, so this is not an access rule: a move addressed to one printer must not
+    /// reorder another's queue.
+    /// </summary>
+    [Fact]
+    public async Task MovingAnEntryThroughAnotherPrintersQueueFindsNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+
+        Printer other = new() { Uuid = Guid.NewGuid(), TeamId = printer.TeamId };
+        context.Printers.Add(other);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode", "two.gcode");
+
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        QueuedPrint second = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode",
+                                                      TestContext.Current.CancellationToken)).Queued;
+
+        // Act
+        bool moved = await queue.MoveAsync(other.Id, second.PrintUuid, Caller.Unscoped(Alice), 0,
+                                           TestContext.Current.CancellationToken);
+
+        // Assert
+        moved.Should().BeFalse();
+
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+
+        jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "two.gcode");
+    }
+
+    /// <summary>
+    /// The cancelling half of the rule above, and the one that loses work: the entry is still there
+    /// afterwards.
+    /// </summary>
+    [Fact]
+    public async Task CancellingAnEntryThroughAnotherPrintersQueueFindsNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, canUse: true);
+
+        Printer other = new() { Uuid = Guid.NewGuid(), TeamId = printer.TeamId };
+        context.Printers.Add(other);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode");
+
+        QueuedPrint job = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                   TestContext.Current.CancellationToken)).Queued;
+
+        // Act
+        bool cancelled = await queue.CancelAsync(other.Id, job.PrintUuid, Caller.Unscoped(Alice),
+                                                 TestContext.Current.CancellationToken);
+
+        // Assert
+        cancelled.Should().BeFalse();
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
     /// <summary>A second account, needed before that person can own a file.</summary>

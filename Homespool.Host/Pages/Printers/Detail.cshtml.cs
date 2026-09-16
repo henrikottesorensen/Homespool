@@ -839,13 +839,13 @@ public class DetailModel : PageModel
     /// where the clamping lives - the page only does the arithmetic its two buttons imply.
     /// </remarks>
     public Task<IActionResult> OnPostMoveAsync(Guid uuid,
-                                               Guid id,
+                                               Guid printUuid,
                                                int position,
                                                CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            bool moved = await _queueService.MoveAsync(id, caller, position, cancellationToken);
+            bool moved = await _queueService.MoveAsync(printer.Id, printUuid, caller, position, cancellationToken);
 
             return moved ?
                 (_localiser["Printers_QueueReordered"].Value, true) :
@@ -857,11 +857,11 @@ public class DetailModel : PageModel
     /// Cancels a queued print. Never stops a print that has already started - see
     /// <see cref="PrintQueueService.CancelAsync"/>.
     /// </summary>
-    public Task<IActionResult> OnPostCancelAsync(Guid uuid, Guid id, CancellationToken cancellationToken)
+    public Task<IActionResult> OnPostCancelAsync(Guid uuid, Guid printUuid, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            bool cancelled = await _queueService.CancelAsync(id, caller, cancellationToken);
+            bool cancelled = await _queueService.CancelAsync(printer.Id, printUuid, caller, cancellationToken);
 
             return cancelled ?
                 (_localiser["Printers_JobRemoved"].Value, true) :
@@ -894,11 +894,11 @@ public class DetailModel : PageModel
     /// same route as every other way a file reaches a printer.
     /// </para>
     /// </remarks>
-    public Task<IActionResult> OnPostReprintAsync(Guid uuid, Guid id, CancellationToken cancellationToken)
+    public Task<IActionResult> OnPostReprintAsync(Guid uuid, Guid printUuid, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            PrintJob? job = await _historyService.FindAsync(printer.Id, id, caller, cancellationToken);
+            PrintJob? job = await _historyService.FindAsync(printer.Id, printUuid, caller, cancellationToken);
 
             if (job is null)
             {

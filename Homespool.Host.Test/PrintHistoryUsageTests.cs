@@ -221,7 +221,7 @@ public sealed class PrintHistoryUsageTests : IDisposable
         {
             context.PrintJobs.Add(new PrintJob
             {
-                TrackingId = Guid.NewGuid(),
+                PrintUuid = Guid.NewGuid(),
                 PrinterId = printerId,
                 FileName = $"part-{i}.bgcode",
                 QueuedByUserId = userId,

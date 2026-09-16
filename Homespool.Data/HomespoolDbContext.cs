@@ -533,7 +533,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Unique here and deliberately NOT on PrintJobs: an entry is one intention, but one
             // intention can leave several history rows (a full-drive hold writes a Failed row while
             // the entry stays queued), so uniqueness holds only on this side of the handoff.
-            entity.HasIndex(e => e.TrackingId)
+            entity.HasIndex(e => e.PrintUuid)
                   .IsUnique();
 
             // A deleted printer takes its queue with it. There is no meaning left in an entry whose
@@ -605,9 +605,9 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // "What did this printer print, most recently first" is the only question history asks.
             entity.HasIndex(e => new { e.PrinterId, e.StartedAt });
 
-            // Non-unique on purpose - see QueuedPrint's TrackingId index for why one handle may find
+            // Non-unique on purpose - see QueuedPrint's PrintUuid index for why one handle may find
             // several rows here. "What became of my enqueue" is the lookup this serves.
-            entity.HasIndex(e => e.TrackingId);
+            entity.HasIndex(e => e.PrintUuid);
 
             // At most one active print per printer, enforced in the database because application code
             // cannot make it atomic - the same partial-index trick TeamMember uses for "exactly one

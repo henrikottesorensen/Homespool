@@ -315,7 +315,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
 
         PrintJob printing = await ActiveAsync(printerId);
         printing.FileName.Should().Be("history.bgcode");
-        printing.TrackingId.Should().Be(handle,
+        printing.PrintUuid.Should().Be(handle,
                                         "the handle the enqueue returned is the one identifier that survives the start of the print");
         printing.QueuedByUserId.Should().Be(userId);
         printing.PrinterPath.Should().StartWith("/usb/");
@@ -692,7 +692,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
         PrintJob adopted = await ActiveAsync(printerId);
         adopted.FileName.Should().Be("puck.bgcode");
         adopted.State.Should().Be(PrintState.Printing);
-        adopted.TrackingId.Should().Be(handle);
+        adopted.PrintUuid.Should().Be(handle);
         adopted.QueuedByUserId.Should().Be(userId);
         adopted.FirmwareJobId.Should().Be(fake.Device.JobId);
         adopted.CommandedAt.Should().BeNull("no command of ours started this print, and null is that record");
@@ -929,7 +929,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
                                              .EnqueueAsync(printerId, Caller.Unscoped(userId), name,
                                                            TestContext.Current.CancellationToken);
 
-        return outcome.Queued.TrackingId;
+        return outcome.Queued.PrintUuid;
     }
 
     private async Task<bool> OutcomeIsAsync(int printerId, PrintState outcome)

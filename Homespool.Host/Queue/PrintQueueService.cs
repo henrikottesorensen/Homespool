@@ -161,7 +161,7 @@ public class PrintQueueService
 
             // The caller's handle for the whole lifecycle - minted here because enqueue is where the
             // intention begins, and everything that becomes of it carries this forward.
-            TrackingId = Guid.NewGuid(),
+            PrintUuid = Guid.NewGuid(),
             Position = (last ?? -1) + 1,
             QueuedByUserId = caller.UserId,
             QueuedByScope = caller.ScopeToRecord,
@@ -259,20 +259,25 @@ public class PrintQueueService
     /// storage listing is what can find them again.
     /// </para>
     /// <para>
-    /// <b>By <see cref="QueuedPrint.TrackingId"/>, not the primary key</b> - the handle is the only
+    /// <b>By <see cref="QueuedPrint.PrintUuid"/>, not the primary key</b> - the handle is the only
     /// identifier a caller ever holds, exactly as printers are reached by <c>Printer.Uuid</c> and
     /// never by <c>Printer.Id</c>. <see cref="CancelAsync"/> resolves the same way.
     /// </para>
+    /// <para>
+    /// <b>Within <paramref name="printerId"/> only.</b> The handle is unique on its own, but the caller
+    /// named a printer to get here, and an entry queued on a different one is not found rather than
+    /// moved - otherwise the request would change one printer's queue under a URL naming another.
+    /// <see cref="CancelAsync"/> is scoped the same way.
+    /// </para>
     /// </remarks>
-    /// <returns>False if there is no such queued print.</returns>
-    public async Task<bool> MoveAsync(Guid trackingId,
+    /// <returns>False if there is no such queued print on that printer.</returns>
+    public async Task<bool> MoveAsync(int printerId,
+                                      Guid printUuid,
                                       Caller caller,
                                       int targetIndex,
                                       CancellationToken cancellationToken)
     {
-        QueuedPrint? job = await _dbContext.QueuedPrints
-                                           .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
-                                                                 cancellationToken);
+        QueuedPrint? job = await FindAsync(printerId, printUuid, cancellationToken);
 
         if (job is null)
         {
@@ -322,12 +327,13 @@ public class PrintQueueService
     /// still holds, for whoever holds <see cref="Capability.ControlPrinter"/>.
     /// </para>
     /// </remarks>
-    /// <returns>False if there is no such queued print.</returns>
-    public async Task<bool> CancelAsync(Guid trackingId, Caller caller, CancellationToken cancellationToken)
+    /// <returns>False if there is no such queued print on that printer.</returns>
+    public async Task<bool> CancelAsync(int printerId,
+                                        Guid printUuid,
+                                        Caller caller,
+                                        CancellationToken cancellationToken)
     {
-        QueuedPrint? job = await _dbContext.QueuedPrints
-                                           .SingleOrDefaultAsync(candidate => candidate.TrackingId == trackingId,
-                                                                 cancellationToken);
+        QueuedPrint? job = await FindAsync(printerId, printUuid, cancellationToken);
 
         if (job is null)
         {
@@ -340,5 +346,14 @@ public class PrintQueueService
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    /// <summary>One entry in one printer's queue, tracked for the write that follows.</summary>
+    private Task<QueuedPrint?> FindAsync(int printerId, Guid printUuid, CancellationToken cancellationToken)
+    {
+        return _dbContext.QueuedPrints
+                         .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId
+                                                            && candidate.PrintUuid == printUuid,
+                                               cancellationToken);
     }
 }

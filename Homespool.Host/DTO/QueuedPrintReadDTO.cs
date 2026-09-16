@@ -23,7 +23,7 @@ public class QueuedPrintReadDTO
     /// afterwards, since it survives the start of the print. The row's own id never leaves the app,
     /// the same arrangement printers have with their <c>Uuid</c>.
     /// </summary>
-    public required Guid TrackingId { get; set; }
+    public required Guid PrintUuid { get; set; }
 
     /// <summary>The file this will print, by the name its owner knows it by.</summary>
     public required string FileName { get; set; }
@@ -50,7 +50,7 @@ public class QueuedPrintReadDTO
 
         return new()
         {
-            TrackingId = job.TrackingId,
+            PrintUuid = job.PrintUuid,
             FileName = job.PrintFile?.Name ?? string.Empty,
             Size = job.PrintFile?.Size ?? 0,
             Position = job.Position,

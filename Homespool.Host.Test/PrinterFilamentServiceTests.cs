@@ -501,7 +501,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         {
             PrinterId = PrinterId,
             PrintFileId = file.Id,
-            TrackingId = Guid.NewGuid(),
+            PrintUuid = Guid.NewGuid(),
             Position = 0,
             QueuedByUserId = 1,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),

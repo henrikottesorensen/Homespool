@@ -68,6 +68,22 @@ public sealed class QueueHoldLanguageTests : IDisposable
     }
 
     /// <summary>
+    /// A refused transfer's hold quotes the printer verbatim in either language, since firmware's
+    /// words are not ours to translate.
+    /// </summary>
+    [Fact]
+    public void ARefusedTransferQuotesThePrinterInEitherLanguage()
+    {
+        MessageKey hold = MessageKey.For("Queue_HoldTransferRefused", "plus+sign.bgcode", 6, "Failed to create directory");
+
+        InCulture("en-GB", () => TestLocaliser.Errors().For(hold))
+            .Should().StartWith("The printer refused plus+sign.bgcode 6 times in a row, each time saying \"Failed to create directory\".");
+
+        InCulture("da", () => TestLocaliser.Errors().For(hold))
+            .Should().StartWith("Printeren afviste plus+sign.bgcode 6 gange i træk, hver gang med beskeden \"Failed to create directory\".");
+    }
+
+    /// <summary>
     /// Every hold a printer can be in has words behind it, in both languages.
     /// </summary>
     /// <remarks>
@@ -88,6 +104,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
                 PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle => "Queue_HoldAbrasiveFilament",
                 PrintHoldReason.IncompatiblePrinterModel => "Queue_HoldIncompatibleModel",
                 PrintHoldReason.PrintStartUnresolved => "Queue_HoldPrintStartUnresolved",
+                PrintHoldReason.TransferRefused => "Queue_HoldTransferRefused",
                 _ => throw new InvalidOperationException($"{reason} has no key; add one to PrintHistoryService too."),
             };
 

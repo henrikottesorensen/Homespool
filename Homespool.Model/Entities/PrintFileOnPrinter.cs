@@ -32,6 +32,17 @@ namespace Homespool.Model.Entities;
 /// </remarks>
 public class PrintFileOnPrinter
 {
+    /// <summary>Longest refusal text kept from the printer; anything past it is cut.</summary>
+    /// <remarks>
+    /// The text is the printer's to choose, so its length is too. Firmware's own refusals are a few
+    /// words, and a bound well above that costs nothing while keeping a misbehaving client from
+    /// writing a page-sized string into a row that every queue read touches.
+    /// </remarks>
+    public const int TransferRefusalReasonMaxLength = 256;
+
+    /// <summary>Longest refusal code kept from the printer; anything past it is cut.</summary>
+    public const int TransferRefusalCodeMaxLength = 64;
+
     public long Id { get; set; }
 
     /// <summary>The printer whose drive this describes.</summary>
@@ -114,6 +125,46 @@ public class PrintFileOnPrinter
     /// seconds for as long as the block lasts.
     /// </remarks>
     public DateTimeOffset? BlockedAt { get; set; }
+
+    /// <summary>
+    /// How many times running the printer has refused this transfer with the same answer, or null
+    /// when the last attempt was not refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Consecutive and identical, not a total.</b> A refusal whose code or text differs from the
+    /// one recorded starts the count again at one, because a changing answer means the situation is
+    /// moving and a retry may yet get through. An answer that never changes is the signal, and at
+    /// <c>TransferRetryRules.HoldAfter</c> the queue holds with
+    /// <see cref="PrintHoldReason.TransferRefused"/>.
+    /// </para>
+    /// <para>
+    /// <b>The busy transfer slot is not counted</b>, and neither is anything that was not an answer -
+    /// a timeout, a dropped connection. Those say nothing about this file, and a long transfer of
+    /// somebody else's would otherwise trip the hold on a queue that only had to wait.
+    /// </para>
+    /// </remarks>
+    public int? TransferRefusalCount { get; set; }
+
+    /// <summary>When the printer last refused this transfer; the clock the next attempt waits on.</summary>
+    public DateTimeOffset? TransferRefusedAt { get; set; }
+
+    /// <summary>
+    /// The printer's machine-readable reason for the last refusal, such as <c>STORAGE_FAILURE</c>, or
+    /// null when it sent none.
+    /// </summary>
+    public string? TransferRefusalCode { get; set; }
+
+    /// <summary>
+    /// The printer's own words for the last refusal, kept as it sent them apart from the length bound.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not translated, and not meant to be.</b> <see cref="HoldReason"/> is the sentence a reader
+    /// acts on, in their language; this is the firmware's string beside it, quoted, the same split
+    /// <see cref="PrintJob.Reason"/> makes for a refused print. It is text from a printer, so anything
+    /// that renders it must encode it and anything that logs it must clean it.
+    /// </remarks>
+    public string? TransferRefusalReason { get; set; }
 
     /// <summary>When the printer reported the transfer finished. Null until it has.</summary>
     public DateTimeOffset? ArrivedAt { get; set; }

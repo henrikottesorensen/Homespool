@@ -1983,6 +1983,9 @@
   <data name="Queue_HoldPrintStartUnresolved" xml:space="preserve">
     <value>Printeren blev bedt om at printe {0} og sagde aldrig, om den gjorde det. Den printer noget, den ikke vil oplyse navnet på, så køen holder her frem for at risikere at printe det samme to gange. Se efter på printeren: annuller dette print, hvis det allerede er kørt, eller sæt det i kø igen, hvis det ikke er.</value>
   </data>
+  <data name="Queue_HoldTransferRefused" xml:space="preserve">
+    <value>Printeren afviste {0} {1} gange i træk, hver gang med beskeden &quot;{2}&quot;. Nye forsøg har ikke ændret svaret, så køen er gået i stå. Se efter på printersiden, og annuller så dette print, eller sæt det i kø igen for at prøve igen.</value>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
   </data>
@@ -2003,6 +2006,12 @@
   </data>
   <data name="Queue_WaitTransferringUnnamed" xml:space="preserve">
     <value>Sender den næste fil til printeren.</value>
+  </data>
+  <data name="Queue_WaitTransferRetrying" xml:space="preserve">
+    <value>Printeren afviste {0}. Prøver igen om lidt.</value>
+  </data>
+  <data name="Queue_WaitTransferRetryingUnnamed" xml:space="preserve">
+    <value>Printeren afviste den næste fil. Prøver igen om lidt.</value>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">
     <value>Afventer at printeren bekræfter filens navn.</value>

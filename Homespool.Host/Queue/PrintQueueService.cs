@@ -170,22 +170,29 @@ public class PrintQueueService
 
         _dbContext.QueuedPrints.Add(queued);
 
-        // Queueing a file again is the deliberate act that answers an unresolved print start
-        // (PrintHoldReason.PrintStartUnresolved): the loop could not establish whether a previous
-        // START_PRINT of this file took, and asking for it now is somebody saying they have looked.
-        // Scoped to that one reason - the other holds are conditions on the printer, and none of
-        // them is cleared by wanting the file more.
-        PrintFileOnPrinter? unresolved = await _dbContext.PrintFilesOnPrinters
+        // Queueing a file again is the deliberate act that answers the two holds whose exit is a
+        // person: an unresolved print start (PrintHoldReason.PrintStartUnresolved), where the loop
+        // could not establish whether a previous START_PRINT took, and a transfer the printer kept
+        // refusing (PrintHoldReason.TransferRefused), where waiting has already been tried. Asking
+        // for the file now is somebody saying they have looked. Scoped to those two - the other
+        // holds are conditions on the printer the loop re-checks itself, and none of them is cleared
+        // by wanting the file more.
+        PrintFileOnPrinter? personHeld = await _dbContext.PrintFilesOnPrinters
                                                          .SingleOrDefaultAsync(
                                                              row => row.PrinterId == printerId
                                                                     && row.PrintFileId == file.Id
-                                                                    && row.HoldReason == PrintHoldReason.PrintStartUnresolved,
+                                                                    && (row.HoldReason == PrintHoldReason.PrintStartUnresolved
+                                                                        || row.HoldReason == PrintHoldReason.TransferRefused),
                                                              cancellationToken);
 
-        if (unresolved is not null)
+        if (personHeld is not null)
         {
-            unresolved.HoldReason = null;
-            unresolved.BlockedAt = null;
+            personHeld.HoldReason = null;
+            personHeld.BlockedAt = null;
+
+            // A fresh count as well as a lifted hold, or the next identical refusal would re-hold at
+            // once and the re-queue would buy a single attempt.
+            TransferRetryRules.Forget(personHeld);
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);

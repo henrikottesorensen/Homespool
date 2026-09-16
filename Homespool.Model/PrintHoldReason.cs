@@ -107,4 +107,31 @@ public enum PrintHoldReason
     /// </para>
     /// </remarks>
     PrintStartUnresolved = 6,
+
+    /// <summary>
+    /// The printer refused the transfer the same way, several times running, with nothing between
+    /// the attempts changing its answer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A bound on retrying, not a classification of the reason.</b> The transfer path retries any
+    /// refusal it does not recognise, because treating an unread string as terminal would throw away a
+    /// print that a moment's wait would have sent. That default has no end on its own: a refusal that
+    /// never changes - <c>STORAGE_FAILURE</c> for a filename firmware cannot create is the one seen -
+    /// was retried every few seconds for as long as anybody left it. This is where it stops, and it
+    /// covers codes nobody has seen yet, which a list of terminal reasons could not.
+    /// </para>
+    /// <para>
+    /// <b>The printer's own words go with it</b>, in
+    /// <c>PrintFileOnPrinter.TransferRefusalReason</c>, because they are the useful part: a person can
+    /// read <i>"Failed to create directory"</i> once and act on it.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person, like <see cref="PrintStartUnresolved"/>.</b> Waiting has already been
+    /// tried, so nothing here re-attempts the transfer. Cancelling the entry moves the queue past it;
+    /// queueing the file again clears it and starts a fresh count, because asking a second time is
+    /// somebody saying they have looked.
+    /// </para>
+    /// </remarks>
+    TransferRefused = 7,
 }

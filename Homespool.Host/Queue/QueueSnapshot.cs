@@ -32,10 +32,15 @@ namespace Homespool.Host.Queue;
 /// it could not be sent.
 /// </para>
 /// </param>
+/// <param name="TransferRetryPending">
+/// Whether the printer refused the head's last transfer and the wait before the next attempt has not
+/// run out - see <see cref="TransferRetryRules.IsWaiting"/>.
+/// </param>
 public sealed record QueueSnapshot(
     bool Connected,
     PrinterStatus Status,
     QueueHead? Head,
     bool TransferInFlight,
     bool PrintInFlight = false,
-    PrintHoldReason? HoldReason = null);
+    PrintHoldReason? HoldReason = null,
+    bool TransferRetryPending = false);

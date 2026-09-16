@@ -581,6 +581,13 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Events or PrinterStatus: nothing outside this repository pins the order.
             entity.Property(e => e.HoldReason)
                   .HasConversion<string>();
+
+            // SQLite does not enforce either length; the writer truncates to them, and these record
+            // the bound where the schema is read.
+            entity.Property(e => e.TransferRefusalCode)
+                  .HasMaxLength(PrintFileOnPrinter.TransferRefusalCodeMaxLength);
+            entity.Property(e => e.TransferRefusalReason)
+                  .HasMaxLength(PrintFileOnPrinter.TransferRefusalReasonMaxLength);
         });
 
         builder.Entity<PrintJob>(entity =>

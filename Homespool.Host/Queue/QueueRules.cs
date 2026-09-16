@@ -122,8 +122,19 @@ public static class QueueRules
                 // sharply: the file is already on the drive and may already have printed. Re-offering
                 // it is the one thing this hold exists to prevent.
                 PrintHoldReason.PrintStartUnresolved => QueueWaitReason.PrintStartUnresolved,
+
+                // Out of the transfer branch too: that branch would send the file again, and the
+                // printer has already answered the same way for every attempt the budget allowed.
+                PrintHoldReason.TransferRefused => QueueWaitReason.TransferRefused,
                 _ => QueueWaitReason.InsufficientSpace,
             });
+        }
+
+        if (!head.FileHasArrived && situation.TransferRetryPending)
+        {
+            // A wait rather than a Transfer the advancer declines, so that anything reading this
+            // decision says what the loop is doing.
+            return QueueAction.Wait(QueueWaitReason.TransferRetrying);
         }
 
         if (!head.FileHasArrived)

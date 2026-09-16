@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 using AwesomeAssertions;
@@ -10,6 +11,7 @@ using AwesomeAssertions;
 using libbgcode.NET;
 
 using Homespool.Host.PrintFiles.GCode;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 
@@ -175,6 +177,63 @@ public class GCodeMetadataReaderTests
     }
 
     /// <summary>
+    /// A megabyte of printer model in a binary file: readable, so the file is <c>Read</c>, but the
+    /// value is past any real model and is dropped rather than stored.
+    /// </summary>
+    [Fact]
+    public void AnOversizedPrinterModelIsDropped()
+    {
+        GCodeMetadata? metadata = Read(BinaryFile($"printer_model={new string('X', 1000 * 1000)}\n"
+                                                  + "nozzle_diameter=0.4\n"));
+
+        metadata.Should().NotBeNull("the file is readable; only the value is refused");
+        metadata!.PrinterModel.Should().BeNull();
+        metadata.NozzleDiameters.Should().Equal([0.4f], "one oversized key does not discard the others");
+    }
+
+    [Theory]
+    [InlineData(PrintFile.PrinterModelMaxLength, true)]
+    [InlineData(PrintFile.PrinterModelMaxLength + 1, false)]
+    public void APrinterModelIsKeptUpToItsBound(int length, bool kept)
+    {
+        string model = new('M', length);
+
+        Read(Config($"; printer_model = {model}"))!.PrinterModel.Should().Be(kept ? model : null);
+    }
+
+    [Theory]
+    [InlineData(PrintFile.FilamentTypeMaxLength, true)]
+    [InlineData(PrintFile.FilamentTypeMaxLength + 1, false)]
+    public void AFilamentNameIsKeptUpToItsBound(int length, bool kept)
+    {
+        string name = new('F', length);
+
+        Read(Config($"; filament_type = PLA;{name}"))!
+            .FilamentTypes.Should().Equal(kept ? ["PLA", name] : [], "a list is dropped whole, never in part");
+    }
+
+    /// <summary>
+    /// Every list, positional or not, is dropped whole past <see cref="PrintFile.MaxFilaments"/>.
+    /// </summary>
+    [Theory]
+    [InlineData(PrintFile.MaxFilaments, true)]
+    [InlineData(PrintFile.MaxFilaments + 1, false)]
+    public void ListsAreKeptUpToTheFilamentBound(int count, bool kept)
+    {
+        GCodeMetadata metadata = Read(Config($"; nozzle_diameter = {Repeat("0.4", ',', count)}",
+                                             $"; filament_type = {Repeat("PLA", ';', count)}",
+                                             $"; filament_abrasive = {Repeat("0", ',', count)}",
+                                             $"; nozzle_high_flow = {Repeat("1", ',', count)}"))!;
+
+        int expected = kept ? count : 0;
+
+        metadata.NozzleDiameters.Should().HaveCount(expected);
+        metadata.FilamentTypes.Should().HaveCount(expected);
+        metadata.FilamentAbrasive.Should().HaveCount(expected);
+        metadata.NozzleHighFlow.Should().HaveCount(expected);
+    }
+
+    /// <summary>
     /// The slicer writes a decimal point wherever it runs. Parsing under a comma-decimal culture
     /// must not turn 0.4 into 4.
     /// </summary>
@@ -337,6 +396,28 @@ public class GCodeMetadataReaderTests
         file.Append("; prusaslicer_config = end\n");
 
         return file.ToString();
+    }
+
+    private static string Repeat(string value, char separator, int count)
+    {
+        return string.Join(separator, Enumerable.Repeat(value, count));
+    }
+
+    /// <summary>A minimal binary file whose printer block is <paramref name="printerMetadata"/>.</summary>
+    private static byte[] BinaryFile(string printerMetadata)
+    {
+        using MemoryStream output = new();
+
+        using (BgcodeWriter writer = new(output, leaveOpen: true))
+        {
+            writer.WriteFileMetadata("Producer=test\n");
+            writer.WritePrinterMetadata(printerMetadata);
+            writer.WritePrintMetadata("filament used [g]=0.08\n");
+            writer.WriteSlicerMetadata("; printer_model = COREONE\n");
+            writer.WriteGCode("G28 ; home\n");
+        }
+
+        return output.ToArray();
     }
 
     private static GCodeMetadata? Read(string content)

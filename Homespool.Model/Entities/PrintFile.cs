@@ -26,6 +26,26 @@ namespace Homespool.Model.Entities;
 /// </remarks>
 public class PrintFile
 {
+    /// <summary>The longest <see cref="PrinterModel"/> the metadata reader keeps.</summary>
+    /// <remarks>
+    /// The value comes from the uploaded file, so its length is the uploader's to choose, and SQLite
+    /// enforces no column length. Real models are a handful of characters; a longer value is dropped,
+    /// never cut, since a truncated model would still be compared as if the file had said it.
+    /// </remarks>
+    public const int PrinterModelMaxLength = 128;
+
+    /// <summary>The longest single entry of <see cref="FilamentTypes"/> the metadata reader keeps.</summary>
+    public const int FilamentTypeMaxLength = 128;
+
+    /// <summary>
+    /// The most filaments a file may list before the metadata reader drops the list.
+    /// </summary>
+    /// <remarks>
+    /// Also bounds the per-extruder lists, since every extruder carries at least one filament: an
+    /// MMU print lists five filaments through one nozzle, a toolchanger one per tool.
+    /// </remarks>
+    public const int MaxFilaments = 16;
+
     /// <summary>
     /// Surrogate key, and the only thing anything else should reference. Deliberately not the name:
     /// the name is the user's to change.

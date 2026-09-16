@@ -1861,7 +1861,7 @@
     <value>‘{0}’ er ikke en fil, en printer vil tage imod.</value>
   </data>
   <data name="Error_FileNameCharacters" xml:space="preserve">
-    <value>‘{0}’ indeholder tegn, som et filnavn ikke må have: anførselstegn, vinkelparenteser eller styretegn. Omdøb filen, og upload den igen.</value>
+    <value>‘{0}’ indeholder tegn, som et filnavn ikke må have: anførselstegn, vinkelparenteser, omvendte skråstreger eller styretegn. Omdøb filen, og upload den igen.</value>
   </data>
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
+using Homespool.Model.Entities;
+
 namespace Homespool.Host.PrintFiles.GCode;
 
 /// <summary>
@@ -22,6 +24,11 @@ namespace Homespool.Host.PrintFiles.GCode;
 /// entry <i>n</i> describes extruder <i>n</i> - so a list with one unreadable element cannot be
 /// salvaged by skipping that element: every later entry would silently describe the wrong extruder.
 /// Dropping the key yields "the file did not say", which the comparison already handles.
+/// </para>
+/// <para>
+/// <b>So is a value longer than anything a slicer writes.</b> The file is the uploader's, the values
+/// end up in database columns, and SQLite enforces no length. The bounds are on
+/// <see cref="PrintFile"/>, beside the columns they protect.
 /// </para>
 /// </remarks>
 internal sealed class SlicerConfigValues
@@ -70,7 +77,7 @@ internal sealed class SlicerConfigValues
             case PrinterModelKey when _printerModel is null:
                 string model = Unquote(value.Trim());
 
-                if (model.Length > 0)
+                if (model.Length is > 0 and <= PrintFile.PrinterModelMaxLength)
                 {
                     _printerModel = model;
                 }
@@ -139,6 +146,11 @@ internal sealed class SlicerConfigValues
     /// </summary>
     private static IReadOnlyList<float>? ParseFloats(string value)
     {
+        if (!FitsListBound(value))
+        {
+            return null;
+        }
+
         string[] parts = value.Split(',');
         List<float> parsed = new(parts.Length);
 
@@ -162,6 +174,11 @@ internal sealed class SlicerConfigValues
     /// </summary>
     private static IReadOnlyList<bool>? ParseBools(string value)
     {
+        if (!FitsListBound(value))
+        {
+            return null;
+        }
+
         string[] parts = value.Split(',');
         List<bool> parsed = new(parts.Length);
 
@@ -219,8 +236,10 @@ internal sealed class SlicerConfigValues
             }
             else if (character == ';' && !quoted)
             {
-                parsed.Add(current.ToString().Trim());
-                current.Clear();
+                if (!TryAddFilament(parsed, current))
+                {
+                    return null;
+                }
             }
             else
             {
@@ -235,9 +254,35 @@ internal sealed class SlicerConfigValues
             return null;
         }
 
-        parsed.Add(current.ToString().Trim());
+        return TryAddFilament(parsed, current) ? parsed : null;
+    }
 
-        return parsed;
+    /// <summary>
+    /// Moves the entry being built onto the list, or false if either is now past its bound.
+    /// </summary>
+    private static bool TryAddFilament(List<string> parsed, StringBuilder current)
+    {
+        string entry = current.ToString().Trim();
+
+        current.Clear();
+
+        if (entry.Length > PrintFile.FilamentTypeMaxLength || parsed.Count >= PrintFile.MaxFilaments)
+        {
+            return false;
+        }
+
+        parsed.Add(entry);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Whether a comma-separated list has at most <see cref="PrintFile.MaxFilaments"/> entries,
+    /// counted before anything is split.
+    /// </summary>
+    private static bool FitsListBound(string value)
+    {
+        return value.AsSpan().Count(',') < PrintFile.MaxFilaments;
     }
 
     /// <summary>Strips one layer of surrounding quotes from a scalar value.</summary>

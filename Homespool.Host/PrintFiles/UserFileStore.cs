@@ -564,6 +564,15 @@ public sealed class UserFileStore
     /// rather than letting the owner clear it up. Refuse on the way in; keep answering on the way
     /// out.
     /// </para>
+    /// <para>
+    /// <b>A backslash is refused for a different reason: it is a separator on the printer.</b>
+    /// <c>Path.GetFileName</c> splits on <c>/</c> only when this runs on Linux, so
+    /// <c>..\..\x.gcode</c> survives <see cref="SafeName"/> and is sent as
+    /// <c>/usb/..\..\x.gcode</c>. The printer's FAT driver splits that on <c>\</c> and climbs, though
+    /// never past the root of the drive - so the file lands somewhere other than the path this
+    /// application recorded, without leaving <c>/usb</c>. Firmware decodes an escaped backslash
+    /// correctly, so this is the only place that can stop it.
+    /// </para>
     /// </remarks>
     private static string RequireSafeName(string fileName)
     {
@@ -571,7 +580,7 @@ public sealed class UserFileStore
 
         foreach (char character in name)
         {
-            if (char.IsControl(character) || character is '"' or '\'' or '<' or '>')
+            if (char.IsControl(character) || character is '"' or '\'' or '<' or '>' or '\\')
             {
                 throw PrintFileNameRejectedException.ForForbiddenCharacters(name, nameof(fileName));
             }

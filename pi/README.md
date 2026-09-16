@@ -324,7 +324,7 @@ works before the first boot or months later, for as long as the account still ha
 you cannot get into is always a board you can put in a laptop and give a way in.
 
 ```
-password=swordfish
+password=<your password>
 sshkey=ssh-ed25519 AAAAC3Nza... you@laptop
 ```
 

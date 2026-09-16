@@ -563,6 +563,64 @@ mmdebstrap:
 
     - |-
       #
+      # Power management OFF on the radio. The Pi 3's BCM43430 ran twelve days without dropping
+      # carrier, then on one morning ended the link twice from its own side ("Deauthentication
+      # event, reason: 0, from_ap: false"), once recovering in 13 s and once not at all, and on the
+      # next boot stopped answering its bus ("mmc1: Timeout waiting for hardware interrupt") with
+      # the kernel alive. Power save was on throughout. The same Broadcom family has been seen to
+      # drop the link after a stretch of no traffic before, and a board whose only way in is that
+      # radio cannot be reached to fix it - so the cheap, reversible change is made without proof
+      # that it is the cause.
+      #
+      # Bound to the device rather than ordered after networking: the setting is a property of the
+      # interface, so it should be reapplied whenever the interface appears, and never attempted
+      # while it does not exist - which is exactly what BindsTo= on the device unit gives. iw is
+      # in the package list above.
+      set -eu
+      mkdir -p $1/etc/systemd/system
+      printf '%s\n' \
+        '[Unit]' \
+        'Description=Disable Wi-Fi power save on wlan0 (brcmfmac drops the link with it on)' \
+        'BindsTo=sys-subsystem-net-devices-wlan0.device' \
+        'After=sys-subsystem-net-devices-wlan0.device' \
+        '' \
+        '[Service]' \
+        'Type=oneshot' \
+        'ExecStart=/usr/sbin/iw dev wlan0 set power_save off' \
+        'RemainAfterExit=yes' \
+        '' \
+        '[Install]' \
+        'WantedBy=sys-subsystem-net-devices-wlan0.device' \
+        > $1/etc/systemd/system/wlan0-powersave-off.service
+      chmod 0644 $1/etc/systemd/system/wlan0-powersave-off.service
+
+    - |-
+      #
+      # Do not hold network-online.target for the Ethernet port. The base image configures eth0 and
+      # wlan0 alike, and systemd-networkd-wait-online waits for every configured link by default -
+      # so on a board with no cable plugged in, network-online.target is reached only when the wait
+      # times out. Measured on a Pi 3 over two boots: wlan0 had its address 10 s after the kernel,
+      # wait-online gave up at 3 min 50 s and 5 min 23 s, and docker.service - which wants that
+      # target - started 15 s after it did. Homespool came up five minutes after the radio was
+      # ready, on every boot, for nothing.
+      #
+      # A drop-in rather than an edit, because 01-eth0.network is the base image's file, not ours,
+      # and a drop-in survives the base changing it. eth0 is still configured if a cable ever
+      # arrives; it just stops being a condition. The Wi-Fi side is untouched, so a board on Ethernet
+      # alone still waits for eth0 as before.
+      set -eu
+      mkdir -p $1/etc/systemd/network/01-eth0.network.d
+      printf '%s\n' \
+        '# eth0 is configured but does not gate network-online.target: with no cable in the port,' \
+        '# systemd-networkd-wait-online would otherwise time out (measured 4-5 min) before Docker,' \
+        '# which wants that target, is allowed to start. Wi-Fi is the way this board is normally on.' \
+        '[Link]' \
+        'RequiredForOnline=no' \
+        > $1/etc/systemd/network/01-eth0.network.d/10-homespool.conf
+      chmod 0644 $1/etc/systemd/network/01-eth0.network.d/10-homespool.conf
+
+    - |-
+      #
       # A console font you can actually read. The default is Fixed 8x16, which on a 4K panel is 480
       # columns of ants - and the console is exactly the thing you are looking at when something has
       # gone wrong badly enough that SSH is not an option, so it being unreadable costs most when it
@@ -699,6 +757,12 @@ mmdebstrap:
     # and because rpi-resize below taught this layer that shipping a unit and enabling it are
     # different things, and that the difference is invisible until a board misbehaves.
     - chroot $1 systemctl enable earlyoom.service
+
+    # Written above with an [Install] section, and enabled here for the reason the earlyoom line
+    # gives: a unit on the card that nothing enabled is indistinguishable from one that is not
+    # there, until the radio drops and the setting it was meant to apply turns out never to have
+    # been applied.
+    - chroot $1 systemctl enable wlan0-powersave-off.service
 
     # Both halves of the update cycle, and neither is assumed. apt ships these enabled by preset,
     # but presets are exactly what this layer has been caught by before - rpi-resize shipped a unit

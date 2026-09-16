@@ -138,6 +138,14 @@ not anything this image does.
 Either way, the alternatives are the same: plug it in, or add a second WPA2-only SSID for older
 devices. Most routers can broadcast several, and the Pi is going to sit next to a printer forever.
 
+**Power management is switched off on the radio.** The built-in wi-fi on a Pi 3 has been seen to end
+its own connection and not come back, and once to stop responding altogether until the board was
+power-cycled, with power save on. A board reachable only over that radio cannot be fixed remotely
+when that happens, so the image turns the setting off at boot. It costs a little idle power and
+nothing else. **And the board does not wait for an Ethernet cable**: without this, a Pi on wi-fi
+alone waits several minutes at boot for the empty Ethernet port before Docker, and so Homespool, is
+allowed to start. Plugging a cable in later still works; it just is not a condition.
+
 ### Why
 
 The wi-fi chip (BCM43455 on a Pi 3B+/4/5, BCM43430 on a Pi 3B) has been sold twice since it was

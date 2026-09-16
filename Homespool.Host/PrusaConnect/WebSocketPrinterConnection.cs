@@ -94,9 +94,10 @@ public sealed class WebSocketPrinterConnection : IClosablePrinterConnection, ICh
     /// </summary>
     public async ValueTask<CommandHandover> SendCommandAsync(uint commandId,
                                                              ISendableCommand command,
-                                                             CancellationToken cancellationToken)
+                                                             CancellationToken cancellationToken,
+                                                             PrinterDialect? dialect = null)
     {
-        await SendFrameAsync(CommandWireEncoder.Encode(commandId, command), cancellationToken);
+        await SendFrameAsync(CommandWireEncoder.Encode(commandId, command, dialect), cancellationToken);
 
         return CommandHandover.Written;
     }

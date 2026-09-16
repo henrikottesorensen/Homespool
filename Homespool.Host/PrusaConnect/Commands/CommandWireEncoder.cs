@@ -1,6 +1,7 @@
 using System;
 using System.Net.Mime;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace Homespool.Host.PrusaConnect.Commands;
@@ -21,6 +22,58 @@ namespace Homespool.Host.PrusaConnect.Commands;
 public static class CommandWireEncoder
 {
     private const int HeaderLength = 9;
+
+    /// <summary>
+    /// The encoding for a peer that does <b>not</b> decode <c>\uXXXX</c>, which is every client this
+    /// project has measured - so it is also the default when nothing is known about the peer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>"Unsafe" here means "unsafe to embed in HTML", and nothing else.</b> The name warns that the
+    /// output leaves <c>&lt; &gt; &amp; ' +</c> unescaped, so dropping it into a <c>&lt;script&gt;</c>
+    /// block or an HTML attribute would let a value close the element it sits in. That is a real
+    /// hazard and it is not this one: a <see cref="Body"/> is written to a websocket frame
+    /// (<c>WebSocketPrinterConnection.SendCommandAsync</c>) or returned as an HTTP response body
+    /// (<c>PrusaConnectPrinterController</c>), read by a printer, and never rendered by anything. The
+    /// output is ordinary, conformant JSON; only its escape set is wider.
+    /// </para>
+    /// <para>
+    /// <b>Why it is needed rather than merely tidier.</b> Firmware's <c>unescape_json_i</c>
+    /// (<c>json_encode.cpp:21-29</c>) decodes only <c>\b \f \n \r \t \" \\</c> - <b>not</b>
+    /// <c>\uXXXX</c>, which falls through to <c>if (!escaped) *write++ = *read++</c> and keeps its
+    /// backslash. FatFs then treats that backslash as a path separator (<c>ff.c:51</c>), so
+    /// <c>Le t\u00E9st\u00E8 \u0026 st\u00FCff.bgcode</c> arrives as six path segments instead of one
+    /// and <c>Transfer::begin</c>'s <c>mkdir</c> is aimed at a parent that does not exist. The printer
+    /// answers <i>"Failed to create directory"</i>, accurately, and retries for ever. Measured on a
+    /// Core One at <c>6.8.1+16182</c>.
+    /// </para>
+    /// <para>
+    /// <b>The obvious narrower choice does not work, which is worth recording because it looks like it
+    /// should.</b> <c>JavaScriptEncoder.Create(UnicodeRanges.All)</c> stops escaping non-ASCII but
+    /// still emits <c>\u0026</c>, <c>\u002B</c> and <c>\u0027</c> for <c>&amp; + '</c> - so it fixes
+    /// the accents in that filename and leaves the <c>&amp;</c> to split the path exactly as before.
+    /// Measured, not assumed. Of the stock encoders only this one escapes a set firmware can actually
+    /// read back.
+    /// </para>
+    /// </remarks>
+    private static readonly JsonSerializerOptions UnescapedOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    /// <summary>
+    /// The stock encoding, for a peer known to decode <c>\uXXXX</c> - which is nothing today, and
+    /// quite possibly nothing ever.
+    /// </summary>
+    /// <remarks>
+    /// Reached only when <see cref="PrinterDialect.DecodesJsonUnicodeEscapes"/> is true, which no
+    /// dialect sets: the firmware fix is an unmerged outside PR against a project that rarely takes
+    /// them. Kept because the alternative is that a future patched printer has nowhere to be
+    /// described, and because a branch nothing takes is cheaper than one nobody can add later - but
+    /// read <see cref="UnescapedOptions"/> as the encoding this application uses, and this one as the
+    /// exception that may never occur.
+    /// </remarks>
+    private static readonly JsonSerializerOptions EscapedOptions = new();
 
     /// <summary>The <c>Content-Type</c> firmware parses as a JSON command.</summary>
     public const string JsonContentType = MediaTypeNames.Application.Json;
@@ -46,8 +99,13 @@ public static class CommandWireEncoder
     /// case. A command with kwargs carries an empty <c>args</c> array alongside them, which is how
     /// every argument-bearing case in tests/unit/connect/command.cpp is written.
     /// </remarks>
+    /// <param name="commandData">The command to put on the wire.</param>
+    /// <param name="dialect">
+    /// What the peer can read back, or <see langword="null"/> where that is not known yet - see
+    /// <see cref="UnescapedOptions"/> for why not-known takes the wider escape set.
+    /// </param>
     /// <exception cref="ArgumentException">A gcode line not on <see cref="GcodeAllowList"/>.</exception>
-    public static Body EncodeBody(ISendableCommand commandData)
+    public static Body EncodeBody(ISendableCommand commandData, PrinterDialect? dialect = null)
     {
         ArgumentNullException.ThrowIfNull(commandData);
 
@@ -57,14 +115,23 @@ public static class CommandWireEncoder
             return new Body(EncodeGcodeLine(gcodeCommand), GcodeContentType);
         }
 
+        // Defaulting to the unescaped form rather than to the stock encoder is the conservative
+        // direction, not the lax one: its output is valid JSON that every conformant parser reads,
+        // and it is additionally the only form the firmware in the field reads correctly. A caller
+        // that has not said what the peer is therefore gets the encoding that works for all of them,
+        // in the same spirit as PrinterDialect treating an unrecognised client as Buddy.
+        JsonSerializerOptions options = dialect?.DecodesJsonUnicodeEscapes == true ? EscapedOptions : UnescapedOptions;
+
         byte[] payload = commandData.Arguments is null ?
-            JsonSerializer.SerializeToUtf8Bytes(new { command = commandData.WireName }) :
-            JsonSerializer.SerializeToUtf8Bytes(new
-            {
-                command = commandData.WireName,
-                args = System.Array.Empty<object>(),
-                kwargs = commandData.Arguments,
-            });
+            JsonSerializer.SerializeToUtf8Bytes(new { command = commandData.WireName }, options) :
+            JsonSerializer.SerializeToUtf8Bytes(
+                new
+                {
+                    command = commandData.WireName,
+                    args = System.Array.Empty<object>(),
+                    kwargs = commandData.Arguments,
+                },
+                options);
 
         return new Body(payload, JsonContentType);
     }
@@ -73,9 +140,9 @@ public static class CommandWireEncoder
     /// The WebSocket frame: the 9-byte header - <c>J</c> or <c>G</c>, then the command id as eight
     /// hex digits - followed by the body.
     /// </summary>
-    public static byte[] Encode(uint commandId, ISendableCommand commandData)
+    public static byte[] Encode(uint commandId, ISendableCommand commandData, PrinterDialect? dialect = null)
     {
-        Body body = EncodeBody(commandData);
+        Body body = EncodeBody(commandData, dialect);
         byte[] frame = new byte[HeaderLength + body.Payload.Length];
 
         // F/D/T remain out of scope.

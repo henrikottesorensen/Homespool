@@ -36,13 +36,22 @@ public interface IPrinterConnection
     /// <param name="commandId">The id the printer will echo in its answering event.</param>
     /// <param name="command">The command; encoded by the implementation.</param>
     /// <param name="cancellationToken">Cancels a wait for the write lock. Never a partial write.</param>
+    /// <param name="dialect">
+    /// What the peer can read back, for the implementations that encode here. A connection that parks
+    /// the command instead ignores this: the HTTP transport encodes at collection time, where the
+    /// controller passes the dialect itself. Null where the caller does not know, which
+    /// <see cref="Commands.CommandWireEncoder.EncodeBody"/> answers conservatively.
+    /// </param>
     /// <returns>
     /// Whether the printer has the command now, or will collect it. The actor starts a command's
     /// response deadline only once it has actually been delivered, so a connection that parks must
     /// say so - a parked command timing out against the moment it was parked would report a healthy
     /// printer as unresponsive for the length of its own poll interval.
     /// </returns>
-    ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken);
+    ValueTask<CommandHandover> SendCommandAsync(uint commandId,
+                                                ISendableCommand command,
+                                                CancellationToken cancellationToken,
+                                                PrinterDialect? dialect = null);
 
     /// <summary>
     /// The command parked on this connection, if any, removed from it - the printer is collecting.

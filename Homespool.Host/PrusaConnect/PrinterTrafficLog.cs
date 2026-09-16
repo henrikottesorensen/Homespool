@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
@@ -90,6 +91,35 @@ public sealed class PrinterTrafficLog : IDisposable
         "token",
     };
 
+    /// <summary>
+    /// Writer settings for every line this log emits: the same non-escaping encoder the wire uses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Because the default encoder makes this file misreport the traffic it records.</b> It
+    /// escapes <c>+ &amp; ' &lt; &gt;</c> and all non-ASCII, and it does so in <i>both</i> directions -
+    /// so a printer that sent a bare <c>+</c> would be recorded as having sent <c>\u002B</c>.
+    /// The tell is in this log's own envelope: an <c>iso</c> of <c>...5499102\u002B00:00</c> is a
+    /// .NET timestamp that never went near a socket, and a <c>firmware</c> of
+    /// <c>6.8.1\u002B16182</c> is this writer escaping a <c>+</c> the printer sent unescaped.
+    /// </para>
+    /// <para>
+    /// <b>Escapes here are not evidence about the wire.</b> Reading them as such points at the printer
+    /// when the fault is in <see cref="Commands.CommandWireEncoder"/>, because a capture rendered
+    /// through a serialiser is not a capture. Matching the encoder does not make this file one, and
+    /// nothing below should be read as one; it only stops it inventing escapes that were never sent.
+    /// </para>
+    /// <para>
+    /// <b>Safe here for the same reason it is safe on the wire</b>, and it is worth saying because the
+    /// type is named "unsafe": the hazard is HTML embedding, and these bytes go to a <c>.jsonl</c> file
+    /// on disk that no page renders.
+    /// </para>
+    /// </remarks>
+    private static readonly JsonWriterOptions WriterOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
     private readonly Logger? _sink;
     private readonly bool _telemetry;
 
@@ -154,7 +184,7 @@ public sealed class PrinterTrafficLog : IDisposable
 
         ArrayBufferWriter<byte> buffer = new();
 
-        using (Utf8JsonWriter writer = new(buffer))
+        using (Utf8JsonWriter writer = new(buffer, WriterOptions))
         {
             writer.WriteStartObject();
             WriteEnvelope(writer, printerId, "p2s");
@@ -171,9 +201,15 @@ public sealed class PrinterTrafficLog : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Composed from the command's own wire name and arguments rather than from the encoded frame.
-    /// The encoder is deterministic over exactly those two inputs, so the record says the same thing
-    /// - and reading the frame back would mean encoding it twice and parsing it again to redact it.
+    /// Composed from the command's own wire name and arguments rather than from the encoded frame,
+    /// because reading the frame back would mean encoding it twice and parsing it again to redact it.
+    /// </para>
+    /// <para>
+    /// <b>So this records the command's values, not the bytes that went out</b> - and the two are no
+    /// longer even the same shape, since <see cref="Commands.CommandWireEncoder"/> picks its escaping
+    /// from the peer's <see cref="PrinterDialect"/> while this writer has one setting. The values
+    /// match the wire; the bytes need not, and a wire-encoding bug hides in exactly that gap. To answer
+    /// a question about bytes, read the frames.
     /// </para>
     /// <para>
     /// <b>Only commands that were handed over reach this.</b> A send that timed out or faulted never
@@ -192,7 +228,7 @@ public sealed class PrinterTrafficLog : IDisposable
 
         ArrayBufferWriter<byte> buffer = new();
 
-        using (Utf8JsonWriter writer = new(buffer))
+        using (Utf8JsonWriter writer = new(buffer, WriterOptions))
         {
             writer.WriteStartObject();
             WriteEnvelope(writer, printerId, "s2p");

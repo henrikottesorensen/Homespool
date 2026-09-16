@@ -93,8 +93,17 @@ public sealed class HttpPrinterConnection : IPrinterConnection
     /// cannot happen from the loop that owns both. It is asserted rather than tolerated because
     /// silently overwriting a parked command would lose it with no trace - the printer would collect
     /// the second and the caller of the first would wait out the reaper.
+    /// <para>
+    /// <b>The dialect is ignored here because nothing is encoded here.</b> The command is parked as an
+    /// object and <c>PrusaConnectPrinterController</c> encodes it when the printer collects, passing
+    /// the dialect at that point - which is also the later and therefore better-informed moment, since
+    /// a firmware version learned from <c>INFO</c> may have arrived in between.
+    /// </para>
     /// </remarks>
-    public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
+    public ValueTask<CommandHandover> SendCommandAsync(uint commandId,
+                                                       ISendableCommand command,
+                                                       CancellationToken cancellationToken,
+                                                       PrinterDialect? dialect = null)
     {
         if (_parked is not null)
         {

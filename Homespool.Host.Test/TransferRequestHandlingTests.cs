@@ -389,7 +389,7 @@ public class TransferRequestHandlingTests
 
         public bool IsOpen => true;
 
-        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
+        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken, PrusaConnect.PrinterDialect? dialect = null)
         {
             // Nothing in these tests sends a command; recording nothing keeps a stray one visible as
             // an absent chunk rather than a mis-filed one.
@@ -470,7 +470,7 @@ public class TransferRequestHandlingTests
     {
         public bool IsOpen => true;
 
-        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
+        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken, PrusaConnect.PrinterDialect? dialect = null)
         {
             return ValueTask.FromResult(CommandHandover.Written);
         }

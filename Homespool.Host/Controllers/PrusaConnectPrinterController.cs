@@ -496,7 +496,7 @@ public class PrusaConnectPrinterController : ControllerBase
             return TypedResults.NoContent();
         }
 
-        CommandWireEncoder.Body body = CommandWireEncoder.EncodeBody(pending.Command);
+        CommandWireEncoder.Body body = CommandWireEncoder.EncodeBody(pending.Command, actor.Dialect);
 
         // Decimal, not the frame's hex: ExtractCommanId accumulates digit by digit as base ten
         // (command_id.cpp), so "0000002A" would parse as 2 and then choke on the A.

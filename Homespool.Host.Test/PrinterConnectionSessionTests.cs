@@ -387,7 +387,7 @@ public class PrinterConnectionSessionTests
 
         public bool IsOpen => true;
 
-        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken)
+        public ValueTask<CommandHandover> SendCommandAsync(uint commandId, ISendableCommand command, CancellationToken cancellationToken, PrusaConnect.PrinterDialect? dialect = null)
         {
             return ValueTask.FromResult(CommandHandover.Written);
         }

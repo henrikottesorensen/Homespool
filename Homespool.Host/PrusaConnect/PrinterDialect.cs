@@ -52,7 +52,14 @@ namespace Homespool.Host.PrusaConnect;
 /// Whether <c>START_ENCRYPTED_DOWNLOAD</c> is a command this client will answer. False for the Python
 /// SDK, which has no such command and replies to it with nothing at all - measured 2026-08-18.
 /// </param>
-public sealed record PrinterDialect(string Name, bool SupportsInlineTransfer, bool UnderstandsEncryptedDownload)
+/// <param name="DecodesJsonUnicodeEscapes">
+/// Whether this client turns a <c>\uXXXX</c> escape back into the character it stands for. False
+/// everywhere today, and see <see cref="For"/> for what is meant to flip it.
+/// </param>
+public sealed record PrinterDialect(string Name,
+                                    bool SupportsInlineTransfer,
+                                    bool UnderstandsEncryptedDownload,
+                                    bool DecodesJsonUnicodeEscapes = false)
 {
     /// <summary>
     /// Buddy on the Connect WebSocket: the inline transfer, with no HTTP fetch involved. Named for
@@ -89,6 +96,32 @@ public sealed record PrinterDialect(string Name, bool SupportsInlineTransfer, bo
     /// resin printers and the HT90 do not run this stack, and nobody here has seen what they send -
     /// so a dialect called <c>FirmwareHttp</c> would have been claiming knowledge about clients this
     /// project has never met. What was measured is Buddy's behaviour, and the name says only that.
+    /// </para>
+    /// <para>
+    /// <b><see cref="DecodesJsonUnicodeEscapes"/> is false for all three, and may well stay that way
+    /// for ever.</b> Buddy's <c>unescape_json_i</c> decodes only <c>\b \f \n \r \t \" \\</c>
+    /// (<c>json_encode.cpp:21-29</c>, identical at <c>6.6.0</c> and <c>v6.8.1</c>). A fix for that is
+    /// open upstream as <c>prusa3d/Prusa-Firmware-Buddy#5453</c> - <b>open, not merged, and Prusa are
+    /// not notably responsive to outside PRs</b>, so nobody should plan around it
+    /// landing.
+    /// </para>
+    /// <para>
+    /// <b>Which is why the flag is an optimisation and the encoder default is the fix.</b>
+    /// <see cref="Commands.CommandWireEncoder"/> emits an escape set every known client reads whether
+    /// or not this is ever true, so a flag stuck at false costs nothing and the transfer works today
+    /// on unpatched firmware. If a patched release does appear, this is the one place to key it:
+    /// <see cref="PrinterClient.FirmwareVersion"/> is already carried here for exactly this shape of
+    /// question, and the flag is per-connection rather than configured because a fleet would then hold
+    /// patched and unpatched printers at once - an appliance-wide setting could not describe that, and
+    /// would also make an operator responsible for knowing a firmware internal. <b>No version is
+    /// guessed here</b>; there is nothing to compare against until a numbered release carries it.
+    /// </para>
+    /// <para>
+    /// <b>The SDK is left false deliberately, and it is the one that is probably already true.</b> It
+    /// parses with Python's own <c>json</c>, which decodes escapes correctly - but nobody here has
+    /// measured it, and this type's whole discipline is that a dialect states what was observed. False
+    /// costs the SDK nothing: it means the wider escape set, which is valid JSON that Python reads
+    /// identically. Measure it before claiming it.
     /// </para>
     /// </remarks>
     public static PrinterDialect For(PrinterClient? client, bool supportsInlineTransfer)

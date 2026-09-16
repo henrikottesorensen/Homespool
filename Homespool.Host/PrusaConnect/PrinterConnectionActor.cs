@@ -498,7 +498,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // comment above); giving up on the wait leaves the send running, which is safe precisely
             // because the teardown this triggers disposes the socket and faults it. Encoding is the
             // connection's, since the two transports frame the same body differently.
-            handover = await _connection.SendCommandAsync(commandId, send.Command, CancellationToken.None)
+            handover = await _connection.SendCommandAsync(commandId, send.Command, CancellationToken.None, Dialect)
                                         .AsTask()
                                         .WaitAsync(SendTimeout);
         }

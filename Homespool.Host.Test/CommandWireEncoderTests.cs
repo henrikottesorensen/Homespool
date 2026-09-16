@@ -224,4 +224,96 @@ public class CommandWireEncoderTests
         kwargs.GetProperty("path").GetString().Should().Be("/usb");
         kwargs.EnumerateObject().Should().ContainSingle();
     }
+
+    // ---------- escaping, which firmware only half decodes ----------
+
+    /// <summary>
+    /// A path keeps its accents, its <c>&amp;</c> and its <c>+</c> as literal UTF-8 on the wire, with
+    /// no backslash anywhere in the frame.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The assertion is on the bytes, and it has to be.</b> Parsing the payload back with
+    /// <see cref="JsonDocument"/> and reading <c>path</c> returns the same string either way - .NET
+    /// decodes <c>\u00E9</c> perfectly well, so a test written that way passes against the bug it is
+    /// meant to catch. The traffic log is no help either: it re-serialises each command rather than
+    /// recording the frame, so it cannot show which escapes went out.
+    /// </para>
+    /// <para>
+    /// <b>Why a backslash is the thing to assert on.</b> Firmware's <c>unescape_json_i</c>
+    /// (<c>json_encode.cpp:21-29</c>) decodes only <c>\b \f \n \r \t \" \\</c>, so a <c>\uXXXX</c>
+    /// keeps its backslash - and FatFs treats a backslash as a path separator (<c>ff.c:51</c>), which
+    /// turns one filename into several path segments and fails the <c>mkdir</c> that
+    /// <c>Transfer::begin</c> does to hold a resumable transfer. Measured on a Core One at
+    /// <c>6.8.1+16182</c>: this exact name was refused with "Failed to create directory", ~1 500 times.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void EncodeLeavesAPathsSpecialCharactersLiteralOnTheWire()
+    {
+        // Arrange
+        StartConnectDownload commandData = new()
+        {
+            Path = "/usb/Le téstè & stüff+1.bgcode",
+            Hash = "abcdef",
+            TeamId = 1,
+            OriginalSize = 494464,
+        };
+
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(7, commandData);
+        string payload = Encoding.UTF8.GetString(frame, 9, frame.Length - 9);
+
+        // Assert
+        payload.Should().Contain("\"path\":\"/usb/Le téstè & stüff+1.bgcode\"");
+        payload.Should().NotContain("\\",
+                                    "firmware keeps the backslash of any escape it cannot decode, and FatFs splits the path on it");
+    }
+
+    /// <summary>
+    /// The same command for a peer that <i>does</i> decode <c>\uXXXX</c> takes the stock encoding -
+    /// the toggle that lets a fixed firmware stop using the workaround.
+    /// </summary>
+    /// <remarks>
+    /// Nothing sets <see cref="PrinterDialect.DecodesJsonUnicodeEscapes"/> today, because no released
+    /// firmware decodes those escapes; the flag is per-connection so that one can, without an
+    /// appliance-wide setting having to describe a fleet where only some printers are patched. Both
+    /// encodings are valid JSON and parse to the same string, which is why the assertion is again on
+    /// the bytes rather than on the parsed value.
+    /// </remarks>
+    [Fact]
+    public void EncodeUsesTheStockEscapingForAPeerThatDecodesEscapes()
+    {
+        // Arrange
+        PrinterDialect patched = PrinterDialect.BuddySocket with { DecodesJsonUnicodeEscapes = true };
+        SendFileInfo commandData = new() { Path = "/usb/Le téstè & stüff.bgcode" };
+
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(7, commandData, patched);
+        string payload = Encoding.UTF8.GetString(frame, 9, frame.Length - 9);
+
+        // Assert
+        payload.Should().Contain(@"\u00E9").And.Contain(@"\u0026");
+
+        using JsonDocument parsed = JsonDocument.Parse(frame.AsSpan(9).ToArray());
+        parsed.RootElement.GetProperty("kwargs").GetProperty("path").GetString()
+              .Should().Be("/usb/Le téstè & stüff.bgcode", "the two encodings differ only in bytes");
+    }
+
+    /// <summary>
+    /// A caller that says nothing about the peer gets the encoding every known client reads, not the
+    /// stock one.
+    /// </summary>
+    /// <remarks>
+    /// The conservative direction, and the same reasoning as <see cref="PrinterDialect.For"/> treating
+    /// an unrecognised client as Buddy: a new call path that forgets to pass a dialect should produce
+    /// bytes that work, rather than bytes that work only on hardware nobody has yet.
+    /// </remarks>
+    [Fact]
+    public void EncodeWithNoDialectDoesNotEscape()
+    {
+        byte[] frame = CommandWireEncoder.Encode(7, new SendFileInfo { Path = "/usb/stüff.bgcode" });
+
+        Encoding.UTF8.GetString(frame, 9, frame.Length - 9).Should().Contain("stüff");
+    }
 }

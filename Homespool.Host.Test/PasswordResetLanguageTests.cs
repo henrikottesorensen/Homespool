@@ -57,6 +57,7 @@ public sealed class PasswordResetLanguageTests : IDisposable
     [Fact]
     public async Task TheResetEmailIsWrittenInTheAccountsLanguage()
     {
+        using RequestCulture request = RequestCulture.English();
         await using HomespoolDbContext context = await MigratedContextAsync();
         CapturingEmailSender sender = await PostResetRequestAsync(context, "dane@example.com", "da");
 
@@ -72,6 +73,7 @@ public sealed class PasswordResetLanguageTests : IDisposable
     [Fact]
     public async Task NoStoredChoiceLeavesTheDefaultStanding()
     {
+        using RequestCulture request = RequestCulture.English();
         await using HomespoolDbContext context = await MigratedContextAsync();
         CapturingEmailSender sender = await PostResetRequestAsync(context, "brit@example.com", language: null);
 
@@ -86,6 +88,7 @@ public sealed class PasswordResetLanguageTests : IDisposable
     [Fact]
     public async Task TheRequestsOwnCultureSurvivesComposing()
     {
+        using RequestCulture request = RequestCulture.English();
         await using HomespoolDbContext context = await MigratedContextAsync();
 
         CultureInfo before = CultureInfo.CurrentUICulture;

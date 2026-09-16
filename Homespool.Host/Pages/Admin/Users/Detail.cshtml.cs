@@ -63,6 +63,12 @@ public class DetailModel : PageModel
     private readonly TimeProvider _time;
     private readonly ILogger<DetailModel> _logger;
 
+    /// <summary>
+    /// The account's stored language, for mail written to its owner. Not a page property: the page
+    /// shows nothing of it.
+    /// </summary>
+    private string? _accountLanguage;
+
     public DetailModel(HomespoolDbContext context,
                        UserManager<HSUser> users,
                        UserAdministration administration,
@@ -259,12 +265,18 @@ public class DetailModel : PageModel
                                 values: new { inviteUuid = invitation.Uuid, code },
                                 protocol: Request.Scheme);
 
-        await _emailSender.SendEmailAsync(
-            Email,
-            _localiser["Email_RecoverySubject"],
+        // Written in the account's language, expiry included, not the administrator's: the owner reads
+        // it. A failed send is logged and nothing more - the link is on this page to hand over anyway.
+        (string subject, string body) = UserCultures.InCulture(_accountLanguage, () => (
+            _localiser["Email_RecoverySubject"].Value,
             _localiser["Email_RecoveryBody",
                        HtmlEncoder.Default.Encode(RecoveryLink!),
-                       invitation.ExpiresAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)]);
+                       invitation.ExpiresAt.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)].Value));
+
+        if (await _emailSender.SendEmailAsync(Email, subject, body) == EmailSendResult.Failed)
+        {
+            _logger.LogWarning("The recovery invitation {InviteUuid} for user {UserId} could not be mailed.", invitation.Uuid, Id);
+        }
 
         _logger.LogWarning(
             "Administrator {AdministratorId} issued recovery invitation {InviteUuid} for user {UserId}; clears two-factor: {ClearsTwoFactor}.",
@@ -366,6 +378,7 @@ public class DetailModel : PageModel
         Uuid = account.Uuid;
         UserName = account.UserName ?? string.Empty;
         Email = account.Email;
+        _accountLanguage = account.Language;
         EmailConfirmed = account.EmailConfirmed;
         TwoFactorEnabled = account.TwoFactorEnabled;
         HasPassword = account.PasswordHash is not null;

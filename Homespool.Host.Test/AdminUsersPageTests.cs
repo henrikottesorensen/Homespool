@@ -254,6 +254,32 @@ public sealed class AdminUsersPageTests : IDisposable
         issued.ClearsTwoFactor.Should().BeFalse("the administrator did not tick it");
     }
 
+    /// <summary>
+    /// The link is mailed to the account's owner, so it is written in their language rather than the
+    /// administrator's who issued it.
+    /// </summary>
+    [Fact]
+    public async Task TheRecoveryMailIsWrittenInTheAccountsLanguage()
+    {
+        // Arrange
+        using RequestCulture request = RequestCulture.English();
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        subject.Language = "da";
+        (await users.UpdateAsync(subject)).Succeeded.Should().BeTrue();
+        (DetailModel model, _) = NewDetail(context, provider, users, admin);
+
+        // Act
+        await model.OnPostRecoverAsync(subject.Uuid, CancellationToken.None);
+
+        // Assert
+        Mail.SentEmails.Should().ContainSingle().Which.subject.Should().Be("Kom ind på din Homespool-konto igen");
+        model.StatusMessage.Should().Be(TestLocaliser.Shared()["AdminUsers_RecoveryIssued"].Value,
+                                        "the page is the administrator's, and stays in their language");
+    }
+
     [Fact]
     public async Task RevokingAPasskeyRemovesThatOneAndNoOther()
     {

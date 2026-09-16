@@ -179,13 +179,14 @@ public class EmailModel : PageModel
                 values: new { userUuid = user.Uuid, email = Input.NewEmail, code = code },
                 protocol: Request.Scheme);
 
-            // The request's culture, and correct without a lookup: the signed-in user is changing
-            // their own address, so the account culture provider has already resolved their
-            // preference for this request.
-            EmailSendResult sendResult = await _emailSender.SendEmailAsync(
-                Input.NewEmail,
-                _localiser["Email_ConfirmSubject"],
-                _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
+            // The account's language, like every mail to an account. The culture provider usually
+            // resolved the same one for this request, but only when a language is stored - and the
+            // rule is the page's to keep, not the middleware's. None stored leaves this browser's.
+            (string subject, string body) = UserCultures.InCulture(user.Language, () => (
+                _localiser["Email_ConfirmSubject"].Value,
+                _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)].Value));
+
+            EmailSendResult sendResult = await _emailSender.SendEmailAsync(Input.NewEmail, subject, body);
 
             StatusMessage = sendResult == EmailSendResult.Failed ?
                 _localiser["Manage_EmailChangeSendFailed"] :
@@ -225,10 +226,13 @@ public class EmailModel : PageModel
             pageHandler: null,
             values: new { userUuid = user.Uuid, code = code },
             protocol: Request.Scheme);
-        EmailSendResult sendResult = await _emailSender.SendEmailAsync(
-            email,
-            _localiser["Email_ConfirmSubject"],
-            _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)]);
+
+        // The account's language, for the reason given on the change-address send above.
+        (string subject, string body) = UserCultures.InCulture(user.Language, () => (
+            _localiser["Email_ConfirmSubject"].Value,
+            _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)].Value));
+
+        EmailSendResult sendResult = await _emailSender.SendEmailAsync(email, subject, body);
 
         StatusMessage = sendResult == EmailSendResult.Failed ?
             _localiser["Manage_VerificationSendFailed"] :

@@ -284,6 +284,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
     public async Task TheNoticeIsWrittenInTheAccountsLanguage()
     {
         // Arrange
+        using RequestCulture request = RequestCulture.English();
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, LocalSignIn signIn, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);

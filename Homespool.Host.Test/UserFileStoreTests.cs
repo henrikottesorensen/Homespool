@@ -278,6 +278,67 @@ public sealed class UserFileStoreTests : IDisposable
         store.List(Alice).Should().BeEmpty();
     }
 
+    /// <summary>
+    /// A backslash is refused on upload, though on Linux it does not split the name here.
+    /// </summary>
+    /// <remarks>
+    /// The printer's FAT driver does split on it, so <c>..\..\x.gcode</c> would be written somewhere
+    /// under <c>/usb</c> other than the path recorded for it.
+    /// </remarks>
+    [Theory]
+    [InlineData(@"..\..\x.gcode")]
+    [InlineData(@"sub\model.gcode")]
+    public async Task ANameThePrinterWouldSplitIsRefused(string given)
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        // Act
+        Func<Task> act = () => SaveAsync(store, Alice, given, [1]);
+
+        // Assert
+        (await act.Should().ThrowAsync<PrintFileNameRejectedException>(
+                "the printer would put the file somewhere other than /usb/<name>"))
+            .Which.ResourceKey.Should().Be("Error_FileNameCharacters");
+        store.List(Alice).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RenamingToANameThePrinterWouldSplitIsRefused()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        await SaveAsync(store, Alice, "model.gcode", [1]);
+
+        // Act
+        Action act = () => store.Rename(Alice, "model.gcode", @"..\model.gcode");
+
+        // Assert
+        act.Should().Throw<PrintFileNameRejectedException>("rename is the other way a name gets in");
+        store.Find(Alice, "model.gcode").Should().NotBeNull("and the refused rename leaves the file alone");
+    }
+
+    /// <summary>
+    /// A backslash name already on disk can still be renamed to something sendable.
+    /// </summary>
+    [Fact]
+    public async Task ABackslashNameAlreadyOnDiskCanBeRenamedAway()
+    {
+        // Arrange - planted on disk, as for the quoting case above.
+        UserFileStore store = NewStore();
+        StoredFile legal = await SaveAsync(store, Alice, "legal.gcode", [1]);
+        string planted = Path.Combine(Path.GetDirectoryName(legal.Path)!, @"..\x.gcode");
+
+        File.Move(legal.Path, planted);
+
+        // Act
+        StoredFile? renamed = store.Rename(Alice, @"..\x.gcode", "x.gcode");
+
+        // Assert
+        renamed.Should().NotBeNull("a lookup still answers for the name that is there");
+        renamed!.PrinterPath.Should().Be("/usb/x.gcode");
+    }
+
     [Fact]
     public async Task AnExtensionNoPrinterAcceptsIsRefusedByTheStoreItself()
     {

@@ -77,7 +77,7 @@ public class PrintFileNameRejectedException : ArgumentException, ILocalisableErr
     public static PrintFileNameRejectedException ForForbiddenCharacters(string fileName, string parameterName)
     {
         return new PrintFileNameRejectedException(
-            $"'{fileName}' contains characters a file name may not have: quotes, angle brackets or control characters.",
+            $"'{fileName}' contains characters a file name may not have: quotes, angle brackets, backslashes or control characters.",
             fileName, parameterName, "Error_FileNameCharacters");
     }
 }

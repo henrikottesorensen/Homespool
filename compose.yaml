@@ -50,11 +50,11 @@ services:
     # The header is trusted from the proxy's network, and that network holds the proxy and this
     # container and NOTHING ELSE - which is what makes trusting it the same as trusting the proxy.
     # The sidecars are on networks of their own: go2rtc runs third-party code and fetches addresses
-    # people give it, and it can open a connection to Kestrel over the camera network, since Docker
-    # networks are symmetric, but arrives as an ordinary untrusted client: whatever X-Real-IP or
-    # X-Forwarded-Proto it writes is ignored, and it needs a printer token or a sign-in like anybody
-    # else. Not an address: the proxy's address is Docker's to hand out, and a trust pinned to a
-    # predicted address either fails to start or trusts nobody the day the prediction is wrong.
+    # people give it. Docker networks are symmetric, so it could reach back over the camera network -
+    # except that the listeners bind only the interface on this network and loopback (see the
+    # networks: line below), so there is no socket of ours there for it to find. Not an address: the
+    # proxy's address is Docker's to hand out, and a trust pinned to a predicted address either fails
+    # to start or trusts nobody the day the prediction is wrong.
     #
     # The printer port is not served TLS from here because .NET cannot serve that TLS correctly:
     # SslStream emits records far larger than the kilobyte of plaintext the firmware holds - a real

@@ -232,6 +232,16 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
             entity.Property(e => e.Status)
                   .HasConversion<string>();
+
+            // The two user-chosen strings on this table. SQLite ignores a length on TEXT, so these
+            // buy nothing at runtime today and the four writers' [StringLength] attributes are what
+            // actually refuse an over-long value. They are declared because the schema is the right
+            // place to state the bound, and a provider that enforces it would find it stated.
+            entity.Property(e => e.Name)
+                  .HasMaxLength(Printer.NameMaxLength);
+
+            entity.Property(e => e.Location)
+                  .HasMaxLength(Printer.LocationMaxLength);
         });
 
         builder.Entity<Camera>(entity =>

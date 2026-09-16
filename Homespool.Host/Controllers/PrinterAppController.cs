@@ -67,6 +67,12 @@ public class PrinterAppController : ControllerBase
 
     [HttpPost]
     [Route("printers/register")]
+
+    // The body is a name, a location and a code. [StringLength] refuses an over-long field, but only
+    // after the whole request has been buffered and deserialised, so the attributes bound what is
+    // stored and this bounds what is read - Kestrel's thirty-odd megabytes is otherwise the only
+    // ceiling. Authenticated, unlike /p/register's cap, which makes it a smaller worry and the same fix.
+    [RequestSizeLimit(8 * 1024)]
     public async Task<Results<Created<PrinterReadDTO>, ForbiddenProblem, NotFoundProblem, ConflictProblem, InternalServerErrorProblem>>
         RegisterPrinter([FromBody] RegisterPrinterAppRequestDTO body, CancellationToken cancellationToken)
     {
@@ -181,6 +187,9 @@ public class PrinterAppController : ControllerBase
 
     [HttpPatch]
     [Route("printers/{uuid:guid}")]
+
+    // Two short strings, bounded for the same reason as the register action above.
+    [RequestSizeLimit(8 * 1024)]
     public async Task<Results<Ok<PrinterReadDTO>, ForbiddenProblem, NotFoundProblem, InternalServerErrorProblem>> PatchPrinter(
         Guid uuid,
         [FromBody] PrinterPatchInputDTO body,

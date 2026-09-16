@@ -6,6 +6,31 @@ namespace Homespool.Model.Entities;
 
 public class Printer
 {
+    /// <summary>Maximum length of <see cref="Name"/>.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Four surfaces write this column, and they answer to one number.</b> Two pages
+    /// (<c>Pages/Printers/Add</c> and <c>Pages/Printers/Claim</c>) and two API bodies
+    /// (<c>POST /api/v1/printers/register</c> and <c>PATCH /api/v1/printers/{uuid}</c>) each set the
+    /// name a user chose. A bound held by some of them is no bound at all: a value one refuses can be
+    /// sent to another a second later and stored, on a column nothing else sizes.
+    /// </para>
+    /// <para>
+    /// <b>Generous, and chosen as a display bound rather than a storage one.</b> Names in practice are
+    /// a few words - <c>Living room MK4</c> - so the room here is for someone who wants a sentence,
+    /// not a measurement of what people type. Nothing truncates a long name for display; the page
+    /// wraps it instead, which is why the number can afford to be loose.
+    /// </para>
+    /// </remarks>
+    public const int NameMaxLength = 200;
+
+    /// <summary>
+    /// Maximum length of <see cref="Location"/>. Same number and same four writers as
+    /// <see cref="NameMaxLength"/>, and deliberately a separate constant: they are two fields that
+    /// happen to agree, so one changing must not move the other.
+    /// </summary>
+    public const int LocationMaxLength = 200;
+
     /// <summary>
     /// Surrogate primary key, and the foreign key used by every high-volume table.
     /// </summary>

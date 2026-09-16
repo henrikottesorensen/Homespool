@@ -82,11 +82,11 @@ public class AddModel : PageModel
 
     public class InputModel
     {
-        [StringLength(200)]
+        [StringLength(Printer.NameMaxLength)]
         [Display(Name = "Common_Name")]
         public string? Name { get; set; }
 
-        [StringLength(200)]
+        [StringLength(Printer.LocationMaxLength)]
         [Display(Name = "Printers_Location")]
         public string? Location { get; set; }
 

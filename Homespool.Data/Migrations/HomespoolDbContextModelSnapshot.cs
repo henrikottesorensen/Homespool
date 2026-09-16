@@ -433,12 +433,14 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Location")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Model")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<float?>("NozzleDiameter")

@@ -224,4 +224,90 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
         scratch.Dispose();
         }
     }
+
+    /// <summary>
+    /// Both app-API writes refuse a name or location past
+    /// <see cref="Printer.NameMaxLength"/>, through the real pipeline.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The attributes are only a bound if something turns them into a refusal</b>, and here that
+    /// is <c>[ApiController]</c>'s automatic model validation, which answers 400 before the action
+    /// runs. A unit test can read the attribute; only this can show it stops anything.
+    /// </para>
+    /// <para>
+    /// <b>The claim is attempted with a valid code</b>, so a 400 cannot be the code being wrong -
+    /// and the same code claims the printer successfully straight afterwards, which proves the
+    /// refused attempt consumed nothing. That is the assertion the length check itself does not make:
+    /// model validation runs before the action, so no part of the claim can have happened.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheAppApiRefusesANameOrLocationPastItsBound()
+    {
+        using HttpClient anonymous = PrinterListener.CreateClient(_factory);
+
+        HttpResponseMessage registerResponse = await EnrolmentFlowHelper.SendPrinterRegisterAsync(anonymous, new
+        {
+            sn = "E2E-SERIAL-0002",
+            fingerprint = "E2E-FINGERPRINT-0002",
+            printer_type = "1.3.5",
+            firmware = "6.4.0+11974",
+        });
+
+        string code = registerResponse.Headers.GetValues("Code").Single();
+
+        string overLongName = new('n', Printer.NameMaxLength + 1);
+        string overLongLocation = new('l', Printer.LocationMaxLength + 1);
+
+        (_, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "bounds@example.com");
+        using (appClient)
+        {
+            // ---------- the claim body's name is refused, and the code survives it ----------
+            HttpResponseMessage refusedClaim = await appClient.PostAsJsonAsync("/api/v1/printers/register", new
+            {
+                name = overLongName,
+                location = "Living room",
+                code,
+            }, TestContext.Current.CancellationToken);
+
+            refusedClaim.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the name is one character past its bound");
+
+            // ---------- the same code still claims, so nothing was spent on the refusal ----------
+            HttpResponseMessage claimResponse = await appClient.PostAsJsonAsync("/api/v1/printers/register", new
+            {
+                name = "Living room MK4",
+                location = "Living room",
+                code,
+            }, TestContext.Current.CancellationToken);
+
+            claimResponse.StatusCode.Should().Be(HttpStatusCode.Created, "model validation refused before the action ran");
+
+            JsonDocument claimed =
+                JsonDocument.Parse(await claimResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            Guid uuid = claimed.RootElement.GetProperty("uuid").GetGuid();
+
+            // ---------- and the patch body is held to the same two numbers ----------
+            using JsonContent longName = JsonContent.Create(new { name = overLongName, location = "Garage" });
+            HttpResponseMessage refusedName =
+                await appClient.PatchAsync($"/api/v1/printers/{uuid}", longName, TestContext.Current.CancellationToken);
+
+            refusedName.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+            using JsonContent longLocation = JsonContent.Create(new { name = "Renamed MK4", location = overLongLocation });
+            HttpResponseMessage refusedLocation =
+                await appClient.PatchAsync($"/api/v1/printers/{uuid}", longLocation, TestContext.Current.CancellationToken);
+
+            refusedLocation.StatusCode.Should().Be(HttpStatusCode.BadRequest, "location is bounded as well as name");
+
+            // ---------- neither refusal reached the column ----------
+            HttpResponseMessage reGetResponse =
+                await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
+            JsonDocument reGet =
+                JsonDocument.Parse(await reGetResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+            reGet.RootElement.GetProperty("name").GetString().Should().Be("Living room MK4", "a refused patch stores nothing");
+            reGet.RootElement.GetProperty("location").GetString().Should().Be("Living room");
+        }
+    }
 }

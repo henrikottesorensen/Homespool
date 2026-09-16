@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260916123812_InitialCreate")]
+    [Migration("20260916145932_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -436,12 +436,14 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Location")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Model")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.Property<float?>("NozzleDiameter")

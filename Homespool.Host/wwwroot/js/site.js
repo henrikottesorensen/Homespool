@@ -225,6 +225,7 @@
 // If this never runs, validation falls back to the server, which was always the thing that decides:
 // the page posts, is rejected, and comes back with the same messages rendered by the same tag
 // helpers. The cost of failure is a round trip, not an accepted bad value.
+/* global aspnetValidation -- aspnet-client-validation's, from _ValidationScriptsPartial */
 document.addEventListener("DOMContentLoaded", function () {
     "use strict";
 

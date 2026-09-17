@@ -319,8 +319,8 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         type: 'offer',
-                        sdp: connection.localDescription.sdp
-                    })
+                        sdp: connection.localDescription.sdp,
+                    }),
                 });
 
                 if (!response.ok) {
@@ -341,7 +341,7 @@
                 }
 
                 await connection.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
-            } catch (error) {
+            } catch {
                 stop(button.dataset.labelFailed);
             }
         }

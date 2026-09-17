@@ -56,14 +56,14 @@
             rpId: json.rpId,
             timeout: json.timeout,
             userVerification: json.userVerification,
-            allowCredentials: []
+            allowCredentials: [],
         };
 
         (json.allowCredentials || []).forEach(function (descriptor) {
             options.allowCredentials.push({
                 type: descriptor.type,
                 id: fromBase64Url(descriptor.id),
-                transports: descriptor.transports || []
+                transports: descriptor.transports || [],
             });
         });
 
@@ -85,8 +85,8 @@
                 authenticatorData: toBase64Url(response.authenticatorData),
                 clientDataJSON: toBase64Url(response.clientDataJSON),
                 signature: toBase64Url(response.signature),
-                userHandle: response.userHandle ? toBase64Url(response.userHandle) : null
-            }
+                userHandle: response.userHandle ? toBase64Url(response.userHandle) : null,
+            },
         });
     }
 

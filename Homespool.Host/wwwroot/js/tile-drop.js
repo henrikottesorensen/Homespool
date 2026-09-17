@@ -139,7 +139,7 @@
                 method: "POST",
                 body: body,
                 headers: { "X-Requested-With": "XMLHttpRequest" },
-                credentials: "same-origin"
+                credentials: "same-origin",
             }).then(function (response) {
                 // A redirect here is the login page, the same trap live-region.js records: without
                 // this the dialog would cheerfully render a sign-in form inside itself.

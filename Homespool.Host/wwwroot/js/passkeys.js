@@ -51,21 +51,21 @@
             user: {
                 id: fromBase64Url(json.user.id),
                 name: json.user.name,
-                displayName: json.user.displayName
+                displayName: json.user.displayName,
             },
             challenge: fromBase64Url(json.challenge),
             pubKeyCredParams: json.pubKeyCredParams,
             timeout: json.timeout,
             excludeCredentials: [],
             authenticatorSelection: json.authenticatorSelection,
-            attestation: json.attestation
+            attestation: json.attestation,
         };
 
         (json.excludeCredentials || []).forEach(function (descriptor) {
             options.excludeCredentials.push({
                 type: descriptor.type,
                 id: fromBase64Url(descriptor.id),
-                transports: descriptor.transports || []
+                transports: descriptor.transports || [],
             });
         });
 
@@ -85,8 +85,8 @@
             response: {
                 attestationObject: toBase64Url(response.attestationObject),
                 clientDataJSON: toBase64Url(response.clientDataJSON),
-                transports: response.getTransports ? response.getTransports() : []
-            }
+                transports: response.getTransports ? response.getTransports() : [],
+            },
         });
     }
 
@@ -115,8 +115,8 @@
                 if (!response.ok) {
                     // A refusal that answers with a sentence to show is shown; anything else gets
                     // the generic one.
-                    return response.json().then(function (body) {
-                        throw new Error(body && body.message ? body.message : "");
+                    return response.json().then(function (refusal) {
+                        throw new Error(refusal && refusal.message ? refusal.message : "");
                     }, function () {
                         throw new Error("");
                     });

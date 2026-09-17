@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!--
+        Rules this repository enforces that no published analyser expresses. Loaded into the compiler,
+        so it targets netstandard2.0 and references a Roslyn no newer than the one in the oldest SDK
+        global.json allows - an analyser built against a newer compiler than the one running it is
+        refused with CS9057.
+
+        Deliberately free of Microsoft.CodeAnalysis.Workspaces: the command-line compiler does not
+        carry it. Code fixes, which need it, are in Homespool.Analysers.CodeFixes.
+    -->
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
+        <IsPackable>false</IsPackable>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+
+        <!-- Release tracking is for analysers that ship to other people. These never leave the repository. -->
+        <NoWarn>$(NoWarn);RS2008</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.11.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+    </ItemGroup>
+
+</Project>

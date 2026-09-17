@@ -16,6 +16,9 @@
     <File Path="docs/prusa-link-openapi.yaml" />
     <File Path="docs/prusa-slicer-integration.md" />
   </Folder>
+  <Project Path="Homespool.Analysers.CodeFixes/Homespool.Analysers.CodeFixes.csproj" />
+  <Project Path="Homespool.Analysers.Test/Homespool.Analysers.Test.csproj" />
+  <Project Path="Homespool.Analysers/Homespool.Analysers.csproj" />
   <Project Path="Homespool.Data/Homespool.Data.csproj" />
   <Project Path="Homespool.FakePrinter.Cli/Homespool.FakePrinter.Cli.csproj" />
   <Project Path="Homespool.FakePrinter.Test/Homespool.FakePrinter.Test.csproj" />

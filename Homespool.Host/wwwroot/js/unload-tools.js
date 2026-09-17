@@ -10,10 +10,10 @@
 // choosing a radio is the failure the polled region is kept away from this strip to avoid; once, at
 // the moment the choice starts, is both fresh and stable.
 (function () {
-    'use strict';
+    "use strict";
 
     function refresh(container) {
-        const url = container.getAttribute('data-unload-tools-url');
+        const url = container.getAttribute("data-unload-tools-url");
 
         if (!url) {
             return;
@@ -23,11 +23,11 @@
         // same reason live-region.js has one: the handler is behind [Authorize], and fetch follows a
         // redirect silently, so an expired session would paste the login form into the dialog.
         window.fetch(url, {
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'fetch' },
+            credentials: "same-origin",
+            headers: { "X-Requested-With": "fetch" },
         }).then(function (response) {
             if (!response.ok || response.redirected) {
-                throw new Error('' + response.status);
+                throw new Error("" + response.status);
             }
 
             return response.text();
@@ -40,8 +40,8 @@
         });
     }
 
-    document.addEventListener('show.bs.modal', function (event) {
-        const container = event.target.querySelector('[data-unload-tools]');
+    document.addEventListener("show.bs.modal", function (event) {
+        const container = event.target.querySelector("[data-unload-tools]");
 
         if (container) {
             refresh(container);

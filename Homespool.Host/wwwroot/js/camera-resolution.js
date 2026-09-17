@@ -9,13 +9,13 @@
 // Without this script the page still works: the resolution select holds the default option and the
 // form submits an empty value, which is exactly the state a user who expresses no preference wants.
 (function () {
-    'use strict';
+    "use strict";
 
     function ready(fn) {
-        if (document.readyState !== 'loading') {
+        if (document.readyState !== "loading") {
             fn();
         } else {
-            document.addEventListener('DOMContentLoaded', fn);
+            document.addEventListener("DOMContentLoaded", fn);
         }
     }
 
@@ -32,9 +32,9 @@
 
         function repopulate() {
             const option = devices.options[devices.selectedIndex];
-            const sizes = option && option.dataset.sizes ? option.dataset.sizes.split(' ') : [];
+            const sizes = option && option.dataset.sizes ? option.dataset.sizes.split(" ") : [];
 
-            target.textContent = '';
+            target.textContent = "";
             target.appendChild(fallback);
 
             for (let i = 0; i < sizes.length; i++) {
@@ -42,19 +42,19 @@
                     continue;
                 }
 
-                const entry = document.createElement('option');
+                const entry = document.createElement("option");
                 entry.value = sizes[i];
                 entry.textContent = sizes[i];
                 target.appendChild(entry);
             }
         }
 
-        devices.addEventListener('change', repopulate);
+        devices.addEventListener("change", repopulate);
         repopulate();
     }
 
     ready(function () {
-        const selects = document.querySelectorAll('[data-resolution-target]');
+        const selects = document.querySelectorAll("[data-resolution-target]");
 
         for (let i = 0; i < selects.length; i++) {
             attach(selects[i]);

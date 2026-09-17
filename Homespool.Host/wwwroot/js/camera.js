@@ -12,7 +12,7 @@
 //   unavailable the camera stopped answering. Says so, rather than leaving the last good frame on
 //               screen looking like now.
 (function () {
-    'use strict';
+    "use strict";
 
     // Comfortably under the server's own refresh floor, so the poll is bounded by the camera rather
     // than by this. A faster interval would only ask more often for the same frame.
@@ -23,10 +23,10 @@
     const UNAVAILABLE_AFTER_MS = 15000;
 
     function ready(fn) {
-        if (document.readyState !== 'loading') {
+        if (document.readyState !== "loading") {
             fn();
         } else {
-            document.addEventListener('DOMContentLoaded', fn);
+            document.addEventListener("DOMContentLoaded", fn);
         }
     }
 
@@ -34,17 +34,17 @@
         const seconds = Math.max(0, Math.round((Date.now() - captured) / 1000));
 
         if (seconds < 2) {
-            return 'live';
+            return "live";
         }
 
-        return seconds + 's ago';
+        return seconds + "s ago";
     }
 
     function attach(view) {
         const url = view.dataset.cameraFrame;
-        const image = view.querySelector('.camera-image');
-        const status = view.querySelector('.camera-status');
-        const age = view.parentElement.querySelector('.camera-age');
+        const image = view.querySelector(".camera-image");
+        const status = view.querySelector(".camera-status");
+        const age = view.parentElement.querySelector(".camera-age");
 
         let objectUrl = null;
         let lastFrameAt = 0;
@@ -78,11 +78,11 @@
         // same lesson in the other file.
         function show(text) {
             status.textContent = text;
-            status.classList.remove('d-none');
+            status.classList.remove("d-none");
         }
 
         function hideStatus() {
-            status.classList.add('d-none');
+            status.classList.add("d-none");
         }
 
         function poll() {
@@ -90,19 +90,19 @@
                 return;
             }
 
-            fetch(url, { cache: 'no-store', credentials: 'same-origin' })
+            fetch(url, { cache: "no-store", credentials: "same-origin" })
                 .then(function (response) {
                     if (response.status === 204) {
                         // Asked for, not ready. Only complain once it has been quiet long enough to
                         // mean something.
                         if (!lastFrameAt) {
-                            show('Capturing…');
+                            show("Capturing…");
                         }
                         return null;
                     }
 
                     if (!response.ok) {
-                        throw new Error('status ' + response.status);
+                        throw new Error("status " + response.status);
                     }
 
                     return response.blob();
@@ -120,7 +120,7 @@
                     image.src = next;
                     // A class rather than the hidden attribute: Bootstrap's display utilities carry
                     // !important and beat it, which showed as the alt text sitting in an empty panel.
-                    image.classList.remove('d-none');
+                    image.classList.remove("d-none");
                     objectUrl = next;
 
                     if (previous) {
@@ -149,10 +149,10 @@
                         if (stale) {
                             // Take the picture down. Leaving it up is the failure this whole design
                             // is about: an old photograph that looks like the present.
-                            image.classList.add('d-none');
-                            image.removeAttribute('src');
-                            show('Camera not answering');
-                            age.textContent = '';
+                            image.classList.add("d-none");
+                            image.removeAttribute("src");
+                            show("Camera not answering");
+                            age.textContent = "";
                         } else {
                             age.textContent = describeAge(lastFrameAt);
                         }
@@ -164,7 +164,7 @@
 
         // Stop while the tab is hidden. The server captures only when asked, so a background tab
         // would otherwise keep a camera awake for nobody.
-        document.addEventListener('visibilitychange', function () {
+        document.addEventListener("visibilitychange", function () {
             if (document.hidden) {
                 stopped = true;
             } else if (stopped) {
@@ -176,11 +176,11 @@
         // Live video has taken over this panel. The last frame is deliberately left where it is
         // rather than blanked: the live view puts its own picture over the top, and if it never
         // manages to, what comes back is a still whose age is still being judged by the rule below.
-        view.addEventListener('camera-live-started', function () {
+        view.addEventListener("camera-live-started", function () {
             yielded = true;
         });
 
-        view.addEventListener('camera-live-stopped', function () {
+        view.addEventListener("camera-live-stopped", function () {
             if (yielded) {
                 yielded = false;
                 resume();
@@ -191,7 +191,7 @@
     }
 
     function attachWithin(root) {
-        const views = (root || document).querySelectorAll('[data-camera-frame]');
+        const views = (root || document).querySelectorAll("[data-camera-frame]");
 
         for (let i = 0; i < views.length; i++) {
             attach(views[i]);

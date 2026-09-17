@@ -11,22 +11,22 @@
 // printer's own refusal is written down, and taking that away from somebody who looked away would
 // lose it. Failures keep their close button and nothing else.
 (function () {
-    'use strict';
+    "use strict";
 
     // Long enough to read a sentence twice without being asked to hurry, short enough that it is gone
     // before the thing it describes stops being recent.
     const DISMISS_AFTER_MS = 12000;
 
     function ready(fn) {
-        if (document.readyState !== 'loading') {
+        if (document.readyState !== "loading") {
             fn();
         } else {
-            document.addEventListener('DOMContentLoaded', fn);
+            document.addEventListener("DOMContentLoaded", fn);
         }
     }
 
     ready(function () {
-        const alerts = document.querySelectorAll('[data-dismiss-after]');
+        const alerts = document.querySelectorAll("[data-dismiss-after]");
 
         for (let index = 0; index < alerts.length; index++) {
             window.setTimeout(function (element) {

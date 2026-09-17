@@ -25,13 +25,13 @@
 // Nothing here is required for the page to work: without script a tile is a link to the printer,
 // which is what it was before any of this.
 (function () {
-    'use strict';
+    "use strict";
 
     function ready(fn) {
-        if (document.readyState !== 'loading') {
+        if (document.readyState !== "loading") {
             fn();
         } else {
-            document.addEventListener('DOMContentLoaded', fn);
+            document.addEventListener("DOMContentLoaded", fn);
         }
     }
 

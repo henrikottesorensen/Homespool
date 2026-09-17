@@ -12,21 +12,21 @@
 //
 // The button is hidden in the markup and revealed here, because without scripting it cannot act.
 (function () {
-    'use strict';
+    "use strict";
 
-    const OPEN_BODY_CLASS = 'camera-maximised-open';
-    const OPEN_VIEW_CLASS = 'camera-view-maximised';
+    const OPEN_BODY_CLASS = "camera-maximised-open";
+    const OPEN_VIEW_CLASS = "camera-view-maximised";
 
     function ready(fn) {
-        if (document.readyState !== 'loading') {
+        if (document.readyState !== "loading") {
             fn();
         } else {
-            document.addEventListener('DOMContentLoaded', fn);
+            document.addEventListener("DOMContentLoaded", fn);
         }
     }
 
     function attach(view) {
-        const button = view.querySelector('.camera-maximise');
+        const button = view.querySelector(".camera-maximise");
 
         if (!button) {
             return;
@@ -34,19 +34,19 @@
 
         // Only now is it usable, so only now is it shown.
         button.hidden = false;
-        button.classList.remove('d-none');
+        button.classList.remove("d-none");
 
         function open() {
             view.classList.add(OPEN_VIEW_CLASS);
             document.body.classList.add(OPEN_BODY_CLASS);
-            button.setAttribute('aria-label', button.dataset.labelRestore);
+            button.setAttribute("aria-label", button.dataset.labelRestore);
             button.title = button.dataset.labelRestore;
         }
 
         function close() {
             view.classList.remove(OPEN_VIEW_CLASS);
             document.body.classList.remove(OPEN_BODY_CLASS);
-            button.setAttribute('aria-label', button.dataset.labelMaximise);
+            button.setAttribute("aria-label", button.dataset.labelMaximise);
             button.title = button.dataset.labelMaximise;
         }
 
@@ -54,7 +54,7 @@
             return view.classList.contains(OPEN_VIEW_CLASS);
         }
 
-        button.addEventListener('click', function (event) {
+        button.addEventListener("click", function (event) {
             // The panel is inside a figure that may itself be clickable later; keep this local.
             event.stopPropagation();
 
@@ -67,14 +67,14 @@
 
         // Clicking the backdrop closes, but a click on the picture must not - somebody watching a
         // print will rest a cursor there, and losing the view to that would be its own annoyance.
-        view.addEventListener('click', function (event) {
+        view.addEventListener("click", function (event) {
             if (isOpen() && event.target === view) {
                 close();
             }
         });
 
-        document.addEventListener('keydown', function (event) {
-            if (isOpen() && (event.key === 'Escape' || event.key === 'Esc')) {
+        document.addEventListener("keydown", function (event) {
+            if (isOpen() && (event.key === "Escape" || event.key === "Esc")) {
                 close();
             }
         });
@@ -86,7 +86,7 @@
     }
 
     ready(function () {
-        const views = document.querySelectorAll('[data-camera-frame]');
+        const views = document.querySelectorAll("[data-camera-frame]");
 
         for (let i = 0; i < views.length; i++) {
             attach(views[i]);

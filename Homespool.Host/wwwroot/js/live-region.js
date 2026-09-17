@@ -11,7 +11,7 @@
 // Nothing here is required for the page to work. Without script each region simply keeps what the
 // server rendered on load, which is what this page did before any of this existed.
 (function () {
-    'use strict';
+    "use strict";
 
     // How long a region keeps its last good content after a failed refresh before saying so. Longer
     // than several intervals, so one dropped request on a flaky connection does not blank a card that
@@ -34,10 +34,10 @@
     }
 
     function ready(fn) {
-        if (document.readyState !== 'loading') {
+        if (document.readyState !== "loading") {
             fn();
         } else {
-            document.addEventListener('DOMContentLoaded', fn);
+            document.addEventListener("DOMContentLoaded", fn);
         }
     }
 
@@ -77,11 +77,11 @@
             // [Authorize] and an anonymous fetch would be redirected to the login page, whose HTML
             // would then be swapped into the card.
             window.fetch(url, {
-                credentials: 'same-origin',
-                headers: { 'X-Requested-With': 'fetch' },
+                credentials: "same-origin",
+                headers: { "X-Requested-With": "fetch" },
             }).then(function (response) {
                 if (!response.ok) {
-                    throw new Error('' + response.status);
+                    throw new Error("" + response.status);
                 }
 
                 // A redirect is not an answer to this question. fetch follows one silently, so a
@@ -90,12 +90,12 @@
                 // that still looks signed in. Seen happening, not imagined: the handlers are behind
                 // [Authorize], and that is exactly what they do to an anonymous caller.
                 if (response.redirected) {
-                    throw new Error('redirected');
+                    throw new Error("redirected");
                 }
 
                 return response.text();
             }).then(function (html) {
-                region.removeAttribute('data-live-stale');
+                region.removeAttribute("data-live-stale");
                 lastGoodAt = Date.now();
 
                 // Most polls answer with exactly what is already on screen, and replacing markup with
@@ -116,14 +116,14 @@
                 // age the card carries already says how long ago that was - the attribute lets the
                 // stylesheet fade it so a page nobody is refreshing does not pass for a live one.
                 if (Date.now() - lastGoodAt > STALE_AFTER_MS) {
-                    region.setAttribute('data-live-stale', '');
+                    region.setAttribute("data-live-stale", "");
                 }
             }).finally(schedule);
         }
 
         // A tab coming back to the front has been showing something possibly minutes old. Refresh at
         // once rather than waiting out the interval, which for the graph is half a minute.
-        document.addEventListener('visibilitychange', function () {
+        document.addEventListener("visibilitychange", function () {
             if (!document.hidden) {
                 refresh();
             }
@@ -133,7 +133,7 @@
     }
 
     ready(function () {
-        const regions = document.querySelectorAll('[data-live-region]');
+        const regions = document.querySelectorAll("[data-live-region]");
 
         for (let index = 0; index < regions.length; index++) {
             attach(regions[index]);

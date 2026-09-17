@@ -23,7 +23,7 @@
 //   which is the same principle the polled still follows - a background tab must not hold a camera
 //   open for nobody.
 (function () {
-    'use strict';
+    "use strict";
 
     // How long to wait for pictures before giving up and going back to the still. Generous against
     // the measured worst case: an H.264 camera cannot produce anything until its next keyframe, and
@@ -48,10 +48,10 @@
     const MJPEG_POLL_MS = 200;
 
     function ready(fn) {
-        if (document.readyState !== 'loading') {
+        if (document.readyState !== "loading") {
             fn();
         } else {
-            document.addEventListener('DOMContentLoaded', fn);
+            document.addEventListener("DOMContentLoaded", fn);
         }
     }
 
@@ -59,7 +59,7 @@
     // enough to stop being worth it.
     function gathered(connection) {
         return new Promise(function (resolve) {
-            if (connection.iceGatheringState === 'complete') {
+            if (connection.iceGatheringState === "complete") {
                 resolve();
                 return;
             }
@@ -68,42 +68,42 @@
 
             function finish() {
                 window.clearTimeout(timer);
-                connection.removeEventListener('icegatheringstatechange', check);
+                connection.removeEventListener("icegatheringstatechange", check);
                 resolve();
             }
 
             function check() {
-                if (connection.iceGatheringState === 'complete') {
+                if (connection.iceGatheringState === "complete") {
                     finish();
                 }
             }
 
-            connection.addEventListener('icegatheringstatechange', check);
+            connection.addEventListener("icegatheringstatechange", check);
         });
     }
 
     function attach(view) {
-        const controls = view.parentElement.querySelector('.camera-live-controls');
+        const controls = view.parentElement.querySelector(".camera-live-controls");
 
         if (!controls) {
             return;
         }
 
         // In the picture now, not in the controls row - the row keeps only the note.
-        const button = view.querySelector('.camera-live-toggle');
+        const button = view.querySelector(".camera-live-toggle");
 
         if (!button) {
             return;
         }
 
-        const note = controls.querySelector('.camera-live-note');
-        const image = view.querySelector('.camera-image');
-        const video = view.querySelector('.camera-live-video');
-        const status = view.querySelector('.camera-status');
+        const note = controls.querySelector(".camera-live-note");
+        const image = view.querySelector(".camera-image");
+        const video = view.querySelector(".camera-live-video");
+        const status = view.querySelector(".camera-status");
 
         // The same caption the still uses for its age. While live it says so instead, and the poller
         // is paused, so the two never write to it at once.
-        const age = view.parentElement.querySelector('.camera-age');
+        const age = view.parentElement.querySelector(".camera-age");
 
         let connection = null;
         let deadline = null;
@@ -120,11 +120,11 @@
         let framePoll = null;
 
         function say(text) {
-            note.textContent = text || '';
+            note.textContent = text || "";
         }
 
-        const play = button.querySelector('.camera-live-play');
-        const stopIcon = button.querySelector('.camera-live-stop');
+        const play = button.querySelector(".camera-live-play");
+        const stopIcon = button.querySelector(".camera-live-stop");
 
         // The button used to be its own status display: its text said watch, stop, connecting,
         // failed. As an icon in the picture it has no room for that, so the label becomes the
@@ -133,11 +133,11 @@
         // aria-label and title together on purpose - the first is what a screen reader announces,
         // the second is what a pointer reveals, and an icon-only control needs both.
         function label(text, showStop) {
-            button.setAttribute('aria-label', text);
-            button.setAttribute('title', text);
+            button.setAttribute("aria-label", text);
+            button.setAttribute("title", text);
 
-            play.classList.toggle('d-none', !!showStop);
-            stopIcon.classList.toggle('d-none', !showStop);
+            play.classList.toggle("d-none", !!showStop);
+            stopIcon.classList.toggle("d-none", !showStop);
         }
 
         // Everything that undoes a live view, in one place: called by the stop button, by the
@@ -159,8 +159,8 @@
                 framePoll = null;
             }
 
-            age.textContent = '';
-            age.classList.remove('text-success', 'fw-semibold');
+            age.textContent = "";
+            age.classList.remove("text-success", "fw-semibold");
 
             if (connection) {
                 connection.close();
@@ -173,28 +173,28 @@
                 streaming = false;
                 image.onload = null;
                 image.onerror = null;
-                image.removeAttribute('src');
-                image.classList.add('d-none');
+                image.removeAttribute("src");
+                image.classList.add("d-none");
             }
 
             video.srcObject = null;
-            video.classList.add('d-none');
+            video.classList.add("d-none");
 
             // Only if there is one to show. An img with no src draws its alt text into an empty
             // panel, which is the rendering defect this page has already been caught by once.
-            if (image.getAttribute('src')) {
-                image.classList.remove('d-none');
+            if (image.getAttribute("src")) {
+                image.classList.remove("d-none");
             }
 
             // Handed back to the poller, which owns whether this reads "Capturing…" or nothing.
-            status.classList.remove('d-none');
+            status.classList.remove("d-none");
 
             button.disabled = false;
             label(button.dataset.labelWatch, false);
             say(message);
 
             // Hands the picture back to the poller, which restarts from wherever it was.
-            view.dispatchEvent(new CustomEvent('camera-live-stopped'));
+            view.dispatchEvent(new CustomEvent("camera-live-stopped"));
         }
 
         function watching() {
@@ -205,17 +205,17 @@
 
             // Only now is the still redundant. Swapping earlier would show an empty video element
             // for as long as the first keyframe takes, which is the part that looks broken.
-            image.classList.add('d-none');
-            video.classList.remove('d-none');
+            image.classList.add("d-none");
+            video.classList.remove("d-none");
 
             // A class rather than the hidden attribute, because this element carries d-flex and
             // Bootstrap's display utilities beat hidden - the same trap that once left alt text
             // sitting in an empty panel. d-none sorts last among them, so it is the one that wins.
-            status.classList.add('d-none');
+            status.classList.add("d-none");
 
             button.disabled = false;
             label(button.dataset.labelStop, true);
-            say('');
+            say("");
 
             watchForPictures();
         }
@@ -240,7 +240,7 @@
                     let bytes = 0;
 
                     report.forEach(function (entry) {
-                        if (entry.type === 'inbound-rtp' && entry.kind === 'video') {
+                        if (entry.type === "inbound-rtp" && entry.kind === "video") {
                             bytes += entry.bytesReceived || 0;
                         }
                     });
@@ -249,7 +249,7 @@
                         seen = bytes;
                         silent = 0;
                         age.textContent = button.dataset.labelLive;
-                        age.classList.add('text-success', 'fw-semibold');
+                        age.classList.add("text-success", "fw-semibold");
                         return;
                     }
 
@@ -269,11 +269,11 @@
             button.disabled = true;
             label(button.dataset.labelStop, true);
             say(button.dataset.labelConnecting);
-            say('');
+            say("");
 
             // Stops the poll before the connection is made rather than after: both ask the stream
             // server for the same camera, and the still's request is what schedules another capture.
-            view.dispatchEvent(new CustomEvent('camera-live-started'));
+            view.dispatchEvent(new CustomEvent("camera-live-started"));
 
             // No ICE servers: this deployment does not contact a third party to discover addresses,
             // and on a LAN the host candidates both ends already have are what connects.
@@ -285,20 +285,20 @@
                 stop(button.dataset.labelFailed);
             }, CONNECT_TIMEOUT_MS);
 
-            connection.addEventListener('track', function (event) {
+            connection.addEventListener("track", function (event) {
                 video.srcObject = event.streams[0];
             });
 
-            connection.addEventListener('connectionstatechange', function () {
+            connection.addEventListener("connectionstatechange", function () {
                 if (!connection) {
                     return;
                 }
 
-                if (connection.connectionState === 'connected') {
+                if (connection.connectionState === "connected") {
                     watching();
-                } else if (connection.connectionState === 'failed' ||
-                           connection.connectionState === 'disconnected' ||
-                           connection.connectionState === 'closed') {
+                } else if (connection.connectionState === "failed" ||
+                           connection.connectionState === "disconnected" ||
+                           connection.connectionState === "closed") {
                     stop(button.dataset.labelFailed);
                 }
             });
@@ -306,19 +306,19 @@
             try {
                 // recvonly, and stated rather than implied: this end has no camera and offering to
                 // send would ask the browser for permission it has no reason to want.
-                connection.addTransceiver('video', { direction: 'recvonly' });
+                connection.addTransceiver("video", { direction: "recvonly" });
 
                 const offer = await connection.createOffer();
                 await connection.setLocalDescription(offer);
                 await gathered(connection);
 
                 const response = await fetch(view.dataset.cameraWebrtc, {
-                    method: 'POST',
-                    cache: 'no-store',
-                    credentials: 'same-origin',
-                    headers: { 'Content-Type': 'application/json' },
+                    method: "POST",
+                    cache: "no-store",
+                    credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        type: 'offer',
+                        type: "offer",
                         sdp: connection.localDescription.sdp,
                     }),
                 });
@@ -340,7 +340,7 @@
                     return;
                 }
 
-                await connection.setRemoteDescription({ type: 'answer', sdp: answer.sdp });
+                await connection.setRemoteDescription({ type: "answer", sdp: answer.sdp });
             } catch {
                 stop(button.dataset.labelFailed);
             }
@@ -362,9 +362,9 @@
             button.disabled = true;
             label(button.dataset.labelStop, true);
             say(button.dataset.labelConnecting);
-            say('');
+            say("");
 
-            view.dispatchEvent(new CustomEvent('camera-live-started'));
+            view.dispatchEvent(new CustomEvent("camera-live-started"));
             streaming = true;
 
             // The picture is cleared before the stream is attached, and that is load-bearing rather
@@ -373,9 +373,9 @@
             // "has a frame arrived" is unanswerable unless naturalWidth is first driven to zero.
             // Measured in Safari 26.5 (2026-08-19): the stream plays, and no load event arrives for
             // it, so comparing sizes reported failure while frames were visibly decoding.
-            image.removeAttribute('src');
-            image.classList.add('d-none');
-            status.classList.remove('d-none');
+            image.removeAttribute("src");
+            image.classList.add("d-none");
+            status.classList.remove("d-none");
 
             function watchingMjpeg() {
                 if (deadline) {
@@ -388,13 +388,13 @@
                     framePoll = null;
                 }
 
-                status.classList.add('d-none');
-                image.classList.remove('d-none');
+                status.classList.add("d-none");
+                image.classList.remove("d-none");
                 button.disabled = false;
                 label(button.dataset.labelStop, true);
                 age.textContent = button.dataset.labelLive;
-                age.classList.add('text-success', 'fw-semibold');
-                say('');
+                age.classList.add("text-success", "fw-semibold");
+                say("");
             }
 
             deadline = window.setTimeout(function () {
@@ -426,30 +426,30 @@
             };
 
             image.src = view.dataset.cameraStream;
-            image.classList.remove('d-none');
+            image.classList.remove("d-none");
         }
 
-        button.addEventListener('click', function () {
+        button.addEventListener("click", function () {
             if (connection || streaming) {
                 // A viewer stopping deliberately is not a failure and gets no message.
-                stop('');
-            } else if (transport === 'mjpeg') {
+                stop("");
+            } else if (transport === "mjpeg") {
                 startMjpeg();
             } else {
                 start();
             }
         });
 
-        document.addEventListener('visibilitychange', function () {
+        document.addEventListener("visibilitychange", function () {
             if (document.hidden && (connection || streaming)) {
-                stop('');
+                stop("");
             }
         });
 
         // Whether this camera can be watched is the server's answer, and it can change from no to
         // yes shortly after a restart - the stream server does not know a camera's codec until it
         // has connected to it once. Asked once here; the still is unaffected either way.
-        fetch(view.dataset.cameraLive, { cache: 'no-store', credentials: 'same-origin' })
+        fetch(view.dataset.cameraLive, { cache: "no-store", credentials: "same-origin" })
             .then(function (response) {
                 return response.ok ? response.json() : null;
             })
@@ -459,8 +459,8 @@
 
                     // Two elements now, in two places: the button lives on the picture and the note
                     // under it. Revealing only the row would leave a camera with no way to start.
-                    button.classList.remove('d-none');
-                    controls.classList.remove('d-none');
+                    button.classList.remove("d-none");
+                    controls.classList.remove("d-none");
                 }
             })
             .catch(function () {
@@ -469,7 +469,7 @@
     }
 
     ready(function () {
-        const views = document.querySelectorAll('[data-camera-live]');
+        const views = document.querySelectorAll("[data-camera-live]");
 
         for (let i = 0; i < views.length; i++) {
             attach(views[i]);

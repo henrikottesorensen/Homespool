@@ -34,7 +34,7 @@
             // the view's business - it is the model-bound name, and this file should not be a second
             // place that has to be right about it.
             const name = button.getAttribute(ticking ? "data-tick-all" : "data-untick-all");
-            const boxes = form.querySelectorAll("input[type=checkbox][name=\"" + name + "\"]");
+            const boxes = form.querySelectorAll('input[type=checkbox][name="' + name + '"]');
 
             if (!boxes.length) {
                 // Whatever this button is for is not on the page. Let the post happen and let the

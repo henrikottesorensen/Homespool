@@ -17,8 +17,8 @@ namespace Homespool.Host.Test;
 /// asserts the <i>opposite</i> (BOM required) and ships no inverse; <c>.editorconfig</c>'s
 /// <c>charset = utf-8</c> is honoured by editors but invisible to the build; and git cannot help -
 /// <c>working-tree-encoding=UTF-8</c> was tried and is a no-op, because with UTF-8 declared there is
-/// nothing to re-encode so nothing gets validated. There is no CI to hang a script off, so this runs
-/// where everything else here runs.
+/// nothing to re-encode so nothing gets validated. As a test it needs no script of its own: it runs
+/// with the suite, wherever the suite runs - a local <c>dotnet test</c> and CI alike.
 /// </para>
 /// <para>
 /// The BOM half is a house rule: UTF-8 has no byte order, so the mark encodes nothing and breaks

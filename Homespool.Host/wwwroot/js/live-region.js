@@ -16,7 +16,7 @@
     // How long a region keeps its last good content after a failed refresh before saying so. Longer
     // than several intervals, so one dropped request on a flaky connection does not blank a card that
     // is about to be fine.
-    var STALE_AFTER_MS = 30000;
+    const STALE_AFTER_MS = 30000;
 
     // Two renders of the same thing are never byte-identical when a form is in them: the antiforgery
     // token is a fresh ciphertext on every request, whatever the form around it says. Compared as
@@ -25,7 +25,7 @@
     // token's value first. What stays on screen when the swap is skipped is the token from an earlier
     // render, and that is fine: a token stays valid for as long as the cookie beside it does, and
     // nothing about it is single-use.
-    var TOKEN_INPUT = /<input[^>]*__RequestVerificationToken[^>]*>/g;
+    const TOKEN_INPUT = /<input[^>]*__RequestVerificationToken[^>]*>/g;
 
     function comparable(html) {
         return html.replace(TOKEN_INPUT, function (tag) {
@@ -42,18 +42,18 @@
     }
 
     function attach(region) {
-        var url = region.dataset.liveUrl;
-        var interval = parseInt(region.dataset.liveInterval, 10);
+        const url = region.dataset.liveUrl;
+        const interval = parseInt(region.dataset.liveInterval, 10);
 
         if (!url || !(interval > 0)) {
             return;
         }
 
-        var timer = null;
-        var lastGoodAt = Date.now();
+        let timer = null;
+        let lastGoodAt = Date.now();
 
         // What is on screen, so an unchanged answer can be recognised without touching the DOM.
-        var lastHtml = null;
+        let lastHtml = null;
 
         function schedule() {
             if (timer) {
@@ -103,7 +103,7 @@
                 // For the queue that means the reorder and remove buttons are pulled out from under a
                 // finger mid-press several times a minute. Compare first - without the token, see
                 // comparable() - and swap only on a real change.
-                var next = comparable(html);
+                const next = comparable(html);
 
                 if (next === lastHtml) {
                     return;
@@ -133,9 +133,9 @@
     }
 
     ready(function () {
-        var regions = document.querySelectorAll('[data-live-region]');
+        const regions = document.querySelectorAll('[data-live-region]');
 
-        for (var index = 0; index < regions.length; index++) {
+        for (let index = 0; index < regions.length; index++) {
             attach(regions[index]);
         }
     });

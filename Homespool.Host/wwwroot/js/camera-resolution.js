@@ -20,7 +20,7 @@
     }
 
     function attach(devices) {
-        var target = document.getElementById(devices.dataset.resolutionTarget);
+        const target = document.getElementById(devices.dataset.resolutionTarget);
 
         if (!target) {
             return;
@@ -28,21 +28,21 @@
 
         // The first entry is the "camera default" the page rendered, and it is kept across every
         // repopulation - it is the one choice no camera can refuse.
-        var fallback = target.options[0];
+        const fallback = target.options[0];
 
         function repopulate() {
-            var option = devices.options[devices.selectedIndex];
-            var sizes = option && option.dataset.sizes ? option.dataset.sizes.split(' ') : [];
+            const option = devices.options[devices.selectedIndex];
+            const sizes = option && option.dataset.sizes ? option.dataset.sizes.split(' ') : [];
 
             target.textContent = '';
             target.appendChild(fallback);
 
-            for (var i = 0; i < sizes.length; i++) {
+            for (let i = 0; i < sizes.length; i++) {
                 if (!sizes[i]) {
                     continue;
                 }
 
-                var entry = document.createElement('option');
+                const entry = document.createElement('option');
                 entry.value = sizes[i];
                 entry.textContent = sizes[i];
                 target.appendChild(entry);
@@ -54,9 +54,9 @@
     }
 
     ready(function () {
-        var selects = document.querySelectorAll('[data-resolution-target]');
+        const selects = document.querySelectorAll('[data-resolution-target]');
 
-        for (var i = 0; i < selects.length; i++) {
+        for (let i = 0; i < selects.length; i++) {
             attach(selects[i]);
         }
     });

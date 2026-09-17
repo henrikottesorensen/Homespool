@@ -5,9 +5,9 @@
 (function () {
     "use strict";
 
-    var form = document.getElementById("passkey-register-form");
-    var button = document.getElementById("passkey-add");
-    var error = document.getElementById("passkey-error");
+    const form = document.getElementById("passkey-register-form");
+    const button = document.getElementById("passkey-add");
+    const error = document.getElementById("passkey-error");
 
     if (!form || !button || !error) {
         return;
@@ -20,12 +20,12 @@
     button.hidden = false;
 
     function fromBase64Url(text) {
-        var base64 = text.replace(/-/g, "+").replace(/_/g, "/");
-        var padded = base64 + "===".slice((base64.length + 3) % 4);
-        var binary = window.atob(padded);
-        var bytes = new Uint8Array(binary.length);
+        const base64 = text.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64 + "===".slice((base64.length + 3) % 4);
+        const binary = window.atob(padded);
+        const bytes = new Uint8Array(binary.length);
 
-        for (var i = 0; i < binary.length; i += 1) {
+        for (let i = 0; i < binary.length; i += 1) {
             bytes[i] = binary.charCodeAt(i);
         }
 
@@ -33,10 +33,10 @@
     }
 
     function toBase64Url(buffer) {
-        var bytes = new Uint8Array(buffer);
-        var binary = "";
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
 
-        for (var i = 0; i < bytes.length; i += 1) {
+        for (let i = 0; i < bytes.length; i += 1) {
             binary += String.fromCharCode(bytes[i]);
         }
 
@@ -46,7 +46,7 @@
     // The creation options as the server sends them, with the binary fields decoded: what
     // PublicKeyCredential.parseCreationOptionsFromJSON does in browsers that have it.
     function toCreationOptions(json) {
-        var options = {
+        const options = {
             rp: json.rp,
             user: {
                 id: fromBase64Url(json.user.id),
@@ -74,7 +74,7 @@
 
     // The credential as the server expects it: what credential.toJSON() returns.
     function toCredentialJson(credential) {
-        var response = credential.response;
+        const response = credential.response;
 
         return JSON.stringify({
             id: credential.id,
@@ -103,7 +103,7 @@
         button.disabled = true;
 
         // Built from this form so the antiforgery field travels with the challenge request.
-        var body = new FormData(form);
+        const body = new FormData(form);
 
         fetch(form.dataset.passkeyOptions, { method: "POST", body: body, credentials: "same-origin" })
             .then(function (response) {

@@ -9,13 +9,13 @@
 (function () {
     "use strict";
 
-    var zone = document.querySelector("[data-upload-dropzone]");
+    const zone = document.querySelector("[data-upload-dropzone]");
 
     if (!zone) {
         return;
     }
 
-    var input = zone.querySelector("input[type=file]");
+    const input = zone.querySelector("input[type=file]");
 
     if (!input) {
         return;
@@ -32,10 +32,10 @@
     // convention rather than two. The count or name being placed is only known once a drop happens,
     // which is after the page has already rendered.
     function format(template) {
-        var args = arguments;
+        const args = arguments;
 
         return template.replace(/\{(\d+)\}/g, function (match, index) {
-            var value = args[Number(index) + 1];
+            const value = args[Number(index) + 1];
 
             return value === undefined ? match : value;
         });
@@ -75,15 +75,15 @@
     // one to the same handler in turn, then reload once. Sequential rather than concurrent because
     // the handler holds one pending-conflict slot at a time - two uploads racing each other through
     // it would let the second's answer clobber the first's before anyone saw the question.
-    var MAX_DROPPED_FILES = 16;
+    const MAX_DROPPED_FILES = 16;
 
     function uploadDropped(files) {
-        var status = document.createElement("p");
+        const status = document.createElement("p");
 
         status.className = "text-body-secondary small mb-0 mt-2";
         zone.appendChild(status);
 
-        var index = 0;
+        let index = 0;
 
         function next() {
             if (index >= files.length) {
@@ -95,7 +95,7 @@
                 return;
             }
 
-            var file = files[index];
+            const file = files[index];
 
             index += 1;
             status.textContent = format(zone.dataset.uploadProgress, index, files.length, file.name);
@@ -103,7 +103,7 @@
             // Built from the real form so the antiforgery field and the route values it already
             // carries - sort, printer, handler - travel with it unchanged; only the file differs
             // from what a native submit would have sent.
-            var body = new FormData(input.form);
+            const body = new FormData(input.form);
 
             body.set("file", file);
 
@@ -122,7 +122,7 @@
             return;
         }
 
-        var dropped = event.dataTransfer.files;
+        const dropped = event.dataTransfer.files;
 
         // One file is unambiguous and goes straight through, same as the picker. More than one asks
         // first - a multi-file drop is easier to do by accident than a single one, and confirming
@@ -166,7 +166,7 @@
 (function () {
     "use strict";
 
-    var forms = document.querySelectorAll("[data-confirm]");
+    const forms = document.querySelectorAll("[data-confirm]");
 
     if (!forms.length) {
         return;
@@ -189,13 +189,13 @@
 (function () {
     "use strict";
 
-    var form = document.querySelector("[data-printer-select]");
+    const form = document.querySelector("[data-printer-select]");
 
     if (!form) {
         return;
     }
 
-    var select = form.querySelector("select");
+    const select = form.querySelector("select");
 
     if (!select) {
         return;
@@ -233,7 +233,7 @@ document.addEventListener("DOMContentLoaded", function () {
         return;
     }
 
-    var validation = new aspnetValidation.ValidationService();
+    const validation = new aspnetValidation.ValidationService();
 
     // watch:true so fields added after load are picked up. Nothing here does that today; it costs a
     // MutationObserver and removes a trap from whoever adds the first dynamic form.
@@ -254,7 +254,7 @@ document.addEventListener("DOMContentLoaded", function () {
 (function () {
     "use strict";
 
-    var fields = document.querySelectorAll("[data-select-on-click]");
+    const fields = document.querySelectorAll("[data-select-on-click]");
 
     Array.prototype.forEach.call(fields, function (field) {
         field.addEventListener("click", function () {
@@ -266,24 +266,24 @@ document.addEventListener("DOMContentLoaded", function () {
 (function () {
     "use strict";
 
-    var groups = document.querySelectorAll("[data-copy]");
+    const groups = document.querySelectorAll("[data-copy]");
 
     if (!groups.length) {
         return;
     }
 
     Array.prototype.forEach.call(groups, function (group) {
-        var source = group.querySelector("[data-copy-source]");
-        var button = group.querySelector("[data-copy-button]");
+        const source = group.querySelector("[data-copy-source]");
+        const button = group.querySelector("[data-copy-button]");
 
         if (!source || !button) {
             return;
         }
 
         // The status line lives outside the group so the layout does not move when it fills.
-        var status = group.parentNode.querySelector("[data-copy-status]");
-        var original = button.textContent;
-        var revert;
+        const status = group.parentNode.querySelector("[data-copy-status]");
+        const original = button.textContent;
+        let revert;
 
         function say(message, copied) {
             button.textContent = copied ? "Copied" : original;

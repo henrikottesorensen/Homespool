@@ -28,24 +28,24 @@
     // How long to wait for pictures before giving up and going back to the still. Generous against
     // the measured worst case: an H.264 camera cannot produce anything until its next keyframe, and
     // the one this was built against has a 2.25s GOP.
-    var CONNECT_TIMEOUT_MS = 10000;
+    const CONNECT_TIMEOUT_MS = 10000;
 
     // How long to wait for the browser to finish gathering its own addresses before sending the
     // offer. This exchange is one request and one answer with no trickling, so everything has to be
     // in that offer - but on a LAN gathering finishes in milliseconds, and this is only the ceiling
     // for a browser that never says it is done.
-    var GATHER_TIMEOUT_MS = 2000;
+    const GATHER_TIMEOUT_MS = 2000;
 
     // How often to ask the connection whether pictures are still arriving, and how many consecutive
     // silent checks end the view. Six seconds of nothing is well past any keyframe gap and short
     // enough that nobody stares at a frozen frame wondering.
-    var STATS_INTERVAL_MS = 2000;
-    var STALLED_AFTER_CHECKS = 3;
+    const STATS_INTERVAL_MS = 2000;
+    const STALLED_AFTER_CHECKS = 3;
 
     // How often to ask an MJPEG <img> whether it has decoded anything yet. Short, because a JPEG
     // stream produces its first frame immediately and this interval is the whole of the delay
     // between the picture appearing and the page admitting it has.
-    var MJPEG_POLL_MS = 200;
+    const MJPEG_POLL_MS = 200;
 
     function ready(fn) {
         if (document.readyState !== 'loading') {
@@ -64,7 +64,7 @@
                 return;
             }
 
-            var timer = window.setTimeout(finish, GATHER_TIMEOUT_MS);
+            const timer = window.setTimeout(finish, GATHER_TIMEOUT_MS);
 
             function finish() {
                 window.clearTimeout(timer);
@@ -83,48 +83,48 @@
     }
 
     function attach(view) {
-        var controls = view.parentElement.querySelector('.camera-live-controls');
+        const controls = view.parentElement.querySelector('.camera-live-controls');
 
         if (!controls) {
             return;
         }
 
         // In the picture now, not in the controls row - the row keeps only the note.
-        var button = view.querySelector('.camera-live-toggle');
+        const button = view.querySelector('.camera-live-toggle');
 
         if (!button) {
             return;
         }
 
-        var note = controls.querySelector('.camera-live-note');
-        var image = view.querySelector('.camera-image');
-        var video = view.querySelector('.camera-live-video');
-        var status = view.querySelector('.camera-status');
+        const note = controls.querySelector('.camera-live-note');
+        const image = view.querySelector('.camera-image');
+        const video = view.querySelector('.camera-live-video');
+        const status = view.querySelector('.camera-status');
 
         // The same caption the still uses for its age. While live it says so instead, and the poller
         // is paused, so the two never write to it at once.
-        var age = view.parentElement.querySelector('.camera-age');
+        const age = view.parentElement.querySelector('.camera-age');
 
-        var connection = null;
-        var deadline = null;
-        var stats = null;
+        let connection = null;
+        let deadline = null;
+        let stats = null;
 
         // Which way the server said to watch - 'webrtc' or 'mjpeg' - decided there from the
         // camera's probed codec. For 'mjpeg' the still's own <img> is pointed at the relayed
         // multipart stream, which every browser renders natively.
-        var transport = null;
-        var streaming = false;
+        let transport = null;
+        let streaming = false;
 
         // The MJPEG path's poll for "has a frame decoded yet". Separate from the WebRTC path's
         // stats interval because they watch different things and stop() must clear both.
-        var framePoll = null;
+        let framePoll = null;
 
         function say(text) {
             note.textContent = text || '';
         }
 
-        var play = button.querySelector('.camera-live-play');
-        var stopIcon = button.querySelector('.camera-live-stop');
+        const play = button.querySelector('.camera-live-play');
+        const stopIcon = button.querySelector('.camera-live-stop');
 
         // The button used to be its own status display: its text said watch, stop, connecting,
         // failed. As an icon in the picture it has no room for that, so the label becomes the
@@ -228,8 +228,8 @@
         // prevent, one layer up. WebRTC can also half-die: the connection stays "connected" while
         // media stops, which no event reports. Counting bytes is the only thing that notices.
         function watchForPictures() {
-            var seen = 0;
-            var silent = 0;
+            let seen = 0;
+            let silent = 0;
 
             stats = window.setInterval(function () {
                 if (!connection) {
@@ -237,7 +237,7 @@
                 }
 
                 connection.getStats(null).then(function (report) {
-                    var bytes = 0;
+                    let bytes = 0;
 
                     report.forEach(function (entry) {
                         if (entry.type === 'inbound-rtp' && entry.kind === 'video') {
@@ -308,11 +308,11 @@
                 // send would ask the browser for permission it has no reason to want.
                 connection.addTransceiver('video', { direction: 'recvonly' });
 
-                var offer = await connection.createOffer();
+                const offer = await connection.createOffer();
                 await connection.setLocalDescription(offer);
                 await gathered(connection);
 
-                var response = await fetch(view.dataset.cameraWebrtc, {
+                const response = await fetch(view.dataset.cameraWebrtc, {
                     method: 'POST',
                     cache: 'no-store',
                     credentials: 'same-origin',
@@ -331,7 +331,7 @@
                     return;
                 }
 
-                var answer = await response.json();
+                const answer = await response.json();
 
                 // Closed while the request was in flight - the stop button, or the tab being
                 // hidden. Setting a description on a closed connection throws, and the throw would
@@ -469,9 +469,9 @@
     }
 
     ready(function () {
-        var views = document.querySelectorAll('[data-camera-live]');
+        const views = document.querySelectorAll('[data-camera-live]');
 
-        for (var i = 0; i < views.length; i++) {
+        for (let i = 0; i < views.length; i++) {
             attach(views[i]);
         }
     });

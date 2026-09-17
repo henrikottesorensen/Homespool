@@ -13,7 +13,7 @@
     'use strict';
 
     function refresh(container) {
-        var url = container.getAttribute('data-unload-tools-url');
+        const url = container.getAttribute('data-unload-tools-url');
 
         if (!url) {
             return;
@@ -41,7 +41,7 @@
     }
 
     document.addEventListener('show.bs.modal', function (event) {
-        var container = event.target.querySelector('[data-unload-tools]');
+        const container = event.target.querySelector('[data-unload-tools]');
 
         if (container) {
             refresh(container);

@@ -36,22 +36,22 @@
     }
 
     ready(function () {
-        var form = document.querySelector("[data-drop-form]");
-        var dialog = document.querySelector("[data-drop-dialog]");
+        const form = document.querySelector("[data-drop-form]");
+        const dialog = document.querySelector("[data-drop-dialog]");
 
         if (!form || !dialog || !window.bootstrap) {
             return;
         }
 
-        var content = dialog.querySelector("[data-drop-dialog-content]");
-        var modal = new window.bootstrap.Modal(dialog);
+        const content = dialog.querySelector("[data-drop-dialog-content]");
+        const modal = new window.bootstrap.Modal(dialog);
 
         // The drop that is currently being asked about. Held here rather than on the form, because
         // the form only learns about it once every question has an answer.
-        var pending = null;
+        let pending = null;
 
         function token() {
-            var input = form.querySelector('input[name="__RequestVerificationToken"]');
+            const input = form.querySelector('input[name="__RequestVerificationToken"]');
 
             return input ? input.value : null;
         }
@@ -59,7 +59,7 @@
         // Files land in the form's own input rather than being posted by hand, so the browser builds
         // the multipart body. DataTransfer is the only way to write a FileList.
         function submit(action) {
-            var transfer = new DataTransfer();
+            const transfer = new DataTransfer();
 
             Array.prototype.forEach.call(pending.files, function (file) {
                 transfer.items.add(file);
@@ -71,7 +71,7 @@
 
             // One hidden input per file the reader chose to replace. Absent means keep, which is the
             // default the dialog renders and the safe answer.
-            var replace = form.querySelector("[data-drop-form-replace]");
+            const replace = form.querySelector("[data-drop-form-replace]");
             replace.innerHTML = "";
 
             content.querySelectorAll('input[type="radio"]:checked').forEach(function (radio) {
@@ -79,7 +79,7 @@
                     return;
                 }
 
-                var input = document.createElement("input");
+                const input = document.createElement("input");
                 input.type = "hidden";
                 input.name = "replace";
                 input.value = radio.name.substring("clash:".length);
@@ -106,7 +106,7 @@
         }
 
         content.addEventListener("click", function (event) {
-            var goto = event.target.closest("[data-drop-goto]");
+            const goto = event.target.closest("[data-drop-goto]");
 
             if (goto) {
                 showStep(goto.dataset.dropGoto);
@@ -114,7 +114,7 @@
                 return;
             }
 
-            var chosen = event.target.closest("[data-drop-action]");
+            const chosen = event.target.closest("[data-drop-action]");
 
             if (chosen) {
                 submit(chosen.dataset.dropAction);
@@ -122,14 +122,14 @@
         });
 
         function ask(uuid, files) {
-            var body = new FormData();
+            const body = new FormData();
             body.append("uuid", uuid);
 
             Array.prototype.forEach.call(files, function (file) {
                 body.append("names", file.name);
             });
 
-            var verification = token();
+            const verification = token();
 
             if (verification) {
                 body.append("__RequestVerificationToken", verification);
@@ -188,7 +188,7 @@
 
         ["dragenter", "dragover"].forEach(function (name) {
             document.addEventListener(name, function (event) {
-                var tile = tileFor(event);
+                const tile = tileFor(event);
 
                 if (!tile) {
                     return;
@@ -211,7 +211,7 @@
         });
 
         document.addEventListener("drop", function (event) {
-            var tile = tileFor(event);
+            const tile = tileFor(event);
 
             highlight(null);
 

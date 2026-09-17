@@ -14,8 +14,8 @@
 (function () {
     'use strict';
 
-    var OPEN_BODY_CLASS = 'camera-maximised-open';
-    var OPEN_VIEW_CLASS = 'camera-view-maximised';
+    const OPEN_BODY_CLASS = 'camera-maximised-open';
+    const OPEN_VIEW_CLASS = 'camera-view-maximised';
 
     function ready(fn) {
         if (document.readyState !== 'loading') {
@@ -26,7 +26,7 @@
     }
 
     function attach(view) {
-        var button = view.querySelector('.camera-maximise');
+        const button = view.querySelector('.camera-maximise');
 
         if (!button) {
             return;
@@ -86,9 +86,9 @@
     }
 
     ready(function () {
-        var views = document.querySelectorAll('[data-camera-frame]');
+        const views = document.querySelectorAll('[data-camera-frame]');
 
-        for (var i = 0; i < views.length; i++) {
+        for (let i = 0; i < views.length; i++) {
             attach(views[i]);
         }
     });

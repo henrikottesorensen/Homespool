@@ -12,14 +12,14 @@
 (function () {
     "use strict";
 
-    var buttons = document.querySelectorAll("[data-tick-all], [data-untick-all]");
+    const buttons = document.querySelectorAll("[data-tick-all], [data-untick-all]");
 
     if (!buttons.length) {
         return;
     }
 
     Array.prototype.forEach.call(buttons, function (button) {
-        var form = button.form;
+        const form = button.form;
 
         if (!form) {
             return;
@@ -27,14 +27,14 @@
 
         // Which of the two this is, read once. The attribute that names the group is also the one
         // that says the direction, so the markup cannot ask for a tick and be wired to an untick.
-        var ticking = button.hasAttribute("data-tick-all");
+        const ticking = button.hasAttribute("data-tick-all");
 
         button.addEventListener("click", function (event) {
             // The group is named by the attribute rather than known here, so the checkbox name stays
             // the view's business - it is the model-bound name, and this file should not be a second
             // place that has to be right about it.
-            var name = button.getAttribute(ticking ? "data-tick-all" : "data-untick-all");
-            var boxes = form.querySelectorAll("input[type=checkbox][name=\"" + name + "\"]");
+            const name = button.getAttribute(ticking ? "data-tick-all" : "data-untick-all");
+            const boxes = form.querySelectorAll("input[type=checkbox][name=\"" + name + "\"]");
 
             if (!boxes.length) {
                 // Whatever this button is for is not on the page. Let the post happen and let the

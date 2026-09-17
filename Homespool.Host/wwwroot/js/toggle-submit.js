@@ -14,14 +14,14 @@
 (function () {
     "use strict";
 
-    var inputs = document.querySelectorAll("[data-submit-on-change]");
+    const inputs = document.querySelectorAll("[data-submit-on-change]");
 
     if (!inputs.length) {
         return;
     }
 
     Array.prototype.forEach.call(inputs, function (input) {
-        var form = input.form;
+        const form = input.form;
 
         if (!form) {
             return;

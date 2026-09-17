@@ -16,11 +16,11 @@
 
     // Comfortably under the server's own refresh floor, so the poll is bounded by the camera rather
     // than by this. A faster interval would only ask more often for the same frame.
-    var INTERVAL_MS = 2000;
+    const INTERVAL_MS = 2000;
 
     // How long without a frame before the last picture is taken down. Longer than one acquisition
     // (an RTSP camera takes 2-3s) so a single slow answer does not blank a working view.
-    var UNAVAILABLE_AFTER_MS = 15000;
+    const UNAVAILABLE_AFTER_MS = 15000;
 
     function ready(fn) {
         if (document.readyState !== 'loading') {
@@ -31,7 +31,7 @@
     }
 
     function describeAge(captured) {
-        var seconds = Math.max(0, Math.round((Date.now() - captured) / 1000));
+        const seconds = Math.max(0, Math.round((Date.now() - captured) / 1000));
 
         if (seconds < 2) {
             return 'live';
@@ -41,26 +41,26 @@
     }
 
     function attach(view) {
-        var url = view.dataset.cameraFrame;
-        var image = view.querySelector('.camera-image');
-        var status = view.querySelector('.camera-status');
-        var age = view.parentElement.querySelector('.camera-age');
+        const url = view.dataset.cameraFrame;
+        const image = view.querySelector('.camera-image');
+        const status = view.querySelector('.camera-status');
+        const age = view.parentElement.querySelector('.camera-age');
 
-        var objectUrl = null;
-        var lastFrameAt = 0;
-        var stopped = false;
+        let objectUrl = null;
+        let lastFrameAt = 0;
+        let stopped = false;
 
         // Set while camera-live.js is showing live video from the same camera. Both paths ask the
         // stream server for the same source and a poll is what schedules another capture, so polling
         // underneath a live view would pay for a picture nobody is looking at.
-        var yielded = false;
+        let yielded = false;
 
         // The pending poll, so that resuming can cancel it first. Without this, resuming while one
         // is still queued leaves two chains running against the same camera for the life of the
         // page - each scheduling its own successor, so it never settles back to one. The hidden-tab
         // path could already do it; live view makes it easy, because stopping usually happens within
         // one interval of starting.
-        var timer = null;
+        let timer = null;
 
         function resume() {
             if (timer) {
@@ -112,11 +112,11 @@
                         return;
                     }
 
-                    var next = URL.createObjectURL(blob);
+                    const next = URL.createObjectURL(blob);
 
                     // Revoke only after the new one is showing, or the image blinks empty between
                     // frames.
-                    var previous = objectUrl;
+                    const previous = objectUrl;
                     image.src = next;
                     // A class rather than the hidden attribute: Bootstrap's display utilities carry
                     // !important and beat it, which showed as the alt text sitting in an empty panel.
@@ -144,7 +144,7 @@
                     }
 
                     if (lastFrameAt) {
-                        var stale = Date.now() - lastFrameAt > UNAVAILABLE_AFTER_MS;
+                        const stale = Date.now() - lastFrameAt > UNAVAILABLE_AFTER_MS;
 
                         if (stale) {
                             // Take the picture down. Leaving it up is the failure this whole design
@@ -191,9 +191,9 @@
     }
 
     function attachWithin(root) {
-        var views = (root || document).querySelectorAll('[data-camera-frame]');
+        const views = (root || document).querySelectorAll('[data-camera-frame]');
 
-        for (var i = 0; i < views.length; i++) {
+        for (let i = 0; i < views.length; i++) {
             attach(views[i]);
         }
     }

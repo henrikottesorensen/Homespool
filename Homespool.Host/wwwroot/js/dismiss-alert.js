@@ -15,7 +15,7 @@
 
     // Long enough to read a sentence twice without being asked to hurry, short enough that it is gone
     // before the thing it describes stops being recent.
-    var DISMISS_AFTER_MS = 12000;
+    const DISMISS_AFTER_MS = 12000;
 
     function ready(fn) {
         if (document.readyState !== 'loading') {
@@ -26,9 +26,9 @@
     }
 
     ready(function () {
-        var alerts = document.querySelectorAll('[data-dismiss-after]');
+        const alerts = document.querySelectorAll('[data-dismiss-after]');
 
-        for (var index = 0; index < alerts.length; index++) {
+        for (let index = 0; index < alerts.length; index++) {
             window.setTimeout(function (element) {
                 return function () {
                     // Bootstrap's own dismissal, so the fade matches the close button beside it and

@@ -9,9 +9,9 @@
 (function () {
     "use strict";
 
-    var form = document.getElementById("passkey-form");
-    var button = document.getElementById("passkey-signin");
-    var error = document.getElementById("passkey-error");
+    const form = document.getElementById("passkey-form");
+    const button = document.getElementById("passkey-signin");
+    const error = document.getElementById("passkey-error");
 
     if (!form || !button || !error) {
         return;
@@ -24,12 +24,12 @@
     button.hidden = false;
 
     function fromBase64Url(text) {
-        var base64 = text.replace(/-/g, "+").replace(/_/g, "/");
-        var padded = base64 + "===".slice((base64.length + 3) % 4);
-        var binary = window.atob(padded);
-        var bytes = new Uint8Array(binary.length);
+        const base64 = text.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64 + "===".slice((base64.length + 3) % 4);
+        const binary = window.atob(padded);
+        const bytes = new Uint8Array(binary.length);
 
-        for (var i = 0; i < binary.length; i += 1) {
+        for (let i = 0; i < binary.length; i += 1) {
             bytes[i] = binary.charCodeAt(i);
         }
 
@@ -37,10 +37,10 @@
     }
 
     function toBase64Url(buffer) {
-        var bytes = new Uint8Array(buffer);
-        var binary = "";
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
 
-        for (var i = 0; i < bytes.length; i += 1) {
+        for (let i = 0; i < bytes.length; i += 1) {
             binary += String.fromCharCode(bytes[i]);
         }
 
@@ -51,7 +51,7 @@
     // PublicKeyCredential.parseRequestOptionsFromJSON does in browsers that have it, done by hand so
     // that the ones that do not are not left out.
     function toRequestOptions(json) {
-        var options = {
+        const options = {
             challenge: fromBase64Url(json.challenge),
             rpId: json.rpId,
             timeout: json.timeout,
@@ -73,7 +73,7 @@
     // The credential as the server expects it: what credential.toJSON() returns, done by hand for the
     // same reason as above.
     function toCredentialJson(credential) {
-        var response = credential.response;
+        const response = credential.response;
 
         return JSON.stringify({
             id: credential.id,
@@ -105,12 +105,12 @@
         // The remember-me choice is on the password form, and it means the same thing here. The
         // re-authentication page has neither: it confirms a session rather than starting one.
         if (form.elements.rememberMe) {
-            var remember = document.querySelector("#account input[type=checkbox]");
+            const remember = document.querySelector("#account input[type=checkbox]");
             form.elements.rememberMe.value = remember && remember.checked ? "true" : "false";
         }
 
         // Built from this form so the antiforgery field travels with the challenge request.
-        var body = new FormData(form);
+        const body = new FormData(form);
 
         fetch(form.dataset.passkeyOptions, { method: "POST", body: body, credentials: "same-origin" })
             .then(function (response) {

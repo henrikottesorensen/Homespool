@@ -50,17 +50,24 @@ EXPOSE 8080
 EXPOSE 8081
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
-# Node, for the ESLint targets in Homespool.Host.csproj. From NodeSource's apt repository, set up the
-# way their manual-installation page gives it: the SDK image is Ubuntu, whose own nodejs is older than
-# ESLint accepts. The major version is the one CI's setup-node names. First, so every later layer
-# caches on it; only this stage has Node, and the final image copies the published output and nothing
-# else.
+# Node, for the ESLint targets in Homespool.Host.csproj, from NodeSource's apt repository - the SDK
+# image is Ubuntu, whose own nodejs is older than ESLint accepts. The major version is the one CI's
+# setup-node names. First, so every later layer caches on it; only this stage has Node, and the final
+# image copies the published output and nothing else.
+#
+# The repository's signing key is committed rather than downloaded, so what the build trusts is
+# decided in a reviewed commit, and a key replaced at NodeSource's URL fails the build instead of
+# being taken on trust. gpg/nodesource.asc is
+#
+#     6F71 F525 2828 41EE DAF8  51B4 2F59 B5F9 9B1B E0B4   NSolid <nsolid-gpg@nodesource.com>
+#
+# matched against keyserver.ubuntu.com and keys.openpgp.org, and checked with gpgv against the
+# node_24.x InRelease. No expiry. If NodeSource rotates it, apt-get update stops with NO_PUBKEY:
+# fetch the new key, check its fingerprint the same way, and replace the file. apt reads an armoured
+# key named .asc directly, so gnupg is not needed.
 ARG NODE_MAJOR=24
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl gnupg && \
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg && \
-    printf 'Types: deb\nURIs: https://deb.nodesource.com/node_%s.x/\nSuites: nodistro\nComponents: main\nSigned-By: /etc/apt/keyrings/nodesource.gpg\n' \
+COPY ["gpg/nodesource.asc", "/etc/apt/keyrings/nodesource.asc"]
+RUN printf 'Types: deb\nURIs: https://deb.nodesource.com/node_%s.x/\nSuites: nodistro\nComponents: main\nSigned-By: /etc/apt/keyrings/nodesource.asc\n' \
         "$NODE_MAJOR" > /etc/apt/sources.list.d/nodesource.sources && \
     apt-get update && \
     apt-get install -y --no-install-recommends nodejs && \

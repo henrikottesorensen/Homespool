@@ -42,6 +42,10 @@ export default [
             'eqeqeq': 'error',
             'no-shadow': 'error',
 
+            // let and const, never var: block scope, and a binding that is never reassigned says so.
+            'no-var': 'error',
+            'prefer-const': 'error',
+
             // Layout. The 132 is .editorconfig's max_line_length.
             '@stylistic/brace-style': 'error',
 

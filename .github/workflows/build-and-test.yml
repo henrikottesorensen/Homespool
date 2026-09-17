@@ -28,6 +28,13 @@ jobs:
           # version itself, pinning CI to a band the repo only ever meant as a minimum.
           dotnet-version: '10.0.x'
 
+      # The Host's build runs ESLint over wwwroot/js and needs Node for it. Stated rather than taken from
+      # the runner image, whose Node version is the image's to change, and ESLint refuses one too old.
+      # 24 to match NODE_MAJOR in Homespool.Host/Dockerfile.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
       # Client-side assets are gitignored rather than committed, and the static-asset pipeline wants
       # them present at build time. The Docker build does this for itself inside the image; this is
       # for `dotnet test`, which does not.

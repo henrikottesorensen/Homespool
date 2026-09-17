@@ -1,0 +1,13 @@
+{
+  "name": "homespool-host-lint",
+  "private": true,
+  "description": "Lint tooling for wwwroot/js. Run by the build - see the ESLint targets in Homespool.Host.csproj. Nothing here is served.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": "^20.19.0 || ^22.13.0 || >=24"
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "5.10.0",
+    "eslint": "10.10.0"
+  }
+}

@@ -54,11 +54,11 @@ public static class PrinterCertificateStartup
             // none of the sinks or levels the deployment configured. This is a line an operator has to
             // be able to route.
             app.Logger
-               .LogWarning("Printers reach this deployment in PLAINTEXT because PrusaConnect:PrinterTls is false, and no "
-                           + "certificate is issued while it is off. Every printer token crosses the network in clear, in "
-                           + "both directions - the one on the USB stick and the one issued at claim. This is for a capture "
-                           + "or a rig on a network you control; it is not a deployment setting. The proxy has no printer "
-                           + "certificate to serve either, so publish Listeners:PrinterPort directly.");
+               .LogWarning("Printers reach this deployment in PLAINTEXT because PrusaConnect:PrinterTls is false, and no " +
+                           "certificate is issued while it is off. Every printer token crosses the network in clear, in " +
+                           "both directions - the one on the USB stick and the one issued at claim. This is for a capture " +
+                           "or a rig on a network you control; it is not a deployment setting. The proxy has no printer " +
+                           "certificate to serve either, so publish Listeners:PrinterPort directly.");
 
             return;
         }
@@ -155,10 +155,10 @@ public static class PrinterCertificateStartup
             // IServiceProvider is in scope here, so the WebApplication's own logger - used for the
             // same job above - is not available.
             services.GetRequiredService<ILogger<PrinterCertificateAuthority>>()
-                    .LogWarning("No printer-facing address could be detected and PrusaConnect:PrinterHost is not set, so "
-                                + "the printer certificate covers only localhost. Set PrusaConnect:PrinterHost and delete "
-                                + "the generated printer-leaf.pem and printer-leaf.key.pem to have one issued that "
-                                + "printers can actually verify.");
+                    .LogWarning("No printer-facing address could be detected and PrusaConnect:PrinterHost is not set, so " +
+                                "the printer certificate covers only localhost. Set PrusaConnect:PrinterHost and delete " +
+                                "the generated printer-leaf.pem and printer-leaf.key.pem to have one issued that " +
+                                "printers can actually verify.");
 
             names.Add("localhost");
         }

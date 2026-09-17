@@ -124,9 +124,9 @@ internal sealed class FakeAuthenticator : IDisposable
         byte[] signed = [.. authenticatorData, .. clientDataHash];
         byte[] signature = _key.SignData(signed, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
 
-        string userHandleJson = userHandle is null
-            ? "null"
-            : $"\"{Base64Url.EncodeToString(Encoding.UTF8.GetBytes(userHandle))}\"";
+        string userHandleJson = userHandle is null ?
+            "null" :
+            $"\"{Base64Url.EncodeToString(Encoding.UTF8.GetBytes(userHandle))}\"";
 
         return $$"""
             {

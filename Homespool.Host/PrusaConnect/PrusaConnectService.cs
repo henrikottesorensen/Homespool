@@ -141,8 +141,8 @@ public class PrusaConnectService
 
         if (registered)
         {
-            _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) "
-                                   + "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
+            _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) " +
+                                   "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
                                    LogText.Clean(printer.SerialNumber),
                                    LogText.Clean(printer.PrinterType),
                                    LogText.Clean(printer.Firmware),
@@ -151,8 +151,8 @@ public class PrusaConnectService
         }
         else if (renewed)
         {
-            _logger.LogInformation("PrusaConnect registration {RegistrationId} for printer {SerialNumber} "
-                                   + "renewed its Connect code, expiring {CodeExpiry:o}.",
+            _logger.LogInformation("PrusaConnect registration {RegistrationId} for printer {SerialNumber} " +
+                                   "renewed its Connect code, expiring {CodeExpiry:o}.",
                                    registration.Id,
                                    LogText.Clean(printer.SerialNumber),
                                    registration.TemporaryCodeExpiry);
@@ -389,8 +389,8 @@ public class PrusaConnectService
 
         await _dbContext.SaveChangesAsync();
 
-        _logger.LogInformation("PrusaConnect registration {RegistrationId} claimed for already-enrolled printer {PrinterUuid}; "
-                               + "its credential will be replaced when the printer next polls.",
+        _logger.LogInformation("PrusaConnect registration {RegistrationId} claimed for already-enrolled printer {PrinterUuid}; " +
+                               "its credential will be replaced when the printer next polls.",
                                registration.Id, enrolled.Uuid);
 
         return enrolled;
@@ -546,8 +546,8 @@ public class PrusaConnectService
         // without an anonymous type and the query is an indexed hit on a table with one row per
         // printer. Both are the same page load.
         HashSet<int> expiredProvisioning = (await _dbContext.PrusaConnectProvisionings
-                                                            .Where(p => printerIds.Contains(p.PrinterId)
-                                                                        && p.CreatedAt <= issuedAfter)
+                                                            .Where(p => printerIds.Contains(p.PrinterId) &&
+                                                                        p.CreatedAt <= issuedAfter)
                                                             .Select(p => p.PrinterId)
                                                             .ToListAsync(cancellationToken)).ToHashSet();
 

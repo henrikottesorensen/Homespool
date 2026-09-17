@@ -85,8 +85,8 @@ public sealed class ResetPasswordEnumerationTests : IDisposable
 
         // Assert
         known.Should().BeOfType<PageResult>();
-        unknown.Should().BeOfType<PageResult>("a redirect where the known address re-renders is what "
-                                              + "told an anonymous caller which addresses exist");
+        unknown.Should().BeOfType<PageResult>("a redirect where the known address re-renders is what " +
+                                              "told an anonymous caller which addresses exist");
         Errors(unknownState).Should().Equal(Errors(knownState), "one answer, in the same words");
         Errors(knownState).Should().NotBeEmpty("the person whose link expired is still told why it failed");
     }

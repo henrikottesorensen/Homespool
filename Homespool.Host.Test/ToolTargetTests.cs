@@ -58,8 +58,8 @@ public class ToolTargetTests
         ToolTarget target = ToolTarget.For(activeSlot: active, reportedToolCount: 8);
 
         target.IsMultiTool.Should().BeTrue();
-        target.PickedTool.Should().Be(active, "gcode's T is 0-based and the wire's slot number is not; "
-                                              + "converting is the caller's job, and doing it twice unloads the wrong tool");
+        target.PickedTool.Should().Be(active, "gcode's T is 0-based and the wire's slot number is not; " +
+                                              "converting is the caller's job, and doing it twice unloads the wrong tool");
         target.ReachesAHotend.Should().BeTrue();
     }
 

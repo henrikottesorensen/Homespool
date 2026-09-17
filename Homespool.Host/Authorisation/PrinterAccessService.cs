@@ -156,8 +156,8 @@ public class PrinterAccessService
             return true;
         }
 
-        return queuedByUserId == caller.UserId
-               && await AllowsAsync(printerId, caller, Capability.Print, cancellationToken);
+        return queuedByUserId == caller.UserId &&
+               await AllowsAsync(printerId, caller, Capability.Print, cancellationToken);
     }
 
     /// <summary>

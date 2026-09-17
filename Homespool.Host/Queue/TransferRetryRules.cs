@@ -98,11 +98,11 @@ public static class TransferRetryRules
     {
         ArgumentNullException.ThrowIfNull(row);
 
-        bool same = row.TransferRefusalCount is > 0
-                    && string.Equals(row.TransferRefusalCode,
+        bool same = row.TransferRefusalCount is > 0 &&
+                    string.Equals(row.TransferRefusalCode,
                                      Bound(code, PrintFileOnPrinter.TransferRefusalCodeMaxLength),
-                                     StringComparison.Ordinal)
-                    && string.Equals(row.TransferRefusalReason,
+                                     StringComparison.Ordinal) &&
+                    string.Equals(row.TransferRefusalReason,
                                      Bound(reason, PrintFileOnPrinter.TransferRefusalReasonMaxLength),
                                      StringComparison.Ordinal);
 
@@ -123,9 +123,9 @@ public static class TransferRetryRules
     /// <param name="now">The loop's clock.</param>
     public static bool IsWaiting(PrintFileOnPrinter? row, DateTimeOffset now)
     {
-        return row?.TransferRefusalCount is { } count and > 0
-               && row.TransferRefusedAt is { } refusedAt
-               && now - refusedAt < WaitAfter(count);
+        return row?.TransferRefusalCount is { } count and > 0 &&
+               row.TransferRefusedAt is { } refusedAt &&
+               now - refusedAt < WaitAfter(count);
     }
 
     /// <summary>

@@ -116,9 +116,9 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </summary>
     private static bool FlushFailed(FakeLogRecord record)
     {
-        return record.Level == LogLevel.Error
-               && record.Exception is not null
-               && record.Message.Contains("flush failed");
+        return record.Level == LogLevel.Error &&
+               record.Exception is not null &&
+               record.Message.Contains("flush failed");
     }
 
     private static StorageOptions DefaultOptions(int batchSize = 500, double flushIntervalSeconds = 30, double throttleSeconds = 0)
@@ -387,8 +387,8 @@ public sealed class TelemetryWriterTests : IDisposable
         {
             await using HomespoolDbContext verify = NewVerificationContext();
 
-            return await SampleCountAsync(verify) == 5
-                   && await verify.PrinterEvents.CountAsync() == 1;
+            return await SampleCountAsync(verify) == 5 &&
+                   await verify.PrinterEvents.CountAsync() == 1;
         }, TimeSpan.FromSeconds(10));
 
         recovered.Should().BeTrue(
@@ -1295,8 +1295,8 @@ public sealed class TelemetryWriterTests : IDisposable
         using JsonDocument kept = JsonDocument.Parse(stored.Payload!);
         kept.RootElement.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
             ["size", "m_timestamp", "read_only", "display_name", "type", "path"],
-            "only the fields render.cpp emits itself survive - preview included, since that one is "
-            + "firmware-rendered but is pure gcode content");
+            "only the fields render.cpp emits itself survive - preview included, since that one is " +
+            "firmware-rendered but is pure gcode content");
 
         stored.Payload.Should().NotContain("iVBORw0KGgoAAAA").And.NotContain("layer_height");
         stored.Payload.Should().NotContain("iP5nSy8", "a blacklist could never have named this key");
@@ -1602,9 +1602,9 @@ public sealed class TelemetryWriterTests : IDisposable
         }
 
         // Assert
-        bool warned = await LoggedAsync(record => record.Level == LogLevel.Warning
-                                                  && record.Message.Contains("Dropped")
-                                                  && record.StructuredState!.Any(kv => kv.Key == "PrinterId" && kv.Value == "1"));
+        bool warned = await LoggedAsync(record => record.Level == LogLevel.Warning &&
+                                                  record.Message.Contains("Dropped") &&
+                                                  record.StructuredState!.Any(kv => kv.Key == "PrinterId" && kv.Value == "1"));
 
         warned.Should().BeTrue($"a full channel under DropOldest must be logged, not silently discarded. Log:\n{LogDump()}");
     }
@@ -1820,9 +1820,9 @@ public sealed class TelemetryWriterTests : IDisposable
         // trim fires.
         bool trimmed = await FeedUntilAsync(
             () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
-            () => LogRecords.Any(record => record.Level == LogLevel.Warning
-                                           && record.Message.Contains("Discarded")
-                                           && record.StructuredState!.Any(kv => kv.Key == "Count")),
+            () => LogRecords.Any(record => record.Level == LogLevel.Warning &&
+                                           record.Message.Contains("Discarded") &&
+                                           record.StructuredState!.Any(kv => kv.Key == "Count")),
             TimeSpan.FromSeconds(30));
 
         trimmed.Should()
@@ -1854,10 +1854,10 @@ public sealed class TelemetryWriterTests : IDisposable
         // Act + Assert - feed until the event cap (WriteBatchSize(1) * 10 = 10 here) is exceeded.
         bool trimmed = await FeedUntilAsync(
             () => writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { Status = "IDLE", EventType = PrinterEventType.Info }),
-            () => LogRecords.Any(record => record.Level == LogLevel.Error
-                                           && record.Message.Contains("Discarded")
-                                           && record.Message.Contains("event")
-                                           && record.StructuredState!.Any(kv => kv.Key == "Count")),
+            () => LogRecords.Any(record => record.Level == LogLevel.Error &&
+                                           record.Message.Contains("Discarded") &&
+                                           record.Message.Contains("event") &&
+                                           record.StructuredState!.Any(kv => kv.Key == "Count")),
             TimeSpan.FromSeconds(30));
 
         trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");
@@ -2155,8 +2155,8 @@ file static class WireEnqueueExtensions
     {
         PrinterIdentityUpdate? identity = null;
 
-        if (eventDto.EventType == PrinterEventType.Info && eventDto.Data is { } data
-            && data.Deserialize<InfoEventDataDTO>() is { } info)
+        if (eventDto.EventType == PrinterEventType.Info && eventDto.Data is { } data &&
+            data.Deserialize<InfoEventDataDTO>() is { } info)
         {
             identity = PrusaTelemetryMapping.ToIdentity(info);
         }

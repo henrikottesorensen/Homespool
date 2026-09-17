@@ -81,19 +81,19 @@ public class SourceFileEncodingTests
             directory = directory.Parent;
         }
 
-        return directory
-               ?? throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
+        return directory ??
+               throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
     }
 
     private static IEnumerable<string> SourceFiles(DirectoryInfo directory)
     {
         foreach (FileInfo file in directory.EnumerateFiles())
         {
-            bool checkIt = CheckedNames.Contains(file.Name)
-                           || (CheckedExtensions.Contains(file.Extension) && !SkippedExtensions.Contains(file.Extension));
+            bool checkIt = CheckedNames.Contains(file.Name) ||
+                           (CheckedExtensions.Contains(file.Extension) && !SkippedExtensions.Contains(file.Extension));
 
-            if (checkIt && !file.Name.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase)
-                        && !file.Name.EndsWith(".min.css", StringComparison.OrdinalIgnoreCase))
+            if (checkIt && !file.Name.EndsWith(".min.js", StringComparison.OrdinalIgnoreCase) &&
+                        !file.Name.EndsWith(".min.css", StringComparison.OrdinalIgnoreCase))
             {
                 yield return file.FullName;
             }
@@ -151,9 +151,9 @@ public class SourceFileEncodingTests
                                  .ToList();
 
         offenders.Should().BeEmpty(
-            "UTF-8 has no byte order to mark, and the signature breaks tools that read the first bytes of a file. "
-            + "The EF and Identity scaffolders write one - strip it after regenerating. Offenders:\n"
-            + string.Join('\n', offenders));
+            "UTF-8 has no byte order to mark, and the signature breaks tools that read the first bytes of a file. " +
+            "The EF and Identity scaffolders write one - strip it after regenerating. Offenders:\n" +
+            string.Join('\n', offenders));
     }
 
     [Fact]
@@ -180,8 +180,8 @@ public class SourceFileEncodingTests
                                  .ToList();
 
         offenders.Should().BeEmpty(
-            "a non-UTF-8 source file is decoded to U+FFFD silently - no compiler error, no warning, on every SDK "
-            + "tested - so string literals change meaning with nothing to notice it. Offenders:\n"
-            + string.Join('\n', offenders));
+            "a non-UTF-8 source file is decoded to U+FFFD silently - no compiler error, no warning, on every SDK " +
+            "tested - so string literals change meaning with nothing to notice it. Offenders:\n" +
+            string.Join('\n', offenders));
     }
 }

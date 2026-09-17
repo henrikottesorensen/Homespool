@@ -76,8 +76,8 @@ public sealed class SharedPrinterCertificateTests
 
             // Assert
             logs.FindPropertyValue("Directory").Should()
-                .BeNull("a host that was handed an authority must not mint one, and minting is the "
-                        + "only thing that logs a Directory here");
+                .BeNull("a host that was handed an authority must not mint one, and minting is the " +
+                        "only thing that logs a Directory here");
 
             using X509Certificate2 inherited = heir.Services
                                                    .GetRequiredService<PrinterCertificateAuthority>()

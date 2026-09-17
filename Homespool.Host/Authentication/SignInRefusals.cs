@@ -45,10 +45,10 @@ public static class SignInRefusals
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        return result.Properties?.Items.TryGetValue(RetryAfterItem, out string? value) == true
-               && double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds)
-            ? TimeSpan.FromSeconds(seconds)
-            : null;
+        return result.Properties?.Items.TryGetValue(RetryAfterItem, out string? value) == true &&
+               double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double seconds) ?
+            TimeSpan.FromSeconds(seconds) :
+            null;
     }
 
     /// <summary>
@@ -61,10 +61,10 @@ public static class SignInRefusals
 
         // An unset or unknown reason reads as a wrong credential - the refusal that sends nobody
         // anywhere special.
-        return result.Properties?.Items.TryGetValue(Item, out string? value) == true
-               && Enum.TryParse(value, out SignInRefusal refusal)
-               && refusal.IsSet()
-            ? refusal
-            : SignInRefusal.Invalid;
+        return result.Properties?.Items.TryGetValue(Item, out string? value) == true &&
+               Enum.TryParse(value, out SignInRefusal refusal) &&
+               refusal.IsSet() ?
+            refusal :
+            SignInRefusal.Invalid;
     }
 }

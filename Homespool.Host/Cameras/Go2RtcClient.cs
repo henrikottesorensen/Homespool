@@ -104,9 +104,9 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         if (_uncredentialed.Record() is { } window)
         {
             _logger.LogWarning(
-                "Cameras are disabled because the stream server has no credential: set Cameras:ApiUsername and "
-                + "Cameras:ApiPassword (GO2RTC_USERNAME and GO2RTC_PASSWORD in .env, which ./setup-env.sh will "
-                + "generate). {Count} camera operation(s) refused in the last {Elapsed}, {Total} in total.",
+                "Cameras are disabled because the stream server has no credential: set Cameras:ApiUsername and " +
+                "Cameras:ApiPassword (GO2RTC_USERNAME and GO2RTC_PASSWORD in .env, which ./setup-env.sh will " +
+                "generate). {Count} camera operation(s) refused in the last {Elapsed}, {Total} in total.",
                 window.Count,
                 window.Elapsed,
                 window.Total);
@@ -204,9 +204,9 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         }
 
         Uri request = new(
-            $"{BaseAddress().TrimEnd('/')}/api/streams"
-            + $"?name={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}"
-            + $"&src={Uri.EscapeDataString(source)}");
+            $"{BaseAddress().TrimEnd('/')}/api/streams" +
+            $"?name={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}" +
+            $"&src={Uri.EscapeDataString(source)}");
 
         try
         {
@@ -262,8 +262,8 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         // consider the device free and offer it in the picker again while the stream server still
         // held it.
         Uri request = new(
-            $"{BaseAddress().TrimEnd('/')}/api/streams"
-            + $"?src={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}");
+            $"{BaseAddress().TrimEnd('/')}/api/streams" +
+            $"?src={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}");
 
         try
         {
@@ -476,18 +476,18 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     {
         string[] parts = value.Split('x');
 
-        return parts.Length == 2
-               && int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int w)
-               && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int h)
-               && w > 0 && h > 0;
+        return parts.Length == 2 &&
+               int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int w) &&
+               int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int h) &&
+               w > 0 && h > 0;
     }
 
     private static long Pixels(string size)
     {
         string[] parts = size.Split('x');
 
-        return long.Parse(parts[0], CultureInfo.InvariantCulture)
-               * long.Parse(parts[1], CultureInfo.InvariantCulture);
+        return long.Parse(parts[0], CultureInfo.InvariantCulture) *
+               long.Parse(parts[1], CultureInfo.InvariantCulture);
     }
 
     /// <summary>One entry of the stream server's device listing.</summary>
@@ -530,8 +530,8 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         }
 
         Uri request = new(
-            $"{BaseAddress().TrimEnd('/')}/api/webrtc"
-            + $"?src={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}");
+            $"{BaseAddress().TrimEnd('/')}/api/webrtc" +
+            $"?src={Uri.EscapeDataString(streamName.ToString("D", CultureInfo.InvariantCulture))}");
 
         try
         {
@@ -574,9 +574,9 @@ public sealed class Go2RtcClient : ICameraCodecProbe
                                                       .ReadFromJsonAsync<WebRtcDescription>(cancellationToken)
                                                       .ConfigureAwait(false);
 
-            return string.IsNullOrWhiteSpace(answer?.Sdp)
-                ? new WebRtcOffer(WebRtcOfferOutcome.Failed, null)
-                : new WebRtcOffer(WebRtcOfferOutcome.Answered, answer.Sdp);
+            return string.IsNullOrWhiteSpace(answer?.Sdp) ?
+                new WebRtcOffer(WebRtcOfferOutcome.Failed, null) :
+                new WebRtcOffer(WebRtcOfferOutcome.Answered, answer.Sdp);
         }
         catch (Exception exception) when (exception is HttpRequestException or JsonException)
         {
@@ -788,10 +788,10 @@ public sealed class Go2RtcClient : ICameraCodecProbe
             System.IO.Stream wire = tcp.GetStream();
 
             byte[] request = Encoding.ASCII.GetBytes(
-                $"DESCRIBE rtsp://{baseAddress.Host}:{RtspPort}/{name} RTSP/1.0\r\n"
-                + "CSeq: 1\r\n"
-                + "Accept: application/sdp\r\n"
-                + "User-Agent: Homespool\r\n\r\n");
+                $"DESCRIBE rtsp://{baseAddress.Host}:{RtspPort}/{name} RTSP/1.0\r\n" +
+                "CSeq: 1\r\n" +
+                "Accept: application/sdp\r\n" +
+                "User-Agent: Homespool\r\n\r\n");
 
             await wire.WriteAsync(request, deadline.Token).ConfigureAwait(false);
 
@@ -809,9 +809,9 @@ public sealed class Go2RtcClient : ICameraCodecProbe
 
             return ParseSdpVideoCodecs(answer);
         }
-        catch (Exception exception) when (exception is System.Net.Sockets.SocketException
-                                                    or System.IO.IOException
-                                                    or OperationCanceledException)
+        catch (Exception exception) when (exception is System.Net.Sockets.SocketException or
+                                                       System.IO.IOException or
+                                                       OperationCanceledException)
         {
             // The camera is off, unreachable, or slower than any working camera - all of which mean
             // "no answer today", which the caller must not remember as "no".

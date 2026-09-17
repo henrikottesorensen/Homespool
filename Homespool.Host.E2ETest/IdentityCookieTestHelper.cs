@@ -26,7 +26,7 @@ public static class IdentityCookieTestHelper
                                                          .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
                                                          .Get(IdentityConstants.ApplicationScheme);
 
-        return response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies)
-               && cookies.Any(c => c.StartsWith($"{cookieOptions.Cookie.Name}=", StringComparison.Ordinal));
+        return response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies) &&
+               cookies.Any(c => c.StartsWith($"{cookieOptions.Cookie.Name}=", StringComparison.Ordinal));
     }
 }

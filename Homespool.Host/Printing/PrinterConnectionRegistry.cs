@@ -77,10 +77,10 @@ public sealed class PrinterConnectionRegistry
         }
 
         _logger.LogError(
-            "[{PrinterId}] a SECOND connection registered while one was already live - the earlier connection has been "
-            + "shut down and only the new one will receive commands. Either this printer reconnected after a network "
-            + "fault (benign), or something else is presenting its fingerprint and token: both look identical on the "
-            + "wire, so if this printer is not reconnecting, treat its credentials as compromised and reissue them.",
+            "[{PrinterId}] a SECOND connection registered while one was already live - the earlier connection has been " +
+            "shut down and only the new one will receive commands. Either this printer reconnected after a network " +
+            "fault (benign), or something else is presenting its fingerprint and token: both look identical on the " +
+            "wire, so if this printer is not reconnecting, treat its credentials as compromised and reissue them.",
             printerId);
 
         // Ends the loser's read loop (its next post throws into the handler's ordinary exit), which
@@ -127,9 +127,9 @@ public sealed class PrinterConnectionRegistry
     /// </remarks>
     public bool IsOnPlaintextListener(int printerId)
     {
-        return _actors.TryGetValue(printerId, out LiveConnection connection)
-               && connection.OverPlaintext
-               && connection.Link.IsOpen;
+        return _actors.TryGetValue(printerId, out LiveConnection connection) &&
+               connection.OverPlaintext &&
+               connection.Link.IsOpen;
     }
 
     /// <summary>

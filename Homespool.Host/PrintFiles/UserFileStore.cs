@@ -630,8 +630,8 @@ public sealed class UserFileStore
             if (matches.Count > 1)
             {
                 _logger.LogWarning(
-                    "user {UserId} has {Count} storage directories ({Directories}); using the first. "
-                    + "Only one should exist - merge them by hand.",
+                    "user {UserId} has {Count} storage directories ({Directories}); using the first. " +
+                    "Only one should exist - merge them by hand.",
                     userId, matches.Count, string.Join(", ", matches.Select(Path.GetFileName)));
             }
 
@@ -675,8 +675,8 @@ public sealed class UserFileStore
 
         foreach (string path in Directory.EnumerateFiles(incoming))
         {
-            if (new FileInfo(path).LastWriteTimeUtc <= cutoff.UtcDateTime
-                && !_pending.Values.Any(pending => string.Equals(pending.Path, path, StringComparison.Ordinal)))
+            if (new FileInfo(path).LastWriteTimeUtc <= cutoff.UtcDateTime &&
+                !_pending.Values.Any(pending => string.Equals(pending.Path, path, StringComparison.Ordinal)))
             {
                 DeleteQuietly(path);
             }

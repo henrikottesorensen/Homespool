@@ -56,16 +56,16 @@ public static class BuildInformation
     {
         if (string.IsNullOrWhiteSpace(informationalVersion))
         {
-            return $"{product} (version unknown){Environment.NewLine}"
-                 + "commit unknown - this assembly carries no version information";
+            return $"{product} (version unknown){Environment.NewLine}" +
+                   "commit unknown - this assembly carries no version information";
         }
 
         int metadataStart = informationalVersion.IndexOf('+');
 
         if (metadataStart < 0)
         {
-            return $"{product} {informationalVersion}{Environment.NewLine}"
-                 + "commit unknown - built with no source control information";
+            return $"{product} {informationalVersion}{Environment.NewLine}" +
+                   "commit unknown - built with no source control information";
         }
 
         string version = informationalVersion[..metadataStart];
@@ -73,7 +73,7 @@ public static class BuildInformation
         bool modified = metadata.EndsWith(ModifiedMarker, StringComparison.Ordinal);
         string commit = modified ? metadata[..^ModifiedMarker.Length] : metadata;
 
-        return $"{product} {version}{Environment.NewLine}"
-             + $"commit {commit}{(modified ? " (modified)" : string.Empty)}";
+        return $"{product} {version}{Environment.NewLine}" +
+               $"commit {commit}{(modified ? " (modified)" : string.Empty)}";
     }
 }

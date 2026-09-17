@@ -380,9 +380,9 @@ public sealed class PrinterTrafficLog : IDisposable
     /// </remarks>
     private static bool IsTelemetryShaped(JsonElement root)
     {
-        return root.ValueKind == JsonValueKind.Object
-               && !root.TryGetProperty("event", out _)
-               && !root.TryGetProperty("transfer", out _);
+        return root.ValueKind == JsonValueKind.Object &&
+               !root.TryGetProperty("event", out _) &&
+               !root.TryGetProperty("transfer", out _);
     }
 
     /// <summary>

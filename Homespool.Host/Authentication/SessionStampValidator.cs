@@ -62,8 +62,8 @@ public sealed class SessionStampValidator : StampValidator
             return null;
         }
 
-        if (principal.HasClaim(JwtClaimTypes.AuthenticationMethod, PasskeyAuthenticationHandler.AuthenticationMethod)
-            && !await PasskeyRemainsAsync(user, principal))
+        if (principal.HasClaim(JwtClaimTypes.AuthenticationMethod, PasskeyAuthenticationHandler.AuthenticationMethod) &&
+            !await PasskeyRemainsAsync(user, principal))
         {
             Logger.LogInformation("A session of user {UserId} was ended: the passkey it signed in with is no longer on the account.", user.Id);
 

@@ -131,8 +131,8 @@ public sealed class EnumStorageTests : IDisposable
 
         // Assert
         stored.Should().Be($"text {expected}",
-                           $"{table}.{column} must hold the member's name - an integer there would make the "
-                           + "enum's declaration order part of the schema");
+                           $"{table}.{column} must hold the member's name - an integer there would make the " +
+                           "enum's declaration order part of the schema");
     }
 
     /// <summary>

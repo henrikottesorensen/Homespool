@@ -306,9 +306,9 @@ public sealed class RegisterModelTests : IDisposable
         memberships.Should().ContainSingle(m => m.IsDefault && m.TeamId != existingTeam.Id,
                                            "the default team is a fresh one, not the invited team");
         memberships.Should()
-                   .ContainSingle(m => m.TeamId == existingTeam.Id
-                                       && !m.IsDefault
-                                       && m.Capabilities == CapabilitySet.Format(CapabilityPresets.Operator));
+                   .ContainSingle(m => m.TeamId == existingTeam.Id &&
+                                       !m.IsDefault &&
+                                       m.Capabilities == CapabilitySet.Format(CapabilityPresets.Operator));
     }
 
     /// <summary>A new-account invite (no team) yields only the default team, no extra membership.</summary>

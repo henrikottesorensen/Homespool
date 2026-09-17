@@ -49,9 +49,9 @@ public sealed class RequiresDexFactAttribute : FactAttribute
     {
         if (!ServesDiscovery())
         {
-            Skip = "No dex fixture is serving OpenID Connect discovery on " + DexFixture.Authority + ". Run "
-                   + "Homespool.Host.IntegrationTest/start-dex.sh, which brings up the throwaway "
-                   + "provider these tests drive a real authorisation-code flow against.";
+            Skip = "No dex fixture is serving OpenID Connect discovery on " + DexFixture.Authority + ". Run " +
+                   "Homespool.Host.IntegrationTest/start-dex.sh, which brings up the throwaway " +
+                   "provider these tests drive a real authorisation-code flow against.";
         }
     }
 

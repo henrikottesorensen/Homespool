@@ -357,8 +357,8 @@ public class CameraService
 
         // An attached device is released by whoever holds it, so deleting is the release - but a
         // non-administrator must not be able to free one they could not have claimed.
-        if (CameraSourcePolicy.IsLocalDevice(camera.Source)
-            && !await _access.IsAdministratorAsync(caller.UserId, cancellationToken).ConfigureAwait(false))
+        if (CameraSourcePolicy.IsLocalDevice(camera.Source) &&
+            !await _access.IsAdministratorAsync(caller.UserId, cancellationToken).ConfigureAwait(false))
         {
             return false;
         }
@@ -405,8 +405,8 @@ public class CameraService
             throw CredentialScopeDeniedException.For(Capability.ManageCamera);
         }
 
-        bool permitted = membership is not null
-                         && CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera);
+        bool permitted = membership is not null &&
+                         CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera);
 
         return permitted ?
             null :

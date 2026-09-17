@@ -189,7 +189,7 @@ public class ConfirmEmailChangeModel : PageModel
     /// </summary>
     private async Task<bool> IsAlertRecipientAsync(HSUser user)
     {
-        return _smtp.Value.IsConfigured
-               && await _userManager.IsInRoleAsync(user, Accounts.AdminBootstrap.AdminRole);
+        return _smtp.Value.IsConfigured &&
+               await _userManager.IsInRoleAsync(user, Accounts.AdminBootstrap.AdminRole);
     }
 }

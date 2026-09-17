@@ -43,8 +43,8 @@ public class RecentProofDeclarationTests
 
         pages.Should().NotBeEmpty("a reflection test that finds nothing passes for the wrong reason");
         Silent(pages).Should().BeEmpty(
-            "a page under /Admin with no declaration is open to any administrator session - "
-            + "add [RequireRecentProof], or [NoRecentProof(\"why\")] if it is the exception");
+            "a page under /Admin with no declaration is open to any administrator session - " +
+            "add [RequireRecentProof], or [NoRecentProof(\"why\")] if it is the exception");
     }
 
     [Fact]
@@ -54,8 +54,8 @@ public class RecentProofDeclarationTests
 
         pages.Should().NotBeEmpty();
         Silent(pages).Should().BeEmpty(
-            "a page under /Account/Manage with no declaration is open to any session somebody else got hold of - "
-            + "add [RequireRecentProof] to the class or the handler that acts, or [NoRecentProof(\"why\")] if it is the exception");
+            "a page under /Account/Manage with no declaration is open to any session somebody else got hold of - " +
+            "add [RequireRecentProof] to the class or the handler that acts, or [NoRecentProof(\"why\")] if it is the exception");
     }
 
     /// <summary>Nothing under <c>/Admin</c> is exempt. If a page ever is, this fails, which is the conversation worth having.</summary>
@@ -119,8 +119,8 @@ public class RecentProofDeclarationTests
     /// <summary>On the class, or on any handler method - the two places the filter reads.</summary>
     private static bool Declares(Type page)
     {
-        return page.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true) is not null
-               || page.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+        return page.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true) is not null ||
+               page.GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
                       .Any(method => method.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true) is not null);
     }
 
@@ -128,8 +128,8 @@ public class RecentProofDeclarationTests
     {
         return [.. typeof(Homespool.Host.Pages.Admin.SettingsModel).Assembly
                                                                    .GetTypes()
-                                                                   .Where(type => type is { IsClass: true, IsAbstract: false }
-                                                                                  && typeof(PageModel).IsAssignableFrom(type)
-                                                                                  && type.Namespace?.StartsWith(ns, StringComparison.Ordinal) == true)];
+                                                                   .Where(type => type is { IsClass: true, IsAbstract: false } &&
+                                                                                  typeof(PageModel).IsAssignableFrom(type) &&
+                                                                                  type.Namespace?.StartsWith(ns, StringComparison.Ordinal) == true)];
     }
 }

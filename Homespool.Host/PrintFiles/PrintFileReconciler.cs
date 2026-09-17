@@ -134,8 +134,8 @@ public sealed class PrintFileReconciler : BackgroundService
 
         foreach (PrintFile row in rows)
         {
-            if (onDisk.TryGetValue(row.UserId, out List<StoredFile>? files)
-                && files.Exists(file => string.Equals(file.FileName, row.Name, StringComparison.OrdinalIgnoreCase)))
+            if (onDisk.TryGetValue(row.UserId, out List<StoredFile>? files) &&
+                files.Exists(file => string.Equals(file.FileName, row.Name, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
             }
@@ -151,8 +151,8 @@ public sealed class PrintFileReconciler : BackgroundService
             if (orphaned.Count > 0)
             {
                 _logger.LogWarning(
-                    "{FileName} (user {UserId}) is gone from disk but {Count} queued print(s) referenced it; "
-                    + "cancelling them - the file was removed outside Homespool.",
+                    "{FileName} (user {UserId}) is gone from disk but {Count} queued print(s) referenced it; " +
+                    "cancelling them - the file was removed outside Homespool.",
                     row.Name, row.UserId, orphaned.Count);
 
                 dbContext.QueuedPrints.RemoveRange(orphaned);

@@ -65,8 +65,8 @@ public sealed class ContentRootIsolationTests : IAsyncLifetime
         Path.IsPathRooted(contentRoot).Should().BeTrue();
 
         contentRoot.Should().StartWith(Path.GetTempPath(),
-                                       "a relative directory in options resolves against this, so anything but a temp path writes "
-                                       + "into the repository - which is how uploads and certificates escaped before");
+                                       "a relative directory in options resolves against this, so anything but a temp path writes " +
+                                       "into the repository - which is how uploads and certificates escaped before");
 
         Directory.Exists(contentRoot).Should().BeTrue("components expect to be able to write here immediately");
     }
@@ -108,8 +108,8 @@ public sealed class ContentRootIsolationTests : IAsyncLifetime
             .Should().BeTrue();
 
         Path.IsPathRooted(files.Directory).Should().BeFalse(
-            "the point of this test is that a relative default is safe, so a test that quietly configured "
-            + "an absolute one would be asserting nothing");
+            "the point of this test is that a relative default is safe, so a test that quietly configured " +
+            "an absolute one would be asserting nothing");
         Path.IsPathRooted(certificates.Directory).Should().BeFalse("likewise");
     }
 }

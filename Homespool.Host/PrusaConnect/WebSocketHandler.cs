@@ -147,8 +147,8 @@ public class WebSocketHandler
                 // indistinguishable from bad wifi without this line. If a real printer trips it, this
                 // is what says so and what says which knob to turn.
                 _logger.LogWarning(
-                    "Printer {PrinterId} buffered {BufferedBytes} bytes without completing a message; "
-                    + "the limit is {LimitBytes}. Closing the connection.",
+                    "Printer {PrinterId} buffered {BufferedBytes} bytes without completing a message; " +
+                    "the limit is {LimitBytes}. Closing the connection.",
                     printerId,
                     buffer.Length,
                     _options.MaxIncomingMessageBytes);

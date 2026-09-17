@@ -85,8 +85,8 @@ public sealed class CapabilitySet : IReadOnlyCollection<Capability>
         ImmutableHashSet<Capability>.Builder granted = ImmutableHashSet.CreateBuilder<Capability>();
         ImmutableArray<string>.Builder unrecognised = ImmutableArray.CreateBuilder<string>();
 
-        foreach (string name in stored.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries
-                                                            | StringSplitOptions.TrimEntries))
+        foreach (string name in stored.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries |
+                                                            StringSplitOptions.TrimEntries))
         {
             // Case-sensitive on purpose: the writer is this class, so a difference in case means
             // something else wrote the column, which is exactly what Unrecognised exists to report.

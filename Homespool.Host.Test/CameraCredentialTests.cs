@@ -162,8 +162,8 @@ public sealed class CameraCredentialTests : IDisposable
         HealthCheckResult result = await CheckAsync(context, credentialed: false);
 
         result.Status.Should().Be(HealthStatus.Degraded,
-                                  "a camera cannot be added without a credential, so waiting for a camera to "
-                                  + "appear before saying so is waiting for something that cannot happen");
+                                  "a camera cannot be added without a credential, so waiting for a camera to " +
+                                  "appear before saying so is waiting for something that cannot happen");
         result.Description.Should().Contain("GO2RTC_PASSWORD");
     }
 
@@ -176,8 +176,8 @@ public sealed class CameraCredentialTests : IDisposable
         HealthCheckResult result = await CheckAsync(context, credentialed: false);
 
         result.Status.Should().Be(HealthStatus.Degraded,
-                                  "a configured camera that will never produce a picture is the case an "
-                                  + "administrator has to be told about");
+                                  "a configured camera that will never produce a picture is the case an " +
+                                  "administrator has to be told about");
         result.Description.Should().Contain("GO2RTC_PASSWORD");
     }
 

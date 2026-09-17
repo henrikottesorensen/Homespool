@@ -50,8 +50,8 @@ public static class PrintStartRules
     /// </remarks>
     public static bool LooksBusy(PrinterStatus status)
     {
-        return status is PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention
-            or PrinterStatus.Busy;
+        return status is PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention or
+            PrinterStatus.Busy;
     }
 
     /// <summary>Works out what became of a print we commanded and never heard back about.</summary>
@@ -101,12 +101,12 @@ public static class PrintStartRules
         // so inside the grace period that answer is what a print that is starting sounds like.
         // Taken at face value it reads a starting print as one that never happened, which mints the
         // duplicate this whole resolution exists to prevent.
-        bool reportsNoJob = observation.Answer == JobAnswer.NoJob
-                            || (observation.Answer == JobAnswer.NotAsked && observation.ReportedSinceCommand);
+        bool reportsNoJob = observation.Answer == JobAnswer.NoJob ||
+                            (observation.Answer == JobAnswer.NotAsked && observation.ReportedSinceCommand);
 
-        if (reportsNoJob
-            && !LooksBusy(observation.Status)
-            && observation.SinceCommanded >= grace)
+        if (reportsNoJob &&
+            !LooksBusy(observation.Status) &&
+            observation.SinceCommanded >= grace)
         {
             return PrintStartVerdict.NeverStarted;
         }

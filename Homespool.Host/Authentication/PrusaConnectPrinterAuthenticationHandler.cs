@@ -92,10 +92,10 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// </remarks>
     private string FingerprintForLog()
     {
-        return Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues value)
-               && !StringValues.IsNullOrEmpty(value)
-                   ? LogText.Clean(PrinterFingerprint.Key(value.ToString()))
-                   : "(none)";
+        return Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues value) &&
+               !StringValues.IsNullOrEmpty(value) ?
+                   LogText.Clean(PrinterFingerprint.Key(value.ToString())) :
+                   "(none)";
     }
 
     /// <summary>Which of <see cref="RequiredHeaders"/> the request did not carry.</summary>
@@ -223,8 +223,8 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         // The age bound is in the query, not a check on the result: an expired row must cost neither
         // a bind nor the PBKDF2 that would decide it.
         PrusaConnectProvisioning? reissued = await _dbContext.PrusaConnectProvisionings
-                                                             .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId
-                                                                                        && p.CreatedAt > issuedAfter);
+                                                             .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId &&
+                                                                                        p.CreatedAt > issuedAfter);
 
         if (reissued is null || !_tokenService.VerifyToken(token, reissued.HashedToken))
         {
@@ -233,9 +233,9 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             // and needing opposite remedies. An outstanding reissue that has simply aged out lands
             // here too, and its remedy is named because it is not the one a reader would guess.
             Logger.LogInformation(
-                "PrusaConnect invalid token for printer {PrinterId} ({Fingerprint}). If a reissued USB-key token was "
-                + "written for it more than {ProvisioningTokenLifetimeHours} hours ago, that token has expired - reissue "
-                + "to get a fresh one.",
+                "PrusaConnect invalid token for printer {PrinterId} ({Fingerprint}). If a reissued USB-key token was " +
+                "written for it more than {ProvisioningTokenLifetimeHours} hours ago, that token has expired - reissue " +
+                "to get a fresh one.",
                 enrolled.PrinterId,
                 LogText.Clean(enrolled.FingerPrintKey),
                 PrusaConnectService.ProvisioningTokenLifetime.TotalHours);
@@ -326,9 +326,9 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         // through fingerprints it has invented - and expiry is now a third way to arrive here, whose
         // remedy is named because "unknown" would send a reader looking for the wrong thing.
         Logger.LogInformation(
-            "PrusaConnect authentication failed, fingerprint {Fingerprint} unknown. A USB-key token written more than "
-            + "{ProvisioningTokenLifetimeHours} hours ago has expired and reads as unknown here - reissue to get a "
-            + "fresh one.",
+            "PrusaConnect authentication failed, fingerprint {Fingerprint} unknown. A USB-key token written more than " +
+            "{ProvisioningTokenLifetimeHours} hours ago has expired and reads as unknown here - reissue to get a " +
+            "fresh one.",
             LogText.Clean(fingerprint),
             PrusaConnectService.ProvisioningTokenLifetime.TotalHours);
 

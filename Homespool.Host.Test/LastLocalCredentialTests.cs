@@ -67,11 +67,11 @@ public class LastLocalCredentialTests
         ];
 
         offenders.Should().BeEmpty(
-            "an account that loses its password cannot get another one - ForgotPassword is gated and "
-            + "ChangePassword refuses - so this is what keeps at least one administrator able to sign "
-            + "in and issue the invites that recover everybody else. If the call is genuinely wanted, "
-            + "the thing to settle first is how a deployment gets back in once no administrator can, "
-            + "because AdminBootstrap will not reopen setup for an administrator that merely exists");
+            "an account that loses its password cannot get another one - ForgotPassword is gated and " +
+            "ChangePassword refuses - so this is what keeps at least one administrator able to sign " +
+            "in and issue the invites that recover everybody else. If the call is genuinely wanted, " +
+            "the thing to settle first is how a deployment gets back in once no administrator can, " +
+            "because AdminBootstrap will not reopen setup for an administrator that merely exists");
     }
 
     /// <summary>
@@ -113,8 +113,8 @@ public class LastLocalCredentialTests
                 string relative = Path.GetRelativePath(path, file);
 
                 // Build output, and the migration designer files nobody writes by hand.
-                if (relative.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal)
-                    || relative.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                if (relative.StartsWith("obj" + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+                    relative.StartsWith("bin" + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                 {
                     continue;
                 }
@@ -137,8 +137,8 @@ public class LastLocalCredentialTests
             directory = directory.Parent;
         }
 
-        return directory
-               ?? throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
+        return directory ??
+               throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
     }
 
     private static string Relative(string path)

@@ -141,9 +141,9 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     {
         if (hash is not null)
         {
-            if (_offers.TryGetValue(hash, out PinnedOffer? offer)
-                && offer.PrinterId == printerId
-                && _offers.TryRemove(new KeyValuePair<string, PinnedOffer>(hash, offer)))
+            if (_offers.TryGetValue(hash, out PinnedOffer? offer) &&
+                offer.PrinterId == printerId &&
+                _offers.TryRemove(new KeyValuePair<string, PinnedOffer>(hash, offer)))
             {
                 Retire(hash, offer);
             }
@@ -179,9 +179,9 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     {
         // One answer for "unknown" and "not yours", as the interface promises. A printer that
         // presents a token it was never given learns nothing from the refusal.
-        content = _offers.TryGetValue(hash, out PinnedOffer? offer) && offer.PrinterId == printerId
-            ? offer.Borrow()
-            : null;
+        content = _offers.TryGetValue(hash, out PinnedOffer? offer) && offer.PrinterId == printerId ?
+            offer.Borrow() :
+            null;
 
         return content is not null;
     }

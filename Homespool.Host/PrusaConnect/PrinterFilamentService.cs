@@ -146,8 +146,8 @@ public class PrinterFilamentService
             return tools.Count == 1 ? tools[0] : throw new ToolNotSpecifiedException(printerId);
         }
 
-        return tools.SingleOrDefault(candidate => candidate.ToolNumber == requested)
-               ?? throw new NoSuchToolException(printerId, requested);
+        return tools.SingleOrDefault(candidate => candidate.ToolNumber == requested) ??
+               throw new NoSuchToolException(printerId, requested);
     }
 }
 

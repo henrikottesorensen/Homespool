@@ -131,8 +131,8 @@ public record PrinterAddressSuggestion(string Value, AddressDurability Durabilit
         ArgumentNullException.ThrowIfNull(address);
         ArgumentNullException.ThrowIfNull(containerNetworks);
 
-        return address.AddressFamily == AddressFamily.InterNetwork
-               && containerNetworks.Any(network => network.Contains(address));
+        return address.AddressFamily == AddressFamily.InterNetwork &&
+               containerNetworks.Any(network => network.Contains(address));
     }
 
     /// <summary>

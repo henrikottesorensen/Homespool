@@ -48,8 +48,8 @@ public static class EnumValues
     public static TEnum RequireSet<TEnum>(this TEnum value, [CallerArgumentExpression(nameof(value))] string? paramName = null)
         where TEnum : struct, Enum
     {
-        return value.IsSet()
-            ? value
-            : throw new ArgumentOutOfRangeException(paramName, value, $"{typeof(TEnum).Name} has to be set to one of its members.");
+        return value.IsSet() ?
+            value :
+            throw new ArgumentOutOfRangeException(paramName, value, $"{typeof(TEnum).Name} has to be set to one of its members.");
     }
 }

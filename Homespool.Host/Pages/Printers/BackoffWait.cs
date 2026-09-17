@@ -37,9 +37,9 @@ public static class BackoffWait
         {
             int seconds = (int)Math.Ceiling(remaining.TotalSeconds);
 
-            return seconds == 1
-                ? localiser["Common_WaitOneSecond"].Value
-                : localiser["Common_WaitSeconds", seconds].Value;
+            return seconds == 1 ?
+                localiser["Common_WaitOneSecond"].Value :
+                localiser["Common_WaitSeconds", seconds].Value;
         }
 
         int minutes = (int)Math.Ceiling(remaining.TotalMinutes);

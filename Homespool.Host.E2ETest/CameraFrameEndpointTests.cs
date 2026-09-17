@@ -70,8 +70,8 @@ public sealed class CameraFrameEndpointTests : IAsyncLifetime
             $"/api/v1/cameras/{uuid}/frame", TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent,
-                                        "a camera that has not produced a frame has nothing current to serve, and a stale one is "
-                                        + "the failure this design exists to prevent");
+                                        "a camera that has not produced a frame has nothing current to serve, and a stale one is " +
+                                        "the failure this design exists to prevent");
 
         client.Dispose();
     }

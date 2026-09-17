@@ -84,7 +84,7 @@ public class OidcOptions
     /// Whether a provider is configured at all. Nothing is registered when this is false, so
     /// <c>GetExternalAuthenticationSchemesAsync</c> stays empty and every existing guard on it holds.
     /// </summary>
-    public bool IsConfigured => !string.IsNullOrWhiteSpace(Authority)
-                                && !string.IsNullOrWhiteSpace(ClientId)
-                                && !string.IsNullOrWhiteSpace(ClientSecret);
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Authority) &&
+                                !string.IsNullOrWhiteSpace(ClientId) &&
+                                !string.IsNullOrWhiteSpace(ClientSecret);
 }

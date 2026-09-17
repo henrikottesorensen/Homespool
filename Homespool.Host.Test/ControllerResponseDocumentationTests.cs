@@ -57,8 +57,8 @@ public class ControllerResponseDocumentationTests
     private static IEnumerable<MethodInfo> Actions(Type controller)
     {
         return controller.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
-                         .Where(method => !method.IsSpecialName
-                                          && method.GetCustomAttribute<NonActionAttribute>() is null);
+                         .Where(method => !method.IsSpecialName &&
+                                          method.GetCustomAttribute<NonActionAttribute>() is null);
     }
 
     private static Type Unwrapped(Type returnType)
@@ -73,8 +73,8 @@ public class ControllerResponseDocumentationTests
     {
         Type returned = Unwrapped(action.ReturnType);
 
-        return returned.IsGenericType && returned.Namespace == typeof(Results<,>).Namespace
-                                     && returned.GetGenericTypeDefinition().Name.StartsWith("Results`", StringComparison.Ordinal) ?
+        return returned.IsGenericType && returned.Namespace == typeof(Results<,>).Namespace &&
+                                     returned.GetGenericTypeDefinition().Name.StartsWith("Results`", StringComparison.Ordinal) ?
             returned.GetGenericArguments() :
             [returned];
     }
@@ -105,10 +105,10 @@ public class ControllerResponseDocumentationTests
         List<string> silent = (from controller in AppApiControllers
             from action in Actions(controller)
             from arm in Arms(action)
-            where Documented(arm, action).Count == 0
-                  && !action.GetCustomAttributes<ProducesResponseTypeAttribute>().Any()
-            select $"{controller.Name}.{action.Name} answers {arm.Name}, which documents nothing, "
-                   + "and the action carries no [ProducesResponseType] to say it").ToList();
+            where Documented(arm, action).Count == 0 &&
+                  !action.GetCustomAttributes<ProducesResponseTypeAttribute>().Any()
+            select $"{controller.Name}.{action.Name} answers {arm.Name}, which documents nothing, " +
+                   "and the action carries no [ProducesResponseType] to say it").ToList();
 
         // Assert
         silent.Should().BeEmpty("an endpoint's answers are part of its contract");
@@ -135,18 +135,18 @@ public class ControllerResponseDocumentationTests
             from action in Actions(controller)
             from arm in Arms(action)
             from response in Documented(arm, action)
-            where response.StatusCode >= 400
-                  && (response.Type != typeof(ProblemDetails)
-                      || !response.ContentTypes.SequenceEqual([MediaTypeNames.Application.ProblemJson]))
-            select $"{controller.Name}.{action.Name} documents {response.StatusCode} through {arm.Name} "
-                   + $"as {response.Type?.Name ?? "nothing"} [{string.Join(", ", response.ContentTypes)}]").ToList();
+            where response.StatusCode >= 400 &&
+                  (response.Type != typeof(ProblemDetails) ||
+                   !response.ContentTypes.SequenceEqual([MediaTypeNames.Application.ProblemJson]))
+            select $"{controller.Name}.{action.Name} documents {response.StatusCode} through {arm.Name} " +
+                   $"as {response.Type?.Name ?? "nothing"} [{string.Join(", ", response.ContentTypes)}]").ToList();
 
         List<string> fromAttributes = (from controller in AppApiControllers
             from action in Actions(controller)
             from attribute in action.GetCustomAttributes<ProducesResponseTypeAttribute>()
             where attribute.StatusCode >= 400 && attribute.Type != typeof(ProblemDetails)
-            select $"{controller.Name}.{action.Name} documents {attribute.StatusCode} "
-                   + $"as {attribute.Type.Name}").ToList();
+            select $"{controller.Name}.{action.Name} documents {attribute.StatusCode} " +
+                   $"as {attribute.Type.Name}").ToList();
 
         // Assert
         fromArms.Should().BeEmpty();
@@ -171,8 +171,8 @@ public class ControllerResponseDocumentationTests
         ok.StatusCode.Should().Be(StatusCodes.Status200OK);
         ok.Type.Should().Be(typeof(string));
 
-        Documented(typeof(FileStreamHttpResult), anyAction).Should().BeEmpty("a file result cannot say its content type, "
-                                                                          + "which is why the attribute survives there");
+        Documented(typeof(FileStreamHttpResult), anyAction).Should().BeEmpty("a file result cannot say its content type, " +
+                                                                          "which is why the attribute survives there");
 
         Documented(typeof(NotFound), anyAction).Should().ContainSingle()
                                                .Which.Type.Should().NotBe(typeof(ProblemDetails),

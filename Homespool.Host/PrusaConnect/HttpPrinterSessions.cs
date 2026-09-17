@@ -143,9 +143,9 @@ public sealed class HttpPrinterSessions : BackgroundService
             if (connection.Client.IsUnrecognised)
             {
                 _logger.LogWarning(
-                    "Printer {PrinterId} announced itself as {UserAgent}, which is not a client this "
-                    + "server recognises. It is being treated as Buddy firmware, so it will be offered "
-                    + "an encrypted download; if its transfers time out, that assumption is why.",
+                    "Printer {PrinterId} announced itself as {UserAgent}, which is not a client this " +
+                    "server recognises. It is being treated as Buddy firmware, so it will be offered " +
+                    "an encrypted download; if its transfers time out, that assumption is why.",
                     printerId,
                     connection.Client.UserAgent);
             }

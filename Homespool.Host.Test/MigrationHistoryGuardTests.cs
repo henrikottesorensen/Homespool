@@ -76,8 +76,8 @@ public sealed class MigrationHistoryGuardTests : IDisposable
 
         verify.Should()
               .Throw<MigrationHistoryMismatchException>(
-                  "EF would treat the migration it does carry as pending and run its CREATE TABLE "
-                  + "over tables that already exist");
+                  "EF would treat the migration it does carry as pending and run its CREATE TABLE " +
+                  "over tables that already exist");
     }
 
     /// <summary>

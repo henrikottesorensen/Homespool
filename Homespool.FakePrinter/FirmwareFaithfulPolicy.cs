@@ -109,8 +109,8 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             // planner.cpp:683-689 - gcode becomes a background command: Accepted immediately,
             // Finished when it completes. The busy window is time-based here.
             _backgroundCommandId = frame.CommandId;
-            _backgroundDoneAt = _time.GetTimestamp()
-                                + (long)(GcodeExecutionTime.TotalSeconds * _time.TimestampFrequency);
+            _backgroundDoneAt = _time.GetTimestamp() +
+                                (long)(GcodeExecutionTime.TotalSeconds * _time.TimestampFrequency);
 
             return
             [
@@ -141,10 +141,10 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// </summary>
     private static bool IsTransferrable(string path)
     {
-        return FakeTransfer.IsPlainGcode(path)
-               || path.EndsWith(".bgcode", StringComparison.OrdinalIgnoreCase)
-               || path.EndsWith(".bgc", StringComparison.OrdinalIgnoreCase)
-               || path.EndsWith(".bbf", StringComparison.OrdinalIgnoreCase);
+        return FakeTransfer.IsPlainGcode(path) ||
+               path.EndsWith(".bgcode", StringComparison.OrdinalIgnoreCase) ||
+               path.EndsWith(".bgc", StringComparison.OrdinalIgnoreCase) ||
+               path.EndsWith(".bbf", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -364,8 +364,8 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             return [Reject(frame.CommandId, device, "Missing or broken parameters")];
         }
 
-        if (!path.StartsWith(FakeStorage.Root + "/", StringComparison.Ordinal)
-            || path.Contains("/../", StringComparison.Ordinal))
+        if (!path.StartsWith(FakeStorage.Root + "/", StringComparison.Ordinal) ||
+            path.Contains("/../", StringComparison.Ordinal))
         {
             // Stricter than SEND_FILE_INFO's check by exactly one case: /usb itself is a directory,
             // and printing a directory is not a path this command has any meaning for.
@@ -455,8 +455,8 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             return [Reject(frame.CommandId, device, "Missing or broken parameters")];
         }
 
-        bool onUsb = path.StartsWith(FakeStorage.Root + "/", StringComparison.Ordinal)
-                     || string.Equals(path, FakeStorage.Root, StringComparison.Ordinal);
+        bool onUsb = path.StartsWith(FakeStorage.Root + "/", StringComparison.Ordinal) ||
+                     string.Equals(path, FakeStorage.Root, StringComparison.Ordinal);
 
         if (!onUsb || path.Contains("/../", StringComparison.Ordinal))
         {
@@ -490,8 +490,8 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             return [Reject(frame.CommandId, device, "Missing or broken parameters")];
         }
 
-        if (!arguments.Path.StartsWith("/usb/", StringComparison.Ordinal)
-            || arguments.Path.Contains("/../", StringComparison.Ordinal))
+        if (!arguments.Path.StartsWith("/usb/", StringComparison.Ordinal) ||
+            arguments.Path.Contains("/../", StringComparison.Ordinal))
         {
             // path_allowed, planner.cpp:135-141.
             return [RejectWithCode(frame.CommandId, device, "Not allowed outside /usb", "STORAGE_FAILURE")];

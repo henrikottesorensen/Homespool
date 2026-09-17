@@ -126,11 +126,11 @@ public sealed class LoginWith2faTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
 
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-        HSUser user = await userManager.FindByEmailAsync(Email)
-                      ?? throw new InvalidOperationException($"No user seeded for {Email}.");
+        HSUser user = await userManager.FindByEmailAsync(Email) ??
+                      throw new InvalidOperationException($"No user seeded for {Email}.");
 
-        string base32Key = await userManager.GetAuthenticatorKeyAsync(user)
-                           ?? throw new InvalidOperationException("No authenticator key set for the seeded user.");
+        string base32Key = await userManager.GetAuthenticatorKeyAsync(user) ??
+                           throw new InvalidOperationException("No authenticator key set for the seeded user.");
 
         byte[] secretBytes = Base32Encoding.ToBytes(base32Key);
 

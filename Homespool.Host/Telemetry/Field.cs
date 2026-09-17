@@ -25,14 +25,14 @@ namespace Homespool.Host.Telemetry;
 /// </para>
 /// </remarks>
 [SuppressMessage("Design", "CA1000:Do not declare static members on generic types",
-                 Justification = "Absent/Null/Of are the type's whole API, and the explicit type "
-                                 + "argument is the point: Field<int?>.Null names exactly which "
-                                 + "cell is being cleared. A non-generic factory would infer "
-                                 + "Field<int> from an int? argument and silently mistype the cell.")]
+                 Justification = "Absent/Null/Of are the type's whole API, and the explicit type " +
+                                 "argument is the point: Field<int?>.Null names exactly which " +
+                                 "cell is being cleared. A non-generic factory would infer " +
+                                 "Field<int> from an int? argument and silently mistype the cell.")]
 [SuppressMessage("Usage", "CA2225:Operator overloads have named alternates",
-                 Justification = "Of is the named alternate; it differs deliberately (always "
-                                 + "present) because the implicit conversion's null-to-Absent is "
-                                 + "the coalesce idiom, not a general conversion.")]
+                 Justification = "Of is the named alternate; it differs deliberately (always " +
+                                 "present) because the implicit conversion's null-to-Absent is " +
+                                 "the coalesce idiom, not a general conversion.")]
 public readonly record struct Field<T>
 {
     private Field(bool isPresent, T? value)

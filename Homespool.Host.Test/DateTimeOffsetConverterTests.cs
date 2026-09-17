@@ -113,8 +113,8 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         long[] stored = ChronologicalOrder.Select(toStorage).ToArray();
 
         // Assert
-        stored.Should().BeInAscendingOrder("the stored value must be monotonic in the instant, "
-                                           + "or SQL comparisons mean something different from CLR ones");
+        stored.Should().BeInAscendingOrder("the stored value must be monotonic in the instant, " +
+                                           "or SQL comparisons mean something different from CLR ones");
     }
 
     /// <summary>
@@ -131,8 +131,8 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         long[] stored = ChronologicalOrder.Select(broken).ToArray();
 
         // Assert
-        stored.Should().NotBeInAscendingOrder("if this ever starts passing, EF has fixed "
-                                              + "DateTimeOffsetToBinaryConverter and this note can go");
+        stored.Should().NotBeInAscendingOrder("if this ever starts passing, EF has fixed " +
+                                              "DateTimeOffsetToBinaryConverter and this note can go");
     }
 
     /// <summary>

@@ -454,8 +454,8 @@ public class PrinterQueryService
     /// bucket held no reading at all.
     /// </remarks>
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
-                     Justification = "EF materialises this by name from the raw query above; nothing in this "
-                                     + "assembly constructs one, which is exactly what the rule looks for.")]
+                     Justification = "EF materialises this by name from the raw query above; nothing in this " +
+                                     "assembly constructs one, which is exactly what the rule looks for.")]
     private sealed class TemperatureBucketRow
     {
         public long BucketStartMs { get; set; }

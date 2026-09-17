@@ -67,9 +67,9 @@ public sealed record ServerCommandFrame(ServerCommandKind Kind, uint CommandId, 
         {
             using JsonDocument document = JsonDocument.Parse(Payload);
 
-            if (document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("command", out JsonElement name)
-                && name.ValueKind == JsonValueKind.String)
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("command", out JsonElement name) &&
+                name.ValueKind == JsonValueKind.String)
             {
                 return name.GetString();
             }

@@ -163,10 +163,10 @@ public sealed class FakeTransfer
     /// </summary>
     public static bool IsPlainGcode(string path)
     {
-        return path.EndsWith(".g", StringComparison.OrdinalIgnoreCase)
-               || path.EndsWith(".gc", StringComparison.OrdinalIgnoreCase)
-               || path.EndsWith(".gco", StringComparison.OrdinalIgnoreCase)
-               || path.EndsWith(".gcode", StringComparison.OrdinalIgnoreCase);
+        return path.EndsWith(".g", StringComparison.OrdinalIgnoreCase) ||
+               path.EndsWith(".gc", StringComparison.OrdinalIgnoreCase) ||
+               path.EndsWith(".gco", StringComparison.OrdinalIgnoreCase) ||
+               path.EndsWith(".gcode", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -110,8 +110,8 @@ public sealed class SecurityHeadersMiddleware : IMiddleware
 
         // On the way in, not in the callback: an error page re-run changes the request's path while
         // it renders, and the path this answers for is the one that arrived.
-        bool swagger = _environment.IsDevelopment()
-                       && context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase);
+        bool swagger = _environment.IsDevelopment() &&
+                       context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase);
 
         context.Response.OnStarting(() =>
         {
@@ -133,8 +133,8 @@ public sealed class SecurityHeadersMiddleware : IMiddleware
 
     private string Policy(HttpContext context, bool swagger)
     {
-        if (swagger
-            || (_environment.IsDevelopment() && context.Response.StatusCode == StatusCodes.Status500InternalServerError))
+        if (swagger ||
+            (_environment.IsDevelopment() && context.Response.StatusCode == StatusCodes.Status500InternalServerError))
         {
             return FramingAndBase;
         }

@@ -199,9 +199,9 @@ public sealed class WebRtcConfigurer : IHostedService
     {
         CameraOptions cameras = _cameras.CurrentValue;
 
-        IReadOnlyList<IPAddress> resolved = _connect.CurrentValue.IsPrinterAddressConfigured
-            ? await _resolver.ResolveAsync(_connect.CurrentValue.PrinterHost.Trim(), cancellationToken).ConfigureAwait(false)
-            : [];
+        IReadOnlyList<IPAddress> resolved = _connect.CurrentValue.IsPrinterAddressConfigured ?
+            await _resolver.ResolveAsync(_connect.CurrentValue.PrinterHost.Trim(), cancellationToken).ConfigureAwait(false) :
+            [];
 
         string candidate = CandidateFor(
             cameras.WebRtcCandidate, cameras.WebRtcPort, resolved, _certificates.Value.ParsedContainerNetworks);
@@ -217,17 +217,17 @@ public sealed class WebRtcConfigurer : IHostedService
             if (_availability.ConfiguredHostResolvesOnlyToLoopback)
             {
                 _logger.LogInformation(
-                    "No WebRTC address could be worked out, so live camera view is off: PRINTER_HOST resolves only to "
-                    + "loopback from inside this container, which is the machine's own hosts-file entry for its hostname "
-                    + "(127.0.1.1 on Debian and Raspberry Pi OS) rather than what a browser sees. Remove the name from the "
-                    + "127.0.1.1 line in /etc/hosts on the host, or set WEBRTC_CANDIDATE to the address and port a browser "
-                    + "should use.");
+                    "No WebRTC address could be worked out, so live camera view is off: PRINTER_HOST resolves only to " +
+                    "loopback from inside this container, which is the machine's own hosts-file entry for its hostname " +
+                    "(127.0.1.1 on Debian and Raspberry Pi OS) rather than what a browser sees. Remove the name from the " +
+                    "127.0.1.1 line in /etc/hosts on the host, or set WEBRTC_CANDIDATE to the address and port a browser " +
+                    "should use.");
             }
             else
             {
                 _logger.LogInformation(
-                    "No WebRTC address could be worked out, so live camera view is off. Set PRINTER_HOST to a name "
-                    + "this machine answers to, or WEBRTC_CANDIDATE to the address and port a browser should use.");
+                    "No WebRTC address could be worked out, so live camera view is off. Set PRINTER_HOST to a name " +
+                    "this machine answers to, or WEBRTC_CANDIDATE to the address and port a browser should use.");
             }
 
             return;

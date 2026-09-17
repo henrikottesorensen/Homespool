@@ -212,9 +212,9 @@ public class InvitationService
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
         return await _dbContext.Invitations
-                               .Where(i => i.UsedAt == null
-                                           && i.ExpiresAt > now
-                                           && i.Email.ToUpper() == normalised)
+                               .Where(i => i.UsedAt == null &&
+                                           i.ExpiresAt > now &&
+                                           i.Email.ToUpper() == normalised)
                                .OrderByDescending(i => i.CreatedAt)
                                .FirstOrDefaultAsync(cancellationToken);
     }

@@ -147,9 +147,9 @@ public sealed class LocalSignIn
 
         if (fresh.Identity is ClaimsIdentity identity)
         {
-            foreach (Claim carried in current.FindAll(claim => claim.Type is JwtClaimTypes.AuthenticationMethod
-                                                                          or JwtClaimTypes.IdentityProvider
-                                                                          or HSClaimTypes.PasskeyCredentialId))
+            foreach (Claim carried in current.FindAll(claim => claim.Type is JwtClaimTypes.AuthenticationMethod or
+                                                                             JwtClaimTypes.IdentityProvider or
+                                                                             HSClaimTypes.PasskeyCredentialId))
             {
                 identity.AddClaim(new Claim(carried.Type, carried.Value));
             }

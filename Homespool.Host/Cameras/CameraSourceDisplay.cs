@@ -150,9 +150,9 @@ public static class CameraSourceDisplay
         int separator = userInfo.IndexOf(':');
         string address = source.Remove(start, length + 1);
 
-        return separator < 0
-            ? new CameraSourceParts(address, userInfo, null)
-            : new CameraSourceParts(address, userInfo[..separator], userInfo[(separator + 1)..]);
+        return separator < 0 ?
+            new CameraSourceParts(address, userInfo, null) :
+            new CameraSourceParts(address, userInfo[..separator], userInfo[(separator + 1)..]);
     }
 
     /// <summary>

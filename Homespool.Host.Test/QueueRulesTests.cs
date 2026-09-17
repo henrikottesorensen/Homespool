@@ -99,8 +99,8 @@ public class QueueRulesTests
     [MemberData(nameof(AllStates))]
     public void OnlyFirmwaresOwnStatesCanBeOfferedWork(PrinterStatus status)
     {
-        bool expected = status is PrinterStatus.Idle or PrinterStatus.Ready
-                               or PrinterStatus.Stopped or PrinterStatus.Finished;
+        bool expected = status is PrinterStatus.Idle or PrinterStatus.Ready or
+                                  PrinterStatus.Stopped or PrinterStatus.Finished;
 
         QueueRules.CanBeOfferedWork(status).Should().Be(expected);
     }
@@ -410,10 +410,10 @@ public class QueueRulesTests
     [MemberData(nameof(AllWaitReasons))]
     public void OnlyTheReasonsNothingElseCoversGetASentence(QueueWaitReason reason)
     {
-        bool expected = reason is QueueWaitReason.Transferring
-                               or QueueWaitReason.TransferRetrying
-                               or QueueWaitReason.AwaitingPrinterPath
-                               or QueueWaitReason.PrinterNotAvailable;
+        bool expected = reason is QueueWaitReason.Transferring or
+                                  QueueWaitReason.TransferRetrying or
+                                  QueueWaitReason.AwaitingPrinterPath or
+                                  QueueWaitReason.PrinterNotAvailable;
 
         MessageKey? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
 

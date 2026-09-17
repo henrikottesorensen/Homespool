@@ -130,8 +130,8 @@ public class ClaimModel : PageModel
 
         DateTimeOffset now = TimeProvider.System.GetUtcNow();
 
-        if (await _attemptLimiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, now, cancellationToken)
-                is { } remaining)
+        if (await _attemptLimiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, now, cancellationToken) is
+                { } remaining)
         {
             // Deliberately says how long, rather than a bare refusal: the overwhelmingly likely
             // person reading this is someone who mistyped, standing at their own printer.

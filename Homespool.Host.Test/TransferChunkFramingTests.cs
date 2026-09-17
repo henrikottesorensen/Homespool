@@ -159,8 +159,8 @@ public class TransferChunkFramingTests
 
         // Assert
         Frame.ParseAll(capture.Written.ToArray()).Should().ContainSingle(
-            "8 KB is far inside the frame size, so it is one frame - and there is no longer a "
-            + "transport that makes it many");
+            "8 KB is far inside the frame size, so it is one frame - and there is no longer a " +
+            "transport that makes it many");
     }
 
     /// <summary>

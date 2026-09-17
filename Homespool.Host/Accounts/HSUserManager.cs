@@ -101,7 +101,7 @@ public sealed class HSUserManager : UserManager<HSUser>
 
     private IUserLockoutStore<HSUser> LockoutStore()
     {
-        return Store as IUserLockoutStore<HSUser>
-               ?? throw new NotSupportedException("The user store does not implement IUserLockoutStore<HSUser>.");
+        return Store as IUserLockoutStore<HSUser> ??
+               throw new NotSupportedException("The user store does not implement IUserLockoutStore<HSUser>.");
     }
 }

@@ -61,11 +61,11 @@ public sealed class CameraCredentialHealthCheck : IHealthCheck
             if (!_options.CurrentValue.CredentialSurvivesTransport)
             {
                 return HealthCheckResult.Degraded(
-                    "The camera stream server's credential contains a double quote or a backslash, which cannot "
-                    + "survive the configuration file it reaches the sidecar in - the sidecar receives a different "
-                    + "value than this process does, so every camera will answer 401 while both halves look "
-                    + "correctly configured. Regenerate it with `openssl rand -base64 24`, whose output contains "
-                    + "neither.");
+                    "The camera stream server's credential contains a double quote or a backslash, which cannot " +
+                    "survive the configuration file it reaches the sidecar in - the sidecar receives a different " +
+                    "value than this process does, so every camera will answer 401 while both halves look " +
+                    "correctly configured. Regenerate it with `openssl rand -base64 24`, whose output contains " +
+                    "neither.");
             }
 
             return HealthCheckResult.Healthy("The camera stream server has a credential.");
@@ -77,14 +77,14 @@ public sealed class CameraCredentialHealthCheck : IHealthCheck
         // with no API at all until the credential exists, so the cost of this state is that cameras
         // do not work rather than that something is exposed.
         const string Remedy =
-            "Set GO2RTC_USERNAME and GO2RTC_PASSWORD in .env - ./setup-env.sh generates them - and restart. "
-            + "Until then the stream server starts with its API switched off, so nothing can drive it, and "
-            + "Homespool declines to use an unauthenticated one in any case.";
+            "Set GO2RTC_USERNAME and GO2RTC_PASSWORD in .env - ./setup-env.sh generates them - and restart. " +
+            "Until then the stream server starts with its API switched off, so nothing can drive it, and " +
+            "Homespool declines to use an unauthenticated one in any case.";
 
         return HealthCheckResult.Degraded(
             cameras == 0 ?
                 $"The camera stream server has no credential, so no camera can be added. {Remedy}" :
-                $"{cameras} camera(s) are configured but the stream server has no credential, so none of them "
-                + $"will produce a picture. {Remedy}");
+                $"{cameras} camera(s) are configured but the stream server has no credential, so none of them " +
+                $"will produce a picture. {Remedy}");
     }
 }

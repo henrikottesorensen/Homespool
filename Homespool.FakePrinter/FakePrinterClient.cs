@@ -260,9 +260,9 @@ public sealed class FakePrinterClient : IAsyncDisposable
                 // A device event the printer decided to send - an attention it just raised -
                 // goes ahead of the timed telemetry, which is the order a real one produces: the
                 // state change is reported when it happens, not at the next tick.
-                byte[]? next = Device.PendingEvents.Count > 0
-                    ? Device.PendingEvents.Dequeue()
-                    : _options.TelemetrySource.NextMessage(Device);
+                byte[]? next = Device.PendingEvents.Count > 0 ?
+                    Device.PendingEvents.Dequeue() :
+                    _options.TelemetrySource.NextMessage(Device);
 
                 if (next is null)
                 {
@@ -367,8 +367,8 @@ public sealed class FakePrinterClient : IAsyncDisposable
             return null;
         }
 
-        if (!response.Headers.TryGetValues("Command-Id", out IEnumerable<string>? values)
-            || !uint.TryParse(values.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out uint commandId))
+        if (!response.Headers.TryGetValues("Command-Id", out IEnumerable<string>? values) ||
+            !uint.TryParse(values.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out uint commandId))
         {
             throw new InvalidOperationException(
                 "The server answered 200 to a telemetry POST without a Command-Id header, which firmware would discard as confused.");
@@ -614,9 +614,9 @@ public sealed class FakePrinterClient : IAsyncDisposable
             while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
                 // See the HTTP loop: a raised attention is sent when it is raised.
-                byte[]? next = Device.PendingEvents.Count > 0
-                    ? Device.PendingEvents.Dequeue()
-                    : _options.TelemetrySource.NextMessage(Device);
+                byte[]? next = Device.PendingEvents.Count > 0 ?
+                    Device.PendingEvents.Dequeue() :
+                    _options.TelemetrySource.NextMessage(Device);
 
                 if (next is null)
                 {

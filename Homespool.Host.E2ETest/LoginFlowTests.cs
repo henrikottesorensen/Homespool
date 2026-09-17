@@ -306,8 +306,8 @@ public sealed class LoginFlowTests : IAsyncLifetime
             using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "locked@example.com", "wrong-password");
             lastResponse = await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);
 
-            if (lastResponse.StatusCode == HttpStatusCode.Redirect
-                && lastResponse.Headers.Location?.OriginalString.Contains("Lockout", StringComparison.OrdinalIgnoreCase) == true)
+            if (lastResponse.StatusCode == HttpStatusCode.Redirect &&
+                lastResponse.Headers.Location?.OriginalString.Contains("Lockout", StringComparison.OrdinalIgnoreCase) == true)
             {
                 break;
             }

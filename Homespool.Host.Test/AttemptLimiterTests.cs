@@ -38,8 +38,8 @@ public sealed class AttemptLimiterTests : IDisposable
         UserActionAttempt? attempt = await context.UserActionAttempts
                                                   .AsNoTracking()
                                                   .SingleOrDefaultAsync(
-                                                      a => a.UserId == user.Id
-                                                           && a.Action == LimitedAction.ClaimPrinter,
+                                                      a => a.UserId == user.Id &&
+                                                           a.Action == LimitedAction.ClaimPrinter,
                                                       TestContext.Current.CancellationToken);
 
         return attempt?.FailedCount ?? 0;

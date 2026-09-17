@@ -40,9 +40,9 @@ public sealed class DisableFormValueModelBindingAttribute : Attribute, IResource
 
         for (int i = context.ValueProviderFactories.Count - 1; i >= 0; i--)
         {
-            if (context.ValueProviderFactories[i] is FormValueProviderFactory
-                or FormFileValueProviderFactory
-                or JQueryFormValueProviderFactory)
+            if (context.ValueProviderFactories[i] is FormValueProviderFactory or
+                FormFileValueProviderFactory or
+                JQueryFormValueProviderFactory)
             {
                 context.ValueProviderFactories.RemoveAt(i);
             }

@@ -18,8 +18,8 @@ public class CommandSendTimedOutException : Exception, ILocalisableError
 {
     /// <summary>The one callers actually use - the message is not worth restating at each throw.</summary>
     public CommandSendTimedOutException(int printerId)
-        : base($"Writing the command to printer {printerId} did not complete in time; "
-               + "whether the printer received it is unknown. The connection has been torn down.")
+        : base($"Writing the command to printer {printerId} did not complete in time; " +
+               "whether the printer received it is unknown. The connection has been torn down.")
     {
     }
 

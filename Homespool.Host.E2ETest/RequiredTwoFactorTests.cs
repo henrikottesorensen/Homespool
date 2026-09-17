@@ -95,8 +95,8 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime
         string destination = response.Headers.Location?.OriginalString.Split('?')[0] ?? string.Empty;
 
         destination.Should().NotContain("EnableAuthenticator",
-                                        "{0} is how an account satisfies the requirement or leaves, so the gate "
-                                        + "must not bounce it back to enrolment", path);
+                                        "{0} is how an account satisfies the requirement or leaves, so the gate " +
+                                        "must not bounce it back to enrolment", path);
     }
 
     /// <summary>

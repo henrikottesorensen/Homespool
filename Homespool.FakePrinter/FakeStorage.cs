@@ -82,8 +82,8 @@ public sealed class FakeStorage
         string prefix = path.EndsWith('/') ? path : path + "/";
 
         return _entries.Values
-                       .Where(entry => entry.Path.StartsWith(prefix, StringComparison.Ordinal)
-                                       && !entry.Path.AsSpan(prefix.Length).Contains('/'))
+                       .Where(entry => entry.Path.StartsWith(prefix, StringComparison.Ordinal) &&
+                                       !entry.Path.AsSpan(prefix.Length).Contains('/'))
                        .ToList();
     }
 }

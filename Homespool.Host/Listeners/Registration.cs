@@ -111,8 +111,8 @@ public static class Registration
             }
             else
             {
-                Log.Information("The listeners bind {Addresses} - the interfaces facing the trusted proxy, and loopback; "
-                                + "no other interface gets a socket.",
+                Log.Information("The listeners bind {Addresses} - the interfaces facing the trusted proxy, and loopback; " +
+                                "no other interface gets a socket.",
                                 binding.Addresses.Select(address => address.ToString()).ToArray());
             }
 
@@ -151,13 +151,13 @@ public static class Registration
             // statement than a listener that exists and refuses.
             if (listeners.LegacyPrinterPort is int legacyPrinterPort)
             {
-                Log.Warning("A PLAINTEXT printer listener is open on port {Port} for firmware that cannot load a "
-                            + "custom certificate. Every printer provisioned onto it sends its token, its files, and "
-                            + "the WiFi SSID and PrusaLink password it reports in its own INFO, across the network in "
-                            + "clear - and plain HTTP has no integrity, so gcode and commands can be altered in flight "
-                            + "rather than only read. "
-                            + "Printers that can load a custom certificate should use Listeners:PrinterPort instead; "
-                            + "unset Listeners:LegacyPrinterPort to close it.",
+                Log.Warning("A PLAINTEXT printer listener is open on port {Port} for firmware that cannot load a " +
+                            "custom certificate. Every printer provisioned onto it sends its token, its files, and " +
+                            "the WiFi SSID and PrusaLink password it reports in its own INFO, across the network in " +
+                            "clear - and plain HTTP has no integrity, so gcode and commands can be altered in flight " +
+                            "rather than only read. " +
+                            "Printers that can load a custom certificate should use Listeners:PrinterPort instead; " +
+                            "unset Listeners:LegacyPrinterPort to close it.",
                             legacyPrinterPort);
 
                 Bind(legacyPrinterPort);

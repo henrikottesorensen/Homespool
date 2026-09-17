@@ -1142,12 +1142,12 @@ public class PrinterConnectionActorTests
                                   .Select(record => record.Message)
                                   .ToArray();
 
-        messages.Should().Contain(message => message.Contains("sent PAUSE_PRINT", StringComparison.Ordinal)
-                                             && message.Contains(commandId.ToString(), StringComparison.Ordinal));
+        messages.Should().Contain(message => message.Contains("sent PAUSE_PRINT", StringComparison.Ordinal) &&
+                                             message.Contains(commandId.ToString(), StringComparison.Ordinal));
 
-        messages.Should().Contain(message => message.Contains("answered with Finished", StringComparison.Ordinal)
-                                             && message.Contains(commandId.ToString(), StringComparison.Ordinal)
-                                             && message.Contains("ms", StringComparison.Ordinal));
+        messages.Should().Contain(message => message.Contains("answered with Finished", StringComparison.Ordinal) &&
+                                             message.Contains(commandId.ToString(), StringComparison.Ordinal) &&
+                                             message.Contains("ms", StringComparison.Ordinal));
 
         actor.Complete();
         await Eventually(actor.Completion);

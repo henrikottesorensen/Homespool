@@ -159,8 +159,8 @@ public class ForwardedHeadersConfiguratorTests
         applied.KnownProxies.Should().BeEmpty();
         applied.KnownIPNetworks.Should().BeEmpty();
         source.TrustsAnything.Should().BeFalse(
-            "an empty configuration disables ASP.NET's peer check rather than tightening it, so the "
-            + "middleware must not be registered at all");
+            "an empty configuration disables ASP.NET's peer check rather than tightening it, so the " +
+            "middleware must not be registered at all");
     }
 
     /// <summary>

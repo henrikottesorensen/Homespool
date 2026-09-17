@@ -59,8 +59,8 @@ public class TelemetryWriterShutdownBudgetTests
     {
         (TelemetryWriter.MaxShutdownFlushDuration + InFlightFlushAllowance)
             .Should().BeLessThan(ContainerStopGracePeriod - NonDrainShutdownAllowance,
-                                 "the drain has to finish and report what it lost before the container runtime SIGKILLs it - "
-                                 + "a shutdown killed mid-flush loses the buffers and the record of losing them");
+                                 "the drain has to finish and report what it lost before the container runtime SIGKILLs it - " +
+                                 "a shutdown killed mid-flush loses the buffers and the record of losing them");
     }
 
     /// <summary>

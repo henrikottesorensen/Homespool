@@ -118,8 +118,8 @@ public sealed class ExternalLoginProviderTests : IAsyncLifetime
             await client.PostAsync("/Account/ExternalLogin", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
-                                        "an unregistered scheme reaching ChallengeResult throws, so this answered 500 "
-                                        + "to any anonymous caller who asked");
+                                        "an unregistered scheme reaching ChallengeResult throws, so this answered 500 " +
+                                        "to any anonymous caller who asked");
     }
 
     /// <summary>

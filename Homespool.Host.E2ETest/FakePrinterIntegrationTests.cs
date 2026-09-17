@@ -245,8 +245,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
 
             Encoding.ASCII.GetString(fake.ReceivedCommands[0].Payload.Span)
                     .Should().Be("M702 T0 W0",
-                                 "a single-tool printer is still named explicitly - T0 - so no path depends "
-                                 + "on what firmware happens to have picked");
+                                 "a single-tool printer is still named explicitly - T0 - so no path depends " +
+                                 "on what firmware happens to have picked");
 
             outcome.Material.Should().Be("PLA");
             outcome.Answer!.EventType.Should().NotBe(PrinterEventType.Rejected);
@@ -859,8 +859,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
             () => Task.FromResult(fake.Device.LastTransfer is not null),
             TimeSpan.FromSeconds(30));
 
-        ended.Should().BeTrue("the transfer never reached a terminal state - the inline engine has no "
-                              + "stall timeout, so a hang here is the production symptom");
+        ended.Should().BeTrue("the transfer never reached a terminal state - the inline engine has no " +
+                              "stall timeout, so a hang here is the production symptom");
         fake.ReplyFault.Should().BeNull();
 
         return fake.Device.LastTransfer!;
@@ -1224,8 +1224,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
 
         // Every command these tests send is one the printer answers, so a null here would itself be
         // a failure worth surfacing loudly rather than a case to handle.
-        return await service.SendCommandAsync(printerId, command, Caller.Unscoped(userId), CancellationToken.None)
-               ?? throw new InvalidOperationException($"{command.WireName} reported no answer expected.");
+        return await service.SendCommandAsync(printerId, command, Caller.Unscoped(userId), CancellationToken.None) ??
+               throw new InvalidOperationException($"{command.WireName} reported no answer expected.");
     }
 
     private async Task<WebSocket> ConnectViaTestServerAsync(FakePrinterConnectRequest request, CancellationToken cancellationToken)

@@ -21,11 +21,11 @@ public static class JobIdArgument
         {
             using JsonDocument document = JsonDocument.Parse(payload);
 
-            if (!document.RootElement.TryGetProperty("kwargs", out JsonElement kwargs)
-                || kwargs.ValueKind != JsonValueKind.Object
-                || !kwargs.TryGetProperty("job_id", out JsonElement jobId)
-                || jobId.ValueKind != JsonValueKind.Number
-                || !jobId.TryGetInt32(out int value))
+            if (!document.RootElement.TryGetProperty("kwargs", out JsonElement kwargs) ||
+                kwargs.ValueKind != JsonValueKind.Object ||
+                !kwargs.TryGetProperty("job_id", out JsonElement jobId) ||
+                jobId.ValueKind != JsonValueKind.Number ||
+                !jobId.TryGetInt32(out int value))
             {
                 return null;
             }

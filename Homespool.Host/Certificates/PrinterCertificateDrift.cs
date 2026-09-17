@@ -71,8 +71,8 @@ public static class PrinterCertificateDrift
         if (PrusaConnect.PrinterHostLengthValidator.Refusal(configuredHost) is string tooLong)
         {
             return new(PrinterCertificateState.ConfiguredAddressTooLong,
-                       $"{tooLong} Every provisioning bundle written from it produces a printer that cannot connect. "
-                       + "Change PRINTER_HOST, then reissue the certificate for the new name: Admin -> Printer certificate.");
+                       $"{tooLong} Every provisioning bundle written from it produces a printer that cannot connect. " +
+                       "Change PRINTER_HOST, then reissue the certificate for the new name: Admin -> Printer certificate.");
         }
 
         if (!tlsEnabled)
@@ -85,17 +85,17 @@ public static class PrinterCertificateDrift
         if (covered.Count == 0 || leafExpires is null)
         {
             return new(PrinterCertificateState.Missing,
-                       "No printer certificate has been issued, so no printer can verify this server. It is normally created "
-                       + "at startup - check the log for why it was not.");
+                       "No printer certificate has been issued, so no printer can verify this server. It is normally created " +
+                       "at startup - check the log for why it was not.");
         }
 
-        if (!string.IsNullOrWhiteSpace(configuredHost)
-            && !covered.Contains(configuredHost.Trim(), StringComparer.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(configuredHost) &&
+            !covered.Contains(configuredHost.Trim(), StringComparer.OrdinalIgnoreCase))
         {
             return new(PrinterCertificateState.ConfiguredAddressUncovered,
-                       $"The printer certificate does not cover {configuredHost.Trim()}, which is the address printers are "
-                       + $"told to use. It covers {Describe(covered)}. No provisioning bundle can be produced for that "
-                       + "address until the certificate is reissued: Admin -> Printer certificate.");
+                       $"The printer certificate does not cover {configuredHost.Trim()}, which is the address printers are " +
+                       $"told to use. It covers {Describe(covered)}. No provisioning bundle can be produced for that " +
+                       "address until the certificate is reissued: Admin -> Printer certificate.");
         }
 
         // After the uncovered case, which stops provisioning today; this one misleads rather than
@@ -105,11 +105,11 @@ public static class PrinterCertificateDrift
         if (configuredHostResolvesOnlyToLoopback && !string.IsNullOrWhiteSpace(configuredHost))
         {
             return new(PrinterCertificateState.ConfiguredAddressResolvesToLoopback,
-                       $"{configuredHost.Trim()} resolves only to a loopback address from inside this container - the "
-                       + "machine's own hosts-file entry for its hostname (127.0.1.1 on Debian and Raspberry Pi OS), not what "
-                       + "printers see. Until it is fixed, this deployment cannot tell which of its addresses answer, so the "
-                       + "certificate page will offer to drop names that work and live camera view has no address. Remove "
-                       + "the name from the 127.0.1.1 line in /etc/hosts on the host, and restart the stack.");
+                       $"{configuredHost.Trim()} resolves only to a loopback address from inside this container - the " +
+                       "machine's own hosts-file entry for its hostname (127.0.1.1 on Debian and Raspberry Pi OS), not what " +
+                       "printers see. Until it is fixed, this deployment cannot tell which of its addresses answer, so the " +
+                       "certificate page will offer to drop names that work and live camera view has no address. Remove " +
+                       "the name from the 127.0.1.1 line in /etc/hosts on the host, and restart the stack.");
         }
 
         // Only when nothing is configured, and that is not a shortcut. A configured name the
@@ -120,31 +120,31 @@ public static class PrinterCertificateDrift
         //
         // Extra addresses are ordinary either way: a VPN, a container bridge, a second interface.
         // Losing every address the certificate names is not - that is the multi-name hedge exhausted.
-        if (string.IsNullOrWhiteSpace(configuredHost)
-            && current.Count > 0
-            && !covered.Any(name => current.Contains(name, StringComparer.OrdinalIgnoreCase)))
+        if (string.IsNullOrWhiteSpace(configuredHost) &&
+            current.Count > 0 &&
+            !covered.Any(name => current.Contains(name, StringComparer.OrdinalIgnoreCase)))
         {
             return new(PrinterCertificateState.AddressesMoved,
-                       $"This machine's addresses have changed. The printer certificate covers {Describe(covered)}, and this "
-                       + $"machine now answers on {Describe(current)} - so printers can no longer verify it. Reissue the "
-                       + "certificate: Admin -> Printer certificate.");
+                       $"This machine's addresses have changed. The printer certificate covers {Describe(covered)}, and this " +
+                       $"machine now answers on {Describe(current)} - so printers can no longer verify it. Reissue the " +
+                       "certificate: Admin -> Printer certificate.");
         }
 
         if (leafExpires.Value - now < LeafExpiryWarning)
         {
             return new(PrinterCertificateState.LeafExpiring,
-                       $"The printer certificate expires on {leafExpires.Value:yyyy-MM-dd}. Reissuing it costs a proxy reload "
-                       + "and nothing at the printers, which trust the authority rather than this certificate: Admin -> "
-                       + "Printer certificate.");
+                       $"The printer certificate expires on {leafExpires.Value:yyyy-MM-dd}. Reissuing it costs a proxy reload " +
+                       "and nothing at the printers, which trust the authority rather than this certificate: Admin -> " +
+                       "Printer certificate.");
         }
 
         if (authorityExpires is not null && authorityExpires.Value - now < AuthorityExpiryWarning)
         {
             return new(PrinterCertificateState.AuthorityExpiring,
-                       $"The printer certificate AUTHORITY expires on {authorityExpires.Value:yyyy-MM-dd}. This one is not a "
-                       + "button: the authority is each printer's entire trust store and cannot be delivered over the "
-                       + "network, so replacing it means a USB visit to every printer, and none of them can connect until "
-                       + "visited. Plan it rather than discover it.");
+                       $"The printer certificate AUTHORITY expires on {authorityExpires.Value:yyyy-MM-dd}. This one is not a " +
+                       "button: the authority is each printer's entire trust store and cannot be delivered over the " +
+                       "network, so replacing it means a USB visit to every printer, and none of them can connect until " +
+                       "visited. Plan it rather than discover it.");
         }
 
         return new(PrinterCertificateState.Ok,

@@ -76,8 +76,8 @@ public sealed class ManageFolderAuthorizationTests : IAsyncLifetime
         using HttpResponseMessage response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect,
-                                        "the folder is authorized, so an anonymous request is challenged rather than "
-                                        + "answered - a 404 here would mean the page refused by accident instead");
+                                        "the folder is authorized, so an anonymous request is challenged rather than " +
+                                        "answered - a 404 here would mean the page refused by accident instead");
 
         response.Headers.Location!.OriginalString
                 .Should().Contain("/Account/Login", "the challenge sends them somewhere they can act on");
@@ -117,8 +117,8 @@ public sealed class ManageFolderAuthorizationTests : IAsyncLifetime
                                                    .Get(Microsoft.AspNetCore.Identity.IdentityConstants.ApplicationScheme);
 
         options.Cookie.SameSite.Should().Be(Microsoft.AspNetCore.Http.SameSiteMode.Lax,
-                                            "it is the only thing standing between a cross-site POST and an "
-                                            + "authenticated /api call, so it should be a decision rather than a default");
+                                            "it is the only thing standing between a cross-site POST and an " +
+                                            "authenticated /api call, so it should be a decision rather than a default");
 
         options.Cookie.HttpOnly.Should().BeTrue("script has no business reading a session cookie");
 
@@ -126,8 +126,8 @@ public sealed class ManageFolderAuthorizationTests : IAsyncLifetime
         // deployment run without the proxy could not sign in at all. On the shipped stack the app is
         // told the scheme by X-Forwarded-Proto from a trusted proxy, so this still issues Secure.
         options.Cookie.SecurePolicy.Should().Be(Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest,
-                                                "a plaintext deployment is supported rather than tolerated, "
-                                                + "and Always would lock it out of sign-in entirely");
+                                                "a plaintext deployment is supported rather than tolerated, " +
+                                                "and Always would lock it out of sign-in entirely");
     }
 
     public async ValueTask DisposeAsync()

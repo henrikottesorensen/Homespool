@@ -257,9 +257,9 @@ public sealed class ProviderReauthenticationDexTests
             signin.StatusCode.Should().Be(HttpStatusCode.Redirect,
                                           "the handler consumes the code and hands off to the page's callback, but answered {0}: {1}",
                                           signin.StatusCode,
-                                          signin.StatusCode == HttpStatusCode.Redirect
-                                              ? string.Empty
-                                              : await signin.Content.ReadAsStringAsync(cancellationToken));
+                                          signin.StatusCode == HttpStatusCode.Redirect ?
+                                              string.Empty :
+                                              await signin.Content.ReadAsStringAsync(cancellationToken));
 
             return signin;
         }

@@ -310,9 +310,9 @@ public class DetailModel : PageModel
 
         return await ActAsync(uuid,
                               (administratorId, accountId) => _administration.RevokePasskeyAsync(administratorId, accountId, key, cancellationToken),
-                              result => result.Affected == 0
-                                  ? _localiser["Passkeys_Gone"].Value
-                                  : _localiser["AdminPasskeys_Revoked"].Value,
+                              result => result.Affected == 0 ?
+                                  _localiser["Passkeys_Gone"].Value :
+                                  _localiser["AdminPasskeys_Revoked"].Value,
                               _localiser["AdminPasskeys_RefusedSelf"].Value,
                               cancellationToken);
     }

@@ -61,11 +61,11 @@ public class PasskeyIndependenceTests
         ];
 
         offenders.Should().BeEmpty(
-            "every sign-in is a scheme or helper of this application's - the local credential schemes, "
-            + "LocalSignIn, ExternalSignIn and the stamp validators - so nothing resolves the framework's "
-            + "SignInManager, which is not registered. Its passkey methods in particular put a ceremony's "
-            + "state in the two-factor cookie and route the sign-in through the first-then-second-factor "
-            + "flow, which is the coupling the Passkey scheme exists to avoid");
+            "every sign-in is a scheme or helper of this application's - the local credential schemes, " +
+            "LocalSignIn, ExternalSignIn and the stamp validators - so nothing resolves the framework's " +
+            "SignInManager, which is not registered. Its passkey methods in particular put a ceremony's " +
+            "state in the two-factor cookie and route the sign-in through the first-then-second-factor " +
+            "flow, which is the coupling the Passkey scheme exists to avoid");
     }
 
     /// <summary>
@@ -86,8 +86,8 @@ public class PasskeyIndependenceTests
 
         return ProductionProjects
                .SelectMany(project => Directory.EnumerateFiles(Path.Combine(root, project), "*.cs", SearchOption.AllDirectories))
-               .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                              && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+               .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+                              !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
     }
 
     private static string Relative(string path)

@@ -146,9 +146,9 @@ public sealed class LocalCameraDevices
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        return DeviceNameFrom(source) is { } deviceName && CameraSourcePolicy.IsLocalDevice(source)
-            ? SourceFor(deviceName, resolution)
-            : source;
+        return DeviceNameFrom(source) is { } deviceName && CameraSourcePolicy.IsLocalDevice(source) ?
+            SourceFor(deviceName, resolution) :
+            source;
     }
 
     /// <summary>
@@ -189,8 +189,8 @@ public sealed class LocalCameraDevices
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(deviceNames);
 
-        if (DeviceNameFrom(source) is not { } deviceName
-            || !deviceNames.Any(name => string.Equals(name, deviceName, StringComparison.Ordinal)))
+        if (DeviceNameFrom(source) is not { } deviceName ||
+            !deviceNames.Any(name => string.Equals(name, deviceName, StringComparison.Ordinal)))
         {
             return CameraSourceCheck.Refused("Cameras_AttachedDeviceUnknown");
         }

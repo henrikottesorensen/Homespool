@@ -75,8 +75,8 @@ public sealed class TelemetryAlertService : BackgroundService
                                              .Where(entry => entry.Value.Status != HealthStatus.Healthy)
                                              .Select(entry => $"<li>{entry.Value.Description ?? entry.Key}</li>");
 
-        return $"<p>{localiser["Alert_UnhealthyIntro"].Value}</p><ul>{string.Concat(problems)}</ul>"
-               + $"<p>{localiser["Alert_UnhealthyFooter"].Value}</p>";
+        return $"<p>{localiser["Alert_UnhealthyIntro"].Value}</p><ul>{string.Concat(problems)}</ul>" +
+               $"<p>{localiser["Alert_UnhealthyFooter"].Value}</p>";
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

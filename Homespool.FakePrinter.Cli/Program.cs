@@ -293,9 +293,9 @@ public static class Program
             source = new EventMixingTelemetrySource(source) { EventEvery = every };
         }
 
-        if (named.TryGetValue("events-every-seconds", out string? seconds)
-            && double.TryParse(seconds, NumberStyles.Float, CultureInfo.InvariantCulture, out double interval)
-            && interval > 0)
+        if (named.TryGetValue("events-every-seconds", out string? seconds) &&
+            double.TryParse(seconds, NumberStyles.Float, CultureInfo.InvariantCulture, out double interval) &&
+            interval > 0)
         {
             source = new TimedEventTelemetrySource(source, TimeProvider.System)
             {

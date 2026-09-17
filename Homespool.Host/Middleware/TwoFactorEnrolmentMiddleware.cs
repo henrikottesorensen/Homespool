@@ -138,8 +138,8 @@ public sealed class TwoFactorEnrolmentMiddleware
     /// </summary>
     private static bool SignedInAsPerson(HttpContext context)
     {
-        return context.User.Identity is { IsAuthenticated: true, AuthenticationType: not null }
-               && string.Equals(context.User.Identity.AuthenticationType,
+        return context.User.Identity is { IsAuthenticated: true, AuthenticationType: not null } &&
+               string.Equals(context.User.Identity.AuthenticationType,
                                 IdentityConstants.ApplicationScheme,
                                 StringComparison.Ordinal);
     }

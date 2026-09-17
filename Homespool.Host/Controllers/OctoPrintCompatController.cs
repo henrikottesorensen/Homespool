@@ -205,8 +205,8 @@ public class OctoPrintCompatController : ControllerBase
                 {
                     stored = await ReadFileSectionAsync(section, disposition, owner, cancellationToken);
                 }
-                else if (disposition.IsFormDisposition()
-                         && string.Equals(disposition.Name.Value, "print", StringComparison.OrdinalIgnoreCase))
+                else if (disposition.IsFormDisposition() &&
+                         string.Equals(disposition.Name.Value, "print", StringComparison.OrdinalIgnoreCase))
                 {
                     print = await ReadPrintFlagAsync(section, cancellationToken);
                 }
@@ -223,8 +223,8 @@ public class OctoPrintCompatController : ControllerBase
             // for /api/v1, where the caller holds that flag, and useless here, where the caller is a
             // slicer that has none. Name the action this caller actually has instead.
             return Explain(StatusCodes.Status409Conflict,
-                           $"A file named '{Path.GetFileName(disposition?.FileName.Value ?? string.Empty)}' already exists. "
-                           + "Rename it in the send dialog, or delete the existing file in Homespool.");
+                           $"A file named '{Path.GetFileName(disposition?.FileName.Value ?? string.Empty)}' already exists. " +
+                           "Rename it in the send dialog, or delete the existing file in Homespool.");
         }
         catch (ArgumentException e)
         {
@@ -288,9 +288,9 @@ public class OctoPrintCompatController : ControllerBase
     {
         boundary = string.Empty;
 
-        if (contentType is null
-            || !MediaTypeHeaderValue.TryParse(contentType, out MediaTypeHeaderValue? parsed)
-            || !parsed.MediaType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+        if (contentType is null ||
+            !MediaTypeHeaderValue.TryParse(contentType, out MediaTypeHeaderValue? parsed) ||
+            !parsed.MediaType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
@@ -371,8 +371,8 @@ public class OctoPrintCompatController : ControllerBase
         if (!UserFileStore.IsAllowedExtension(fileName))
         {
             throw new ArgumentException(
-                "Only .gcode, .bgcode, .gco and .bgc are accepted - the printer would refuse anything "
-                + "else after the transfer.");
+                "Only .gcode, .bgcode, .gco and .bgc are accepted - the printer would refuse anything " +
+                "else after the transfer.");
         }
 
         await using LengthLimitingStream limited = new(section.Body, _options.MaxUploadBytes);

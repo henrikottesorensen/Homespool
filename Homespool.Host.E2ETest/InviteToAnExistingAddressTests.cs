@@ -115,8 +115,8 @@ public sealed class InviteToAnExistingAddressTests : IAsyncLifetime
         string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         page.Should().Contain("already has an account",
-                              "the refusal names what is actually wrong; Identity's fallback talks about a "
-                              + "password the caller was never asked for and does not know they have");
+                              "the refusal names what is actually wrong; Identity's fallback talks about a " +
+                              "password the caller was never asked for and does not know they have");
 
         (await CountAccountsForAddressAsync()).Should().Be(1);
 

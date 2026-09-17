@@ -37,8 +37,8 @@ public class CodeGeneratorTests
         {
             _generator.GenerateCode($"15715-{i}").Length.Should()
                       .BeLessThanOrEqualTo(FirmwareCodeSizeLimit,
-                                           "registrator.hpp truncates past CODE_SIZE and the printer "
-                                           + "then polls with a code the server never issued");
+                                           "registrator.hpp truncates past CODE_SIZE and the printer " +
+                                           "then polls with a code the server never issued");
         }
     }
 
@@ -67,8 +67,8 @@ public class CodeGeneratorTests
         {
             _generator.GenerateCode($"15715-{i}")
                       .Should().MatchRegex("^[0-9A-HJKMNP-TV-Z]+$",
-                                           "Crockford base32 omits I, L, O and U, which is what makes "
-                                           + "the O-for-0 misread that cost a real enrolment impossible");
+                                           "Crockford base32 omits I, L, O and U, which is what makes " +
+                                           "the O-for-0 misread that cost a real enrolment impossible");
         }
     }
 

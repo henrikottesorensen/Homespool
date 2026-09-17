@@ -616,9 +616,9 @@ public static class PrinterErrorText
 
         int key = value % 1000;
 
-        if (language is not null
-            && Texts.TryGetValue(language, out Dictionary<int, string>? translated)
-            && translated.TryGetValue(key, out string? sentence))
+        if (language is not null &&
+            Texts.TryGetValue(language, out Dictionary<int, string>? translated) &&
+            translated.TryGetValue(key, out string? sentence))
         {
             return sentence;
         }

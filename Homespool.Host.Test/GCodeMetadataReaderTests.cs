@@ -183,8 +183,8 @@ public class GCodeMetadataReaderTests
     [Fact]
     public void AnOversizedPrinterModelIsDropped()
     {
-        GCodeMetadata? metadata = Read(BinaryFile($"printer_model={new string('X', 1000 * 1000)}\n"
-                                                  + "nozzle_diameter=0.4\n"));
+        GCodeMetadata? metadata = Read(BinaryFile($"printer_model={new string('X', 1000 * 1000)}\n" +
+                                                  "nozzle_diameter=0.4\n"));
 
         metadata.Should().NotBeNull("the file is readable; only the value is refused");
         metadata!.PrinterModel.Should().BeNull();
@@ -447,8 +447,8 @@ public class GCodeMetadataReaderTests
     {
         using FileStream original = File.OpenRead(FixturePath("metadata-coreone-hf04-pla.bgcode"));
 
-        BgcodeReader reader = BgcodeReader.Open(original)
-                              ?? throw new InvalidOperationException("The fixture is not a readable binary G-code file.");
+        BgcodeReader reader = BgcodeReader.Open(original) ??
+                              throw new InvalidOperationException("The fixture is not a readable binary G-code file.");
 
         string fileMetadata = TextOf(reader, BgcodeBlockType.FileMetadata);
         string printerMetadata = TextOf(reader, BgcodeBlockType.PrinterMetadata);
@@ -470,13 +470,13 @@ public class GCodeMetadataReaderTests
     /// <summary>The next block's text, which must be of <paramref name="type"/>: the fixture's shape is known.</summary>
     private static string TextOf(BgcodeReader reader, BgcodeBlockType type)
     {
-        BgcodeBlock block = reader.NextBlock()
-                            ?? throw new InvalidOperationException($"The fixture ends before its {type} block.");
+        BgcodeBlock block = reader.NextBlock() ??
+                            throw new InvalidOperationException($"The fixture ends before its {type} block.");
 
         block.Type.Should().Be(type, "the fixture's blocks come in the specification's order");
 
-        return reader.ReadText(block)
-               ?? throw new InvalidOperationException($"The fixture's {type} block could not be read.");
+        return reader.ReadText(block) ??
+               throw new InvalidOperationException($"The fixture's {type} block could not be read.");
     }
 
     private static string FixturePath(string name)

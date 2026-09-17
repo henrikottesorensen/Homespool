@@ -142,9 +142,9 @@ public static class GcodeAllowList
         {
             string candidate = line.Trim();
 
-            if (!Matches(NozzleTarget, candidate, MaxNozzleTemperature)
-                && !Matches(BedTarget, candidate, MaxBedTemperature)
-                && !UnloadTool.IsMatch(candidate))
+            if (!Matches(NozzleTarget, candidate, MaxNozzleTemperature) &&
+                !Matches(BedTarget, candidate, MaxBedTemperature) &&
+                !UnloadTool.IsMatch(candidate))
             {
                 return false;
             }

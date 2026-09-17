@@ -278,8 +278,8 @@ public class PrintHistoryService
         // sentences carry; the compatibility ones need only the file's name.
         PrintHoldReason? reason = (await _snapshots.ReadAsync(printerId, cancellationToken)).HoldReason;
 
-        if (reason is PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle
-            or PrintHoldReason.IncompatiblePrinterModel)
+        if (reason is PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle or
+            PrintHoldReason.IncompatiblePrinterModel)
         {
             return MessageKey.For(reason == PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle ?
                                       "Queue_HoldAbrasiveFilament" :

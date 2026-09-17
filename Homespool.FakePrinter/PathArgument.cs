@@ -21,10 +21,10 @@ public static class PathArgument
         {
             using JsonDocument document = JsonDocument.Parse(payload);
 
-            if (!document.RootElement.TryGetProperty("kwargs", out JsonElement kwargs)
-                || kwargs.ValueKind != JsonValueKind.Object
-                || !kwargs.TryGetProperty("path", out JsonElement path)
-                || path.ValueKind != JsonValueKind.String)
+            if (!document.RootElement.TryGetProperty("kwargs", out JsonElement kwargs) ||
+                kwargs.ValueKind != JsonValueKind.Object ||
+                !kwargs.TryGetProperty("path", out JsonElement path) ||
+                path.ValueKind != JsonValueKind.String)
             {
                 return null;
             }

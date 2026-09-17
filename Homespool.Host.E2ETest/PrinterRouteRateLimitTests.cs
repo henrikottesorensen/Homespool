@@ -114,10 +114,10 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
         printerRoutes.Should().NotBeEmpty("an empty printer surface would make this test vacuous");
 
         unmetered.Should().BeEmpty(
-            "every /p/* route reaches the printer authentication handler and its PBKDF2 before anything "
-            + "has been authenticated, so one without a policy is an unmetered way to buy that work. The "
-            + "controller-level default covers new actions; an action that genuinely wants none has to "
-            + "say [DisableRateLimiting] and be seen doing it");
+            "every /p/* route reaches the printer authentication handler and its PBKDF2 before anything " +
+            "has been authenticated, so one without a policy is an unmetered way to buy that work. The " +
+            "controller-level default covers new actions; an action that genuinely wants none has to " +
+            "say [DisableRateLimiting] and be seen doing it");
     }
 
     /// <summary>
@@ -151,9 +151,9 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
         // Assert
         inUse.Should().NotBeEmpty();
         inUse.Should().BeSubsetOf(PrinterRateLimits.PolicyNames,
-                                  "a policy an endpoint names but the limiter never wired is registered nowhere, and "
-                                  + "answers 500 on every request to that route - at request time, not at startup, so "
-                                  + "nothing reports it until somebody drives the route");
+                                  "a policy an endpoint names but the limiter never wired is registered nowhere, and " +
+                                  "answers 500 on every request to that route - at request time, not at startup, so " +
+                                  "nothing reports it until somebody drives the route");
     }
 
     /// <summary>
@@ -198,10 +198,10 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
         // Assert
         answers[..PrinterRateLimits.FileCeiling]
             .Should().AllSatisfy(status => status.Should().Be(HttpStatusCode.Unauthorized,
-                                                              "a fingerprint nobody has used yet has its whole window, and an "
-                                                              + "admitted request reaches authentication - the exact status matters, "
-                                                              + "because a policy named but never registered answers 500 here and "
-                                                              + "'not 429' would call that a pass"));
+                                                              "a fingerprint nobody has used yet has its whole window, and an " +
+                                                              "admitted request reaches authentication - the exact status matters, " +
+                                                              "because a policy named but never registered answers 500 here and " +
+                                                              "'not 429' would call that a pass"));
 
         answers[PrinterRateLimits.FileCeiling]
             .Should().Be(HttpStatusCode.TooManyRequests, "the ceiling counts every fingerprint together");
@@ -245,8 +245,8 @@ public sealed class PrinterRouteRateLimitTests : IAsyncLifetime
             .Should().Be(HttpStatusCode.TooManyRequests, "the permit after the last is refused");
 
         neighbour.Should().Be(HttpStatusCode.Unauthorized,
-                              "the window that was spent belongs to the printer that spent it - without this the route "
-                              + "has only a ceiling, and one printer fetching files starves the fleet");
+                              "the window that was spent belongs to the printer that spent it - without this the route " +
+                              "has only a ceiling, and one printer fetching files starves the fleet");
     }
 
     /// <summary>

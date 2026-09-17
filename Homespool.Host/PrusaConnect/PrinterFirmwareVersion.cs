@@ -73,10 +73,10 @@ public readonly record struct PrinterFirmwareVersion
 
         string[] parts = trimmed.Split('.');
 
-        if (parts.Length != 3
-            || !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int major)
-            || !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int minor)
-            || !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int patch))
+        if (parts.Length != 3 ||
+            !int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out int major) ||
+            !int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out int minor) ||
+            !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out int patch))
         {
             return false;
         }

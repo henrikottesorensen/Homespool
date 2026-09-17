@@ -117,8 +117,8 @@ public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent
     /// </remarks>
     public PrinterClient WithFirmware(string? firmwareVersion)
     {
-        return firmwareVersion is null || firmwareVersion == FirmwareVersion
-            ? this
-            : this with { FirmwareVersion = firmwareVersion };
+        return firmwareVersion is null || firmwareVersion == FirmwareVersion ?
+            this :
+            this with { FirmwareVersion = firmwareVersion };
     }
 }

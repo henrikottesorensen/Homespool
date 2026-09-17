@@ -110,9 +110,9 @@ public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
             return false;
         }
 
-        bool secure = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-                      || (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
-                          && string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase));
+        bool secure = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                      (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+                       string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase));
 
         return secure && Covers(new HostString(uri.Host));
     }

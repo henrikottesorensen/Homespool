@@ -69,9 +69,9 @@ public class AuthorizationDeclarationTests
 
         foreach (Type type in typeof(Program).Assembly
                                              .GetTypes()
-                                             .Where(t => (typeof(PageModel).IsAssignableFrom(t)
-                                                          || typeof(ControllerBase).IsAssignableFrom(t))
-                                                         && t is { IsAbstract: false, IsPublic: true })
+                                             .Where(t => (typeof(PageModel).IsAssignableFrom(t) ||
+                                                          typeof(ControllerBase).IsAssignableFrom(t)) &&
+                                                         t is { IsAbstract: false, IsPublic: true })
                                              .OrderBy(t => t.FullName, StringComparer.Ordinal))
         {
             data.Add(type);
@@ -84,13 +84,13 @@ public class AuthorizationDeclarationTests
     [MemberData(nameof(EndpointTypes))]
     public void EveryEndpointDeclaresWhetherItNeedsAnAccount(Type endpoint)
     {
-        bool declares = endpoint.GetCustomAttribute<AuthorizeAttribute>(inherit: true) is not null
-                        || endpoint.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true) is not null;
+        bool declares = endpoint.GetCustomAttribute<AuthorizeAttribute>(inherit: true) is not null ||
+                        endpoint.GetCustomAttribute<AllowAnonymousAttribute>(inherit: true) is not null;
 
         declares.Should().BeTrue(
-            "{0} carries neither [Authorize] nor [AllowAnonymous], so whether it is reachable without "
-            + "an account is decided by the framework default rather than by anybody. Public is the "
-            + "default; say so explicitly if that is what it should be.",
+            "{0} carries neither [Authorize] nor [AllowAnonymous], so whether it is reachable without " +
+            "an account is decided by the framework default rather than by anybody. Public is the " +
+            "default; say so explicitly if that is what it should be.",
             endpoint.FullName);
     }
 

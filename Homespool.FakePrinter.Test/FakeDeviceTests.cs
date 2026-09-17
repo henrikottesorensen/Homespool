@@ -124,8 +124,8 @@ public class FakeDeviceTests
 
         device.ForceState(state);
 
-        bool expected = state is DeviceState.Idle or DeviceState.Ready
-                              or DeviceState.Stopped or DeviceState.Finished;
+        bool expected = state is DeviceState.Idle or DeviceState.Ready or
+                                 DeviceState.Stopped or DeviceState.Finished;
 
         device.TrySetReady().Should().Be(expected);
 

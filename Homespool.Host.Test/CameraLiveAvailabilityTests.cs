@@ -158,10 +158,10 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
     [Fact]
     public void TheSdpParserReadsVideoCodecsAndOnlyThose()
     {
-        const string sdp = "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 120\r\n\r\n"
-                           + "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\n"
-                           + "m=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n"
-                           + "m=audio 0 RTP/AVP 97\r\na=rtpmap:97 MPEG4-GENERIC/16000\r\n";
+        const string sdp = "RTSP/1.0 200 OK\r\nCSeq: 1\r\nContent-Length: 120\r\n\r\n" +
+                           "v=0\r\no=- 0 0 IN IP4 0.0.0.0\r\n" +
+                           "m=video 0 RTP/AVP 96\r\na=rtpmap:96 H264/90000\r\n" +
+                           "m=audio 0 RTP/AVP 97\r\na=rtpmap:97 MPEG4-GENERIC/16000\r\n";
 
         Go2RtcClient.ParseSdpVideoCodecs(sdp).Should().BeEquivalentTo(["H264"]);
 
@@ -201,8 +201,8 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
         HealthCheckResult result = await CheckAsync(context, candidate: string.Empty);
 
         result.Status.Should().Be(HealthStatus.Healthy,
-                                  "a deployment with no cameras has no use for an address, and a banner about one "
-                                  + "is how people learn to ignore banners");
+                                  "a deployment with no cameras has no use for an address, and a banner about one " +
+                                  "is how people learn to ignore banners");
     }
 
     [Fact]
@@ -287,8 +287,8 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
         result.Status.Should().Be(HealthStatus.Degraded);
         result.Description.Should().Contain("WEBRTC_CANDIDATE is set");
         result.Description.Should().NotContain("PRINTER_HOST",
-                                               "an operator who set the override should not be sent to the setting "
-                                               + "it overrides");
+                                               "an operator who set the override should not be sent to the setting " +
+                                               "it overrides");
     }
 
     private static async Task<HealthCheckResult> CheckAsync(HomespoolDbContext context,

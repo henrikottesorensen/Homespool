@@ -40,7 +40,7 @@ public class SetTemperatures : ISendableGcodeCommand
     public string WireName => "GCODE";
 
     public string Line =>
-        "M140 S" + BedTemperature.ToString(CultureInfo.InvariantCulture)
-                 + "\n"
-                 + "M104 S" + NozzleTemperature.ToString(CultureInfo.InvariantCulture);
+        "M140 S" + BedTemperature.ToString(CultureInfo.InvariantCulture) +
+                 "\n" +
+                 "M104 S" + NozzleTemperature.ToString(CultureInfo.InvariantCulture);
 }

@@ -78,8 +78,8 @@ public sealed class StepUpGateTests : IDisposable
         // Assert
         refused.Refusal.Should().Be(StepUpRefusal.WrongPassword);
         (await rig.Users.GetAccessFailedCountAsync(user))
-            .Should().Be(0, "a wrong step-up backs off its own counter - locking the owner out is what the "
-                            + "session holder would want");
+            .Should().Be(0, "a wrong step-up backs off its own counter - locking the owner out is what the " +
+                            "session holder would want");
     }
 
     [Fact]
@@ -107,11 +107,11 @@ public sealed class StepUpGateTests : IDisposable
         refused.Refusal.Should().Be(StepUpRefusal.LockedOut,
                                     "a backed-off step-up is refused before the password is compared");
         refused.RetryAfter.Should().NotBeNull().And.BeGreaterThan(TimeSpan.Zero,
-                                                                 "the page says how long, and the account lockout "
-                                                                 + "would answer zero here");
+                                                                 "the page says how long, and the account lockout " +
+                                                                 "would answer zero here");
         (await rig.Users.IsLockedOutAsync(user))
-            .Should().BeFalse("the account itself is untouched, so its owner can still sign in and take the "
-                              + "session back");
+            .Should().BeFalse("the account itself is untouched, so its owner can still sign in and take the " +
+                              "session back");
     }
 
     /// <summary>

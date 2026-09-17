@@ -53,8 +53,8 @@ public sealed class CameraSourcePolicy
     /// </remarks>
     public static bool IsLocalDevice(string? source)
     {
-        return source is not null
-               && source.TrimStart().StartsWith(DevicePrefix, StringComparison.OrdinalIgnoreCase);
+        return source is not null &&
+               source.TrimStart().StartsWith(DevicePrefix, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -145,14 +145,14 @@ public sealed class CameraSourcePolicy
             // "homespool" against "homespool.local", in both directions: a container's short name and
             // the same machine's search-domain form are the same host, and refusing only the spelling
             // we happened to store would be a refusal somebody could step around by typing the other.
-            if (candidate.Contains('.', StringComparison.Ordinal)
-                && candidate.StartsWith(trimmed + ".", StringComparison.OrdinalIgnoreCase))
+            if (candidate.Contains('.', StringComparison.Ordinal) &&
+                candidate.StartsWith(trimmed + ".", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
 
-            if (trimmed.Contains('.', StringComparison.Ordinal)
-                && trimmed.StartsWith(candidate + ".", StringComparison.OrdinalIgnoreCase))
+            if (trimmed.Contains('.', StringComparison.Ordinal) &&
+                trimmed.StartsWith(candidate + ".", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

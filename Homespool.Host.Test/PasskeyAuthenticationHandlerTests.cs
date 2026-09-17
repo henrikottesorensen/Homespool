@@ -332,8 +332,8 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         firstResult.Succeeded.Should().BeTrue("the first answer is the real one");
         first.Response.Headers.SetCookie.ToString().Should().Contain("expires=", "the ceremony cookie is deleted the moment it is read");
         replay.Succeeded.Should().BeFalse(
-            "the ceremony was spent server-side with the first answer; the sign count is zero on both, "
-            + "as it is on every synced authenticator, so nothing else would notice the repeat");
+            "the ceremony was spent server-side with the first answer; the sign count is zero on both, " +
+            "as it is on every synced authenticator, so nothing else would notice the repeat");
     }
 
     [Fact]

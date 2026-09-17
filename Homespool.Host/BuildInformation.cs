@@ -115,8 +115,8 @@ public static class BuildInformation
 
         if (version is null)
         {
-            return $"{product} (version unknown){Environment.NewLine}"
-                 + "commit unknown - this assembly carries no version information";
+            return $"{product} (version unknown){Environment.NewLine}" +
+                   "commit unknown - this assembly carries no version information";
         }
 
         if (commit is null)
@@ -124,12 +124,12 @@ public static class BuildInformation
             // A container image built with no gitref passed in lands here, and it is the reason this
             // branch explains itself instead of printing the version alone: the build succeeded, so
             // the only place the broken chain can be noticed is right here.
-            return $"{product} {version}{Environment.NewLine}"
-                 + "commit unknown - built with no source control information";
+            return $"{product} {version}{Environment.NewLine}" +
+                   "commit unknown - built with no source control information";
         }
 
-        return $"{product} {version}{Environment.NewLine}"
-             + $"commit {commit}{(modified ? " (modified)" : string.Empty)}";
+        return $"{product} {version}{Environment.NewLine}" +
+               $"commit {commit}{(modified ? " (modified)" : string.Empty)}";
     }
 
     /// <summary>

@@ -82,9 +82,9 @@ public sealed class ListenerBinding
                                            .ToList();
 
         List<InterfaceAddress> held = interfaces.ToList();
-        List<IPAddress> facing = held.Where(candidate => !IPAddress.IsLoopback(candidate.Address)
-                                                         && (networks.Any(network => network.Contains(candidate.Address))
-                                                             || proxies.Any(proxy => Subnet(candidate).Contains(proxy))))
+        List<IPAddress> facing = held.Where(candidate => !IPAddress.IsLoopback(candidate.Address) &&
+                                                         (networks.Any(network => network.Contains(candidate.Address)) ||
+                                                          proxies.Any(proxy => Subnet(candidate).Contains(proxy))))
                                      .Select(candidate => candidate.Address)
                                      .Distinct()
                                      .ToList();
@@ -92,11 +92,11 @@ public sealed class ListenerBinding
         if (facing.Count == 0)
         {
             throw new InvalidOperationException(
-                "XForwarded trusts a proxy that no network interface faces: "
-                + $"KnownNetworks [{string.Join(", ", forwarded.KnownNetworks)}], KnownProxies [{string.Join(", ", forwarded.KnownProxies)}], "
-                + $"while this process holds [{string.Join(", ", held.Select(candidate => $"{candidate.Address}/{candidate.PrefixLength}"))}]. "
-                + "The listeners bind only the interfaces facing the trusted proxy, so nothing would be reachable. "
-                + "Set XForwarded:KnownNetworks to the network this container shares with the proxy, or clear it to bind every interface.");
+                "XForwarded trusts a proxy that no network interface faces: " +
+                $"KnownNetworks [{string.Join(", ", forwarded.KnownNetworks)}], KnownProxies [{string.Join(", ", forwarded.KnownProxies)}], " +
+                $"while this process holds [{string.Join(", ", held.Select(candidate => $"{candidate.Address}/{candidate.PrefixLength}"))}]. " +
+                "The listeners bind only the interfaces facing the trusted proxy, so nothing would be reachable. " +
+                "Set XForwarded:KnownNetworks to the network this container shares with the proxy, or clear it to bind every interface.");
         }
 
         List<IPAddress> loopback = held.Select(candidate => candidate.Address)

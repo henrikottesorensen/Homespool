@@ -109,8 +109,8 @@ public sealed class ScratchDirectory : IDisposable
 
         string root = System.IO.Path.Combine(
             temp,
-            RunRootPrefix + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
-                          + "-" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+            RunRootPrefix + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) +
+                          "-" + Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
 
         Directory.CreateDirectory(root);
 

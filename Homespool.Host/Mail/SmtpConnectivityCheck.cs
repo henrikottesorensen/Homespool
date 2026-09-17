@@ -69,9 +69,9 @@ public sealed class SmtpConnectivityCheck
         {
             using ISmtpTransport client = _transportFactory.Create();
 
-            SecureSocketOptions socketOptions = options.DisableTls ? SecureSocketOptions.None
-                : options.UseImplicitTls ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTls;
+            SecureSocketOptions socketOptions = options.DisableTls ? SecureSocketOptions.None :
+                options.UseImplicitTls ? SecureSocketOptions.SslOnConnect :
+                SecureSocketOptions.StartTls;
 
             await client.ConnectAsync(options.Host, options.Port, socketOptions, timeout.Token)
                         .ConfigureAwait(false);

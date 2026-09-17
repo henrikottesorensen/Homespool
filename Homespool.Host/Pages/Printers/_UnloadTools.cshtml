@@ -19,9 +19,9 @@
                 @* An empty tool is listed and inert rather than hidden: hiding it
                    would make this disagree with the machine, where the head is
                    plainly there. *@
-                @(tool.CanUnload
-                    ? Localiser["Printers_ToolWithMaterial", tool.ToolNumber, tool.Material!].Value
-                    : Localiser["Printers_ToolEmpty", tool.ToolNumber].Value)
+                @(tool.CanUnload ?
+                    Localiser["Printers_ToolWithMaterial", tool.ToolNumber, tool.Material!].Value :
+                    Localiser["Printers_ToolEmpty", tool.ToolNumber].Value)
             </span>
             <span class="text-body-secondary small">
                 @if (tool.Temperature is { } temperature)

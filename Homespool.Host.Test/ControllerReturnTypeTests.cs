@@ -54,8 +54,8 @@ public class ControllerReturnTypeTests
     /// </summary>
     private static IEnumerable<MethodInfo> DeclaredMethods(Type controller)
     {
-        return controller.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
-                                                         | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+        return controller.GetMethods(BindingFlags.Public | BindingFlags.NonPublic |
+                                                         BindingFlags.Instance | BindingFlags.DeclaredOnly)
                          .Where(method => !method.IsSpecialName);
     }
 
@@ -73,10 +73,10 @@ public class ControllerReturnTypeTests
     /// </summary>
     private static bool IsUntyped(Type returned)
     {
-        return returned == typeof(IActionResult)
-               || returned == typeof(IResult)
-               || typeof(ActionResult).IsAssignableFrom(returned)
-               || (returned.IsGenericType && returned.GetGenericTypeDefinition() == typeof(ActionResult<>));
+        return returned == typeof(IActionResult) ||
+               returned == typeof(IResult) ||
+               typeof(ActionResult).IsAssignableFrom(returned) ||
+               (returned.IsGenericType && returned.GetGenericTypeDefinition() == typeof(ActionResult<>));
     }
 
     /// <summary>
@@ -85,8 +85,8 @@ public class ControllerReturnTypeTests
     /// </summary>
     private static bool IsTyped(Type returned)
     {
-        if (returned.IsGenericType && returned.GetGenericTypeDefinition().Name.StartsWith("Results`", StringComparison.Ordinal)
-                                   && returned.Namespace == typeof(Results<,>).Namespace)
+        if (returned.IsGenericType && returned.GetGenericTypeDefinition().Name.StartsWith("Results`", StringComparison.Ordinal) &&
+                                   returned.Namespace == typeof(Results<,>).Namespace)
         {
             return true;
         }
@@ -106,8 +106,8 @@ public class ControllerReturnTypeTests
 
         // Assert
         offenders.Should().BeEmpty(
-            "an action's return type is meant to say what it returns - a Results<> union of typed "
-            + "results, or a single typed result");
+            "an action's return type is meant to say what it returns - a Results<> union of typed " +
+            "results, or a single typed result");
     }
 
     /// <summary>
@@ -119,10 +119,10 @@ public class ControllerReturnTypeTests
     {
         // Act
         List<string> offenders = (from controller in Controllers
-            from method in controller.GetMethods(BindingFlags.Public | BindingFlags.Instance
-                                                                     | BindingFlags.DeclaredOnly)
-            where !method.IsSpecialName
-                  && method.GetCustomAttribute<NonActionAttribute>() is null
+            from method in controller.GetMethods(BindingFlags.Public | BindingFlags.Instance |
+                                                                     BindingFlags.DeclaredOnly)
+            where !method.IsSpecialName &&
+                  method.GetCustomAttribute<NonActionAttribute>() is null
             let returned = Unwrapped(method.ReturnType)
             where !IsTyped(returned)
             select $"{controller.Name}.{method.Name} returns {returned.Name}").ToList();
@@ -143,8 +143,8 @@ public class ControllerReturnTypeTests
         IsUntyped(typeof(IActionResult)).Should().BeTrue();
         IsUntyped(typeof(IResult)).Should().BeTrue("the bare interface says nothing about the answer");
         IsUntyped(typeof(ActionResult)).Should().BeTrue();
-        IsUntyped(typeof(ActionResult<string>)).Should().BeTrue("ActionResult<T> is not an ActionResult, "
-                                                                + "which is why the check names it separately");
+        IsUntyped(typeof(ActionResult<string>)).Should().BeTrue("ActionResult<T> is not an ActionResult, " +
+                                                                "which is why the check names it separately");
         IsUntyped(typeof(NoContentResult)).Should().BeTrue("an MVC result is the old shape, however specific");
 
         IsTyped(typeof(Results<Ok<string>, NotFoundProblem>)).Should().BeTrue();

@@ -55,8 +55,8 @@ public static class ForwardedHeadersConfigurator
         // peer says the request came through the proxy, not that the proxy wrote the header. A proxy
         // that rewrites Host is therefore unsupported; host filtering answers it with a 400, so the
         // failure is on the first page rather than in somebody's inbox.
-        target.ForwardedHeaders = ForwardedHeaders.XForwardedFor
-                                  | ForwardedHeaders.XForwardedProto;
+        target.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+                                  ForwardedHeaders.XForwardedProto;
 
         target.ForwardedForHeaderName = source.ClientAddressHeader;
         target.ForwardLimit = source.ForwardLimit;

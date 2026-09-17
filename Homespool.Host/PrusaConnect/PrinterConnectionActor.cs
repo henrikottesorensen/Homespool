@@ -82,8 +82,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// error rather than a printer condition.
     /// </remarks>
     private IChunkStreamingConnection ChunkStreaming =>
-        _connection as IChunkStreamingConnection
-        ?? throw new InvalidOperationException("A transfer request reached a connection that cannot stream chunks.");
+        _connection as IChunkStreamingConnection ??
+        throw new InvalidOperationException("A transfer request reached a connection that cannot stream chunks.");
 
     /// <summary>
     /// A transfer the printer is currently pulling from us.
@@ -231,9 +231,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// A socket connection announces nothing at connect - only Buddy opens one - so what is known
     /// about it arrives later, in <c>INFO</c>.
     /// </remarks>
-    public PrinterClient Client => (_connection is HttpPrinterConnection http
-        ? http.Client
-        : PrinterClient.Anonymous(PrinterTransport.WebSocket)).WithFirmware(_firmwareVersion);
+    public PrinterClient Client => (_connection is HttpPrinterConnection http ?
+        http.Client :
+        PrinterClient.Anonymous(PrinterTransport.WebSocket)).WithFirmware(_firmwareVersion);
 
     public Task Completion { get; }
 
@@ -772,8 +772,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </remarks>
     private void EndTransferIfTerminal(DTO.EventMessages.EventDTO eventDto)
     {
-        if (eventDto.EventType is not (Model.PrinterEventType.TransferFinished or Model.PrinterEventType.TransferAborted
-            or Model.PrinterEventType.TransferStopped))
+        if (eventDto.EventType is not (Model.PrinterEventType.TransferFinished or Model.PrinterEventType.TransferAborted or
+            Model.PrinterEventType.TransferStopped))
         {
             return;
         }

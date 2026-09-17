@@ -148,9 +148,9 @@ internal sealed class BoundedUploadFilter : IAuthorizationFilter
 
         // A declared ceiling is the request's own and is used as written; the configured cap
         // describes a file, so it needs room for the framing and fields that travel with it.
-        long limit = _maxBytes ?? (_options.MaxUploadBytes > long.MaxValue - FormOverheadBytes
-            ? long.MaxValue
-            : _options.MaxUploadBytes + FormOverheadBytes);
+        long limit = _maxBytes ?? (_options.MaxUploadBytes > long.MaxValue - FormOverheadBytes ?
+            long.MaxValue :
+            _options.MaxUploadBytes + FormOverheadBytes);
 
         IHttpMaxRequestBodySizeFeature? size = context.HttpContext.Features.Get<IHttpMaxRequestBodySizeFeature>();
 

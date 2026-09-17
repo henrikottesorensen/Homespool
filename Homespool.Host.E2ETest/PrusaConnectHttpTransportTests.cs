@@ -446,8 +446,8 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         {
             PrinterCommandService service = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
 
-            outcome = await service.SendCommandAsync(printerId, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(userId), run.Token)
-                      ?? throw new InvalidOperationException("PAUSE_PRINT reported no answer expected.");
+            outcome = await service.SendCommandAsync(printerId, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(userId), run.Token) ??
+                      throw new InvalidOperationException("PAUSE_PRINT reported no answer expected.");
         }
 
         // Assert

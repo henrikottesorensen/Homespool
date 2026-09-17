@@ -170,9 +170,9 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
     /// setting and the harness cannot disagree about it.
     /// </summary>
     private bool TelemetryInMemory =>
-        ConfigurationOverrides.TryGetValue("Storage:TelemetryInMemory", out string? value)
-        && bool.TryParse(value, out bool inMemory)
-        && inMemory;
+        ConfigurationOverrides.TryGetValue("Storage:TelemetryInMemory", out string? value) &&
+        bool.TryParse(value, out bool inMemory) &&
+        inMemory;
 
     /// <summary>
     /// Every service descriptor the real application registered.

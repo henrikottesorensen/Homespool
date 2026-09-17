@@ -56,11 +56,11 @@ public sealed record GCodeMetadata(string? PrinterModel,
     /// <summary>
     /// Whether the file carried none of the five values, so nothing can be compared against it.
     /// </summary>
-    public bool SaysNothing => PrinterModel is null
-                               && NozzleDiameters.Count == 0
-                               && FilamentTypes.Count == 0
-                               && FilamentAbrasive.Count == 0
-                               && NozzleHighFlow.Count == 0;
+    public bool SaysNothing => PrinterModel is null &&
+                               NozzleDiameters.Count == 0 &&
+                               FilamentTypes.Count == 0 &&
+                               FilamentAbrasive.Count == 0 &&
+                               NozzleHighFlow.Count == 0;
 
     /// <summary>
     /// Whether any filament in this print wears a nozzle. Null when the file did not say.

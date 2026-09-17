@@ -42,8 +42,8 @@ namespace Homespool.Host.Test;
 /// </para>
 /// </remarks>
 [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-                 Justification = "Verification contexts are short-lived readers over databases this class owns and "
-                                 + "tears down in Dispose; EF opens and closes their connections per query.")]
+                 Justification = "Verification contexts are short-lived readers over databases this class owns and " +
+                                 "tears down in Dispose; EF opens and closes their connections per query.")]
 public sealed class TelemetryInMemoryStoreTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-telememory-{Guid.NewGuid():N}.db");
@@ -63,8 +63,8 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
     private TelemetryWriter? _writer;
 
     [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
-                     Justification = "IDisposable.Dispose cannot be asynchronous, and the writer must be stopped "
-                                     + "before the databases it holds are torn down.")]
+                     Justification = "IDisposable.Dispose cannot be asynchronous, and the writer must be stopped " +
+                                     "before the databases it holds are torn down.")]
     public void Dispose()
     {
         if (_writer is not null)

@@ -73,8 +73,8 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
                 await client.GetAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
 
             pageResponse.StatusCode.Should().Be(HttpStatusCode.OK,
-                                                "every page under Account/Manage rendered a 500 while its layout pointed at the "
-                                                + "Identity.UI file that was removed with the package");
+                                                "every page under Account/Manage rendered a 500 while its layout pointed at the " +
+                                                "Identity.UI file that was removed with the package");
 
             string page = await pageResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             string token = AntiforgeryTestHelper.ExtractToken(page);
@@ -98,8 +98,8 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
             string after = await client.GetStringAsync("/Account/Manage/Email", TestContext.Current.CancellationToken);
 
             after.Should().Contain(Localised("Manage_EmailChangeSent"),
-                                   "a refused change also answers with a redirect, so a test that only checks the "
-                                   + "redirect would pass without the change ever being requested");
+                                   "a refused change also answers with a redirect, so a test that only checks the " +
+                                   "redirect would pass without the change ever being requested");
 
             _logs.Failures.Should().BeEmpty("building the confirmation link must not throw");
         }
@@ -213,8 +213,8 @@ public sealed class EmailChangeFlowTests : IAsyncLifetime
 
             using IServiceScope scope = _factory.Services.CreateScope();
             UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-            HSUser fresh = await users.FindByIdAsync(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                           ?? throw new InvalidOperationException("the account should still exist");
+            HSUser fresh = await users.FindByIdAsync(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)) ??
+                           throw new InvalidOperationException("the account should still exist");
 
             (await users.GetEmailAsync(fresh)).Should().Be("stay@example.com");
         }

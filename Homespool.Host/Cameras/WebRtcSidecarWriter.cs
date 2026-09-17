@@ -91,9 +91,9 @@ public sealed class WebRtcSidecarWriter
                 ["webrtc"] = new Dictionary<string, object>(StringComparer.Ordinal)
                 {
                     ["candidates"] = new[] { candidate },
-                    ["ice_servers"] = stunEnabled
-                        ? new[] { new Dictionary<string, object>(StringComparer.Ordinal) { ["urls"] = new[] { stunServer } } }
-                        : [],
+                    ["ice_servers"] = stunEnabled ?
+                        new[] { new Dictionary<string, object>(StringComparer.Ordinal) { ["urls"] = new[] { stunServer } } } :
+                        [],
                 },
             });
 

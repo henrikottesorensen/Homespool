@@ -52,8 +52,8 @@ public class PrinterFirmwareVersionTests
     {
         PrinterFirmwareVersion.CanLoadCustomCertificate("6.4.2").Should().BeTrue();
         PrinterFirmwareVersion.CanLoadCustomCertificate("6.5.3").Should()
-                              .BeFalse("6.5.3 is numerically above 6.4.2 and predates the fix on its own branch, "
-                                       + "so any single >= comparison is wrong here");
+                              .BeFalse("6.5.3 is numerically above 6.4.2 and predates the fix on its own branch, " +
+                                       "so any single >= comparison is wrong here");
     }
 
     [Theory]

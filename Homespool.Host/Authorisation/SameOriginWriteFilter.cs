@@ -130,8 +130,8 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
         }
 
         // Exactly one value, and that one. Two values is a request assembled by hand, not a browser.
-        return secFetchSite.Count != 1
-               || !string.Equals(secFetchSite[0], SameOrigin, StringComparison.Ordinal);
+        return secFetchSite.Count != 1 ||
+               !string.Equals(secFetchSite[0], SameOrigin, StringComparison.Ordinal);
     }
 
     private static bool IsRead(string method)

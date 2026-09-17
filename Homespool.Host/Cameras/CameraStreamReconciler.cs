@@ -102,8 +102,8 @@ public sealed class CameraStreamReconciler : BackgroundService
             if (known is null)
             {
                 _logger.LogInformation(
-                    "The stream server could not be reached at startup; {Count} cameras will be "
-                    + "registered when one is next saved.",
+                    "The stream server could not be reached at startup; {Count} cameras will be " +
+                    "registered when one is next saved.",
                     cameras.Count);
                 return;
             }
@@ -123,8 +123,8 @@ public sealed class CameraStreamReconciler : BackgroundService
                 // or by any future caller that goes round the service, would otherwise be registered
                 // unchecked at every start - which is exactly the shape of thing this reconciler
                 // exists to do quietly and unattended.
-                if (CameraSourcePolicy.IsLocalDevice(source)
-                    && !LocalCameraDevices.CheckComposed(source,
+                if (CameraSourcePolicy.IsLocalDevice(source) &&
+                    !LocalCameraDevices.CheckComposed(source,
                                                          camera.Resolution,
                                                          _devices.List().Select(device => device.Name))
                                           .IsAcceptable)
@@ -132,8 +132,8 @@ public sealed class CameraStreamReconciler : BackgroundService
                     // The source itself is deliberately not logged: it is the thing under suspicion,
                     // and a log line is a place it would then be read from.
                     _logger.LogWarning(
-                        "Camera {Uuid} names an attached device this server did not compose, so it was not "
-                        + "registered. Open it on the cameras page and save it again to repair it.",
+                        "Camera {Uuid} names an attached device this server did not compose, so it was not " +
+                        "registered. Open it on the cameras page and save it again to repair it.",
                         camera.Uuid);
                     continue;
                 }
@@ -153,8 +153,8 @@ public sealed class CameraStreamReconciler : BackgroundService
                     {
                         // The source itself is deliberately not logged, for the reason given above.
                         _logger.LogWarning(
-                            "Camera {Uuid} now points at this deployment rather than at a camera ({Reason}), so it "
-                            + "was not registered. Open it on the cameras page to see where it points.",
+                            "Camera {Uuid} now points at this deployment rather than at a camera ({Reason}), so it " +
+                            "was not registered. Open it on the cameras page to see where it points.",
                             camera.Uuid,
                             check.Error?.Key);
                         continue;
@@ -176,8 +176,8 @@ public sealed class CameraStreamReconciler : BackgroundService
             // and nobody is waiting on this path.
             foreach (Camera camera in cameras)
             {
-                if (await _liveView.HowToWatchAsync(camera.Uuid, stoppingToken).ConfigureAwait(false)
-                    != LiveTransport.None)
+                if (await _liveView.HowToWatchAsync(camera.Uuid, stoppingToken).ConfigureAwait(false) !=
+                    LiveTransport.None)
                 {
                     continue;
                 }

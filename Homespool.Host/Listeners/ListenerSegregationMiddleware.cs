@@ -73,8 +73,8 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
         // mounted that way would have been reachable on every listener, and invisible to the test
         // that guards this, which can only enumerate endpoints. Applying the prefix rule to the
         // request instead makes the boundary hold for whatever is mounted later.
-        ListenerClass belongsTo = endpoint?.Metadata.GetMetadata<ListenerRequirement>()?.Listener
-                                  ?? ListenerSegregation.ClassFor(context.Request.Path);
+        ListenerClass belongsTo = endpoint?.Metadata.GetMetadata<ListenerRequirement>()?.Listener ??
+                                  ListenerSegregation.ClassFor(context.Request.Path);
 
         ListenerClass arrivedOn = ClassOf(context.Connection.LocalPort);
 
@@ -96,18 +96,18 @@ public sealed class ListenerSegregationMiddleware : IMiddleware
                 // Almost always a real printer pointed at the wrong port, and a bare 404 tells whoever
                 // provisioned it nothing at all. The firmware burns one of three registration retries on
                 // this, so it is worth being findable in the log.
-                _logger.LogWarning("A request for the printer endpoint {Path} arrived on port {Port}, which is not the "
-                                   + "printer listener ({PrinterPort}). Printers must use the port published onto "
-                                   + "Listeners:PrinterPort; the address in their ini is PrusaConnect:PrinterHost.",
+                _logger.LogWarning("A request for the printer endpoint {Path} arrived on port {Port}, which is not the " +
+                                   "printer listener ({PrinterPort}). Printers must use the port published onto " +
+                                   "Listeners:PrinterPort; the address in their ini is PrusaConnect:PrinterHost.",
                                    context.Request.Path, context.Connection.LocalPort, _listeners.PrinterPort);
             }
             else if (belongsTo == ListenerClass.Transfer)
             {
                 // A printer fetching a file from the wrong port - most likely a deployment that published
                 // the transfer listener somewhere other than the port written into the command.
-                _logger.LogWarning("A request for the transfer endpoint {Path} arrived on port {Port}, which is not the "
-                                   + "transfer listener ({TransferPort}). The printer fetches from the port in "
-                                   + "PrusaConnect:TransferPort, which must be published onto Listeners:TransferPort.",
+                _logger.LogWarning("A request for the transfer endpoint {Path} arrived on port {Port}, which is not the " +
+                                   "transfer listener ({TransferPort}). The printer fetches from the port in " +
+                                   "PrusaConnect:TransferPort, which must be published onto Listeners:TransferPort.",
                                    context.Request.Path, context.Connection.LocalPort, _listeners.TransferPort);
             }
             else

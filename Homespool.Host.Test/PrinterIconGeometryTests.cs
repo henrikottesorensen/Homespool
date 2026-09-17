@@ -49,8 +49,8 @@ public class PrinterIconGeometryTests
 
         // Assert
         inlined.Should().Equal(drawn,
-                               "the inlined copy of {0} has drifted from the file - re-copy it, or the "
-                               + "page renders a drawing nobody is looking at any more", fileName);
+                               "the inlined copy of {0} has drifted from the file - re-copy it, or the " +
+                               "page renders a drawing nobody is looking at any more", fileName);
     }
 
     /// <summary>

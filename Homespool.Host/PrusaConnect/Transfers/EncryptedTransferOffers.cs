@@ -83,9 +83,9 @@ public sealed class EncryptedTransferOffers
     /// </summary>
     public EncryptedTransfer? Find(string ivHex)
     {
-        return _entries.TryGetValue(ivHex, out Entry? entry)
-            ? new EncryptedTransfer(entry.Key, entry.OfferToken, entry.PrinterId)
-            : null;
+        return _entries.TryGetValue(ivHex, out Entry? entry) ?
+            new EncryptedTransfer(entry.Key, entry.OfferToken, entry.PrinterId) :
+            null;
     }
 
     /// <summary>Forgets an IV and zeroes its key. Idempotent.</summary>

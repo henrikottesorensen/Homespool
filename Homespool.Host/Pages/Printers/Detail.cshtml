@@ -7,9 +7,9 @@
 
     var uuid = Model.Statistics.Printer.Uuid;
 
-    string printerName = Model.Statistics.Printer.Name
-                         ?? Model.Statistics.Printer.Model
-                         ?? Model.Statistics.Printer.Uuid.ToString();
+    string printerName = Model.Statistics.Printer.Name ??
+                         Model.Statistics.Printer.Model ??
+                         Model.Statistics.Printer.Uuid.ToString();
 }
 
 @* The page answers one question first - what is this printer doing - and everything that is a
@@ -24,8 +24,8 @@
 
 <p class="text-body-secondary">
     @Localiser["Printers_TeamLabel"]
-    <span class="typed-name">@(Model.Statistics.Printer.Team?.Name
-                               ?? Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)</span>
+    <span class="typed-name">@(Model.Statistics.Printer.Team?.Name ??
+                               Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)</span>
 </p>
 
 @* This page is left open for the length of a print, which is what makes an ordinary status alert

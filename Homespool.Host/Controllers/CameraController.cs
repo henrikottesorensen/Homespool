@@ -179,9 +179,9 @@ public class CameraController : ControllerBase
         LiveTransport transport = await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken)
                                                  .ConfigureAwait(false);
 
-        return TypedResults.Ok(transport == LiveTransport.None
-            ? new CameraLiveOption(false)
-            : new CameraLiveOption(true, transport));
+        return TypedResults.Ok(transport == LiveTransport.None ?
+            new CameraLiveOption(false) :
+            new CameraLiveOption(true, transport));
     }
 
     /// <summary>
@@ -239,8 +239,8 @@ public class CameraController : ControllerBase
         // Re-checked rather than trusted, following WebRtc below: this endpoint is reachable on its
         // own, and relaying a camera whose codec the stream cannot carry would tie up the first-frame
         // wait for an answer that is already known.
-        if (await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken).ConfigureAwait(false)
-            != LiveTransport.Mjpeg)
+        if (await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken).ConfigureAwait(false) !=
+            LiveTransport.Mjpeg)
         {
             return this.ConflictProblem("This camera is not watched over MJPEG.");
         }
@@ -285,9 +285,9 @@ public class CameraController : ControllerBase
             // showed nothing while every other browser played. See MjpegDhtRelay.
             await live.CopyToAsync(Response.Body, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception exception) when (exception is OperationCanceledException
-                                                    or IOException
-                                                    or HttpRequestException)
+        catch (Exception exception) when (exception is OperationCanceledException or
+                                                       IOException or
+                                                       HttpRequestException)
         {
             // The viewer left, or the sidecar closed the stream. Either way the answer has already
             // started and there is nobody to tell.
@@ -352,8 +352,8 @@ public class CameraController : ControllerBase
             return this.NotFoundProblem("No such camera.");
         }
 
-        if (await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken).ConfigureAwait(false)
-            != LiveTransport.Webrtc)
+        if (await _liveView.HowToWatchAsync(camera.Uuid, cancellationToken).ConfigureAwait(false) !=
+            LiveTransport.Webrtc)
         {
             return this.ConflictProblem("This camera cannot be watched over WebRTC.");
         }

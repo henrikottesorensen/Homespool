@@ -135,8 +135,8 @@ internal static class SharedPrinterCertificates
 
     private static bool LeavesTheContentRoot(string relative)
     {
-        return Path.IsPathRooted(relative)
-               || relative.StartsWith("..", StringComparison.Ordinal);
+        return Path.IsPathRooted(relative) ||
+               relative.StartsWith("..", StringComparison.Ordinal);
     }
 
     /// <summary>

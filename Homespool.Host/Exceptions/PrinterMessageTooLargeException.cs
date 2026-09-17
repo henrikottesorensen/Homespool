@@ -34,8 +34,8 @@ public class PrinterMessageTooLargeException : Exception
     }
 
     public PrinterMessageTooLargeException(int printerId, long bufferedBytes, long limitBytes)
-        : base($"Printer {printerId} buffered {bufferedBytes} bytes without completing a message; "
-               + $"the limit is {limitBytes}.")
+        : base($"Printer {printerId} buffered {bufferedBytes} bytes without completing a message; " +
+               $"the limit is {limitBytes}.")
     {
         PrinterId = printerId;
         BufferedBytes = bufferedBytes;

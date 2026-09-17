@@ -50,8 +50,8 @@
                     // UTF-16 carrying a byte order mark is fine - the compiler reads it correctly, and
                     // a generator may have written it. Such a file must keep that mark: it is the only
                     // record of the encoding, and stripping it destroys the file.
-                    if (bytes.Length >= 2
-                        && ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)))
+                    if (bytes.Length >= 2 &&
+                        ((bytes[0] == 0xFF && bytes[1] == 0xFE) || (bytes[0] == 0xFE && bytes[1] == 0xFF)))
                     {
                         continue;
                     }

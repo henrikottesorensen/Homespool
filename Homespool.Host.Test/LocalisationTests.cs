@@ -468,8 +468,8 @@ public sealed class LocalisationTests
                                 .ToList();
 
         collisions.Should().BeEmpty(
-            "two keys with one sentence drift apart in translation - merge them, or add the pair to "
-            + "the sanctioned list with a reason");
+            "two keys with one sentence drift apart in translation - merge them, or add the pair to " +
+            "the sanctioned list with a reason");
     }
 
     /// <summary>
@@ -499,8 +499,8 @@ public sealed class LocalisationTests
         string code = string.Concat(
             Directory.EnumerateFiles(Path.Combine(root, "Homespool.Host"), "*.cs", SearchOption.AllDirectories)
                      .Concat(Directory.EnumerateFiles(Path.Combine(root, "Homespool.Host"), "*.cshtml", SearchOption.AllDirectories))
-                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                                    && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                     .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+                                    !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
                      .Select(File.ReadAllText));
 
         // Built from a prefix at run time, so they are never written out in full anywhere.
@@ -526,8 +526,8 @@ public sealed class LocalisationTests
                                .ToList();
 
         orphans.Should().BeEmpty(
-            "a key nothing names is dead weight that still gets translated - delete it, or find the "
-            + "page that lost it");
+            "a key nothing names is dead weight that still gets translated - delete it, or find the " +
+            "page that lost it");
     }
 
     /// <summary>The repository root, walked up from the test binary.</summary>
@@ -656,7 +656,7 @@ public sealed class LocalisationTests
         }
 
         missing.Should().BeEmpty(
-            "a setting with no label renders its own resource key where its name should be - add the "
-            + "string, in both languages, when adding the setting");
+            "a setting with no label renders its own resource key where its name should be - add the " +
+            "string, in both languages, when adding the setting");
     }
 }

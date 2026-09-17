@@ -101,9 +101,9 @@ public sealed class StepUpGate
             return StepUpResult.Proved;
         }
 
-        return stepUp.Refusal() == SignInRefusal.LockedOut
-            ? StepUpResult.Refused(StepUpRefusal.LockedOut, stepUp.RetryAfter())
-            : StepUpResult.Refused(StepUpRefusal.WrongPassword);
+        return stepUp.Refusal() == SignInRefusal.LockedOut ?
+            StepUpResult.Refused(StepUpRefusal.LockedOut, stepUp.RetryAfter()) :
+            StepUpResult.Refused(StepUpRefusal.WrongPassword);
     }
 
     /// <summary>
@@ -121,8 +121,8 @@ public sealed class StepUpGate
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        if (await _users.HasPasswordAsync(user)
-            || (await _users.GetLoginsAsync(user)).All(login => !string.Equals(login.LoginProvider, provider, StringComparison.Ordinal)))
+        if (await _users.HasPasswordAsync(user) ||
+            (await _users.GetLoginsAsync(user)).All(login => !string.Equals(login.LoginProvider, provider, StringComparison.Ordinal)))
         {
             return null;
         }
@@ -198,8 +198,8 @@ public sealed class StepUpGate
         ArgumentNullException.ThrowIfNull(info);
         ArgumentNullException.ThrowIfNull(logins);
 
-        bool held = logins.Any(login => string.Equals(login.LoginProvider, info.LoginProvider, StringComparison.Ordinal)
-                                        && string.Equals(login.ProviderKey, info.ProviderKey, StringComparison.Ordinal));
+        bool held = logins.Any(login => string.Equals(login.LoginProvider, info.LoginProvider, StringComparison.Ordinal) &&
+                                        string.Equals(login.ProviderKey, info.ProviderKey, StringComparison.Ordinal));
 
         if (!held)
         {
@@ -211,8 +211,8 @@ public sealed class StepUpGate
             return "failed";
         }
 
-        if (now - answered > MaxProviderProofAge
-            || (UnixTime(info.Principal, HSClaimTypes.ExternalAuthenticationTime) is { } reported && now - reported > MaxProviderProofAge))
+        if (now - answered > MaxProviderProofAge ||
+            (UnixTime(info.Principal, HSClaimTypes.ExternalAuthenticationTime) is { } reported && now - reported > MaxProviderProofAge))
         {
             return "stale";
         }
@@ -227,10 +227,10 @@ public sealed class StepUpGate
     /// </summary>
     private static DateTimeOffset? UnixTime(ClaimsPrincipal principal, string claimType)
     {
-        return long.TryParse(principal.FindFirstValue(claimType), NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds)
-               && seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds()
-               && seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds()
-            ? DateTimeOffset.FromUnixTimeSeconds(seconds)
-            : null;
+        return long.TryParse(principal.FindFirstValue(claimType), NumberStyles.Integer, CultureInfo.InvariantCulture, out long seconds) &&
+               seconds >= DateTimeOffset.MinValue.ToUnixTimeSeconds() &&
+               seconds <= DateTimeOffset.MaxValue.ToUnixTimeSeconds() ?
+            DateTimeOffset.FromUnixTimeSeconds(seconds) :
+            null;
     }
 }

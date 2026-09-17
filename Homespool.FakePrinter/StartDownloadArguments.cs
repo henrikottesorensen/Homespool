@@ -26,18 +26,18 @@ public sealed record StartDownloadArguments(string Path, string Hash, ulong Team
         {
             using JsonDocument document = JsonDocument.Parse(payload);
 
-            if (!document.RootElement.TryGetProperty("kwargs", out JsonElement kwargs)
-                || kwargs.ValueKind != JsonValueKind.Object)
+            if (!document.RootElement.TryGetProperty("kwargs", out JsonElement kwargs) ||
+                kwargs.ValueKind != JsonValueKind.Object)
             {
                 return null;
             }
 
-            if (!TryGetString(kwargs, "path", out string? path)
-                || !TryGetString(kwargs, "hash", out string? hash)
-                || !kwargs.TryGetProperty("team_id", out JsonElement teamId)
-                || !teamId.TryGetUInt64(out ulong team)
-                || !kwargs.TryGetProperty("orig_size", out JsonElement origSize)
-                || !origSize.TryGetInt64(out long size))
+            if (!TryGetString(kwargs, "path", out string? path) ||
+                !TryGetString(kwargs, "hash", out string? hash) ||
+                !kwargs.TryGetProperty("team_id", out JsonElement teamId) ||
+                !teamId.TryGetUInt64(out ulong team) ||
+                !kwargs.TryGetProperty("orig_size", out JsonElement origSize) ||
+                !origSize.TryGetInt64(out long size))
             {
                 return null;
             }

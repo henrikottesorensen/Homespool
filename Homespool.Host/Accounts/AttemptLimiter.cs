@@ -133,8 +133,8 @@ public class AttemptLimiter
 
             attempt.LockoutEnd = now.AddSeconds(seconds);
 
-            _logger.LogWarning("User {UserId} backed off from {Action} for {LockoutSeconds}s after "
-                               + "{FailedAttempts} failed attempts.",
+            _logger.LogWarning("User {UserId} backed off from {Action} for {LockoutSeconds}s after " +
+                               "{FailedAttempts} failed attempts.",
                                userId, action, seconds, attempt.FailedCount);
         }
 

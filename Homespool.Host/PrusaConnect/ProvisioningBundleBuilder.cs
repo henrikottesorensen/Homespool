@@ -243,14 +243,14 @@ public sealed class ProvisioningBundleBuilder
             throw new ArgumentException(tooLong, nameof(hostname));
         }
 
-        if (endpoint.CarriesATrustAnchor
-            && !(await AvailableNamesAsync(cancellationToken))
+        if (endpoint.CarriesATrustAnchor &&
+            !(await AvailableNamesAsync(cancellationToken))
                 .Any(suggestion => suggestion.Value.Equals(name, StringComparison.OrdinalIgnoreCase)))
         {
             throw new ArgumentException(
-                $"'{name}' is not an address a printer could use to reach this server - either the certificate "
-                + "does not cover it, or it resolves only inside this container. Choose one of the names offered, "
-                + "or reissue the certificate.",
+                $"'{name}' is not an address a printer could use to reach this server - either the certificate " +
+                "does not cover it, or it resolves only inside this container. Choose one of the names offered, " +
+                "or reissue the certificate.",
                 nameof(hostname));
         }
 
@@ -316,8 +316,8 @@ public sealed class ProvisioningBundleBuilder
         // one holding characters nobody should be handed a copy of - a newline first among them.
         return name.All(character => char.IsAsciiLetterOrDigit(character) || character is '.' or '-') ?
             null :
-            "That is not a hostname: an address written into the ini may hold only letters, digits, dots and "
-            + "hyphens, and this one holds something else. Choose one of the names offered.";
+            "That is not a hostname: an address written into the ini may hold only letters, digits, dots and " +
+            "hyphens, and this one holds something else. Choose one of the names offered.";
     }
 
     private static void WriteEntry(ZipArchive archive, string name, byte[] contents)

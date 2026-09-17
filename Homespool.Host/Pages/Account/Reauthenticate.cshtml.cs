@@ -294,9 +294,9 @@ public class ReauthenticateModel : PageModel
     /// </summary>
     private string Destination()
     {
-        return ReturnUrl is not null && Url.IsLocalUrl(ReturnUrl)
-            ? ReturnUrl
-            : Url.Page("/Account/Manage/Index") ?? "/";
+        return ReturnUrl is not null && Url.IsLocalUrl(ReturnUrl) ?
+            ReturnUrl :
+            Url.Page("/Account/Manage/Index") ?? "/";
     }
 
     private IActionResult Proved(HSUser user, string method)
@@ -318,17 +318,17 @@ public class ReauthenticateModel : PageModel
 
     private async Task LoadAsync(HSUser user)
     {
-        BeforeEnrolment = ReturnUrl is not null
-                          && Url.IsLocalUrl(ReturnUrl)
-                          && new PathString(ReturnUrl.Split('?')[0]).StartsWithSegments(EnrolmentPage, StringComparison.OrdinalIgnoreCase);
+        BeforeEnrolment = ReturnUrl is not null &&
+                          Url.IsLocalUrl(ReturnUrl) &&
+                          new PathString(ReturnUrl.Split('?')[0]).StartsWithSegments(EnrolmentPage, StringComparison.OrdinalIgnoreCase);
         UsesPassword = await _stepUp.UsesPasswordAsync(user);
         PasskeysAvailable = Scheme.Covers(Request.Host) && (await _users.GetPasskeysAsync(user)).Count > 0;
 
         IList<UserLoginInfo> logins = await _users.GetLoginsAsync(user);
 
-        Providers = logins.Count == 0
-            ? []
-            : (await _externalSignIn.ProvidersAsync())
+        Providers = logins.Count == 0 ?
+            [] :
+            (await _externalSignIn.ProvidersAsync())
               .Where(scheme => logins.Any(login => string.Equals(login.LoginProvider, scheme.Name, StringComparison.Ordinal)))
               .ToList();
     }

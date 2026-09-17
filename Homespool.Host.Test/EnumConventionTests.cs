@@ -67,8 +67,8 @@ public class EnumConventionTests
         // Assert
         enums.Should().NotBeEmpty("a reflection test that finds nothing passes for the wrong reason");
         violations.Should().BeEmpty(
-            "default(T) is zero, so the member at zero is what an unset value silently means - "
-            + "add 'Undefined = 0' and move the real members up");
+            "default(T) is zero, so the member at zero is what an unset value silently means - " +
+            "add 'Undefined = 0' and move the real members up");
     }
 
     [Fact]
@@ -123,8 +123,8 @@ public class EnumConventionTests
 
         List<string> offenders = [.. SourceProjects.Where(project => !project.StartsWith("Homespool.FakePrinter", StringComparison.Ordinal))
                                                    .SelectMany(project => Directory.EnumerateFiles(Path.Combine(root, project), "*.cs", SearchOption.AllDirectories))
-                                                   .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                                                                  && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                                                   .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+                                                                  !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
                                                    .Where(path => Path.GetRelativePath(root, path) != helper)
                                                    .Where(path => StripComments(File.ReadAllText(path)).Contains("Enum.IsDefined(", StringComparison.Ordinal))
                                                    .Select(path => Path.GetRelativePath(root, path))];
@@ -195,8 +195,8 @@ public class EnumConventionTests
         {
             foreach (string path in Directory.EnumerateFiles(Path.Combine(root, project), "*.cs", SearchOption.AllDirectories))
             {
-                if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
-                    || path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                if (path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+                    path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
                 {
                     continue;
                 }

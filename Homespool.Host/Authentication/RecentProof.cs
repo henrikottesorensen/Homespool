@@ -100,9 +100,9 @@ public sealed class RecentProof
 
         string[] parts = payload.Split('|');
 
-        if (parts.Length != 3
-            || !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out long proved)
-            || !long.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long issuedTicks))
+        if (parts.Length != 3 ||
+            !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out long proved) ||
+            !long.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long issuedTicks))
         {
             return false;
         }

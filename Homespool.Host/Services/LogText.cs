@@ -102,12 +102,12 @@ public static class LogText
     /// </summary>
     private static bool IsUnprintable(char character)
     {
-        return char.IsControl(character)
+        return char.IsControl(character) ||
 
                // Written as escapes on purpose: these are invisible characters, and a source file holding
                // them literally is unreadable in a diff and carries the very hazard this rejects.
-               || character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF'
-               || character is >= '\u202A' and <= '\u202E'
-               || character is >= '\u2066' and <= '\u2069';
+               character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
+               character is >= '\u202A' and <= '\u202E' ||
+               character is >= '\u2066' and <= '\u2069';
     }
 }

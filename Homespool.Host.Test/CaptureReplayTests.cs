@@ -59,9 +59,9 @@ public class CaptureReplayTests
 
         // Spot-check content, not just "didn't throw" - a run of empty DTOs would pass an
         // exception-only assertion.
-        result.ChamberLedSeen.Should().BeGreaterThan(0, "Full-mode messages in this capture do carry a "
-                                                        + "non-zero chamber.led_intensity, and the fix "
-                                                        + "for that field should be exercised by real data");
+        result.ChamberLedSeen.Should().BeGreaterThan(0, "Full-mode messages in this capture do carry a " +
+                                                        "non-zero chamber.led_intensity, and the fix " +
+                                                        "for that field should be exercised by real data");
     }
 
     /// <summary>
@@ -231,8 +231,8 @@ public class CaptureReplayTests
                                 infoData = eventDto.Data.Value.Deserialize<InfoEventDataDTO>();
                             }
 
-                            if (eventDto.EventType == PrinterEventType.FileInfo && eventDto.Data is not null
-                                                                      && eventDto.Data.Value.Deserialize<FileInfoEventDataDTO>() is
+                            if (eventDto.EventType == PrinterEventType.FileInfo && eventDto.Data is not null &&
+                                                                      eventDto.Data.Value.Deserialize<FileInfoEventDataDTO>() is
                                                                           { } fileInfo)
                             {
                                 fileInfoData.Add(fileInfo);

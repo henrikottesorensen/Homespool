@@ -112,11 +112,11 @@ public static class PrusaTelemetryMapping
         // Firmware guards the whole block with if (params.has_job): the five fields arrive together
         // or not at all, and absence is firmware's own statement that there is no job. Keyed on the
         // whole block rather than any one field, so nothing depends on which firmware renders first.
-        bool hasJob = telemetry.JobId is not null
-                      || telemetry.Progress is not null
-                      || telemetry.TimePrinting is not null
-                      || telemetry.TimeRemaining is not null
-                      || telemetry.TimeToFilamentChange is not null;
+        bool hasJob = telemetry.JobId is not null ||
+                      telemetry.Progress is not null ||
+                      telemetry.TimePrinting is not null ||
+                      telemetry.TimeRemaining is not null ||
+                      telemetry.TimeToFilamentChange is not null;
 
         TelemetryUpdate update = new()
         {
@@ -234,17 +234,17 @@ public static class PrusaTelemetryMapping
     /// </remarks>
     private static PrinterAttentionUpdate? ToAttention(EventDTO dto)
     {
-        if (dto.EventType != Model.PrinterEventType.StateChanged
-            || dto.Data is not { ValueKind: JsonValueKind.Object } element)
+        if (dto.EventType != Model.PrinterEventType.StateChanged ||
+            dto.Data is not { ValueKind: JsonValueKind.Object } element)
         {
             return null;
         }
 
         int? code = null;
 
-        if (element.TryGetProperty("code", out JsonElement codeElement)
-            && codeElement.ValueKind == JsonValueKind.String
-            && int.TryParse(codeElement.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture,
+        if (element.TryGetProperty("code", out JsonElement codeElement) &&
+            codeElement.ValueKind == JsonValueKind.String &&
+            int.TryParse(codeElement.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture,
                             out int parsed))
         {
             code = parsed;
@@ -419,8 +419,8 @@ public static class PrusaTelemetryMapping
             // Structurally-not-a-slot is skipped; a numbered entry that is an object and still will
             // not deserialize is left to throw, because that is protocol drift worth noticing rather
             // than a key we were never meant to read.
-            if (!int.TryParse(key, CultureInfo.InvariantCulture, out int slotNumber)
-                || value.ValueKind != JsonValueKind.Object)
+            if (!int.TryParse(key, CultureInfo.InvariantCulture, out int slotNumber) ||
+                value.ValueKind != JsonValueKind.Object)
             {
                 continue;
             }
@@ -497,18 +497,18 @@ public static class PrusaTelemetryMapping
     /// </remarks>
     private static PrinterDriveListingUpdate? ToDriveListing(EventDTO dto)
     {
-        if (dto.EventType != Model.PrinterEventType.FileInfo
-            || dto.Data is not { ValueKind: JsonValueKind.Object } element)
+        if (dto.EventType != Model.PrinterEventType.FileInfo ||
+            dto.Data is not { ValueKind: JsonValueKind.Object } element)
         {
             return null;
         }
 
-        bool hasChildren = element.TryGetProperty("children", out JsonElement children)
-                           && children.ValueKind == JsonValueKind.Array;
+        bool hasChildren = element.TryGetProperty("children", out JsonElement children) &&
+                           children.ValueKind == JsonValueKind.Array;
 
-        bool hasCount = element.TryGetProperty("file_count", out JsonElement count)
-                        && count.ValueKind == JsonValueKind.Number
-                        && count.TryGetInt32(out _);
+        bool hasCount = element.TryGetProperty("file_count", out JsonElement count) &&
+                        count.ValueKind == JsonValueKind.Number &&
+                        count.TryGetInt32(out _);
 
         if (!hasChildren && !hasCount)
         {

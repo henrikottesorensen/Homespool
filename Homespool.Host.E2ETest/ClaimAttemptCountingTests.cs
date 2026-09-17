@@ -65,8 +65,8 @@ public sealed class ClaimAttemptCountingTests : IAsyncLifetime
                 "a refused claim redisplays the page; a 400 would mean it never reached the handler");
 
             (await AttemptsAsync(user.Id)).Should().Be(1,
-                "the per-account cap is the only bound on code guessing, so a failed claim that "
-                + "counts as zero leaves it unbounded");
+                "the per-account cap is the only bound on code guessing, so a failed claim that " +
+                "counts as zero leaves it unbounded");
 
             // A second one, because an off-by-one that only ever records the first attempt would
             // satisfy the assertion above and still leave the cap unreachable.
@@ -151,8 +151,8 @@ public sealed class ClaimAttemptCountingTests : IAsyncLifetime
         UserActionAttempt? attempt = await database.UserActionAttempts
                                                    .AsNoTracking()
                                                    .SingleOrDefaultAsync(
-                                                       a => a.UserId == userId
-                                                            && a.Action == LimitedAction.ClaimPrinter,
+                                                       a => a.UserId == userId &&
+                                                            a.Action == LimitedAction.ClaimPrinter,
                                                        TestContext.Current.CancellationToken);
 
         return attempt?.FailedCount ?? 0;

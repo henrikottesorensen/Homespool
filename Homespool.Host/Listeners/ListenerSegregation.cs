@@ -96,7 +96,7 @@ public static class ListenerSegregation
 
     private static bool IsPrefix(string path, string segment)
     {
-        return path.Equals(segment, StringComparison.OrdinalIgnoreCase)
-               || path.StartsWith(segment + "/", StringComparison.OrdinalIgnoreCase);
+        return path.Equals(segment, StringComparison.OrdinalIgnoreCase) ||
+               path.StartsWith(segment + "/", StringComparison.OrdinalIgnoreCase);
     }
 }

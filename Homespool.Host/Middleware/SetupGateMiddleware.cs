@@ -58,27 +58,27 @@ public sealed class SetupGateMiddleware : IMiddleware
             return false;
         }
 
-        if (path.StartsWithSegments("/setup", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWithSegments("/p", StringComparison.OrdinalIgnoreCase)
+        if (path.StartsWithSegments("/setup", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWithSegments("/p", StringComparison.OrdinalIgnoreCase) ||
 
             // The transfer path, for the same reason as /p: firmware reads status codes and a 302 to
             // an HTML page is a failed transfer. It cannot be reached before setup in practice - a
             // transfer needs a printer, which needs an administrator to claim it - but "in practice"
             // is not what a gate should rest on, and the failure it would cause is silent.
-            || path.StartsWithSegments("/f", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWithSegments("/openapi", StringComparison.OrdinalIgnoreCase)
-            || path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase)
+            path.StartsWithSegments("/f", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWithSegments("/openapi", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase) ||
 
             // A failure before setup is re-run as the error page, and redirecting that to /setup would
             // hide the failure - or loop, when /setup is what failed. Opened directly, it is a 404.
-            || path.StartsWithSegments(ErrorPageScope.Path, StringComparison.OrdinalIgnoreCase)
+            path.StartsWithSegments(ErrorPageScope.Path, StringComparison.OrdinalIgnoreCase) ||
 
             // Not navigable, and a container is never "not started yet" from a monitor's point of
             // view just because nobody has created the first administrator. Redirecting this to
             // /setup would make a fresh deployment answer probes with a 302 instead of its health -
             // and curl --fail treats a 302 as success, so it would report healthy while never
             // reaching the check.
-            || path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase))
+            path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }

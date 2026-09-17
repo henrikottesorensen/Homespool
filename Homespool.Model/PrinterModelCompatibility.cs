@@ -154,17 +154,17 @@ public static class PrinterModelCompatibility
         const string xl = "XL";
         const string indx = "COREONE_INDX";
 
-        if (model.Length > xl.Length
-            && model.StartsWith(xl, StringComparison.OrdinalIgnoreCase)
-            && IsAllDigits(model.AsSpan(xl.Length)))
+        if (model.Length > xl.Length &&
+            model.StartsWith(xl, StringComparison.OrdinalIgnoreCase) &&
+            IsAllDigits(model.AsSpan(xl.Length)))
         {
             return xl;
         }
 
-        if (model.Length > indx.Length + 1
-            && model.StartsWith(indx, StringComparison.OrdinalIgnoreCase)
-            && model.EndsWith("T", StringComparison.OrdinalIgnoreCase)
-            && IsAllDigits(model.AsSpan(indx.Length, model.Length - indx.Length - 1)))
+        if (model.Length > indx.Length + 1 &&
+            model.StartsWith(indx, StringComparison.OrdinalIgnoreCase) &&
+            model.EndsWith("T", StringComparison.OrdinalIgnoreCase) &&
+            IsAllDigits(model.AsSpan(indx.Length, model.Length - indx.Length - 1)))
         {
             return "COREONEINDX";
         }

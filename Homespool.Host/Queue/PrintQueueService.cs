@@ -179,10 +179,10 @@ public class PrintQueueService
         // by wanting the file more.
         PrintFileOnPrinter? personHeld = await _dbContext.PrintFilesOnPrinters
                                                          .SingleOrDefaultAsync(
-                                                             row => row.PrinterId == printerId
-                                                                    && row.PrintFileId == file.Id
-                                                                    && (row.HoldReason == PrintHoldReason.PrintStartUnresolved
-                                                                        || row.HoldReason == PrintHoldReason.TransferRefused),
+                                                             row => row.PrinterId == printerId &&
+                                                                    row.PrintFileId == file.Id &&
+                                                                    (row.HoldReason == PrintHoldReason.PrintStartUnresolved ||
+                                                                     row.HoldReason == PrintHoldReason.TransferRefused),
                                                              cancellationToken);
 
         if (personHeld is not null)
@@ -352,8 +352,8 @@ public class PrintQueueService
     private Task<QueuedPrint?> FindAsync(int printerId, Guid printUuid, CancellationToken cancellationToken)
     {
         return _dbContext.QueuedPrints
-                         .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId
-                                                            && candidate.PrintUuid == printUuid,
+                         .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId &&
+                                                            candidate.PrintUuid == printUuid,
                                                cancellationToken);
     }
 }

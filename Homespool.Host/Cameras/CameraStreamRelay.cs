@@ -77,14 +77,14 @@ public sealed class CameraStreamRelay
                 return null;
             }
 
-            string contentType = upstream.Content.Headers.ContentType?.ToString()
-                                 ?? "multipart/x-mixed-replace";
+            string contentType = upstream.Content.Headers.ContentType?.ToString() ??
+                                 "multipart/x-mixed-replace";
 
             return new LiveMjpegStream(upstream, relay, contentType);
         }
-        catch (Exception exception) when (exception is OperationCanceledException
-                                                    or IOException
-                                                    or HttpRequestException)
+        catch (Exception exception) when (exception is OperationCanceledException or
+                                                       IOException or
+                                                       HttpRequestException)
         {
             upstream.Dispose();
             return null;

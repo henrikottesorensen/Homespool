@@ -87,24 +87,24 @@ public sealed class WebRtcCandidateHealthCheck : IHealthCheck
         // it is the only one of them an operator cannot work out from the generic sentence: the name
         // resolves perfectly from their own machine, and nothing about "container networks" points at
         // a line in /etc/hosts.
-        string remedy = _cameras.CurrentValue.WebRtcCandidate.Length > 0
-            ? "WEBRTC_CANDIDATE is set but was not usable - it should be an address and port a browser can reach, "
-              + "such as 192.168.1.10:8555, with no scheme."
-            : _connect.CurrentValue.IsPrinterAddressConfigured
-                ? _availability.ConfiguredHostResolvesOnlyToLoopback
-                    ? $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but resolves only to a loopback "
-                      + "address from inside this container - the machine's own hosts-file entry for its hostname "
-                      + "(127.0.1.1 on Debian and Raspberry Pi OS), not what a browser sees. Remove the name from the "
-                      + "127.0.1.1 line in /etc/hosts on the host and restart the stack, or set WEBRTC_CANDIDATE to the "
-                      + "address and port a browser should use."
-                    : $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but does not resolve to an address "
-                      + "outside this deployment's own container networks. Set WEBRTC_CANDIDATE to the address and port "
-                      + "a browser should use."
-                : "Set PRINTER_HOST to a name this machine answers to, which is what the address is worked out from, "
-                  + "or set WEBRTC_CANDIDATE to the address and port a browser should use.";
+        string remedy = _cameras.CurrentValue.WebRtcCandidate.Length > 0 ?
+            "WEBRTC_CANDIDATE is set but was not usable - it should be an address and port a browser can reach, " +
+            "such as 192.168.1.10:8555, with no scheme." :
+            _connect.CurrentValue.IsPrinterAddressConfigured ?
+                _availability.ConfiguredHostResolvesOnlyToLoopback ?
+                    $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but resolves only to a loopback " +
+                    "address from inside this container - the machine's own hosts-file entry for its hostname " +
+                    "(127.0.1.1 on Debian and Raspberry Pi OS), not what a browser sees. Remove the name from the " +
+                    "127.0.1.1 line in /etc/hosts on the host and restart the stack, or set WEBRTC_CANDIDATE to the " +
+                    "address and port a browser should use." :
+                    $"PRINTER_HOST is set to '{_connect.CurrentValue.PrinterHost.Trim()}' but does not resolve to an address " +
+                    "outside this deployment's own container networks. Set WEBRTC_CANDIDATE to the address and port " +
+                    "a browser should use." :
+                "Set PRINTER_HOST to a name this machine answers to, which is what the address is worked out from, " +
+                "or set WEBRTC_CANDIDATE to the address and port a browser should use.";
 
         return HealthCheckResult.Degraded(
-            $"{cameras} camera(s) are configured but none can be watched live, because there is no address to send "
-            + $"video to. Still pictures are unaffected and keep working. {remedy}");
+            $"{cameras} camera(s) are configured but none can be watched live, because there is no address to send " +
+            $"video to. Still pictures are unaffected and keep working. {remedy}");
     }
 }

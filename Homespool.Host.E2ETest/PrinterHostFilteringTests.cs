@@ -83,8 +83,8 @@ public sealed class PrinterHostFilteringTests : IAsyncLifetime
         before.StatusCode.Should().Be(HttpStatusCode.BadRequest,
                                       "nothing vouches for the address yet, so the framework's host filter refuses it");
         after.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-                                     "the leaf now covers the address, so the request reaches the printer authentication that "
-                                     + "answers a tokenless connection - which is what the hostname got at the same minute");
+                                     "the leaf now covers the address, so the request reaches the printer authentication that " +
+                                     "answers a tokenless connection - which is what the hostname got at the same minute");
     }
 
     /// <summary>

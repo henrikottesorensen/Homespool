@@ -40,8 +40,8 @@ public class PreheatPartiallyAppliedException : Exception
     {
         return bedTemperature == 0 ?
             "The bed was switched off, but the nozzle did not answer - it may still be hot." :
-            "The bed is heating to "
-            + bedTemperature.ToString(CultureInfo.InvariantCulture)
-            + " °C, but the nozzle did not answer and is not heating.";
+            "The bed is heating to " +
+            bedTemperature.ToString(CultureInfo.InvariantCulture) +
+            " °C, but the nozzle did not answer and is not heating.";
     }
 }

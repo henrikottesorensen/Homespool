@@ -68,8 +68,8 @@ public class BuildInformationTests
         string described = BuildInformation.Describe("Homespool", "0.0.1");
 
         described.Should()
-                 .Be($"Homespool 0.0.1{Environment.NewLine}"
-                   + "commit unknown - built with no source control information");
+                 .Be($"Homespool 0.0.1{Environment.NewLine}" +
+                     "commit unknown - built with no source control information");
     }
 
     /// <summary>An assembly carrying no informational version attribute at all.</summary>
@@ -82,8 +82,8 @@ public class BuildInformationTests
         string described = BuildInformation.Describe("Homespool", informationalVersion);
 
         described.Should()
-                 .Be($"Homespool (version unknown){Environment.NewLine}"
-                   + "commit unknown - this assembly carries no version information");
+                 .Be($"Homespool (version unknown){Environment.NewLine}" +
+                     "commit unknown - this assembly carries no version information");
     }
 
     /// <summary>

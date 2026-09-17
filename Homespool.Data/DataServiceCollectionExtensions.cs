@@ -30,8 +30,8 @@ public static class DataServiceCollectionExtensions
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
 
         StorageOptions storage = configuration.GetSection(StorageOptions.SectionName)
-                                              .Get<StorageOptions>()
-                                 ?? new StorageOptions();
+                                              .Get<StorageOptions>() ??
+                                 new StorageOptions();
 
         string? connectionString = configuration.GetConnectionString("HomespoolDb");
 

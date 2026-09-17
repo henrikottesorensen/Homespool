@@ -239,22 +239,22 @@ public class CertificateModel : PageModel
 
         if (kept.Length > 0)
         {
-            _logger.LogInformation("The reissued printer certificate keeps {Kept} at the administrator's request, "
-                                   + "although detection from inside this container did not find them. Printers "
-                                   + "connecting to them keep working.", string.Join(", ", kept));
+            _logger.LogInformation("The reissued printer certificate keeps {Kept} at the administrator's request, " +
+                                   "although detection from inside this container did not find them. Printers " +
+                                   "connecting to them keep working.", string.Join(", ", kept));
         }
 
         if (dropped.Length > 0)
         {
-            _logger.LogWarning("The reissued printer certificate NO LONGER covers {Dropped}, which the previous one "
-                               + "did. Any printer whose ini tells it to use one of those names will fail its "
-                               + "handshake once the proxy is reloaded, reporting a bare TLS error, and needs a USB "
-                               + "visit to repoint it. They were dropped because detection from inside this container "
-                               + "did not find them and they were not ticked to keep.", string.Join(", ", dropped));
+            _logger.LogWarning("The reissued printer certificate NO LONGER covers {Dropped}, which the previous one " +
+                               "did. Any printer whose ini tells it to use one of those names will fail its " +
+                               "handshake once the proxy is reloaded, reporting a bare TLS error, and needs a USB " +
+                               "visit to repoint it. They were dropped because detection from inside this container " +
+                               "did not find them and they were not ticked to keep.", string.Join(", ", dropped));
         }
 
-        _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served once the proxy "
-                           + "reloads; until then the previous certificate is still on the wire.",
+        _logger.LogWarning("The printer certificate was reissued for {Names} by {User}. It is served once the proxy " +
+                           "reloads; until then the previous certificate is still on the wire.",
                            string.Join(", ", names), User.Identity?.Name);
 
         // The reload is the honest part of the message, and it is the proxy's rather than this

@@ -61,8 +61,8 @@ public sealed class MailpitClient : IDisposable
 
         while (true)
         {
-            MailpitMessageList list = await _http.GetFromJsonAsync<MailpitMessageList>("/api/v1/messages")
-                                      ?? throw new InvalidOperationException("Mailpit returned an empty response.");
+            MailpitMessageList list = await _http.GetFromJsonAsync<MailpitMessageList>("/api/v1/messages") ??
+                                      throw new InvalidOperationException("Mailpit returned an empty response.");
 
             MailpitMessageSummary? match =
                 list.Messages.FirstOrDefault(m => m.To.Any(a => string.Equals(a.Address, recipientAddress,
@@ -110,8 +110,8 @@ public sealed class MailpitClient : IDisposable
 
         while (DateTime.UtcNow < deadline)
         {
-            MailpitMessageList list = await _http.GetFromJsonAsync<MailpitMessageList>("/api/v1/messages")
-                                      ?? throw new InvalidOperationException("Mailpit returned an empty response.");
+            MailpitMessageList list = await _http.GetFromJsonAsync<MailpitMessageList>("/api/v1/messages") ??
+                                      throw new InvalidOperationException("Mailpit returned an empty response.");
 
             if (list.Messages.Any(m => m.To.Any(a => string.Equals(a.Address, recipientAddress,
                                                                    StringComparison.OrdinalIgnoreCase))))
@@ -127,8 +127,8 @@ public sealed class MailpitClient : IDisposable
 
     public async Task<MailpitMessage> GetMessageAsync(string id)
     {
-        return await _http.GetFromJsonAsync<MailpitMessage>($"/api/v1/message/{id}")
-               ?? throw new InvalidOperationException("Mailpit returned an empty response.");
+        return await _http.GetFromJsonAsync<MailpitMessage>($"/api/v1/message/{id}") ??
+               throw new InvalidOperationException("Mailpit returned an empty response.");
     }
 
     public void Dispose()

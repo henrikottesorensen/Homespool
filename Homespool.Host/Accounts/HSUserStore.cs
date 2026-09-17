@@ -178,9 +178,9 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
             return 0;
         }
 
-        return RecoveryCodeHashes.IsHashed(stored)
-                   ? Parse(user, stored)?.Count ?? 0
-                   : stored.Split(';').Length;
+        return RecoveryCodeHashes.IsHashed(stored) ?
+                   Parse(user, stored)?.Count ?? 0 :
+                   stored.Split(';').Length;
     }
 
     private async Task<string> StoredCodesAsync(HSUser user, CancellationToken cancellationToken)

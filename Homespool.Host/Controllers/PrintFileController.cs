@@ -112,8 +112,8 @@ public class PrintFileController : ControllerBase
 
         if (!UserFileStore.IsAllowedExtension(fileName))
         {
-            return this.BadRequestProblem("Only .gcode, .bgcode, .gco and .bgc are accepted - the printer would "
-                                          + "refuse anything else after the transfer.");
+            return this.BadRequestProblem("Only .gcode, .bgcode, .gco and .bgc are accepted - the printer would " +
+                                          "refuse anything else after the transfer.");
         }
 
         // Content-Length is advisory (a client may omit it), so this rejects the obvious case early

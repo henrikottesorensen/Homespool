@@ -54,8 +54,8 @@ public sealed class LocalAssetTests
                 // costs the page nothing unless clicked. What must not appear is markup that makes
                 // the browser fetch from a third party to render this page at all.
                 bool fetchesScript = line.Contains("src=\"http", StringComparison.OrdinalIgnoreCase);
-                bool fetchesStylesheet = line.Contains("<link", StringComparison.OrdinalIgnoreCase)
-                                         && line.Contains("href=\"http", StringComparison.OrdinalIgnoreCase);
+                bool fetchesStylesheet = line.Contains("<link", StringComparison.OrdinalIgnoreCase) &&
+                                         line.Contains("href=\"http", StringComparison.OrdinalIgnoreCase);
 
                 if (fetchesScript || fetchesStylesheet)
                 {
@@ -66,8 +66,8 @@ public sealed class LocalAssetTests
 
         // Assert
         offenders.Should().BeEmpty(
-            "this is a self-hosted appliance that has to work on a LAN with no route to the internet, "
-            + "so every script and stylesheet is served from the deployment itself");
+            "this is a self-hosted appliance that has to work on a LAN with no route to the internet, " +
+            "so every script and stylesheet is served from the deployment itself");
     }
 
     /// <summary>
@@ -93,8 +93,8 @@ public sealed class LocalAssetTests
         {
             foreach (string line in File.ReadLines(file))
             {
-                if (line.Contains("<script", StringComparison.OrdinalIgnoreCase)
-                    && line.Contains("jquery", StringComparison.OrdinalIgnoreCase))
+                if (line.Contains("<script", StringComparison.OrdinalIgnoreCase) &&
+                    line.Contains("jquery", StringComparison.OrdinalIgnoreCase))
                 {
                     offenders.Add($"{Path.GetFileName(file)}: {line.Trim()}");
                 }

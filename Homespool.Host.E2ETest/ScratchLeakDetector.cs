@@ -53,12 +53,12 @@ public sealed class ScratchLeakDetector : IDisposable
         // .trx, which is where it has to be read from; writing it to stdout as well does not work,
         // because the test host's output is not forwarded here.
         string detail =
-            $"{outstanding.Count} test scratch(s) were never disposed, so their databases and "
-            + "content roots are still on disk: "
-            + string.Join(", ", outstanding.OrderBy(name => name, StringComparer.Ordinal).Distinct())
-            + ". The usual cause is a class implementing IAsyncLifetime whose DisposeAsync returns "
-            + "without calling Dispose - xUnit calls the asynchronous one, so the Dispose body never "
-            + "runs however correct it looks.";
+            $"{outstanding.Count} test scratch(s) were never disposed, so their databases and " +
+            "content roots are still on disk: " +
+            string.Join(", ", outstanding.OrderBy(name => name, StringComparer.Ordinal).Distinct()) +
+            ". The usual cause is a class implementing IAsyncLifetime whose DisposeAsync returns " +
+            "without calling Dispose - xUnit calls the asynchronous one, so the Dispose body never " +
+            "runs however correct it looks.";
 
         throw new InvalidOperationException(detail);
     }

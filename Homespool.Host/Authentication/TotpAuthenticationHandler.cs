@@ -87,9 +87,9 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
             return SignInRefusals.Fail(SignInRefusal.Invalid, "A code is required.");
         }
 
-        HSUser? user = signIn is not null
-            ? await _rules.PendingTwoFactorAccountAsync(Context)
-            : await _rules.SignedInAccountAsync(Context);
+        HSUser? user = signIn is not null ?
+            await _rules.PendingTwoFactorAccountAsync(Context) :
+            await _rules.SignedInAccountAsync(Context);
 
         if (user is null)
         {

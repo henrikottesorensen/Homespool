@@ -151,9 +151,9 @@ public class EnableAuthenticatorModel : PageModel
         if (!proof.Succeeded)
         {
             ModelState.AddModelError("Input.Code",
-                                     proof.Refusal() == SignInRefusal.LockedOut
-                                         ? _localiser["Account_LockedOut"]
-                                         : _localiser["Manage_VerificationCodeInvalid"]);
+                                     proof.Refusal() == SignInRefusal.LockedOut ?
+                                         _localiser["Account_LockedOut"] :
+                                         _localiser["Manage_VerificationCodeInvalid"]);
             await LoadSharedKeyAndQrCodeUriAsync(user);
             return Page();
         }

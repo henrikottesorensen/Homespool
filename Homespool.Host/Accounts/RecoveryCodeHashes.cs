@@ -96,11 +96,11 @@ internal sealed class RecoveryCodeHashes
 
         string[] fields = stored.Split(FieldSeparator);
 
-        if (fields.Length != 4
-            || fields[0] != Version
-            || !int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out int iterations)
-            || iterations <= 0
-            || FromBase64(fields[2], SaltBytes) is not { } salt)
+        if (fields.Length != 4 ||
+            fields[0] != Version ||
+            !int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out int iterations) ||
+            iterations <= 0 ||
+            FromBase64(fields[2], SaltBytes) is not { } salt)
         {
             return null;
         }
@@ -165,8 +165,8 @@ internal sealed class RecoveryCodeHashes
     {
         Span<byte> buffer = stackalloc byte[length + 3];
 
-        return Convert.TryFromBase64String(field, buffer, out int written) && written == length
-                   ? buffer[..written].ToArray()
-                   : null;
+        return Convert.TryFromBase64String(field, buffer, out int written) && written == length ?
+                   buffer[..written].ToArray() :
+                   null;
     }
 }

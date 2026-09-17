@@ -268,9 +268,9 @@ public class PasskeysModel : PageModel
         }
 
         UserPasskeyInfo passkey = attested.Passkey!;
-        passkey.Name = string.IsNullOrWhiteSpace(Input.Name)
-            ? _localiser["Passkeys_DefaultName", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)].Value
-            : Input.Name.Trim();
+        passkey.Name = string.IsNullOrWhiteSpace(Input.Name) ?
+            _localiser["Passkeys_DefaultName", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)].Value :
+            Input.Name.Trim();
 
         IdentityResult stored = await _users.AddOrUpdatePasskeyAsync(user, passkey);
 

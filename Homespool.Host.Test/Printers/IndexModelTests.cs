@@ -38,10 +38,10 @@ namespace Homespool.Host.Test.Printers;
 /// card, and the regenerate action for a still-unbound USB-key token.
 /// </summary>
 [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
-                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the "
-                                 + "test already owns and deletes in Dispose. EF opens and closes the connection per "
-                                 + "query, so nothing is held between them, and a per-call context is what keeps each "
-                                 + "read free of another one's change tracking.")]
+                 Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the " +
+                                 "test already owns and deletes in Dispose. EF opens and closes the connection per " +
+                                 "query, so nothing is held between them, and a per-call context is what keeps each " +
+                                 "read free of another one's change tracking.")]
 public sealed class IndexModelTests : IDisposable
 {
     private static readonly QueueSignal QueueSignal = new();

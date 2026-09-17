@@ -32,9 +32,9 @@
             <div class="d-flex justify-content-between gap-3 py-1 border-top @(tool.IsPicked ? "fw-medium" : null)">
                 <span class="@(tool.CanUnload ? null : "text-body-secondary")">
                     <span class="text-body-secondary">@tool.ToolNumber</span>
-                    @(tool.CanUnload
-                        ? tool.Material!
-                        : Localiser["Printers_ToolNothingLoaded"].Value)
+                    @(tool.CanUnload ?
+                        tool.Material! :
+                        Localiser["Printers_ToolNothingLoaded"].Value)
                     @* Said on the row rather than only in the header, because "which head is
                        hardened" is the question an abrasive hold raises, and the answer has to be
                        beside the head it is about. *@

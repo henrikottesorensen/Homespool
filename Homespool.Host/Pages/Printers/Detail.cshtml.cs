@@ -783,8 +783,8 @@ public class DetailModel : PageModel
         // Advisory only: the version is a header the printer writes about itself, so this decides
         // what a page says and never what a connection is allowed to do.
         Firmware = statistics.Printer.Firmware;
-        OnPlaintextAndCouldUseTls = _connectionRegistry.IsOnPlaintextListener(statistics.Printer.Id)
-                                    && PrusaConnect.PrinterFirmwareVersion.CanLoadCustomCertificate(Firmware);
+        OnPlaintextAndCouldUseTls = _connectionRegistry.IsOnPlaintextListener(statistics.Printer.Id) &&
+                                    PrusaConnect.PrinterFirmwareVersion.CanLoadCustomCertificate(Firmware);
 
         CanUse = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.Print, cancellationToken);
 
@@ -1309,11 +1309,11 @@ public class DetailModel : PageModel
             // printer had declined, which is worse than reporting nothing.
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException
-                                      or NoToolPickedException or FilamentTypeUnknownException
-                                      or PrinterHasQueuedWorkException or NoSuchToolException
-                                      or ToolNotSpecifiedException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      NoToolPickedException or FilamentTypeUnknownException or
+                                      PrinterHasQueuedWorkException or NoSuchToolException or
+                                      ToolNotSpecifiedException)
         {
             // These are refusals about what the printer is holding rather than what it is doing, and
             // every one is reachable from a rendered control: the queued-work case

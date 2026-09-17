@@ -146,8 +146,8 @@ public sealed class UsernameValidator : IUserValidator<HSUser>
                                             .Select(other => other.UserName)
                                             .ToListAsync();
 
-        return others.Any(other => other is not null
-                                   && Confusables.Classify(candidate, other.ToUpperInvariant())
-                                       is ConfusableClass.WholeScript or ConfusableClass.MixedScript);
+        return others.Any(other => other is not null &&
+                                   Confusables.Classify(candidate, other.ToUpperInvariant()) is
+                                       ConfusableClass.WholeScript or ConfusableClass.MixedScript);
     }
 }

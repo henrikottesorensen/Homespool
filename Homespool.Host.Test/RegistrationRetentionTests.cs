@@ -45,8 +45,8 @@ public sealed class RegistrationRetentionTests : IDisposable
         after.PrusaConnectRegistrations
              .Select(registration => registration.TemporaryCode)
              .Should().BeEquivalentTo(["STILLGOOD1"],
-                                      "an expired code is refused by every lookup already, so keeping the row only "
-                                      + "grows the table");
+                                      "an expired code is refused by every lookup already, so keeping the row only " +
+                                      "grows the table");
     }
 
     /// <summary>

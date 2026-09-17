@@ -372,9 +372,9 @@ public class PrinterCertificateAuthority
 
             // At Information because it is the answer to "what must a printer connect to?", and the operator
             // needs it whenever provisioning does not work. It is also what step 6 will compare against.
-            _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. "
-                                   + "Delete {CertificatePath} and {KeyPath} to have a new one issued for this "
-                                   + "machine's current addresses.",
+            _logger.LogInformation("Serving the existing printer certificate for {Names}, valid until {NotAfter:o}. " +
+                                   "Delete {CertificatePath} and {KeyPath} to have a new one issued for this " +
+                                   "machine's current addresses.",
                                    string.Join(", ", NamesOf(existing)), existing.NotAfter,
                                    LeafCertificatePemPath, LeafKeyPemPath);
 
@@ -390,9 +390,9 @@ public class PrinterCertificateAuthority
         {
             // Half a pair serves nobody - nginx needs both files - and the leaf is the replaceable
             // kind of secret, so repair by reissuing rather than refusing to start.
-            _logger.LogWarning("Only half of the printer leaf PEM pair exists ({CertificatePath} / {KeyPath}), so the "
-                               + "proxy could not have served it. Issuing a fresh certificate, which printers accept "
-                               + "because they trust the authority rather than the leaf.",
+            _logger.LogWarning("Only half of the printer leaf PEM pair exists ({CertificatePath} / {KeyPath}), so the " +
+                               "proxy could not have served it. Issuing a fresh certificate, which printers accept " +
+                               "because they trust the authority rather than the leaf.",
                                LeafCertificatePemPath, LeafKeyPemPath);
         }
 
@@ -576,10 +576,10 @@ public class PrinterCertificateAuthority
                 reEncrypted = WriteAuthorityKey(key);
             }
 
-            _logger.LogInformation("Encrypted the printer authority's private key ({Path}) with the configured "
-                                   + "passphrase. From now on that passphrase is required to read the key - keep it "
-                                   + "backed up as carefully as the key itself, and separately from the data "
-                                   + "directory.", AuthorityKeyPemPath);
+            _logger.LogInformation("Encrypted the printer authority's private key ({Path}) with the configured " +
+                                   "passphrase. From now on that passphrase is required to read the key - keep it " +
+                                   "backed up as carefully as the key itself, and separately from the data " +
+                                   "directory.", AuthorityKeyPemPath);
 
             return reEncrypted;
         }
@@ -690,9 +690,9 @@ public class PrinterCertificateAuthority
 
         File.Delete(LegacyAuthorityPath);
 
-        _logger.LogInformation("Moved the printer authority from {Legacy} to {CertificatePath} and {KeyPath}. The "
-                               + "authority itself is unchanged - no printer notices - and the key file is now "
-                               + "encrypted with the configured passphrase.",
+        _logger.LogInformation("Moved the printer authority from {Legacy} to {CertificatePath} and {KeyPath}. The " +
+                               "authority itself is unchanged - no printer notices - and the key file is now " +
+                               "encrypted with the configured passphrase.",
                                LegacyAuthorityPath, AuthorityCertificatePemPath, AuthorityKeyPemPath);
 
         return migrated;
@@ -721,8 +721,8 @@ public class PrinterCertificateAuthority
             // Would mean a PKCS#12 written by something other than this class, since everything here
             // is ECDSA P-256 by firmware necessity. A leaf nobody holds the key to serves nothing, so
             // repair by reissuing - free at the printers, which trust the authority.
-            _logger.LogWarning("The legacy printer certificate ({Path}) carries no ECDSA private key, so it cannot be "
-                               + "served and cannot be migrated. Issuing a fresh certificate in its place.",
+            _logger.LogWarning("The legacy printer certificate ({Path}) carries no ECDSA private key, so it cannot be " +
+                               "served and cannot be migrated. Issuing a fresh certificate in its place.",
                                LegacyLeafPath);
             File.Delete(LegacyLeafPath);
 
@@ -736,8 +736,8 @@ public class PrinterCertificateAuthority
 
         File.Delete(LegacyLeafPath);
 
-        _logger.LogInformation("Moved the printer certificate from {Legacy} to {CertificatePath} and {KeyPath}, which "
-                               + "are what the proxy serves. The certificate itself is unchanged.",
+        _logger.LogInformation("Moved the printer certificate from {Legacy} to {CertificatePath} and {KeyPath}, which " +
+                               "are what the proxy serves. The certificate itself is unchanged.",
                                LegacyLeafPath, LeafCertificatePemPath, LeafKeyPemPath);
 
         return X509Certificate2.CreateFromPem(File.ReadAllText(LeafCertificatePemPath));
@@ -772,9 +772,9 @@ public class PrinterCertificateAuthority
         // certificate exists and its key does not - and the DER being there too does not change which.
         X509Certificate2 minted = WriteAuthorityKey(key);
 
-        _logger.LogWarning("Minted a new printer certificate authority in {Directory}. Every printer provisioned "
-                           + "from a previous authority will no longer validate this server and must be "
-                           + "re-provisioned from a USB stick.", _directory);
+        _logger.LogWarning("Minted a new printer certificate authority in {Directory}. Every printer provisioned " +
+                           "from a previous authority will no longer validate this server and must be " +
+                           "re-provisioned from a USB stick.", _directory);
 
         return minted;
     }
@@ -818,9 +818,9 @@ public class PrinterCertificateAuthority
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(path,
-                                 UnixFileMode.UserRead | UnixFileMode.UserWrite
-                                                       | UnixFileMode.GroupRead
-                                                       | UnixFileMode.OtherRead);
+                                 UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                                                       UnixFileMode.GroupRead |
+                                                       UnixFileMode.OtherRead);
         }
     }
 

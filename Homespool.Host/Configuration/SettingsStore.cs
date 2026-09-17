@@ -238,8 +238,8 @@ public sealed class SettingsStore
 
     private bool HasStoredSecret(EditableSetting setting)
     {
-        return !string.IsNullOrEmpty(_configuration[setting.StoredPath])
-               || !string.IsNullOrEmpty(_configuration[setting.Path]);
+        return !string.IsNullOrEmpty(_configuration[setting.StoredPath]) ||
+               !string.IsNullOrEmpty(_configuration[setting.Path]);
     }
 
     /// <summary>

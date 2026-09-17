@@ -178,8 +178,8 @@ public class StartingPageTests
             directory = directory.Parent;
         }
 
-        return directory
-               ?? throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
+        return directory ??
+               throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
     }
 
     private static IReadOnlyList<string> HoldingPages()

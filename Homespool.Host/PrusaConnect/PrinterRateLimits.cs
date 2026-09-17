@@ -251,9 +251,9 @@ public static class PrinterRateLimits
 
                 // An endpoint carrying no policy, or one this class does not wire, is not limited
                 // here - which is what keeps the ceiling off every page in the application.
-                return policy is not null && Policies.TryGetValue(policy, out PolicyLimits limits)
-                           ? Ceiling(policy, limits.Ceiling)
-                           : RateLimitPartition.GetNoLimiter(string.Empty);
+                return policy is not null && Policies.TryGetValue(policy, out PolicyLimits limits) ?
+                           Ceiling(policy, limits.Ceiling) :
+                           RateLimitPartition.GetNoLimiter(string.Empty);
             });
 
             foreach (KeyValuePair<string, PolicyLimits> entry in Policies)
@@ -263,9 +263,9 @@ public static class PrinterRateLimits
                 // ceiling and nothing else.
                 int? perPrinter = entry.Value.PerPrinter;
 
-                options.AddPolicy(entry.Key, context => perPrinter is { } permitLimit
-                                                            ? PerPrinter(context, permitLimit)
-                                                            : RateLimitPartition.GetNoLimiter(string.Empty));
+                options.AddPolicy(entry.Key, context => perPrinter is { } permitLimit ?
+                                                            PerPrinter(context, permitLimit) :
+                                                            RateLimitPartition.GetNoLimiter(string.Empty));
             }
         });
 
@@ -295,10 +295,10 @@ public static class PrinterRateLimits
     /// </remarks>
     private static RateLimitPartition<string> PerPrinter(HttpContext context, int permitLimit)
     {
-        string printer = context.Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues fingerprint)
-                         && !StringValues.IsNullOrEmpty(fingerprint)
-                             ? PrinterFingerprint.Key(fingerprint.ToString())
-                             : Unattributed;
+        string printer = context.Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues fingerprint) &&
+                         !StringValues.IsNullOrEmpty(fingerprint) ?
+                             PrinterFingerprint.Key(fingerprint.ToString()) :
+                             Unattributed;
 
         return RateLimitPartition.GetFixedWindowLimiter(printer, _ => new FixedWindowRateLimiterOptions
         {

@@ -189,10 +189,10 @@ public class ListenerOptions
             PrinterPort == UserHttpsPort)
         {
             throw new InvalidOperationException(
-                $"Listeners:PrinterPort ({PrinterPort}) must differ from the user-facing ports "
-                + $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}). Sharing a port "
-                + "would put printer endpoints and application endpoints on one listener, which is the "
-                + "separation this exists to keep.");
+                $"Listeners:PrinterPort ({PrinterPort}) must differ from the user-facing ports " +
+                $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}). Sharing a port " +
+                "would put printer endpoints and application endpoints on one listener, which is the " +
+                "separation this exists to keep.");
         }
 
         if (TransferPort == UserPort ||
@@ -200,9 +200,9 @@ public class ListenerOptions
             TransferPort == PrinterPort)
         {
             throw new InvalidOperationException(
-                $"Listeners:TransferPort ({TransferPort}) must differ from every other listener "
-                + $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}, PrinterPort {PrinterPort}). "
-                + "It is the one deliberately plain-HTTP door, and it must serve nothing but transfers.");
+                $"Listeners:TransferPort ({TransferPort}) must differ from every other listener " +
+                $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}, PrinterPort {PrinterPort}). " +
+                "It is the one deliberately plain-HTTP door, and it must serve nothing but transfers.");
         }
 
         // Checked even though this listener is optional, because the failure it prevents is the worst
@@ -215,10 +215,10 @@ public class ListenerOptions
                                               LegacyPrinterPort == TransferPort))
         {
             throw new InvalidOperationException(
-                $"Listeners:LegacyPrinterPort ({LegacyPrinterPort}) must differ from every other listener "
-                + $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}, PrinterPort {PrinterPort}, "
-                + $"TransferPort {TransferPort}). It carries the printer protocol with no TLS in front of it, so it "
-                + "must be a listener of its own that a deployment opens deliberately.");
+                $"Listeners:LegacyPrinterPort ({LegacyPrinterPort}) must differ from every other listener " +
+                $"(UserPort {UserPort}, UserHttpsPort {UserHttpsPort?.ToString() ?? "none"}, PrinterPort {PrinterPort}, " +
+                $"TransferPort {TransferPort}). It carries the printer protocol with no TLS in front of it, so it " +
+                "must be a listener of its own that a deployment opens deliberately.");
         }
     }
 }

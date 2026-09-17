@@ -86,8 +86,8 @@ public sealed class InlineScriptPolicyTests
         return Directory.EnumerateFiles(Path.Combine(SourceRoot(), "Homespool.Host"), "*.cshtml",
                                         SearchOption.AllDirectories)
                         .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-                                                      StringComparison.Ordinal)
-                                       && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                                                      StringComparison.Ordinal) &&
+                                       !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
                                                          StringComparison.Ordinal))
                         .Order(StringComparer.Ordinal);
     }

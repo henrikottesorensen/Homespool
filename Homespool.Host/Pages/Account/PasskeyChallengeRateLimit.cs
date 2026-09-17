@@ -64,14 +64,14 @@ public static class PasskeyChallengeRateLimit
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            options.AddPolicy(RateLimitPolicies.PasskeyChallenge, context => IsChallenge(context)
-                ? RateLimitPartition.GetFixedWindowLimiter(AddressOf(context), _ => new FixedWindowRateLimiterOptions
+            options.AddPolicy(RateLimitPolicies.PasskeyChallenge, context => IsChallenge(context) ?
+                RateLimitPartition.GetFixedWindowLimiter(AddressOf(context), _ => new FixedWindowRateLimiterOptions
                 {
                     PermitLimit = PermitLimit,
                     Window = Window,
                     QueueLimit = 0,
-                })
-                : RateLimitPartition.GetNoLimiter(string.Empty));
+                }) :
+                RateLimitPartition.GetNoLimiter(string.Empty));
         });
 
         return services;
@@ -87,8 +87,8 @@ public static class PasskeyChallengeRateLimit
             return false;
         }
 
-        return string.Equals(handler, LoginModel.PasskeyOptionsHandler, StringComparison.OrdinalIgnoreCase)
-               || string.Equals(handler, PasskeysModel.BeginRegistrationHandler, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(handler, LoginModel.PasskeyOptionsHandler, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(handler, PasskeysModel.BeginRegistrationHandler, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string AddressOf(HttpContext context)

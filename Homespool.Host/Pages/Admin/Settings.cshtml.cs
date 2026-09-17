@@ -282,10 +282,10 @@ public class SettingsModel : PageModel
         return
         [
             .. EditableSettings.All.Where(
-                setting => setting.NeedsConfirmingToEnable
-                           && IsOn(Values.GetValueOrDefault(setting.Path))
-                           && !IsOn(current.GetValueOrDefault(setting.Path))
-                           && !Confirmed.Contains(setting.Path, System.StringComparer.Ordinal)),
+                setting => setting.NeedsConfirmingToEnable &&
+                           IsOn(Values.GetValueOrDefault(setting.Path)) &&
+                           !IsOn(current.GetValueOrDefault(setting.Path)) &&
+                           !Confirmed.Contains(setting.Path, System.StringComparer.Ordinal)),
         ];
     }
 
@@ -299,8 +299,8 @@ public class SettingsModel : PageModel
     /// </remarks>
     private static bool IsOn(string? value)
     {
-        return !string.IsNullOrWhiteSpace(value)
-               && !string.Equals(value, "false", System.StringComparison.OrdinalIgnoreCase);
+        return !string.IsNullOrWhiteSpace(value) &&
+               !string.Equals(value, "false", System.StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<IGrouping<string, EditableSetting>> Grouped()

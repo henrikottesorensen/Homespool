@@ -65,8 +65,8 @@ public sealed class CapturingSink : ILogEventSink
     public bool HasEventWith(params (string name, string value)[] properties)
     {
         return _events.Any(e => properties.All(p =>
-                                                   e.Properties.TryGetValue(p.name, out LogEventPropertyValue? v)
-                                                   && Render(v) == p.value));
+                                                   e.Properties.TryGetValue(p.name, out LogEventPropertyValue? v) &&
+                                                   Render(v) == p.value));
     }
 
     private static string Render(LogEventPropertyValue value)

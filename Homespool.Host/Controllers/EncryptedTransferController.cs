@@ -233,9 +233,9 @@ public sealed class EncryptedTransferController : ControllerBase
 
         // One range only. Firmware sends exactly one, and a multipart response is not something it
         // could read.
-        if (!RangeHeaderValue.TryParse(header, out RangeHeaderValue? range)
-            || range.Unit != "bytes"
-            || range.Ranges.Count != 1)
+        if (!RangeHeaderValue.TryParse(header, out RangeHeaderValue? range) ||
+            range.Unit != "bytes" ||
+            range.Ranges.Count != 1)
         {
             return false;
         }
@@ -252,9 +252,9 @@ public sealed class EncryptedTransferController : ControllerBase
         start = from;
         endInclusive = item.To is long to ? Math.Min(to, length - 1) : length - 1;
 
-        return start >= 0
-               && start < length
-               && start <= endInclusive
-               && start % TransferCipher.BlockSize == 0;
+        return start >= 0 &&
+               start < length &&
+               start <= endInclusive &&
+               start % TransferCipher.BlockSize == 0;
     }
 }

@@ -62,9 +62,9 @@ public sealed class RecentProofPageFilter : IAsyncPageFilter
 
         string? subject = context.HttpContext.User.FindFirst(JwtClaimTypes.Subject)?.Value;
 
-        if (subject is not null
-            && long.TryParse(subject, NumberStyles.None, CultureInfo.InvariantCulture, out long userId)
-            && _proof.IsProved(context.HttpContext, userId, required.MaxAge))
+        if (subject is not null &&
+            long.TryParse(subject, NumberStyles.None, CultureInfo.InvariantCulture, out long userId) &&
+            _proof.IsProved(context.HttpContext, userId, required.MaxAge))
         {
             await next();
 
@@ -80,7 +80,7 @@ public sealed class RecentProofPageFilter : IAsyncPageFilter
     /// </summary>
     private static RequireRecentProofAttribute? Declared(PageHandlerExecutingContext context)
     {
-        return context.HandlerMethod?.MethodInfo.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true)
-               ?? context.HandlerInstance.GetType().GetCustomAttribute<RequireRecentProofAttribute>(inherit: true);
+        return context.HandlerMethod?.MethodInfo.GetCustomAttribute<RequireRecentProofAttribute>(inherit: true) ??
+               context.HandlerInstance.GetType().GetCustomAttribute<RequireRecentProofAttribute>(inherit: true);
     }
 }

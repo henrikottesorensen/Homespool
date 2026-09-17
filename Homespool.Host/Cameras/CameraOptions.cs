@@ -114,10 +114,10 @@ public class CameraOptions
     /// </para>
     /// </remarks>
     public bool CredentialSurvivesTransport =>
-        !ApiUsername.Contains('"', StringComparison.Ordinal)
-        && !ApiUsername.Contains('\\', StringComparison.Ordinal)
-        && !ApiPassword.Contains('"', StringComparison.Ordinal)
-        && !ApiPassword.Contains('\\', StringComparison.Ordinal);
+        !ApiUsername.Contains('"', StringComparison.Ordinal) &&
+        !ApiUsername.Contains('\\', StringComparison.Ordinal) &&
+        !ApiPassword.Contains('"', StringComparison.Ordinal) &&
+        !ApiPassword.Contains('\\', StringComparison.Ordinal);
 
     /// <summary>
     /// Shortest gap between two fetches of the same camera, in seconds. Default 2.

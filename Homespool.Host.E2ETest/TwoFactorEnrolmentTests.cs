@@ -78,8 +78,8 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         });
 
         post.StatusCode.Should().Be(HttpStatusCode.Redirect,
-                                    "a verified code enables two-factor and hands the codes on - a 500 here means the "
-                                    + "page it hands them to is missing, which is exactly what this test was written for");
+                                    "a verified code enables two-factor and hands the codes on - a 500 here means the " +
+                                    "page it hands them to is missing, which is exactly what this test was written for");
 
         post.Headers.Location!.OriginalString
             .Should().Contain("/Account/Manage/ShowRecoveryCodes");
@@ -117,13 +117,13 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         post.StatusCode.Should().Be(HttpStatusCode.Redirect);
         post.Headers.Location!.OriginalString
             .Should().Contain("/Account/Manage/EnableAuthenticator",
-                              "the window with two-factor off is closed by setting the app up again, so that is where "
-                              + "the reader is put");
+                              "the window with two-factor off is closed by setting the app up again, so that is where " +
+                              "the reader is put");
 
         using IServiceScope scope = _factory.Services.CreateScope();
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-        HSUser after = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture))
-                       ?? throw new InvalidOperationException("the account should still exist");
+        HSUser after = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)) ??
+                       throw new InvalidOperationException("the account should still exist");
 
         (await userManager.GetAuthenticatorKeyAsync(after))
             .Should().NotBe(keyBefore, "a reset that leaves the old secret working is not a reset");
@@ -167,8 +167,8 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         html.Should().Contain("id=\"reset-authenticator\"", "the button is only rendered once an app is configured");
         html.Should().NotContain("id=\"reset-authenticator\" class=\"btn btn-primary\" href=\"\"",
-                                 "an empty href is what an unresolvable asp-page produces, and it is indistinguishable "
-                                 + "from a working button until it is clicked");
+                                 "an empty href is what an unresolvable asp-page produces, and it is indistinguishable " +
+                                 "from a working button until it is clicked");
     }
 
     /// <summary>
@@ -267,8 +267,8 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
 
-        HSUser user = await userManager.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture))
-                      ?? throw new InvalidOperationException("the account should exist");
+        HSUser user = await userManager.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture)) ??
+                      throw new InvalidOperationException("the account should exist");
 
         return await userManager.GetTwoFactorEnabledAsync(user);
     }
@@ -310,8 +310,8 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         using IServiceScope scope = _factory.Services.CreateScope();
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-        HSUser after = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture))
-                       ?? throw new InvalidOperationException("the account should still exist");
+        HSUser after = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)) ??
+                       throw new InvalidOperationException("the account should still exist");
 
         (await userManager.GetAuthenticatorKeyAsync(after))
             .Should().Be(keyBefore, "an unproved reset must not move the key");
@@ -331,8 +331,8 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         {
             using IServiceScope scope = _factory.Services.CreateScope();
             UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-            HSUser fresh = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture))
-                           ?? throw new InvalidOperationException("the account should exist");
+            HSUser fresh = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)) ??
+                           throw new InvalidOperationException("the account should exist");
 
             await userManager.ResetAuthenticatorKeyAsync(fresh);
             await userManager.SetTwoFactorEnabledAsync(fresh, true);
@@ -364,11 +364,11 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
 
-        HSUser user = await userManager.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture))
-                      ?? throw new InvalidOperationException("the account should exist");
+        HSUser user = await userManager.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture)) ??
+                      throw new InvalidOperationException("the account should exist");
 
-        return await userManager.GetAuthenticatorKeyAsync(user)
-               ?? throw new InvalidOperationException("the account should have an authenticator key");
+        return await userManager.GetAuthenticatorKeyAsync(user) ??
+               throw new InvalidOperationException("the account should have an authenticator key");
     }
 
     /// <summary>

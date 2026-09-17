@@ -607,9 +607,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                     // whole shutdown budget before the final flush could start. Measured: 11 s and
                     // killed, with the loss summary never reached. Draining to memory and writing
                     // once at the end is both faster and the only version with a bounded cost.
-                    if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize
-                        && _consecutiveFlushFailures == 0
-                        && !_shuttingDown)
+                    if (pendingSamples.Count + pendingEvents.Count >= _options.WriteBatchSize &&
+                        _consecutiveFlushFailures == 0 &&
+                        !_shuttingDown)
                     {
                         await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings,
                                              CancellationToken.None);
@@ -885,9 +885,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
 
         double throttle = _storage.CurrentValue.MinimumSampleIntervalSeconds;
-        bool dueForSample = throttle <= 0
-                            || entry.LastSampledAt is null
-                            || (item.ReceivedAt - entry.LastSampledAt.Value).TotalSeconds >= throttle;
+        bool dueForSample = throttle <= 0 ||
+                            entry.LastSampledAt is null ||
+                            (item.ReceivedAt - entry.LastSampledAt.Value).TotalSeconds >= throttle;
 
         // The throttle governs history density only - the live-state merge above always runs, so the
         // live view stays current even while samples are being skipped.
@@ -1058,8 +1058,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             bool hasNozzle = info.NozzleDiameter is not null;
             bool hasMmuBlock = info.HasMmu is not null;
 
-            bool fillsSerial = info.SerialNumber is not null
-                               && string.IsNullOrWhiteSpace(storedSerials.GetValueOrDefault(printerId));
+            bool fillsSerial = info.SerialNumber is not null &&
+                               string.IsNullOrWhiteSpace(storedSerials.GetValueOrDefault(printerId));
 
             if (!hasFirmware && !hasModel && !hasNozzle && !hasMmuBlock && !fillsSerial)
             {
@@ -1071,8 +1071,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // that is permanent: the flush raises, the buffers are deliberately kept for a retry, and
             // every retry hits the same collision - so the writer accepts telemetry it can never
             // persist for the rest of the process's life.
-            Printer printer = context.Printers.Local.FirstOrDefault(p => p.Id == printerId)
-                              ?? Attach(context, printerId);
+            Printer printer = context.Printers.Local.FirstOrDefault(p => p.Id == printerId) ??
+                              Attach(context, printerId);
 
             if (hasFirmware)
             {
@@ -1158,8 +1158,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         {
             foreach (PrinterToolUpdate reported in pendingPrinterInfo[printerId].Tools!)
             {
-                PrinterTool? row = stored.FirstOrDefault(tool => tool.PrinterId == printerId
-                                                                 && tool.ToolNumber == reported.ToolNumber);
+                PrinterTool? row = stored.FirstOrDefault(tool => tool.PrinterId == printerId &&
+                                                                 tool.ToolNumber == reported.ToolNumber);
 
                 if (row is null)
                 {

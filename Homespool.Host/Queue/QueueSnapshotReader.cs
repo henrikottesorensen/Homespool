@@ -70,8 +70,8 @@ public class QueueSnapshotReader
     /// </remarks>
     public bool IsTransferInFlight(PrintFileOnPrinter? onPrinter)
     {
-        return onPrinter?.TransferStartedAt is { } startedAt
-               && _timeProvider.GetUtcNow() - startedAt < QueueAdvancer.TransferStaleAfter;
+        return onPrinter?.TransferStartedAt is { } startedAt &&
+               _timeProvider.GetUtcNow() - startedAt < QueueAdvancer.TransferStaleAfter;
     }
 
     /// <summary>Reads the situation for one printer.</summary>

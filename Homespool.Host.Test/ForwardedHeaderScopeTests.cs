@@ -137,8 +137,8 @@ public class ForwardedHeaderScopeTests
 
         // Assert
         applies.Should().BeFalse(
-            "the port a connection arrived on is a property of the socket, and the port it came from is "
-            + "the client's to choose");
+            "the port a connection arrived on is a property of the socket, and the port it came from is " +
+            "the client's to choose");
     }
 
     /// <summary>

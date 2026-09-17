@@ -80,8 +80,8 @@ public sealed class RawHtmlEncodingTests
         }
 
         offences.Should().BeEmpty(
-            "a sentence with an element in it is HtmlLocaliser[\"Key\", Markup.Code(value)], which encodes the value; "
-            + "anything that writes a string as markup is the mistake that put a printer's firmware string on a page as HTML");
+            "a sentence with an element in it is HtmlLocaliser[\"Key\", Markup.Code(value)], which encodes the value; " +
+            "anything that writes a string as markup is the mistake that put a printer's firmware string on a page as HTML");
     }
 
     /// <summary>
@@ -137,9 +137,9 @@ public sealed class RawHtmlEncodingTests
             return true;
         }
 
-        return relative == ViewImports
-               && line.TrimStart().StartsWith("@inject ", StringComparison.Ordinal)
-               && Regex.IsMatch(match.Value, @"^IHtmlLocalizer<SharedResource>\s+HtmlLocaliser$");
+        return relative == ViewImports &&
+               line.TrimStart().StartsWith("@inject ", StringComparison.Ordinal) &&
+               Regex.IsMatch(match.Value, @"^IHtmlLocalizer<SharedResource>\s+HtmlLocaliser$");
     }
 
     private static IEnumerable<string> Sources()
@@ -148,8 +148,8 @@ public sealed class RawHtmlEncodingTests
 
         return Directory.EnumerateFiles(Path.Combine(SourceRoot(), "Homespool.Host"), "*.*", SearchOption.AllDirectories)
                         .Where(path => path.EndsWith(".cshtml", StringComparison.Ordinal) || path.EndsWith(".cs", StringComparison.Ordinal))
-                        .Where(path => !path.Contains($"{separator}obj{separator}", StringComparison.Ordinal)
-                                       && !path.Contains($"{separator}bin{separator}", StringComparison.Ordinal))
+                        .Where(path => !path.Contains($"{separator}obj{separator}", StringComparison.Ordinal) &&
+                                       !path.Contains($"{separator}bin{separator}", StringComparison.Ordinal))
                         .Order(StringComparer.Ordinal);
     }
 

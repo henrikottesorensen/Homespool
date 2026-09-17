@@ -56,11 +56,11 @@ internal sealed class SlicerConfigValues
     private IReadOnlyList<bool>? _nozzleHighFlow;
 
     /// <summary>Whether every key this cares about has been seen, so a scan can stop early.</summary>
-    public bool Complete => _printerModel is not null
-                            && _nozzleDiameters is not null
-                            && _filamentTypes is not null
-                            && _filamentAbrasive is not null
-                            && _nozzleHighFlow is not null;
+    public bool Complete => _printerModel is not null &&
+                            _nozzleDiameters is not null &&
+                            _filamentTypes is not null &&
+                            _filamentAbrasive is not null &&
+                            _nozzleHighFlow is not null;
 
     /// <summary>
     /// Offers one pair. Keys this does not care about, and values that will not parse, are ignored.

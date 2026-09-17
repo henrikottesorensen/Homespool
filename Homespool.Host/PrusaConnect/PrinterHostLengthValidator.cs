@@ -35,10 +35,10 @@ public sealed class PrinterHostLengthValidator : IValidateOptions<PrusaConnectOp
             return null;
         }
 
-        return $"The printer host '{trimmed}' is {trimmed.Length.ToString(CultureInfo.InvariantCulture)} characters, and Prusa "
-               + $"firmware stores the Connect hostname in a {PrusaConnectOptions.PrinterHostMaxLength.ToString(CultureInfo.InvariantCulture)}-character "
-               + $"field - silently truncated, so a printer given this name would try to connect to '{trimmed[..PrusaConnectOptions.PrinterHostMaxLength]}' "
-               + "and never reach anything. Use a shorter name, or this machine's address, which always fits.";
+        return $"The printer host '{trimmed}' is {trimmed.Length.ToString(CultureInfo.InvariantCulture)} characters, and Prusa " +
+               $"firmware stores the Connect hostname in a {PrusaConnectOptions.PrinterHostMaxLength.ToString(CultureInfo.InvariantCulture)}-character " +
+               $"field - silently truncated, so a printer given this name would try to connect to '{trimmed[..PrusaConnectOptions.PrinterHostMaxLength]}' " +
+               "and never reach anything. Use a shorter name, or this machine's address, which always fits.";
     }
 
     public ValidateOptionsResult Validate(string? name, PrusaConnectOptions options)

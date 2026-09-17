@@ -109,8 +109,8 @@ public class PrintFileSender
         // it one is a command it never answers and a send that times out. It fetches the same
         // START_CONNECT_DOWNLOAD the socket transfer uses, over plain HTTP from the printer listener
         // - which is why this branch sends exactly that and only the fetch differs.
-        bool encrypted = !inline
-                         && await _commands.CanDecryptDownloadsAsync(printer.Id, caller, Capability.Print, cancellationToken);
+        bool encrypted = !inline &&
+                         await _commands.CanDecryptDownloadsAsync(printer.Id, caller, Capability.Print, cancellationToken);
 
         // Which command went out is reported rather than left to be inferred: the caller cannot see
         // this branch, and a refusal that names the wrong command sends somebody to the wrong code.

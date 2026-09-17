@@ -140,8 +140,8 @@ public class BundleModel : PageModel
             // Either the confirmation was missing or this deployment has no such listener. Worth a line
             // in both cases: the first is a form filled in half way, the second is a bundle that
             // would have named a port nothing is listening on.
-            _logger.LogInformation("A plaintext provisioning bundle was asked for printer {PrinterUuid} and not "
-                                   + "produced; confirmed: {Confirmed}, listener open: {ListenerOpen}.",
+            _logger.LogInformation("A plaintext provisioning bundle was asked for printer {PrinterUuid} and not " +
+                                   "produced; confirmed: {Confirmed}, listener open: {ListenerOpen}.",
                                    printer.Uuid, legacyConfirmed, _options.LegacyPrinterPort is not null);
         }
 
@@ -180,10 +180,10 @@ public class BundleModel : PageModel
             // reads months later when they are working out why one printer's traffic is readable.
             // The uuid rather than the row id for the same reason: whoever reads it is following one
             // printer across the enrolment lines PrusaConnectService writes either side of this one.
-            _logger.LogWarning("PLAINTEXT provisioning bundle downloaded for printer {PrinterUuid}, addressed to "
-                               + "{Hostname}:{Port}. That printer's token, its files, and the WiFi SSID and "
-                               + "PrusaLink password it reports will cross the network in clear, and can be altered "
-                               + "in flight.",
+            _logger.LogWarning("PLAINTEXT provisioning bundle downloaded for printer {PrinterUuid}, addressed to " +
+                               "{Hostname}:{Port}. That printer's token, its files, and the WiFi SSID and " +
+                               "PrusaLink password it reports will cross the network in clear, and can be altered " +
+                               "in flight.",
                                printer.Uuid, name, endpoint.Port);
         }
 

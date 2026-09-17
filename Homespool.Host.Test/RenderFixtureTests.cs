@@ -116,8 +116,8 @@ public class RenderFixtureTests
         reduced.JobId.Should().Be(42);
         reduced.Progress.Should().Be(12);
         reduced.Status.Should().Be("PRINTING");
-        reduced.TimeToFilamentChange.Should().Be(0, "filament_change_in is part of the reduced shape - "
-                                                    + "the omission this fixture independently confirmed");
+        reduced.TimeToFilamentChange.Should().Be(0, "filament_change_in is part of the reduced shape - " +
+                                                    "the omission this fixture independently confirmed");
         reduced.NozzleTemperature.Should().BeNull();
         reduced.Chamber.Should().BeNull();
 
@@ -127,11 +127,11 @@ public class RenderFixtureTests
         printing.TargetNozzleTemperature.Should().Be(195.0f);
         printing.TargetBedTemperature.Should().Be(70.0f);
         printing.Chamber.Should().NotBeNull();
-        printing.Chamber!.FanPwmTarget.Should().Be(-1, "an idle chamber fan reports -1, not 0 - a "
-                                                       + "signed field that an unsigned DTO would reject");
+        printing.Chamber!.FanPwmTarget.Should().Be(-1, "an idle chamber fan reports -1, not 0 - a " +
+                                                       "signed field that an unsigned DTO would reject");
         printing.ZAxis.Should().Be(0.00f);
-        printing.XAxis.Should().BeNull("a printing machine reports no X/Y - they are mutually "
-                                       + "exclusive with the job block");
+        printing.XAxis.Should().BeNull("a printing machine reports no X/Y - they are mutually " +
+                                       "exclusive with the job block");
 
         // The inverse: idle telemetry has X and Y but no job block at all.
         TelemetryDTO idle = telemetry["Telemetry - idle"];
@@ -219,8 +219,8 @@ public class RenderFixtureTests
         single.NozzleDiameter.Should().Be(0.40f);
         single.TransferPaused.Should().BeTrue();
         single.Slots.Should().Be(1);
-        single.Storages.Should().BeEmpty("an empty storages array is still an array - it is absent "
-                                         + "only when the field itself is omitted");
+        single.Storages.Should().BeEmpty("an empty storages array is still an array - it is absent " +
+                                         "only when the field itself is omitted");
         single.NetworkInfo.Should().NotBeNull();
         single.Tools.Should().ContainKey("1");
         single.Tools!["1"].Material.Should().Be("---", "the no-filament sentinel is a literal string");
@@ -318,8 +318,8 @@ public class RenderFixtureTests
         none.Size.Should().BeNull();
         none.Transferred.Should().BeNull();
 
-        noPath!.Path.Should().BeNull("firmware guards the field on a non-null destination rather "
-                                     + "than sending an empty one");
+        noPath!.Path.Should().BeNull("firmware guards the field on a non-null destination rather " +
+                                     "than sending an empty one");
 
         // None of these scenarios sets start_cmd_id - their test never exercises it - so the field
         // being null here is the renderer's behaviour, not a mapping failure. The shape that does
@@ -354,8 +354,8 @@ public class RenderFixtureTests
         // Assert
         eventDto.EventType.Should().Be(PrinterEventType.TransferFinished);
         eventDto.TransferId.Should().Be(1037732555);
-        eventDto.CommandId.Should().BeNull("the terminal events are unsolicited - they answer no "
-                                           + "command, which is why start_cmd_id has to exist");
+        eventDto.CommandId.Should().BeNull("the terminal events are unsolicited - they answer no " +
+                                           "command, which is why start_cmd_id has to exist");
         data!.StartCommandId.Should().Be(11u);
     }
 

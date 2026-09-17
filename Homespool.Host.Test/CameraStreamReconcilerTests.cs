@@ -55,8 +55,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
         await RunReconcilerAsync(context, handler);
 
         handler.Registered.Should().NotContain(forged,
-                                               "a source the server did not compose is a command line for the sidecar, "
-                                               + "and re-registering it at every start would be the quietest way to keep it");
+                                               "a source the server did not compose is a command line for the sidecar, " +
+                                               "and re-registering it at every start would be the quietest way to keep it");
     }
 
     /// <summary>
@@ -94,8 +94,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
                                  CameraSourcePolicyTests.Build(resolvesTo: "172.28.0.3", containerNetwork: "172.28.0.0/16"));
 
         handler.Registered.Should().NotContain(rebound,
-                                               "a name that has come to point inside the deployment is exactly what "
-                                               + "re-checking at start-up exists to catch");
+                                               "a name that has come to point inside the deployment is exactly what " +
+                                               "re-checking at start-up exists to catch");
     }
 
     [Fact]
@@ -216,10 +216,10 @@ public sealed class CameraStreamReconcilerTests : IDisposable
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
                                                                CancellationToken cancellationToken)
         {
-            if (request.Method == HttpMethod.Put
-                && request.RequestUri!.AbsolutePath == "/api/streams"
-                && System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query)["name"] is { } name
-                && Guid.TryParse(name, out Guid uuid))
+            if (request.Method == HttpMethod.Put &&
+                request.RequestUri!.AbsolutePath == "/api/streams" &&
+                System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query)["name"] is { } name &&
+                Guid.TryParse(name, out Guid uuid))
             {
                 Registered.Add(uuid);
             }

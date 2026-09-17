@@ -313,10 +313,10 @@ public class ExternalLoginModel : PageModel
     {
         IDictionary<string, string> items = info.AuthenticationProperties?.Items;
 
-        if (items is not null
-            && items.TryGetValue(InviteUuidKey, out string uuidText)
-            && items.TryGetValue(InviteTokenKey, out string token)
-            && Guid.TryParse(uuidText, out Guid inviteUuid))
+        if (items is not null &&
+            items.TryGetValue(InviteUuidKey, out string uuidText) &&
+            items.TryGetValue(InviteTokenKey, out string token) &&
+            Guid.TryParse(uuidText, out Guid inviteUuid))
         {
             return await _invitationService.ValidateAsync(inviteUuid, DecodeToken(token), cancellationToken);
         }

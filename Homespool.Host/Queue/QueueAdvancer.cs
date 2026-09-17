@@ -463,9 +463,9 @@ public sealed class QueueAdvancer : BackgroundService
 
         List<PrinterEvent> events = await telemetry.PrinterEvents
                                                    .AsNoTracking()
-                                                   .Where(printerEvent => printerEvent.PrinterId == printerId
-                                                                          && printerEvent.Id > watermark
-                                                                          && printerEvent.EventType == PrinterEventType.FileInfo)
+                                                   .Where(printerEvent => printerEvent.PrinterId == printerId &&
+                                                                          printerEvent.Id > watermark &&
+                                                                          printerEvent.EventType == PrinterEventType.FileInfo)
                                                    .OrderBy(printerEvent => printerEvent.Id)
                                                    .ToListAsync(cancellationToken);
 
@@ -514,8 +514,8 @@ public sealed class QueueAdvancer : BackgroundService
 
             PrintFileOnPrinter? row = await dbContext.PrintFilesOnPrinters
                                                      .Include(candidate => candidate.PrintFile)
-                                                     .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId
-                                                                               && candidate.PrintFile!.Name == displayName,
+                                                     .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId &&
+                                                                               candidate.PrintFile!.Name == displayName,
                                                                            cancellationToken);
 
             if (row is null || row.Arrived)
@@ -688,8 +688,8 @@ public sealed class QueueAdvancer : BackgroundService
             // either way - that is what stops the partial unique index blocking this printer forever
             // - so the only question left is whether it closes on a guess. Ask first: the printer
             // keeps the outcome of its last two jobs and this row is very likely one of them.
-            PrintState settled = await AskPriorOutcomeAsync(scope, printerId, active, cancellationToken)
-                                 ?? PrintState.Unknown;
+            PrintState settled = await AskPriorOutcomeAsync(scope, printerId, active, cancellationToken) ??
+                                 PrintState.Unknown;
 
             _logger.LogWarning("[{PrinterId}] {FileName} was accepted {Elapsed:F0} minutes ago and never started " +
                                "printing; closing it as {Outcome} so the queue is not wedged.",
@@ -806,8 +806,8 @@ public sealed class QueueAdvancer : BackgroundService
                                               queued => new { queued.PrinterId, queued.PrintFileId },
                                               onPrinter => new { onPrinter.PrinterId, onPrinter.PrintFileId },
                                               (queued, onPrinter) => new { Entry = queued, onPrinter.PrinterPath })
-                                        .Where(candidate => candidate.Entry.PrinterId == printerId
-                                                            && candidate.PrinterPath != null)
+                                        .Where(candidate => candidate.Entry.PrinterId == printerId &&
+                                                            candidate.PrinterPath != null)
                                         .OrderBy(candidate => candidate.Entry.Position)
                                         .ThenBy(candidate => candidate.Entry.Id)
                                         .ToListAsync(cancellationToken);
@@ -828,10 +828,10 @@ public sealed class QueueAdvancer : BackgroundService
                                              CallerFor(candidates[0].Entry),
                                              cancellationToken);
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException or CredentialScopeDeniedException
-                                      or CommandAnswerUnreadableException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException or
+                                      CommandAnswerUnreadableException)
         {
             _logger.LogDebug(e, "[{PrinterId}] could not ask about firmware job {JobId}", printerId, jobId);
 
@@ -877,8 +877,8 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         _logger.LogWarning(
-            "[{PrinterId}] {FileName} was started at the printer, not by a command of ours - adopting "
-            + "firmware job {JobId} and consuming the entry so it does not print twice.",
+            "[{PrinterId}] {FileName} was started at the printer, not by a command of ours - adopting " +
+            "firmware job {JobId} and consuming the entry so it does not print twice.",
             printerId, claimed.Entry.PrintFile!.Name, jobId);
 
         PrintJob adopted = new()
@@ -940,8 +940,8 @@ public sealed class QueueAdvancer : BackgroundService
                                                                        CancellationToken cancellationToken)
     {
         QueuedPrint? entry = await dbContext.QueuedPrints
-                                            .SingleOrDefaultAsync(queued => queued.PrinterId == printerId
-                                                                            && queued.PrintUuid == commanded.PrintUuid,
+                                            .SingleOrDefaultAsync(queued => queued.PrinterId == printerId &&
+                                                                            queued.PrintUuid == commanded.PrintUuid,
                                                                   cancellationToken);
 
         bool connected = _registry.IsConnected(printerId);
@@ -967,8 +967,8 @@ public sealed class QueueAdvancer : BackgroundService
         {
             case PrintStartVerdict.Started:
                 _logger.LogInformation(
-                    "[{PrinterId}] {FileName} was printing after all - the printer took it and answered too late; "
-                    + "adopting firmware job {JobId}.",
+                    "[{PrinterId}] {FileName} was printing after all - the printer took it and answered too late; " +
+                    "adopting firmware job {JobId}.",
                     printerId, commanded.FileName, live?.JobId);
 
                 commanded.State = PrintState.Starting;
@@ -1045,10 +1045,10 @@ public sealed class QueueAdvancer : BackgroundService
                                              CallerFor(entry),
                                              cancellationToken);
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException or CredentialScopeDeniedException
-                                      or CommandAnswerUnreadableException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException or
+                                      CommandAnswerUnreadableException)
         {
             _logger.LogDebug(e, "[{PrinterId}] could not ask about firmware job {JobId}", printerId, jobId);
 
@@ -1072,14 +1072,14 @@ public sealed class QueueAdvancer : BackgroundService
             return JobAnswer.Inconclusive;
         }
 
-        bool ours = (job.Path is { } path && path == commanded.PrinterPath)
-                    || (job.DisplayName is { } displayName && displayName == commanded.FileName);
+        bool ours = (job.Path is { } path && path == commanded.PrinterPath) ||
+                    (job.DisplayName is { } displayName && displayName == commanded.FileName);
 
         if (!ours)
         {
             _logger.LogInformation(
-                "[{PrinterId}] firmware job {JobId} is {TheirPath}, not the {OurPath} we asked for; "
-                + "the print running here is not ours.",
+                "[{PrinterId}] firmware job {JobId} is {TheirPath}, not the {OurPath} we asked for; " +
+                "the print running here is not ours.",
                 printerId, jobId, job.Path ?? job.DisplayName, commanded.PrinterPath);
         }
 
@@ -1146,10 +1146,10 @@ public sealed class QueueAdvancer : BackgroundService
                                              Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(recordedScope)),
                                              cancellationToken);
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException or CredentialScopeDeniedException
-                                      or CommandAnswerUnreadableException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException or
+                                      CommandAnswerUnreadableException)
         {
             _logger.LogDebug(e, "[{PrinterId}] could not ask how firmware job {JobId} ended", printerId, jobId);
 
@@ -1192,19 +1192,19 @@ public sealed class QueueAdvancer : BackgroundService
                                                 CancellationToken cancellationToken)
     {
         _logger.LogWarning(
-            "[{PrinterId}] gave up asking whether {FileName} started: the printer reports a job it will not "
-            + "describe. Holding the queue - printing it again might print it twice.",
+            "[{PrinterId}] gave up asking whether {FileName} started: the printer reports a job it will not " +
+            "describe. Holding the queue - printing it again might print it twice.",
             printerId, commanded.FileName);
 
         // Same reasoning as the backstop: this row closes regardless, so ask before recording a
         // guess. The hold below is unaffected either way - knowing how a print ended does not say
         // whether the entry beside it is safe to run again.
-        PrintState settled = await AskPriorOutcomeAsync(scope, printerId, commanded, cancellationToken)
-                             ?? PrintState.Unknown;
+        PrintState settled = await AskPriorOutcomeAsync(scope, printerId, commanded, cancellationToken) ??
+                             PrintState.Unknown;
 
-        commanded.Reason = settled == PrintState.Unknown
-            ? "The printer never said whether it started this print."
-            : "The printer would not describe this print while it ran, and reported afterwards how it ended.";
+        commanded.Reason = settled == PrintState.Unknown ?
+            "The printer never said whether it started this print." :
+            "The printer would not describe this print while it ran, and reported afterwards how it ended.";
 
         Close(commanded, settled, now);
 
@@ -1212,8 +1212,8 @@ public sealed class QueueAdvancer : BackgroundService
         {
             PrintFileOnPrinter? onPrinter = await dbContext.PrintFilesOnPrinters
                                                            .SingleOrDefaultAsync(
-                                                               row => row.PrinterId == printerId
-                                                                      && row.PrintFileId == entry.PrintFileId,
+                                                               row => row.PrinterId == printerId &&
+                                                                      row.PrintFileId == entry.PrintFileId,
                                                                cancellationToken);
 
             if (onPrinter is not null)
@@ -1312,8 +1312,8 @@ public sealed class QueueAdvancer : BackgroundService
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
                                       PrintFileUnreadableException)
         {
             _logger.LogInformation(e, "[{PrinterId}] could not start the transfer of {FileName}",
@@ -1402,8 +1402,8 @@ public sealed class QueueAdvancer : BackgroundService
         });
 
         _logger.LogWarning(
-            "[{PrinterId}] refused the transfer of {FileName} {Count} times running with the same answer, "
-            + "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
+            "[{PrinterId}] refused the transfer of {FileName} {Count} times running with the same answer, " +
+            "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
             printerId, head.PrintFile.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
             LogText.Clean(onPrinter.TransferRefusalCode));
     }
@@ -1452,10 +1452,10 @@ public sealed class QueueAdvancer : BackgroundService
 
             existing = answer?.Answer;
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException or CredentialScopeDeniedException
-                                      or CommandAnswerUnreadableException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException or
+                                      CommandAnswerUnreadableException)
         {
             // Could not ask. Not a block: the next pass asks again, and holding a queue on an
             // unanswered question would punish a printer that was merely busy.
@@ -1495,8 +1495,8 @@ public sealed class QueueAdvancer : BackgroundService
         // the deployment, while the page says the same thing to whoever is waiting for the print, in
         // their own language.
         _logger.LogWarning(
-            "[{PrinterId}] {FileName} is already on the printer as {PrinterBytes} bytes against {OurBytes} here; "
-            + "holding the queue.",
+            "[{PrinterId}] {FileName} is already on the printer as {PrinterBytes} bytes against {OurBytes} here; " +
+            "holding the queue.",
             printerId, file.FileName, existing?.Size, file.Length);
     }
 
@@ -1535,9 +1535,9 @@ public sealed class QueueAdvancer : BackgroundService
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
-        if (onPrinter.HoldReason is not null
-            && onPrinter.BlockedAt is { } blockedAt
-            && now - blockedAt < BlockRecheckAfter)
+        if (onPrinter.HoldReason is not null &&
+            onPrinter.BlockedAt is { } blockedAt &&
+            now - blockedAt < BlockRecheckAfter)
         {
             // Still held, and asked recently enough. Saying nothing here is deliberate: a held queue
             // that logged every tick would bury the one line that explains it.
@@ -1556,10 +1556,10 @@ public sealed class QueueAdvancer : BackgroundService
                 .FirstOrDefault(storage => storage.MountPoint == "/usb")?
                 .FreeSpace;
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException or CredentialScopeDeniedException
-                                      or CommandAnswerUnreadableException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException or
+                                      CommandAnswerUnreadableException)
         {
             // Could not ask. Not a block - the next pass asks again, and treating an unanswered
             // question as "no room" would hold a queue on a printer that was merely busy.
@@ -1705,8 +1705,8 @@ public sealed class QueueAdvancer : BackgroundService
             dbContext.QueuedPrints.Remove(head);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (Exception e) when (e is CommandAlreadyInFlightException or TeamAccessDeniedException
-                                      or CredentialScopeDeniedException)
+        catch (Exception e) when (e is CommandAlreadyInFlightException or TeamAccessDeniedException or
+                                      CredentialScopeDeniedException)
         {
             // The three refusals that happen before anything is written to a socket: the in-flight
             // slot is taken, the team says no, the credential says no. Each is a statement that this
@@ -1716,8 +1716,8 @@ public sealed class QueueAdvancer : BackgroundService
             dbContext.PrintJobs.Remove(commanded);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (Exception e) when (e is CommandResponseTimedOutException or CommandSendTimedOutException
-                                      or PrinterNotConnectedException)
+        catch (Exception e) when (e is CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      PrinterNotConnectedException)
         {
             // Unknown, and the row stays Unconfirmed to say so. None of these three can claim the
             // command was not acted on: a response timeout is the printer being slow, a send timeout

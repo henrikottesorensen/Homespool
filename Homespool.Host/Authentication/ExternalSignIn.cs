@@ -205,8 +205,8 @@ public sealed class ExternalSignIn
             return null;
         }
 
-        if (expectedAccountId is not null
-            && (!items.TryGetValue(ExpectedAccountItem, out string? expected) || !string.Equals(expected, expectedAccountId, StringComparison.Ordinal)))
+        if (expectedAccountId is not null &&
+            (!items.TryGetValue(ExpectedAccountItem, out string? expected) || !string.Equals(expected, expectedAccountId, StringComparison.Ordinal)))
         {
             return null;
         }

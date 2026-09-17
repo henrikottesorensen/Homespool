@@ -148,8 +148,8 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         authority.EnsureLeaf(["192.168.13.238"]).Dispose();
 
         File.SetUnixFileMode(authority.LeafKeyPemPath,
-                             UnixFileMode.UserRead | UnixFileMode.UserWrite
-                                                   | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+                             UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                                                   UnixFileMode.GroupRead | UnixFileMode.OtherRead);
 
         // Act - a "restart" on a deployment whose leaf and PEMs already exist.
         NewAuthority().EnsureLeaf(["192.168.13.238"]).Dispose();
@@ -458,8 +458,8 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         File.Exists(authority.LeafKeyPemPath).Should().BeTrue();
 
         served.Thumbprint.Should().Be(original.Thumbprint,
-                                      "the existing leaf is migrated, not reissued - reissuing would silently drop the names the "
-                                      + "operator had covered");
+                                      "the existing leaf is migrated, not reissued - reissuing would silently drop the names the " +
+                                      "operator had covered");
 
         using X509Certificate2 fromPem = X509Certificate2.CreateFromPem(
             File.ReadAllText(authority.LeafCertificatePemPath));

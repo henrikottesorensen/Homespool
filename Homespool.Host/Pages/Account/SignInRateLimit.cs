@@ -99,9 +99,9 @@ public static class SignInRateLimit
 
         XForwardedOptions forwarded = context.RequestServices.GetRequiredService<IOptions<XForwardedOptions>>().Value;
 
-        return forwarded.TrustsAnything
-                   ? WindowFor(context, PermitLimit, Window)
-                   : RateLimitPartition.GetNoLimiter(string.Empty);
+        return forwarded.TrustsAnything ?
+                   WindowFor(context, PermitLimit, Window) :
+                   RateLimitPartition.GetNoLimiter(string.Empty);
     }
 
     private static RateLimitPartition<string> WindowFor(HttpContext context, int permitLimit, TimeSpan window)

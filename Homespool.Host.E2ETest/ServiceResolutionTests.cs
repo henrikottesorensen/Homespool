@@ -109,8 +109,8 @@ public sealed class ServiceResolutionTests : IAsyncLifetime
 
         // Assert
         failures.Should().BeEmpty(
-            "a registration nothing resolves yet is untested by construction, and this is the only "
-            + "thing that exercises it");
+            "a registration nothing resolves yet is untested by construction, and this is the only " +
+            "thing that exercises it");
     }
 
     public async ValueTask DisposeAsync()

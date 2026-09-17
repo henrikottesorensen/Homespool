@@ -181,8 +181,8 @@ public class PrinterController : ControllerBase
         {
             return this.ConflictProblem(e.Message);
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             // The send never got far enough to say which command it would have been, so this one
             // names the endpoint's job rather than inventing a wire name.
@@ -346,8 +346,8 @@ public class PrinterController : ControllerBase
 
             return this.CommandAnswerUnusable(command.WireName, e.Message);
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
 
@@ -563,8 +563,8 @@ public class PrinterController : ControllerBase
             // persisted as an ordinary event either way; a caller wanting it watches the event stream.
             return TypedResults.NoContent();
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException
-                                      or CommandResponseTimedOutException or CommandSendTimedOutException)
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             onFailure?.Invoke();
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.Name, printer.Id);

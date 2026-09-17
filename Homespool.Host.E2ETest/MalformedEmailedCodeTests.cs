@@ -99,7 +99,7 @@ public sealed class MalformedEmailedCodeTests : IAsyncLifetime
 
         response.StatusCode.Should().NotBe(HttpStatusCode.InternalServerError);
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
-                                        "the page already answers a missing code this way, and an "
-                                        + "unusable one is the same answer to the person holding it");
+                                        "the page already answers a missing code this way, and an " +
+                                        "unusable one is the same answer to the person holding it");
     }
 }

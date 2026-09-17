@@ -61,8 +61,8 @@ public sealed class PasswordHasherOptionsGuardTests : IAsyncLifetime
         // Assert
         configured.IterationCount.Should().Be(
             defaults.IterationCount,
-            "PasswordVerificationDecoy hashes with the defaults, so a configured iteration count would "
-            + "make a real account cost more than the decoy and reopen the sign-in timing channel");
+            "PasswordVerificationDecoy hashes with the defaults, so a configured iteration count would " +
+            "make a real account cost more than the decoy and reopen the sign-in timing channel");
 
         configured.CompatibilityMode.Should().Be(defaults.CompatibilityMode,
                                                  "the same reasoning - it changes what a verification costs");

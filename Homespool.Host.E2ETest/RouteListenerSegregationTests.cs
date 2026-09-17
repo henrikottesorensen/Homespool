@@ -114,14 +114,14 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime
         endpoints.Endpoints.Should().NotBeEmpty("an empty endpoint list would make this test vacuous");
 
         wrong.Should().BeEmpty(
-            "every endpoint must be mapped through SegregateByListener - a Map... call that misses it "
-            + "puts its routes on both listeners at once, silently");
+            "every endpoint must be mapped through SegregateByListener - a Map... call that misses it " +
+            "puts its routes on both listeners at once, silently");
 
         unreachableByConvention.Should().HaveCountLessThanOrEqualTo(1,
-                                                                    "the file fallback is the one endpoint the framework adds outside the builder MapStaticAssets "
-                                                                    + "returns, so no convention of ours can classify it. It is covered instead by the middleware's "
-                                                                    + "path fallback, and it is a user-side path. A second exemption appearing here means something "
-                                                                    + "new is escaping the convention and needs looking at rather than adding to this list");
+                                                                    "the file fallback is the one endpoint the framework adds outside the builder MapStaticAssets " +
+                                                                    "returns, so no convention of ours can classify it. It is covered instead by the middleware's " +
+                                                                    "path fallback, and it is a user-side path. A second exemption appearing here means something " +
+                                                                    "new is escaping the convention and needs looking at rather than adding to this list");
     }
 
     /// <summary>
@@ -198,8 +198,8 @@ public sealed class RouteListenerSegregationTests : IAsyncLifetime
                                       "the viewer is served in Development, and this is the listener a browser reaches");
 
         onPrinter.StatusCode.Should().Be(HttpStatusCode.NotFound,
-                                         "a printer has no use for the docs viewer, and the boundary makes no exception "
-                                         + "for things that look harmless");
+                                         "a printer has no use for the docs viewer, and the boundary makes no exception " +
+                                         "for things that look harmless");
 
         onTransfer.StatusCode.Should().Be(HttpStatusCode.NotFound,
                                           "nor does the transfer listener, which serves one encrypted download and nothing else");

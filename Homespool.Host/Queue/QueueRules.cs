@@ -72,8 +72,8 @@ public static class QueueRules
     /// </remarks>
     public static bool CanBeOfferedWork(PrinterStatus status)
     {
-        return status is PrinterStatus.Idle or PrinterStatus.Ready
-                      or PrinterStatus.Stopped or PrinterStatus.Finished;
+        return status is PrinterStatus.Idle or PrinterStatus.Ready or
+                         PrinterStatus.Stopped or PrinterStatus.Finished;
     }
 
     /// <summary>Decides the next action for one printer.</summary>

@@ -360,12 +360,12 @@ public sealed class ExternalOidcDexTests
             // faults for a dozen protocol reasons - a stale nonce, an unreachable back channel, a
             // rejected token - and every one of them shows up as a 500 with the answer in the page.
             signin.StatusCode.Should().Be(HttpStatusCode.Redirect,
-                                          "the handler consumes the code and hands off to ExternalLogin, but answered "
-                                          + "{0}: {1}",
+                                          "the handler consumes the code and hands off to ExternalLogin, but answered " +
+                                          "{0}: {1}",
                                           signin.StatusCode,
-                                          signin.StatusCode == HttpStatusCode.Redirect
-                                              ? string.Empty
-                                              : await signin.Content.ReadAsStringAsync(cancellationToken));
+                                          signin.StatusCode == HttpStatusCode.Redirect ?
+                                              string.Empty :
+                                              await signin.Content.ReadAsStringAsync(cancellationToken));
 
             return await _app.GetAsync(signin.Headers.Location, cancellationToken);
         }

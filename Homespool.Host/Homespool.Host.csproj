@@ -48,5 +48,64 @@
     <ItemGroup>
       <ProjectReference Include="..\Homespool.Data\Homespool.Data.csproj" />
     </ItemGroup>
+
+    <!--
+        ESLint over wwwroot/js, as part of the build: a problem is a build error with a file and a
+        position, the same as a C# one. The rules are in eslint.config.mjs.
+
+        Node is needed, and its absence is a warning rather than a failure, so a machine without it
+        can still build. The Dockerfile brings its own Node, and CI's runner has one. ESLint failing
+        to run at all - a broken config, a Node too old for it - is an error: a check that cannot run
+        must not read as a check that passed.
+
+        Both targets are incremental. npm ci runs when the lock file is newer than the install, and
+        ESLint when a script, the config or the lock file is newer than the last clean run. The stamp
+        is written only on a clean run, so a failure is reported again on the next build.
+
+        -p:ESLint=false skips both.
+    -->
+    <ItemGroup>
+        <Content Remove="package.json;package-lock.json" />
+        <None Include="package.json;package-lock.json;eslint.config.mjs;eslint-msbuild-formatter.cjs" />
+        <ESLintInput Include="wwwroot/js/**/*.js;eslint.config.mjs;eslint-msbuild-formatter.cjs;package-lock.json" />
+    </ItemGroup>
+
+    <Target Name="ESLintFindNode"
+            Condition="'$(ESLint)' != 'false' And '$(DesignTimeBuild)' != 'true'">
+        <Exec Command="node --version" IgnoreExitCode="true" StandardOutputImportance="low" EchoOff="true">
+            <Output TaskParameter="ExitCode" PropertyName="_ESLintNodeExitCode" />
+        </Exec>
+        <Warning Condition="'$(_ESLintNodeExitCode)' != '0'"
+                 Text="Node is not installed, so ESLint did not check wwwroot/js." />
+    </Target>
+
+    <Target Name="ESLintInstall"
+            DependsOnTargets="ESLintFindNode"
+            Condition="'$(ESLint)' != 'false' And '$(DesignTimeBuild)' != 'true'"
+            Inputs="package-lock.json"
+            Outputs="node_modules/.package-lock.json">
+        <Exec Condition="'$(_ESLintNodeExitCode)' == '0'"
+              Command="npm ci --no-audit --no-fund"
+              WorkingDirectory="$(MSBuildProjectDirectory)"
+              StandardOutputImportance="low" />
+    </Target>
+
+    <Target Name="ESLint"
+            BeforeTargets="CoreCompile"
+            DependsOnTargets="ESLintInstall"
+            Condition="'$(ESLint)' != 'false' And '$(DesignTimeBuild)' != 'true'"
+            Inputs="@(ESLintInput)"
+            Outputs="$(IntermediateOutputPath)eslint.stamp">
+        <!-- Exit code 1 means problems were found, and each is already logged as an error. -->
+        <Exec Condition="'$(_ESLintNodeExitCode)' == '0'"
+              Command="npx --no-install eslint --format ./eslint-msbuild-formatter.cjs wwwroot/js"
+              WorkingDirectory="$(MSBuildProjectDirectory)"
+              IgnoreExitCode="true">
+            <Output TaskParameter="ExitCode" PropertyName="_ESLintExitCode" />
+        </Exec>
+        <Error Condition="'$(_ESLintExitCode)' != '' And '$(_ESLintExitCode)' != '0' And '$(_ESLintExitCode)' != '1'"
+               Text="ESLint could not run (exit code $(_ESLintExitCode))." />
+        <Touch Condition="'$(_ESLintExitCode)' == '0'" Files="$(IntermediateOutputPath)eslint.stamp" AlwaysCreate="true" />
+    </Target>
     
 </Project>

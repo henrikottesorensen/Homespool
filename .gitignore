@@ -111,3 +111,6 @@ TestResults/
 # absolute path it was built at, so a tracked one carries a username into a public repository.
 __pycache__/
 *.pyc
+
+# npm install for the ESLint tooling in Homespool.Host
+node_modules/

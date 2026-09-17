@@ -296,9 +296,9 @@
 
                 if (connection.connectionState === 'connected') {
                     watching();
-                } else if (connection.connectionState === 'failed'
-                           || connection.connectionState === 'disconnected'
-                           || connection.connectionState === 'closed') {
+                } else if (connection.connectionState === 'failed' ||
+                           connection.connectionState === 'disconnected' ||
+                           connection.connectionState === 'closed') {
                     stop(button.dataset.labelFailed);
                 }
             });

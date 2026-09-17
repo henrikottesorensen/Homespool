@@ -50,6 +50,29 @@ EXPOSE 8080
 EXPOSE 8081
 
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Node, for the ESLint targets in Homespool.Host.csproj, from NodeSource's apt repository - the SDK
+# image is Ubuntu, whose own nodejs is older than ESLint accepts. The major version is the one CI's
+# setup-node names. First, so every later layer caches on it; only this stage has Node, and the final
+# image copies the published output and nothing else.
+#
+# The repository's signing key is committed rather than downloaded, so what the build trusts is
+# decided in a reviewed commit, and a key replaced at NodeSource's URL fails the build instead of
+# being taken on trust. gpg/nodesource.asc is
+#
+#     6F71 F525 2828 41EE DAF8  51B4 2F59 B5F9 9B1B E0B4   NSolid <nsolid-gpg@nodesource.com>
+#
+# matched against keyserver.ubuntu.com and keys.openpgp.org, and checked with gpgv against the
+# node_24.x InRelease. No expiry. If NodeSource rotates it, apt-get update stops with NO_PUBKEY:
+# fetch the new key, check its fingerprint the same way, and replace the file. apt reads an armoured
+# key named .asc directly, so gnupg is not needed.
+ARG NODE_MAJOR=24
+COPY ["gpg/nodesource.asc", "/etc/apt/keyrings/nodesource.asc"]
+RUN printf 'Types: deb\nURIs: https://deb.nodesource.com/node_%s.x/\nSuites: nodistro\nComponents: main\nSigned-By: /etc/apt/keyrings/nodesource.asc\n' \
+        "$NODE_MAJOR" > /etc/apt/sources.list.d/nodesource.sources && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/* && \
+    node --version && npm --version
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
 # Directory.Build.props first, and it is not optional: it carries TargetFramework for every project
@@ -74,6 +97,10 @@ RUN dotnet restore "Homespool.Host/Homespool.Host.csproj" --use-current-runtime
 # the manifest, not the whole tree).
 COPY [".config/dotnet-tools.json", ".config/"]
 RUN dotnet tool restore
+# The ESLint tooling, on its own layer for the same reason. .dockerignore keeps node_modules out of the
+# copy below, so this install survives it, and the build's own install step then finds it current.
+COPY ["Homespool.Host/package.json", "Homespool.Host/package-lock.json", "Homespool.Host/"]
+RUN cd Homespool.Host && npm ci --no-audit --no-fund
 COPY . .
 WORKDIR "/src/Homespool.Host"
 # Fetch the client-side libraries (bootstrap, aspnet-client-validation) into wwwroot/lib per

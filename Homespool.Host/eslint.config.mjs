@@ -66,6 +66,11 @@ export default [
             '@stylistic/no-multiple-empty-lines': ['error', { max: 1 }],
             '@stylistic/no-trailing-spaces': 'error',
             '@stylistic/object-curly-spacing': ['error', 'always'],
+
+            // Double quotes, as C#, JSON and Razor use around them; JavaScript has no character
+            // literal for single quotes to mean. avoidEscape keeps a selector carrying an HTML
+            // attribute - input[name="x"] - in single quotes rather than backslashes.
+            '@stylistic/quotes': ['error', 'double', { avoidEscape: true }],
             '@stylistic/semi': ['error', 'always'],
             '@stylistic/space-before-function-paren': ['error', { anonymous: 'always', named: 'never', asyncArrow: 'always' }],
 

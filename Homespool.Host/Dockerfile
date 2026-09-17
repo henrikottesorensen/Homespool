@@ -63,6 +63,9 @@ COPY ["Directory.Build.props", "./"]
 COPY ["Homespool.Host/Homespool.Host.csproj", "Homespool.Host/"]
 COPY ["Homespool.Data/Homespool.Data.csproj", "Homespool.Data/"]
 COPY ["Homespool.Model/Homespool.Model.csproj", "Homespool.Model/"]
+# Directory.Build.props references these from every project, so they count as referenced projects too.
+COPY ["Homespool.Analysers/Homespool.Analysers.csproj", "Homespool.Analysers/"]
+COPY ["Homespool.Analysers.CodeFixes/Homespool.Analysers.CodeFixes.csproj", "Homespool.Analysers.CodeFixes/"]
 # --use-current-runtime here as well as on the publish below, and it is not decoration: without it
 # this layer restores RID-agnostically, publish restores again for the runtime it targets, and the
 # cached layer buys nothing.

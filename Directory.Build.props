@@ -120,4 +120,21 @@
         </PackageReference>
     </ItemGroup>
 
+    <!--
+        This repository's own rules, from source. Not in the two projects that build them, which
+        cannot load themselves. The code fixes are loaded for Rider; the compiler finds no analysers in
+        that assembly and ignores it.
+
+        The Dockerfile restores from a partial copy of the tree, so it has to copy both project files
+        too.
+    -->
+    <ItemGroup Condition="'$(MSBuildProjectName)' != 'Homespool.Analysers' And '$(MSBuildProjectName)' != 'Homespool.Analysers.CodeFixes'">
+        <ProjectReference Include="$(MSBuildThisFileDirectory)Homespool.Analysers/Homespool.Analysers.csproj"
+                          OutputItemType="Analyzer"
+                          ReferenceOutputAssembly="false" />
+        <ProjectReference Include="$(MSBuildThisFileDirectory)Homespool.Analysers.CodeFixes/Homespool.Analysers.CodeFixes.csproj"
+                          OutputItemType="Analyzer"
+                          ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
 </Project>

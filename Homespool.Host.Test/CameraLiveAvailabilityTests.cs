@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,6 +12,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 
 using NSubstitute;
 
@@ -34,6 +37,49 @@ namespace Homespool.Host.Test;
 public sealed class CameraLiveAvailabilityTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-webrtc-{Guid.NewGuid():N}.db");
+
+    /// <summary>
+    /// A refused offer is logged with the sidecar's own words, cleaned and cut: the body has no limit
+    /// of its own and can repeat what a camera, or the viewer's offer, said to it.
+    /// </summary>
+    [Theory]
+    [InlineData("webrtc: something went wrong", "Body")]
+    [InlineData("webrtc: codecs not matched: video:JPEG", "Reason")]
+    public async Task ARefusedOfferLogsTheSidecarsAnswerCleaned(string said, string property)
+    {
+        // Arrange
+        using AnsweringHandler handler = new(HttpStatusCode.InternalServerError, said + "\u001B[2J" + new string('x', 5000));
+        IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
+        factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler, disposeHandler: false));
+        FakeLogger<Go2RtcClient> logger = new();
+
+        Go2RtcClient client = new(factory,
+                                  TestOptions.Monitor(new CameraOptions
+                                  {
+                                      ApiUsername = "homespool",
+                                      ApiPassword = "secret", // betterleaks:allow - the sidecar is a handler in this file
+                                  }),
+                                  logger);
+
+        // Act
+        await client.OfferAsync(Guid.NewGuid(), "v=0", CancellationToken.None);
+
+        // Assert
+        string? logged = logger.Collector.GetSnapshot().Should().ContainSingle()
+                               .Which.StructuredState!.Single(pair => pair.Key == property).Value;
+
+        logged.Should().StartWith(said + "\uFFFD[2Jxxx");
+        logged.Should().EndWith(" characters in all>");
+    }
+
+    /// <summary>Answers every request with one status and one body.</summary>
+    private sealed class AnsweringHandler(HttpStatusCode status, string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) });
+        }
+    }
 
     /// <summary>
     /// The same rule every other member of the client follows, and it has to hold here too:

@@ -87,10 +87,9 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime
         byte[] message = Encoding.UTF8.GetBytes("""{"state":"IDLE"}""");
         await socket.SendAsync(message, WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
 
-        // The server-side read loop runs on its own task; give it a moment to observe the message
-        // before tearing the connection down.
-        await Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken);
-
+        // The close is the barrier, and no sleep is needed beside it: frames on one connection are
+        // ordered, so the server's read loop reaches this message before the close frame behind it,
+        // and CloseAsync waits for the server's answering close rather than just sending one.
         await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None);
 
         // Assert

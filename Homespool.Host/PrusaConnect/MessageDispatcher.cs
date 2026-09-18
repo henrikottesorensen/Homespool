@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
+using Homespool.Host.Services;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -27,6 +28,9 @@ namespace Homespool.Host.PrusaConnect;
 /// </remarks>
 public class MessageDispatcher
 {
+    /// <summary>The longest wire status is <c>ATTENTION</c>; anything past this is not a status.</summary>
+    private const int MaxLoggedStatusLength = 32;
+
     private readonly ILogger<MessageDispatcher> _logger;
     private readonly UnknownFieldTracker _unknownFields;
     private readonly TimeProvider _timeProvider;
@@ -89,7 +93,7 @@ public class MessageDispatcher
 
         // Trace, one level below the others: telemetry arrives roughly once a second per printer,
         // vs. events/transfer requests, which are merely frequent-per-printer rather than continuous.
-        _logger.LogTrace("telemetry state={State}", telemetryDto.Status);
+        _logger.LogTrace("telemetry state={State}", LogText.Clean(telemetryDto.Status, MaxLoggedStatusLength));
 
         // Each nested shape named explicitly rather than walked by reflection. The explicitness is
         // the safeguard: there is no traversal that could wander into somewhere unbounded, and

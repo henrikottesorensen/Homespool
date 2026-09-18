@@ -1183,6 +1183,44 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
+    /// And reaches it cleaned and bounded: the text is the far end's, in a message of up to a
+    /// megabyte, and an enrolled printer is still somebody else's program.
+    /// </summary>
+    [Fact]
+    public async Task ARejectionsReasonReachesTheLogCleaned()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), logger: logger);
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.SetPrinterIdle(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]),
+                                             PrinterEventType.Rejected,
+                                             "No\u001B[2J" + new string('x', 5000),
+                                             machineReason: "CODE\u001B[31m"),
+                              CancellationToken.None);
+        await Eventually(sendTask);
+
+        // Assert
+        FakeLogRecord answered = logger.Collector.GetSnapshot().Should()
+                                       .ContainSingle(record => record.Message.Contains("answered with", StringComparison.Ordinal))
+                                       .Subject;
+
+        answered.StructuredState.Should().Contain(pair => pair.Key == "MachineReason" && pair.Value == "CODE\uFFFD[31m");
+        answered.StructuredState.Should().Contain(
+            pair => pair.Key == "Reason" &&
+                    pair.Value!.StartsWith(": No\uFFFD[2Jxxx", StringComparison.Ordinal) &&
+                    pair.Value.EndsWith("<5006 characters in all>", StringComparison.Ordinal));
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
     /// A command's arguments never reach the log - only its wire name and id.
     /// <see cref="StartConnectDownload.Hash"/> is the live case rather than a hypothetical one: it is
     /// today the capability token that lets whoever holds it fetch the file - once ownership is

@@ -8,15 +8,15 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
-using Homespool.Host.Queue;
 
 namespace Homespool.Host.Test;
 
 /// <summary>
 /// What <see cref="TransferOfferStore"/> promises about who may open an offer and when it leaves
 /// service - the binding to a printer, the release a printer's own terminal event triggers, the
-/// two limits on an offer nobody came back for, and the hook that lets a key kept beside an offer
+/// limits on an offer nobody came back for and on one that never ends, and the hook that lets a key kept beside an offer
 /// follow it out.
 /// </summary>
 public sealed class TransferOfferStoreTests : IDisposable
@@ -26,11 +26,12 @@ public sealed class TransferOfferStoreTests : IDisposable
 
     private readonly string _directory = Path.Combine(Path.GetTempPath(), $"hs-offers-{Guid.NewGuid():N}");
     private readonly FakeTimeProvider _clock = new();
+    private readonly ChangeableMonitor<PrusaConnectOptions> _options = TestOptions.Monitor(new PrusaConnectOptions());
     private readonly TransferOfferStore _store;
 
     public TransferOfferStoreTests()
     {
-        _store = new TransferOfferStore(_clock, NullLogger<TransferOfferStore>.Instance);
+        _store = new TransferOfferStore(_clock, _options, NullLogger<TransferOfferStore>.Instance);
 
         Directory.CreateDirectory(_directory);
     }
@@ -224,7 +225,87 @@ public sealed class TransferOfferStoreTests : IDisposable
     }
 
     /// <summary>
-    /// Neither limit bounds a transfer in progress. A borrowed offer is passed over however old it
+    /// A download is several requests, and the offer is idle between any two of them. The wait for
+    /// the printer to come back is counted from when it last let go, so a transfer that is merely
+    /// long is not refused its next request for the offer's age.
+    /// </summary>
+    [Fact]
+    public void TheWaitForAPrinterToComeBackStartsWhenItLastLetGo()
+    {
+        // Arrange
+        string token = Offer(Printer);
+        _store.TryOpen(token, Printer, out ITransferContent? firstRange).Should().BeTrue();
+
+        // Thirty-five minutes of reading and twenty idle: older than the wait, idle for less than
+        // it, and still inside the hour's ceiling.
+        _clock.Advance(TransferOfferStore.ResumeWithin + TimeSpan.FromMinutes(5));
+        firstRange!.Dispose();
+
+        _clock.Advance(TransferOfferStore.ResumeWithin - TimeSpan.FromMinutes(10));
+        _store.SweepIdle();
+
+        // Act
+        bool opened = _store.TryOpen(token, Printer, out ITransferContent? nextRange);
+
+        // Assert
+        opened.Should().BeTrue("the offer is older than the wait, but the printer let go of it less than that ago");
+        nextRange!.Dispose();
+    }
+
+    /// <summary>
+    /// A wait that restarts with every fetch never ends on its own, and on the encrypted path the
+    /// token that restarts it travels in a plain-HTTP URL. The configured ceiling runs from when
+    /// the offer was made and no fetch moves it.
+    /// </summary>
+    [Fact]
+    public void AnOfferKeptAliveByFetchingStillEndsAtTheConfiguredCeiling()
+    {
+        // Arrange
+        TimeSpan ceiling = _options.CurrentValue.TransferOfferMaxLifetime;
+        TimeSpan step = TransferOfferStore.ResumeWithin - TimeSpan.FromMinutes(1);
+        string token = Offer(Printer);
+
+        _store.TryOpen(token, Printer, out ITransferContent? first).Should().BeTrue();
+        first!.Dispose();
+
+        // Act
+        for (TimeSpan age = step; age < ceiling; age += step)
+        {
+            _clock.Advance(step);
+            _store.TryOpen(token, Printer, out ITransferContent? fetch).Should().BeTrue("at {0} it is inside both limits", age);
+            fetch!.Dispose();
+        }
+
+        _clock.Advance(step);
+
+        // Assert
+        _store.TryOpen(token, Printer, out _).Should().BeFalse("it was given back a moment ago, and is past the ceiling all the same");
+    }
+
+    /// <summary>
+    /// The ceiling is read when it is applied, not when the offer was made, so raising it rescues
+    /// a transfer already under way - which is the moment somebody goes looking for the setting.
+    /// </summary>
+    [Fact]
+    public void RaisingTheCeilingAppliesToAnOfferAlreadyStanding()
+    {
+        // Arrange
+        string token = Offer(Printer);
+        _store.TryOpen(token, Printer, out ITransferContent? reading).Should().BeTrue();
+
+        _clock.Advance(_options.CurrentValue.TransferOfferMaxLifetime + TimeSpan.FromMinutes(1));
+        reading!.Dispose();
+
+        // Act
+        _options.Set(new PrusaConnectOptions { TransferOfferMaxLifetimeMinutes = 240 });
+
+        // Assert
+        _store.TryOpen(token, Printer, out ITransferContent? resumed).Should().BeTrue();
+        resumed!.Dispose();
+    }
+
+    /// <summary>
+    /// No limit bounds a request in progress. A borrowed offer is passed over however old it
     /// is, and collected by the first sweep after it is given back.
     /// </summary>
     [Fact]
@@ -237,7 +318,7 @@ public sealed class TransferOfferStoreTests : IDisposable
         string token = Offer(Printer);
         _store.TryOpen(token, Printer, out ITransferContent? reading).Should().BeTrue();
 
-        _clock.Advance(TransferOfferStore.ResumeWithin + TimeSpan.FromHours(1));
+        _clock.Advance(_options.CurrentValue.TransferOfferMaxLifetime + TimeSpan.FromHours(1));
 
         // Act
         _store.SweepIdle();
@@ -297,17 +378,6 @@ public sealed class TransferOfferStoreTests : IDisposable
         // Assert
         opened.Should().BeFalse();
         retired.Should().BeEmpty();
-    }
-
-    /// <summary>
-    /// Past the queue's patience the file is offered again under a fresh token, which is the whole
-    /// argument for where the longer limit sits. The two are separate constants so that the transfer
-    /// code does not reach into the queue; this is what keeps them from drifting.
-    /// </summary>
-    [Fact]
-    public void TheResumeLimitIsTheQueuesPatienceWithATransfer()
-    {
-        TransferOfferStore.ResumeWithin.Should().Be(QueueAdvancer.TransferStaleAfter);
     }
 
     private string Offer(int printerId)

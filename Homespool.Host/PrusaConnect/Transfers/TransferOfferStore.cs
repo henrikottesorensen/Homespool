@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.PrusaConnect.Transfers;
 
@@ -68,35 +69,46 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     public static readonly TimeSpan CollectWithin = TimeSpan.FromMinutes(5);
 
     /// <summary>
-    /// How long an offer a printer has opened is kept for it to come back to.
+    /// How long an offer a printer has opened is kept, after the printer last let go of it, for the
+    /// printer to come back to.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Longer, because a printer does come back: firmware retries a dropped download, keeps retrying
-    /// for as long as it is printing, and writes the request to the USB stick so that a reboot
-    /// resumes it under the same token. The ceiling is the queue's own patience
-    /// (<c>QueueAdvancer.TransferStaleAfter</c>, and a test holds the two equal): past it the file
-    /// is offered again under a fresh token, so nothing legitimate returns for this one.
+    /// Longer than <see cref="CollectWithin"/>, because a printer does come back: firmware retries a
+    /// dropped download, keeps retrying for as long as it is printing, and writes the request to the
+    /// USB stick so that a reboot resumes it under the same token.
     /// </para>
     /// <para>
-    /// <b>Both limits run from when the offer was made, and neither slides.</b> A limit measured
-    /// from the last read would let whoever holds a token keep its offer alive by fetching, and on
-    /// the encrypted path the token travels in a plain-HTTP URL.
+    /// <b>Measured from when the offer was last given back, not from when it was made.</b> A
+    /// download is several requests - firmware jumps between ranges as well as reconnecting - and
+    /// the offer is idle between any two of them, so a limit on the offer's age would refuse the
+    /// next request of a transfer that is simply large or slow. Firmware reads that 404 as a network
+    /// fault and, while printing, retries it for as long as the print runs.
     /// </para>
     /// <para>
-    /// <b>Only idle offers are closed</b>, so neither limit can cut a transfer short however long
-    /// it runs; a borrowed offer is skipped and collected once it is given back.
+    /// <b>What a sliding limit cannot do is end</b>: whoever holds a token renews it by fetching,
+    /// and on the encrypted path the token travels in a plain-HTTP URL. The ceiling on that is
+    /// <see cref="PrusaConnectOptions.TransferOfferMaxLifetime"/>, which does run from when the
+    /// offer was made.
+    /// </para>
+    /// <para>
+    /// <b>Only idle offers are closed</b>, so no limit here cuts a request in progress; a borrowed
+    /// offer is skipped and collected once it is given back.
     /// </para>
     /// </remarks>
     public static readonly TimeSpan ResumeWithin = TimeSpan.FromMinutes(30);
 
     private readonly ConcurrentDictionary<string, PinnedOffer> _offers = new(StringComparer.Ordinal);
     private readonly TimeProvider _timeProvider;
+    private readonly IOptionsMonitor<PrusaConnectOptions> _options;
     private readonly ILogger<TransferOfferStore> _logger;
 
-    public TransferOfferStore(TimeProvider timeProvider, ILogger<TransferOfferStore> logger)
+    public TransferOfferStore(TimeProvider timeProvider,
+                              IOptionsMonitor<PrusaConnectOptions> options,
+                              ILogger<TransferOfferStore> logger)
     {
         _timeProvider = timeProvider;
+        _options = options;
         _logger = logger;
     }
 
@@ -135,7 +147,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
             return false;
         }
 
-        PinnedOffer offer = new(content, _timeProvider.GetUtcNow(), printerId);
+        PinnedOffer offer = new(content, _timeProvider, printerId);
 
         // Re-offering a token replaces it. Tokens are random and minted per send, so this is the
         // theoretical case rather than the expected one - but leaking the old handle would be real.
@@ -213,7 +225,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         // the way in is what makes the limit exact for the one thing that matters to a stranger -
         // whether the token still opens anything - and the answer is the one the sweep would have
         // given a moment later.
-        if (offer.IsAbandoned(_timeProvider.GetUtcNow()))
+        if (offer.IsAbandoned(_options.CurrentValue.TransferOfferMaxLifetime))
         {
             RetireAbandoned(hash, offer);
 
@@ -227,7 +239,8 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
 
     /// <summary>
     /// Closes offers nobody is reading and nobody came back for: one never opened within
-    /// <see cref="CollectWithin"/>, or one opened and left idle past <see cref="ResumeWithin"/>.
+    /// <see cref="CollectWithin"/>, one opened and then left idle for <see cref="ResumeWithin"/>,
+    /// or one older than <see cref="PrusaConnectOptions.TransferOfferMaxLifetime"/>.
     /// </summary>
     /// <remarks>
     /// Called on a timer by <see cref="TransferOfferSweepService"/>, because the offer that matters
@@ -238,11 +251,12 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     /// </remarks>
     public void SweepIdle()
     {
-        DateTimeOffset now = _timeProvider.GetUtcNow();
+        // Read per pass, so a change to the setting applies to the offers already standing.
+        TimeSpan maxLifetime = _options.CurrentValue.TransferOfferMaxLifetime;
 
         foreach (KeyValuePair<string, PinnedOffer> entry in _offers)
         {
-            if (entry.Value.IsAbandoned(now))
+            if (entry.Value.IsAbandoned(maxLifetime))
             {
                 RetireAbandoned(entry.Key, entry.Value);
             }
@@ -270,18 +284,21 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     {
         private readonly Lock _gate = new();
         private readonly ITransferContent _content;
+        private readonly TimeProvider _timeProvider;
+        private readonly DateTimeOffset _offeredAt;
+        private DateTimeOffset _idleSince;
         private int _readers;
         private bool _opened;
         private bool _retired;
 
-        public PinnedOffer(ITransferContent content, DateTimeOffset offeredAt, int printerId)
+        public PinnedOffer(ITransferContent content, TimeProvider timeProvider, int printerId)
         {
             _content = content;
-            OfferedAt = offeredAt;
+            _timeProvider = timeProvider;
+            _offeredAt = timeProvider.GetUtcNow();
+            _idleSince = _offeredAt;
             PrinterId = printerId;
         }
-
-        public DateTimeOffset OfferedAt { get; }
 
         /// <summary>The printer the offer was made to, and the only one it opens for.</summary>
         public int PrinterId { get; }
@@ -299,15 +316,28 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         }
 
         /// <summary>
-        /// Whether the offer has outlived the limit that applies to it with nothing reading it:
-        /// <see cref="CollectWithin"/> until a printer first opens it, <see cref="ResumeWithin"/>
-        /// after.
+        /// Whether nothing is reading the offer and a limit has run out on it:
+        /// <see cref="CollectWithin"/> if no printer ever opened it, otherwise
+        /// <see cref="ResumeWithin"/> since it was last given back or
+        /// <paramref name="maxLifetime"/> since it was made, whichever comes first.
         /// </summary>
-        public bool IsAbandoned(DateTimeOffset now)
+        public bool IsAbandoned(TimeSpan maxLifetime)
         {
             lock (_gate)
             {
-                return _readers == 0 && now - OfferedAt >= (_opened ? ResumeWithin : CollectWithin);
+                if (_readers != 0)
+                {
+                    return false;
+                }
+
+                DateTimeOffset now = _timeProvider.GetUtcNow();
+
+                if (!_opened)
+                {
+                    return now - _offeredAt >= CollectWithin;
+                }
+
+                return now - _idleSince >= ResumeWithin || now - _offeredAt >= maxLifetime;
             }
         }
 
@@ -355,7 +385,14 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
             {
                 _readers--;
 
-                if (_readers == 0 && _retired)
+                if (_readers != 0)
+                {
+                    return;
+                }
+
+                _idleSince = _timeProvider.GetUtcNow();
+
+                if (_retired)
                 {
                     _content.Dispose();
                 }

@@ -2469,6 +2469,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Label_PrusaConnect_CommandResponseTimeoutSeconds" xml:space="preserve">
     <value>Ventetid på svar fra en printer, i sekunder</value>
   </data>
+  <data name="Settings_Label_PrusaConnect_TransferOfferMaxLifetimeMinutes" xml:space="preserve">
+    <value>Længste tid en filoverførsel til en printer må tage, i minutter</value>
+  </data>
   <data name="Settings_Label_Storage_MinimumSampleIntervalSeconds" xml:space="preserve">
     <value>Korteste interval mellem gemte målinger, i sekunder</value>
   </data>

@@ -18,6 +18,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.RateLimiting;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -240,7 +241,10 @@ public class PasskeysModel : PageModel
 
         if (!attested.Succeeded)
         {
-            _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}", user.Id, attested.Failure?.Message);
+            // The engine quotes fields of the posted credential in its reason, so it is cleaned and cut.
+            _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}",
+                                   user.Id,
+                                   LogText.Clean(attested.Failure?.Message, PasskeyAuthenticationHandler.MaxLoggedFailureLength));
 
             return Refused();
         }

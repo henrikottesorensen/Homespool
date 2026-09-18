@@ -14,7 +14,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
@@ -147,6 +149,35 @@ public sealed class PasskeysPageTests : IDisposable
         model.PasskeysAvailable.Should().BeFalse();
         model.ServerDomain.Should().Be(RelyingPartyId, "the page says which address to come back by");
         begin.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
+    public async Task ARefusalQuotingTheClaimedOriginIsLoggedCleaned()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+
+        // Spelt as JSON spells it: the authenticator writes this into the client data as it stands.
+        using FakeAuthenticator authenticator = new() { Origin = "https://evil.test/\\u001B[2J" + new string('x', 5000) };
+
+        (PasskeysModel begin, DefaultHttpContext beginRequest) = rig.NewModel(user);
+        ContentResult options = (await begin.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
+
+        FakeLogger<PasskeysModel> logger = new();
+        (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(beginRequest), logger: logger);
+
+        // Act
+        await register.OnPostRegisterAsync(authenticator.Attest(options.Content!));
+
+        // Assert
+        string? reason = logger.Collector.GetSnapshot().Should()
+                               .ContainSingle(record => record.Message.StartsWith("Passkey registration refused", StringComparison.Ordinal))
+                               .Which.StructuredState!.Single(pair => pair.Key == "Reason").Value;
+
+        reason.Should().Contain("https://evil.test/\uFFFD[2Jxxx");
+        reason.Should().NotContain("\u001B");
+        reason.Should().EndWith(" characters in all>");
     }
 
     [Fact]
@@ -368,7 +399,10 @@ public sealed class PasskeysPageTests : IDisposable
         /// The page model over a request from <paramref name="user"/>, signed in, on <paramref name="host"/>.
         /// The recent proof the add handler wants is the filter's to demand and is not part of the model.
         /// </summary>
-        public (PasskeysModel model, DefaultHttpContext request) NewModel(HSUser user, string? cookie = null, string host = RelyingPartyId)
+        public (PasskeysModel model, DefaultHttpContext request) NewModel(HSUser user,
+                                                                          string? cookie = null,
+                                                                          string host = RelyingPartyId,
+                                                                          ILogger<PasskeysModel>? logger = null)
         {
             // A scope per request, as a real request has: the handler provider and the handlers it
             // caches are scoped, and a handler answers a second request with its first, memoised
@@ -396,7 +430,7 @@ public sealed class PasskeysPageTests : IDisposable
                                       Ceremonies,
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),
                                       TestLocaliser.Shared(),
-                                      NullLogger<PasskeysModel>.Instance)
+                                      logger ?? NullLogger<PasskeysModel>.Instance)
             {
                 PageContext = IdentityTestHarness.NewPageContext(request),
                 Url = IdentityTestHarness.NewUrlHelper(request),

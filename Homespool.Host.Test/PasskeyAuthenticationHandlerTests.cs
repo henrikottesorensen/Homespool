@@ -17,6 +17,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
@@ -359,6 +361,40 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>
+    /// The engine's refusal quotes the claimed origin back, and the line that logs it is written by a
+    /// request nobody has authenticated - so the quote arrives cleaned, and cut to a sentence's length.
+    /// </summary>
+    [Fact]
+    public async Task ARefusalQuotingTheClaimedOriginIsLoggedCleaned()
+    {
+        // Arrange
+        FakeLogCollector logs = new();
+        await using Rig rig = await Rig.CreateAsync(this, logs: logs);
+        using FakeAuthenticator authenticator = new();
+        HSUser user = await rig.EnrolAsync(authenticator);
+
+        (PasskeyAuthenticationHandler challengeHandler, DefaultHttpContext challenge) = await rig.NewRequestAsync();
+        await challengeHandler.ChallengeAsync(new AuthenticationProperties());
+
+        // Spelt as JSON spells it: the authenticator writes this into the client data as it stands.
+        authenticator.Origin = "https://evil.test/\\u001B[2J" + new string('x', 5000);
+        string credential = authenticator.Assert(await rig.BodyOf(challenge), user.Id.ToString());
+        (PasskeyAuthenticationHandler handler, _) = await rig.NewRequestAsync(credential: credential, cookie: Rig.CookieOf(challenge));
+
+        // Act
+        await handler.AuthenticateAsync();
+
+        // Assert
+        string? reason = logs.GetSnapshot().Should()
+                             .ContainSingle(record => record.Message.StartsWith("Passkey assertion refused", StringComparison.Ordinal))
+                             .Which.StructuredState!.Single(pair => pair.Key == "Reason").Value;
+
+        reason.Should().Contain("https://evil.test/\uFFFD[2Jxxx");
+        reason.Should().NotContain("\u001B");
+        reason.Should().EndWith(" characters in all>");
+    }
+
+    /// <summary>
     /// The claimed origin is pinned to the relying-party id, not merely compared with the request's
     /// own <c>Origin</c> header: an assertion whose client data names a host the id does not cover
     /// is refused even when the header agrees with it.
@@ -559,7 +595,9 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
 
         public PasskeyCeremonyLedger Ledger => _provider.GetRequiredService<PasskeyCeremonyLedger>();
 
-        public static async Task<Rig> CreateAsync(PasskeyAuthenticationHandlerTests owner, string? relyingPartyId = RelyingPartyId)
+        public static async Task<Rig> CreateAsync(PasskeyAuthenticationHandlerTests owner,
+                                                  string? relyingPartyId = RelyingPartyId,
+                                                  FakeLogCollector? logs = null)
         {
             DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
                                                            .UseSqlite($"Data Source={owner._databasePath}")
@@ -574,6 +612,11 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
                 {
                     services.Configure<Middleware.SecurityOptions>(security => security.PasskeyServerDomain = relyingPartyId);
                     services.Configure<PasskeyAuthenticationOptions>(Schemes.Passkey, scheme => scheme.TimeProvider = owner._clock);
+
+                    if (logs is not null)
+                    {
+                        services.AddLogging(logging => logging.AddProvider(new FakeLoggerProvider(logs)));
+                    }
                 });
 
             return new Rig(owner, context, provider, users);

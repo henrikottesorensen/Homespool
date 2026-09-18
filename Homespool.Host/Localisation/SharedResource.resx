@@ -2571,6 +2571,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Label_PrusaConnect_CommandResponseTimeoutSeconds" xml:space="preserve">
     <value>Wait for a printer to answer a command, in seconds</value>
   </data>
+  <data name="Settings_Label_PrusaConnect_TransferOfferMaxLifetimeMinutes" xml:space="preserve">
+    <value>Longest a file transfer to a printer may take, in minutes</value>
+  </data>
   <data name="Settings_Label_Storage_MinimumSampleIntervalSeconds" xml:space="preserve">
     <value>Shortest gap between stored samples, in seconds</value>
   </data>

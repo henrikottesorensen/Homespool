@@ -86,6 +86,13 @@ public static class EditableSettings
             SettingGrade.Deferred,
             AppliesWhenKey: "Settings_AppliesOnNextPrinterConnection"),
 
+        // Read per open and per sweep in TransferOfferStore, so it applies to a transfer already
+        // under way - which is when somebody reaches for it.
+        new(typeof(PrusaConnectOptions),
+            PrusaConnectOptions.SectionName,
+            nameof(PrusaConnectOptions.TransferOfferMaxLifetimeMinutes),
+            SettingGrade.Live),
+
         // What this deployment stores, of both kinds. Uploads sit here rather than under a heading of
         // their own because "how much disk does this take" is one question, and a reader should not
         // have to know that files and telemetry are bound from different classes to find it. Read per

@@ -246,4 +246,31 @@ public class PrusaConnectOptions
 
     /// <summary><see cref="CommandResponseTimeoutSeconds"/> as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan CommandResponseTimeout => TimeSpan.FromSeconds(CommandResponseTimeoutSeconds);
+
+    /// <summary>
+    /// The longest a file offered to a printer stays fetchable, in minutes, however much the
+    /// printer is still using it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A ceiling on one transfer's whole duration, measured between requests.</b> A request in
+    /// progress is never cut, but a printer's download is more than one request - firmware jumps
+    /// between ranges, and reconnects after a drop - and each new request past this is answered 404.
+    /// An offer nobody is using is closed far sooner than this by limits of its own
+    /// (<see cref="Transfers.TransferOfferStore"/>); this is what stops one that <i>is</i> being used
+    /// from living for ever, because on the encrypted path the token that keeps it alive travels in
+    /// a plain-HTTP URL, and every fetch by whoever saw it would otherwise renew it.
+    /// </para>
+    /// <para>
+    /// <b>Raise it for big files over a slow link.</b> An hour is 1 GB at the 280 KB/s measured
+    /// through the proxy, and a third of that on a printer whose Wi-Fi manages 100 KB/s. Being
+    /// tight costs more than a failed transfer: firmware treats the 404 as a network fault and,
+    /// while it is printing, retries it every second for as long as the print runs.
+    /// </para>
+    /// </remarks>
+    [Range(5, 10_080)]
+    public int TransferOfferMaxLifetimeMinutes { get; set; } = 60;
+
+    /// <summary><see cref="TransferOfferMaxLifetimeMinutes"/> as a <see cref="TimeSpan"/>.</summary>
+    public TimeSpan TransferOfferMaxLifetime => TimeSpan.FromMinutes(TransferOfferMaxLifetimeMinutes);
 }

@@ -1930,7 +1930,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // As itself and as the interface, the way Program.cs registers it: the key store follows the
         // concrete store's retirements, so it has to be able to find it.
-        services.AddSingleton(new TransferOfferStore(_clock, NullLogger<TransferOfferStore>.Instance));
+        services.AddSingleton(new TransferOfferStore(_clock, TestOptions.Monitor(new PrusaConnectOptions()), NullLogger<TransferOfferStore>.Instance));
         services.AddSingleton<ITransferOffers>(sp => sp.GetRequiredService<TransferOfferStore>());
         services.AddSingleton<EncryptedTransferOffers>();
         services.AddSingleton(Options.Create(new PrusaConnectOptions()));

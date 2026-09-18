@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coverage collection settings. Run `dotnet test` with its collect option set to
+  "XPlat Code Coverage" and its settings option pointing at this file (the flags are not written
+  out here because an XML comment cannot hold a doubled hyphen), then merge and render with:
+
+      dotnet reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:TestResults/report
+
+  Line coverage answers "which code does no test even execute" - a class at 0% has nothing watching
+  it at all. It says nothing about assertion quality: an executed line whose removal fails no test
+  still counts as covered, so a green line is not proof of a test that bites.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <!-- Compiled Razor views and the EF migration are generated, and their line counts would
+               drown the hand-written code the report exists to rank. -->
+          <!-- Razor Pages compile their view halves as Pages_* classes in the project namespace,
+               not under AspNetCoreGeneratedDocument, so they need their own pattern. Page *models*
+               are unaffected: their names carry ".Pages." with a dot, never "Pages_". -->
+          <!-- The [*Test]* entry is for the test assemblies as each other's REFERENCES: a test
+               project excludes itself as the running assembly, but the Integration project
+               references the E2E one for its helpers, which otherwise puts that whole test
+               assembly, never executed, into the map. -->
+          <Exclude>[*Test]*,[Homespool.Host]AspNetCoreGeneratedDocument.*,[Homespool.Host]*Pages_*,[Homespool.Data]Homespool.Data.Migrations.*</Exclude>
+          <ExcludeByAttribute>GeneratedCodeAttribute</ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

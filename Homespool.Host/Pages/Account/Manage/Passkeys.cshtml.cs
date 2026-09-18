@@ -132,7 +132,7 @@ public class PasskeysModel : PageModel
     /// <summary>
     /// Whether <paramref name="name"/> may be a passkey's name: something to show, within the length,
     /// with no control characters and none of the invisible marks that would let a name render
-    /// deceptively in the table - the rule the file store's directory name already applies.
+    /// deceptively in the table. What those are is <see cref="PrintableText"/>'s to say.
     /// </summary>
     public static bool IsAcceptableName(string? name)
     {
@@ -141,20 +141,7 @@ public class PasskeysModel : PageModel
             return false;
         }
 
-        foreach (char character in name)
-        {
-            // Written as escapes on purpose: these are invisible characters, and a source file holding
-            // them literally is unreadable in a diff and carries the very hazard this rejects.
-            if (char.IsControl(character) ||
-                character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
-                character is >= '\u202A' and <= '\u202E' ||
-                character is >= '\u2066' and <= '\u2069')
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return PrintableText.IsPrintable(name);
     }
 
     /// <summary>The credential id as the page and the forms spell it: base64url.</summary>

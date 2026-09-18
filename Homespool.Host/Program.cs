@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 
 using Serilog;
+using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 
@@ -28,6 +29,7 @@ using Homespool.Host.Middleware;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
+using Homespool.Host.Services;
 
 namespace Homespool.Host;
 
@@ -47,7 +49,8 @@ public static class Program
         Log.Logger = new LoggerConfiguration()
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()
-                     .WriteTo.Console(new RenderedCompactJsonFormatter())
+                     .Enrich.With<Services.PrintableLogEnricher>()
+                     .WriteTo.WithPrintableExceptions(sinks => sinks.Console(new RenderedCompactJsonFormatter()))
                      .CreateBootstrapLogger();
 
         try
@@ -99,10 +102,30 @@ public static class Program
             // suite that runs hundreds, where the symptom was a host failing to build at all and
             // assertions about log output finding an empty sink - and the workaround was to forbid the
             // suite from starting two hosts at once, which cost it about four minutes a run.
+            //
+            // PrintableLogEnricher goes last among the enrichers, so whatever an earlier one adds - a
+            // scope's values, anything configuration brings - is an ordinary property by the time it
+            // looks, and is made printable with the rest.
+            //
+            // Every sink goes inside WithPrintableExceptions, the console and any the container
+            // holds alike: an exception's text is the one part of an event an enricher cannot change,
+            // so it is made printable by what stands in front of the sink. The container's sinks are
+            // added here by hand for that reason - ReadFrom.Services would add them beside the
+            // wrapper rather than behind it - and ServicesExceptSinks reads everything else the
+            // container holds for a logger, exactly as ReadFrom.Services did.
             builder.Services.AddSerilog((services, lc) => lc.ReadFrom.Configuration(builder.Configuration)
-                                                                        .ReadFrom.Services(services)
+                                                                        .ReadFrom.ServicesExceptSinks(services)
                                                                         .Enrich.FromLogContext()
-                                                                        .WriteTo.Console(new RenderedCompactJsonFormatter()),
+                                                                        .Enrich.With<Services.PrintableLogEnricher>()
+                                                                        .WriteTo.WithPrintableExceptions(sinks =>
+                                                                        {
+                                                                            sinks.Console(new RenderedCompactJsonFormatter());
+
+                                                                            foreach (ILogEventSink sink in services.GetServices<ILogEventSink>())
+                                                                            {
+                                                                                sinks.Sink(sink);
+                                                                            }
+                                                                        }),
                                         preserveStaticLogger: true);
 
             builder.Services.AddHomespoolData(builder.Configuration);
@@ -645,7 +668,12 @@ public static class Program
 
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.
-            app.UseSerilogRequestLogging();
+            //
+            // Handed this host's own logger rather than left to find one: without it the middleware
+            // writes through Serilog's process-wide static, which is this host's only when it owns it
+            // (see OwnsTheStaticLogger above). Every deployment does, so nothing changes there; a host
+            // that does not would send its request lines to whoever does.
+            app.UseSerilogRequestLogging(options => options.Logger = app.Services.GetRequiredService<Serilog.ILogger>());
 
             // A failure a person meets in a browser is answered with the error page and its trace id;
             // everything machine-facing keeps the bare 500 (ErrorPageScope). Development keeps the

@@ -2,6 +2,8 @@ using System;
 using System.Globalization;
 using System.Text;
 
+using Homespool.Host.Services;
+
 namespace Homespool.Host.PrintFiles;
 
 /// <summary>
@@ -98,13 +100,17 @@ public static class UserDirectoryName
             return string.Empty;
         }
 
+        // What a reader cannot see goes first, a whole character at a time - a username must not
+        // render a directory listing deceptively, and normalising refuses outright a string holding
+        // half a surrogate pair, which this has just replaced.
+        //
         // NFC so the same name typed on macOS and on Linux produces the same folder. Cosmetic, like
         // the rest of this, but it is what makes a listing look consistent across machines.
         StringBuilder builder = new();
 
-        foreach (char character in userName.Normalize(NormalizationForm.FormC))
+        foreach (char character in PrintableText.Replace(userName, '-').Normalize(NormalizationForm.FormC))
         {
-            builder.Append(IsUnsafe(character) ? '-' : character);
+            builder.Append(IsSeparator(character) ? '-' : character);
         }
 
         // Trailing dots and spaces are legal to create on Linux and silently trimmed by Windows,
@@ -124,21 +130,10 @@ public static class UserDirectoryName
             cleaned;
     }
 
-    /// <summary>
-    /// Path separators, control characters, and the bidi and zero-width marks that would let a
-    /// username render a directory listing deceptively - the one exclusion here that is about a
-    /// reader rather than a filesystem.
-    /// </summary>
-    private static bool IsUnsafe(char character)
+    /// <summary>What would split the name into a path, here or on the machine a listing is read on.</summary>
+    private static bool IsSeparator(char character)
     {
-        return character is '/' or '\\' or ':' or '\0' ||
-               char.IsControl(character) ||
-
-               // Written as escapes on purpose: these are invisible characters, and a source file holding
-               // them literally is unreadable in a diff and carries the very hazard this rejects.
-               character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
-               character is >= '\u202A' and <= '\u202E' ||
-               character is >= '\u2066' and <= '\u2069';
+        return character is '/' or '\\' or ':';
     }
 
     /// <summary>Cuts to a byte budget without splitting a character in half.</summary>

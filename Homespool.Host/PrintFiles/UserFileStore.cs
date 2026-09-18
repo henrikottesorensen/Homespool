@@ -562,7 +562,7 @@ public sealed class UserFileStore
     /// <b>The invisible marks are the zero-width and bidi characters</b>, which carry no control
     /// character and still make a name render as something it is not: a right-to-left override lets
     /// a name that ends in <c>.exe</c> read as one ending in <c>.gcode</c> - on a page, in a log line and on
-    /// the printer's display. <see cref="PrintableText.IsUnprintable"/> is the one definition, so a name that
+    /// the printer's display. <see cref="PrintableText"/> is the one definition, so a name that
     /// gets in is a name every log line can carry as it stands.
     /// </para>
     /// <para>
@@ -586,12 +586,11 @@ public sealed class UserFileStore
     {
         string name = SafeName(fileName) ?? throw new PrintFileNameRejectedException(nameof(fileName));
 
-        foreach (char character in name)
+        // Asked of the whole name, because a character is not always one char: the invisible ones
+        // outside the basic plane take two, and half of one is not a character at all.
+        if (!PrintableText.IsPrintable(name) || name.AsSpan().ContainsAny("\"'<>\\"))
         {
-            if (PrintableText.IsUnprintable(character) || character is '"' or '\'' or '<' or '>' or '\\')
-            {
-                throw PrintFileNameRejectedException.ForForbiddenCharacters(name, nameof(fileName));
-            }
+            throw PrintFileNameRejectedException.ForForbiddenCharacters(name, nameof(fileName));
         }
 
         return name;

@@ -3,7 +3,9 @@ using System.Text.Json;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Host.PrusaConnect;
 
@@ -75,6 +77,30 @@ public class MessageDispatcherTests
     }
 
     /// <summary>Minimal valid event - <c>event</c> and <c>state</c> are the only required fields.</summary>
+    /// <summary>
+    /// The status is a string on the wire, so the trace line carries it cleaned and cut to the length
+    /// of a status - while the message itself keeps what was sent, for whatever reads it next.
+    /// </summary>
+    [Fact]
+    public void TheTelemetryTraceCarriesTheStatusCleaned()
+    {
+        // Arrange - the escape spelt as JSON spells it
+        using JsonDocument document = JsonDocument.Parse("{\"state\":\"IDLE\\u001B[2J" + new string('x', 100) + "\"}");
+        FakeLogger<MessageDispatcher> logger = new();
+        MessageDispatcher dispatcher = new(logger, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off);
+
+        // Act
+        dispatcher.Classify(printerId: 1, document.RootElement);
+
+        // Assert
+        logger.Collector.GetSnapshot().Should()
+              .ContainSingle(record => record.Level == LogLevel.Trace)
+              .Which.StructuredState.Should().Contain(
+                  pair => pair.Key == "State" &&
+                          pair.Value!.StartsWith("IDLE\uFFFD[2Jx", StringComparison.Ordinal) &&
+                          pair.Value.EndsWith("<108 characters in all>", StringComparison.Ordinal));
+    }
+
     private const string MinimalEvent = """{"event":"INFO","state":"IDLE"}""";
 
     [Fact]

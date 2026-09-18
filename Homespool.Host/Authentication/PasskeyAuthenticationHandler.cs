@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -62,6 +63,13 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
 {
     /// <summary>The <see cref="JwtClaimTypes.AuthenticationMethod"/> a passkey-authenticated principal carries.</summary>
     public const string AuthenticationMethod = "passkey";
+
+    /// <summary>
+    /// How much of the engine's refusal is worth a log line. Its own sentences are under two hundred
+    /// characters; several of them quote a field of the posted credential, which is as long as the
+    /// sender made it.
+    /// </summary>
+    public const int MaxLoggedFailureLength = 256;
 
     /// <summary>
     /// The prefix on every item this scheme and <see cref="PasskeyCeremonies"/> write into
@@ -196,8 +204,11 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         if (!result.Succeeded)
         {
             // The engine's reason names which step of the ceremony failed and is worth a log line; the
-            // caller gets one refusal for all of them, since every one means "not this passkey".
-            Logger.LogInformation("Passkey assertion refused: {Reason}", result.Failure?.Message);
+            // caller gets one refusal for all of them, since every one means "not this passkey". It
+            // also quotes the posted origin, type and user handle as they arrived, in a request
+            // anybody can make - so it is cleaned and cut rather than trusted for being the engine's.
+            Logger.LogInformation("Passkey assertion refused: {Reason}",
+                                  LogText.Clean(result.Failure?.Message, MaxLoggedFailureLength));
 
             return AuthenticateResult.Fail("The passkey assertion was refused.");
         }

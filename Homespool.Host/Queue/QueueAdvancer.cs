@@ -150,6 +150,12 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     private const string FileExistsCode = "FILE_EXISTS";
 
+    /// <summary>
+    /// How much of a path or a reason the printer wrote is worth a log line. A drive path tops out
+    /// near 260 characters; an event may be a megabyte, and its strings are the sender's to size.
+    /// </summary>
+    private const int MaxLoggedLength = 256;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PrinterConnectionRegistry _registry;
     private readonly QueueSignal _signal;
@@ -362,6 +368,19 @@ public sealed class QueueAdvancer : BackgroundService
         job.EndedAt = at;
     }
 
+    /// <summary>
+    /// A path or a reason the printer wrote, as a log line may carry it.
+    /// </summary>
+    /// <remarks>
+    /// That includes <see cref="PrintFileOnPrinter.PrinterPath"/> read back from a row: it is the
+    /// printer's own name for the file, stored as it was reported, so having been in the database
+    /// does not make it ours.
+    /// </remarks>
+    private static string ForLog(string? printerWritten)
+    {
+        return LogText.Clean(printerWritten, MaxLoggedLength);
+    }
+
     private async Task AdvanceOnceAsync(int printerId, CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
@@ -529,7 +548,7 @@ public sealed class QueueAdvancer : BackgroundService
             changed = true;
 
             _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}",
-                                   printerId, displayName, data.Path);
+                                   printerId, displayName, ForLog(data.Path));
         }
 
         if (changed)
@@ -871,7 +890,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             _logger.LogInformation(
                 "[{PrinterId}] firmware job {JobId} is {TheirPath}, which nothing here queued; leaving it alone.",
-                printerId, jobId, job.Path ?? job.DisplayName);
+                printerId, jobId, ForLog(job.Path ?? job.DisplayName));
 
             return null;
         }
@@ -1080,7 +1099,7 @@ public sealed class QueueAdvancer : BackgroundService
             _logger.LogInformation(
                 "[{PrinterId}] firmware job {JobId} is {TheirPath}, not the {OurPath} we asked for; " +
                 "the print running here is not ours.",
-                printerId, jobId, job.Path ?? job.DisplayName, commanded.PrinterPath);
+                printerId, jobId, ForLog(job.Path ?? job.DisplayName), ForLog(commanded.PrinterPath));
         }
 
         return ours ? JobAnswer.Ours : JobAnswer.SomebodyElses;
@@ -1469,7 +1488,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             _logger.LogInformation(
                 "[{PrinterId}] {FileName} is already on the drive as {PrinterPath} at the same size; adopting it",
-                printerId, file.FileName, existing.Path);
+                printerId, file.FileName, ForLog(existing.Path));
 
             onPrinter.ArrivedAt = _timeProvider.GetUtcNow();
             onPrinter.PrinterPath = existing.Path ?? file.PrinterPath;
@@ -1694,7 +1713,7 @@ public sealed class QueueAdvancer : BackgroundService
                 return;
             }
 
-            _logger.LogInformation("[{PrinterId}] started printing {Path}", printerId, printerPath);
+            _logger.LogInformation("[{PrinterId}] started printing {Path}", printerId, ForLog(printerPath));
 
             // Starting rather than Printing: the printer has accepted the command and will keep
             // reporting READY for a few seconds yet. ReconcilePrintAsync promotes it when telemetry
@@ -1712,7 +1731,7 @@ public sealed class QueueAdvancer : BackgroundService
             // slot is taken, the team says no, the credential says no. Each is a statement that this
             // command did not reach the printer, so the row is removed rather than left as a question
             // nobody needs to answer.
-            _logger.LogInformation(e, "[{PrinterId}] did not send a print of {Path}", printerId, printerPath);
+            _logger.LogInformation(e, "[{PrinterId}] did not send a print of {Path}", printerId, ForLog(printerPath));
             dbContext.PrintJobs.Remove(commanded);
             await dbContext.SaveChangesAsync(cancellationToken);
         }
@@ -1729,7 +1748,7 @@ public sealed class QueueAdvancer : BackgroundService
             // can. Logged at Warning rather than Information: this is a print in an unknown state,
             // not routine slowness.
             _logger.LogWarning(e, "[{PrinterId}] no answer to starting {Path}; asking the printer what it is doing",
-                               printerId, printerPath);
+                               printerId, ForLog(printerPath));
         }
     }
 
@@ -1788,7 +1807,7 @@ public sealed class QueueAdvancer : BackgroundService
                 _logger.LogWarning(
                     "[{PrinterId}] START_PRINT for {Path} was answered \"No job in progress\", which firmware " +
                     "also says about a print that is starting; treating it as unanswered and asking the printer.",
-                    printerId, commanded.PrinterPath);
+                    printerId, ForLog(commanded.PrinterPath));
                 break;
 
             case "Forbidden path":
@@ -1811,7 +1830,7 @@ public sealed class QueueAdvancer : BackgroundService
                 // "Can't print now", and anything a future firmware adds. Waiting is free and the next
                 // tick asks again; treating an unrecognised reason as terminal would throw away a
                 // print for a string nobody has read yet.
-                _logger.LogDebug("[{PrinterId}] not printing yet: {Reason}", printerId, reason);
+                _logger.LogDebug("[{PrinterId}] not printing yet: {Reason}", printerId, ForLog(reason));
                 dbContext.PrintJobs.Remove(commanded);
                 break;
         }

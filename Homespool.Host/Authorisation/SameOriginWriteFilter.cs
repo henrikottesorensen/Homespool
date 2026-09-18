@@ -10,6 +10,8 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 
+using Homespool.Host.Services;
+
 namespace Homespool.Host.Authorisation;
 
 /// <summary>
@@ -65,6 +67,9 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
     /// <summary>The one value that admits a cookie-authenticated write.</summary>
     public const string SameOrigin = "same-origin";
 
+    /// <summary>The longest value the header is defined to take is <c>same-origin</c>; more than this is not one.</summary>
+    private const int MaxLoggedHeaderLength = 32;
+
     private readonly ILogger<SameOriginWriteFilter> _logger;
 
     public SameOriginWriteFilter(ILogger<SameOriginWriteFilter> logger)
@@ -97,11 +102,15 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
         }
 
         // Information rather than Warning: on a healthy deployment this line means a browser old
-        // enough not to send the header, and "the live view will not start" is answered by it.
+        // enough not to send the header, and "the live view will not start" is answered by it. A
+        // browser writes the header itself; anything else holding the cookie writes what it likes,
+        // so the value is cleaned and cut. The path needs neither - a PathString renders escaped.
         _logger.LogInformation("Refused a cookie-authenticated {Method} to {Path}: Sec-Fetch-Site is {SecFetchSite}.",
                                request.Method,
                                request.Path,
-                               StringValues.IsNullOrEmpty(secFetchSite) ? "absent" : secFetchSite.ToString());
+                               StringValues.IsNullOrEmpty(secFetchSite) ?
+                                   "absent" :
+                                   LogText.Clean(secFetchSite.ToString(), MaxLoggedHeaderLength));
 
         context.Result = new ObjectResult(new ProblemDetails
         {

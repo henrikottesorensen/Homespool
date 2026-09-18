@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Primitives;
 
 using NSubstitute;
@@ -152,6 +154,34 @@ public class SameOriginWriteFilterTests
         ObjectResult result = context.Result.Should().BeOfType<ObjectResult>().Subject;
         result.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         result.Value.Should().BeOfType<ProblemDetails>().Which.Status.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>
+    /// The refusal names the header's value, which only a browser is obliged to write honestly - so
+    /// it is logged cleaned and cut. The path beside it is a <c>PathString</c>, which renders escaped.
+    /// </summary>
+    [Fact]
+    public async Task ARefusalLogsTheHeaderCleaned()
+    {
+        // Arrange
+        FakeLogger<SameOriginWriteFilter> logger = new();
+        AuthorizationFilterContext context = Context(new ControllerActionDescriptor(),
+                                                     "PUT",
+                                                     CookieSucceeded(),
+                                                     "cross-site\u001B[2J" + new string('x', 500));
+        context.HttpContext.Request.Path = "/api/v1/files/a\u001B[2J.gcode";
+
+        // Act
+        await new SameOriginWriteFilter(logger).OnAuthorizationAsync(context);
+
+        // Assert
+        FakeLogRecord refusal = logger.Collector.GetSnapshot().Should().ContainSingle().Subject;
+
+        refusal.StructuredState.Should().Contain(
+            pair => pair.Key == "SecFetchSite" &&
+                    pair.Value!.StartsWith("cross-site\uFFFD[2Jx", StringComparison.Ordinal) &&
+                    pair.Value.EndsWith("<514 characters in all>", StringComparison.Ordinal));
+        refusal.StructuredState.Should().Contain(pair => pair.Key == "Path" && pair.Value == "/api/v1/files/a%1B%5B2J.gcode");
     }
 
     /// <summary>And an admitted request leaves no result behind, so the action runs.</summary>

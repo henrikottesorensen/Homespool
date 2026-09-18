@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -8,7 +9,9 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -52,6 +55,14 @@ public sealed class QueueAdvancerTests : IDisposable
     /// so this - not the seeded <c>PrintFile.Size</c> - is what a drive's copy is compared against.
     /// </summary>
     private const long OnDiskLength = 11;
+
+    /// <summary>
+    /// A drive path with a terminal escape in it, spelt as JSON spells it - the rigs below build the
+    /// printer's answer by interpolation, and the wire is where a printer would put one.
+    /// </summary>
+    private const string DirtyPathJson = "/usb/ALIEN\\u001B[2J.BGC";
+
+    private const string CleanedPath = "/usb/ALIEN\uFFFD[2J.BGC";
 
     /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
     private static readonly Guid QueuedPrintUuid = new("11111111-2222-3333-4444-555555555555");
@@ -1736,6 +1747,141 @@ public sealed class QueueAdvancerTests : IDisposable
         return actor;
     }
 
+    // ---- what the printer wrote, in the log ----
+    [Fact]
+    public async Task AnArrivalIsLoggedWithThePrintersPathCleaned()
+    {
+        // Arrange - a transfer in flight, and the FILE_INFO that ends it naming a path with an escape in it
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await using (TelemetryDbContext telemetry = TestTelemetryContext.For(_databasePath))
+        {
+            telemetry.PrinterEvents.Add(new PrinterEvent
+            {
+                PrinterId = PrinterId,
+                Timestamp = _clock.GetUtcNow(),
+                EventType = PrinterEventType.FileInfo,
+                Payload = $"{{\"display_name\":\"{file.Name}\",\"path\":\"{DirtyPathJson}\"}}",
+            });
+            await telemetry.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        ConnectAccepting();
+        FakeLogger<QueueAdvancer> logger = new();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer(logger);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert - the arrival line, and the start line that reads the same path back from its row
+        ShouldHaveLogged(logger, "PrinterPath", CleanedPath);
+        ShouldHaveLogged(logger, "Path", CleanedPath);
+        ShouldNotHaveLoggedAnEscape(logger);
+    }
+
+    /// <summary>The job a printer describes as its own, which is a path nothing here ever wrote.</summary>
+    [Fact]
+    public async Task APanelJobIsLoggedWithThePrintersPathCleaned()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Idle);
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 738);
+        ConnectAnsweringJobInfo(DirtyPathJson);
+        FakeLogger<QueueAdvancer> logger = new();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer(logger);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        ShouldHaveLogged(logger, "TheirPath", CleanedPath);
+        ShouldNotHaveLoggedAnEscape(logger);
+    }
+
+    /// <summary>The same, asked about a start of ours that went unanswered.</summary>
+    [Fact]
+    public async Task SomebodyElsesJobIsLoggedWithThePrintersPathCleaned()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+        FakeLogger<QueueAdvancer> logger = new();
+
+        using QueueAdvancer advancer = NewAdvancer(logger);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 725);
+        ConnectAnsweringJobInfo(DirtyPathJson);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        ShouldHaveLogged(logger, "TheirPath", CleanedPath);
+        ShouldNotHaveLoggedAnEscape(logger);
+    }
+
+    /// <summary>The name the drive already holds the file under, adopted as the printer spells it.</summary>
+    [Fact]
+    public async Task AnAdoptedFileIsLoggedWithThePrintersPathCleaned()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectRefusingTransferAsExisting(existingSize: OnDiskLength, existingPath: DirtyPathJson);
+        FakeLogger<QueueAdvancer> logger = new();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer(logger);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        ShouldHaveLogged(logger, "PrinterPath", CleanedPath);
+        ShouldNotHaveLoggedAnEscape(logger);
+    }
+
+    /// <summary>A refusal nobody has read before is logged so somebody can - which is what makes it a way in.</summary>
+    [Fact]
+    public async Task AnUnknownRefusalIsLoggedCleaned()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectRefusing("Not now\u001B[2J");
+        FakeLogger<QueueAdvancer> logger = new();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer(logger);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        ShouldHaveLogged(logger, "Reason", "Not now\uFFFD[2J");
+        ShouldNotHaveLoggedAnEscape(logger);
+    }
+
+    private static void ShouldHaveLogged(FakeLogger<QueueAdvancer> logger, string property, string value)
+    {
+        logger.Collector.GetSnapshot()
+              .Should().Contain(record => record.StructuredState != null &&
+                                          record.StructuredState.Any(pair => pair.Key == property && pair.Value == value));
+    }
+
+    private static void ShouldNotHaveLoggedAnEscape(FakeLogger<QueueAdvancer> logger)
+    {
+        logger.Collector.GetSnapshot()
+              .Where(record => record.StructuredState != null)
+              .SelectMany(record => record.StructuredState!)
+              .Should().NotContain(pair => pair.Value != null && pair.Value.Contains('\u001B'));
+    }
+
     /// <summary>
     /// A printer that describes the job it is running as <paramref name="path"/>, and still will not
     /// answer a print command. Returned so a test can count how often it was asked.
@@ -1760,7 +1906,7 @@ public sealed class QueueAdvancerTests : IDisposable
         return actor;
     }
 
-    private QueueAdvancer NewAdvancer()
+    private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
@@ -1796,7 +1942,7 @@ public sealed class QueueAdvancerTests : IDisposable
             _registry,
             _signal,
             _clock,
-            NullLogger<QueueAdvancer>.Instance);
+            logger ?? NullLogger<QueueAdvancer>.Instance);
     }
 
     /// <summary>A user, a team, a printer, a file, and one thing queued on it.</summary>

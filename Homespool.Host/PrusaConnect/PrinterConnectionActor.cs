@@ -25,6 +25,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </summary>
     private const int MailboxCapacity = 64;
 
+    /// <summary>
+    /// How much of a refusal's text is worth a log line. Firmware's own run to a short sentence; the
+    /// field is a string in a message of up to a megabyte, and the sender sizes it.
+    /// </summary>
+    private const int MaxLoggedReasonLength = 256;
+
     private readonly int _printerId;
     private readonly IPrinterConnection _connection;
     private readonly ITelemetrySink _sink;
@@ -586,16 +592,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
             // The other half of the pair above, and the reason SentAt is on Pending at all: elapsed
             // is what separates a sluggish printer from a wedged one, and neither is visible from
-            // the outcome alone. Reason is firmware's own rejection text (JC's macro strings), not
-            // anything we compose - safe to log, and usually the only explanation of a Rejected.
+            // the outcome alone. Reason is firmware's own rejection text (JC's macro strings), and
+            // usually the only explanation of a Rejected - but it is whatever the far end wrote, so
+            // it is cleaned and bounded like anything else off the wire.
             _logger.LogDebug(
                 "command {CommandId} ({Command}) answered with {EventType} after {ElapsedMs:F0}ms{Reason} [{MachineReason}]",
                 answered.CommandId,
                 answered.WireName,
                 eventDto.EventType,
                 ElapsedMilliseconds(answered),
-                eventDto.Reason is null ? string.Empty : $": {eventDto.Reason}",
-                eventDto.MachineReason);
+                eventDto.Reason is null ? string.Empty : $": {LogText.Clean(eventDto.Reason, MaxLoggedReasonLength)}",
+                LogText.Clean(eventDto.MachineReason, MaxLoggedReasonLength));
 
             // Data rides on the result rather than the outcome, and never reaches the log line above:
             // a payload is the one part of an answer that can carry anything, and FILE_INFO's runs to

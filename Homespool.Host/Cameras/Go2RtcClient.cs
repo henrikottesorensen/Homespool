@@ -13,6 +13,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Services;
+
 namespace Homespool.Host.Cameras;
 
 /// <summary>
@@ -56,6 +58,12 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// sidecar's configuration, so nothing moves it.
     /// </summary>
     private const int RtspPort = 8554;
+
+    /// <summary>
+    /// How much of the sidecar's own words is worth a log line. Its refusals are a sentence; the body
+    /// they arrive in has no limit, and can repeat what a camera or a viewer's offer said.
+    /// </summary>
+    private const int MaxLoggedAnswerLength = 256;
 
     /// <summary>
     /// How often to say that the sidecar has no credential. Once a minute, because the frame endpoint
@@ -556,7 +564,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
                     _logger.LogInformation(
                         "Camera {Stream} cannot be watched live: {Reason}",
                         streamName,
-                        body.Trim());
+                        LogText.Clean(body.Trim(), MaxLoggedAnswerLength));
 
                     return new WebRtcOffer(WebRtcOfferOutcome.CodecUnsupported, null);
                 }
@@ -565,7 +573,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
                     "The stream server refused a WebRTC offer for camera {Stream}: {StatusCode} {Body}",
                     streamName,
                     (int)response.StatusCode,
-                    body.Trim());
+                    LogText.Clean(body.Trim(), MaxLoggedAnswerLength));
 
                 return new WebRtcOffer(WebRtcOfferOutcome.Failed, null);
             }
@@ -802,7 +810,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
                 _logger.LogWarning(
                     "The stream server refused a codec probe for {StreamName}: {StatusLine}.",
                     streamName,
-                    answer.Split('\r')[0]);
+                    LogText.Clean(answer.Split('\r')[0], MaxLoggedAnswerLength));
 
                 return null;
             }

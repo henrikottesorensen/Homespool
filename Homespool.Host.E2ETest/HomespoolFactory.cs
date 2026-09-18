@@ -323,8 +323,8 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // in appsettings.Development.json - which is a real machine's LAN address, and changes.
             services.PostConfigure<PrusaConnectOptions>(options => options.PrinterHost = PrinterHost);
 
-            // Program.cs's .ReadFrom.Services(services) call wires up any ILogEventSink registered
-            // here alongside its own console sink - a bare Microsoft.Extensions.Logging.ILoggerProvider
+            // Program.cs writes to any ILogEventSink registered here alongside its own console sink,
+            // both behind the same wrapper, so a test sees an event as the console was handed it - a bare Microsoft.Extensions.Logging.ILoggerProvider
             // registered the same way does *not* work, because AddSerilog replaces ILoggerFactory with
             // a bridge to the one configured Serilog pipeline rather than fanning out to independently
             // registered logging providers. This is how a test observes log output (e.g.

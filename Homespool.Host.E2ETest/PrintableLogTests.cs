@@ -4,6 +4,9 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
@@ -58,5 +61,23 @@ public sealed class PrintableLogTests : IAsyncLifetime
             TimeSpan.FromSeconds(5));
 
         logged.Should().BeTrue("the request line is a log event like any other, and its path a property like any other");
+    }
+
+    /// <summary>
+    /// The host's sinks stand behind the wrapper: an exception whose message carries a stranger's
+    /// characters reaches a sink printable, and still reaches it.
+    /// </summary>
+    [Fact]
+    public void AnExceptionReachesTheHostsSinksPrintable()
+    {
+        // Arrange
+        ILogger<PrintableLogTests> logger = _factory.Services.GetRequiredService<ILogger<PrintableLogTests>>();
+
+        // Act
+        logger.LogError(new InvalidOperationException("no file named model\u001B[2J\u202E.gcode"), "It failed");
+
+        // Assert
+        _logs.Failures.Should().ContainSingle(failure => failure.MessageTemplate.Text == "It failed")
+             .Which.Exception!.ToString().Should().Contain("no file named model\uFFFD[2J\uFFFD.gcode");
     }
 }

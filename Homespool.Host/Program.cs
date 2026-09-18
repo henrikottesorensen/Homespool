@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 
 using Serilog;
+using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 
@@ -28,6 +29,7 @@ using Homespool.Host.Middleware;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
+using Homespool.Host.Services;
 
 namespace Homespool.Host;
 
@@ -48,7 +50,7 @@ public static class Program
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()
                      .Enrich.With<Services.PrintableLogEnricher>()
-                     .WriteTo.Console(new RenderedCompactJsonFormatter())
+                     .WriteTo.WithPrintableExceptions(sinks => sinks.Console(new RenderedCompactJsonFormatter()))
                      .CreateBootstrapLogger();
 
         try
@@ -104,11 +106,25 @@ public static class Program
             // PrintableLogEnricher goes last among the enrichers, so whatever an earlier one adds - a
             // scope's values, anything configuration brings - is an ordinary property by the time it
             // looks, and is made printable with the rest.
+            //
+            // Every sink goes inside WithPrintableExceptions, the console and any the container
+            // holds alike: an exception's text is the one part of an event an enricher cannot change,
+            // so it is made printable by what stands in front of the sink. The container's sinks are
+            // added here by hand for that reason - ReadFrom.Services would add them beside the
+            // wrapper rather than behind it, and it has nothing else to read: no enricher, filter or
+            // level switch is registered with the container.
             builder.Services.AddSerilog((services, lc) => lc.ReadFrom.Configuration(builder.Configuration)
-                                                                        .ReadFrom.Services(services)
                                                                         .Enrich.FromLogContext()
                                                                         .Enrich.With<Services.PrintableLogEnricher>()
-                                                                        .WriteTo.Console(new RenderedCompactJsonFormatter()),
+                                                                        .WriteTo.WithPrintableExceptions(sinks =>
+                                                                        {
+                                                                            sinks.Console(new RenderedCompactJsonFormatter());
+
+                                                                            foreach (ILogEventSink sink in services.GetServices<ILogEventSink>())
+                                                                            {
+                                                                                sinks.Sink(sink);
+                                                                            }
+                                                                        }),
                                         preserveStaticLogger: true);
 
             builder.Services.AddHomespoolData(builder.Configuration);

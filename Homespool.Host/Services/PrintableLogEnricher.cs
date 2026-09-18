@@ -40,8 +40,9 @@ namespace Homespool.Host.Services;
 /// value that arrived dirty must not read back as a clean one somebody could have sent.
 /// </para>
 /// <para>
-/// <b>What this does not reach:</b> an exception's text, which is not a property, and the message
-/// template, which is ours. It bounds no lengths either.
+/// <b>What this does not reach:</b> an exception's text, which is not a property and which no
+/// enricher can replace - <see cref="PrintableExceptionSink"/> does that - and the message template,
+/// which is ours. It bounds no lengths either.
 /// </para>
 /// </remarks>
 public sealed class PrintableLogEnricher : ILogEventEnricher
@@ -84,6 +85,19 @@ public sealed class PrintableLogEnricher : ILogEventEnricher
     /// </summary>
     public static string Printable(string text)
     {
+        return Printable(text, keepLineBreaks: false);
+    }
+
+    /// <summary>
+    /// As <see cref="Printable(string)"/>, optionally leaving line feeds, carriage returns and tabs
+    /// where they are.
+    /// </summary>
+    /// <remarks>
+    /// For an exception's text and nothing else: a stack trace is made of line breaks, and replacing
+    /// them would turn it into one line nobody can read. A property has no such excuse.
+    /// </remarks>
+    public static string Printable(string text, bool keepLineBreaks)
+    {
         ArgumentNullException.ThrowIfNull(text);
 
         StringBuilder? replaced = null;
@@ -95,7 +109,7 @@ public sealed class PrintableLogEnricher : ILogEventEnricher
             bool paired = Rune.TryGetRuneAt(text, index, out Rune rune);
             int length = paired ? rune.Utf16SequenceLength : 1;
 
-            if (paired && !IsUnprintable(rune))
+            if (paired && (!IsUnprintable(rune) || (keepLineBreaks && rune.Value is '\n' or '\r' or '\t')))
             {
                 replaced?.Append(text, index, length);
             }

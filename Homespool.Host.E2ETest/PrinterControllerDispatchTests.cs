@@ -220,7 +220,7 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
         using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
 
         using HttpResponseMessage response =
-            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb", TestContext.Current.CancellationToken);
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -253,7 +253,7 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
         using HttpClient client = await ScopedClientAsync(userId, [Capability.ViewPrinter]);
 
         using HttpResponseMessage response =
-            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb", TestContext.Current.CancellationToken);
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 

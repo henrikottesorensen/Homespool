@@ -370,6 +370,7 @@ public static class Program
             builder.Services.AddSingleton<Middleware.ClientGoneMiddleware>();
 
             builder.Services.AddScoped<PrusaConnect.PrusaConnectService>()
+                            .AddScoped<PrusaConnect.RegistrationCodeClaim>()
                             .AddScoped<PrusaConnect.WebSocketHandler>()
                             .AddScoped<PrusaConnect.TokenService>()
                             .AddScoped<PrusaConnect.CodeGenerator>()

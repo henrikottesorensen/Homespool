@@ -47,6 +47,7 @@ public static class Program
         Log.Logger = new LoggerConfiguration()
                      .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
                      .Enrich.FromLogContext()
+                     .Enrich.With<Services.PrintableLogEnricher>()
                      .WriteTo.Console(new RenderedCompactJsonFormatter())
                      .CreateBootstrapLogger();
 
@@ -99,9 +100,14 @@ public static class Program
             // suite that runs hundreds, where the symptom was a host failing to build at all and
             // assertions about log output finding an empty sink - and the workaround was to forbid the
             // suite from starting two hosts at once, which cost it about four minutes a run.
+            //
+            // PrintableLogEnricher goes last among the enrichers, so whatever an earlier one adds - a
+            // scope's values, anything configuration brings - is an ordinary property by the time it
+            // looks, and is made printable with the rest.
             builder.Services.AddSerilog((services, lc) => lc.ReadFrom.Configuration(builder.Configuration)
                                                                         .ReadFrom.Services(services)
                                                                         .Enrich.FromLogContext()
+                                                                        .Enrich.With<Services.PrintableLogEnricher>()
                                                                         .WriteTo.Console(new RenderedCompactJsonFormatter()),
                                         preserveStaticLogger: true);
 
@@ -644,7 +650,12 @@ public static class Program
 
             // Log HTTP requests with Serilog, order of this matters.
             // Requests handled before in the pipeline are NOT logged.
-            app.UseSerilogRequestLogging();
+            //
+            // Handed this host's own logger rather than left to find one: without it the middleware
+            // writes through Serilog's process-wide static, which is this host's only when it owns it
+            // (see OwnsTheStaticLogger above). Every deployment does, so nothing changes there; a host
+            // that does not would send its request lines to whoever does.
+            app.UseSerilogRequestLogging(options => options.Logger = app.Services.GetRequiredService<Serilog.ILogger>());
 
             // A failure a person meets in a browser is answered with the error page and its trace id;
             // everything machine-facing keeps the bare 500 (ErrorPageScope). Development keeps the

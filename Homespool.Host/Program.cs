@@ -412,6 +412,11 @@ public static class Program
             // store pins bytes and knows nothing of ciphers, which the inline path relies on.
             builder.Services.AddSingleton<PrusaConnect.Transfers.EncryptedTransferOffers>();
 
+            // Closes offers no printer came back for. The store sweeps as it offers, which never
+            // reaches the last offer before a quiet spell - and that one holds an open file, a key
+            // and a URL anyone can fetch.
+            builder.Services.AddHostedService<PrusaConnect.Transfers.TransferOfferSweepService>();
+
             // Uploaded gcode: options, the store, and the content-root accessor it needs. Singleton
             // because the store holds no per-request state - it is a path and a couple of rules.
             builder.Services.AddOptions<PrintFiles.PrintFileStorageOptions>()

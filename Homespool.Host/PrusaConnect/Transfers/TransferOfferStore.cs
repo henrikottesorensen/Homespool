@@ -31,7 +31,7 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// connection that consumes it: a printer that drops mid-transfer and is commanded again reopens the
 /// same token, which is covered by a test. Handing ownership to the first consumer would have made
 /// that second attempt fail. What the borrowing costs is a lifecycle - hence
-/// <see cref="OfferLifetime"/>.
+/// <see cref="CollectWithin"/> and <see cref="ResumeWithin"/>.
 /// </para>
 /// <para>
 /// In memory and therefore not durable, which is the right trade rather than a shortcut: an offer is
@@ -50,22 +50,45 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
 {
     /// <summary>
-    /// How long an offer nobody is using is kept before its handle is closed.
+    /// How long a printer has to make its first request for an offer before the offer is closed.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Before the handle existed this was not a problem: a consumed offer left a string in a
-    /// dictionary, and nobody cared. A file descriptor is worth reclaiming, and nothing else would -
-    /// a successful transfer never revokes its offer, and the printer that acked a command and then
-    /// rebooted never comes back for it.
+    /// Short, because nothing legitimate is slow here. A printer answers the command at once, a
+    /// refusal revokes the offer there and then, and one that accepted has taken a transfer slot and
+    /// fetches as its next step - so an offer still unopened after minutes belongs to a printer that
+    /// acknowledged and then went away, and what it holds is worth reclaiming: an open file
+    /// descriptor, and on the encrypted path a key and a URL that anyone who saw it can fetch.
     /// </para>
     /// <para>
-    /// <b>Only idle offers are swept</b>, so this cannot cut a transfer short however long it runs;
-    /// a borrowed offer is skipped and collected once it is given back. The hour is therefore about
-    /// how long a <i>finished or abandoned</i> offer lingers, not a limit on anything in progress.
+    /// Minutes rather than seconds only to leave room for a printer that is busy with its USB
+    /// stick when the command arrives.
     /// </para>
     /// </remarks>
-    private static readonly TimeSpan OfferLifetime = TimeSpan.FromHours(1);
+    public static readonly TimeSpan CollectWithin = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How long an offer a printer has opened is kept for it to come back to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Longer, because a printer does come back: firmware retries a dropped download, keeps retrying
+    /// for as long as it is printing, and writes the request to the USB stick so that a reboot
+    /// resumes it under the same token. The ceiling is the queue's own patience
+    /// (<c>QueueAdvancer.TransferStaleAfter</c>, and a test holds the two equal): past it the file
+    /// is offered again under a fresh token, so nothing legitimate returns for this one.
+    /// </para>
+    /// <para>
+    /// <b>Both limits run from when the offer was made, and neither slides.</b> A limit measured
+    /// from the last read would let whoever holds a token keep its offer alive by fetching, and on
+    /// the encrypted path the token travels in a plain-HTTP URL.
+    /// </para>
+    /// <para>
+    /// <b>Only idle offers are closed</b>, so neither limit can cut a transfer short however long
+    /// it runs; a borrowed offer is skipped and collected once it is given back.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan ResumeWithin = TimeSpan.FromMinutes(30);
 
     private readonly ConcurrentDictionary<string, PinnedOffer> _offers = new(StringComparer.Ordinal);
     private readonly TimeProvider _timeProvider;
@@ -177,35 +200,61 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     /// <inheritdoc />
     public bool TryOpen(string hash, int printerId, [NotNullWhen(true)] out ITransferContent? content)
     {
+        content = null;
+
         // One answer for "unknown" and "not yours", as the interface promises. A printer that
         // presents a token it was never given learns nothing from the refusal.
-        content = _offers.TryGetValue(hash, out PinnedOffer? offer) && offer.PrinterId == printerId ?
-            offer.Borrow() :
-            null;
+        if (!_offers.TryGetValue(hash, out PinnedOffer? offer) || offer.PrinterId != printerId)
+        {
+            return false;
+        }
+
+        // The sweep runs on a timer, so an offer can be past its limit and still here. Checking on
+        // the way in is what makes the limit exact for the one thing that matters to a stranger -
+        // whether the token still opens anything - and the answer is the one the sweep would have
+        // given a moment later.
+        if (offer.IsAbandoned(_timeProvider.GetUtcNow()))
+        {
+            RetireAbandoned(hash, offer);
+
+            return false;
+        }
+
+        content = offer.Borrow();
 
         return content is not null;
     }
 
     /// <summary>
-    /// Closes offers nobody is reading and nobody came back for. Runs on the way in, so this needs no
-    /// timer and no background service.
+    /// Closes offers nobody is reading and nobody came back for: one never opened within
+    /// <see cref="CollectWithin"/>, or one opened and left idle past <see cref="ResumeWithin"/>.
     /// </summary>
-    private void SweepIdle()
+    /// <remarks>
+    /// Called on a timer by <see cref="TransferOfferSweepService"/>, because the offer that matters
+    /// most is the last one before a quiet spell and nothing else would ever reach it.
+    /// <see cref="Offer"/> sweeps as well, which costs a scan of a handful of entries and bounds a
+    /// store that is running without the service. Public so a test can run a pass without racing
+    /// a hosted service's start.
+    /// </remarks>
+    public void SweepIdle()
     {
-        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - OfferLifetime;
+        DateTimeOffset now = _timeProvider.GetUtcNow();
 
         foreach (KeyValuePair<string, PinnedOffer> entry in _offers)
         {
-            if (entry.Value.OfferedAt > cutoff || !entry.Value.IsIdle)
+            if (entry.Value.IsAbandoned(now))
             {
-                continue;
+                RetireAbandoned(entry.Key, entry.Value);
             }
+        }
+    }
 
-            if (_offers.TryRemove(entry))
-            {
-                Retire(entry.Key, entry.Value);
-                _logger.LogInformation("Closed a transfer offer nobody collected");
-            }
+    private void RetireAbandoned(string token, PinnedOffer offer)
+    {
+        if (_offers.TryRemove(new KeyValuePair<string, PinnedOffer>(token, offer)))
+        {
+            Retire(token, offer);
+            _logger.LogInformation("Closed a transfer offer nobody collected");
         }
     }
 
@@ -222,6 +271,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         private readonly Lock _gate = new();
         private readonly ITransferContent _content;
         private int _readers;
+        private bool _opened;
         private bool _retired;
 
         public PinnedOffer(ITransferContent content, DateTimeOffset offeredAt, int printerId)
@@ -248,12 +298,35 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
             }
         }
 
-        /// <summary>Lends the content out. The borrower disposes its view, not the handle.</summary>
-        public ITransferContent Borrow()
+        /// <summary>
+        /// Whether the offer has outlived the limit that applies to it with nothing reading it:
+        /// <see cref="CollectWithin"/> until a printer first opens it, <see cref="ResumeWithin"/>
+        /// after.
+        /// </summary>
+        public bool IsAbandoned(DateTimeOffset now)
         {
             lock (_gate)
             {
+                return _readers == 0 && now - OfferedAt >= (_opened ? ResumeWithin : CollectWithin);
+            }
+        }
+
+        /// <summary>
+        /// Lends the content out. The borrower disposes its view, not the handle. Null once the
+        /// offer is retired: a sweep on another thread can take it out of service between a lookup
+        /// finding it and this call, and a view over a closed handle would fail on its first read.
+        /// </summary>
+        public ITransferContent? Borrow()
+        {
+            lock (_gate)
+            {
+                if (_retired)
+                {
+                    return null;
+                }
+
                 _readers++;
+                _opened = true;
             }
 
             return new BorrowedContent(this, _content);

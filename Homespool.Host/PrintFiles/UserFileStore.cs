@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.Services;
 
 namespace Homespool.Host.PrintFiles;
 
@@ -547,7 +548,7 @@ public sealed class UserFileStore
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Quotes, angle brackets and control characters are refused here</b> and nowhere else,
+    /// <b>Quotes, angle brackets, control characters and the invisible marks are refused here</b> and nowhere else,
     /// because a name is not only a path: it is echoed onto every page that lists it, into log lines,
     /// into JSON bodies and onto the printer's own display. Those consumers escape their own output
     /// and remain the thing that makes them safe - this is the second layer, and the one that holds
@@ -556,6 +557,13 @@ public sealed class UserFileStore
     /// literal, so an upload-scoped API token could plant a row that ran script in the owner's
     /// session. That page no longer builds script from a name, and this stops the next one being
     /// written.
+    /// </para>
+    /// <para>
+    /// <b>The invisible marks are the zero-width and bidi characters</b>, which carry no control
+    /// character and still make a name render as something it is not: a right-to-left override lets
+    /// a name that ends in <c>.exe</c> read as one ending in <c>.gcode</c> - on a page, in a log line and on
+    /// the printer's display. <see cref="LogText.IsUnprintable"/> is the one definition, so a name that
+    /// gets in is a name every log line can carry as it stands.
     /// </para>
     /// <para>
     /// <b>Deliberately not in <see cref="SafeName"/>, which lookups use.</b> Tightening the read path
@@ -580,7 +588,7 @@ public sealed class UserFileStore
 
         foreach (char character in name)
         {
-            if (char.IsControl(character) || character is '"' or '\'' or '<' or '>' or '\\')
+            if (LogText.IsUnprintable(character) || character is '"' or '\'' or '<' or '>' or '\\')
             {
                 throw PrintFileNameRejectedException.ForForbiddenCharacters(name, nameof(fileName));
             }

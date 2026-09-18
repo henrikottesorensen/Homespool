@@ -100,7 +100,11 @@ public static class LogText
     /// Control characters, and the bidi and zero-width marks that would let a value render a log line
     /// deceptively without carrying a control character at all.
     /// </summary>
-    private static bool IsUnprintable(char character)
+    /// <remarks>
+    /// Public for the rules that refuse these on the way in rather than replace them on the way out:
+    /// a name that may not hold one needs the same answer this gives, not a copy of it.
+    /// </remarks>
+    public static bool IsUnprintable(char character)
     {
         return char.IsControl(character) ||
 

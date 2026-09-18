@@ -279,6 +279,66 @@ public sealed class UserFileStoreTests : IDisposable
     }
 
     /// <summary>
+    /// The zero-width and bidi marks are refused like a control character: they carry none, and still
+    /// let a name render as something it is not - on the page, on the printer, and in every log line
+    /// that names the file.
+    /// </summary>
+    /// <remarks>
+    /// One from each family, written as escapes: <c>LogTextTests</c> walks the whole set, and this
+    /// pins that the name rule asks the same question rather than a copy of it.
+    /// </remarks>
+    [Theory]
+    [InlineData("model\u200B.gcode")]
+    [InlineData("model\uFEFF.gcode")]
+    [InlineData("model\u202Eedocg.exe")]
+    [InlineData("model\u2066.gcode")]
+    public async Task ANameWithAnInvisibleMarkIsRefused(string given)
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        // Act
+        Func<Task> act = () => SaveAsync(store, Alice, given, [1]);
+
+        // Assert
+        (await act.Should().ThrowAsync<PrintFileNameRejectedException>("what a person reads is not what was stored"))
+            .Which.ResourceKey.Should().Be("Error_FileNameCharacters");
+        store.List(Alice).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RenamingToANameWithAnInvisibleMarkIsRefused()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        await SaveAsync(store, Alice, "model.gcode", [1]);
+
+        // Act
+        Action act = () => store.Rename(Alice, "model.gcode", "model\u202E-2.gcode");
+
+        // Assert
+        act.Should().Throw<PrintFileNameRejectedException>("rename is the other way a name gets in")
+           .Which.ResourceKey.Should().Be("Error_FileNameCharacters", "the extension is a good one, so only the mark can be why");
+        store.Find(Alice, "model.gcode").Should().NotBeNull("and the refused rename leaves the file alone");
+    }
+
+    /// <summary>Everything merely non-English still gets in - the refusal is about rendering, not alphabet.</summary>
+    [Theory]
+    [InlineData("Br\u00E4cket-2.gcode")]
+    [InlineData("\u65E5\u672C\u8A9E.gcode")]
+    public async Task ANonEnglishNameIsStillTaken(string given)
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        // Act
+        StoredFile stored = await SaveAsync(store, Alice, given, [1]);
+
+        // Assert
+        stored.FileName.Should().Be(given);
+    }
+
+    /// <summary>
     /// A backslash is refused on upload, though on Linux it does not split the name here.
     /// </summary>
     /// <remarks>

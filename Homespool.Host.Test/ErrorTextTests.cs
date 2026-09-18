@@ -215,7 +215,8 @@ public sealed class ErrorTextTests
             "Cameras_SourceIsThisServer", "Cameras_SourceUnresolvable", "Cameras_NotFoundOrNotYours",
             "Cameras_AttachedNeedsAdministrator", "Cameras_AttachedDeviceUnknown",
             "Cameras_AttachedSourceNotComposed", "Cameras_NotYourTeam", "Cameras_PrinterNotOnTeam",
-            "Cameras_StreamServerRefused", "Cameras_NoPictureLocal", "Cameras_NoPictureNetwork",
+            "Cameras_StreamServerRefused", "Cameras_StreamServerNoCredential",
+            "Cameras_NoPictureLocal", "Cameras_NoPictureNetwork",
             "Bundle_AddressSurvivesLease", "Bundle_AddressIsTheContainers",
             "Bundle_AddressUntilLeaseMoves", "Bundle_AddressUnclassified",
         ];

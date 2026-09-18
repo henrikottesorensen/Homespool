@@ -88,11 +88,11 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime
         JsonElement document = await DocumentAsync();
 
         // Act
-        JsonElement get = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("get");
+        JsonElement post = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("post");
 
         // Assert
-        SchemaOf(get, "200").GetProperty("$ref").GetString()
-                            .Should().Be("#/components/schemas/PrinterStorageReadDTO");
+        SchemaOf(post, "200").GetProperty("$ref").GetString()
+                             .Should().Be("#/components/schemas/PrinterStorageReadDTO");
 
         // And the entry shape it nests, since a listing with untyped children would document nothing
         // that matters.
@@ -120,11 +120,11 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime
         JsonElement document = await DocumentAsync();
 
         // Act
-        JsonElement get = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("get");
+        JsonElement post = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("post");
 
         // Assert
-        SchemaOf(get, statusCode).GetProperty("$ref").GetString()
-                                 .Should().Be("#/components/schemas/ProblemDetails");
+        SchemaOf(post, statusCode).GetProperty("$ref").GetString()
+                                  .Should().Be("#/components/schemas/ProblemDetails");
     }
 
     /// <summary>
@@ -145,8 +145,8 @@ public sealed class OpenApiDocumentTests : IAsyncLifetime
         JsonElement document = await DocumentAsync();
 
         // Act
-        JsonElement get = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("get");
-        JsonElement content = get.GetProperty("responses").GetProperty(statusCode).GetProperty("content");
+        JsonElement post = document.GetProperty("paths").GetProperty(StoragePath).GetProperty("post");
+        JsonElement content = post.GetProperty("responses").GetProperty(statusCode).GetProperty("content");
 
         // Assert
         content.EnumerateObject().Select(mediaType => mediaType.Name)

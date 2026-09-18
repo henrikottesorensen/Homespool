@@ -49,13 +49,12 @@ namespace Homespool.Host.Authorisation;
 /// <b>Controllers only, and only their writes.</b> <see cref="MvcOptions.Filters"/> reaches Razor
 /// Pages as well, and every page handler that writes already validates the antiforgery token, which
 /// is a stronger proof of origin than this and one the page tests sign in without this header to
-/// exercise - so a page is left alone by construction. Reads are never refused: a cross-site GET
-/// carries no cookie under <c>Lax</c>, and the API's GETs are reads with one exception -
-/// <c>printers/{uuid}/storage/usb</c> reads by making the printer go and list a directory, which
-/// needs the printer's UUID and <c>ControlPrinter</c> and answers where a foreign
-/// page cannot read it. Registered for every controller
-/// rather than declared per action, so a controller added later is covered without anyone remembering
-/// to say so.
+/// exercise - so a page is left alone by construction. Reads are never refused, which holds only
+/// while the API's GETs are reads: <c>Lax</c> still attaches the cookie to a GET a foreign page
+/// navigates to, and to any GET from another origin on this site. So an action that reaches a
+/// printer is a write whatever it returns - the storage listing is a POST for that reason.
+/// Registered for every controller rather than declared per action, so a controller added later is
+/// covered without anyone remembering to say so.
 /// </para>
 /// </remarks>
 public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter

@@ -147,7 +147,7 @@ public sealed class HttpPrinterSessions : BackgroundService
                     "server recognises. It is being treated as Buddy firmware, so it will be offered " +
                     "an encrypted download; if its transfers time out, that assumption is why.",
                     printerId,
-                    connection.Client.UserAgent);
+                    connection.Client.UserAgentForLog);
             }
 
             // Same as a socket arriving: there may be work waiting for it. The signal cannot fail

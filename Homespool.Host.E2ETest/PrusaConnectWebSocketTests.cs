@@ -103,6 +103,45 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The connect line names the printer by headers the printer wrote, so it carries them cleaned and
+    /// the fingerprint in its key form - the same sixteen characters every other line uses for it.
+    /// </summary>
+    /// <remarks>
+    /// The line is Debug, which is where an operator chasing a misbehaving printer turns first, and
+    /// the level is raised for this one category so the sink sees it. The header's tail is what makes
+    /// the fingerprint case real: authentication reads the key form, so a printer can append anything
+    /// it likes after the sixteenth character and still be let in.
+    /// </remarks>
+    [Fact]
+    public async Task TheConnectLineCarriesThePrintersHeadersCleaned()
+    {
+        // Arrange
+        _factory.ConfigurationOverrides["Serilog:MinimumLevel:Override:Homespool.Host.Controllers.PrusaConnectPrinterController"] = "Debug";
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        WebSocketClient wsClient = _factory.Server.CreateWebSocketClient();
+        wsClient.SubProtocols.Add(Headers.Values.WSProtocolPrusaConnect);
+        wsClient.ConfigureRequest = request =>
+        {
+            request.Headers[Headers.Fingerprint] = identity.HeaderFingerprint + "\u001B[2Jforged";
+            request.Headers[Headers.Token] = token;
+            request.Headers[Headers.UserAgentPrinter] = "MK4\u001B[2J";
+            request.Headers[Headers.UserAgentVersion] = "6.4.0";
+        };
+
+        // Act
+        using WebSocket socket = await wsClient.ConnectAsync(PrinterListener.WebSocketUri(_factory), CancellationToken.None);
+
+        await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "test complete", CancellationToken.None);
+
+        // Assert
+        _logs.HasEventWith(("Printer", "MK4\uFFFD[2J"), ("Fingerprint", identity.HeaderFingerprint))
+             .Should().BeTrue("the connect line is written from the request's own headers");
+    }
+
+    /// <summary>
     /// Opens an authenticated socket the way a printer does, so a test can drive the close paths.
     /// </summary>
     private async Task<WebSocket> ConnectAsPrinterAsync()

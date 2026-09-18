@@ -1,3 +1,5 @@
+using Homespool.Host.Services;
+
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>How a printer is talking to us.</summary>
@@ -95,14 +97,36 @@ public sealed record PrinterClient(PrinterTransport Transport, string? UserAgent
     /// </summary>
     public bool IsUnrecognised => UserAgent is not null && !IsConnectSdk;
 
+    /// <summary>
+    /// How much of a name the client chose is worth a log line. The SDK's agent is under forty
+    /// characters and a firmware version under twenty; a request header can run to kilobytes.
+    /// </summary>
+    public const int MaxLoggedLength = 128;
+
+    /// <summary>
+    /// <see cref="UserAgent"/> as a log line may carry it, or <see langword="null"/> where there is none.
+    /// </summary>
+    /// <remarks>
+    /// The header is the sender's, every byte and however many of them, and authenticating says who
+    /// sent it rather than what it holds. <see cref="UserAgent"/> itself stays as it arrived, because
+    /// recognising a client is a comparison against what was really said.
+    /// </remarks>
+    public string? UserAgentForLog => UserAgent is null ? null : LogText.Clean(UserAgent, MaxLoggedLength);
+
     /// <summary>What to put in a log line, without a null reading as a missing value.</summary>
+    /// <remarks>
+    /// Both halves are the printer's own words - the agent from a header, the version from its
+    /// <c>INFO</c> - so both are cleaned and bounded here rather than by whoever logs this.
+    /// </remarks>
     public string Describe
     {
         get
         {
-            string who = UserAgent ?? "unannounced (Buddy)";
+            string who = UserAgentForLog ?? "unannounced (Buddy)";
 
-            return FirmwareVersion is null ? $"{Transport}, {who}" : $"{Transport}, {who}, firmware {FirmwareVersion}";
+            return FirmwareVersion is null ?
+                $"{Transport}, {who}" :
+                $"{Transport}, {who}, firmware {LogText.Clean(FirmwareVersion, MaxLoggedLength)}";
         }
     }
 

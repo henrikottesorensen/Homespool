@@ -24,6 +24,7 @@ using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO;
 using Homespool.Host.RateLimiting;
+using Homespool.Host.Services;
 
 // What both HTTP-transport ingest endpoints answer, and the helper behind them: named once,
 // because a union spelled out at three sites is three chances for one to drift. The file arm is a
@@ -131,8 +132,8 @@ public class PrusaConnectPrinterController : ControllerBase
                 _logger.LogDebug("Connected websocket from {Client}:{Port} {Printer} {Fingerprint} {PrinterId}",
                                  HttpContext.Connection.RemoteIpAddress,
                                  HttpContext.Connection.RemotePort,
-                                 clientHeaders.Printer,
-                                 clientHeaders.FingerPrint,
+                                 LogText.Clean(clientHeaders.Printer, PrinterClient.MaxLoggedLength),
+                                 LogText.Clean(PrinterFingerprint.Key(clientHeaders.FingerPrint ?? string.Empty)),
                                  printerId);
 
                 // The read side: WebSocketStream (.NET 10) presents the socket as a plain byte

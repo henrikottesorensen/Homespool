@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
@@ -264,11 +265,25 @@ public static class AuthenticationBuilderExtensions
             options.TokenValidationParameters.RoleClaimType = JwtClaimTypes.Role;
 
             // The last event before the answer is signed in to the external cookie, after the userinfo
-            // claims have been merged, so nothing can add a provider's auth_time behind it.
+            // claims have been merged, so nothing can add a provider's auth_time behind it - and
+            // nothing reads a claim before it has been made printable here.
             options.Events.OnTicketReceived = context =>
             {
                 if (context.Principal is { } principal)
                 {
+                    if (!ExternalSignIn.TryMakePrintable(principal, out string? refusedClaimType))
+                    {
+                        context.HttpContext.RequestServices.GetRequiredService<ILogger<ExternalSignIn>>()
+                               .LogWarning("An external answer from {LoginProvider} was refused: its {ClaimType} claim holds a " +
+                                           "character an identifier may not, or is longer than one may be.",
+                                           context.Scheme.Name,
+                                           refusedClaimType);
+
+                        context.Fail("The provider's answer names an identifier this server will not store.");
+
+                        return Task.CompletedTask;
+                    }
+
                     ExternalSignIn.RestateAuthenticationTime(principal, context.HttpContext.RequestServices.GetRequiredService<TimeProvider>().GetUtcNow());
                 }
 

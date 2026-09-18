@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -124,6 +126,107 @@ public sealed class ExternalSignIn
         }
 
         return properties;
+    }
+
+    /// <summary>
+    /// The longest subject a provider may send: OpenID Connect Core caps <c>sub</c> at 255 characters,
+    /// so a longer one is a provider outside the specification rather than a long name.
+    /// </summary>
+    public const int MaxSubjectLength = 255;
+
+    /// <summary>The longest address a mail server can be handed, from SMTP's limit on a path.</summary>
+    public const int MaxEmailLength = 254;
+
+    /// <summary>
+    /// How much of any other claim is kept, in UTF-16 code units. Nothing specifies one; the whole
+    /// ticket is written into a cookie on the way back, and a provider sizes every value in it.
+    /// </summary>
+    public const int MaxClaimLength = 256;
+
+    /// <summary>
+    /// Makes a provider's answer printable as it arrives, or reports which claim makes that
+    /// impossible: every value is the provider's to write, and a good many of them are the person's
+    /// own to choose at the provider.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>An identifier is refused, never rewritten.</b> <c>sub</c> becomes the provider key, stored
+    /// and compared ordinally on every sign-in, and <c>email</c> is what an invitation is matched
+    /// on. Replacing a character in either would make two of the provider's identities one here - so
+    /// one holding an unprintable character, or longer than its specification allows, fails the
+    /// sign-in and says which claim it was.
+    /// </para>
+    /// <para>
+    /// <b>Everything else is replaced and cut</b>, keeping its type, value type and issuers. Nothing
+    /// keys on a display name, and refusing a sign-in over one helps nobody. A claim whose
+    /// <i>type</i> is unprintable or over-long is dropped instead: the type is the provider's string
+    /// too, and no reader here can be asking for a claim by a name like that.
+    /// </para>
+    /// <para>
+    /// Done once, on the ticket, so that nothing reading the answer afterwards - a log line, a page,
+    /// a later comparison - has to know where the value came from.
+    /// </para>
+    /// </remarks>
+    /// <returns>
+    /// <see langword="true"/> when the answer can be used; otherwise <paramref name="refusedClaimType"/>
+    /// names the identifier that cannot.
+    /// </returns>
+    public static bool TryMakePrintable(ClaimsPrincipal principal, [NotNullWhen(false)] out string? refusedClaimType)
+    {
+        ArgumentNullException.ThrowIfNull(principal);
+
+        foreach (ClaimsIdentity identity in principal.Identities)
+        {
+            foreach (Claim claim in identity.Claims.ToList())
+            {
+                int? identifierLength = claim.Type switch
+                {
+                    JwtClaimTypes.Subject => MaxSubjectLength,
+                    JwtClaimTypes.Email => MaxEmailLength,
+                    _ => null,
+                };
+
+                if (identifierLength is { } longest)
+                {
+                    if (claim.Value.Length > longest || !PrintableText.IsPrintable(claim.Value))
+                    {
+                        refusedClaimType = claim.Type;
+
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                if (claim.Type.Length > MaxClaimLength || !PrintableText.IsPrintable(claim.Type))
+                {
+                    identity.RemoveClaim(claim);
+
+                    continue;
+                }
+
+                string printable = PrintableText.Replace(claim.Value, MaxClaimLength);
+
+                if (string.Equals(printable, claim.Value, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                Claim replacement = new(claim.Type, printable, claim.ValueType, claim.Issuer, claim.OriginalIssuer);
+
+                foreach (KeyValuePair<string, string> property in claim.Properties)
+                {
+                    replacement.Properties[property.Key] = property.Value;
+                }
+
+                identity.RemoveClaim(claim);
+                identity.AddClaim(replacement);
+            }
+        }
+
+        refusedClaimType = null;
+
+        return true;
     }
 
     /// <summary>

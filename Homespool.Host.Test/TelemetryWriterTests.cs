@@ -1552,9 +1552,17 @@ public sealed class TelemetryWriterTests : IDisposable
 
         LogRecords.Where(FlushFailed).Should().BeEmpty("no flush should have failed at all");
 
-        await using HomespoolDbContext verify = NewVerificationContext();
-        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
-        printer.LoadedMaterial.Should().Be("PETG", "the later material must reach the printer row as well");
+        // Polled, not read once: a flush commits the telemetry half first and the material writeback
+        // with the durable half after it, so the sample count above says nothing about the printer
+        // row yet. Reading it directly here is a race the loaded CI runner loses.
+        bool carriedOver = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            Printer printer = await context.Printers.SingleAsync();
+            return printer.LoadedMaterial == "PETG";
+        }, TimeSpan.FromSeconds(5));
+
+        carriedOver.Should().BeTrue($"the later material must reach the printer row as well.\n{LogDump()}");
     }
 
     [Fact]
@@ -2129,6 +2137,12 @@ public sealed class TelemetryWriterTests : IDisposable
         }, TimeSpan.FromSeconds(5));
 
         flushed.Should().BeTrue();
+
+        // A listing row would be written by the flush's durable half, which runs after the event save
+        // waited on above - so an absence checked at that point proves nothing, and this assertion
+        // would pass just as readily if the row were on its way. Shutdown is the barrier an absence
+        // needs: once the writer has stopped, nothing is left that could still write one.
+        await writer.StopAsync(CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verify = NewVerificationContext();

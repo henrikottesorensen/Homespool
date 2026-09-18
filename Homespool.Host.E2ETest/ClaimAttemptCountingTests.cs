@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
+using System.Net.Http.Json;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -16,7 +17,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// That a failed claim is actually counted against the account that made it.
+/// That a failed claim is actually counted against the account that made it, on the claim page and
+/// on <c>POST /api/v1/printers/register</c> alike.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -101,6 +103,96 @@ public sealed class ClaimAttemptCountingTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The JSON claim is counted too - it was once the unbounded way round the page's cap.
+    /// </summary>
+    [Fact]
+    public async Task AnApiClaimWithAnUnknownCodeIsCountedAgainstTheAccount()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "apiclaimer@example.com");
+
+        using (client)
+        {
+            (await PostApiClaimAsync(client, "ZZZZZZZZZZ")).Should().Be(System.Net.HttpStatusCode.NotFound);
+            (await AttemptsAsync(user.Id)).Should().Be(1);
+
+            _ = await PostApiClaimAsync(client, "YYYYYYYYYY");
+            (await AttemptsAsync(user.Id)).Should().Be(2, "each attempt counts, not just the first");
+        }
+    }
+
+    /// <summary>
+    /// One allowance across both surfaces. Two separate counts would hand a guesser double the budget
+    /// by alternating between them.
+    /// </summary>
+    [Fact]
+    public async Task ThePageAndTheApiShareOneAllowance()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "alternator@example.com");
+
+        using (client)
+        {
+            _ = await PostClaimAsync(client, "ZZZZZZZZZZ");
+            _ = await PostApiClaimAsync(client, "YYYYYYYYYY");
+
+            (await AttemptsAsync(user.Id)).Should().Be(2);
+        }
+    }
+
+    /// <summary>
+    /// Guessing through the API reaches the backoff, and once there even the right code is refused
+    /// unread - a lockout that still looked the code up would tell a guesser when they had hit.
+    /// </summary>
+    [Fact]
+    public async Task ABackedOffAccountIsRefusedOnTheApiEvenWithTheRightCode()
+    {
+        (_, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "guesser@example.com");
+
+        using (client)
+        {
+            System.Net.HttpStatusCode last = System.Net.HttpStatusCode.NotFound;
+
+            for (int i = 0; i < 20 && last == System.Net.HttpStatusCode.NotFound; i++)
+            {
+                last = await PostApiClaimAsync(client, "ZZZZZZZZZZ");
+            }
+
+            last.Should().Be(System.Net.HttpStatusCode.TooManyRequests, "enough wrong codes back the account off");
+
+            string code = await SeedRegistrationAsync("ABCDEFGHJK");
+
+            (await PostApiClaimAsync(client, code)).Should().Be(System.Net.HttpStatusCode.TooManyRequests);
+
+            (await IsClaimedAsync(code)).Should().BeFalse("a refused claim must not have claimed anything");
+        }
+    }
+
+    /// <summary>
+    /// The API normalises what was typed, as the page does - otherwise a correct code in lowercase
+    /// would be refused and, now that refusals count, cost an attempt as well.
+    /// </summary>
+    [Fact]
+    public async Task AnApiClaimAcceptsACodeTypedInLowercaseWithAHyphen()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "typist@example.com");
+
+        using (client)
+        {
+            _ = await PostApiClaimAsync(client, "ZZZZZZZZZZ");
+
+            string code = await SeedRegistrationAsync("ABCDEFGHJK");
+
+            (await PostApiClaimAsync(client, "abcde-fghjk")).Should().Be(System.Net.HttpStatusCode.Created);
+
+            (await AttemptsAsync(user.Id)).Should().Be(0, "a correct code clears the count on this surface too");
+            (await IsClaimedAsync(code)).Should().BeTrue();
+        }
+    }
+
+    /// <summary>
     /// Seeds a pending registration directly, rather than posting <c>/p/register</c>: that route is
     /// served only on the printer listener, so a client from this factory gets the 404 that
     /// segregation exists to give. The claim path does not care how the row arrived.
@@ -138,6 +230,26 @@ public sealed class ClaimAttemptCountingTests : IAsyncLifetime
         using HttpResponseMessage response = await client.PostAsync("/Printers/Claim", body, TestContext.Current.CancellationToken);
 
         return response.StatusCode;
+    }
+
+    private static async Task<System.Net.HttpStatusCode> PostApiClaimAsync(HttpClient client, string code)
+    {
+        using HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/printers/register", new { code },
+                                                                          TestContext.Current.CancellationToken);
+
+        return response.StatusCode;
+    }
+
+    private async Task<bool> IsClaimedAsync(string code)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return await database.PrusaConnectRegistrations
+                             .AsNoTracking()
+                             .AnyAsync(r => r.TemporaryCode == code && r.PrinterId != null,
+                                       TestContext.Current.CancellationToken);
     }
 
     private async Task<int> AttemptsAsync(long userId)

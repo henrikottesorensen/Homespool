@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -19,8 +18,6 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
-using Homespool.Host.Services;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Printers;
@@ -37,27 +34,21 @@ namespace Homespool.Host.Pages.Printers;
 [Authorize]
 public class ClaimModel : PageModel
 {
-    private readonly PrusaConnectService _prusaConnectService;
+    private readonly RegistrationCodeClaim _registrationCodeClaim;
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
-    private readonly UnitOfWork _unitOfWork;
-    private readonly AttemptLimiter _attemptLimiter;
     private readonly ILogger<ClaimModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
-    public ClaimModel(PrusaConnectService prusaConnectService,
+    public ClaimModel(RegistrationCodeClaim registrationCodeClaim,
                       TeamService teamService,
                       UserManager<HSUser> userManager,
-                      UnitOfWork unitOfWork,
-                      AttemptLimiter attemptLimiter,
                       ILogger<ClaimModel> logger,
                       IStringLocalizer<SharedResource> localiser)
     {
-        _prusaConnectService = prusaConnectService;
+        _registrationCodeClaim = registrationCodeClaim;
         _teamService = teamService;
         _userManager = userManager;
-        _unitOfWork = unitOfWork;
-        _attemptLimiter = attemptLimiter;
         _logger = logger;
         _localiser = localiser;
     }
@@ -128,41 +119,10 @@ public class ClaimModel : PageModel
             return Forbid();
         }
 
-        DateTimeOffset now = TimeProvider.System.GetUtcNow();
-
-        if (await _attemptLimiter.RemainingLockoutAsync(user.Id, LimitedAction.ClaimPrinter, now, cancellationToken) is
-                { } remaining)
-        {
-            // Deliberately says how long, rather than a bare refusal: the overwhelmingly likely
-            // person reading this is someone who mistyped, standing at their own printer.
-            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimLockedOut", BackoffWait.Format(_localiser, remaining)]);
-
-            return Page();
-        }
-
-        // Codes are generated in Crockford base32 uppercase (CodeGenerator) and the TemporaryCode
-        // lookup has no case-insensitive collation, so a code typed off a printer's screen with
-        // different casing, stray whitespace or grouping hyphens would otherwise silently read as
-        // unknown. Normalise also applies Crockford's O/I/L substitutions, which is what makes a
-        // character misread off a low-resolution LCD still resolve.
-        string code = ClaimCode.Normalise(Input.Code);
-
         try
         {
-            // Scoped INSIDE the try, and that placement is the whole point. Declared at method scope
-            // it outlives the catch below, so the limiter's save enlisted in a transaction that was
-            // then disposed uncommitted - and every failed claim counted as zero. Here the
-            // transaction is disposed as the exception leaves this block, before any handler runs,
-            // so RecordFailedAttemptAsync writes on its own.
-            await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
-
-            Printer printer = await _prusaConnectService.ClaimPrinterAsync(
-                code, Input.Name, Input.Location, Input.TeamUuid, CallerResolver.For(user, User));
-
-            // Inside the transaction the claim was made in, so a rollback takes the reset with it.
-            await _attemptLimiter.ResetAsync(user.Id, LimitedAction.ClaimPrinter, cancellationToken);
-
-            await transaction.CommitAsync(cancellationToken);
+            Printer printer = await _registrationCodeClaim.ClaimAsync(
+                user.Id, Input.Code, Input.Name, Input.Location, Input.TeamUuid, CallerResolver.For(user, User), cancellationToken);
 
             _logger.LogInformation("Printer {PrinterUuid} claimed via registration code by user {UserId}.", printer.Uuid, user.Id);
 
@@ -175,16 +135,16 @@ public class ClaimModel : PageModel
 
             return RedirectToPage("Index");
         }
+        catch (ClaimLockedOutException e)
+        {
+            // Deliberately says how long, rather than a bare refusal: the overwhelmingly likely
+            // person reading this is someone who mistyped, standing at their own printer.
+            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimLockedOut", BackoffWait.Format(_localiser, e.RetryAfter)]);
+
+            return Page();
+        }
         catch (PrinterNotFoundException)
         {
-            // The one outcome that is a guess. An already-claimed code and a forbidden team both
-            // mean the code was *right*, so neither counts - otherwise a user claiming into the
-            // wrong team would lock themselves out for getting the code perfectly correct.
-            //
-            // Recorded after the transaction has rolled back, on the limiter's own save, so the
-            // rollback cannot undo the count.
-            await _attemptLimiter.RecordFailedAttemptAsync(user.Id, LimitedAction.ClaimPrinter, now, cancellationToken);
-
             ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimNoSuchCode"]);
 
             return Page();

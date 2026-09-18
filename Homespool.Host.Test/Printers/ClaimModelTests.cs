@@ -93,9 +93,12 @@ public sealed class ClaimModelTests : IDisposable
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ClaimModel model = new(NewService(context), new TeamService(context), users, new UnitOfWork(context),
-                               new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
-                                                  NullLogger<AttemptLimiter>.Instance),
+        RegistrationCodeClaim claim = new(NewService(context), new UnitOfWork(context),
+                                          new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
+                                                             NullLogger<AttemptLimiter>.Instance),
+                                          TimeProvider.System);
+
+        ClaimModel model = new(claim, new TeamService(context), users,
                                NullLogger<ClaimModel>.Instance,
                                TestLocaliser.Shared())
         {

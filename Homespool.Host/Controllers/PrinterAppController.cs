@@ -43,21 +43,21 @@ namespace Homespool.Host.Controllers;
     .Status401Unauthorized)] // 401 is the auth policy's, not any action's - an unauthenticated caller never reaches one.
 public class PrinterAppController : ControllerBase
 {
-    private readonly PrusaConnectService _prusaConnectService;
+    private readonly RegistrationCodeClaim _registrationCodeClaim;
     private readonly PrinterQueryService _printerQueryService;
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<PrinterAppController> _logger;
 
-    public PrinterAppController(PrusaConnectService prusaConnectService,
+    public PrinterAppController(RegistrationCodeClaim registrationCodeClaim,
                                 PrinterQueryService printerQueryService,
                                 TeamService teamService,
                                 UserManager<HSUser> userManager,
                                 UnitOfWork unitOfWork,
                                 ILogger<PrinterAppController> logger)
     {
-        _prusaConnectService = prusaConnectService;
+        _registrationCodeClaim = registrationCodeClaim;
         _printerQueryService = printerQueryService;
         _teamService = teamService;
         _userManager = userManager;
@@ -73,7 +73,7 @@ public class PrinterAppController : ControllerBase
     // stored and this bounds what is read - Kestrel's thirty-odd megabytes is otherwise the only
     // ceiling. Authenticated, unlike /p/register's cap, which makes it a smaller worry and the same fix.
     [RequestSizeLimit(8 * 1024)]
-    public async Task<Results<Created<PrinterReadDTO>, ForbiddenProblem, NotFoundProblem, ConflictProblem, InternalServerErrorProblem>>
+    public async Task<Results<Created<PrinterReadDTO>, ForbiddenProblem, NotFoundProblem, ConflictProblem, TooManyRequestsProblem, InternalServerErrorProblem>>
         RegisterPrinter([FromBody] RegisterPrinterAppRequestDTO body, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -83,21 +83,12 @@ public class PrinterAppController : ControllerBase
             return this.NoAccount();
         }
 
-        // The transaction is required, not a convenience. ClaimPrinterAsync makes three separate
-        // SaveChangesAsync calls, so without one an interrupted claim can leave a printer half
-        // claimed - and this comment used to say the opposite ("already saves atomically on its
-        // own"), which would have told whoever wrote the next caller that they needed nothing.
-        // Pages/Printers/Claim.cshtml.cs is the other caller and wraps it for the same reason.
-        // Any early return before CommitAsync disposes the transaction uncommitted, rolling back
-        // every write made through it.
-        await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
-
         try
         {
-            Printer printer = await _prusaConnectService.ClaimPrinterAsync(
-                body.Code, body.Name, body.Location, body.TeamUuid, CallerResolver.For(user, User));
-
-            await transaction.CommitAsync(cancellationToken);
+            // RegistrationCodeClaim owns the transaction and the per-account guess count, which the
+            // claim page shares - one allowance for both surfaces, not one each.
+            Printer printer = await _registrationCodeClaim.ClaimAsync(
+                user.Id, body.Code, body.Name, body.Location, body.TeamUuid, CallerResolver.For(user, User), cancellationToken);
 
             // Re-read rather than mapping the claimed entity directly, so the response carries the
             // permission flags and describes the same resource the next GET will. Mapping it bare
@@ -109,6 +100,10 @@ public class PrinterAppController : ControllerBase
             // uuid, but this surface has never advertised the header and a claim is not quite a create.
             return TypedResults.Created((string?)null,
                                         claimed is null ? PrinterReadDTO.FromEntity(printer) : PrinterReadDTO.FromEntity(claimed));
+        }
+        catch (ClaimLockedOutException e)
+        {
+            return this.TooManyRequestsProblem(e.Message);
         }
         catch (PrinterNotFoundException e)
         {

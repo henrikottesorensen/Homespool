@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Text;
 
 using AwesomeAssertions;
 
@@ -73,6 +75,97 @@ public class PrintableTextTests
     public void WhatStandsBesideAGroupIsNotInIt(char character)
     {
         PrintableText.IsUnprintable(character).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The invisible characters outside the basic plane, both ends of each range: the tag block, which
+    /// mirrors ASCII with no ink at all, and the three sets of format controls.
+    /// </summary>
+    [Theory]
+    [InlineData(0xE0000)]
+    [InlineData(0xE0001)]
+    [InlineData(0xE0041)]
+    [InlineData(0xE007F)]
+    [InlineData(0x13430)]
+    [InlineData(0x1343F)]
+    [InlineData(0x1BCA0)]
+    [InlineData(0x1BCA3)]
+    [InlineData(0x1D173)]
+    [InlineData(0x1D17A)]
+    public void AnInvisibleCharacterOutsideTheBasicPlaneIsUnprintable(int codePoint)
+    {
+        PrintableText.IsUnprintable(new Rune(codePoint)).Should().BeTrue();
+        PrintableText.IsPrintable("model" + char.ConvertFromUtf32(codePoint)).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Their neighbours, an emoji, the Kaithi number sign - a visible <c>Format</c> character, the
+    /// reason this is a list out here too - and the variation selectors, invisible and left alone
+    /// because one follows nearly every emoji.
+    /// </summary>
+    [Theory]
+    [InlineData(0x1F600)]
+    [InlineData(0x110BD)]
+    [InlineData(0xFE0F)]
+    [InlineData(0xE0100)]
+    [InlineData(0x1342F)]
+    [InlineData(0x1D172)]
+    [InlineData(0x1D17B)]
+    public void WhatStandsBesideThemIsNot(int codePoint)
+    {
+        PrintableText.IsUnprintable(new Rune(codePoint)).Should().BeFalse();
+        PrintableText.IsPrintable("model" + char.ConvertFromUtf32(codePoint)).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Text nobody can see: each tag character is an ASCII letter with no ink, so a name can carry a
+    /// second name inside it. Replaced one for one, a character at a time rather than a char at a time.
+    /// </summary>
+    [Fact]
+    public void TextSpeltInTagCharactersIsReplacedACharacterAtATime()
+    {
+        string hidden = string.Concat("exe".Select(letter => char.ConvertFromUtf32(0xE0000 + letter)));
+
+        PrintableText.Replace("model" + hidden + ".gcode").Should().Be("model\uFFFD\uFFFD\uFFFD.gcode");
+        PrintableText.Replace("model" + hidden + ".gcode", '-').Should().Be("model---.gcode");
+    }
+
+    /// <summary>Half a surrogate pair is not a character, whichever half it is and wherever it sits.</summary>
+    [Fact]
+    public void ASurrogateWithNoPartnerIsUnprintable()
+    {
+        string emoji = char.ConvertFromUtf32(0x1F600);
+
+        PrintableText.IsPrintable("ok " + emoji).Should().BeTrue();
+        PrintableText.IsPrintable("half " + emoji[0]).Should().BeFalse();
+        PrintableText.IsPrintable(emoji[1] + " half").Should().BeFalse();
+        PrintableText.Replace(emoji[0] + "half" + emoji[1]).Should().Be("\uFFFDhalf\uFFFD");
+        PrintableText.Replace(emoji + emoji[0] + emoji).Should().Be(emoji + "\uFFFD" + emoji);
+    }
+
+    /// <summary>
+    /// Asked about one <see cref="char"/>, a surrogate is unprintable: whoever asks that way has not
+    /// paired it, and answering yes is how a rule walks past a character that takes two.
+    /// </summary>
+    [Fact]
+    public void ASurrogateAskedAboutOnItsOwnIsUnprintable()
+    {
+        string emoji = char.ConvertFromUtf32(0x1F600);
+
+        PrintableText.IsUnprintable(emoji[0]).Should().BeTrue();
+        PrintableText.IsUnprintable(emoji[1]).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The known cost, pinned so it is a decision rather than a surprise: the joiner in a family emoji
+    /// is the zero-width joiner, and a name is refused for it.
+    /// </summary>
+    [Fact]
+    public void AnEmojiBuiltWithAJoinerIsRefusedForTheJoiner()
+    {
+        string family = char.ConvertFromUtf32(0x1F468) + "\u200D" + char.ConvertFromUtf32(0x1F469);
+
+        PrintableText.IsPrintable(family).Should().BeFalse();
     }
 
     [Theory]

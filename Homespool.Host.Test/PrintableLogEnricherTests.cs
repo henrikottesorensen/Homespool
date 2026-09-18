@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 
 using AwesomeAssertions;
 
@@ -51,11 +52,13 @@ public class PrintableLogEnricherTests
     [Fact]
     public void EverythingPrintableTextRefusesIsReplacedHere()
     {
-        IEnumerable<char> refused = Enumerable.Range(0, char.MaxValue + 1)
-                                              .Select(code => (char)code)
-                                              .Where(character => !char.IsSurrogate(character) && PrintableText.IsUnprintable(character));
+        // Every character there is, not only the basic plane: both rules judge whole characters.
+        IEnumerable<Rune> refused = Enumerable.Range(0, 0x110000)
+                                              .Where(Rune.IsValid)
+                                              .Select(codePoint => new Rune(codePoint))
+                                              .Where(PrintableText.IsUnprintable);
 
-        refused.Should().OnlyContain(character => PrintableLogEnricher.Printable(character.ToString()) == "\uFFFD");
+        refused.Should().OnlyContain(rune => PrintableLogEnricher.Printable(rune.ToString()) == "\uFFFD");
     }
 
     /// <summary>

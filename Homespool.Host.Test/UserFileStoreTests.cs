@@ -295,6 +295,7 @@ public sealed class UserFileStoreTests : IDisposable
     [InlineData("model\u2028.gcode")]
     [InlineData("model\u200E.gcode")]
     [InlineData("mod\u00ADel.gcode")]
+    [InlineData("model\U000E0065\U000E0078\U000E0065.gcode")]
     public async Task ANameWithAnInvisibleMarkIsRefused(string given)
     {
         // Arrange
@@ -329,6 +330,7 @@ public sealed class UserFileStoreTests : IDisposable
     [Theory]
     [InlineData("Br\u00E4cket-2.gcode")]
     [InlineData("\u65E5\u672C\u8A9E.gcode")]
+    [InlineData("benchy-\U0001F600.gcode")]
     public async Task ANonEnglishNameIsStillTaken(string given)
     {
         // Arrange

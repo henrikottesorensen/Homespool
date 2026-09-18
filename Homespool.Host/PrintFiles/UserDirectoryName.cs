@@ -100,13 +100,17 @@ public static class UserDirectoryName
             return string.Empty;
         }
 
+        // What a reader cannot see goes first, a whole character at a time - a username must not
+        // render a directory listing deceptively, and normalising refuses outright a string holding
+        // half a surrogate pair, which this has just replaced.
+        //
         // NFC so the same name typed on macOS and on Linux produces the same folder. Cosmetic, like
         // the rest of this, but it is what makes a listing look consistent across machines.
         StringBuilder builder = new();
 
-        foreach (char character in userName.Normalize(NormalizationForm.FormC))
+        foreach (char character in PrintableText.Replace(userName, '-').Normalize(NormalizationForm.FormC))
         {
-            builder.Append(IsUnsafe(character) ? '-' : character);
+            builder.Append(IsSeparator(character) ? '-' : character);
         }
 
         // Trailing dots and spaces are legal to create on Linux and silently trimmed by Windows,
@@ -126,13 +130,10 @@ public static class UserDirectoryName
             cleaned;
     }
 
-    /// <summary>
-    /// Path separators, which are about a filesystem, and everything <see cref="PrintableText"/>
-    /// refuses, which is about a reader: a username must not render a directory listing deceptively.
-    /// </summary>
-    private static bool IsUnsafe(char character)
+    /// <summary>What would split the name into a path, here or on the machine a listing is read on.</summary>
+    private static bool IsSeparator(char character)
     {
-        return character is '/' or '\\' or ':' || PrintableText.IsUnprintable(character);
+        return character is '/' or '\\' or ':';
     }
 
     /// <summary>Cuts to a byte budget without splitting a character in half.</summary>

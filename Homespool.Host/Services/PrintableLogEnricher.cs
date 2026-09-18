@@ -127,10 +127,14 @@ public sealed class PrintableLogEnricher : ILogEventEnricher
 
     private static bool IsUnprintable(Rune rune)
     {
+        // The categories, and whatever PrintableText lists that no category reaches - the unassigned
+        // code points of the tag block are invisible and belong to none of these. Asking it as well
+        // is what makes "never narrower" a property of the code rather than of two lists agreeing.
         return Rune.GetUnicodeCategory(rune) is UnicodeCategory.Control or
                                                 UnicodeCategory.Format or
                                                 UnicodeCategory.LineSeparator or
-                                                UnicodeCategory.ParagraphSeparator;
+                                                UnicodeCategory.ParagraphSeparator ||
+               PrintableText.IsUnprintable(rune);
     }
 
     /// <summary>The same value back, by reference, unless something inside it had to change.</summary>

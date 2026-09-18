@@ -77,6 +77,20 @@ public class UserDirectoryNameTests
         UserDirectoryName.For(12, userName).Should().Be("12-ali-ce");
     }
 
+    /// <summary>
+    /// One hyphen for one character, even one that takes two <see cref="char"/>s - and half of one is
+    /// replaced rather than handed to the normaliser, which refuses such a string outright.
+    /// </summary>
+    [Fact]
+    public void ACharacterOutsideTheBasicPlaneIsJudgedWhole()
+    {
+        string emoji = char.ConvertFromUtf32(0x1F600);
+
+        UserDirectoryName.For(12, "ali" + char.ConvertFromUtf32(0xE0041) + "ce").Should().Be("12-ali-ce");
+        UserDirectoryName.For(12, "ali" + emoji[0] + "ce").Should().Be("12-ali-ce");
+        UserDirectoryName.For(12, "ali" + emoji + "ce").Should().Be("12-ali" + emoji + "ce");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

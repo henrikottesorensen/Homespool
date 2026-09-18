@@ -49,6 +49,17 @@ public class ExternalClaimsTests
         refused.Should().Be(claimType);
     }
 
+    /// <summary>The same for a character that takes two <see cref="char"/>s, and for half of one.</summary>
+    [Fact]
+    public void ASubjectHoldingAnInvisibleCharacterOutsideTheBasicPlaneRefusesTheAnswer()
+    {
+        string tagged = "2482" + char.ConvertFromUtf32(0xE0041) + "89761001";
+        string halved = "2482" + char.ConvertFromUtf32(0x1F600)[0] + "89761001";
+
+        ExternalSignIn.TryMakePrintable(Answer(new Claim(JwtClaimTypes.Subject, tagged)), out _).Should().BeFalse();
+        ExternalSignIn.TryMakePrintable(Answer(new Claim(JwtClaimTypes.Subject, halved)), out _).Should().BeFalse();
+    }
+
     /// <summary>
     /// The rewrite that must never happen: two subjects differing only in a character nobody can see
     /// would both become the same provider key.

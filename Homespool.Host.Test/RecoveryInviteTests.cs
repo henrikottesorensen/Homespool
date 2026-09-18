@@ -176,6 +176,7 @@ public sealed class RecoveryInviteTests : IDisposable
                                      provider.GetRequiredService<AttemptLimiter>(),
                                      new UnitOfWork(context),
                                      TimeProvider.System,
+                                     new CapturingEmailSender().Notices(),
                                      NullLogger<UserAdministration>.Instance)
             .DeactivateAsync(admin.Id, subject.Id, CancellationToken.None);
 

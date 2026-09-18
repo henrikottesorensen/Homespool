@@ -240,6 +240,29 @@ public sealed class UserAdministrationTests : IDisposable
         record.StructuredState.Should().Contain(property => property.Key == "PasskeyName" && property.Value == "phone");
     }
 
+    /// <summary>The owner is told, since the administrator is not the only person who can reach this screen with a session.</summary>
+    [Fact]
+    public async Task RevokingAPasskeyMailsItsOwner()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
+        CapturingEmailSender mail = new();
+
+        // Act
+        await Administration(context, provider, mail: mail)
+            .RevokePasskeyAsync(admin.Id, subject.Id, phone.CredentialId, CancellationToken.None);
+
+        // Assert
+        (string email, string subject, string body) sent = mail.SentEmails.Should().ContainSingle().Subject;
+        sent.email.Should().Be("subject@example.com");
+        sent.subject.Should().Be("An administrator removed a passkey from your Homespool account");
+        sent.body.Should().NotContain("phone", "the name is the person's own, and the mail does not repeat it");
+    }
+
     /// <summary>
     /// A credential id names one passkey anywhere, so the account in the request is what stops an
     /// administrator on one account's page revoking a passkey that belongs to another.
@@ -255,9 +278,10 @@ public sealed class UserAdministrationTests : IDisposable
         HSUser bystander = await AddUserAsync(users, "bystander@example.com");
         UserPasskeyInfo theirs = await SeedPasskeyAsync(users, bystander, "theirs");
         FakeLogger<UserAdministration> logger = new();
+        CapturingEmailSender mail = new();
 
         // Act
-        UserAdminResult result = await Administration(context, provider, logger)
+        UserAdminResult result = await Administration(context, provider, logger, mail)
             .RevokePasskeyAsync(admin.Id, subject.Id, theirs.CredentialId, CancellationToken.None);
 
         // Assert
@@ -265,6 +289,7 @@ public sealed class UserAdministrationTests : IDisposable
         result.Affected.Should().Be(0);
         (await users.GetPasskeysAsync(bystander)).Should().ContainSingle();
         logger.Collector.GetSnapshot().Should().BeEmpty("nothing was revoked");
+        mail.SentEmails.Should().BeEmpty("and nobody's passkey changed");
     }
 
     [Fact]
@@ -275,14 +300,16 @@ public sealed class UserAdministrationTests : IDisposable
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, admin, "phone");
+        CapturingEmailSender mail = new();
 
         // Act
-        UserAdminResult result = await Administration(context, provider)
+        UserAdminResult result = await Administration(context, provider, mail: mail)
             .RevokePasskeyAsync(admin.Id, admin.Id, phone.CredentialId, CancellationToken.None);
 
         // Assert
         result.Refusal.Should().Be(UserAdminRefusal.Self);
         (await users.GetPasskeysAsync(admin)).Should().ContainSingle();
+        mail.SentEmails.Should().BeEmpty();
     }
 
     /// <summary>
@@ -347,13 +374,15 @@ public sealed class UserAdministrationTests : IDisposable
 
     private static UserAdministration Administration(HomespoolDbContext context,
                                                      IServiceProvider provider,
-                                                     ILogger<UserAdministration>? logger = null)
+                                                     ILogger<UserAdministration>? logger = null,
+                                                     CapturingEmailSender? mail = null)
     {
         return new UserAdministration(context,
                                       new ApiTokenService(context),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),
                                       TimeProvider.System,
+                                      (mail ?? new CapturingEmailSender()).Notices(),
                                       logger ?? NullLogger<UserAdministration>.Instance);
     }
 

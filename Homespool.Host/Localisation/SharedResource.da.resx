@@ -2815,13 +2815,49 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Din Homespool-adgangskode er nulstillet</value>
   </data>
   <data name="Email_RecoveredBody" xml:space="preserve">
-    <value>Et gendannelseslink udstedt af en administrator er netop blevet brugt til at vælge en ny adgangskode på din konto. Hvis det ikke var dig, så sig det til den, der driver denne Homespool, med det samme.</value>
+    <value>Et gendannelseslink udstedt af en administrator er netop blevet brugt til at vælge en ny adgangskode på din konto. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
   </data>
   <data name="Email_AddressChangedSubject" xml:space="preserve">
     <value>E-mailadressen på din Homespool-konto er ændret</value>
   </data>
   <data name="Email_AddressChangedBody" xml:space="preserve">
-    <value>E-mailadressen på din Homespool-konto er netop blevet ændret, så nulstilling af adgangskode og beskeder kommer ikke længere hertil. Hvis det ikke var dig, så sig det til den, der driver denne Homespool, med det samme.</value>
+    <value>E-mailadressen på din Homespool-konto er netop blevet ændret, så nulstilling af adgangskode og beskeder kommer ikke længere hertil. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
+  </data>
+  <data name="Email_ProviderLinkedSubject" xml:space="preserve">
+    <value>En loginudbyder er blevet tilknyttet din Homespool-konto</value>
+  </data>
+  <data name="Email_ProviderLinkedBody" xml:space="preserve">
+    <value>{0} er netop blevet tilknyttet din Homespool-konto og kan nu bruges til at logge ind på den. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
+  </data>
+  <data name="Email_ProviderRemovedSubject" xml:space="preserve">
+    <value>En loginudbyder er blevet fjernet fra din Homespool-konto</value>
+  </data>
+  <data name="Email_ProviderRemovedBody" xml:space="preserve">
+    <value>{0} er netop blevet fjernet fra din Homespool-konto og kan ikke længere bruges til at logge ind på den. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
+  </data>
+  <data name="Email_ProviderSwappedSubject" xml:space="preserve">
+    <value>Din Homespool-konto logger nu ind med en adgangskode</value>
+  </data>
+  <data name="Email_ProviderSwappedBody" xml:space="preserve">
+    <value>{0} er netop blevet fjernet fra din Homespool-konto, og en adgangskode er valgt i stedet, så du kan ikke længere logge ind med {0}. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
+  </data>
+  <data name="Email_PasskeyAddedSubject" xml:space="preserve">
+    <value>En adgangsnøgle er blevet tilføjet til din Homespool-konto</value>
+  </data>
+  <data name="Email_PasskeyAddedBody" xml:space="preserve">
+    <value>En ny adgangsnøgle er netop blevet tilføjet til din Homespool-konto og kan nu bruges til at logge ind på den. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
+  </data>
+  <data name="Email_PasskeyRemovedSubject" xml:space="preserve">
+    <value>En adgangsnøgle er blevet fjernet fra din Homespool-konto</value>
+  </data>
+  <data name="Email_PasskeyRemovedBody" xml:space="preserve">
+    <value>En adgangsnøgle er netop blevet fjernet fra din Homespool-konto og kan ikke længere bruges til at logge ind på den. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
+  </data>
+  <data name="Email_PasskeyRevokedSubject" xml:space="preserve">
+    <value>En administrator har fjernet en adgangsnøgle fra din Homespool-konto</value>
+  </data>
+  <data name="Email_PasskeyRevokedBody" xml:space="preserve">
+    <value>En administrator af denne Homespool har netop fjernet en af dine adgangsnøgler, så den kan ikke længere bruges til at logge ind. Hvis du ikke har bedt om det, så kontakt Homespool administratoren.</value>
   </data>
   <data name="Error_Title" xml:space="preserve">
     <value>Noget gik galt</value>

@@ -86,6 +86,30 @@ public sealed class PasskeysPageTests : IDisposable
     }
 
     [Fact]
+    public async Task RegisteringMailsTheOwnerWithoutThePasskeysName()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        using FakeAuthenticator authenticator = new();
+
+        (PasskeysModel begin, DefaultHttpContext beginRequest) = rig.NewModel(user);
+        ContentResult options = (await begin.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
+
+        (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(beginRequest));
+        register.Input.Name = "Attacker's words";
+
+        // Act
+        await register.OnPostRegisterAsync(authenticator.Attest(options.Content!));
+
+        // Assert
+        (string email, string subject, string body) sent = rig.Mail.SentEmails.Should().ContainSingle().Subject;
+        sent.email.Should().Be("owner@example.com");
+        sent.subject.Should().Be("A passkey was added to your Homespool account");
+        sent.body.Should().NotContain("Attacker", "whoever adds the passkey chooses its name");
+    }
+
+    [Fact]
     public async Task AnEmptyNameGetsADatedDefault()
     {
         // Arrange
@@ -250,6 +274,7 @@ public sealed class PasskeysPageTests : IDisposable
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
         (await rig.Users.GetPasskeyAsync(user, passkey.CredentialId))!.Name.Should().Be("new");
+        rig.Mail.SentEmails.Should().BeEmpty("a rename changes no way into the account");
     }
 
     /// <summary>
@@ -318,6 +343,7 @@ public sealed class PasskeysPageTests : IDisposable
         result.Should().BeOfType<RedirectToPageResult>();
         (await rig.Users.GetPasskeysAsync(user)).Should().BeEmpty();
         model.StatusMessage.Should().Be("Passkey removed.");
+        rig.Mail.SentEmails.Should().ContainSingle().Which.subject.Should().Be("A passkey was removed from your Homespool account");
     }
 
     /// <summary>
@@ -342,6 +368,7 @@ public sealed class PasskeysPageTests : IDisposable
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().Be("That passkey was already gone.");
         (await rig.Users.GetPasskeysAsync(owner)).Should().ContainSingle();
+        rig.Mail.SentEmails.Should().BeEmpty("nobody's passkey changed");
     }
 
     [Fact]
@@ -374,6 +401,9 @@ public sealed class PasskeysPageTests : IDisposable
         }
 
         public UserManager<HSUser> Users => _provider.GetRequiredService<UserManager<HSUser>>();
+
+        /// <summary>What every page this rig built mailed.</summary>
+        public CapturingEmailSender Mail { get; } = new();
 
         public IPasskeyHandler<HSUser> Engine => _provider.GetRequiredService<IPasskeyHandler<HSUser>>();
 
@@ -430,6 +460,7 @@ public sealed class PasskeysPageTests : IDisposable
                                       Ceremonies,
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),
                                       TestLocaliser.Shared(),
+                                      Mail.Notices(),
                                       logger ?? NullLogger<PasskeysModel>.Instance)
             {
                 PageContext = IdentityTestHarness.NewPageContext(request),

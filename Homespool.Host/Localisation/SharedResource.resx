@@ -2917,13 +2917,49 @@ A stick that already works with your printer is the right stick. If you are form
     <value>Your Homespool password was reset</value>
   </data>
   <data name="Email_RecoveredBody" xml:space="preserve">
-    <value>A recovery link issued by an administrator was just used to set a new password on your account. If that was not you, tell whoever runs this Homespool straight away.</value>
+    <value>A recovery link issued by an administrator was just used to set a new password on your account. If that was not you, contact the Homespool administrator straight away.</value>
   </data>
   <data name="Email_AddressChangedSubject" xml:space="preserve">
     <value>Your Homespool email address was changed</value>
   </data>
   <data name="Email_AddressChangedBody" xml:space="preserve">
-    <value>The email address on your Homespool account was just changed, so password resets and notices will no longer come here. If that was not you, tell whoever runs this Homespool straight away.</value>
+    <value>The email address on your Homespool account was just changed, so password resets and notices will no longer come here. If that was not you, contact the Homespool administrator straight away.</value>
+  </data>
+  <data name="Email_ProviderLinkedSubject" xml:space="preserve">
+    <value>A sign-in provider was linked to your Homespool account</value>
+  </data>
+  <data name="Email_ProviderLinkedBody" xml:space="preserve">
+    <value>{0} was just linked to your Homespool account, and can now be used to sign in to it. If that was not you, contact the Homespool administrator straight away.</value>
+  </data>
+  <data name="Email_ProviderRemovedSubject" xml:space="preserve">
+    <value>A sign-in provider was removed from your Homespool account</value>
+  </data>
+  <data name="Email_ProviderRemovedBody" xml:space="preserve">
+    <value>{0} was just removed from your Homespool account, and can no longer be used to sign in to it. If that was not you, contact the Homespool administrator straight away.</value>
+  </data>
+  <data name="Email_ProviderSwappedSubject" xml:space="preserve">
+    <value>Your Homespool account now signs in with a password</value>
+  </data>
+  <data name="Email_ProviderSwappedBody" xml:space="preserve">
+    <value>{0} was just removed from your Homespool account and a password set in its place, so signing in with {0} no longer works. If that was not you, contact the Homespool administrator straight away.</value>
+  </data>
+  <data name="Email_PasskeyAddedSubject" xml:space="preserve">
+    <value>A passkey was added to your Homespool account</value>
+  </data>
+  <data name="Email_PasskeyAddedBody" xml:space="preserve">
+    <value>A new passkey was just added to your Homespool account, and can now be used to sign in to it. If that was not you, contact the Homespool administrator straight away.</value>
+  </data>
+  <data name="Email_PasskeyRemovedSubject" xml:space="preserve">
+    <value>A passkey was removed from your Homespool account</value>
+  </data>
+  <data name="Email_PasskeyRemovedBody" xml:space="preserve">
+    <value>A passkey was just removed from your Homespool account, and can no longer be used to sign in to it. If that was not you, contact the Homespool administrator straight away.</value>
+  </data>
+  <data name="Email_PasskeyRevokedSubject" xml:space="preserve">
+    <value>An administrator removed a passkey from your Homespool account</value>
+  </data>
+  <data name="Email_PasskeyRevokedBody" xml:space="preserve">
+    <value>An administrator of this Homespool just removed one of your passkeys, so it can no longer be used to sign in. If you did not ask for that, contact the Homespool administrator.</value>
   </data>
   <data name="Error_Title" xml:space="preserve">
     <value>Something went wrong</value>

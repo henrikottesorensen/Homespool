@@ -50,6 +50,7 @@ public sealed class UserAdministration
     private readonly AttemptLimiter _limiter;
     private readonly UnitOfWork _unitOfWork;
     private readonly TimeProvider _time;
+    private readonly CredentialNotices _notices;
     private readonly ILogger<UserAdministration> _logger;
 
     public UserAdministration(HomespoolDbContext dbContext,
@@ -57,6 +58,7 @@ public sealed class UserAdministration
                               AttemptLimiter limiter,
                               UnitOfWork unitOfWork,
                               TimeProvider time,
+                              CredentialNotices notices,
                               ILogger<UserAdministration> logger)
     {
         _dbContext = dbContext;
@@ -64,6 +66,7 @@ public sealed class UserAdministration
         _limiter = limiter;
         _unitOfWork = unitOfWork;
         _time = time;
+        _notices = notices;
         _logger = logger;
     }
 
@@ -226,7 +229,7 @@ public sealed class UserAdministration
     /// <para>
     /// <b>The delete's row count is the answer</b>, not a lookup before it, so a passkey removed by
     /// somebody else in between reads as already gone rather than as revoked twice. The name is read
-    /// first only for the log line.
+    /// first only for the log line. The owner is mailed only when a row went.
     /// </para>
     /// </remarks>
     public async Task<UserAdminResult> RevokePasskeyAsync(long administratorId,
@@ -236,7 +239,9 @@ public sealed class UserAdministration
     {
         ArgumentNullException.ThrowIfNull(credentialId);
 
-        if (!await _dbContext.Users.AnyAsync(u => u.Id == userId, cancellationToken))
+        HSUser? user = await _dbContext.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+        if (user is null)
         {
             return UserAdminResult.Refused(UserAdminRefusal.NoSuchAccount);
         }
@@ -259,6 +264,8 @@ public sealed class UserAdministration
                                administratorId,
                                LogText.Clean(name),
                                userId);
+
+            await _notices.TellAsync(user, CredentialChange.PasskeyRevoked);
         }
 
         return UserAdminResult.Done(revoked);

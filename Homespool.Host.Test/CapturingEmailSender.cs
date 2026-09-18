@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
+using Homespool.Host.Accounts;
 using Homespool.Host.Mail;
 
 namespace Homespool.Host.Test;
@@ -21,5 +24,11 @@ internal sealed class CapturingEmailSender : IEmailSender
         SentEmails.Add((email, subject, htmlMessage));
 
         return Task.FromResult(Result);
+    }
+
+    /// <summary>A <see cref="CredentialNotices"/> that mails through this sender.</summary>
+    public CredentialNotices Notices()
+    {
+        return new CredentialNotices(this, TestLocaliser.Shared(), NullLogger<CredentialNotices>.Instance);
     }
 }

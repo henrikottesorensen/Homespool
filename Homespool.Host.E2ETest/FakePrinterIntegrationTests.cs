@@ -1001,7 +1001,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
 
         // Act
         using HttpResponseMessage response =
-            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb", TestContext.Current.CancellationToken);
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -1027,7 +1027,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
 
         // And the nested path lists on its own, which is what the catch-all route is for.
         using HttpResponseMessage nested =
-            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/sub", TestContext.Current.CancellationToken);
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb/sub", null, TestContext.Current.CancellationToken);
 
         nested.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -1061,7 +1061,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
 
         // Act
         using HttpResponseMessage response =
-            await client.GetAsync($"/api/v1/printers/{uuid}/storage/usb/nothing-here.gcode", TestContext.Current.CancellationToken);
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb/nothing-here.gcode", null, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);

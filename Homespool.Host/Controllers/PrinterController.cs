@@ -246,9 +246,18 @@ public class PrinterController : ControllerBase
 
     /// <summary>
     /// Lists what is on the printer's own storage.
-    /// <c>GET /api/v1/printers/{uuid}/storage/usb/{path}</c>, with an empty path meaning the root.
+    /// <c>POST /api/v1/printers/{uuid}/storage/usb/{path}</c>, with an empty path meaning the root
+    /// and no body.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>A POST, although the caller only learns something.</b> Nothing is kept here to read: the
+    /// listing is obtained by sending the printer a command, which occupies its one command slot and
+    /// makes it walk a directory. A GET promises a request that is safe to repeat, prefetch or fire
+    /// from a link on another site, and this is none of those - and as a POST it falls under
+    /// <see cref="SameOriginWriteFilter"/> like every other request that reaches a
+    /// printer.
+    /// </para>
     /// <para>
     /// <b><c>usb</c> is literal, because it is the only storage that exists.</b> Firmware hard-codes
     /// it in both directions: <c>path_allowed</c> accepts nothing else (planner.cpp:135-141), and the
@@ -270,13 +279,13 @@ public class PrinterController : ControllerBase
     /// </para>
     /// <para>
     /// <b>Gated here, on <see cref="Capability.ControlPrinter"/>, rather than left to the command.</b>
-    /// Although this reads, it does so by making the printer go and work - and
-    /// <see cref="PrusaConnect.Commands.SendFileInfo"/> itself only requires <see cref="Capability.ViewPrinter"/>, because
-    /// the queue loop asks the same question on behalf of whoever queued a print. So the endpoint is
-    /// the thing that has to be stricter, and says so.
+    /// It makes the printer go and work, and <see cref="PrusaConnect.Commands.SendFileInfo"/> itself
+    /// only requires <see cref="Capability.ViewPrinter"/>, because the queue loop asks the same
+    /// question on behalf of whoever queued a print. So the endpoint is the thing that has to be
+    /// stricter, and says so.
     /// </para>
     /// </remarks>
-    [HttpGet]
+    [HttpPost]
     [Route("printers/{uuid:guid}/storage/usb/{**path}")]
     public async Task<Results<Ok<PrinterStorageReadDTO>, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem, BadGatewayProblem>>
         Storage(Guid uuid, string? path, CancellationToken cancellationToken)

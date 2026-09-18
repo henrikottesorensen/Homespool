@@ -166,11 +166,9 @@ public static class Program
                 // link in outgoing mail (confirm, reset, invite) would open the app signed out even in
                 // a browser that is signed in, and ConfirmEmailChange, which is designed to be clicked
                 // while signed in, would answer NotFound. What it would buy is protection against a
-                // cross-site GET with side effects, of which there is one: Logout is a POST, and the
-                // API's GETs are reads except printers/{uuid}/storage/usb, which reads by making the
-                // printer go and list a directory. Firing it cross-site needs the printer's UUID and
-                // ControlPrinter, and the answer is unreadable from the foreign page. Real friction
-                // against a narrow gain.
+                // cross-site GET with side effects, of which there are none: Logout is a POST, and no
+                // GET on the API sends a printer a command - the storage listing, which does, is a
+                // POST. Real friction against no gain.
                 options.Cookie.SameSite = SameSiteMode.Lax;
 
                 // SameAsRequest, written down for the same reason as the line above: it is already

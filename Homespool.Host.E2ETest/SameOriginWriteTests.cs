@@ -113,6 +113,29 @@ public sealed class SameOriginWriteTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    /// <summary>
+    /// The storage listing returns data and is guarded all the same, because it gets that data by
+    /// sending the printer a command. The printer here does not exist, so the 403 is also the proof
+    /// that the refusal comes before the action: the action's own answer would be a 404.
+    /// </summary>
+    [Fact]
+    public async Task ACookieStorageListingWithoutTheHeaderIsRefusedBeforeTheAction()
+    {
+        // Arrange
+        (_, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "lister@example.com");
+        using HttpClient signedIn = client;
+        signedIn.DefaultRequestHeaders.Remove(SameOriginWriteFilter.HeaderName);
+
+        // Act
+        using HttpResponseMessage response =
+            await signedIn.PostAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/usb",
+                                     null,
+                                     TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     /// <summary>A read is never refused: the cookie without the header still lists.</summary>
     [Fact]
     public async Task ACookieReadWithoutTheHeaderIsAdmitted()

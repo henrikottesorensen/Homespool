@@ -24,6 +24,9 @@ namespace Homespool.Host.E2ETest;
 /// end to end.
 /// </para>
 /// <para>
+/// The verb is asserted the same way: the listing is a POST, and a GET to it is a 405.
+/// </para>
+/// <para>
 /// The behaviour of the endpoint - what it does once a printer is on the other end - is the fake's
 /// job and is not tested here.
 /// </para>
@@ -36,6 +39,13 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime
     public ValueTask InitializeAsync()
     {
         _factory = new HomespoolFactory(_scratch);
+
+        // Routing as the published application does it. From build output, which is what a test host
+        // runs, MapStaticAssets adds a GET-and-HEAD fallback on {**path:file}, and the matcher counts
+        // that catch-all as a candidate for every path before it tries the constraint - so a GET to a
+        // route with no GET answers 404, and any other verb to a path with no route answers 405. A
+        // published application has no such fallback, and answers the other way round.
+        _factory.ConfigurationOverrides["ReloadStaticAssetsAtRuntime"] = "false";
 
         _ = _factory.Server;
 
@@ -68,7 +78,7 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         // Act
-        using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
+        using HttpResponseMessage response = await client.PostAsync(url, null, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
@@ -87,10 +97,30 @@ public sealed class PrinterStorageRouteTests : IAsyncLifetime
 
         // Act
         using HttpResponseMessage response =
-            await client.GetAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/sdcard",
-                                  TestContext.Current.CancellationToken);
+            await client.PostAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/sdcard",
+                                   null,
+                                   TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// A listing is obtained by sending the printer a command, so the route answers no GET: a GET is
+    /// what a link, a prefetch or an image tag on another origin can make a signed-in browser send.
+    /// </summary>
+    [Fact]
+    public async Task TheStorageRouteAnswersNoGet()
+    {
+        // Arrange
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        // Act
+        using HttpResponseMessage response =
+            await client.GetAsync("/api/v1/printers/11111111-1111-1111-1111-111111111111/storage/usb",
+                                  TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.MethodNotAllowed);
     }
 }

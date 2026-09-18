@@ -15,6 +15,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.RateLimiting;
@@ -57,6 +58,10 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// this browser - which both password pages tell the person to go and look for.
 /// </para>
 /// <para>
+/// <b>Adding and removing one are mailed to the owner</b>, through <see cref="CredentialNotices"/>,
+/// since whoever proved themselves on this browser need not be the owner. A rename is not.
+/// </para>
+/// <para>
 /// <b>Offered only where the relying-party id covers the host</b>, as the login page's button is:
 /// a credential minted here is bound to that name, and a ceremony from any other fails in the browser
 /// with nothing to say why.
@@ -78,6 +83,7 @@ public class PasskeysModel : PageModel
     private readonly PasskeyCeremonies _ceremonies;
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _options;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly CredentialNotices _notices;
     private readonly ILogger<PasskeysModel> _logger;
 
     public PasskeysModel(UserManager<HSUser> users,
@@ -86,6 +92,7 @@ public class PasskeysModel : PageModel
                          PasskeyCeremonies ceremonies,
                          IOptionsMonitor<PasskeyAuthenticationOptions> options,
                          IStringLocalizer<SharedResource> localiser,
+                         CredentialNotices notices,
                          ILogger<PasskeysModel> logger)
     {
         _users = users;
@@ -94,6 +101,7 @@ public class PasskeysModel : PageModel
         _ceremonies = ceremonies;
         _options = options;
         _localiser = localiser;
+        _notices = notices;
         _logger = logger;
     }
 
@@ -290,6 +298,8 @@ public class PasskeysModel : PageModel
                                passkey.Name,
                                passkey.IsBackupEligible ? " (synced)" : string.Empty);
 
+        await _notices.TellAsync(user, CredentialChange.PasskeyAdded);
+
         StatusMessage = _localiser["Passkeys_Added"];
 
         return RedirectToPage();
@@ -355,6 +365,8 @@ public class PasskeysModel : PageModel
         await _users.RemovePasskeyAsync(user, credentialId);
 
         _logger.LogInformation("User {UserId} removed passkey {PasskeyName}.", user.Id, passkey.Name);
+
+        await _notices.TellAsync(user, CredentialChange.PasskeyRemoved);
 
         StatusMessage = _localiser["Passkeys_Removed"];
 

@@ -531,6 +531,7 @@ public static class Program
             builder.Services.AddHostedService(sp => sp.GetRequiredService<QueueAdvancer>());
             builder.Services.AddScoped<Accounts.ApiTokenService>();
             builder.Services.AddScoped<Accounts.UserAdministration>();
+            builder.Services.AddScoped<Accounts.CredentialNotices>();
 
             WebApplication app = builder.Build();
 

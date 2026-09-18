@@ -70,6 +70,10 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// account by the expected-account item instead, after a proof was demanded at the start of the same
 /// round trip.
 /// </para>
+/// <para>
+/// <b>Every link and removal is mailed to the owner</b>, through <see cref="CredentialNotices"/>: the
+/// proof says somebody at this browser proved themselves, not that it was the owner.
+/// </para>
 /// </remarks>
 [Authorize]
 public class ExternalLoginsModel : PageModel
@@ -79,6 +83,7 @@ public class ExternalLoginsModel : PageModel
     private readonly ExternalSignIn _externalSignIn;
     private readonly RecentProof _proof;
     private readonly UnitOfWork _unitOfWork;
+    private readonly CredentialNotices _notices;
     private readonly ILogger<ExternalLoginsModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
@@ -87,6 +92,7 @@ public class ExternalLoginsModel : PageModel
                                ExternalSignIn externalSignIn,
                                RecentProof proof,
                                UnitOfWork unitOfWork,
+                               CredentialNotices notices,
                                ILogger<ExternalLoginsModel> logger,
                                IStringLocalizer<SharedResource> localiser)
     {
@@ -95,6 +101,7 @@ public class ExternalLoginsModel : PageModel
         _externalSignIn = externalSignIn;
         _proof = proof;
         _unitOfWork = unitOfWork;
+        _notices = notices;
         _logger = logger;
         _localiser = localiser;
     }
@@ -209,6 +216,8 @@ public class ExternalLoginsModel : PageModel
 
         _logger.LogInformation("Linked the {LoginProvider} login to an existing account.", info.LoginProvider);
 
+        await _notices.TellAsync(user, CredentialChange.ProviderLinked, info.ProviderDisplayName);
+
         StatusMessage = _localiser["Manage_ExternalLoginLinked"];
 
         return RedirectToPage();
@@ -238,6 +247,8 @@ public class ExternalLoginsModel : PageModel
             }
 
             await _signIn.RefreshSignInAsync(HttpContext, user);
+
+            await _notices.TellAsync(user, CredentialChange.ProviderRemoved, await ProviderNameAsync(loginProvider));
 
             StatusMessage = _localiser["Manage_ExternalLoginRemoved"];
 
@@ -285,6 +296,8 @@ public class ExternalLoginsModel : PageModel
 
         _logger.LogInformation("Removed the {LoginProvider} login and set a password in its place.", loginProvider);
 
+        await _notices.TellAsync(user, CredentialChange.ProviderSwappedForPassword, await ProviderNameAsync(loginProvider));
+
         StatusMessage = _localiser["Manage_ExternalLoginSwappedForPassword"];
 
         return RedirectToPage();
@@ -300,6 +313,16 @@ public class ExternalLoginsModel : PageModel
 
         HasPassword = await _userManager.HasPasswordAsync(user);
         Proved = _proof.IsProved(HttpContext, user.Id);
+    }
+
+    /// <summary>
+    /// The name the administrator gave <paramref name="loginProvider"/>, as the sign-in page shows it.
+    /// Only called once a removal has succeeded, so the posted value named a login the account held.
+    /// </summary>
+    private async Task<string> ProviderNameAsync(string loginProvider)
+    {
+        return (await _externalSignIn.ProvidersAsync()).FirstOrDefault(scheme => scheme.Name == loginProvider)?.DisplayName ??
+               loginProvider;
     }
 
     private void AddErrors(IdentityResult result)

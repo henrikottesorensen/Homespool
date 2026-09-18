@@ -379,6 +379,7 @@ public sealed class AdminUsersPageTests : IDisposable
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),
                                       TimeProvider.System,
+                                      new CapturingEmailSender().Notices(),
                                       NullLogger<UserAdministration>.Instance);
     }
 

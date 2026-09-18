@@ -231,6 +231,7 @@ public sealed class ExternalRoundTripTests : IDisposable
                                        services.GetRequiredService<ExternalSignIn>(),
                                        services.GetRequiredService<RecentProof>(),
                                        new UnitOfWork(services.GetRequiredService<HomespoolDbContext>()),
+                                       new CapturingEmailSender().Notices(),
                                        NullLogger<ExternalLoginsModel>.Instance,
                                        TestLocaliser.Shared())
         {

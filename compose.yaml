@@ -244,11 +244,25 @@ services:
       #
       # Read-only, because reading symlink names is the whole of what this service does with it.
       #
-      # Read-only is not the same as narrow. The mount carries everything under the host's /dev, not
-      # only device nodes: /dev/shm holds ordinary files, and the container can read any of it that
-      # its uid is permitted to. What bounds this is host file ownership, not the :ro - so treat it
-      # as "this container can read the host's /dev tree" when weighing what else goes in there.
-      - /dev:/hostdev:ro
+      # Read-only is not the same as narrow, and `recursive: disabled` is the narrowing. A bind mount
+      # is recursive unless told otherwise, so the short form brought along every filesystem mounted
+      # beneath the host's /dev - /dev/shm, /dev/pts and /dev/mqueue - and /dev/shm is where other
+      # processes on the host keep ordinary files, readable in here by whatever their modes allow.
+      # Without recursion those three are the empty directories they are mounted over, and what is
+      # left is the devtmpfs itself: device nodes, and udev's symlinks, which live on it.
+      #
+      # It costs the fix above nothing, because that fix rests on binding the ROOT of the devtmpfs
+      # and recursion does not enter into it. Measured on a Pi with a USB camera, in a container
+      # started before the camera was unplugged and plugged back in: udev recreated by-id under a
+      # new inode, and the container listed the new one.
+      #
+      # The long form is the only spelling: the short one has no option for this.
+      - type: bind
+        source: /dev
+        target: /hostdev
+        read_only: true
+        bind:
+          recursive: disabled
 
     # The two credentials this container holds, as files rather than environment variables. Each
     # file is named for the configuration key it fills, and the application reads the directory with
@@ -291,6 +305,32 @@ services:
         target: Certificates__AuthorityPassphrase
         uid: "1654"
         mode: 0400
+
+    # This is the container that parses what printers send and what people upload, so it keeps no
+    # privilege it does not use - and it uses none. The image already runs as an unprivileged user
+    # with no effective capabilities; what these two add is that nothing in here can acquire any.
+    # Dropping the bounding set means no binary can be run with a capability whatever its file says,
+    # and no-new-privileges means a setuid binary runs as the caller. Measured, not assumed: the
+    # application starts, migrates, mints its certificates, serves pages, takes uploads and reads
+    # both secrets above under the pair exactly as without it.
+    #
+    # One thing changes for whoever debugs it: `docker exec -u 0` gives a root with no capabilities,
+    # which cannot read files the application owns privately - the authority's key among them.
+    # `docker cp` is unaffected.
+    #
+    # NOT read_only, for the reason the sidecar below is not: compose cannot write a secret sourced
+    # from the environment into a read-only service at all - it refuses with "`file` is the sole
+    # supported option" - and a `file:` secret would put the authority's passphrase in a file on
+    # the host. The flag would buy little here anyway: the image's files are root's and this user
+    # cannot write them. What it does write outside the volumes is /tmp - the runtime's diagnostic
+    # sockets, and every form upload past the memory threshold, which ASP.NET spills there. Should
+    # read_only ever return, /tmp has to stay writable AND ON DISK: without it an upload answers 400
+    # with nothing logged while the container reports healthy, and a tmpfs would hold an upload of
+    # up to the configured limit in memory, which a Raspberry Pi does not have.
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
 
     # Two networks: the proxy's, and the camera sidecar's. The sidecar is reached by service name
     # over the second, and is on nothing else - see its own networks: line. The listeners bind only

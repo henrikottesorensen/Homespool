@@ -111,9 +111,10 @@ public static class Program
             // holds alike: an exception's text is the one part of an event an enricher cannot change,
             // so it is made printable by what stands in front of the sink. The container's sinks are
             // added here by hand for that reason - ReadFrom.Services would add them beside the
-            // wrapper rather than behind it, and it has nothing else to read: no enricher, filter or
-            // level switch is registered with the container.
+            // wrapper rather than behind it - and ServicesExceptSinks reads everything else the
+            // container holds for a logger, exactly as ReadFrom.Services did.
             builder.Services.AddSerilog((services, lc) => lc.ReadFrom.Configuration(builder.Configuration)
+                                                                        .ReadFrom.ServicesExceptSinks(services)
                                                                         .Enrich.FromLogContext()
                                                                         .Enrich.With<Services.PrintableLogEnricher>()
                                                                         .WriteTo.WithPrintableExceptions(sinks =>

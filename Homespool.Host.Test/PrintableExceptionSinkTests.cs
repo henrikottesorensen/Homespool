@@ -5,6 +5,8 @@ using System.Linq;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.DependencyInjection;
+
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -183,6 +185,35 @@ public class PrintableExceptionSinkTests
         }
     }
 
+    /// <summary>
+    /// What the container holds for a logger is still read - its enricher runs, its level switch
+    /// decides - and only its sinks are left for the caller to put behind the wrapper.
+    /// </summary>
+    [Fact]
+    public void TheContainersSinksAreWithheldAndEverythingElseItHoldsIsRead()
+    {
+        Collecting fromTheContainer = new();
+        Collecting configured = new();
+
+        using ServiceProvider services = new ServiceCollection()
+                                         .AddSingleton<ILogEventSink>(fromTheContainer)
+                                         .AddSingleton<ILogEventEnricher>(new Stamp())
+                                         .AddSingleton(new LoggingLevelSwitch(LogEventLevel.Debug))
+                                         .BuildServiceProvider();
+
+        using (Logger logger = new LoggerConfiguration()
+                               .ReadFrom.ServicesExceptSinks(services)
+                               .WriteTo.Sink(configured)
+                               .CreateLogger())
+        {
+            logger.Debug("below the default level, so only the container's switch lets it through");
+        }
+
+        fromTheContainer.Events.Should().BeEmpty("the caller adds the container's sinks itself, behind the wrapper");
+        configured.Events.Should().ContainSingle()
+                  .Which.Properties.Should().ContainKey("Stamp", "the container's enricher still runs");
+    }
+
     /// <summary>Thrown and caught, so it has a trace like any exception that reaches a log.</summary>
     private static Exception Thrown(string message, Exception? inner)
     {
@@ -215,6 +246,14 @@ public class PrintableExceptionSinkTests
         public void Emit(LogEvent logEvent)
         {
             Events.Add(logEvent);
+        }
+    }
+
+    private sealed class Stamp : ILogEventEnricher
+    {
+        public void Enrich(LogEvent logEvent, ILogEventPropertyFactory propertyFactory)
+        {
+            logEvent.AddPropertyIfAbsent(new LogEventProperty("Stamp", new ScalarValue(1)));
         }
     }
 

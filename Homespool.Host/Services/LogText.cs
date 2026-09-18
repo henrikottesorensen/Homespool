@@ -1,5 +1,4 @@
 using System;
-using System.Text;
 
 namespace Homespool.Host.Services;
 
@@ -22,44 +21,19 @@ namespace Homespool.Host.Services;
 /// newline in a serial number. The replacement character keeps the length and says so.
 /// </para>
 /// <para>
-/// The excluded set is the one <c>UserDirectoryName</c> and <c>Passkeys.IsAcceptableName</c> already
-/// refuse, minus the path separators those two add for reasons that are about a filesystem rather
-/// than a reader.
+/// What counts as unprintable is <see cref="PrintableText"/>'s to say, and this is its use for a log
+/// line: replace, and where a value has no length of its own, cut it and say how much arrived.
 /// </para>
 /// </remarks>
 public static class LogText
 {
-    private const char Replacement = '\uFFFD';
-
     /// <summary>
     /// <paramref name="value"/> with anything unprintable replaced, or the same string back when it
     /// carries nothing to replace.
     /// </summary>
     public static string Clean(string? value)
     {
-        if (string.IsNullOrEmpty(value))
-        {
-            return string.Empty;
-        }
-
-        // Built only once something has to change, so the ordinary case - every real printer, every
-        // request - allocates nothing and returns the caller's own string.
-        StringBuilder? cleaned = null;
-
-        for (int index = 0; index < value.Length; index++)
-        {
-            if (!IsUnprintable(value[index]))
-            {
-                cleaned?.Append(value[index]);
-
-                continue;
-            }
-
-            cleaned ??= new StringBuilder(value.Length).Append(value, 0, index);
-            cleaned.Append(Replacement);
-        }
-
-        return cleaned?.ToString() ?? value;
+        return PrintableText.Replace(value);
     }
 
     /// <summary>
@@ -78,6 +52,11 @@ public static class LogText
     /// thumbnail explains nothing about a misbehaving printer. A name is an identifier, and an
     /// operator reading the line needs to see what it started with.
     /// </para>
+    /// <para>
+    /// <b>The marker is what makes this the log's own</b>: a reader of a line wants to know the value
+    /// was absurd, where anything that keeps the value wants <see cref="PrintableText.Replace(string, int)"/>,
+    /// which cuts and says nothing.
+    /// </para>
     /// </remarks>
     public static string Clean(string? value, int maxLength)
     {
@@ -88,30 +67,6 @@ public static class LogText
             return Clean(value);
         }
 
-        // Never mid-pair: a lone surrogate is not a character, and it reaches whatever writes the log
-        // as ill-formed UTF-16 - which some JSON writers refuse outright. Cutting one earlier costs a
-        // character of an already-truncated name.
-        int cut = char.IsHighSurrogate(value[maxLength - 1]) ? maxLength - 1 : maxLength;
-
-        return Clean(value[..cut]) + $"<{value.Length} characters in all>";
-    }
-
-    /// <summary>
-    /// Control characters, and the bidi and zero-width marks that would let a value render a log line
-    /// deceptively without carrying a control character at all.
-    /// </summary>
-    /// <remarks>
-    /// Public for the rules that refuse these on the way in rather than replace them on the way out:
-    /// a name that may not hold one needs the same answer this gives, not a copy of it.
-    /// </remarks>
-    public static bool IsUnprintable(char character)
-    {
-        return char.IsControl(character) ||
-
-               // Written as escapes on purpose: these are invisible characters, and a source file holding
-               // them literally is unreadable in a diff and carries the very hazard this rejects.
-               character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
-               character is >= '\u202A' and <= '\u202E' ||
-               character is >= '\u2066' and <= '\u2069';
+        return PrintableText.Replace(value, maxLength) + $"<{value.Length} characters in all>";
     }
 }

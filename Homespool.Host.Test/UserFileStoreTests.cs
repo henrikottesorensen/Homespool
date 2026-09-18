@@ -292,6 +292,9 @@ public sealed class UserFileStoreTests : IDisposable
     [InlineData("model\uFEFF.gcode")]
     [InlineData("model\u202Eedocg.exe")]
     [InlineData("model\u2066.gcode")]
+    [InlineData("model\u2028.gcode")]
+    [InlineData("model\u200E.gcode")]
+    [InlineData("mod\u00ADel.gcode")]
     public async Task ANameWithAnInvisibleMarkIsRefused(string given)
     {
         // Arrange

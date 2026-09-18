@@ -261,6 +261,8 @@ public sealed class PasskeysPageTests : IDisposable
     [InlineData("pho\nne")]
     [InlineData("phone\u202E")]
     [InlineData("\u200Bphone")]
+    [InlineData("pho\u2028ne")]
+    [InlineData("phone\u200E")]
     public async Task ANameWithAnInvisibleCharacterIsRefused(string name)
     {
         // Arrange

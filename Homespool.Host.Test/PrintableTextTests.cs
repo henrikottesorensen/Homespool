@@ -30,6 +30,51 @@ public class PrintableTextTests
         PrintableText.IsPrintable(value).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Each group listed whole: the separators, every <c>Bidi_Control</c> character, and the ones with
+    /// no width or no ink - with both ends of each range, since a range is where a member goes missing.
+    /// </summary>
+    [Theory]
+    [InlineData('\u007F')]
+    [InlineData('\u0085')]
+    [InlineData('\u2028')]
+    [InlineData('\u2029')]
+    [InlineData('\u061C')]
+    [InlineData('\u200E')]
+    [InlineData('\u200F')]
+    [InlineData('\u202A')]
+    [InlineData('\u202E')]
+    [InlineData('\u2066')]
+    [InlineData('\u2069')]
+    [InlineData('\u00AD')]
+    [InlineData('\u180E')]
+    [InlineData('\uFEFF')]
+    [InlineData('\u200B')]
+    [InlineData('\u200D')]
+    [InlineData('\u2060')]
+    [InlineData('\u2064')]
+    public void EveryMemberOfEachGroupIsUnprintable(char character)
+    {
+        PrintableText.IsUnprintable(character).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The neighbours of each range, and the reason the rule is a list rather than a category: the
+    /// Arabic number sign is a <c>Format</c> character, and it is visible and belongs in a name.
+    /// </summary>
+    [Theory]
+    [InlineData('\u0600')]
+    [InlineData('\u200A')]
+    [InlineData('\u2010')]
+    [InlineData('\u2027')]
+    [InlineData('\u202F')]
+    [InlineData('\u205F')]
+    [InlineData('\u00AE')]
+    public void WhatStandsBesideAGroupIsNotInIt(char character)
+    {
+        PrintableText.IsUnprintable(character).Should().BeFalse();
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("248289761001")]

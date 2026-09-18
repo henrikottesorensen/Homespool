@@ -2,6 +2,8 @@ using System;
 using System.Globalization;
 using System.Text;
 
+using Homespool.Host.Services;
+
 namespace Homespool.Host.PrintFiles;
 
 /// <summary>
@@ -125,20 +127,12 @@ public static class UserDirectoryName
     }
 
     /// <summary>
-    /// Path separators, control characters, and the bidi and zero-width marks that would let a
-    /// username render a directory listing deceptively - the one exclusion here that is about a
-    /// reader rather than a filesystem.
+    /// Path separators, which are about a filesystem, and everything <see cref="PrintableText"/>
+    /// refuses, which is about a reader: a username must not render a directory listing deceptively.
     /// </summary>
     private static bool IsUnsafe(char character)
     {
-        return character is '/' or '\\' or ':' or '\0' ||
-               char.IsControl(character) ||
-
-               // Written as escapes on purpose: these are invisible characters, and a source file holding
-               // them literally is unreadable in a diff and carries the very hazard this rejects.
-               character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
-               character is >= '\u202A' and <= '\u202E' ||
-               character is >= '\u2066' and <= '\u2069';
+        return character is '/' or '\\' or ':' || PrintableText.IsUnprintable(character);
     }
 
     /// <summary>Cuts to a byte budget without splitting a character in half.</summary>

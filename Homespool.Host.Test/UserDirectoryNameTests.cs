@@ -60,8 +60,21 @@ public class UserDirectoryNameTests
     [Fact]
     public void BidiAndZeroWidthMarksAreReplaced()
     {
-        UserDirectoryName.For(12, "gpj‮exe").Should().Be("12-gpj-exe");
-        UserDirectoryName.For(12, "ali​ce").Should().Be("12-ali-ce");
+        UserDirectoryName.For(12, "gpj\u202Eexe").Should().Be("12-gpj-exe");
+        UserDirectoryName.For(12, "ali\u200Bce").Should().Be("12-ali-ce");
+    }
+
+    /// <summary>
+    /// The rule is <c>PrintableText</c>'s, asked rather than copied - so what that learns to refuse,
+    /// this replaces: a line separator, a directional mark, a soft hyphen.
+    /// </summary>
+    [Theory]
+    [InlineData("ali\u2028ce")]
+    [InlineData("ali\u200Ece")]
+    [InlineData("ali\u00ADce")]
+    public void WhateverIsUnprintableIsReplaced(string userName)
+    {
+        UserDirectoryName.For(12, userName).Should().Be("12-ali-ce");
     }
 
     [Theory]

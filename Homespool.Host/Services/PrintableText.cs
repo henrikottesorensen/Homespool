@@ -29,18 +29,44 @@ public static class PrintableText
     private const char Replacement = '\uFFFD';
 
     /// <summary>
-    /// Control characters, and the bidi and zero-width marks that let a value render as something
-    /// other than what it holds without carrying a control character at all.
+    /// Control characters, and the characters that let a value render as something other than what
+    /// it holds without carrying a control character at all.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Four groups, each listed whole rather than by the members somebody happened to think of:
+    /// the controls, which is <see cref="char.IsControl(char)"/> - C0, <c>DEL</c> and C1; the line
+    /// and paragraph separators, which break a line as surely as a newline and are not controls;
+    /// every character Unicode gives the <c>Bidi_Control</c> property; and the ones with no width or
+    /// no ink - the soft hyphen, the Mongolian vowel separator, the zero-width space and joiners,
+    /// the word joiner and the invisible operators after it, and the byte-order mark.
+    /// </para>
+    /// <para>
+    /// <b>Listed, not taken by category.</b> The <c>Format</c> category would be shorter to write
+    /// and also holds the Arabic number signs, which are visible and belong in somebody's file name.
+    /// A log line can afford that and <see cref="PrintableLogEnricher"/> takes the category; a rule
+    /// that refuses names cannot.
+    /// </para>
+    /// </remarks>
     public static bool IsUnprintable(char character)
     {
+        // Written as escapes on purpose: these are invisible characters, and a source file holding
+        // them literally is unreadable in a diff and carries the very hazard this rejects.
         return char.IsControl(character) ||
 
-               // Written as escapes on purpose: these are invisible characters, and a source file holding
-               // them literally is unreadable in a diff and carries the very hazard this rejects.
-               character is '\u200B' or '\u200C' or '\u200D' or '\uFEFF' ||
+               // Line and paragraph separator.
+               character is '\u2028' or '\u2029' ||
+
+               // Bidi_Control: the Arabic letter mark, the two directional marks, the embeddings and
+               // overrides, the isolates.
+               character is '\u061C' or '\u200E' or '\u200F' ||
                character is >= '\u202A' and <= '\u202E' ||
-               character is >= '\u2066' and <= '\u2069';
+               character is >= '\u2066' and <= '\u2069' ||
+
+               // No width, or no ink.
+               character is '\u00AD' or '\u180E' or '\uFEFF' ||
+               character is >= '\u200B' and <= '\u200D' ||
+               character is >= '\u2060' and <= '\u2064';
     }
 
     /// <summary>Whether <paramref name="value"/> holds nothing <see cref="IsUnprintable"/> refuses.</summary>

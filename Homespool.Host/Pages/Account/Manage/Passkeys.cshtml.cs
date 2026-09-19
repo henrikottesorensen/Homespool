@@ -48,6 +48,12 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// the proof unlocks; the answer needs no second proof.
 /// </para>
 /// <para>
+/// <b>Removing one takes a recent proof too.</b> A session somebody else got hold of could otherwise
+/// take away the owner's way in, or clear the list so a passkey they add later is the only one there.
+/// The removal is a plain form post, so the button stays and the filter's redirect to the proof page
+/// works, on a host that cannot run a ceremony as well.
+/// </para>
+/// <para>
 /// <b>Removing the last one is allowed.</b> A passkey is a complete sign-in beside whatever else the
 /// account holds, a password or a provider, rather than a factor either needs, so no removal can
 /// strand anybody. The administrator's revoke on <c>Admin/Passkeys</c> is the recovery for a lost
@@ -328,6 +334,7 @@ public class PasskeysModel : PageModel
         return RedirectToPage();
     }
 
+    [RequireRecentProof]
     public async Task<IActionResult> OnPostRemoveAsync(string? id)
     {
         HSUser? user = await _users.GetUserAsync(User);

@@ -24,7 +24,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// <c>PrinterController</c>'s dispatch endpoints - send a file, print, browse storage - each once
+/// <c>PrinterController</c>'s dispatch endpoints - send a file, browse storage - each once
 /// with a token whose scope names the capability and once with one that does not, against a
 /// genuinely connected printer.
 /// </summary>
@@ -50,6 +50,12 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     public ValueTask InitializeAsync()
     {
         _factory = new HomespoolFactory(_scratch);
+
+        // So that a POST to a path with no route answers 404, as the published application does.
+        // Unpublished output gets MapStaticAssets' GET-and-HEAD fallback on {**path:file}, which the
+        // matcher counts as a candidate for every path - so any other verb to an unrouted path would
+        // answer 405 here and nowhere else.
+        _factory.ConfigurationOverrides["ReloadStaticAssetsAtRuntime"] = "false";
 
         _ = _factory.Server;
 
@@ -160,49 +166,31 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A token scoped to <c>Print</c> starts a print of a file already on the printer, and the
-    /// printer actually starts.
+    /// Nothing over the API starts a print directly - not a slicer's key, and not an unrestricted
+    /// one - and the printer hears nothing.
     /// </summary>
+    /// <remarks>
+    /// <b>The printer is idle and holds the file</b>, which is everything firmware needs to accept
+    /// <c>START_PRINT</c>. So an idle printer afterwards is the route's absence rather than the
+    /// machine refusing, and the unrestricted token makes it the route's absence rather than a scope.
+    /// Printing goes through the queue, which waits for a person to ready the printer.
+    /// </remarks>
     [Fact]
-    public async Task ATokenScopedToPrintStartsAPrint()
+    public async Task NoTokenStartsAPrintDirectly()
     {
         (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
             configure: f => f.Device.Storage.AddFile("/usb/model.gcode", 4242, 1764804970));
 
-        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+        using HttpClient client = await ScopedClientAsync(userId, CapabilitySet.Everything);
 
         using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/print",
                                                                           new { path = "/usb/model.gcode" },
                                                                           TestContext.Current.CancellationToken);
 
-        response.StatusCode.Should().Be(HttpStatusCode.NoContent, "204 means the printer answered and did not refuse");
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound, "there is no such route, rather than one that refuses");
 
-        fake.Device.State.Should().Be(DeviceState.Printing,
-                                      "the command must have executed, not merely been accepted by the API");
-
-        await EndRunAsync(fake, run);
-    }
-
-    /// <summary>
-    /// A token whose scope does not name <c>Print</c> starts nothing, and the 403 names it.
-    /// </summary>
-    [Fact]
-    public async Task ATokenWithoutPrintCannotStartAPrintAndTheRefusalNamesIt()
-    {
-        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
-            configure: f => f.Device.Storage.AddFile("/usb/model.gcode", 4242, 1764804970));
-
-        using HttpClient client = await ScopedClientAsync(userId, [Capability.ViewPrinter]);
-
-        using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/print",
-                                                                          new { path = "/usb/model.gcode" },
-                                                                          TestContext.Current.CancellationToken);
-
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await DetailOfAsync(response)).Should().Contain("Print");
-
-        fake.Device.State.Should().Be(DeviceState.Idle, "a refused print changes nothing at the machine");
-        fake.ReceivedCommands.Should().BeEmpty();
+        fake.Device.State.Should().Be(DeviceState.Idle);
+        fake.ReceivedCommands.Should().BeEmpty("nothing may reach the printer that could start it");
 
         await EndRunAsync(fake, run);
     }

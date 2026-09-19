@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,8 +31,9 @@ using JobControlResult =
 namespace Homespool.Host.Controllers;
 
 /// <summary>
-/// Everything done <em>to</em> a printer over the app API: send it one of your files, print
-/// something already on it, and the six job-control verbs that act on whatever is already running.
+/// Everything done <em>to</em> a printer over the app API: send it one of your files, browse its
+/// storage, and the job-control verbs that act on whatever is already running. Starting a print is
+/// not here - that is the queue's, which waits for a person to ready the printer.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -47,13 +47,6 @@ namespace Homespool.Host.Controllers;
 /// <b>Uploads left for <see cref="PrintFileController"/> on 2026-07-31</b>, when files stopped being
 /// something that happens to a printer and became a thing a user owns. What is left here genuinely
 /// needs a printer in the route.
-/// </para>
-/// <para>
-/// Transfer and print are deliberately <b>not</b> combined: a transfer takes as long as it takes and
-/// a print starts instantly, so a single call would have to either block or lie about what it did.
-/// Keeping them apart also means that when a rig run fails it is obvious which half broke. A
-/// convenience call that does both is a later addition, and a pure one - nothing here needs rework
-/// for it.
 /// </para>
 /// <para>
 /// Cookie- or token-authenticated like <see cref="PrinterAppController"/>, so it is exercisable with
@@ -106,12 +99,10 @@ public class PrinterController : ControllerBase
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Was <c>command/start/cloud</c></b>, which named where <i>Connect</i> kept the bytes. What
-    /// actually distinguishes this from <see cref="Print"/> is whether the file has to be
-    /// transferred first, so that is what the two routes are named for now.
-    /// Gone with the old shape: <c>printNow</c>, which could only
-    /// answer 501, and the body's <c>teamId</c>, which existed because the spec carried it - the
-    /// team is a property of the printer and is read from it.
+    /// <b>Sends, and never starts.</b> Starting a print is the queue's alone
+    /// (<c>POST printers/{uuid}/queue</c>), because it waits for a person to ready the printer - so
+    /// there is no <c>printNow</c> here. There is no <c>teamId</c> in the body either: the team is a
+    /// property of the printer and is read from it.
     /// </para>
     /// <para>
     /// <b>The transfer token is minted here and thrown away afterwards.</b> The printer quotes it
@@ -194,54 +185,6 @@ public class PrinterController : ControllerBase
         {
             return this.ForbiddenProblem(e.Message);
         }
-    }
-
-    /// <summary>
-    /// Prints a file already on the printer. <c>POST /api/v1/printers/{uuid}/print</c>.
-    /// </summary>
-    /// <remarks>
-    /// Takes a path on the <i>printer's</i> storage, not one of ours - a file can be on a printer
-    /// without this server having put it there, which is exactly why sending and printing are
-    /// separate calls. A file we sent is at the <c>printerPath</c> the file API reports.
-    /// </remarks>
-    [HttpPost]
-    [Route("printers/{uuid:guid}/print")]
-    public async Task<Results<NoContent, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem>> Print(
-        Guid uuid,
-        [FromBody] PrintRequest body,
-        CancellationToken cancellationToken)
-    {
-        if (!body.Path.StartsWith("/usb/", StringComparison.Ordinal) || body.Path.Contains("/../", StringComparison.Ordinal))
-        {
-            // The printer enforces this itself (path_allowed, planner.cpp:135-141); rejecting here
-            // turns a silent refusal into an explanation.
-            return this.BadRequestProblem("Path must be under /usb/ and contain no '/../' segment.");
-        }
-
-        (HSUser? user, Printer? printer) = await ResolveAsync(uuid, cancellationToken);
-
-        if (user is null)
-        {
-            return this.NoAccount();
-        }
-
-        if (printer is null)
-        {
-            return this.NotFoundProblem();
-        }
-
-        // A union does not widen on its own: SendAsync answers with the four arms every verb shares,
-        // and this action has a fifth, so its answer is unpacked into the wider type here.
-        JobControlResult sent = await SendAsync(printer, new StartPrint(body.Path), cancellationToken);
-
-        return sent.Result switch
-        {
-            NoContent accepted => accepted,
-            ConflictProblem refused => refused,
-            ForbiddenProblem forbidden => forbidden,
-            NotFoundProblem missing => missing,
-            _ => throw new UnreachableException("SendAsync answered with an arm it does not declare."),
-        };
     }
 
     /// <summary>
@@ -598,12 +541,5 @@ public class PrinterController : ControllerBase
     {
         /// <summary>The file's name, as the file API lists it.</summary>
         public required string Name { get; set; }
-    }
-
-    /// <summary>Body of a print: what to run, on the printer's own storage.</summary>
-    public class PrintRequest
-    {
-        /// <summary>Path on the printer, under <c>/usb/</c>.</summary>
-        public required string Path { get; set; }
     }
 }

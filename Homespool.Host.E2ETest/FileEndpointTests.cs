@@ -338,27 +338,6 @@ public sealed class FileEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A path outside <c>/usb/</c> is refused here rather than by the printer. Firmware enforces it
-    /// too (<c>path_allowed</c>), but a local rejection explains itself.
-    /// </summary>
-    [Fact]
-    public async Task APathOutsideUsbIsRejected()
-    {
-        // Arrange
-        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
-            _factory, "badpath@example.com");
-
-        // Act
-        using HttpResponseMessage response = await client.PostAsJsonAsync(
-            $"/api/v1/printers/{Guid.NewGuid()}/print", new { path = "/etc/passwd" }, TestContext.Current.CancellationToken);
-
-        // Assert
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-
-        client.Dispose();
-    }
-
-    /// <summary>
     /// Uploading is not anonymous. The endpoint carries <c>[Authorize]</c>, and an unauthenticated
     /// caller must not be able to write to the server's disk.
     /// </summary>

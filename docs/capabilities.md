@@ -99,8 +99,9 @@ PrusaSlicer's print-host integration needs to upload a file and print it, and no
 - `UploadOwnFiles`
 - `Print`
 
-That key can then send a model and start it, and **cannot delete anything** — which matters, because
-it lives in a slicer's configuration file on a laptop.
+That key can then send a model and queue it, and **cannot delete anything** — which matters, because
+it lives in a slicer's configuration file on a laptop. It cannot start a print on its own either: the
+queue waits for somebody to ready the printer.
 
 ### Revoking
 

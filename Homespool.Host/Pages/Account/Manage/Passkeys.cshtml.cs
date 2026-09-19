@@ -3,6 +3,7 @@ using System.Buffers.Text;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -356,9 +357,21 @@ public class PasskeysModel : PageModel
             return RedirectToPage();
         }
 
-        await _users.RemovePasskeyAsync(user, credentialId);
+        IdentityResult removed = await _users.RemovePasskeyAsync(user, credentialId);
 
         _logger.LogInformation("User {UserId} removed passkey {PasskeyName}.", user.Id, passkey.Name);
+
+        // The store deletes the passkey and saves before the manager validates and saves the account
+        // row, so a failed result still means the passkey is gone and this page says so. What failed
+        // is the account's own row - a name or address the user validators now refuse, or an update
+        // that raced this one - which nothing here needs, and which would otherwise go unseen. The
+        // codes only: a description can carry the username.
+        if (!removed.Succeeded)
+        {
+            _logger.LogWarning("User {UserId}'s passkey is removed, but the account row was not saved after it: {IdentityErrorCodes}.",
+                               user.Id,
+                               string.Join(", ", removed.Errors.Select(error => error.Code)));
+        }
 
         await _notices.TellAsync(user, CredentialChange.PasskeyRemoved);
 

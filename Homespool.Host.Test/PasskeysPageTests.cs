@@ -350,6 +350,38 @@ public sealed class PasskeysPageTests : IDisposable
     }
 
     /// <summary>
+    /// The store saves the delete before the user validators run, so a refused account row after it
+    /// still leaves the passkey gone - the page and the owner's mail say so, and the refusal is logged
+    /// by its codes rather than lost.
+    /// </summary>
+    [Fact]
+    public async Task ARemovalWhoseAccountRowIsRefusedStillRemovesAndLogsTheRefusal()
+    {
+        // Arrange
+        RefusingValidator validator = new();
+        await using Rig rig = await Rig.CreateAsync(this, validator);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        UserPasskeyInfo passkey = await rig.SeedPasskeyAsync(user, "laptop");
+        FakeLogger<PasskeysModel> logger = new();
+        (PasskeysModel model, _) = rig.NewModel(user, logger: logger);
+        validator.Refusing = true;
+
+        // Act
+        IActionResult result = await model.OnPostRemoveAsync(PasskeysModel.IdOf(passkey));
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>();
+        (await rig.Users.GetPasskeysAsync(user)).Should().BeEmpty("the store saved the delete before the validators ran");
+        model.StatusMessage.Should().Be("Passkey removed.");
+        rig.Mail.SentEmails.Should().ContainSingle();
+
+        FakeLogRecord warning = logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Warning).Subject;
+        warning.StructuredState.Should().Contain(property => property.Key == "UserId" && property.Value == user.Id.ToString(CultureInfo.InvariantCulture));
+        warning.StructuredState.Should().Contain(property => property.Key == "IdentityErrorCodes" && property.Value == RefusingValidator.Code);
+        warning.Message.Should().NotContain(user.UserName!, "the codes are logged, not the descriptions that carry the name");
+    }
+
+    /// <summary>
     /// Somebody else's credential id is "already gone" from this account's point of view, and stays
     /// where it is - the same answer as for a stale id, so the form reports nothing about other
     /// people's credentials.
@@ -391,6 +423,21 @@ public sealed class PasskeysPageTests : IDisposable
         renamed.Should().BeOfType<NotFoundResult>();
     }
 
+    /// <summary>A user validator that passes until told to refuse, so an account can be set up first.</summary>
+    private sealed class RefusingValidator : IUserValidator<HSUser>
+    {
+        public const string Code = "TestRefusal";
+
+        public bool Refusing { get; set; }
+
+        public Task<IdentityResult> ValidateAsync(UserManager<HSUser> manager, HSUser user)
+        {
+            return Task.FromResult(Refusing ?
+                IdentityResult.Failed(new IdentityError { Code = Code, Description = $"{user.UserName} is refused." }) :
+                IdentityResult.Success);
+        }
+    }
+
     private sealed class Rig : IAsyncDisposable
     {
         private readonly HomespoolDbContext _context;
@@ -412,7 +459,7 @@ public sealed class PasskeysPageTests : IDisposable
 
         public PasskeyCeremonies Ceremonies => _provider.GetRequiredService<PasskeyCeremonies>();
 
-        public static async Task<Rig> CreateAsync(PasskeysPageTests owner)
+        public static async Task<Rig> CreateAsync(PasskeysPageTests owner, IUserValidator<HSUser>? extraValidator = null)
         {
             DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
                                                            .UseSqlite($"Data Source={owner._databasePath}")
@@ -423,7 +470,15 @@ public sealed class PasskeysPageTests : IDisposable
 
             (_, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(
                 context,
-                services => services.Configure<Middleware.SecurityOptions>(security => security.PasskeyServerDomain = RelyingPartyId));
+                services =>
+                {
+                    services.Configure<Middleware.SecurityOptions>(security => security.PasskeyServerDomain = RelyingPartyId);
+
+                    if (extraValidator is not null)
+                    {
+                        services.AddSingleton(extraValidator);
+                    }
+                });
 
             return new Rig(context, provider);
         }

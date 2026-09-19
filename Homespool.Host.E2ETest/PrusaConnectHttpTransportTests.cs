@@ -271,6 +271,39 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// JSON that parses but is not a printer message is refused exactly like JSON that does not
+    /// parse. The dispatcher is what finds these out, so it runs for real here.
+    /// </summary>
+    /// <param name="body">A document the parser accepts and the dispatcher cannot classify: a root
+    /// that is not an object, a <c>transfer</c> that is not a string, and telemetry without its
+    /// required <c>state</c>.</param>
+    [Theory]
+    [InlineData("[1]")]
+    [InlineData("\"IDLE\"")]
+    [InlineData("""{"transfer":5}""")]
+    [InlineData("""{"temp_nozzle":27.1}""")]
+    public async Task ABodyThatIsJsonButNotAMessageIsRefused(string body)
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        // Act
+        using HttpRequestMessage request = Post("/p/telemetry", identity, token, body);
+
+        using HttpResponseMessage response =
+            await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _logs.Failures.Should().BeEmpty("a malformed body is the client's fault, not an error of ours");
+    }
+
+    /// <summary>
     /// The transport lives on the printer listener alone, like the rest of <c>/p/*</c> - reaching it
     /// on the user port is a 404 before authentication is even attempted.
     /// </summary>

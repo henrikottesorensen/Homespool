@@ -56,6 +56,48 @@ public class MessageDispatcherTests
         message.Should().BeOfType<InboundTransferRequestMessage>();
     }
 
+    /// <summary>
+    /// A root that is not an object is refused with <see cref="JsonException"/> - the one exception
+    /// both transports treat as the printer's protocol violation. <see cref="JsonElement"/>'s
+    /// property accessors would otherwise throw <see cref="InvalidOperationException"/>, which the
+    /// HTTP transport answered with a 500 and the socket closed on as if nothing were wrong.
+    /// </summary>
+    /// <param name="json">Valid JSON of every kind but an object.</param>
+    [Theory]
+    [InlineData("[1]")]
+    [InlineData("\"PRINTING\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    public void ARootThatIsNotAnObjectIsAProtocolViolation(string json)
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+
+        // Act
+        Action classify = () => NewDispatcher().Classify(printerId: 1, root);
+
+        // Assert
+        classify.Should().Throw<JsonException>();
+    }
+
+    /// <summary>
+    /// A <c>transfer</c> that is not a string is not an inline request, and must not throw on the way
+    /// to finding that out - <see cref="JsonElement.ValueEquals(string)"/> throws on any other kind.
+    /// </summary>
+    [Fact]
+    public void ATransferThatIsNotAStringFallsThroughToTelemetry()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse("""{"transfer":5,"state":"IDLE"}""");
+
+        // Act
+        ConnectionMessage? message = NewDispatcher().Classify(printerId: 1, document.RootElement);
+
+        // Assert
+        message.Should().BeOfType<InboundTelemetryMessage>();
+    }
+
     /// <summary>Minimal valid telemetry - only the one required field, <c>state</c>. Every other
     /// field is nullable on the telemetry DTO, so this is the true happy-path floor.</summary>
     private const string MinimalTelemetry = """{"state":"PRINTING"}""";

@@ -55,6 +55,10 @@ public class WebSocketHandler
                                                    IPrinterConnectionActor actor,
                                                    CancellationToken cancellationToken)
     {
+        // One per connection: it remembers how far into an unfinished document it has already looked,
+        // so a document arriving in many reads is scanned once rather than re-parsed on every read.
+        JsonDocumentScanner scanner = new();
+
         while (!cancellationToken.IsCancellationRequested)
         {
             ReadResult result = await input.ReadAsync(cancellationToken);
@@ -64,6 +68,8 @@ public class WebSocketHandler
             {
                 while (true)
                 {
+                    // Only ever moves between documents: a document the scanner is part-way through
+                    // starts with '{' or a comment, never with whitespace, so its start stays put.
                     AdvancePastWhitespace(ref buffer);
 
                     if (buffer.IsEmpty)
@@ -71,28 +77,41 @@ public class WebSocketHandler
                         break;
                     }
 
-                    JsonDocument? jsonDocument;
-                    long bytesConsumed;
+                    // A document that is merely incomplete is not malformed, and must not be treated
+                    // as a protocol violation: returning false leaves the bytes in the buffer for a
+                    // later read to complete - unless there will be no later read.
+                    if (!scanner.TryFindEnd(buffer, out long bytesConsumed))
+                    {
+                        // A comment after the last message is not a message left unfinished.
+                        if (result.IsCompleted && !scanner.IsBetweenDocuments)
+                        {
+                            throw new JsonException("The printer closed the connection part-way through a message.");
+                        }
+
+                        break;
+                    }
+
+                    JsonDocument jsonDocument;
 
                     // Block scope: Utf8JsonReader is a ref struct and must not be in scope across
                     // the PostAsync await below.
                     {
-                        Utf8JsonReader jsonReader = new(buffer, result.IsCompleted, new JsonReaderState(ReaderOptions));
+                        // The one parse this document gets, over exactly the bytes the scanner found.
+                        // Malformed JSON throws here.
+                        Utf8JsonReader jsonReader = new(buffer.Slice(0, bytesConsumed), isFinalBlock: true,
+                                                        new JsonReaderState(ReaderOptions));
 
-                        // TryParseValue rather than ParseValue: a document that is merely incomplete is
-                        // not malformed, and must not be treated as a protocol violation. Returning
-                        // false leaves the bytes in the buffer for a later read to complete.
-                        //
-                        // No JsonReaderState is carried between iterations. Nothing is consumed until a
-                        // document parses in full, so each attempt starts from a clean reader over the
-                        // remaining bytes; carrying the state instead causes every document after the
-                        // first to be dropped.
-                        if (!JsonDocument.TryParseValue(ref jsonReader, out jsonDocument))
+                        jsonDocument = JsonDocument.ParseValue(ref jsonReader);
+
+                        // The scanner and the reader disagreeing about where the document ends would
+                        // silently drop whatever the reader left over, so it fails closed instead.
+                        if (jsonReader.BytesConsumed != bytesConsumed)
                         {
-                            break;
-                        }
+                            jsonDocument.Dispose();
 
-                        bytesConsumed = jsonReader.BytesConsumed;
+                            throw new JsonException(
+                                $"The message ended at byte {jsonReader.BytesConsumed}, not at byte {bytesConsumed}.");
+                        }
                     }
 
                     // JsonDocument rents its backing memory from a pool. Failing to return it leaks

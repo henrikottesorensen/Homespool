@@ -53,6 +53,8 @@ public class MessageDispatcher
     /// </summary>
     /// <returns>The typed message to post to the printer's actor. Null means "post nothing" - no
     /// production shape maps to it, but test spies use it to observe the stream without an actor.</returns>
+    /// <exception cref="JsonException">The document is not a printer message: a root that is not an
+    /// object, or an object that does not deserialize as the shape it claims to be.</exception>
     public virtual ConnectionMessage? Classify(int printerId, JsonElement root)
     {
         DateTimeOffset receivedAt = _timeProvider.GetUtcNow();
@@ -61,6 +63,14 @@ public class MessageDispatcher
         // with the least other evidence behind it, since it costs the connection and leaves only an
         // exception. Off unless somebody turned it on.
         _traffic.RecordInbound(printerId, root);
+
+        // Every message either reference client renders is an object. Checked here because
+        // JsonElement's property accessors throw InvalidOperationException on anything else, and
+        // both transports handle garbage by catching JsonException alone.
+        if (root.ValueKind != JsonValueKind.Object)
+        {
+            throw new JsonException($"A printer message must be a JSON object, not {root.ValueKind}.");
+        }
 
         if (root.TryGetProperty("event", out _))
         {
@@ -76,7 +86,10 @@ public class MessageDispatcher
             return new InboundEventMessage(receivedAt, eventDto, ExtractIdentity(printerId, eventDto));
         }
 
-        if (root.TryGetProperty("transfer", out JsonElement transfer) && transfer.ValueEquals("inline"))
+        // ValueEquals throws on anything but a string, so the kind is checked first.
+        if (root.TryGetProperty("transfer", out JsonElement transfer) &&
+            transfer.ValueKind == JsonValueKind.String &&
+            transfer.ValueEquals("inline"))
         {
             // transfers::Download::InlineRequest (render.cpp:100-119) - the printer requesting the
             // next chunk of a Connect-initiated file upload. Has neither "event" nor "state", so it

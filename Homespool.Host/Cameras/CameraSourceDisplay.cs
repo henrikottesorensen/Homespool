@@ -23,9 +23,16 @@ namespace Homespool.Host.Cameras;
 /// <para>
 /// <b>The password survives an edit without being sent to the browser.</b> The form posts the mask
 /// back verbatim, so <c>CameraService.UpdateAsync</c> asks this class to put the stored password
-/// back before anything validates or saves. Keyed on the placeholder rather than on the whole source
-/// being unchanged, so a host or a path can be corrected without re-typing a password nobody was
-/// shown. Typing a real password replaces it, which is the one case that must keep working.
+/// back before anything validates or saves. Typing a real password replaces it, which is the one case
+/// that must keep working.
+/// </para>
+/// <para>
+/// <b>The stored password only goes back where it came from.</b> It is restored when the scheme, the
+/// user name and the host and port are the ones it was stored with; the path and query may change
+/// freely, since the credential still reaches the same server. Otherwise whoever can edit a camera
+/// could name a server of their own and have the sidecar hand it a password they were never shown -
+/// and that password usually opens the camera's own administration, which no permission here covers.
+/// A mask that was not restored is left in place, and the caller refuses it rather than storing it.
 /// </para>
 /// <para>
 /// <b>String surgery rather than <see cref="Uri"/>.</b> Parsing and re-serialising normalises -
@@ -80,13 +87,16 @@ public static class CameraSourceDisplay
     }
 
     /// <summary>
-    /// Puts the stored password back into a submitted source whose password is still the placeholder.
+    /// Puts the stored password back into a submitted source whose password is still the placeholder,
+    /// provided it would go to the same server and account it was stored for.
     /// </summary>
     /// <param name="submitted">What the form posted.</param>
     /// <param name="stored">The source currently held for this camera.</param>
     /// <returns>
-    /// <paramref name="submitted"/> unchanged unless it carries the placeholder and
-    /// <paramref name="stored"/> has a password to put in its place.
+    /// <paramref name="submitted"/> unchanged unless it carries the placeholder,
+    /// <paramref name="stored"/> has a password to put in its place, and the scheme, user name, host
+    /// and port of the two agree. An unchanged result can still carry the placeholder - see
+    /// <see cref="CarriesHiddenPassword"/>.
     /// </returns>
     public static string RestoreHiddenPassword(string submitted, string stored)
     {
@@ -123,11 +133,38 @@ public static class CameraSourceDisplay
             return submitted;
         }
 
+        if (!SameDestination(submitted, start, separator, stored, storedStart, storedSeparator))
+        {
+            return submitted;
+        }
+
         int storedPasswordStart = storedSeparator + 1;
         string storedPassword = stored.Substring(storedPasswordStart,
                                                  storedStart + storedLength - storedPasswordStart);
 
         return submitted.Remove(passwordStart, passwordLength).Insert(passwordStart, storedPassword);
+    }
+
+    /// <summary>Whether a source's password is the placeholder rather than a real one.</summary>
+    /// <param name="source">A source, after <see cref="RestoreHiddenPassword"/> has had its chance.</param>
+    public static bool CarriesHiddenPassword(string source)
+    {
+        if (!TryFindUserInfo(source, out int start, out int length))
+        {
+            return false;
+        }
+
+        int separator = source.IndexOf(':', start, length);
+        if (separator < 0)
+        {
+            return false;
+        }
+
+        int passwordStart = separator + 1;
+
+        return string.Equals(source.Substring(passwordStart, start + length - passwordStart),
+                             HiddenPassword,
+                             StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -186,12 +223,64 @@ public static class CameraSourceDisplay
     }
 
     /// <summary>
+    /// Whether two sources carrying a credential send it to the same place: everything before the
+    /// password, and the host and port after it.
+    /// </summary>
+    /// <remarks>
+    /// The scheme and host are compared ignoring case, as a URL treats them; the user name exactly.
+    /// A port written in one and left to its default in the other counts as a difference - that only
+    /// costs somebody re-typing a password, where treating them as equal would need a table of
+    /// default ports for every scheme go2rtc accepts.
+    /// </remarks>
+    private static bool SameDestination(string submitted,
+                                        int submittedStart,
+                                        int submittedSeparator,
+                                        string stored,
+                                        int storedStart,
+                                        int storedSeparator)
+    {
+        // Up to and including "://", which takes in a prefix such as go2rtc's "ffmpeg:rtsp".
+        if (!string.Equals(submitted[..submittedStart], stored[..storedStart], StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.Equals(submitted[submittedStart..submittedSeparator],
+                           stored[storedStart..storedSeparator],
+                           StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return string.Equals(HostAndPort(submitted), HostAndPort(stored), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The authority with its userinfo removed - the host, and the port if one is written.</summary>
+    private static string HostAndPort(string source)
+    {
+        TryFindUserInfo(source, out int start, out int length, out int authorityEnd);
+
+        int hostStart = start + length + 1;
+
+        return source[hostStart..authorityEnd];
+    }
+
+    /// <summary>
     /// Locates the userinfo component - everything between <c>://</c> and the <c>@</c> that ends it.
     /// </summary>
     private static bool TryFindUserInfo(string source, out int start, out int length)
     {
+        return TryFindUserInfo(source, out start, out length, out _);
+    }
+
+    /// <summary>
+    /// Locates the userinfo component, and where the authority it belongs to ends.
+    /// </summary>
+    private static bool TryFindUserInfo(string source, out int start, out int length, out int authorityEnd)
+    {
         start = 0;
         length = 0;
+        authorityEnd = 0;
 
         if (string.IsNullOrEmpty(source))
         {
@@ -205,7 +294,7 @@ public static class CameraSourceDisplay
         }
 
         int authorityStart = scheme + 3;
-        int authorityEnd = source.Length;
+        authorityEnd = source.Length;
 
         for (int index = authorityStart; index < source.Length; index++)
         {

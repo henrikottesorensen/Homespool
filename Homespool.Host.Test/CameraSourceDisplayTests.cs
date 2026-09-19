@@ -72,16 +72,60 @@ public sealed class CameraSourceDisplayTests
         CameraSourceDisplay.RestoreHiddenPassword(submitted, stored).Should().Be(stored);
     }
 
-    [Fact]
-    public void AChangedAddressStillKeepsTheStoredPassword()
+    [Theory]
+    [InlineData("rtsp://admin:****@192.168.1.50/other/stream", "rtsp://admin:hunter2@192.168.1.50/other/stream")]
+    [InlineData("rtsp://admin:****@192.168.1.50/live?channel=2", "rtsp://admin:hunter2@192.168.1.50/live?channel=2")]
+    [InlineData("RTSP://admin:****@192.168.1.50/live", "RTSP://admin:hunter2@192.168.1.50/live")]
+    public void ThePasswordRidesAlongWhenItStillGoesToTheSameServer(string submitted, string expected)
     {
-        // Keyed on the placeholder rather than on the whole source being unchanged, so a host can be
-        // corrected without re-typing a password nobody was shown.
+        // A path or a query can be corrected without re-typing a password nobody was shown, and a
+        // scheme differing only in case is the same scheme.
         const string stored = "rtsp://admin:hunter2@192.168.1.50/live";
 
-        CameraSourceDisplay.RestoreHiddenPassword("rtsp://admin:****@192.168.1.77/live", stored)
+        CameraSourceDisplay.RestoreHiddenPassword(submitted, stored).Should().Be(expected);
+    }
+
+    [Fact]
+    public void AHostDifferingOnlyInCaseIsTheSameHost()
+    {
+        const string stored = "rtsp://admin:hunter2@Camera.LAN/live";
+
+        CameraSourceDisplay.RestoreHiddenPassword("rtsp://admin:****@camera.lan/live", stored)
                            .Should()
-                           .Be("rtsp://admin:hunter2@192.168.1.77/live");
+                           .Be("rtsp://admin:hunter2@camera.lan/live");
+    }
+
+    [Theory]
+    [InlineData("rtsp://admin:****@192.168.1.77/live")]
+    [InlineData("rtsp://admin:****@attacker.example/live")]
+    [InlineData("rtsp://admin:****@192.168.1.50:8554/live")]
+    [InlineData("http://admin:****@192.168.1.50/live")]
+    [InlineData("ffmpeg:rtsp://admin:****@192.168.1.50/live")]
+    [InlineData("rtsp://operator:****@192.168.1.50/live")]
+    [InlineData("rtsp://Admin:****@192.168.1.50/live")]
+    public void ThePasswordIsNotCarriedToADifferentServerOrAccount(string submitted)
+    {
+        // Whoever can edit a camera could otherwise name a server of their own and have the sidecar
+        // hand it a password they were never shown. The placeholder is left for the caller to refuse.
+        const string stored = "rtsp://admin:hunter2@192.168.1.50/live";
+
+        string restored = CameraSourceDisplay.RestoreHiddenPassword(submitted, stored);
+
+        restored.Should().Be(submitted);
+        restored.Should().NotContain("hunter2");
+        CameraSourceDisplay.CarriesHiddenPassword(restored).Should().BeTrue();
+    }
+
+    [Fact]
+    public void AWrittenDefaultPortIsStillADifferentAuthority()
+    {
+        // Treating the two as equal would need a default port for every scheme go2rtc accepts; the
+        // cost of not doing so is one re-typed password.
+        const string stored = "rtsp://admin:hunter2@192.168.1.50/live";
+
+        CameraSourceDisplay.RestoreHiddenPassword("rtsp://admin:****@192.168.1.50:554/live", stored)
+                           .Should()
+                           .Be("rtsp://admin:****@192.168.1.50:554/live");
     }
 
     [Fact]
@@ -96,13 +140,26 @@ public sealed class CameraSourceDisplayTests
     }
 
     [Fact]
-    public void AUserNameMayBeChangedWhileThePasswordRidesAlong()
+    public void ATypedPasswordMayGoToANewServer()
     {
+        // Somebody who types the password knows it, so there is nothing to protect by refusing.
         const string stored = "rtsp://admin:hunter2@192.168.1.50/live";
 
-        CameraSourceDisplay.RestoreHiddenPassword("rtsp://operator:****@192.168.1.50/live", stored)
+        CameraSourceDisplay.RestoreHiddenPassword("rtsp://admin:newsecret@192.168.1.77/live", stored)
                            .Should()
-                           .Be("rtsp://operator:hunter2@192.168.1.50/live");
+                           .Be("rtsp://admin:newsecret@192.168.1.77/live");
+    }
+
+    [Theory]
+    [InlineData("rtsp://admin:****@192.168.1.50/live", true)]
+    [InlineData("rtsp://admin:hunter2@192.168.1.50/live", false)]
+    [InlineData("rtsp://admin@192.168.1.50/live", false)]
+    [InlineData("rtsp://192.168.1.50/live", false)]
+    [InlineData("rtsp://192.168.1.50/****", false)]
+    [InlineData("ffmpeg:device?video=/dev/video0", false)]
+    public void OnlyAPasswordThatIsThePlaceholderCounts(string source, bool expected)
+    {
+        CameraSourceDisplay.CarriesHiddenPassword(source).Should().Be(expected);
     }
 
     [Fact]

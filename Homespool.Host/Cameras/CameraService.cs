@@ -283,6 +283,15 @@ public class CameraService
         // holds the address alone once the password has been split out of it.
         source = CameraSourceDisplay.RestoreHiddenPassword(source, _credentials.Reveal(camera));
 
+        // Still the placeholder: the scheme, user or host changed, so the stored password was not
+        // carried to it. Saving would store the placeholder as the password and break the camera
+        // with nothing on the page saying why, and dropping the password would lose one the editor
+        // may never have known - so ask for it instead.
+        if (CameraSourceDisplay.CarriesHiddenPassword(source))
+        {
+            return CameraSaveOutcome.Refused("Cameras_PasswordNotCarriedOver");
+        }
+
         CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, camera.TeamId, source, cancellationToken)
             .ConfigureAwait(false);
 

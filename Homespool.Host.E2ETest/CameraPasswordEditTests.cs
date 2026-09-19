@@ -115,6 +115,33 @@ public sealed class CameraPasswordEditTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// The placeholder posted with a different host is refused: the stored password is not handed to
+    /// a server it was never saved for, and the camera is left exactly as it was.
+    /// </summary>
+    [Fact]
+    public async Task ThePlaceholderIsRefusedForADifferentHost()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-password-mover@example.com");
+
+        using (client)
+        {
+            Guid uuid = await AddCameraAsync(client, user);
+
+            using HttpResponseMessage response = await PostEditAsync(
+                client, uuid, "moved", $"rtsp://cam:{CameraSourceDisplay.HiddenPassword}@198.51.100.9/live");
+
+            string error = await ErrorShownAsync(client);
+
+            Camera camera = await StoredCameraAsync(uuid);
+            camera.Name.Should().Be("with password", "a refused edit applies nothing");
+            Reveal(camera).Should().Be(OriginalSource, "the stored password stays with the camera it was saved for");
+            error.Should().NotBeEmpty("the editor has to be told to type the password");
+            error.Should().NotContain("original-secret");
+        }
+    }
+
     /// <summary>Adds a camera with a password through the page, and returns its uuid.</summary>
     private async Task<Guid> AddCameraAsync(HttpClient client, HSUser user)
     {
@@ -203,6 +230,14 @@ public sealed class CameraPasswordEditTests : IAsyncLifetime
                                      .SingleAsync(TestContext.Current.CancellationToken);
 
         return (teamId, teamUuid);
+    }
+
+    /// <summary>The refusal the redirect carried, read off the page it lands on.</summary>
+    private static async Task<string> ErrorShownAsync(HttpClient client)
+    {
+        Match match = Regex.Match(await GetPageAsync(client, "/Cameras"), """alert-danger" role="alert">([^<]*)<""");
+
+        return match.Success ? WebUtility.HtmlDecode(match.Groups[1].Value) : string.Empty;
     }
 
     private static async Task<string> GetPageAsync(HttpClient client, string path)

@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -134,8 +135,8 @@ public sealed class ExternalSignIn
     /// </summary>
     public const int MaxSubjectLength = 255;
 
-    /// <summary>The longest address a mail server can be handed, from SMTP's limit on a path.</summary>
-    public const int MaxEmailLength = 254;
+    /// <summary>The longest address kept from any source, a provider's claim included.</summary>
+    public const int MaxEmailLength = EmailAddresses.MaxLength;
 
     /// <summary>
     /// How much of any other claim is kept, in UTF-16 code units. Nothing specifies one; the whole

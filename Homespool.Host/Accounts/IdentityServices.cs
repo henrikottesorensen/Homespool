@@ -124,7 +124,8 @@ public static class IdentityServices
         // the test harness must agree with - the same reason IdentityConfiguration is shared.
         IdentityBuilder builder = new(typeof(HSUser), typeof(IdentityRole<long>), services);
 
-        return builder.AddUserValidator<UsernameValidator>();
+        return builder.AddUserValidator<UsernameValidator>()
+                      .AddUserValidator<EmailAddressValidator>();
     }
 
     /// <summary>

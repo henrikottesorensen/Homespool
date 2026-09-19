@@ -62,6 +62,14 @@ public class InvitationService
                                                                                   DateTimeOffset? expiresAt,
                                                                                   CancellationToken cancellationToken)
     {
+        // The address becomes an account's when the invitation is accepted, and would be refused
+        // there - by which time it has been stored, listed and mailed. The page says so beside the
+        // field; this is what holds whoever else comes to call it.
+        if (!EmailAddresses.IsStorable(email))
+        {
+            throw new ArgumentException("The address holds a control or invisible character, or is too long to be one.", nameof(email));
+        }
+
         DateTimeOffset now = DateTimeOffset.UtcNow;
         string plaintext = _tokenService.GenerateToken(InviteTokenLength);
 

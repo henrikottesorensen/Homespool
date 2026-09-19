@@ -1203,6 +1203,9 @@
   <data name="Validation_ExpiryRange" xml:space="preserve">
     <value>Expiry must be between 1 and 8760 hours.</value>
   </data>
+  <data name="Validation_EmailNotStorable" xml:space="preserve">
+    <value>That address holds a control or invisible character, or is longer than 254 characters.</value>
+  </data>
   <data name="Invites_Revoked" xml:space="preserve">
     <value>Invitation revoked.</value>
   </data>

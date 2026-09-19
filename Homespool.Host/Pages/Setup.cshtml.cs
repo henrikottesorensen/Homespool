@@ -67,6 +67,7 @@ public class SetupModel : PageModel
     {
         [Required]
         [EmailAddress]
+        [StorableEmailAddress]
         [Display(Name = "Account_Email")]
         public string Email { get; set; }
 

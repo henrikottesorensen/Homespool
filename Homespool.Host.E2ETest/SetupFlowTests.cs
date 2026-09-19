@@ -119,6 +119,49 @@ public sealed class SetupFlowTests : IAsyncLifetime
         admins.Should().ContainSingle().Which.Email.Should().Be("admin@example.com");
     }
 
+    /// <summary>
+    /// An address that would not be kept is refused on the page, in words, with nothing created - the
+    /// first account is the one place nobody else could clear it up afterwards.
+    /// </summary>
+    /// <remarks>
+    /// Through the real page because that is the only thing that shows the message: the attribute
+    /// carries a resource key, and whether a key on an attribute of our own is looked up the way the
+    /// framework's are is a fact about the pipeline, not about the attribute.
+    /// </remarks>
+    [Fact]
+    public async Task AnAddressThatWouldNotBeKeptIsRefusedInWordsAndSetupStaysOpen()
+    {
+        // Arrange
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        string token = ReadBootstrapTokenFromLog();
+
+        HttpResponseMessage getResponse = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = antiforgeryToken,
+            ["Input.Email"] = "admin\u202E@example.com",
+            ["Input.Username"] = "admin",
+            ["Input.Password"] = "Correct-Horse-Battery-Staple-1!",
+            ["Input.ConfirmPassword"] = "Correct-Horse-Battery-Staple-1!",
+            ["Input.Token"] = token,
+        });
+
+        // Act
+        HttpResponseMessage postResponse = await client.PostAsync("/setup", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        postResponse.StatusCode.Should().Be(HttpStatusCode.OK, "the form comes back rather than redirecting");
+        (await postResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("control or invisible character", "the key is looked up, not shown");
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        (await userManager.GetUsersInRoleAsync(AdminBootstrap.AdminRole)).Should().BeEmpty();
+    }
+
     /// <summary>A wrong token is rejected, and setup stays open for a correct attempt afterwards.</summary>
     [Fact]
     public async Task PostingTheWrongTokenIsRejectedAndSetupStaysOpen()

@@ -136,6 +136,25 @@ public sealed class InvitationServiceTests : IDisposable
         invitation.TeamId.Should().Be(team.Id);
     }
 
+    /// <summary>
+    /// An invitation's address becomes an account's, so one that would be refused there is refused
+    /// here, before it is stored, listed and mailed - whatever is calling.
+    /// </summary>
+    [Fact]
+    public async Task AnInvitationIsNotCreatedForAnAddressThatIsNotKept()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        // Act
+        Func<Task> act = () => NewService(context).CreateAsync(
+            "invitee\u202E@example.com", teamId: null, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        // Assert
+        await act.Should().ThrowAsync<ArgumentException>();
+        (await context.Invitations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
     // ---------- ValidateAsync ----------
 
     /// <summary>

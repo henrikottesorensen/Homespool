@@ -74,6 +74,7 @@ public class CreateModel : PageModel
     {
         [Required]
         [EmailAddress]
+        [StorableEmailAddress]
         [Display(Name = "Account_Email")]
         public string Email { get; set; } = string.Empty;
 

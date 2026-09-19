@@ -117,6 +117,7 @@ public class EmailModel : PageModel
         /// </summary>
         [Required]
         [EmailAddress]
+        [StorableEmailAddress]
         [Display(Name = "Manage_NewEmail")]
         public string NewEmail { get; set; }
     }

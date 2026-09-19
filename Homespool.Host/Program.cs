@@ -232,6 +232,10 @@ public static class Program
             // [Authorize], not here as an AuthorizeFolder convention: a reader auditing one page can
             // see whether it is protected by looking at it, which a path string in Program.cs does not
             // give them. The cost is that a new page under that folder has to say so itself.
+            // Registered ahead of AddRazorPages, which only adds the framework's provider if nothing
+            // else has: an attribute of our own is otherwise shown by its resource key.
+            builder.Services.AddSingleton<Microsoft.AspNetCore.Mvc.DataAnnotations.IValidationAttributeAdapterProvider, Localisation.ValidationAttributeAdapters>();
+
             builder.Services.AddRazorPages()
                             .AddDataAnnotationsLocalization(options =>
                                 options.DataAnnotationLocalizerProvider = (_, factory) =>

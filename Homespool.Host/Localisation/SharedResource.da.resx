@@ -1170,6 +1170,9 @@
   <data name="Validation_ExpiryRange" xml:space="preserve">
     <value>Udløb skal være mellem 1 og 8760 timer.</value>
   </data>
+  <data name="Validation_EmailNotStorable" xml:space="preserve">
+    <value>Adressen indeholder kontroltegn eller usynlige tegn, eller er længere end 254 tegn.</value>
+  </data>
   <data name="Invites_Revoked" xml:space="preserve">
     <value>Invitationen er tilbagekaldt.</value>
   </data>

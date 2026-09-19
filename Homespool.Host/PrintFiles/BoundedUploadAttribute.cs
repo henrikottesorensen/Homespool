@@ -2,6 +2,7 @@ using System;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -23,6 +24,15 @@ namespace Homespool.Host.PrintFiles;
 /// than it asked for is the kind of surprise this attribute exists to remove. Prefer the first
 /// wherever the payload is a print file, so one setting still moves every endpoint carrying it
 /// together.
+/// </para>
+/// <para>
+/// <b>Only a signed-in caller is granted either ceiling; a stranger gets none.</b> A signed-out request
+/// that could carry a body is refused here, before antiforgery reads the form, with its ceiling at
+/// zero. That matters on a page that is itself anonymous, like the home page: otherwise the raise
+/// would reach strangers too, and antiforgery would spool their bodies to disk before the handler
+/// could say no. "Signed in" means <see cref="HttpContext.User"/> as it stands when this runs, so an
+/// endpoint authenticated under a scheme other than the default needs an <c>[Authorize]</c> naming it,
+/// because the authorization middleware is what puts that principal in place.
 /// </para>
 /// <para>
 /// <b>It binds where it is declared and nowhere else, and nothing checks that it was.</b> An endpoint
@@ -146,6 +156,13 @@ internal sealed class BoundedUploadFilter : IAuthorizationFilter
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        if (context.HttpContext.User.Identity?.IsAuthenticated != true)
+        {
+            RefuseStranger(context);
+
+            return;
+        }
+
         // A declared ceiling is the request's own and is used as written; the configured cap
         // describes a file, so it needs room for the framing and fields that travel with it.
         long limit = _maxBytes ?? (_options.MaxUploadBytes > long.MaxValue - FormOverheadBytes ?
@@ -164,5 +181,33 @@ internal sealed class BoundedUploadFilter : IAuthorizationFilter
         // out of them. Both, because either alone leaves one of the two paths unbounded.
         context.HttpContext.Features.Set<IFormFeature>(
             new FormFeature(context.HttpContext.Request, new FormOptions { MultipartBodyLengthLimit = limit }));
+    }
+
+    /// <summary>
+    /// A signed-out caller has no upload to make, so they get no body at all, and a request that could
+    /// carry one is refused before anything reads it.
+    /// </summary>
+    /// <remarks>
+    /// <b>The ceiling goes to zero as well as the request being refused.</b> Kestrel drains a body the
+    /// application never read, discarding it, up to <see cref="IHttpMaxRequestBodySizeFeature"/>'s
+    /// limit - so a refusal alone still accepts that many bytes off the network, and a limit already
+    /// raised would make it the whole configured cap. At zero the connection closes instead. A
+    /// <c>GET</c> or <c>HEAD</c> passes, because the page carrying this may itself be anonymous.
+    /// </remarks>
+    private static void RefuseStranger(AuthorizationFilterContext context)
+    {
+        HttpContext http = context.HttpContext;
+
+        IHttpMaxRequestBodySizeFeature? size = http.Features.Get<IHttpMaxRequestBodySizeFeature>();
+
+        if (size is not null && !size.IsReadOnly)
+        {
+            size.MaxRequestBodySize = 0;
+        }
+
+        if (!HttpMethods.IsGet(http.Request.Method) && !HttpMethods.IsHead(http.Request.Method))
+        {
+            context.Result = new ForbidResult();
+        }
     }
 }

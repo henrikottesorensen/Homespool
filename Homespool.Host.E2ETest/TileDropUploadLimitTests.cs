@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
@@ -140,6 +141,39 @@ public sealed class TileDropUploadLimitTests : IAsyncLifetime
         ShouldBeRefused(mixed);
 
         client.Dispose();
+    }
+
+    /// <summary>
+    /// A stranger's drop is refused before anything reads its body: no sign-in, no antiforgery token,
+    /// and a file four times the cap, answered as the handler would have answered a stranger.
+    /// </summary>
+    /// <remarks>
+    /// The page is anonymous, so nothing but the upload attribute stands between this body and
+    /// antiforgery reading the form - which, with the cap raised, spooled it to disk. Antiforgery's
+    /// own refusal is a 400, so a 400 here means the body was read first; the access-denied redirect
+    /// means it was not. That the refused body is also dropped rather than drained is Kestrel's half,
+    /// and <c>TestServer</c> cannot show it.
+    /// </remarks>
+    [Fact]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification =
+                         "MultipartFormDataContent takes ownership of the parts added to it and disposes them with itself, which the using declaration below does.")]
+    public async Task AStrangersDropIsRefusedBeforeItsBodyIsRead()
+    {
+        using HttpClient anonymous =
+            _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        using MultipartFormDataContent form = [];
+
+        form.Add(new StringContent(Guid.NewGuid().ToString()), "uuid");
+        form.Add(new StringContent(TileDrop.Upload), "action");
+        form.Add(new StreamContent(new MemoryStream(new byte[CapBytes * 4])), "files", "huge.gcode");
+
+        using HttpResponseMessage response =
+            await anonymous.PostAsync("/?handler=Drop", form, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect, "a 400 is antiforgery, having read the form");
+        response.Headers.Location!.AbsolutePath.Should().Be("/Account/AccessDenied");
     }
 
     /// <summary>

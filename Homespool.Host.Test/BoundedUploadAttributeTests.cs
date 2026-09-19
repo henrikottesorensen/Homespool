@@ -1,4 +1,5 @@
 using System;
+using System.Security.Claims;
 
 using AwesomeAssertions;
 
@@ -91,8 +92,7 @@ public sealed class BoundedUploadAttributeTests
     public void AnAbsentBodySizeFeatureIsNotAnError()
     {
         // Arrange - no IHttpMaxRequestBodySizeFeature set on the context at all.
-        ActionContext action = new(new DefaultHttpContext(), new RouteData(), new ActionDescriptor());
-        AuthorizationFilterContext context = new(action, []);
+        AuthorizationFilterContext context = ContextWith(null);
 
         // Act & Assert
         FluentActions.Invoking(() => FilterFor(new BoundedUploadAttribute()).OnAuthorization(context))
@@ -117,6 +117,66 @@ public sealed class BoundedUploadAttributeTests
         feature.MaxRequestBodySize.Should().Be(99, "the ceiling is fixed once the body is being read");
     }
 
+    /// <summary>
+    /// A signed-out caller has no upload to make: a request that could carry a body is refused before
+    /// antiforgery reads it, and its ceiling goes to zero so that the server drops the body rather than
+    /// draining it. Both forms, because a declared ceiling is no more a stranger's than the cap is.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData(2048L)]
+    public void AStrangerIsRefusedWithNoCeiling(long? declared)
+    {
+        // Arrange
+        FakeMaxRequestBodySizeFeature feature = new();
+        AuthorizationFilterContext context = ContextWith(feature, signedIn: false);
+
+        // Act
+        FilterFor(declared is null ? new BoundedUploadAttribute() : new BoundedUploadAttribute(declared.Value))
+            .OnAuthorization(context);
+
+        // Assert
+        context.Result.Should().BeOfType<ForbidResult>();
+        feature.MaxRequestBodySize.Should().Be(0, "a refused body the server would otherwise drain");
+    }
+
+    /// <summary>
+    /// The page carrying the attribute can be anonymous itself - the home page is - so a stranger's
+    /// <c>GET</c> goes through. It still gets no ceiling: a <c>GET</c> has no body to send.
+    /// </summary>
+    [Theory]
+    [InlineData("GET")]
+    [InlineData("HEAD")]
+    public void AStrangerMayStillReadThePage(string method)
+    {
+        // Arrange
+        FakeMaxRequestBodySizeFeature feature = new();
+        AuthorizationFilterContext context = ContextWith(feature, signedIn: false, method);
+
+        // Act
+        FilterFor(new BoundedUploadAttribute()).OnAuthorization(context);
+
+        // Assert
+        context.Result.Should().BeNull();
+        feature.MaxRequestBodySize.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The half that stops the refusal above passing by refusing everybody.
+    /// </summary>
+    [Fact]
+    public void ASignedInUploadIsNotRefused()
+    {
+        // Arrange
+        AuthorizationFilterContext context = ContextWith(new FakeMaxRequestBodySizeFeature());
+
+        // Act
+        FilterFor(new BoundedUploadAttribute()).OnAuthorization(context);
+
+        // Assert
+        context.Result.Should().BeNull();
+    }
+
     private static IAuthorizationFilter FilterFor(BoundedUploadAttribute attribute)
     {
         ServiceCollection services = new();
@@ -129,10 +189,22 @@ public sealed class BoundedUploadAttributeTests
         return (IAuthorizationFilter)attribute.CreateInstance(provider);
     }
 
-    private static AuthorizationFilterContext ContextWith(IHttpMaxRequestBodySizeFeature feature)
+    private static AuthorizationFilterContext ContextWith(IHttpMaxRequestBodySizeFeature? feature,
+                                                          bool signedIn = true,
+                                                          string method = "POST")
     {
         DefaultHttpContext http = new();
-        http.Features.Set(feature);
+        http.Request.Method = method;
+
+        if (feature is not null)
+        {
+            http.Features.Set(feature);
+        }
+
+        if (signedIn)
+        {
+            http.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "someone")], "Test"));
+        }
 
         return new AuthorizationFilterContext(new ActionContext(http, new RouteData(), new ActionDescriptor()), []);
     }

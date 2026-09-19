@@ -176,15 +176,18 @@ public static class EditableSettings
         // not change under a running deployment.
         // Naming a server here is what turns mail on, and what that changes lands at the next
         // restart rather than now - so it is asked about, and the answer says when it takes effect.
+        // The server, how it is reached and who signs in to it are what the stored password is for:
+        // changing any of them needs the password typed again.
         new(typeof(SmtpOptions),
             SmtpOptions.SectionName,
             nameof(SmtpOptions.Host),
             SettingGrade.Restart,
-            ConfirmOnEnableKey: "Settings_Confirm_Smtp_Host"),
-        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.Port), SettingGrade.Restart),
-        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.UseImplicitTls), SettingGrade.Restart),
-        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.DisableTls), SettingGrade.Restart),
-        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.UserName), SettingGrade.Restart),
+            ConfirmOnEnableKey: "Settings_Confirm_Smtp_Host",
+            BindsSecret: true),
+        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.Port), SettingGrade.Restart, BindsSecret: true),
+        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.UseImplicitTls), SettingGrade.Restart, BindsSecret: true),
+        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.DisableTls), SettingGrade.Restart, BindsSecret: true),
+        new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.UserName), SettingGrade.Restart, BindsSecret: true),
         new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.Password), SettingGrade.Restart, IsSecret: true),
         new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.FromAddress), SettingGrade.Restart),
         new(typeof(SmtpOptions), SmtpOptions.SectionName, nameof(SmtpOptions.FromName), SettingGrade.Restart),

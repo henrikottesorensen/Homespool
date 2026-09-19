@@ -31,9 +31,15 @@
     </div>
 
     <form method="post">
-        @foreach (var pair in Model.Values)
+        @foreach (var pair in Model.CarriedValues)
         {
             <input type="hidden" name="Values[@pair.Key]" value="@pair.Value" />
+        }
+
+        @* A password typed before the question is carried sealed, never as typed. *@
+        @foreach (var pair in Model.SealedSecrets)
+        {
+            <input type="hidden" name="Sealed[@pair.Key]" value="@pair.Value" />
         }
 
         @foreach (EditableSetting setting in Model.AwaitingConfirmation)

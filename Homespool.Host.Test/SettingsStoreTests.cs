@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Host.Configuration;
+using Homespool.Host.Mail;
 
 namespace Homespool.Host.Test;
 
@@ -107,18 +108,152 @@ public class SettingsStoreTests : IDisposable
     {
         (SettingsStore store, IConfigurationRoot configuration) = Store();
 
-        store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "hunter2" });
+        SaveMailServer(store);
 
         string? stored = configuration["Smtp:ProtectedPassword"];
 
-        store.Save(new Dictionary<string, string?>
-        {
-            ["Smtp:Host"] = "mail.example.com",
-            ["Smtp:Password"] = SettingsStore.SecretPlaceholder,
-        });
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:FromName"] = "Workshop";
+
+        store.Save(form).Saved.Should().BeTrue();
 
         configuration["Smtp:ProtectedPassword"].Should().Be(stored, "the mask is not an answer");
-        configuration["Smtp:Host"].Should().Be("mail.example.com", "the field that was edited still changed");
+        configuration["Smtp:FromName"].Should().Be("Workshop", "the field that was edited still changed");
+    }
+
+    /// <summary>
+    /// The stored password goes to the server and account it was saved for, and nowhere else. An
+    /// administrator who was never told it must not be able to point it at a server of their own -
+    /// with TLS or without, since whoever names the server can hold its certificate.
+    /// </summary>
+    [Theory]
+    [InlineData("Smtp:Host", "attacker.example.net")]
+    [InlineData("Smtp:Port", "2525")]
+    [InlineData("Smtp:UseImplicitTls", "true")]
+    [InlineData("Smtp:DisableTls", "true")]
+    [InlineData("Smtp:UserName", "someone-else")]
+    public void ChangingWhereThePasswordGoesBehindTheMaskIsRefused(string path, string value)
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SaveMailServer(store);
+
+        string? before = configuration[path];
+
+        Dictionary<string, string?> form = Form(store);
+
+        form[path] = value;
+        form["Smtp:FromName"] = "Workshop";
+
+        SettingsSaveResult result = store.Save(form);
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Should().ContainKey("Smtp:Password").And.HaveCount(1);
+        configuration[path].Should().Be(before, "a refused save writes nothing");
+        configuration["Smtp:FromName"].Should().BeNull("not even the fields that were fine");
+    }
+
+    [Theory]
+    [InlineData("Smtp:Host", "other.example.com")]
+    [InlineData("Smtp:Port", "2525")]
+    [InlineData("Smtp:UseImplicitTls", "true")]
+    [InlineData("Smtp:DisableTls", "true")]
+    [InlineData("Smtp:UserName", "someone-else")]
+    public void ChangingItWithThePasswordTypedAgainIsSaved(string path, string value)
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form[path] = value;
+        form["Smtp:Password"] = "hunter2";
+
+        store.Save(form).Saved.Should().BeTrue();
+
+        configuration[path].Should().Be(value);
+    }
+
+    /// <summary>
+    /// A host name has no case, so the same server spelled differently is not a different
+    /// destination and costs nobody a re-typed password.
+    /// </summary>
+    [Fact]
+    public void TheSameHostInAnotherCaseIsTheSameServer()
+    {
+        (SettingsStore store, _) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:Host"] = "MAIL.Example.COM";
+
+        store.Save(form).Saved.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The settings file sits above the environment, so a server named on the page would otherwise
+    /// be paired with a password the operator put in the environment.
+    /// </summary>
+    [Fact]
+    public void APasswordFromTheEnvironmentIsHeldToTheSameRule()
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store(new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "mail.example.com",
+            ["Smtp:UserName"] = "postmaster",
+            ["Smtp:Password"] = "hunter2",
+        });
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:Password"].Should().Be(SettingsStore.SecretPlaceholder, "the page shows the mask for it");
+
+        form["Smtp:Host"] = "attacker.example.net";
+
+        store.Save(form).Saved.Should().BeFalse();
+        configuration["Smtp:Host"].Should().Be("mail.example.com");
+    }
+
+    [Fact]
+    public void TheCandidateCarriesTheStoredPasswordToTheServerItWasSavedFor()
+    {
+        (SettingsStore store, _) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:FromName"] = "Workshop";
+
+        SettingsCandidate<SmtpOptions> candidate = store.CandidateFor<SmtpOptions>(form);
+
+        candidate.Errors.Should().BeEmpty();
+        candidate.Value!.Password.Should().Be("hunter2");
+        candidate.Value.FromName.Should().Be("Workshop");
+    }
+
+    /// <summary>
+    /// The test button connects without saving, so it needs the rule as much as a save does.
+    /// </summary>
+    [Fact]
+    public void TheCandidateRefusesToCarryItAnywhereElse()
+    {
+        (SettingsStore store, _) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:Host"] = "attacker.example.net";
+
+        SettingsCandidate<SmtpOptions> candidate = store.CandidateFor<SmtpOptions>(form);
+
+        candidate.Value.Should().BeNull();
+        candidate.Errors.Should().ContainKey("Smtp:Password");
     }
 
     /// <summary>
@@ -170,12 +305,44 @@ public class SettingsStoreTests : IDisposable
         }
     }
 
-    private (SettingsStore store, IConfigurationRoot configuration) Store()
+    private static void SaveMailServer(SettingsStore store)
+    {
+        store.Save(new Dictionary<string, string?>
+             {
+                 ["Smtp:Host"] = "mail.example.com",
+                 ["Smtp:Port"] = "587",
+                 ["Smtp:UserName"] = "postmaster",
+                 ["Smtp:Password"] = "hunter2",
+             })
+             .Saved
+             .Should()
+             .BeTrue();
+    }
+
+    /// <summary>What the page posts back when nothing on it was touched.</summary>
+    private static Dictionary<string, string?> Form(SettingsStore store)
+    {
+        Dictionary<string, string?> form = [];
+
+        foreach ((string path, string value) in store.Current())
+        {
+            form[path] = value;
+        }
+
+        return form;
+    }
+
+    private (SettingsStore store, IConfigurationRoot configuration) Store(IDictionary<string, string?>? beneath = null)
     {
         ConfigurationManager configuration = new();
 
+        if (beneath is not null)
+        {
+            configuration.AddInMemoryCollection(beneath);
+        }
+
         configuration.AddJsonFile(_file.Path, optional: true, reloadOnChange: false);
 
-        return (new SettingsStore(configuration, _file, _protector), configuration);
+        return (new SettingsStore(configuration, _file, _protector, TestLocaliser.Shared()), configuration);
     }
 }

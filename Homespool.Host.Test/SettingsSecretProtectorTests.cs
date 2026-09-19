@@ -85,6 +85,63 @@ public class SettingsSecretProtectorTests
         SettingsSecretProtector.Purpose.Should().NotBe(Cameras.CameraCredentialProtector.Purpose);
     }
 
+    [Fact]
+    public void ASealedSecretOpensForTheSettingItWasSealedFor()
+    {
+        SettingsSecretProtector protector = Protector();
+
+        string sealedValue = protector.Seal("hunter2", "Smtp:Password", TimeSpan.FromMinutes(15));
+
+        sealedValue.Should().NotContain("hunter2");
+        protector.Unseal(sealedValue, "Smtp:Password").Should().Be("hunter2");
+    }
+
+    [Fact]
+    public void AnExpiredSealIsRefused()
+    {
+        SettingsSecretProtector protector = Protector();
+
+        string sealedValue = protector.Seal("hunter2", "Smtp:Password", TimeSpan.FromSeconds(-1));
+
+        protector.Unseal(sealedValue, "Smtp:Password").Should().BeNull();
+    }
+
+    [Fact]
+    public void ASealForAnotherSettingIsRefused()
+    {
+        SettingsSecretProtector protector = Protector();
+
+        string sealedValue = protector.Seal("hunter2", "Smtp:Password", TimeSpan.FromMinutes(15));
+
+        protector.Unseal(sealedValue, "Cameras:Password").Should().BeNull();
+    }
+
+    /// <summary>
+    /// A sealed value is handed to a browser, so it must not be something that could be pasted into
+    /// the settings file and read back as a saved password - nor the reverse.
+    /// </summary>
+    [Fact]
+    public void SealedAndStoredValuesAreNotInterchangeable()
+    {
+        SettingsSecretProtector protector = Protector();
+
+        string sealedValue = protector.Seal("hunter2", "Smtp:Password", TimeSpan.FromMinutes(15));
+
+        protector.Reveal(sealedValue, "Smtp:ProtectedPassword").Should().BeNull();
+        protector.Unseal(protector.Protect("hunter2"), "Smtp:Password").Should().BeNull();
+    }
+
+    [Fact]
+    public void AnAlteredOrMissingSealIsRefused()
+    {
+        SettingsSecretProtector protector = Protector();
+
+        protector.Unseal("not-a-sealed-value", "Smtp:Password").Should().BeNull();
+        protector.Unseal("a", "Smtp:Password").Should().BeNull("a value that is not even base64url");
+        protector.Unseal(null, "Smtp:Password").Should().BeNull();
+        protector.Unseal(string.Empty, "Smtp:Password").Should().BeNull();
+    }
+
     private static SettingsSecretProtector Protector(
         ILogger<SettingsSecretProtector>? logger = null,
         string keys = "keys")

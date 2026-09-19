@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -169,7 +170,8 @@ public sealed class SettingsPageTests : IAsyncLifetime
 
         using (HttpResponseMessage second = await PostAsync(admin, new Dictionary<string, string>
         {
-            ["Values[Smtp:Host]"] = "other.example.com",
+            ["Values[Smtp:Host]"] = "mail.example.com",
+            ["Values[Smtp:FromName]"] = "Workshop",
             ["Values[Smtp:Password]"] = SettingsStore.SecretPlaceholder,
         }))
         {
@@ -180,8 +182,91 @@ public sealed class SettingsPageTests : IAsyncLifetime
 
         SmtpOptions smtp = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue;
 
-        smtp.Host.Should().Be("other.example.com", "the edited field changed");
+        smtp.FromName.Should().Be("Workshop", "the edited field changed");
         smtp.Password.Should().Be("hunter2", "and the password nobody was shown survived it");
+
+        admin.Dispose();
+    }
+
+    /// <summary>
+    /// The mask stands for the password on the server it was saved for. Naming another server behind
+    /// it would, at the next restart, send the stored password there.
+    /// </summary>
+    [Fact]
+    public async Task NamingAnotherServerBehindTheMaskIsRefused()
+    {
+        HttpClient admin = await AdminAsync("settings-rehost@example.com");
+
+        using (HttpResponseMessage first = await PostAsync(admin, new Dictionary<string, string>
+        {
+            ["Values[Smtp:Host]"] = "mail.example.com",
+            ["Values[Smtp:Password]"] = "hunter2",
+            ["Confirmed"] = "Smtp:Host",
+        }))
+        {
+            first.IsSuccessStatusCode.Should().BeTrue();
+        }
+
+        using HttpResponseMessage second = await PostAsync(admin, new Dictionary<string, string>
+        {
+            ["Values[Smtp:Host]"] = "attacker.example.net",
+            ["Values[Smtp:Password]"] = SettingsStore.SecretPlaceholder,
+        });
+
+        string body = await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        body.Should().Contain(WebUtility.HtmlEncode("Type the password again."));
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        SmtpOptions smtp = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue;
+
+        smtp.Host.Should().Be("mail.example.com", "nothing was saved");
+
+        admin.Dispose();
+    }
+
+    /// <summary>
+    /// Naming a mail server is asked about, and the question has to carry a password typed with it to
+    /// the answer. It must do that without writing the password into the page.
+    /// </summary>
+    [Fact]
+    public async Task APasswordTypedBeforeTheQuestionIsNotInThePageAndIsStillSaved()
+    {
+        HttpClient admin = await AdminAsync("settings-sealed@example.com");
+
+        using HttpResponseMessage asked = await PostAsync(admin, new Dictionary<string, string>
+        {
+            ["Values[Smtp:Host]"] = "mail.example.com",
+            ["Values[Smtp:Password]"] = "correct-horse-battery",
+        });
+
+        string question = await asked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        question.Should().Contain("name=\"Confirmed\"", "this is the question, not a save");
+        question.Should().NotContain("correct-horse-battery");
+
+        Dictionary<string, string> answer = new(StringComparer.Ordinal);
+
+        foreach (Match input in Regex.Matches(question, """<input type="hidden" name="([^"]+)" value="([^"]*)" />"""))
+        {
+            answer[WebUtility.HtmlDecode(input.Groups[1].Value)] = WebUtility.HtmlDecode(input.Groups[2].Value);
+        }
+
+        answer.Should().ContainKey("Sealed[Smtp:Password]");
+        answer["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(question);
+
+        using FormUrlEncodedContent content = new(answer);
+        using HttpResponseMessage agreed = await admin.PostAsync("/Admin/Settings", content, TestContext.Current.CancellationToken);
+
+        agreed.IsSuccessStatusCode.Should().BeTrue();
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        SmtpOptions smtp = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue;
+
+        smtp.Host.Should().Be("mail.example.com");
+        smtp.Password.Should().Be("correct-horse-battery", "the answer saved what was typed before the question");
 
         admin.Dispose();
     }

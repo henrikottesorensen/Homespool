@@ -2577,6 +2577,15 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_MailTestFailed" xml:space="preserve">
     <value>Mailserveren kunne ikke bruges: {0}</value>
   </data>
+  <data name="Settings_MailTestNotRun" xml:space="preserve">
+    <value>Mailserveren blev ikke afprøvet. Ret de markerede værdier nedenfor.</value>
+  </data>
+  <data name="Settings_Refuse_SecretNotCarriedOver" xml:space="preserve">
+    <value>Skriv adgangskoden igen. Serveren, forbindelsesindstillingerne eller brugernavnet er ændret, og en gemt adgangskode kan kun bruges med den server og bruger, den blev gemt sammen med.</value>
+  </data>
+  <data name="Settings_Refuse_SealedSecretExpired" xml:space="preserve">
+    <value>Skriv adgangskoden igen. Spørgsmålet stod ubesvaret for længe til, at den tidligere indtastede kode kan genbruges.</value>
+  </data>
   <data name="Settings_Confirm_Smtp_Host" xml:space="preserve">
     <value>Intet ændrer sig, før denne installation genstartes. Derefter skal en ny konto bekræfte sin adresse, før den kan logge ind, hvor den i dag oprettes som allerede bekræftet - så en mailserver, der ikke virker, efterlader nye brugere uden adgang. Test den med knappen nedenfor først. Nulstilling af adgangskode begynder at virke, og administratorer begynder at modtage helbredsvarsler pr. mail. Konti, der allerede findes, påvirkes ikke.</value>
   </data>

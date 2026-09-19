@@ -45,6 +45,13 @@ public sealed class SettingsSecretProtector
     /// </summary>
     public const string Purpose = "Homespool.Settings.Secret.v1";
 
+    /// <summary>
+    /// Binds a secret sealed for a page round-trip. Kept apart from <see cref="Purpose"/> so that a
+    /// sealed value can never be stored and read back as a saved one, or the reverse.
+    /// </summary>
+    public const string InFlightPurpose = "Homespool.Settings.Secret.InFlight.v1";
+
+    private readonly IDataProtectionProvider _provider;
     private readonly IDataProtector _protector;
     private readonly ILogger<SettingsSecretProtector> _logger;
 
@@ -55,6 +62,7 @@ public sealed class SettingsSecretProtector
     {
         ArgumentNullException.ThrowIfNull(provider);
 
+        _provider = provider;
         _protector = provider.CreateProtector(Purpose);
         _logger = logger;
     }
@@ -97,5 +105,57 @@ public sealed class SettingsSecretProtector
 
             return null;
         }
+    }
+
+    /// <summary>
+    /// Wraps a secret somebody has just typed so a page can hand it back to itself without writing
+    /// it into the page.
+    /// </summary>
+    /// <remarks>
+    /// <b>For a question asked between typing and saving</b>, where the page has to carry every
+    /// submitted value to the next post. Written out as it was typed, the password would sit in the
+    /// page source and in whatever keeps a copy of it. Sealed, it is ciphertext that stops opening
+    /// after <paramref name="lifetime"/>, and only for the setting it was sealed for.
+    /// </remarks>
+    /// <param name="value">The secret as typed.</param>
+    /// <param name="name">The setting's path; <see cref="Unseal"/> must be given the same one.</param>
+    /// <param name="lifetime">How long the sealed value can be opened.</param>
+    /// <returns>The sealed value.</returns>
+    public string Seal(string value, string name, TimeSpan lifetime)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        return InFlight(name).Protect(value, lifetime);
+    }
+
+    /// <summary>
+    /// Opens a value <see cref="Seal"/> produced.
+    /// </summary>
+    /// <param name="sealedValue">What the page handed back.</param>
+    /// <param name="name">The setting's path, as given to <see cref="Seal"/>.</param>
+    /// <returns>The secret, or null when the value has expired, was altered, or was sealed for another setting.</returns>
+    public string? Unseal(string? sealedValue, string name)
+    {
+        if (string.IsNullOrEmpty(sealedValue))
+        {
+            return null;
+        }
+
+        try
+        {
+            return InFlight(name).Unprotect(sealedValue);
+        }
+        catch (Exception exception) when (exception is CryptographicException or FormatException)
+        {
+            // Expected, not exceptional: a question left open too long, or a value altered in the
+            // browser - which can fail decoding before it reaches the cryptography. The caller asks
+            // for the secret again.
+            return null;
+        }
+    }
+
+    private ITimeLimitedDataProtector InFlight(string name)
+    {
+        return _provider.CreateProtector(InFlightPurpose, name).ToTimeLimitedDataProtector();
     }
 }

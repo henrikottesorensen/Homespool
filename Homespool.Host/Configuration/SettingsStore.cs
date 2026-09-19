@@ -3,9 +3,13 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json.Nodes;
 
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Localization;
+
+using Homespool.Host.Localisation;
 
 namespace Homespool.Host.Configuration;
 
@@ -23,10 +27,19 @@ namespace Homespool.Host.Configuration;
 /// <para>
 /// <b>A secret is never read back out to a browser.</b> The page renders
 /// <see cref="SecretPlaceholder"/> when one is stored, and a post carrying that placeholder means
-/// "leave it alone". That is keyed on the placeholder rather than on the form being otherwise
-/// unchanged, which is the distinction that matters: it lets somebody correct the mail host without
-/// re-typing a password they were never shown, and still lets a typed password replace the stored
-/// one — the case that must keep working or a password could never be changed at all.
+/// "leave it alone". That lets somebody change the sender name without re-typing a password they
+/// were never shown, and still lets a typed password replace the stored one — the case that must
+/// keep working or a password could never be changed at all.
+/// </para>
+/// <para>
+/// <b>The placeholder does not carry a secret to a different destination.</b> A secret is only
+/// worth what it unlocks, and the settings marked <see cref="EditableSetting.BindsSecret"/> decide
+/// what that is: the server, how it is reached, and the account. When any of them differs from what
+/// is in force, the placeholder is refused and the secret must be typed again. Otherwise an
+/// administrator who was never told the password could send it to a server of their own - and TLS
+/// is no defence there, because whoever names the server can hold a valid certificate for it. Both
+/// <see cref="Save"/> and <see cref="CandidateFor"/> enforce it: a save is what the next restart
+/// and every mail after it use, and a candidate is what the test button connects to now.
 /// </para>
 /// </remarks>
 public sealed class SettingsStore
@@ -39,20 +52,27 @@ public sealed class SettingsStore
     private readonly IConfiguration _configuration;
     private readonly SettingsFile _file;
     private readonly SettingsSecretProtector _protector;
+    private readonly IStringLocalizer<SharedResource> _localiser;
 
     /// <summary>Creates the store.</summary>
     /// <param name="configuration">The application's configuration, reloaded after a write.</param>
     /// <param name="file">The file the values are stored in.</param>
     /// <param name="protector">Encrypts and decrypts the secrets among them.</param>
-    public SettingsStore(IConfiguration configuration, SettingsFile file, SettingsSecretProtector protector)
+    /// <param name="localiser">The refusal a secret that cannot be carried over is reported with.</param>
+    public SettingsStore(IConfiguration configuration,
+                         SettingsFile file,
+                         SettingsSecretProtector protector,
+                         IStringLocalizer<SharedResource> localiser)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(protector);
+        ArgumentNullException.ThrowIfNull(localiser);
 
         _configuration = configuration;
         _file = file;
         _protector = protector;
+        _localiser = localiser;
     }
 
     /// <summary>
@@ -139,7 +159,12 @@ public sealed class SettingsStore
             pending[setting.Path] = value;
         }
 
-        IReadOnlyDictionary<string, string> errors = Validate(pending);
+        Dictionary<string, string> errors = new(Validate(pending), StringComparer.Ordinal);
+
+        foreach (string path in SecretsThatCannotCarryOver(submitted))
+        {
+            errors[path] = _localiser["Settings_Refuse_SecretNotCarriedOver"];
+        }
 
         if (errors.Count > 0)
         {
@@ -164,24 +189,36 @@ public sealed class SettingsStore
     /// What a section would look like if these values were applied, without applying them.
     /// </summary>
     /// <remarks>
-    /// <b>Used both to check a save before writing it and to answer "would this work?" for the mail
-    /// test</b>, which is why it exists rather than being inlined into validation. Mail settings only
-    /// take effect at the next restart, so testing the running configuration would answer a question
-    /// nobody asked - what the deployment is doing, rather than what was just typed.
+    /// <b>Answers "would this work?" for the mail test.</b> Mail settings only take effect at the next
+    /// restart, so testing the running configuration would answer a question nobody asked - what the
+    /// deployment is doing, rather than what was just typed. It refuses exactly where
+    /// <see cref="Save"/> would, so the test cannot reach a server a save could not.
     /// </remarks>
     /// <typeparam name="T">The options type.</typeparam>
     /// <param name="submitted">Values keyed by <see cref="EditableSetting.Path"/>.</param>
-    /// <returns>An instance carrying the current values with the submitted ones over them.</returns>
-    public T CandidateFor<T>(IReadOnlyDictionary<string, string?> submitted)
+    /// <returns>
+    /// An instance carrying the current values with the submitted ones over them, or the reasons
+    /// there is none.
+    /// </returns>
+    public SettingsCandidate<T> CandidateFor<T>(IReadOnlyDictionary<string, string?> submitted)
         where T : class, new()
     {
         ArgumentNullException.ThrowIfNull(submitted);
 
         List<EditableSetting> settings = [.. EditableSettings.All.Where(setting => setting.OptionsType == typeof(T))];
 
+        Dictionary<string, string> errors = SecretsThatCannotCarryOver(submitted)
+            .Where(path => settings.Any(setting => setting.Path == path))
+            .ToDictionary(path => path, path => (string)_localiser["Settings_Refuse_SecretNotCarriedOver"], StringComparer.Ordinal);
+
+        if (errors.Count > 0)
+        {
+            return new SettingsCandidate<T>(null, errors);
+        }
+
         if (settings.Count == 0)
         {
-            return new T();
+            return new SettingsCandidate<T>(new T(), errors);
         }
 
         string section = settings[0].Section;
@@ -196,13 +233,90 @@ public sealed class SettingsStore
             }
 
             // A secret comes back from a browser as the mask when it was never shown, which means
-            // "the stored one" - so the stored one is what gets tested.
+            // "the stored one" - so the stored one is what gets tested, the check above having
+            // established it is being tested against what it was stored for.
             overlay[setting.Key] = setting.IsSecret && value == SecretPlaceholder ?
                 _protector.Reveal(_configuration[setting.StoredPath], setting.StoredPath) :
                 value;
         }
 
-        return (T)Candidate(typeof(T), section, overlay);
+        return new SettingsCandidate<T>((T)Candidate(typeof(T), section, overlay), errors);
+    }
+
+    /// <summary>
+    /// The secrets submitted as the placeholder whose section's binding settings are being changed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Compared as bound values, against what is in force</b> - the settings file over everything
+    /// beneath it, so a password supplied by the environment is held to the same rule as a stored
+    /// one. Binding is what makes <c>587</c> and <c>0587</c>, or <c>True</c> and <c>true</c>, the
+    /// same answer. Text is compared without regard to case: a host name has none, and an account name
+    /// differing only in case still goes to the same server.
+    /// </para>
+    /// <para>
+    /// <b>No further normalisation, deliberately.</b> Two spellings that name the same server - a
+    /// trailing dot, a Unicode name and its ASCII form - are treated as different, which costs only a
+    /// re-typed password. Treating two different servers as the same would cost the password.
+    /// </para>
+    /// <para>
+    /// A placeholder is refused here whether or not a secret is stored. With nothing stored there is
+    /// nothing to carry, and the answer that works is still to type one.
+    /// </para>
+    /// </remarks>
+    private List<string> SecretsThatCannotCarryOver(IReadOnlyDictionary<string, string?> submitted)
+    {
+        List<string> refused = [];
+
+        foreach (IGrouping<Type, EditableSetting> group in EditableSettings.All.GroupBy(setting => setting.OptionsType))
+        {
+            List<string> masked =
+            [
+                .. group.Where(setting => setting.IsSecret &&
+                                          submitted.TryGetValue(setting.Path, out string? value) &&
+                                          value == SecretPlaceholder)
+                        .Select(setting => setting.Path),
+            ];
+
+            if (masked.Count == 0)
+            {
+                continue;
+            }
+
+            List<EditableSetting> binding = [.. group.Where(setting => setting.BindsSecret && submitted.ContainsKey(setting.Path))];
+
+            if (binding.Count == 0)
+            {
+                continue;
+            }
+
+            string section = group.First().Section;
+
+            object current = Candidate(group.Key, section, new Dictionary<string, string?>());
+            object proposed = Candidate(
+                group.Key,
+                section,
+                binding.ToDictionary(setting => setting.Key, setting => submitted[setting.Path]));
+
+            if (binding.Any(setting => !SameDestination(group.Key, setting.Key, current, proposed)))
+            {
+                refused.AddRange(masked);
+            }
+        }
+
+        return refused;
+    }
+
+    private static bool SameDestination(Type type, string key, object current, object proposed)
+    {
+        PropertyInfo property = type.GetProperty(key)!;
+
+        object? before = property.GetValue(current);
+        object? after = property.GetValue(proposed);
+
+        return before is string text ?
+            string.Equals(text, after as string, StringComparison.OrdinalIgnoreCase) :
+            Equals(before, after);
     }
 
     private object Candidate(Type type, string section, IReadOnlyDictionary<string, string?> overlay)
@@ -296,3 +410,10 @@ public sealed class SettingsStore
 /// <param name="Saved">Whether the file was written.</param>
 /// <param name="Errors">Any validation failures, keyed by <see cref="EditableSetting.Path"/>.</param>
 public sealed record SettingsSaveResult(bool Saved, IReadOnlyDictionary<string, string> Errors);
+
+/// <summary>What a set of submitted values would make of an options section.</summary>
+/// <typeparam name="T">The options type.</typeparam>
+/// <param name="Value">The resulting options, or null when <paramref name="Errors"/> is not empty.</param>
+/// <param name="Errors">Why there is no <paramref name="Value"/>, keyed by <see cref="EditableSetting.Path"/>.</param>
+public sealed record SettingsCandidate<T>(T? Value, IReadOnlyDictionary<string, string> Errors)
+    where T : class;

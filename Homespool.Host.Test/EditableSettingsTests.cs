@@ -137,6 +137,41 @@ public class EditableSettingsTests
     }
 
     /// <summary>
+    /// The mail password may only travel to the server and account it was saved for, so every value
+    /// that decides where it goes and in what form has to demand it again when it changes. A new
+    /// connection setting added without the flag would carry the stored password to it.
+    /// </summary>
+    [Fact]
+    public void EverythingThatDecidesWhereThePasswordGoesBindsIt()
+    {
+        EditableSettings.All
+                        .Where(setting => setting.BindsSecret)
+                        .Select(setting => setting.Key)
+                        .Should()
+                        .BeEquivalentTo([
+                            nameof(SmtpOptions.Host),
+                            nameof(SmtpOptions.Port),
+                            nameof(SmtpOptions.UseImplicitTls),
+                            nameof(SmtpOptions.DisableTls),
+                            nameof(SmtpOptions.UserName),
+                        ]);
+    }
+
+    /// <summary>
+    /// A binding flag in a section without a secret would bind nothing and read as though it did.
+    /// </summary>
+    [Fact]
+    public void OnlyASectionWithASecretHasSettingsBindingIt()
+    {
+        HashSet<Type> withSecret = [.. EditableSettings.All.Where(setting => setting.IsSecret).Select(setting => setting.OptionsType)];
+
+        EditableSettings.All
+                        .Where(setting => setting.BindsSecret)
+                        .Should()
+                        .OnlyContain(setting => withSecret.Contains(setting.OptionsType) && !setting.IsSecret);
+    }
+
+    /// <summary>
     /// Every mail setting is restart-graded, because three startup decisions read this section:
     /// which email sender is registered, whether the alert service runs, and whether new accounts are
     /// confirmed at creation. One of them turning live by accident is a behaviour change nobody asked

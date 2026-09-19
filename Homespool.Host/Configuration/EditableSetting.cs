@@ -32,6 +32,10 @@ namespace Homespool.Host.Configuration;
 /// A subheading within the group, for a group large enough that one list of fields stops being
 /// readable. Null for a group that needs none.
 /// </param>
+/// <param name="BindsSecret">
+/// Whether a stored secret in the same section belongs to this value, so that changing it needs the
+/// secret typed again rather than carried over behind the mask.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>An allowlist entry, not a description of configuration.</b> The 65 options properties are not
@@ -55,7 +59,8 @@ public sealed record EditableSetting(
     string? AppliesWhenKey = null,
     string? DisplayGroup = null,
     string? DisplaySubgroup = null,
-    string? ConfirmOnEnableKey = null)
+    string? ConfirmOnEnableKey = null,
+    bool BindsSecret = false)
 {
     /// <summary>
     /// The configuration path this setting is read and written at, in <c>Section:Key</c> form.

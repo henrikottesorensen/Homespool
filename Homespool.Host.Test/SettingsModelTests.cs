@@ -35,6 +35,7 @@ public class SettingsModelTests : IDisposable
     private readonly string _databasePath;
     private readonly SettingsFile _file;
     private readonly ConfigurationManager _configuration;
+    private readonly SettingsSecretProtector _protector;
     private readonly SettingsStore _store;
 
     public SettingsModelTests()
@@ -50,12 +51,11 @@ public class SettingsModelTests : IDisposable
 
         _configuration.AddJsonFile(_file.Path, optional: true, reloadOnChange: false);
 
-        _store = new SettingsStore(
-            _configuration,
-            _file,
-            new SettingsSecretProtector(
-                DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(_directory, "keys"))),
-                new FakeLogger<SettingsSecretProtector>()));
+        _protector = new SettingsSecretProtector(
+            DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(_directory, "keys"))),
+            new FakeLogger<SettingsSecretProtector>());
+
+        _store = new SettingsStore(_configuration, _file, _protector, TestLocaliser.Shared());
     }
 
     public void Dispose()
@@ -189,7 +189,7 @@ public class SettingsModelTests : IDisposable
     [Fact]
     public async Task TheMailTestUsesTheStoredPasswordWhenTheMaskComesBack()
     {
-        _store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "hunter2" }).Saved.Should().BeTrue();
+        SaveMailServer();
 
         FakeSmtpTransport transport = new();
         (SettingsModel page, _) = await PageAsync(twoFactor: false, transport);
@@ -204,6 +204,149 @@ public class SettingsModelTests : IDisposable
         await page.OnPostTestMail(TestContext.Current.CancellationToken);
 
         transport.AuthenticateCall!.Value.password.Should().Be("hunter2");
+    }
+
+    /// <summary>
+    /// The button connects to whatever the form names, so behind the mask it would hand the stored
+    /// password to a server of the administrator's choosing. It must not connect at all.
+    /// </summary>
+    [Fact]
+    public async Task TheMailTestDoesNotTakeTheStoredPasswordToAnotherServer()
+    {
+        SaveMailServer();
+
+        FakeSmtpTransport transport = new();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false, transport);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "attacker.example.net",
+            ["Smtp:UserName"] = "postmaster",
+            ["Smtp:Password"] = SettingsStore.SecretPlaceholder,
+        };
+
+        await page.OnPostTestMail(TestContext.Current.CancellationToken);
+
+        transport.ConnectCall.Should().BeNull("nothing is tried");
+        transport.AuthenticateCall.Should().BeNull();
+        page.StatusSuccess.Should().BeFalse();
+        page.StatusMessage.Should().Be(TestLocaliser.Shared()["Settings_MailTestNotRun"].Value);
+        page.Errors.Should().ContainKey("Smtp:Password")
+            .WhoseValue.Should().Be(TestLocaliser.Shared()["Settings_Refuse_SecretNotCarriedOver"].Value);
+    }
+
+    [Fact]
+    public async Task TheMailTestTakesATypedPasswordAnywhere()
+    {
+        SaveMailServer();
+
+        FakeSmtpTransport transport = new();
+        (SettingsModel page, _) = await PageAsync(twoFactor: false, transport);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "other.example.com",
+            ["Smtp:UserName"] = "postmaster",
+            ["Smtp:Password"] = "typed-just-now",
+        };
+
+        await page.OnPostTestMail(TestContext.Current.CancellationToken);
+
+        transport.AuthenticateCall!.Value.password.Should().Be("typed-just-now");
+    }
+
+    /// <summary>
+    /// The question is asked between typing and saving, and has to carry the typed password to the
+    /// answer. It must not do so by writing the password into the page.
+    /// </summary>
+    [Fact]
+    public async Task ATypedPasswordIsCarriedSealedAcrossTheQuestion()
+    {
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "mail.example.com",
+            ["Smtp:Password"] = "hunter2",
+        };
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().ContainSingle();
+        page.CarriedValues.Should().NotContainKey("Smtp:Password");
+        page.CarriedValues.Values.Should().NotContain("hunter2");
+        page.CarriedValues["Smtp:Host"].Should().Be("mail.example.com");
+        page.SealedSecrets.Should().ContainKey("Smtp:Password")
+            .WhoseValue.Should().NotContain("hunter2");
+
+        // The answer is a fresh post carrying only what the question wrote into the page.
+        page.Values = new Dictionary<string, string?>(page.CarriedValues);
+        page.Sealed = new Dictionary<string, string>(page.SealedSecrets);
+        page.Confirmed = ["Smtp:Host"];
+
+        await page.OnPost();
+
+        page.Errors.Should().BeEmpty();
+        page.StatusSuccess.Should().BeTrue();
+        _protector.Reveal(_configuration["Smtp:ProtectedPassword"], "Smtp:ProtectedPassword")
+                  .Should()
+                  .Be("hunter2", "the answer saved the password typed before the question");
+    }
+
+    /// <summary>
+    /// The mask and an empty value are what the page showed and a request to clear; neither is a
+    /// secret, and sealing them would change what they mean.
+    /// </summary>
+    [Fact]
+    public async Task TheMaskIsCarriedAsItIs()
+    {
+        SaveMailServer();
+
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Cameras:WebRtcStunEnabled"] = "true",
+            ["Smtp:Password"] = SettingsStore.SecretPlaceholder,
+        };
+
+        await page.OnPost();
+
+        page.CarriedValues["Smtp:Password"].Should().Be(SettingsStore.SecretPlaceholder);
+        page.SealedSecrets.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A sealed password that will not open must not be dropped: the save would go ahead, say it
+    /// worked, and keep the old password in place of the one just typed.
+    /// </summary>
+    [Fact]
+    public async Task ASealThatWillNotOpenRefusesTheSave()
+    {
+        SaveMailServer();
+
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Cameras:WebRtcStunEnabled"] = "true",
+        };
+        page.Sealed = new Dictionary<string, string>
+        {
+            ["Smtp:Password"] = _protector.Seal("new-password", "Smtp:Password", TimeSpan.FromSeconds(-1)),
+        };
+        page.Confirmed = ["Cameras:WebRtcStunEnabled"];
+
+        string? before = _configuration["Smtp:ProtectedPassword"];
+
+        await page.OnPost();
+
+        page.StatusSuccess.Should().BeFalse();
+        page.Errors.Should().ContainKey("Smtp:Password")
+            .WhoseValue.Should().Be(TestLocaliser.Shared()["Settings_Refuse_SealedSecretExpired"].Value);
+        page.Values.Should().NotContainKey("Smtp:Password");
+        _configuration["Smtp:ProtectedPassword"].Should().Be(before);
+        _store.Current()["Cameras:WebRtcStunEnabled"].Should().NotBe("true", "nothing was saved");
     }
 
     [Fact]
@@ -359,6 +502,19 @@ public class SettingsModelTests : IDisposable
         }
     }
 
+    private void SaveMailServer()
+    {
+        _store.Save(new Dictionary<string, string?>
+              {
+                  ["Smtp:Host"] = "mail.example.com",
+                  ["Smtp:UserName"] = "postmaster",
+                  ["Smtp:Password"] = "hunter2",
+              })
+              .Saved
+              .Should()
+              .BeTrue();
+    }
+
     private async Task<(SettingsModel page, HomespoolDbContext context)> PageAsync(
         bool twoFactor,
         FakeSmtpTransport? transport = null)
@@ -379,6 +535,7 @@ public class SettingsModelTests : IDisposable
         IdentityTestHarness.SignInAsPrincipal(httpContext, admin);
 
         SettingsModel page = new(_store,
+                                 _protector,
                                  users,
                                  new SmtpConnectivityCheck(new FakeSmtpTransportFactory(transport ?? new FakeSmtpTransport()),
                                                            NullLogger<SmtpConnectivityCheck>.Instance),

@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
@@ -121,6 +122,66 @@ public sealed class ExternalLoginsNoticeTests : IDisposable
         _mail.SentEmails.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// While the last change's cooldown runs, the next removal is refused before anything is written, so
+    /// a loop cannot mail the owner at request rate.
+    /// </summary>
+    [Fact]
+    public async Task ARemovalPastTheLimitIsRefusedAndMailsNobody()
+    {
+        // Arrange
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser owner = await rig.AddUserAsync("owner@example.com");
+        (await rig.Users.AddLoginAsync(owner, new UserLoginInfo(Provider, "subject", Provider))).Succeeded.Should().BeTrue();
+        await SpendTheChangeAsync(rig, owner);
+        ExternalLoginsModel page = await PageAsync(rig, owner);
+
+        // Act
+        await page.OnPostRemoveLoginAsync(Provider, "subject", CancellationToken.None);
+
+        // Assert
+        (await rig.Users.GetLoginsAsync(owner)).Should().ContainSingle("nothing was removed");
+        _mail.SentEmails.Should().BeEmpty();
+        page.StatusMessage.Should().Be("Too many changes to how you sign in. Try again in a few minutes.");
+    }
+
+    [Fact]
+    public async Task ALinkPastTheLimitIsRefusedAndMailsNobody()
+    {
+        // Arrange
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser owner = await rig.AddUserAsync("owner@example.com");
+        string answer = await AnswerAsync(rig, "new-subject", ExternalRoundTrip.Link, owner);
+        await SpendTheChangeAsync(rig, owner);
+        ExternalLoginsModel page = await PageAsync(rig, owner, answer);
+
+        // Act
+        await page.OnGetLinkLoginCallbackAsync();
+
+        // Assert
+        (await rig.Users.GetLoginsAsync(owner)).Should().BeEmpty();
+        _mail.SentEmails.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ASwapPastTheLimitIsRefusedAndSetsNoPassword()
+    {
+        // Arrange
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser owner = await ProviderOnlyAccountAsync(rig);
+        await SpendTheChangeAsync(rig, owner);
+        ExternalLoginsModel page = await PageAsync(rig, owner);
+        page.Input = new ExternalLoginsModel.InputModel { NewPassword = LocalSchemeRig.Password, ConfirmPassword = LocalSchemeRig.Password };
+
+        // Act
+        await page.OnPostRemoveLoginAsync(Provider, "subject", CancellationToken.None);
+
+        // Assert
+        (await StoredPasswordHashAsync(rig, owner)).Should().BeNull();
+        (await rig.Users.GetLoginsAsync(owner)).Should().ContainSingle();
+        _mail.SentEmails.Should().BeEmpty();
+    }
+
     /// <summary>The takeover the page's remarks describe, told to the owner in its own words.</summary>
     [Fact]
     public async Task SwappingTheLastProviderForAPasswordMailsTheOwner()
@@ -190,6 +251,16 @@ public sealed class ExternalLoginsNoticeTests : IDisposable
                          .SingleAsync(u => u.Id == user.Id, TestContext.Current.CancellationToken)).PasswordHash;
     }
 
+    /// <summary>Starts <paramref name="user"/>'s change cooldown, as a change a moment ago would have.</summary>
+    private static async Task SpendTheChangeAsync(LocalSchemeRig rig, HSUser user)
+    {
+        CredentialChangeLimit limit = new(rig.NewRequest().RequestServices.GetRequiredService<AttemptLimiter>(),
+                                          TimeProvider.System,
+                                          NullLogger<CredentialChangeLimit>.Instance);
+
+        (await limit.TryStartAsync(user.Id, CancellationToken.None)).Should().BeTrue();
+    }
+
     private static async Task<HSUser> ProviderOnlyAccountAsync(LocalSchemeRig rig)
     {
         HSUser user = await rig.AddUserAsync("owner@example.com");
@@ -226,6 +297,7 @@ public sealed class ExternalLoginsNoticeTests : IDisposable
                                        services.GetRequiredService<RecentProof>(),
                                        new UnitOfWork(services.GetRequiredService<HomespoolDbContext>()),
                                        _mail.Notices(),
+                                       new CredentialChangeLimit(services.GetRequiredService<AttemptLimiter>(), TimeProvider.System, NullLogger<CredentialChangeLimit>.Instance),
                                        NullLogger<ExternalLoginsModel>.Instance,
                                        TestLocaliser.Shared())
         {

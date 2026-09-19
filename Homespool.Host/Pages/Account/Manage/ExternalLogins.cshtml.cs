@@ -72,7 +72,8 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// <para>
 /// <b>Every link and removal is mailed to the owner</b>, through <see cref="CredentialNotices"/>: the
-/// proof says somebody at this browser proved themselves, not that it was the owner.
+/// proof says somebody at this browser proved themselves, not that it was the owner. Each is counted
+/// against <see cref="CredentialChangeLimit"/> first, so a loop cannot mail the owner at request rate.
 /// </para>
 /// </remarks>
 [Authorize]
@@ -84,6 +85,7 @@ public class ExternalLoginsModel : PageModel
     private readonly RecentProof _proof;
     private readonly UnitOfWork _unitOfWork;
     private readonly CredentialNotices _notices;
+    private readonly CredentialChangeLimit _limit;
     private readonly ILogger<ExternalLoginsModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
@@ -93,6 +95,7 @@ public class ExternalLoginsModel : PageModel
                                RecentProof proof,
                                UnitOfWork unitOfWork,
                                CredentialNotices notices,
+                               CredentialChangeLimit limit,
                                ILogger<ExternalLoginsModel> logger,
                                IStringLocalizer<SharedResource> localiser)
     {
@@ -102,6 +105,7 @@ public class ExternalLoginsModel : PageModel
         _proof = proof;
         _unitOfWork = unitOfWork;
         _notices = notices;
+        _limit = limit;
         _logger = logger;
         _localiser = localiser;
     }
@@ -203,6 +207,13 @@ public class ExternalLoginsModel : PageModel
             return RedirectToPage();
         }
 
+        if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
+        {
+            StatusMessage = _localiser["CredentialChange_TooMany"];
+
+            return RedirectToPage();
+        }
+
         IdentityResult result = await _userManager.AddLoginAsync(user, info);
         if (!result.Succeeded)
         {
@@ -237,6 +248,13 @@ public class ExternalLoginsModel : PageModel
 
         if (!RemovalNeedsAPassword)
         {
+            if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
+            {
+                StatusMessage = _localiser["CredentialChange_TooMany"];
+
+                return RedirectToPage();
+            }
+
             IdentityResult removed = await _userManager.RemoveLoginAsync(user, loginProvider, providerKey);
 
             if (!removed.Succeeded)
@@ -261,6 +279,13 @@ public class ExternalLoginsModel : PageModel
         if (!ModelState.IsValid || string.IsNullOrEmpty(Input?.NewPassword))
         {
             return Page();
+        }
+
+        if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
+        {
+            StatusMessage = _localiser["CredentialChange_TooMany"];
+
+            return RedirectToPage();
         }
 
         // Two round trips, and the half-done states are both bad: a password added but the provider

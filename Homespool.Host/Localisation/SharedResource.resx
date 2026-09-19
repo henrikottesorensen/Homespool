@@ -2931,6 +2931,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Email_AddressChangedBody" xml:space="preserve">
     <value>The email address on your Homespool account was just changed, so password resets and notices will no longer come here. If that was not you, contact the Homespool administrator straight away.</value>
   </data>
+  <data name="CredentialChange_TooMany" xml:space="preserve">
+    <value>Too many changes to how you sign in. Try again in a few minutes.</value>
+  </data>
   <data name="Email_ProviderLinkedSubject" xml:space="preserve">
     <value>A sign-in provider was linked to your Homespool account</value>
   </data>

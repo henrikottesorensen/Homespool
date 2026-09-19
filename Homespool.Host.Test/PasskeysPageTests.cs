@@ -21,6 +21,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Model.Entities;
@@ -107,6 +108,51 @@ public sealed class PasskeysPageTests : IDisposable
         sent.email.Should().Be("owner@example.com");
         sent.subject.Should().Be("A passkey was added to your Homespool account");
         sent.body.Should().NotContain("Attacker", "whoever adds the passkey chooses its name");
+    }
+
+    /// <summary>
+    /// While a change's cooldown runs, the ceremony is refused before it starts - the browser is never asked
+    /// to mint a credential that would not be kept - with the sentence the script shows.
+    /// </summary>
+    [Fact]
+    public async Task BeginningARegistrationPastTheLimitIsRefusedWithTheSentenceToShow()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        (await rig.Limit.TryStartAsync(user.Id, CancellationToken.None)).Should().BeTrue();
+        (PasskeysModel begin, _) = rig.NewModel(user);
+
+        // Act
+        IActionResult result = await begin.OnPostBeginRegistrationAsync(CancellationToken.None);
+
+        // Assert
+        JsonResult refused = result.Should().BeOfType<JsonResult>().Subject;
+        refused.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        refused.Value.Should().BeEquivalentTo(new { message = "Too many changes to how you sign in. Try again in a few minutes." });
+    }
+
+    /// <summary>The cooldown starts when a registration is stored, and one started between begin and answer refuses it.</summary>
+    [Fact]
+    public async Task ARegistrationPastTheLimitIsNotStoredOrMailed()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        using FakeAuthenticator authenticator = new();
+
+        (PasskeysModel begin, DefaultHttpContext beginRequest) = rig.NewModel(user);
+        ContentResult options = (await begin.OnPostBeginRegistrationAsync(CancellationToken.None)).Should().BeOfType<ContentResult>().Subject;
+        (await rig.Limit.TryStartAsync(user.Id, CancellationToken.None)).Should().BeTrue();
+        (PasskeysModel register, _) = rig.NewModel(user, cookie: Rig.CookieOf(beginRequest));
+
+        // Act
+        IActionResult result = await register.OnPostRegisterAsync(authenticator.Attest(options.Content!));
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+        (await rig.Users.GetPasskeysAsync(user)).Should().BeEmpty();
+        rig.Mail.SentEmails.Should().BeEmpty();
     }
 
     [Fact]
@@ -386,6 +432,25 @@ public sealed class PasskeysPageTests : IDisposable
         warning.Message.Should().NotContain(name, "the codes are logged, not the descriptions that carry the name");
     }
 
+    [Fact]
+    public async Task ARemovalPastTheLimitIsRefusedAndMailsNobody()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        UserPasskeyInfo passkey = await rig.SeedPasskeyAsync(user, "laptop");
+        (await rig.Limit.TryStartAsync(user.Id, CancellationToken.None)).Should().BeTrue();
+        (PasskeysModel model, _) = rig.NewModel(user);
+
+        // Act
+        await model.OnPostRemoveAsync(PasskeysModel.IdOf(passkey));
+
+        // Assert
+        (await rig.Users.GetPasskeysAsync(user)).Should().ContainSingle();
+        rig.Mail.SentEmails.Should().BeEmpty();
+        model.StatusMessage.Should().Be("Too many changes to how you sign in. Try again in a few minutes.");
+    }
+
     /// <summary>
     /// Somebody else's credential id is "already gone" from this account's point of view, and stays
     /// where it is - the same answer as for a stale id, so the form reports nothing about other
@@ -444,6 +509,9 @@ public sealed class PasskeysPageTests : IDisposable
 
         /// <summary>What every page this rig built mailed.</summary>
         public CapturingEmailSender Mail { get; } = new();
+
+        /// <summary>A change limit over the rig's own attempt table, which every page it builds shares.</summary>
+        public CredentialChangeLimit Limit => new(_provider.GetRequiredService<AttemptLimiter>(), TimeProvider.System, NullLogger<CredentialChangeLimit>.Instance);
 
         public IPasskeyHandler<HSUser> Engine => _provider.GetRequiredService<IPasskeyHandler<HSUser>>();
 
@@ -512,6 +580,7 @@ public sealed class PasskeysPageTests : IDisposable
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),
                                       TestLocaliser.Shared(),
                                       Mail.Notices(),
+                                      Limit,
                                       logger ?? NullLogger<PasskeysModel>.Instance)
             {
                 PageContext = IdentityTestHarness.NewPageContext(request),

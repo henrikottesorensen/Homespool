@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -66,7 +67,10 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// <para>
 /// <b>Adding and removing one are mailed to the owner</b>, through <see cref="CredentialNotices"/>,
-/// since whoever proved themselves on this browser need not be the owner. A rename is not.
+/// since whoever proved themselves on this browser need not be the owner. A rename is not. Both count
+/// against <see cref="CredentialChangeLimit"/>: a removal before it is written, an addition when the
+/// answer is stored - with the room checked when the ceremony starts as well, so a person is refused
+/// before their device mints a credential that would not be kept.
 /// </para>
 /// <para>
 /// <b>Offered only where the relying-party id covers the host</b>, as the login page's button is:
@@ -91,6 +95,7 @@ public class PasskeysModel : PageModel
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _options;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly CredentialNotices _notices;
+    private readonly CredentialChangeLimit _limit;
     private readonly ILogger<PasskeysModel> _logger;
 
     public PasskeysModel(UserManager<HSUser> users,
@@ -100,6 +105,7 @@ public class PasskeysModel : PageModel
                          IOptionsMonitor<PasskeyAuthenticationOptions> options,
                          IStringLocalizer<SharedResource> localiser,
                          CredentialNotices notices,
+                         CredentialChangeLimit limit,
                          ILogger<PasskeysModel> logger)
     {
         _users = users;
@@ -109,6 +115,7 @@ public class PasskeysModel : PageModel
         _options = options;
         _localiser = localiser;
         _notices = notices;
+        _limit = limit;
         _logger = logger;
     }
 
@@ -177,6 +184,16 @@ public class PasskeysModel : PageModel
         if (user is null || !Scheme.Covers(Request.Host))
         {
             return NotFound();
+        }
+
+        if (!await _limit.HasRoomAsync(user.Id, cancellationToken))
+        {
+            // Answered as the script expects a refusal: a status it does not treat as success, and the
+            // sentence to show.
+            return new JsonResult(new { message = _localiser["CredentialChange_TooMany"].Value })
+            {
+                StatusCode = StatusCodes.Status429TooManyRequests,
+            };
         }
 
         PasskeyCreationOptionsResult creation = await _engine.MakeCreationOptionsAsync(
@@ -278,6 +295,13 @@ public class PasskeysModel : PageModel
             _localiser["Passkeys_DefaultName", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)].Value :
             Input.Name.Trim();
 
+        if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
+        {
+            ModelState.AddModelError(string.Empty, _localiser["CredentialChange_TooMany"]);
+
+            return Page();
+        }
+
         IdentityResult stored = await _users.AddOrUpdatePasskeyAsync(user, passkey);
 
         if (!stored.Succeeded)
@@ -353,6 +377,13 @@ public class PasskeysModel : PageModel
         if (passkey is null)
         {
             StatusMessage = _localiser["Passkeys_Gone"];
+
+            return RedirectToPage();
+        }
+
+        if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
+        {
+            StatusMessage = _localiser["CredentialChange_TooMany"];
 
             return RedirectToPage();
         }

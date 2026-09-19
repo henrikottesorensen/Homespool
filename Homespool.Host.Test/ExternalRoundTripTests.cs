@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
@@ -232,6 +233,7 @@ public sealed class ExternalRoundTripTests : IDisposable
                                        services.GetRequiredService<RecentProof>(),
                                        new UnitOfWork(services.GetRequiredService<HomespoolDbContext>()),
                                        new CapturingEmailSender().Notices(),
+                                       new CredentialChangeLimit(services.GetRequiredService<AttemptLimiter>(), TimeProvider.System, NullLogger<CredentialChangeLimit>.Instance),
                                        NullLogger<ExternalLoginsModel>.Instance,
                                        TestLocaliser.Shared())
         {

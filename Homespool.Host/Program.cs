@@ -559,6 +559,7 @@ public static class Program
             builder.Services.AddScoped<Accounts.ApiTokenService>();
             builder.Services.AddScoped<Accounts.UserAdministration>();
             builder.Services.AddScoped<Accounts.CredentialNotices>();
+            builder.Services.AddScoped<Accounts.CredentialChangeLimit>();
 
             WebApplication app = builder.Build();
 

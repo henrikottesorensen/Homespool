@@ -119,4 +119,16 @@ public enum LimitedAction
     /// correcting an address does not mean waiting between the two.
     /// </remarks>
     SendVerificationEmail = 9,
+
+    /// <summary>
+    /// A change to how the signed-in account can be signed into - a provider linked or removed, a
+    /// passkey added or removed - from <c>Manage/ExternalLogins</c> or <c>Manage/Passkeys</c>. Held to a
+    /// fixed cooldown after each change rather than counted.
+    /// </summary>
+    /// <remarks>
+    /// Every one of those changes mails the owner, and the recent proof they take is not used up by using
+    /// it, so this is what bounds that mail. One member for all of them, so alternating kinds does not
+    /// double the allowance. The administrator's passkey revoke does not use it.
+    /// </remarks>
+    ChangeSignIn = 10,
 }

@@ -3,6 +3,7 @@ using System.Buffers.Text;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -46,6 +47,12 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// while the proof is missing, because the script asks for the ceremony with <c>fetch</c> and would
 /// otherwise follow the filter's redirect into a page it cannot read. The five-minute ceremony is what
 /// the proof unlocks; the answer needs no second proof.
+/// </para>
+/// <para>
+/// <b>Removing one takes a recent proof too.</b> A session somebody else got hold of could otherwise
+/// take away the owner's way in, or clear the list so a passkey they add later is the only one there.
+/// The removal is a plain form post, so the button stays and the filter's redirect to the proof page
+/// works, on a host that cannot run a ceremony as well.
 /// </para>
 /// <para>
 /// <b>Removing the last one is allowed.</b> A passkey is a complete sign-in beside whatever else the
@@ -328,6 +335,7 @@ public class PasskeysModel : PageModel
         return RedirectToPage();
     }
 
+    [RequireRecentProof]
     public async Task<IActionResult> OnPostRemoveAsync(string? id)
     {
         HSUser? user = await _users.GetUserAsync(User);
@@ -349,9 +357,21 @@ public class PasskeysModel : PageModel
             return RedirectToPage();
         }
 
-        await _users.RemovePasskeyAsync(user, credentialId);
+        IdentityResult removed = await _users.RemovePasskeyAsync(user, credentialId);
 
         _logger.LogInformation("User {UserId} removed passkey {PasskeyName}.", user.Id, passkey.Name);
+
+        // The store deletes the passkey and saves before the manager validates and saves the account
+        // row, so a failed result still means the passkey is gone and this page says so. What failed
+        // is the account's own row - a name or address the user validators now refuse, or an update
+        // that raced this one - which nothing here needs, and which would otherwise go unseen. The
+        // codes only: a description can carry the username.
+        if (!removed.Succeeded)
+        {
+            _logger.LogWarning("User {UserId}'s passkey is removed, but the account row was not saved after it: {IdentityErrorCodes}.",
+                               user.Id,
+                               string.Join(", ", removed.Errors.Select(error => error.Code)));
+        }
 
         await _notices.TellAsync(user, CredentialChange.PasskeyRemoved);
 

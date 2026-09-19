@@ -92,6 +92,19 @@ public class RecentProofDeclarationTests
             .Should().NotBeNull("removing a printer destroys what the deployment knows about it");
     }
 
+    /// <summary>
+    /// Removing a passkey, on a page whose registration already declares the proof - which satisfies
+    /// the folder rule above for the whole page, and is how removal went ungated. Pinned by name.
+    /// </summary>
+    [Fact]
+    public void RemovingAPasskeyDeclaresTheProof()
+    {
+        typeof(Homespool.Host.Pages.Account.Manage.PasskeysModel)
+            .GetMethod(nameof(Homespool.Host.Pages.Account.Manage.PasskeysModel.OnPostRemoveAsync))!
+            .GetCustomAttribute<RequireRecentProofAttribute>(inherit: true)
+            .Should().NotBeNull("a session somebody else got hold of must not be able to take away the owner's passkeys");
+    }
+
     /// <summary>The proof page itself is exempt, and says why.</summary>
     [Fact]
     public void TheProofPageDeclaresItsOwnExemption()

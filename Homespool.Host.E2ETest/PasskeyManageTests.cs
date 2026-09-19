@@ -177,6 +177,38 @@ public sealed class PasskeyManageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Removing a passkey takes a recent proof: an unproved session is sent to prove and the passkey
+    /// stays; the same post from a proved session removes it.
+    /// </summary>
+    [Fact]
+    public async Task RemovingAPasskeyTakesARecentProof()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
+        UserPasskeyInfo passkey = await SeedPasskeyAsync(user, "laptop");
+
+        using (client)
+        {
+            // Act - unproved
+            HttpResponseMessage unproved = await PostRemoveAsync(client, passkey);
+
+            // Assert
+            unproved.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            unproved.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate", "the post is sent to prove first");
+            (await PasskeysOfAsync(user)).Should().ContainSingle("a bare session removes nothing");
+
+            // Act - proved
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+            HttpResponseMessage proved = await PostRemoveAsync(client, passkey);
+
+            // Assert
+            proved.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            proved.Headers.Location!.OriginalString.Should().NotContain("/Account/Reauthenticate");
+            (await PasskeysOfAsync(user)).Should().BeEmpty();
+        }
+    }
+
+    /// <summary>
     /// The administrator's recovery path, end to end: the owner's passkey is listed on their detail
     /// page and revoked from it - on the administrator's own password, which the page asks for
     /// before it does anything.
@@ -296,6 +328,21 @@ public sealed class PasskeyManageTests : IAsyncLifetime
         match.Success.Should().BeTrue($"the page must render a button posting to the {handler} handler");
 
         return WebUtility.HtmlDecode(match.Groups["url"].Value);
+    }
+
+    /// <summary>Posts the Manage page's remove form for <paramref name="passkey"/>, with the page's own antiforgery token.</summary>
+    private static async Task<HttpResponseMessage> PostRemoveAsync(HttpClient client, UserPasskeyInfo passkey)
+    {
+        HttpResponseMessage page = await client.GetAsync(ManagePath, TestContext.Current.CancellationToken);
+        string token = AntiforgeryTestHelper.ExtractToken(await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = token,
+            ["id"] = PasskeysModel.IdOf(passkey),
+        });
+
+        return await client.PostAsync($"{ManagePath}?handler=Remove", body, TestContext.Current.CancellationToken);
     }
 
     /// <summary>The passkeys the store holds for <paramref name="user"/> right now.</summary>

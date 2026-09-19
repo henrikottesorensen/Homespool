@@ -91,6 +91,13 @@ public interface IStatusCode
 /// </summary>
 public static class Status
 {
+    /// <summary>429, for a printer holding as many pending registrations as it may.</summary>
+    public readonly struct TooManyRequests : IStatusCode
+    {
+        /// <inheritdoc />
+        public static int Code => StatusCodes.Status429TooManyRequests;
+    }
+
     /// <summary>416, for a <c>Range</c> this server will not serve.</summary>
     public readonly struct RangeNotSatisfiable : IStatusCode
     {

@@ -21,6 +21,17 @@ namespace Homespool.Host.PrusaConnect;
 public class PrusaConnectService
 {
     /// <summary>
+    /// How many unexpired pending registrations one fingerprint may hold at once.
+    /// </summary>
+    /// <remarks>
+    /// Every <c>POST /p/register</c> adds a row and the endpoint is anonymous, so without a bound one
+    /// fingerprint is an unlimited number of rows. A real printer holds one, plus one for each time a
+    /// person restarted registration or the printer rebooted inside a code's lifetime; four leaves
+    /// that room. What happens at the cap is <see cref="MakeRoomForRegistrationAsync"/>'s business.
+    /// </remarks>
+    public const int MaxPendingRegistrationsPerFingerprint = 4;
+
+    /// <summary>
     /// How long a pre-provisioned USB-key token stays usable after it is written. Past this the
     /// printer's first contact is refused, and the operator reissues to get a fresh one.
     /// </summary>
@@ -73,28 +84,39 @@ public class PrusaConnectService
     }
 
     /// <summary>
-    /// Issues a registration code for a printer, or renews it once the previous one has expired.
+    /// Issues a registration code for a printer: a pending row and a fresh code of its own for every
+    /// POST, whatever is already pending for the same fingerprint.
     /// </summary>
     /// <remarks>
-    /// <b>The code itself is never logged.</b> It is a bearer credential - <see cref="GetToken"/>
-    /// looks up by code and by nothing else, so whoever holds it can claim the printer until it
-    /// expires. It used to be written at Information level on every issue and renewal, alongside a
-    /// destructured <see cref="DTO.RegisterPrinterRequestDTO"/> that carried the fingerprint too,
-    /// which put a live credential into the console sink and anything downstream of it.
     /// <para>
-    /// <b>The fingerprint is not a lesser secret than the code, and this method is the reason.</b> The
-    /// POST behind it is anonymous and keyed on the fingerprint alone, and it returns the outstanding
-    /// unexpired code for that fingerprint rather than minting a fresh one - so the fingerprint reaches
-    /// the same place the code does. Keeping the code out of the logs is worth doing and does not
-    /// change that: a fingerprint has to be handled as a credential wherever it is stored, logged or
-    /// carried in clear, and the way to make this paragraph unnecessary is to issue a new code per
-    /// POST, or to bind the poll to the fingerprint the client already sends.
+    /// <b>A code is never handed out twice.</b> The POST behind this is anonymous and names the printer
+    /// by a fingerprint in its body, so answering a repeat with the code already pending would read the
+    /// code on the printer's screen out to anyone who knows the fingerprint - and the poll is keyed on
+    /// the code alone, so whoever polls faster after the owner's claim collects the token. Codes that
+    /// coexist make a stranger's POST worth only a code nobody will type. Nothing changes on the wire:
+    /// firmware POSTs once per registration attempt, keeps the <c>Code</c> header it was given, and
+    /// polls with that and nothing else.
     /// </para>
     /// <para>
-    /// <see cref="PrusaConnectRegistration.Id"/> is logged in its place, which correlates an issue
-    /// with the later poll and claim without reproducing the secret. The logging happens after
+    /// <b>The cost, accepted:</b> a printer that reboots between its owner's claim and its next poll
+    /// POSTs again, shows a new code, and the owner types that one. Returning the same code on a
+    /// repeat covered that case and no other.
+    /// </para>
+    /// <para>
+    /// <b>An expired code is not renewed; it just expires.</b> Firmware never POSTs again on its own,
+    /// so a renewed code would reach a printer only by way of a person restarting registration, which
+    /// mints a row anyway - and renewing in place kept whatever claim the row carried.
+    /// <see cref="RegistrationRetentionService"/> removes what expires.
+    /// </para>
+    /// <para>
+    /// <b>The code itself is never logged.</b> It is a bearer credential - <see cref="GetToken"/>
+    /// looks up by code and by nothing else, so whoever holds it can collect the printer's token once
+    /// it is claimed. <see cref="PrusaConnectRegistration.Id"/> is logged in its place, which
+    /// correlates an issue with the later poll and claim without reproducing the secret. The logging
+    /// happens after
     /// <see cref="Microsoft.EntityFrameworkCore.DbContext.SaveChangesAsync(System.Threading.CancellationToken)"/> because the
-    /// key is not assigned until the insert completes.
+    /// key is not assigned until the insert completes. The fingerprint stays out of the log as well:
+    /// it is what the enrolled printer is later recognised by.
     /// </para>
     /// <para>
     /// <b>What the printer said about itself goes through <see cref="LogText.Clean(string)"/> first.</b> This
@@ -104,65 +126,109 @@ public class PrusaConnectService
     /// cost a printer its enrolment.
     /// </para>
     /// </remarks>
+    /// <exception cref="RegistrationLimitReachedException">
+    /// The fingerprint is at <see cref="MaxPendingRegistrationsPerFingerprint"/> and every one of those
+    /// registrations has been claimed.
+    /// </exception>
     public async Task<DTO.CodeResponseDTO> GetPrinterCode(DTO.RegisterPrinterRequestDTO printer)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
-        DateTimeOffset codeExpiry = now + _options.RegistrationCodeLifetime;
-        PrusaConnectRegistration? registration = await _dbContext.PrusaConnectRegistrations
-                                                                 .SingleOrDefaultAsync(a => a.FingerPrint == printer.FingerPrint);
 
-        bool registered = false;
-        bool renewed = false;
+        long[] evicted = await MakeRoomForRegistrationAsync(printer, now);
 
-        if (registration is null)
-        {
-            EntityEntry<PrusaConnectRegistration> newRegistration = await _dbContext.PrusaConnectRegistrations.AddAsync(
-                new PrusaConnectRegistration
-                {
-                    FingerPrint = printer.FingerPrint,
-                    SerialNumber = printer.SerialNumber,
-                    TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber),
-                    TemporaryCodeExpiry = codeExpiry,
-                    CreatedAt = now,
-                });
+        EntityEntry<PrusaConnectRegistration> added = await _dbContext.PrusaConnectRegistrations.AddAsync(
+            new PrusaConnectRegistration
+            {
+                FingerPrint = printer.FingerPrint,
+                SerialNumber = printer.SerialNumber,
+                TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber),
+                TemporaryCodeExpiry = now + _options.RegistrationCodeLifetime,
+                CreatedAt = now,
+            });
 
-            registration = newRegistration.Entity;
-            registered = true;
-        }
-        else if (registration.TemporaryCodeExpiry < now)
-        {
-            registration.TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber);
-            registration.TemporaryCodeExpiry = codeExpiry;
-
-            renewed = true;
-        }
+        PrusaConnectRegistration registration = added.Entity;
 
         await _dbContext.SaveChangesAsync();
 
-        if (registered)
+        if (evicted.Length > 0)
         {
-            _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) " +
-                                   "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
-                                   LogText.Clean(printer.SerialNumber),
-                                   LogText.Clean(printer.PrinterType),
-                                   LogText.Clean(printer.Firmware),
-                                   registration.Id,
-                                   registration.TemporaryCodeExpiry);
+            _logger.LogInformation("PrusaConnect printer {SerialNumber} was at its limit of pending registrations; " +
+                                   "dropped the oldest unclaimed: {RegistrationIds}.",
+                                   LogText.Clean(printer.SerialNumber), evicted);
         }
-        else if (renewed)
-        {
-            _logger.LogInformation("PrusaConnect registration {RegistrationId} for printer {SerialNumber} " +
-                                   "renewed its Connect code, expiring {CodeExpiry:o}.",
-                                   registration.Id,
-                                   LogText.Clean(printer.SerialNumber),
-                                   registration.TemporaryCodeExpiry);
-        }
+
+        _logger.LogInformation("PrusaConnect printer {SerialNumber} ({PrinterType}, firmware {Firmware}) " +
+                               "registered as {RegistrationId}; Connect code issued, expiring {CodeExpiry:o}.",
+                               LogText.Clean(printer.SerialNumber),
+                               LogText.Clean(printer.PrinterType),
+                               LogText.Clean(printer.Firmware),
+                               registration.Id,
+                               registration.TemporaryCodeExpiry);
 
         return new DTO.CodeResponseDTO
         {
             TemporaryCode = registration.TemporaryCode,
             Expires = registration.TemporaryCodeExpiry,
         };
+    }
+
+    /// <summary>
+    /// Holds <see cref="MaxPendingRegistrationsPerFingerprint"/> ahead of an insert: drops the
+    /// fingerprint's expired rows, then its oldest unclaimed ones until the new row fits, and returns
+    /// the ids of those. Does not save - the removals commit with the insert they make room for, or
+    /// not at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>At the cap the oldest unclaimed registration goes, rather than the POST being refused.</b>
+    /// Both answers let somebody who knows a fingerprint get in the way; they differ in what it costs.
+    /// Refusing would let a handful of POSTs per code lifetime, made in advance, keep the printer from
+    /// registering at all. Evicting means the printer's own POST always gets a code, and knocking that
+    /// code out takes a burst landed in the minute between the code appearing on the screen and its
+    /// owner typing it. It is also the right answer to the honest way of reaching the cap - a person
+    /// restarting registration several times - since firmware has abandoned every code but the newest.
+    /// </para>
+    /// <para>
+    /// <b>A claimed registration is never evicted.</b> Its owner has typed the code and the printer is
+    /// seconds from collecting the token; if a POST could remove it, a stranger could knock over any
+    /// registration in flight. So when every row at the cap is claimed the POST is refused instead,
+    /// which takes several signed-in claims nobody's printer came back for.
+    /// </para>
+    /// <para>
+    /// Two POSTs racing each other can each see room and leave the fingerprint one over; the next POST
+    /// trims it back, which is why the loop runs until the row fits rather than removing one.
+    /// </para>
+    /// </remarks>
+    private async Task<long[]> MakeRoomForRegistrationAsync(DTO.RegisterPrinterRequestDTO printer, DateTimeOffset now)
+    {
+        List<PrusaConnectRegistration> pending = await _dbContext.PrusaConnectRegistrations
+                                                                 .Where(a => a.FingerPrint == printer.FingerPrint)
+                                                                 .OrderBy(a => a.Id)
+                                                                 .ToListAsync();
+
+        List<PrusaConnectRegistration> live = pending.Where(a => a.TemporaryCodeExpiry > now).ToList();
+
+        int excess = live.Count - MaxPendingRegistrationsPerFingerprint + 1;
+
+        List<PrusaConnectRegistration> evicted = live.Where(a => a.PrinterId is null)
+                                                     .Take(Math.Max(excess, 0))
+                                                     .ToList();
+
+        if (evicted.Count < excess)
+        {
+            _logger.LogWarning("PrusaConnect printer {SerialNumber} was refused a Connect code: {PendingCount} claimed " +
+                               "registrations are already pending for its fingerprint.",
+                               LogText.Clean(printer.SerialNumber), live.Count);
+
+            throw new RegistrationLimitReachedException();
+        }
+
+        // Expired rows are refused by every lookup already, and they are in hand: removing them here is
+        // what makes the cap a statement about rows rather than about rows the sweep has not reached.
+        _dbContext.PrusaConnectRegistrations.RemoveRange(pending.Except(live));
+        _dbContext.PrusaConnectRegistrations.RemoveRange(evicted);
+
+        return evicted.Select(a => a.Id).ToArray();
     }
 
     /// <summary>
@@ -186,19 +252,30 @@ public class PrusaConnectService
     /// that one is genuinely different hardware.
     /// </para>
     /// <para>
+    /// <b>The fingerprint's other pending registrations go with it.</b> The printer has its token, so
+    /// every other code issued for it is one no printer is waiting on: an abandoned attempt, or a
+    /// stranger's. A claimed one is removed as well, and has to be - redeemed later it would rotate
+    /// the credential out from under the printer that has just enrolled.
+    /// </para>
+    /// <para>
     /// <c>TemporaryCode</c> is deliberately non-uniquely indexed, so a collision yields more than one
     /// row rather than being impossible. <see cref="EntityFrameworkQueryableExtensions.SingleOrDefaultAsync{TSource}(System.Linq.IQueryable{TSource},System.Threading.CancellationToken)"/> throws in that case, which
     /// the controller surfaces as a 400 - honest, and vanishingly rare at the ten Crockford base32
     /// characters <see cref="CodeGenerator"/> issues, which is 2^50.
     /// </para>
     /// <para>
-    /// <b>Expiry is enforced here, in the query.</b> <see cref="GetPrinterCode"/> only replaces an
-    /// expired code on the printer's next POST, so without this a code stayed redeemable indefinitely
-    /// between expiring and being renewed. The predicate compares timestamps in SQL, which is only
-    /// possible because <see cref="DateTimeOffsetToUnixMillisecondsConverter"/> stores them as epoch
-    /// milliseconds.
+    /// <b>Expiry is enforced here, in the query.</b> Nothing else retires a code between its expiry
+    /// and the next <see cref="RegistrationRetentionService"/> pass, so without this one would stay
+    /// redeemable for up to an hour longer than it says. The predicate compares timestamps in SQL,
+    /// which is only possible because <see cref="DateTimeOffsetToUnixMillisecondsConverter"/> stores
+    /// them as epoch milliseconds.
     /// </para>
     /// </remarks>
+    /// <exception cref="PrinterNotFoundException">No unexpired registration carries this code.</exception>
+    /// <exception cref="EnrolledCredentialMismatchException">
+    /// The fingerprint is enrolled to a different printer than the one this registration was claimed
+    /// as. No token is issued and the registration is removed.
+    /// </exception>
     public async Task<string?> GetToken(string temporaryCode)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -220,13 +297,32 @@ public class PrusaConnectService
 
         string token = _tokenService.GenerateToken();
 
-        await MaterialiseEnrolledCredentialAsync(registration.PrinterId.Value, registration.FingerPrint,
-                                                 _tokenService.HashToken(token), now);
+        bool materialised = await MaterialiseEnrolledCredentialAsync(registration.PrinterId.Value, registration.FingerPrint,
+                                                                     _tokenService.HashToken(token), now);
 
-        // The handshake this registration belonged to is over. Removing it - rather than leaving a
-        // spent row - is what makes the code single-use: a replay finds nothing and is a 404, and it
-        // cannot be renewed back to life the way an expired-but-present code could.
+        // The handshake this registration belonged to is over either way. Removing it - rather than
+        // leaving a spent row - is what makes the code single-use: a replay finds nothing and is a 404.
         _dbContext.PrusaConnectRegistrations.Remove(registration);
+
+        if (!materialised)
+        {
+            // Removed rather than left to expire because it can never succeed, and firmware polls a
+            // failing code every five seconds for as long as it is switched on.
+            await _dbContext.SaveChangesAsync();
+
+            _logger.LogWarning("PrusaConnect registration {RegistrationId} was claimed as printer {PrinterId}, but its fingerprint " +
+                               "is enrolled to a different printer; no token issued and the registration removed.",
+                               registration.Id, registration.PrinterId.Value);
+
+            throw new EnrolledCredentialMismatchException();
+        }
+
+        List<PrusaConnectRegistration> siblings = await _dbContext.PrusaConnectRegistrations
+                                                                  .Where(a => a.FingerPrint == registration.FingerPrint &&
+                                                                              a.Id != registration.Id)
+                                                                  .ToListAsync();
+
+        _dbContext.PrusaConnectRegistrations.RemoveRange(siblings);
 
         await _dbContext.SaveChangesAsync();
 
@@ -248,19 +344,31 @@ public class PrusaConnectService
 
     /// <summary>
     /// Upserts the enrolled credential, keyed on the truncated fingerprint the printer will actually
-    /// present on its later requests. Insert is the normal case; the update branch covers a
-    /// re-enrolment of a printer that already has a row, where a plain insert would violate the
-    /// enrolled table's unique index. Does not save — the caller owns the transaction.
+    /// present on its later requests, and says whether it did. Insert is the normal case; the update
+    /// branch covers a re-enrolment of a printer that already has a row, where a plain insert would
+    /// violate the enrolled table's unique index. Does not save — the caller owns the transaction.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <paramref name="fullFingerPrint"/> is the long form from <c>/p/register</c>'s body. It is
     /// recorded, but the key is derived from it: keying on the long form left the credential
     /// unreachable, since no later request ever carries it (see <see cref="PrinterFingerprint"/>).
+    /// </para>
+    /// <para>
+    /// <b>False, and nothing written, when the row belongs to a printer other than
+    /// <paramref name="printerId"/>.</b> Permission to take over an enrolled printer is checked at
+    /// claim time, by <see cref="LinkClaimToEnrolledPrinterAsync"/>, which also points the claim at
+    /// that printer - so a claim that went through it arrives here naming the row's own printer. One
+    /// naming another was made while the fingerprint was not enrolled, by somebody who was never asked
+    /// about the printer it has been enrolled to since (a USB-key first contact in between is enough).
+    /// Repointing the row would move that printer's credential, and with it the hardware, to whoever
+    /// typed a code, on no check at all. The caller must not issue a token on false.
+    /// </para>
     /// </remarks>
-    private async Task MaterialiseEnrolledCredentialAsync(int printerId,
-                                                          string fullFingerPrint,
-                                                          string hashedToken,
-                                                          DateTimeOffset now)
+    private async Task<bool> MaterialiseEnrolledCredentialAsync(int printerId,
+                                                                string fullFingerPrint,
+                                                                string hashedToken,
+                                                                DateTimeOffset now)
     {
         string key = PrinterFingerprint.Key(fullFingerPrint);
 
@@ -278,13 +386,19 @@ public class PrusaConnectService
                 EnrolledAt = now,
             });
 
-            return;
+            return true;
         }
 
-        existing.PrinterId = printerId;
+        if (existing.PrinterId != printerId)
+        {
+            return false;
+        }
+
         existing.FullFingerPrint = fullFingerPrint;
         existing.HashedToken = hashedToken;
         existing.EnrolledAt = now;
+
+        return true;
     }
 
     /// <summary>

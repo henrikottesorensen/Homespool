@@ -17,24 +17,30 @@ namespace Homespool.Host.PrusaConnect;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Nothing else ever removed one.</b> A registration is deleted when a printer collects the token
-/// its claim produced (<c>PrusaConnectService.GetToken</c>) — so a row nobody ever claims stays for
-/// the life of the deployment. <c>TemporaryCodeExpiry</c> stops it being <i>usable</i>; until now
-/// nothing stopped it being <i>stored</i>, and <c>POST /p/register</c> is anonymous, so anyone who
-/// can reach the printer listener could mint rows at the rate limiter's ceiling.
+/// <b>Nothing else removes a registration nobody comes back for.</b> One is deleted when a printer
+/// collects the token its claim produced (<c>PrusaConnectService.GetToken</c>, which takes the
+/// fingerprint's other registrations with it), and a fingerprint's own next POST clears what it left
+/// behind - so a row whose fingerprint is never heard from again would stay for the life of the
+/// deployment. <c>TemporaryCodeExpiry</c> stops it being <i>usable</i>; this is what stops it being
+/// <i>stored</i>, and <c>POST /p/register</c> is anonymous, so anyone who can reach the printer
+/// listener can mint rows under made-up fingerprints at the rate limiter's ceiling.
 /// </para>
 /// <para>
-/// <b>A sweep rather than a delete on the write path.</b> Sweeping inside
+/// <b>A sweep rather than a delete on the write path.</b> Sweeping the table inside
 /// <c>GetPrinterCode</c> — the way <c>TransferOfferStore</c> sweeps as it offers — would put the cost
 /// in a printer's own registration request, and there is no index on the expiry, so it is a scan.
+/// What that method does clear is the POSTing fingerprint's own expired rows, which it has read
+/// through the fingerprint index anyway.
 /// Cheap on a healthy table and precisely not cheap on one somebody has been growing, which is the
 /// case the sweep exists for.
 /// </para>
 /// <para>
 /// <b>Expiry alone decides, with no grace period.</b> An expired row is already refused by every
 /// lookup — both <c>GetToken</c> and <c>ClaimPrinterAsync</c> filter on
-/// <c>TemporaryCodeExpiry &gt; now</c> — so deleting it changes nothing a caller could observe. A
-/// printer polling a code that has just expired is told to register again either way.
+/// <c>TemporaryCodeExpiry &gt; now</c>, and the per-fingerprint cap counts only unexpired rows — so
+/// deleting it changes nothing a caller could observe. A printer polling a code that has just
+/// expired gets the same 404 either way. Several rows for one fingerprint need nothing special here:
+/// each expires on its own clock.
 /// </para>
 /// <para>
 /// Modelled on <see cref="Telemetry.TelemetryRetentionService"/>: hourly, its own scope per pass because a

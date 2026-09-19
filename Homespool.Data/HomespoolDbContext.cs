@@ -318,12 +318,13 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
         builder.Entity<PrusaConnectRegistration>(entity =>
         {
-            // GetPrinterCode looks a pending registration up by fingerprint (to renew rather than
-            // duplicate a code); at most one may be in flight per fingerprint. Distinct from the
-            // enrolled table's fingerprint index — a re-registering printer can briefly hold a
-            // pending row here and a stale enrolled row there, in different tables.
-            entity.HasIndex(e => e.FingerPrint)
-                  .IsUnique();
+            // Deliberately NOT unique: every POST /p/register gets a row and a code of its own, so
+            // several can be pending for one fingerprint at once - the printer's, an abandoned attempt
+            // of its own, a stranger's. GetPrinterCode reads them by fingerprint to hold its cap, and
+            // GetToken to clear the siblings of the one that was redeemed; the index serves both.
+            // Distinct from the enrolled table's fingerprint index - a re-registering printer holds
+            // pending rows here and an enrolled row there, in different tables.
+            entity.HasIndex(e => e.FingerPrint);
 
             // The poll (GET /p/register) looks the row up by code. Deliberately NOT unique: a
             // collision should surface as SingleOrDefaultAsync throwing rather than being impossible.

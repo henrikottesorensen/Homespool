@@ -967,8 +967,7 @@ namespace Homespool.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectRegistrations_FingerPrint",
                 table: "PrusaConnectRegistrations",
-                column: "FingerPrint",
-                unique: true);
+                column: "FingerPrint");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectRegistrations_PrinterId",

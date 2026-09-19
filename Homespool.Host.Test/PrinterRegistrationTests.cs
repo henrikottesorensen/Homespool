@@ -123,18 +123,19 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
-    /// Re-registering returns the existing code rather than issuing a new one.
+    /// Every registration gets a row and a code of its own, even for a fingerprint that already has
+    /// one pending.
     /// </summary>
     /// <remarks>
-    /// The printer re-POSTs on every reconnect. If each attempt minted a fresh code, a user reading
-    /// one off the printer's screen would be chasing a value that had already changed.
+    /// The POST is anonymous and names the printer by a fingerprint in its body, so a repeat that
+    /// returned the pending code would read the printer's screen out to anyone holding the
+    /// fingerprint. Firmware POSTs once per attempt and polls with the code it was given, so nothing
+    /// depends on a repeat matching.
     /// </remarks>
     [Fact]
-    public async Task RepeatedRegistrationReturnsTheSameCodeWhileItIsStillValid()
+    public async Task ARepeatedRegistrationGetsACodeOfItsOwn()
     {
         // Arrange
-        // The printer re-POSTs on every reconnect. It must not get a fresh code each time, or a user
-        // reading one off the screen would be chasing a moving target.
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
@@ -143,8 +144,9 @@ public sealed class PrinterRegistrationTests : IDisposable
         string second = (await service.GetPrinterCode(Request())).TemporaryCode;
 
         // Assert
-        second.Should().Be(first);
-        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        second.Should().NotBe(first);
+        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should()
+            .Be(2, "the two codes coexist");
     }
 
     /// <summary>
@@ -173,33 +175,61 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
-    /// An expired code is renewed in place on the next registration, not duplicated.
+    /// An expired code stays expired: the next registration gets a fresh row, and the expired one is
+    /// cleared out rather than brought back.
     /// </summary>
-    /// <remarks>
-    /// This is why an expired code is a delay rather than a dead end. It matters that the row is
-    /// reused: a second row for the same fingerprint would violate its unique index.
-    /// </remarks>
     [Fact]
-    public async Task AnExpiredCodeIsReplacedOnTheNextRegistration()
+    public async Task AnExpiredCodeIsNotRenewedByTheNextRegistration()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
         string original = (await service.GetPrinterCode(Request())).TemporaryCode;
-
-        PrusaConnectRegistration stored =
-            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
-        stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        long originalId = (await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken)).Id;
+        await ExpireAsync(context, original);
 
         // Act
-        string renewed = (await service.GetPrinterCode(Request())).TemporaryCode;
+        string fresh = (await service.GetPrinterCode(Request())).TemporaryCode;
 
         // Assert
-        renewed.Should().NotBe(original);
-        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should()
-            .Be(1, "the row is renewed, not duplicated");
+        fresh.Should().NotBe(original);
+
+        await using HomespoolDbContext verify = NewContext();
+        PrusaConnectRegistration stored =
+            await verify.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+        stored.TemporaryCode.Should().Be(fresh, "the expired row was in hand and is gone");
+        stored.Id.Should().NotBe(originalId, "a new registration, not the old one given a new code");
+
+        Func<Task> poll = () => service.GetToken(original);
+        await poll.Should().ThrowAsync<PrinterNotFoundException>("nothing brings an expired code back");
+    }
+
+    /// <summary>
+    /// A claim made on a code that then expired is not inherited by the next registration.
+    /// </summary>
+    /// <remarks>
+    /// Permission over the printer is checked when a code is claimed and at no other point. A fresh
+    /// code that arrived already claimed would hand its token to the first poll, on the strength of a
+    /// check made for a different code, possibly a long time ago.
+    /// </remarks>
+    [Fact]
+    public async Task AClaimDoesNotSurviveItsCodeExpiring()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string original = (await service.GetPrinterCode(Request())).TemporaryCode;
+        await ClaimAsync(context, original);
+        await ExpireAsync(context, original);
+
+        // Act
+        string fresh = (await service.GetPrinterCode(Request())).TemporaryCode;
+
+        // Assert
+        (await service.GetToken(fresh)).Should().BeNull("nobody has claimed this code");
+        (await context.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
     }
 
     /// <summary>
@@ -226,6 +256,271 @@ public sealed class PrinterRegistrationTests : IDisposable
         // Assert
         await replacement.Should().NotThrowAsync();
         (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
+    }
+
+    // ---------- codes coexist: somebody else who knows the fingerprint ----------
+
+    /// <summary>
+    /// A stranger who POSTs a printer's fingerprint learns a code of their own, not the one on the
+    /// printer's screen.
+    /// </summary>
+    /// <remarks>
+    /// The screen code is what the owner will type, and the poll is keyed on a code alone - so the
+    /// stranger holding it would only have to poll faster than the printer's five seconds to collect
+    /// the token the owner's claim releases.
+    /// </remarks>
+    [Fact]
+    public async Task AStrangersRegistrationGetsACodeDifferentFromThePrinters()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string printers = (await service.GetPrinterCode(Request())).TemporaryCode;
+
+        // Act
+        string strangers = (await service.GetPrinterCode(Request(serial: "NOT-THE-PRINTER"))).TemporaryCode;
+
+        // Assert
+        strangers.Should().NotBe(printers);
+    }
+
+    /// <summary>
+    /// The owner's claim releases the token to the printer's code and to no other: the stranger's poll
+    /// is still told to wait.
+    /// </summary>
+    [Fact]
+    public async Task ClaimingThePrintersCodeGivesTheStrangersPollNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string printers = (await service.GetPrinterCode(Request())).TemporaryCode;
+        string strangers = (await service.GetPrinterCode(Request())).TemporaryCode;
+
+        await ClaimAsync(context, printers);
+
+        // Act
+        // The stranger polls first, which is the race they would have to win.
+        string? strangersToken = await service.GetToken(strangers);
+        string? printersToken = await service.GetToken(printers);
+
+        // Assert
+        strangersToken.Should().BeNull("nobody claimed the stranger's code");
+        printersToken.Should().NotBeNullOrWhiteSpace("the claim was of the printer's code");
+    }
+
+    /// <summary>
+    /// A stranger's POST changes nothing about the registration the printer already holds - not its
+    /// code, not its expiry, not a claim already made on it.
+    /// </summary>
+    [Fact]
+    public async Task AStrangersRegistrationLeavesThePrintersRegistrationUntouched()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string printers = (await service.GetPrinterCode(Request())).TemporaryCode;
+        Printer claimedAs = await ClaimAsync(context, printers);
+
+        await using HomespoolDbContext before = NewContext();
+        PrusaConnectRegistration original = await before.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await service.GetPrinterCode(Request());
+
+        // Assert
+        await using HomespoolDbContext verify = NewContext();
+        PrusaConnectRegistration after = await verify.PrusaConnectRegistrations.SingleAsync(
+            registration => registration.Id == original.Id, TestContext.Current.CancellationToken);
+
+        after.TemporaryCode.Should().Be(printers);
+        after.TemporaryCodeExpiry.Should().Be(original.TemporaryCodeExpiry);
+        after.PrinterId.Should().Be(claimedAs.Id);
+    }
+
+    /// <summary>
+    /// One fingerprint never holds more than the cap, however many times it is POSTed: the oldest
+    /// unclaimed registration makes way for the newest.
+    /// </summary>
+    /// <remarks>
+    /// The newest is the one that has to survive. It is the only code a real printer is still polling -
+    /// firmware abandons the previous code when registration is restarted - and a cap that refused
+    /// instead would let a few POSTs made in advance keep the printer from registering at all.
+    /// </remarks>
+    [Fact]
+    public async Task TheCapHoldsByDroppingTheOldestUnclaimedRegistration()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        List<string> codes = [];
+
+        // Act
+        for (int attempt = 0; attempt < PrusaConnectService.MaxPendingRegistrationsPerFingerprint + 3; attempt++)
+        {
+            codes.Add((await service.GetPrinterCode(Request())).TemporaryCode);
+        }
+
+        // Assert
+        await using HomespoolDbContext verify = NewContext();
+        List<string> held = await verify.PrusaConnectRegistrations
+                                        .Select(registration => registration.TemporaryCode)
+                                        .ToListAsync(TestContext.Current.CancellationToken);
+
+        held.Should().BeEquivalentTo(codes.TakeLast(PrusaConnectService.MaxPendingRegistrationsPerFingerprint),
+                                     "the newest registrations are the ones kept");
+    }
+
+    /// <summary>
+    /// The cap is per fingerprint: another printer registering is not counted against this one, and is
+    /// not what gets dropped.
+    /// </summary>
+    [Fact]
+    public async Task TheCapDoesNotReachAcrossFingerprints()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string neighbours = (await service.GetPrinterCode(Request(fingerprint: "FINGERPRINT-OF-ANOTHER-PRINTER"))).TemporaryCode;
+
+        // Act
+        for (int attempt = 0; attempt < PrusaConnectService.MaxPendingRegistrationsPerFingerprint + 1; attempt++)
+        {
+            await service.GetPrinterCode(Request());
+        }
+
+        // Assert
+        (await service.GetToken(neighbours)).Should().BeNull("the neighbour's registration is still pending");
+        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should()
+            .Be(PrusaConnectService.MaxPendingRegistrationsPerFingerprint + 1);
+    }
+
+    /// <summary>
+    /// A claimed registration is never the one dropped, however old it is and however many POSTs
+    /// follow it.
+    /// </summary>
+    /// <remarks>
+    /// Its owner has typed the code and the printer is a poll away from its token. If a POST could
+    /// remove it, anyone holding the fingerprint could knock over a registration in flight.
+    /// </remarks>
+    [Fact]
+    public async Task AClaimedRegistrationIsNeverDroppedToMakeRoom()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string printers = (await service.GetPrinterCode(Request())).TemporaryCode;
+        await ClaimAsync(context, printers);
+
+        // Act
+        for (int attempt = 0; attempt < PrusaConnectService.MaxPendingRegistrationsPerFingerprint + 3; attempt++)
+        {
+            await service.GetPrinterCode(Request());
+        }
+
+        // Assert
+        (await context.PrusaConnectRegistrations.CountAsync(TestContext.Current.CancellationToken)).Should()
+            .Be(PrusaConnectService.MaxPendingRegistrationsPerFingerprint, "the cap still holds around it");
+        (await service.GetToken(printers)).Should().NotBeNullOrWhiteSpace("the oldest row of all was the claimed one, and it is still there");
+    }
+
+    /// <summary>
+    /// With every registration at the cap claimed there is nothing that may be dropped, so the POST is
+    /// refused and the claimed registrations stay as they were.
+    /// </summary>
+    [Fact]
+    public async Task ARegistrationIsRefusedWhenEveryPendingOneIsClaimed()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        for (int attempt = 0; attempt < PrusaConnectService.MaxPendingRegistrationsPerFingerprint; attempt++)
+        {
+            await service.GetPrinterCode(Request());
+        }
+
+        await ClaimAllAsync(context);
+
+        // Act
+        Func<Task> act = () => service.GetPrinterCode(Request());
+
+        // Assert
+        await act.Should().ThrowAsync<RegistrationLimitReachedException>();
+
+        await using HomespoolDbContext verify = NewContext();
+        List<PrusaConnectRegistration> held = await verify.PrusaConnectRegistrations.ToListAsync(TestContext.Current.CancellationToken);
+
+        held.Should().HaveCount(PrusaConnectService.MaxPendingRegistrationsPerFingerprint);
+        held.Should().OnlyContain(registration => registration.PrinterId != null);
+    }
+
+    /// <summary>
+    /// An expired registration does not count towards the cap, claimed or not - it is refused by every
+    /// lookup already, so it cannot be what stands between a printer and a code.
+    /// </summary>
+    [Fact]
+    public async Task ExpiredRegistrationsDoNotCountTowardsTheCap()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        for (int attempt = 0; attempt < PrusaConnectService.MaxPendingRegistrationsPerFingerprint; attempt++)
+        {
+            string code = (await service.GetPrinterCode(Request())).TemporaryCode;
+            await ClaimAsync(context, code);
+            await ExpireAsync(context, code);
+        }
+
+        // Act
+        string fresh = (await service.GetPrinterCode(Request())).TemporaryCode;
+
+        // Assert
+        (await service.GetToken(fresh)).Should().BeNull("the registration was accepted and is waiting for a claim");
+    }
+
+    /// <summary>
+    /// Collecting the token ends every other registration pending for that fingerprint, claimed ones
+    /// included, and nobody else's.
+    /// </summary>
+    /// <remarks>
+    /// The printer has its token, so no printer is waiting on any of them. A claimed one left behind
+    /// is the dangerous kind: redeemed later, it would rotate the credential out from under the
+    /// printer that has just enrolled.
+    /// </remarks>
+    [Fact]
+    public async Task CollectingTheTokenRemovesTheFingerprintsOtherRegistrations()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string abandoned = (await service.GetPrinterCode(Request())).TemporaryCode;
+        string claimedAndAbandoned = (await service.GetPrinterCode(Request())).TemporaryCode;
+        string printers = (await service.GetPrinterCode(Request())).TemporaryCode;
+        string neighbours = (await service.GetPrinterCode(Request(fingerprint: "FINGERPRINT-OF-ANOTHER-PRINTER"))).TemporaryCode;
+
+        await ClaimAsync(context, claimedAndAbandoned);
+        await ClaimAsync(context, printers);
+
+        // Act
+        (await service.GetToken(printers)).Should().NotBeNullOrWhiteSpace();
+
+        // Assert
+        await using HomespoolDbContext verify = NewContext();
+        List<string> held = await verify.PrusaConnectRegistrations
+                                        .Select(registration => registration.TemporaryCode)
+                                        .ToListAsync(TestContext.Current.CancellationToken);
+
+        held.Should().BeEquivalentTo([neighbours], "only the other printer's registration is left");
+        held.Should().NotContain([abandoned, claimedAndAbandoned]);
     }
 
     // ---------- GET /p/register ----------
@@ -509,32 +804,35 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
-    /// Renewing an expired code does not write the replacement to the log either.
+    /// A registration that had to make room does not write its code to the log either.
     /// </summary>
     /// <remarks>
-    /// The renewal branch is separate from the issue branch and leaked independently, so it needs its
-    /// own guard.
+    /// Making room logs what it dropped, separately from the issue, so it needs its own guard: the
+    /// dropped registrations are named by id, never by the codes they carried.
     /// </remarks>
     [Fact]
-    public async Task RenewingACodeDoesNotWriteTheReplacementToTheLog()
+    public async Task MakingRoomDoesNotWriteAnyCodeToTheLog()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         using CapturingSink sink = new();
         PrusaConnectService service = NewService(context, logger: sink.AsLogger<PrusaConnectService>());
 
-        await service.GetPrinterCode(Request());
-
-        PrusaConnectRegistration stored =
-            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
-        stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        List<string> codes = [];
 
         // Act
-        string renewed = (await service.GetPrinterCode(Request())).TemporaryCode;
+        for (int attempt = 0; attempt <= PrusaConnectService.MaxPendingRegistrationsPerFingerprint; attempt++)
+        {
+            codes.Add((await service.GetPrinterCode(Request())).TemporaryCode);
+        }
 
         // Assert
-        sink.Entries.Should().NotContainMatch($"*{renewed}*");
+        sink.Entries.Should().ContainMatch("*dropped the oldest unclaimed*", "the last registration had to make room");
+
+        foreach (string code in codes)
+        {
+            sink.Entries.Should().NotContainMatch($"*{code}*");
+        }
     }
 
     /// <summary>
@@ -563,8 +861,8 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
-    /// What the printer said about itself reaches the log with its control characters replaced, on
-    /// the issue branch and on the renewal branch alike.
+    /// What the printer said about itself reaches the log with its control characters replaced, from
+    /// all three places that log it: the issue, making room, and the refusal.
     /// </summary>
     /// <remarks>
     /// The endpoint is anonymous, so the serial, the model and the firmware version are three strings
@@ -586,18 +884,19 @@ public sealed class PrinterRegistrationTests : IDisposable
                                                     firmware: "6.4.0\u0000");
 
         // Act
-        await service.GetPrinterCode(printer);
+        // One past the cap, so the last of these makes room and says so.
+        for (int attempt = 0; attempt <= PrusaConnectService.MaxPendingRegistrationsPerFingerprint; attempt++)
+        {
+            await service.GetPrinterCode(printer);
+        }
 
-        PrusaConnectRegistration stored =
-            await context.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
-        stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-
-        // The renewal branch logs the serial a second time, and leaked independently of the first.
-        await service.GetPrinterCode(printer);
+        // Every pending registration claimed, so the next is refused and says so.
+        await ClaimAllAsync(context);
+        await Record.ExceptionAsync(() => service.GetPrinterCode(printer));
 
         // Assert
-        sink.Entries.Should().NotBeEmpty("registering is still worth an operational record");
+        sink.Entries.Should().ContainMatch("*dropped the oldest unclaimed*");
+        sink.Entries.Should().ContainMatch("*was refused a Connect code*");
         sink.Entries.Should().AllSatisfy(
             entry => entry.Should().NotContainAny("\u001B", "\n", "\r", "\u0000"));
         sink.Entries.Should().ContainMatch("*15715\uFFFD*",
@@ -661,7 +960,33 @@ public sealed class PrinterRegistrationTests : IDisposable
         }
     }
 
-    private static async Task ClaimAsync(HomespoolDbContext context)
+    private static async Task ExpireAsync(HomespoolDbContext context, string code)
+    {
+        PrusaConnectRegistration stored = await context.PrusaConnectRegistrations.SingleAsync(
+            registration => registration.TemporaryCode == code, TestContext.Current.CancellationToken);
+
+        stored.TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddHours(-1);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static async Task ClaimAllAsync(HomespoolDbContext context)
+    {
+        List<string> codes = await context.PrusaConnectRegistrations
+                                          .Where(registration => registration.PrinterId == null)
+                                          .Select(registration => registration.TemporaryCode)
+                                          .ToListAsync(TestContext.Current.CancellationToken);
+
+        foreach (string code in codes)
+        {
+            await ClaimAsync(context, code);
+        }
+    }
+
+    /// <summary>
+    /// Claims a registration the way a user would, as a printer of its own in a team of its own. With
+    /// no <paramref name="code"/>, claims the only registration there is.
+    /// </summary>
+    private static async Task<Printer> ClaimAsync(HomespoolDbContext context, string? code = null)
     {
         // A printer belongs to a team, and foreign keys are enforced, so the owning team has to
         // exist before the printer can reference it.
@@ -687,8 +1012,11 @@ public sealed class PrinterRegistrationTests : IDisposable
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync();
+        PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync(
+            pending => code == null || pending.TemporaryCode == code, TestContext.Current.CancellationToken);
         registration.PrinterId = printer.Id;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return printer;
     }
 }

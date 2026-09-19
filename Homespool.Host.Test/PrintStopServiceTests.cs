@@ -13,6 +13,7 @@ using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
@@ -41,6 +42,7 @@ public sealed class PrintStopServiceTests : IDisposable
     private const int PrinterId = 1;
     private const long Stopper = 1;
     private const long SomebodyElse = 2;
+    private const long PrintOnly = 3;
 
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.UnixEpoch.AddYears(56));
 
@@ -253,6 +255,72 @@ public sealed class PrintStopServiceTests : IDisposable
         job.StoppedByUserId.Should().BeNull();
     }
 
+    /// <summary>
+    /// A token holding only <c>Print</c> cannot stop a print with no open row - it is not provably
+    /// the caller's - and the printer hears nothing.
+    /// </summary>
+    /// <remarks>
+    /// The account behind the token holds <c>ControlPrinter</c> by membership, so the refusal can
+    /// only be the scope's, and it names what the scope is missing.
+    /// </remarks>
+    [Fact]
+    public async Task APrintScopedTokenCannotStopAPrintWithNoOpenRow()
+    {
+        // Arrange - nothing of ours running, as for a print started at the panel
+        await using HomespoolDbContext context = await SeedAsync();
+        IPrinterConnectionActor actor = ConnectRecording();
+        Caller slicerKey = Caller.Scoped(Stopper, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+
+        // Act
+        Func<Task> stop = () => NewService(context).StopAsync(PrinterId, slicerKey, TestContext.Current.CancellationToken);
+
+        // Assert
+        (await stop.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Message
+                                                                              .Should().Contain(nameof(Capability.ControlPrinter));
+
+        await actor.DidNotReceive().SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A member granted <c>Print</c> and not <c>ControlPrinter</c> cannot either, whatever the
+    /// credential says.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWhoMayOnlyPrintCannotStopAPrintWithNoOpenRow()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        IPrinterConnectionActor actor = ConnectRecording();
+
+        // Act
+        Func<Task> stop = () => NewService(context).StopAsync(PrinterId, Caller.Unscoped(PrintOnly),
+                                                              TestContext.Current.CancellationToken);
+
+        // Assert
+        await stop.Should().ThrowAsync<TeamAccessDeniedException>();
+
+        await actor.DidNotReceive().SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The same member still stops their own print - the row is what proves it is theirs.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWhoMayOnlyPrintStillStopsTheirOwnPrint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        await AddPrintAsync(context, PrintState.Printing, ended: false, queuedBy: PrintOnly);
+        Connect(PrinterEventType.Finished);
+
+        // Act
+        CommandOutcome? outcome = await NewService(context).StopAsync(PrinterId, Caller.Unscoped(PrintOnly),
+                                                                      TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome!.EventType.Should().Be(PrinterEventType.Finished);
+    }
+
     private PrintStopService NewService(HomespoolDbContext context)
     {
         return new PrintStopService(context,
@@ -262,6 +330,17 @@ public sealed class PrintStopServiceTests : IDisposable
                                     new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                     _clock,
                                     NullLogger<PrintStopService>.Instance);
+    }
+
+    /// <summary>An open connection that answers nothing, for asserting that nothing was sent.</summary>
+    private IPrinterConnectionActor ConnectRecording()
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+
+        _registry.Register(PrinterId, actor, overPlaintext: false);
+
+        return actor;
     }
 
     private void Connect(PrinterEventType reply, string? reason = null)
@@ -311,13 +390,17 @@ public sealed class PrintStopServiceTests : IDisposable
                                       .Options);
     }
 
-    private async Task AddPrintAsync(HomespoolDbContext context, PrintState outcome, bool ended, long? stoppedBy = null)
+    private async Task AddPrintAsync(HomespoolDbContext context,
+                                     PrintState outcome,
+                                     bool ended,
+                                     long? stoppedBy = null,
+                                     long queuedBy = Stopper)
     {
         context.PrintJobs.Add(new PrintJob
         {
             PrinterId = PrinterId,
             FileName = "running.bgcode",
-            QueuedByUserId = Stopper,
+            QueuedByUserId = queuedBy,
             StartedAt = DateTimeOffset.UnixEpoch.AddYears(56),
             EndedAt = ended ? DateTimeOffset.UnixEpoch.AddYears(56) : null,
             State = outcome,
@@ -332,7 +415,12 @@ public sealed class PrintStopServiceTests : IDisposable
         HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
-        foreach ((long id, string email) in new[] { (Stopper, "owner@example.com"), (SomebodyElse, "other@example.com") })
+        foreach ((long id, string email) in new[]
+                 {
+                     (Stopper, "owner@example.com"),
+                     (SomebodyElse, "other@example.com"),
+                     (PrintOnly, "print-only@example.com"),
+                 })
         {
             context.Users.Add(new HSUser(email)
             {
@@ -349,6 +437,12 @@ public sealed class PrintStopServiceTests : IDisposable
 
         context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Stopper, Capabilities = TestMemberships.Graded(true, true, false) });
         context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = SomebodyElse, Capabilities = TestMemberships.Graded(true, true, false) });
+        context.TeamMembers.Add(new TeamMember
+        {
+            TeamId = team.Id,
+            UserId = PrintOnly,
+            Capabilities = CapabilitySet.Format([.. CapabilityPresets.Viewer, Capability.Print]),
+        });
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

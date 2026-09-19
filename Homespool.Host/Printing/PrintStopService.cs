@@ -81,6 +81,11 @@ public class PrintStopService
     /// "only here" safe rather than fragile. <see cref="Capability.ControlPrinter"/> stops anybody's.
     /// </para>
     /// <para>
+    /// <b>A print with no open row takes <see cref="Capability.ControlPrinter"/></b>, because a
+    /// missing row proves nothing about whose it is. Somebody who started it at the panel and holds
+    /// only <see cref="Capability.Print"/> stops it at the panel.
+    /// </para>
+    /// <para>
     /// <b>The rest of authorisation is still not duplicated here.</b> Whether this account may touch
     /// this printer at all belongs to <see cref="PrinterCommandService"/>, and a caller who may not
     /// gets an exception out of the send.
@@ -99,12 +104,17 @@ public class PrintStopService
                                               .Select(job => new ActivePrint(job.Id, job.QueuedByUserId, job.State))
                                               .SingleOrDefaultAsync(cancellationToken);
 
-        // Withdrawing your own work is Print; withdrawing somebody else's is ControlPrinter. An open
-        // row nobody owns cannot happen - QueuedByUserId is required - so a missing row is the only
-        // case with nothing to check against, and the send's own gate still applies to it.
+        // Withdrawing your own work is Print; withdrawing somebody else's is ControlPrinter. With no
+        // open row there is nobody to be the owner - a print started at the panel, or one running
+        // before this process knew of it - so it is nobody's to withdraw and stopping it is running
+        // the machine. StopPrint's own floor is only Print, so nothing beneath this would refuse.
         if (active is { } job)
         {
             await _access.RequireWithdrawingAsync(printerId, caller, job.QueuedByUserId, cancellationToken);
+        }
+        else
+        {
+            await _access.RequireAsync(printerId, caller, Capability.ControlPrinter, cancellationToken);
         }
 
         CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, new StopPrint(), caller, cancellationToken);

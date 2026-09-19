@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
@@ -85,6 +87,30 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
         ArgumentNullException.ThrowIfNull(key);
 
         return base.SetAuthenticatorKeyAsync(user, _authenticatorKeys.Protect(key), cancellationToken);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="user"/>'s username or address may differ from what was loaded, which
+    /// decides whether <see cref="HSUserManager"/> runs the user validators on a save.
+    /// </summary>
+    /// <remarks>
+    /// Compared ordinally against the context's original values, so a change of case counts. An entity
+    /// the context is not tracking, or one being added, has nothing to compare with and counts as
+    /// changed: the answer that fails safe is to validate.
+    /// </remarks>
+    public bool NameOrAddressChanged(HSUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        EntityEntry<HSUser> entry = Context.Entry(user);
+
+        if (entry.State is EntityState.Detached or EntityState.Added)
+        {
+            return true;
+        }
+
+        return !string.Equals(entry.Property(u => u.UserName).OriginalValue, user.UserName, StringComparison.Ordinal) ||
+               !string.Equals(entry.Property(u => u.Email).OriginalValue, user.Email, StringComparison.Ordinal);
     }
 
     /// <inheritdoc/>

@@ -1,5 +1,5 @@
-// AccessFailedAsync, ResetAccessFailedCountAsync and RemoveLoginAsync are transcribed from dotnet/aspnetcore
-// at v10.0.12 (src/Identity/Extensions.Core/src/UserManager.cs), changed as described on each.
+// AccessFailedAsync, ResetAccessFailedCountAsync, RemoveLoginAsync and UpdateUserAsync are transcribed from
+// dotnet/aspnetcore at v10.0.12 (src/Identity/Extensions.Core/src/UserManager.cs), changed as described on each.
 // Copyright (c) .NET Foundation, MIT licence.
 
 using System;
@@ -19,8 +19,9 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Accounts;
 
 /// <summary>
-/// The framework's user manager, except that the failed-sign-in count and the lockout it starts are
-/// saved without running the user validators, and removing a login the account does not hold fails.
+/// The framework's user manager, except that a save runs the user validators only when the username or
+/// address changed, the failed-sign-in count is saved without them, and removing a login the account
+/// does not hold fails.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -45,9 +46,14 @@ namespace Homespool.Host.Accounts;
 /// instead, before anything is written.
 /// </para>
 /// <para>
-/// <b>Nothing else skips validation.</b> Every other update - a name, an address, a password, a
-/// security stamp - still goes through the validators and is still refused by them, which is a
-/// failure the person making the change sees.
+/// <b>Every other write validates only what it changes.</b> The framework ends every write - a
+/// password, a login, a passkey, a recovery code, two-factor on or off - in
+/// <see cref="UpdateUserAsync"/>, which runs every validator over the whole account first. The
+/// validators check the username and the address and nothing else, so a write that changed neither
+/// was being refused over a name that stopped validating for reasons of its own: a spent recovery
+/// code not spent and its sign-in refused, a passkey sign-in refused after its sign count was already
+/// saved. <see cref="UpdateUserAsync"/> now validates when either changed, and a change of a name or
+/// an address is still refused as before, which is a failure the person making it sees.
 /// </para>
 /// <para>
 /// The two counter saves go straight to <see cref="UserManager{TUser}.Store"/>, which still refuses a
@@ -156,6 +162,46 @@ public sealed class HSUserManager : UserManager<HSUser>
         // Validated, normalised and saved as every other update is: UpdateUserAsync runs the user
         // validators, refreshes the normalised name and address, then Store.UpdateAsync.
         return await UpdateUserAsync(user);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// The framework's body - validate, normalise, save - with the validation run only when
+    /// <see cref="HSUserStore.NameOrAddressChanged"/> says the username or the address differs from
+    /// what was loaded. That is what the validators check, and all they check; an unchanged name and
+    /// address leave them nothing to say about this save. The original values, not the normalised
+    /// columns, because a rename that only changes case normalises to the same key and must still be
+    /// validated. A store that cannot say, or an entity its context is not tracking, is validated.
+    /// </para>
+    /// <para>
+    /// The framework's validation also refuses an account with no security stamp, by throwing. That
+    /// check stays on the path that skips the validators.
+    /// </para>
+    /// </remarks>
+    protected override async Task<IdentityResult> UpdateUserAsync(HSUser user)
+    {
+        bool mayHaveChanged = Store is not HSUserStore store || store.NameOrAddressChanged(user);
+
+        if (mayHaveChanged)
+        {
+            IdentityResult validated = await ValidateUserAsync(user);
+
+            if (!validated.Succeeded)
+            {
+                return validated;
+            }
+        }
+        else if (SupportsUserSecurityStamp)
+        {
+            // Throws for a missing stamp, as ValidateUserAsync's first check does.
+            await GetSecurityStampAsync(user);
+        }
+
+        await UpdateNormalizedUserNameAsync(user);
+        await UpdateNormalizedEmailAsync(user);
+
+        return await Store.UpdateAsync(user, CancellationToken);
     }
 
     private IUserLoginStore<HSUser> LoginStore()

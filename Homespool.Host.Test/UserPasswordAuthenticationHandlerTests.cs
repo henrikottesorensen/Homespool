@@ -49,10 +49,15 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// An account named <c>scope</c> that every update now fails to validate, through no change of its
+    /// An account named <c>scope</c> that the user validators now refuse, through no change of its
     /// own: another account was renamed past the manager to the same word in Cyrillic, and the
     /// lookalike check refuses both.
     /// </summary>
+    /// <remarks>
+    /// Shown by running the validators themselves. A save no longer runs them unless the name or the
+    /// address changed, so an ordinary update of this account succeeds - which is also why the counter
+    /// tests below would pass without <see cref="HSUserManager"/>'s two counter overrides.
+    /// </remarks>
     private static async Task<HSUser> RefusedByTheUserValidatorsAsync(LocalSchemeRig rig)
     {
         HSUser user = await rig.AddUserAsync("scope@example.com");
@@ -62,9 +67,9 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
         other.NormalizedUserName = other.UserName.ToUpperInvariant();
         await rig.Context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        IdentityResult update = await rig.Users.UpdateAsync(user);
-        update.Errors.Should().Contain(error => error.Code == "UserNameLooksLikeAnother",
-                                       "the account must be one the validators refuse, and an ordinary update still is");
+        IdentityResult[] validated = await Task.WhenAll(rig.Users.UserValidators.Select(validator => validator.ValidateAsync(rig.Users, user)));
+        validated.SelectMany(result => result.Errors).Should().Contain(error => error.Code == "UserNameLooksLikeAnother",
+                                                                       "the account must be one the validators refuse");
 
         return user;
     }

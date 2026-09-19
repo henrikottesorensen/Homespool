@@ -1,8 +1,9 @@
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
-/// How long the identity strings a printer states about itself may be - the serial, the fingerprint,
-/// the printer type and the firmware version.
+/// How much of what a printer states is taken: how long the identity strings may be - the serial,
+/// the fingerprint, the printer type and the firmware version - and, below those, how long the
+/// strings telemetry and events carry may be and how many slots there can be.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -93,4 +94,64 @@ public static class PrusaConnectConstants
 
     /// <summary>Longest firmware string accepted, e.g. <c>6.4.0+11974</c>.</summary>
     public const int FirmwareMaxLength = 64;
+
+    /// <summary>
+    /// The highest slot or tool number the wire can describe. Telemetry's <c>slot</c> block and an
+    /// <c>INFO</c>'s <c>tools</c> block key their entries 1..this, and nothing outside it is read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Firmware's ceiling rather than a guess.</b> <c>Printer::Params::slot_mask</c> is a
+    /// <c>uint8_t</c> carrying a <c>static_assert(8 * sizeof slot_mask >= VirtualToolIndex::count)</c>
+    /// (<c>printer.hpp:130</c>), and the keys are rendered <c>state.iter + 1</c>, so eight is the top
+    /// of the representation with no headroom.
+    /// </para>
+    /// <para>
+    /// <b>The bound is what keeps a slot a small thing.</b> Every slot number a printer states becomes
+    /// a stored row that is never removed and is copied into every later sample, so an unbounded key
+    /// is a row count chosen by whoever holds one printer's token.
+    /// </para>
+    /// </remarks>
+    public const int MaxSlotNumber = 8;
+
+    /// <summary>
+    /// Longest filament name accepted - the flat <c>material</c>, a slot's and an <c>INFO</c> tool's.
+    /// Firmware's name buffer holds seven characters (<c>filament_name_buffer_size</c>,
+    /// <c>filament.hpp</c>).
+    /// </summary>
+    public const int MaterialMaxLength = 32;
+
+    /// <summary>
+    /// Longest <c>slot.command</c> accepted. Firmware renders one character (<c>"%c"</c>,
+    /// <c>render.cpp</c>).
+    /// </summary>
+    public const int MmuCommandMaxLength = 8;
+
+    /// <summary>
+    /// Longest filament-sensor state accepted, for either sensor. Firmware sends one word of a closed
+    /// set.
+    /// </summary>
+    public const int FilamentSensorStatusMaxLength = 32;
+
+    /// <summary>
+    /// Longest event <c>reason</c> accepted. Firmware's are string literals in <c>planner.cpp</c>, the
+    /// longest of them 34 characters.
+    /// </summary>
+    public const int ReasonMaxLength = 256;
+
+    /// <summary>
+    /// Longest attention <c>text</c> or <c>title</c> accepted. Both come from firmware's error-code
+    /// table, whose longest text runs to about 250 characters.
+    /// </summary>
+    public const int AttentionTextMaxLength = 512;
+
+    /// <summary>
+    /// Largest drive listing kept, as UTF-8 bytes of its <c>children</c> array. A real drive of 69
+    /// files measured 12 KB, so this is room for well over a thousand.
+    /// </summary>
+    /// <remarks>
+    /// <b>The listing is one row per printer, replaced on every report</b>, so this bounds what one
+    /// report costs to write rather than anything that accumulates.
+    /// </remarks>
+    public const int DriveListingMaxBytes = 256 * 1024;
 }

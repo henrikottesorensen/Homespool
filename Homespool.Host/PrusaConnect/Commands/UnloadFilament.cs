@@ -50,7 +50,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 public class UnloadFilament : ISendableGcodeCommand
 {
     /// <summary>The most tools the wire can describe - see <see cref="ForTool"/>.</summary>
-    public const int MaxTools = 8;
+    public const int MaxTools = PrusaConnectConstants.MaxSlotNumber;
 
     private UnloadFilament(int toolIndex)
     {

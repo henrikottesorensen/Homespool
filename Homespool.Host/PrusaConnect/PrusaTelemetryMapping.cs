@@ -144,8 +144,10 @@ public static class PrusaTelemetryMapping
             HeatbreakTemperature = telemetry.HeatbreakTemperature,
             PsuTemperature = telemetry.PsuTemperature,
             AmbientTemperature = telemetry.AmbientTemperature,
-            ExtruderFilamentSensorStatus = telemetry.ExtruderFilamentSensorStatus,
-            RemoteFilamentSensorStatus = telemetry.RemoteFilamentSensorStatus,
+            ExtruderFilamentSensorStatus = Reported(telemetry.ExtruderFilamentSensorStatus,
+                                                    PrusaConnectConstants.FilamentSensorStatusMaxLength),
+            RemoteFilamentSensorStatus = Reported(telemetry.RemoteFilamentSensorStatus,
+                                                  PrusaConnectConstants.FilamentSensorStatusMaxLength),
         };
 
         if (telemetry.Chamber is { } chamber)
@@ -180,7 +182,7 @@ public static class PrusaTelemetryMapping
             {
                 ActiveSlot = Field<int?>.Of(slot.Active),
                 MmuState = slot.MmuState,
-                MmuCommand = slot.MmuCommand,
+                MmuCommand = Reported(slot.MmuCommand, PrusaConnectConstants.MmuCommandMaxLength),
                 Slots = ToSlotUpdates(slot),
             };
         }
@@ -207,7 +209,7 @@ public static class PrusaTelemetryMapping
             Status = PrinterStatusExtensions.ParseWireState(eventDto.Status),
             JobId = eventDto.JobId,
             CommandId = eventDto.CommandId,
-            Reason = eventDto.Reason,
+            Reason = Reported(eventDto.Reason, PrusaConnectConstants.ReasonMaxLength),
             Payload = FormatPayload(eventDto),
             Identity = identity,
             DriveListing = ToDriveListing(eventDto),
@@ -255,7 +257,11 @@ public static class PrusaTelemetryMapping
         return code is null && text is null ? null : new PrinterAttentionUpdate(code, text);
     }
 
-    /// <summary>A string property with whitespace treated as absence, this wire's usual rule.</summary>
+    /// <summary>
+    /// A string property with whitespace treated as absence, this wire's usual rule - and one longer
+    /// than <see cref="PrusaConnectConstants.AttentionTextMaxLength"/> likewise, so the code beside it
+    /// is still kept.
+    /// </summary>
     private static string? Trimmed(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out JsonElement value) || value.ValueKind != JsonValueKind.String)
@@ -265,7 +271,7 @@ public static class PrusaTelemetryMapping
 
         string? text = value.GetString()?.Trim();
 
-        return string.IsNullOrEmpty(text) ? null : text;
+        return Reported(text, PrusaConnectConstants.AttentionTextMaxLength);
     }
 
     /// <summary>
@@ -312,8 +318,8 @@ public static class PrusaTelemetryMapping
     }
 
     /// <summary>
-    /// One <c>INFO</c> string as this wire reports it, or null where it reported nothing usable -
-    /// blank, or longer than <paramref name="maximum"/>.
+    /// One string as this wire reports it, or null where it reported nothing usable - blank, or
+    /// longer than <paramref name="maximum"/>.
     /// </summary>
     /// <remarks>
     /// <b>The string is passed on exactly as it arrived</b>, as it always has been here - the bound
@@ -325,21 +331,12 @@ public static class PrusaTelemetryMapping
     }
 
     /// <summary>
-    /// The per-tool hardware an <c>INFO</c>'s <c>tools</c> block amounts to, or null when it carried
-    /// none - which must leave what is stored alone rather than clearing it.
-    /// </summary>
-    /// <remarks>
-    /// <b>A tool whose key is not a number is skipped rather than failing the report.</b> The rest
-    /// of an <c>INFO</c> is worth having even if one entry is nonsense, and this is a wire nobody
-    /// here controls.
-    /// </remarks>
-    /// <summary>
     /// The <c>material</c> cell, with firmware's no-filament sentinel turned into an authoritative
     /// empty rather than a material name.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Three cases, and conflating any two of them is a bug</b>:
+    /// <b>Three cases and one refusal, and conflating any two of the cases is a bug</b>:
     /// </para>
     /// <list type="bullet">
     /// <item><description>
@@ -351,6 +348,10 @@ public static class PrusaTelemetryMapping
     /// rather than a silence: <see cref="Field{T}.Null"/>, present with a null value.
     /// </description></item>
     /// <item><description><b>A name</b> - present, that value.</description></item>
+    /// <item><description>
+    /// <b>Longer than <see cref="PrusaConnectConstants.MaterialMaxLength"/></b> - nothing usable was
+    /// said, so it is the first case again and last-known stands.
+    /// </description></item>
     /// </list>
     /// <para>
     /// <b>The trap is the middle one, and the implicit conversion walks straight into it.</b>
@@ -363,7 +364,7 @@ public static class PrusaTelemetryMapping
     /// </remarks>
     private static Field<string?> MaterialField(string? reported)
     {
-        if (reported is null)
+        if (reported is null || reported.Length > PrusaConnectConstants.MaterialMaxLength)
         {
             return Field<string?>.Absent;
         }
@@ -371,6 +372,42 @@ public static class PrusaTelemetryMapping
         return LoadedFilament.Of(reported) is { } material ? Field<string?>.Of(material) : Field<string?>.Null;
     }
 
+    /// <summary>
+    /// A slot's or a tool's <c>material</c>, where an over-length name reads as none reported. These
+    /// blocks are atomic, so there is no last-known to fall back on as the flat field has.
+    /// </summary>
+    private static string? BlockMaterial(string? reported)
+    {
+        return reported is { Length: > PrusaConnectConstants.MaterialMaxLength } ? null : LoadedFilament.Of(reported);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="key"/> names a slot the wire can describe and this message has not
+    /// already described.
+    /// </summary>
+    /// <remarks>
+    /// <b>Once per number, because a number has more than one spelling.</b> <c>1</c>, <c>01</c> and
+    /// <c>+1</c> all parse to the same slot, so a range check alone would still let one message
+    /// carry as many entries as it has bytes for. First spelling wins.
+    /// </remarks>
+    private static bool IsUnseenSlotNumber(string key, HashSet<int> seen, out int number)
+    {
+        return int.TryParse(key, CultureInfo.InvariantCulture, out number) &&
+               number is >= 1 and <= PrusaConnectConstants.MaxSlotNumber &&
+               seen.Add(number);
+    }
+
+    /// <summary>
+    /// The per-tool hardware an <c>INFO</c>'s <c>tools</c> block amounts to, or null when it carried
+    /// none - which must leave what is stored alone rather than clearing it.
+    /// </summary>
+    /// <remarks>
+    /// <b>A tool whose key is not a number, or not one of 1..
+    /// <see cref="PrusaConnectConstants.MaxSlotNumber"/>, is skipped rather than failing the
+    /// report.</b> The rest of an <c>INFO</c> is worth having even if one entry is nonsense, and this
+    /// is a wire nobody here controls. Every tool taken becomes a stored row that is never removed,
+    /// which is why the range is checked at all.
+    /// </remarks>
     private static List<PrinterToolUpdate>? ToToolUpdates(Dictionary<string, InfoToolDTO>? tools)
     {
         if (tools is null)
@@ -379,15 +416,16 @@ public static class PrusaTelemetryMapping
         }
 
         List<PrinterToolUpdate> updates = [];
+        HashSet<int> seen = [];
 
         foreach ((string key, InfoToolDTO tool) in tools)
         {
-            if (!int.TryParse(key, CultureInfo.InvariantCulture, out int toolNumber))
+            if (!IsUnseenSlotNumber(key, seen, out int toolNumber))
             {
                 continue;
             }
 
-            string? material = LoadedFilament.Of(tool.Material);
+            string? material = BlockMaterial(tool.Material);
 
             updates.Add(new PrinterToolUpdate(toolNumber,
                                               tool.NozzleDiameter > 0 ? tool.NozzleDiameter : null,
@@ -402,6 +440,7 @@ public static class PrusaTelemetryMapping
     private static List<SlotUpdate> ToSlotUpdates(SlotsTelemetryDTO slot)
     {
         List<SlotUpdate> updates = [];
+        HashSet<int> seen = [];
 
         if (slot.Slots is null)
         {
@@ -419,8 +458,12 @@ public static class PrusaTelemetryMapping
             // Structurally-not-a-slot is skipped; a numbered entry that is an object and still will
             // not deserialize is left to throw, because that is protocol drift worth noticing rather
             // than a key we were never meant to read.
-            if (!int.TryParse(key, CultureInfo.InvariantCulture, out int slotNumber) ||
-                value.ValueKind != JsonValueKind.Object)
+            //
+            // A number outside the range firmware can render is not a slot either, and is decided
+            // before anything is deserialized: the merger keeps a row per slot number for good and
+            // every later sample copies them all, so what is let through here is paid for on every
+            // message after it.
+            if (value.ValueKind != JsonValueKind.Object || !IsUnseenSlotNumber(key, seen, out int slotNumber))
             {
                 continue;
             }
@@ -435,7 +478,7 @@ public static class PrusaTelemetryMapping
             // Through LoadedFilament for the same reason the flat field and the INFO tools are: the
             // wire's "nothing loaded" is the string "---", not an absence, and a per-tool gate built
             // on the raw value reads an empty tool as a filament called ---.
-            updates.Add(new SlotUpdate(slotNumber, LoadedFilament.Of(tool.Material),
+            updates.Add(new SlotUpdate(slotNumber, BlockMaterial(tool.Material),
                                        tool.Temperature, tool.HotendFan, tool.PrintFan));
         }
 
@@ -494,6 +537,11 @@ public static class PrusaTelemetryMapping
     /// count and no entries still records the count, and the two disagreeing stays visible rather
     /// than being reconciled here.
     /// </para>
+    /// <para>
+    /// <b>A listing over <see cref="PrusaConnectConstants.DriveListingMaxBytes"/> keeps its count and
+    /// loses its entries</b>, dropped whole for <see cref="Bound"/>'s reason: an array cut at a byte
+    /// offset is no longer JSON.
+    /// </para>
     /// </remarks>
     private static PrinterDriveListingUpdate? ToDriveListing(EventDTO dto)
     {
@@ -515,8 +563,14 @@ public static class PrusaTelemetryMapping
             return null;
         }
 
-        return new PrinterDriveListingUpdate(hasCount ? count.GetInt32() : 0,
-                                             hasChildren ? children.GetRawText() : null);
+        string? entries = hasChildren ? children.GetRawText() : null;
+
+        if (entries is not null && Encoding.UTF8.GetByteCount(entries) > PrusaConnectConstants.DriveListingMaxBytes)
+        {
+            entries = null;
+        }
+
+        return new PrinterDriveListingUpdate(hasCount ? count.GetInt32() : 0, entries);
     }
 
     /// <summary>

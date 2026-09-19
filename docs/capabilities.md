@@ -124,6 +124,10 @@ printer does stop it.
 | `Print` | yes | no |
 | `ControlPrinter` | yes | yes |
 
+A print is yours when you queued it. One Homespool did not start — begun at the printer's panel, or
+from a USB stick — is nobody's as far as Homespool can tell, so stopping it remotely takes
+`ControlPrinter`. Whoever started it there can always stop it there.
+
 The same split applies to cancelling a queue entry. Reordering the queue is `ControlPrinter` either
 way, because one queue is shared and moving your entry moves everybody's.
 

@@ -55,8 +55,8 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
     /// </summary>
     /// <remarks>
     /// Shown by running the validators themselves. A save no longer runs them unless the name or the
-    /// address changed, so an ordinary update of this account succeeds - which is also why the counter
-    /// tests below would pass without <see cref="HSUserManager"/>'s two counter overrides.
+    /// address changed, so an ordinary update of this account succeeds - which is what lets the counter
+    /// tests below count and reset through the framework's own methods.
     /// </remarks>
     private static async Task<HSUser> RefusedByTheUserValidatorsAsync(LocalSchemeRig rig)
     {

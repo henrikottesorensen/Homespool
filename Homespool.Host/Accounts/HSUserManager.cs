@@ -1,6 +1,5 @@
-// AccessFailedAsync, ResetAccessFailedCountAsync, RemoveLoginAsync, RemovePasskeyAsync and UpdateUserAsync are
-// transcribed from dotnet/aspnetcore at v10.0.12 (src/Identity/Extensions.Core/src/UserManager.cs), changed as
-// described on each.
+// RemoveLoginAsync, RemovePasskeyAsync and UpdateUserAsync are transcribed from dotnet/aspnetcore at v10.0.12
+// (src/Identity/Extensions.Core/src/UserManager.cs), changed as described on each.
 // Copyright (c) .NET Foundation, MIT licence.
 
 using System;
@@ -21,24 +20,9 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// The framework's user manager, except that a save runs the user validators only when the username or
-/// address changed, the failed-sign-in count is saved without them, and removing a login or a passkey
-/// the account does not hold fails.
+/// address changed, and removing a login or a passkey the account does not hold fails.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>The framework validates the whole account to save a counter.</b> Its <c>AccessFailedAsync</c>
-/// and <c>ResetAccessFailedCountAsync</c> save through the same path as an edit to the account, which
-/// runs every <see cref="IUserValidator{TUser}"/> first and saves nothing when one refuses. A name
-/// that was valid when chosen can be refused later - <see cref="UsernameValidator"/> compares it
-/// against every other account, and against rules that can tighten - and a refusal there is a result
-/// nobody can act on: the count is not saved, the account never locks out, and nothing says so.
-/// </para>
-/// <para>
-/// <b>Both methods, because skipping validation on the increment alone breaks sign-in.</b> A counted
-/// wrong password leaves a count for the right password's reset to clear, and a reset that validated
-/// would refuse the account's owner their own password. The framework's reset returns before saving
-/// when the count is already zero, and so does this one.
-/// </para>
 /// <para>
 /// <b>The framework reports removing a login that is not there as a success.</b> The store deletes
 /// the row only if it finds one, and the manager then rotates the stamp and saves regardless, so a
@@ -48,19 +32,22 @@ namespace Homespool.Host.Accounts;
 /// passkey, which the framework treats alike.
 /// </para>
 /// <para>
-/// <b>Every other write validates only what it changes.</b> The framework ends every write - a
-/// password, a login, a passkey, a recovery code, two-factor on or off - in
-/// <see cref="UpdateUserAsync"/>, which runs every validator over the whole account first. The
-/// validators check the username and the address and nothing else, so a write that changed neither
-/// was being refused over a name that stopped validating for reasons of its own: a spent recovery
-/// code not spent and its sign-in refused, a passkey sign-in refused after its sign count was already
-/// saved. <see cref="UpdateUserAsync"/> now validates when either changed, and a change of a name or
-/// an address is still refused as before, which is a failure the person making it sees.
+/// <b>A write validates only what it changes.</b> The framework ends every write - a failed sign-in
+/// counted or reset, a password, a login, a passkey, a recovery code, two-factor on or off - in
+/// <see cref="UpdateUserAsync"/>, which ran every <see cref="IUserValidator{TUser}"/> over the whole
+/// account first and saved nothing when one refused. A name valid when chosen can be refused later -
+/// <see cref="UsernameValidator"/> compares it against every other account, and against rules that
+/// can tighten - and the refusal landed on writes that had nothing to do with it: failed sign-ins not
+/// counted, so the account never locked out; a recovery code not spent and its sign-in refused; a
+/// passkey sign-in refused after its sign count was already saved. The validators check the username
+/// and the address and nothing else, so <see cref="UpdateUserAsync"/> now runs them when either
+/// changed, and a change of a name or an address is still refused as before, which is a failure the
+/// person making it sees.
 /// </para>
 /// <para>
-/// The two counter saves go straight to <see cref="UserManager{TUser}.Store"/>, which still refuses a
-/// write whose concurrency stamp has moved. The framework's user-update metric is not recorded for any
-/// of the three overrides: its meter is private to <see cref="UserManager{TUser}"/>.
+/// The framework's user-update metric is not recorded for the two removals: its meter is private to
+/// <see cref="UserManager{TUser}"/>. The framework's own callers of <see cref="UpdateUserAsync"/> still
+/// record it.
 /// </para>
 /// </remarks>
 public sealed class HSUserManager : UserManager<HSUser>
@@ -83,46 +70,6 @@ public sealed class HSUserManager : UserManager<HSUser>
 
     /// <summary>The <see cref="IdentityError.Code"/> of a refused <see cref="RemovePasskeyAsync"/>.</summary>
     public const string PasskeyNotHeldCode = "PasskeyNotHeld";
-
-    /// <inheritdoc/>
-    /// <remarks>
-    /// The lockout end is computed from the system clock, as the framework's
-    /// <see cref="UserManager{TUser}.IsLockedOutAsync"/> reads it.
-    /// </remarks>
-    public override async Task<IdentityResult> AccessFailedAsync(HSUser user)
-    {
-        ThrowIfDisposed();
-        IUserLockoutStore<HSUser> store = LockoutStore();
-        ArgumentNullException.ThrowIfNull(user);
-
-        // If this puts the user over the threshold for lockout, lock them out and reset the access failed count.
-        int count = await store.IncrementAccessFailedCountAsync(user, CancellationToken);
-
-        if (count >= Options.Lockout.MaxFailedAccessAttempts)
-        {
-            await store.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.Add(Options.Lockout.DefaultLockoutTimeSpan), CancellationToken);
-            await store.ResetAccessFailedCountAsync(user, CancellationToken);
-        }
-
-        return await Store.UpdateAsync(user, CancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public override async Task<IdentityResult> ResetAccessFailedCountAsync(HSUser user)
-    {
-        ThrowIfDisposed();
-        IUserLockoutStore<HSUser> store = LockoutStore();
-        ArgumentNullException.ThrowIfNull(user);
-
-        if (await GetAccessFailedCountAsync(user) == 0)
-        {
-            return IdentityResult.Success;
-        }
-
-        await store.ResetAccessFailedCountAsync(user, CancellationToken);
-
-        return await Store.UpdateAsync(user, CancellationToken);
-    }
 
     /// <inheritdoc/>
     /// <remarks>
@@ -253,11 +200,5 @@ public sealed class HSUserManager : UserManager<HSUser>
     {
         return Store as IUserLoginStore<HSUser> ??
                throw new NotSupportedException("The user store does not implement IUserLoginStore<HSUser>.");
-    }
-
-    private IUserLockoutStore<HSUser> LockoutStore()
-    {
-        return Store as IUserLockoutStore<HSUser> ??
-               throw new NotSupportedException("The user store does not implement IUserLockoutStore<HSUser>.");
     }
 }

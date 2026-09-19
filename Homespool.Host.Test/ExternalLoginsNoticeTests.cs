@@ -142,7 +142,7 @@ public sealed class ExternalLoginsNoticeTests : IDisposable
         // Assert
         (await rig.Users.GetLoginsAsync(owner)).Should().ContainSingle("nothing was removed");
         _mail.SentEmails.Should().BeEmpty();
-        page.StatusMessage.Should().Be("Too many changes to how you sign in. Try again in a few minutes.");
+        page.StatusMessage.Should().Be("You recently changed how you sign in. Try again in a few minutes.");
     }
 
     [Fact]

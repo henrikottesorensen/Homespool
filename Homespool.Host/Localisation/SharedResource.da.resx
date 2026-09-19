@@ -2830,7 +2830,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>E-mailadressen på din Homespool-konto er netop blevet ændret, så nulstilling af adgangskode og beskeder kommer ikke længere hertil. Hvis det ikke var dig, så kontakt Homespool administratoren med det samme.</value>
   </data>
   <data name="CredentialChange_TooMany" xml:space="preserve">
-    <value>For mange ændringer af, hvordan du logger ind. Prøv igen om et par minutter.</value>
+    <value>Du har ændret dine loginmetoder for nylig. Prøv igen om et par minutter.</value>
   </data>
   <data name="Email_ProviderLinkedSubject" xml:space="preserve">
     <value>En loginudbyder er blevet tilknyttet din Homespool-konto</value>

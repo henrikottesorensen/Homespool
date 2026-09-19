@@ -129,7 +129,7 @@ public sealed class PasskeysPageTests : IDisposable
         // Assert
         JsonResult refused = result.Should().BeOfType<JsonResult>().Subject;
         refused.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
-        refused.Value.Should().BeEquivalentTo(new { message = "Too many changes to how you sign in. Try again in a few minutes." });
+        refused.Value.Should().BeEquivalentTo(new { message = "You recently changed how you sign in. Try again in a few minutes." });
     }
 
     /// <summary>The cooldown starts when a registration is stored, and one started between begin and answer refuses it.</summary>
@@ -448,7 +448,7 @@ public sealed class PasskeysPageTests : IDisposable
         // Assert
         (await rig.Users.GetPasskeysAsync(user)).Should().ContainSingle();
         rig.Mail.SentEmails.Should().BeEmpty();
-        model.StatusMessage.Should().Be("Too many changes to how you sign in. Try again in a few minutes.");
+        model.StatusMessage.Should().Be("You recently changed how you sign in. Try again in a few minutes.");
     }
 
     /// <summary>

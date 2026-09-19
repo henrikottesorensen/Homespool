@@ -350,21 +350,26 @@ public sealed class PasskeysPageTests : IDisposable
     }
 
     /// <summary>
-    /// The store saves the delete before the user validators run, so a refused account row after it
+    /// The store saves the delete before the manager saves the account row, so a refused row after it
     /// still leaves the passkey gone - the page and the owner's mail say so, and the refusal is logged
     /// by its codes rather than lost.
     /// </summary>
+    /// <remarks>
+    /// Refused the way it still can be: another write moved the account's concurrency stamp between the
+    /// read and the save. A validator no longer can, since an unchanged account is not validated -
+    /// <c>UpdateUserValidationTests</c>.
+    /// </remarks>
     [Fact]
     public async Task ARemovalWhoseAccountRowIsRefusedStillRemovesAndLogsTheRefusal()
     {
         // Arrange
-        RefusingValidator validator = new();
-        await using Rig rig = await Rig.CreateAsync(this, validator);
+        await using Rig rig = await Rig.CreateAsync(this);
         HSUser user = await rig.AddUserAsync("owner@example.com");
         UserPasskeyInfo passkey = await rig.SeedPasskeyAsync(user, "laptop");
         FakeLogger<PasskeysModel> logger = new();
         (PasskeysModel model, _) = rig.NewModel(user, logger: logger);
-        validator.Refusing = true;
+        string name = user.UserName!;
+        await rig.MoveConcurrencyStampBehindTheContextAsync(user);
 
         // Act
         IActionResult result = await model.OnPostRemoveAsync(PasskeysModel.IdOf(passkey));
@@ -377,8 +382,8 @@ public sealed class PasskeysPageTests : IDisposable
 
         FakeLogRecord warning = logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Warning).Subject;
         warning.StructuredState.Should().Contain(property => property.Key == "UserId" && property.Value == user.Id.ToString(CultureInfo.InvariantCulture));
-        warning.StructuredState.Should().Contain(property => property.Key == "IdentityErrorCodes" && property.Value == RefusingValidator.Code);
-        warning.Message.Should().NotContain(user.UserName!, "the codes are logged, not the descriptions that carry the name");
+        warning.StructuredState.Should().Contain(property => property.Key == "IdentityErrorCodes" && property.Value == "ConcurrencyFailure");
+        warning.Message.Should().NotContain(name, "the codes are logged, not the descriptions that carry the name");
     }
 
     /// <summary>
@@ -423,21 +428,6 @@ public sealed class PasskeysPageTests : IDisposable
         renamed.Should().BeOfType<NotFoundResult>();
     }
 
-    /// <summary>A user validator that passes until told to refuse, so an account can be set up first.</summary>
-    private sealed class RefusingValidator : IUserValidator<HSUser>
-    {
-        public const string Code = "TestRefusal";
-
-        public bool Refusing { get; set; }
-
-        public Task<IdentityResult> ValidateAsync(UserManager<HSUser> manager, HSUser user)
-        {
-            return Task.FromResult(Refusing ?
-                IdentityResult.Failed(new IdentityError { Code = Code, Description = $"{user.UserName} is refused." }) :
-                IdentityResult.Success);
-        }
-    }
-
     private sealed class Rig : IAsyncDisposable
     {
         private readonly HomespoolDbContext _context;
@@ -459,7 +449,7 @@ public sealed class PasskeysPageTests : IDisposable
 
         public PasskeyCeremonies Ceremonies => _provider.GetRequiredService<PasskeyCeremonies>();
 
-        public static async Task<Rig> CreateAsync(PasskeysPageTests owner, IUserValidator<HSUser>? extraValidator = null)
+        public static async Task<Rig> CreateAsync(PasskeysPageTests owner)
         {
             DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
                                                            .UseSqlite($"Data Source={owner._databasePath}")
@@ -470,17 +460,20 @@ public sealed class PasskeysPageTests : IDisposable
 
             (_, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(
                 context,
-                services =>
-                {
-                    services.Configure<Middleware.SecurityOptions>(security => security.PasskeyServerDomain = RelyingPartyId);
-
-                    if (extraValidator is not null)
-                    {
-                        services.AddSingleton(extraValidator);
-                    }
-                });
+                services => services.Configure<Middleware.SecurityOptions>(security => security.PasskeyServerDomain = RelyingPartyId));
 
             return new Rig(context, provider);
+        }
+
+        /// <summary>
+        /// Moves <paramref name="user"/>'s concurrency stamp in the database without the context
+        /// knowing, as another request's write would, so the next save of the account fails.
+        /// </summary>
+        public async Task MoveConcurrencyStampBehindTheContextAsync(HSUser user)
+        {
+            await _context.Users.Where(u => u.Id == user.Id)
+                          .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.ConcurrencyStamp, Guid.NewGuid().ToString()),
+                                              TestContext.Current.CancellationToken);
         }
 
         /// <summary>

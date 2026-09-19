@@ -1,5 +1,6 @@
-// AccessFailedAsync, ResetAccessFailedCountAsync, RemoveLoginAsync and UpdateUserAsync are transcribed from
-// dotnet/aspnetcore at v10.0.12 (src/Identity/Extensions.Core/src/UserManager.cs), changed as described on each.
+// AccessFailedAsync, ResetAccessFailedCountAsync, RemoveLoginAsync, RemovePasskeyAsync and UpdateUserAsync are
+// transcribed from dotnet/aspnetcore at v10.0.12 (src/Identity/Extensions.Core/src/UserManager.cs), changed as
+// described on each.
 // Copyright (c) .NET Foundation, MIT licence.
 
 using System;
@@ -20,8 +21,8 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// The framework's user manager, except that a save runs the user validators only when the username or
-/// address changed, the failed-sign-in count is saved without them, and removing a login the account
-/// does not hold fails.
+/// address changed, the failed-sign-in count is saved without them, and removing a login or a passkey
+/// the account does not hold fails.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -43,7 +44,8 @@ namespace Homespool.Host.Accounts;
 /// the row only if it finds one, and the manager then rotates the stamp and saves regardless, so a
 /// caller acting on the result - setting a password in the same transaction, or telling the owner a
 /// provider went - acts on a removal that did not happen. <see cref="RemoveLoginAsync"/> refuses
-/// instead, before anything is written.
+/// instead, before anything is written, and <see cref="RemovePasskeyAsync"/> does the same for a
+/// passkey, which the framework treats alike.
 /// </para>
 /// <para>
 /// <b>Every other write validates only what it changes.</b> The framework ends every write - a
@@ -78,6 +80,9 @@ public sealed class HSUserManager : UserManager<HSUser>
 
     /// <summary>The <see cref="IdentityError.Code"/> of a refused <see cref="RemoveLoginAsync"/>.</summary>
     public const string LoginNotHeldCode = "LoginNotHeld";
+
+    /// <summary>The <see cref="IdentityError.Code"/> of a refused <see cref="RemovePasskeyAsync"/>.</summary>
+    public const string PasskeyNotHeldCode = "PasskeyNotHeld";
 
     /// <inheritdoc/>
     /// <remarks>
@@ -167,6 +172,40 @@ public sealed class HSUserManager : UserManager<HSUser>
     /// <inheritdoc/>
     /// <remarks>
     /// <para>
+    /// Fails with <see cref="PasskeyNotHeldCode"/>, writing nothing, when <paramref name="user"/> holds
+    /// no passkey with <paramref name="credentialId"/>. The framework's store finds nothing, removes
+    /// nothing, and the save after it reports success for a removal that did not happen.
+    /// </para>
+    /// <para>
+    /// <b>The store saves the removal itself</b>, before the account row is saved, so a failure from
+    /// that save still leaves the passkey gone. Two removals racing each other can both pass the check;
+    /// the second then removes nothing and succeeds, as the framework would.
+    /// </para>
+    /// </remarks>
+    public override async Task<IdentityResult> RemovePasskeyAsync(HSUser user, byte[] credentialId)
+    {
+        ThrowIfDisposed();
+        IUserPasskeyStore<HSUser> passkeyStore = PasskeyStore();
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(credentialId);
+
+        if (await passkeyStore.FindPasskeyAsync(user, credentialId, CancellationToken) is null)
+        {
+            return IdentityResult.Failed(new IdentityError
+            {
+                Code = PasskeyNotHeldCode,
+                Description = "This account has no such passkey.",
+            });
+        }
+
+        await passkeyStore.RemovePasskeyAsync(user, credentialId, CancellationToken);
+
+        return await UpdateUserAsync(user);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
     /// The framework's body - validate, normalise, save - with the validation run only when
     /// <see cref="HSUserStore.NameOrAddressChanged"/> says the username or the address differs from
     /// what was loaded. That is what the validators check, and all they check; an unchanged name and
@@ -202,6 +241,12 @@ public sealed class HSUserManager : UserManager<HSUser>
         await UpdateNormalizedEmailAsync(user);
 
         return await Store.UpdateAsync(user, CancellationToken);
+    }
+
+    private IUserPasskeyStore<HSUser> PasskeyStore()
+    {
+        return Store as IUserPasskeyStore<HSUser> ??
+               throw new NotSupportedException("The user store does not implement IUserPasskeyStore<HSUser>.");
     }
 
     private IUserLoginStore<HSUser> LoginStore()

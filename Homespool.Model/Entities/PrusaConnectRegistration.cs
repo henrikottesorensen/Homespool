@@ -5,20 +5,23 @@ namespace Homespool.Model.Entities;
 
 /// <summary>
 /// A pending code-exchange enrolment: the transient state between a printer POSTing to
-/// <c>/p/register</c> and it redeeming its code for a token. One row per in-flight registration;
-/// consumed and deleted the moment the token is issued, at which point the printer's standing
-/// credential lives in <see cref="PrusaConnectAuthenticationData"/> instead.
+/// <c>/p/register</c> and it redeeming its code for a token. One row per POST, consumed and deleted
+/// the moment the token is issued, at which point the printer's standing credential lives in
+/// <see cref="PrusaConnectAuthenticationData"/> instead.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This used to be the same table as <see cref="PrusaConnectAuthenticationData"/> — a single row
-/// mutated in place from "pending" to "enrolled". Splitting the two lets the enrolled table mean
-/// exactly one thing (an enrolled printer's credential, every field required) so that the USB-key
-/// provisioning channel can converge into it without forcing the code/serial columns nullable.
+/// A table of its own rather than a "pending" state of <see cref="PrusaConnectAuthenticationData"/>,
+/// so that the enrolled table means exactly one thing (an enrolled printer's credential, every field
+/// required) and the USB-key provisioning channel can converge into it without forcing the
+/// code/serial columns nullable.
 /// </para>
 /// <para>
 /// <see cref="FingerPrint"/> is known immediately — it travels in the register POST body — unlike the
-/// provisioning channel, where it is not learned until first contact.
+/// provisioning channel, where it is not learned until first contact. <b>It does not identify the
+/// row</b>: the POST is anonymous, so a fingerprint can have several registrations pending at once -
+/// the printer's, an attempt it abandoned, somebody else's - each with a code of its own, and only
+/// <see cref="TemporaryCode"/> says which one a poll or a claim means.
 /// </para>
 /// </remarks>
 public class PrusaConnectRegistration

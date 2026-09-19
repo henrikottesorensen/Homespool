@@ -40,11 +40,11 @@ public class PrusaConnectOptions
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A printer that posts to <c>/p/register</c> gets a code, which a user then claims. The code is
-    /// renewed on the next POST once it has expired, so an expired code is a delay rather than a
-    /// dead end - but the printer only retries the initial POST three times
-    /// (<c>registrator.hpp</c>: <c>starting_retries = 3</c>) before giving up entirely, so this is
-    /// not a value to set carelessly short.
+    /// A printer that posts to <c>/p/register</c> gets a code, which a user then claims. An expired
+    /// code is not renewed, and firmware does not ask for another on its own: it goes on polling the
+    /// one it has until somebody restarts registration at the printer, which is a fresh POST and a
+    /// fresh code. So this is how long a person has between starting registration and typing the
+    /// code, and not a value to set carelessly short.
     /// </para>
     /// <para>
     /// <b>Prusa's own servers use 24 hours</b> - the captured <c>Expires</c> header is exactly one

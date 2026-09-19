@@ -806,8 +806,7 @@ namespace Homespool.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FingerPrint")
-                        .IsUnique();
+                    b.HasIndex("FingerPrint");
 
                     b.HasIndex("PrinterId");
 

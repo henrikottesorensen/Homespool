@@ -206,7 +206,8 @@ public class PrusaConnectPrinterController : ControllerBase
     // length attributes a bound rather than documentation, and it answers with a ProblemDetails body
     // the union below never produces. Firmware reads the status and ignores the body either way.
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK)]
-    public async Task<Results<ContentHttpResult, BadRequest>> RegisterPrinter([FromBody] RegisterPrinterRequestDTO printer)
+    public async Task<Results<ContentHttpResult, BadRequest, StatusCodeResult<Status.TooManyRequests>>> RegisterPrinter(
+        [FromBody] RegisterPrinterRequestDTO printer)
     {
         try
         {
@@ -230,6 +231,12 @@ public class PrusaConnectPrinterController : ControllerBase
         catch (Exception e) when (e is ArgumentNullException or InvalidOperationException)
         {
             return TypedResults.BadRequest();
+        }
+        catch (RegistrationLimitReachedException)
+        {
+            // Firmware reads any status but 200 as a failed attempt and shows an error; which one is
+            // for whoever reads the exchange. Bodiless, because nothing on the other end reads a body.
+            return new StatusCodeResult<Status.TooManyRequests>();
         }
     }
 
@@ -277,6 +284,12 @@ public class PrusaConnectPrinterController : ControllerBase
         }
         catch (PrinterNotFoundException)
         {
+            return TypedResults.NotFound();
+        }
+        catch (EnrolledCredentialMismatchException)
+        {
+            // The registration is gone by now, so this is the answer every later poll of the code gets
+            // anyway - and the poll is anonymous, so it says no more than that.
             return TypedResults.NotFound();
         }
         catch (UnauthorizedAccessException)

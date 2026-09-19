@@ -526,6 +526,49 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         withOld.Succeeded.Should().BeFalse("the superseded token must stop working");
     }
 
+    /// <summary>
+    /// A claim made while the fingerprint was not enrolled cannot take over the printer it has been
+    /// enrolled to since: the poll gets no token, and the enrolled printer keeps working.
+    /// </summary>
+    /// <remarks>
+    /// <c>CanManage</c> on an enrolled printer's team is asked for when a code is claimed. This claim
+    /// was made before there was an enrolled printer to ask about, so nothing was asked - and the
+    /// USB-key first contact in between is all it takes for there to be one by the time the code is
+    /// redeemed. Redeeming it anyway would repoint the credential at the claimant's printer.
+    /// </remarks>
+    [Fact]
+    public async Task AClaimMadeBeforeThePrinterWasEnrolledElsewhereCannotTakeItOver()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        TeamMember owner = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        TeamMember stranger = await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true);
+
+        PrusaConnectService service = NewService(context);
+        string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
+
+        Printer strangers = await service.ClaimPrinterAsync(code, "Mine now", null, stranger.Team!.Uuid, Caller.Unscoped(2));
+
+        (Printer owners, string originalToken) = await EnrolByUsbKeyAsync(context, owner.Team!.Uuid, userId: 1);
+
+        // Act
+        Func<Task> poll = () => service.GetToken(code);
+
+        // Assert
+        await poll.Should().ThrowAsync<EnrolledCredentialMismatchException>();
+
+        AuthenticateResult result = await AuthenticateAsync(HeaderFingerprint, originalToken);
+        result.Succeeded.Should().BeTrue("the enrolled credential was not touched");
+        result.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{owners.Id}");
+
+        await using HomespoolDbContext verify = NewContext();
+        PrusaConnectAuthenticationData enrolled = await verify.PrusaConnectAuthentication.SingleAsync(TestContext.Current.CancellationToken);
+        enrolled.PrinterId.Should().Be(owners.Id).And.NotBe(strangers.Id);
+
+        (await verify.PrusaConnectRegistrations.AnyAsync(TestContext.Current.CancellationToken)).Should()
+            .BeFalse("a registration that can never be redeemed is not left for the printer to poll");
+    }
+
     // ---------- guards the fix must not trade away ----------
 
     /// <summary>

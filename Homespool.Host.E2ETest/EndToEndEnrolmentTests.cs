@@ -9,9 +9,13 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.PrusaConnect;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -161,6 +165,170 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
                 JsonDocument.Parse(await reGetResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             reGet.RootElement.GetProperty("name").GetString().Should().Be("Renamed MK4", "the patch must have persisted");
         }
+    }
+
+    /// <summary>
+    /// Somebody who knows a printer's fingerprint and POSTs it is handed a code of their own, and the
+    /// owner's claim of the code on the printer's screen releases the token to the printer's poll
+    /// only.
+    /// </summary>
+    /// <remarks>
+    /// Both requests are anonymous and the poll carries a code and nothing else, so the code is the
+    /// only thing standing between the stranger and the printer's token. Through real HTTP because the
+    /// <c>Code</c> header is where a repeated code would actually be given away.
+    /// </remarks>
+    [Fact]
+    public async Task AStrangerWhoKnowsTheFingerprintLearnsNeitherThePrintersCodeNorItsToken()
+    {
+        // Arrange
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+        using HttpClient stranger = PrinterListener.CreateClient(_factory);
+
+        object body = new
+        {
+            sn = "E2E-SERIAL-0002",
+            fingerprint = "E2E-FINGERPRINT-0002",
+            printer_type = "1.3.5",
+            firmware = "6.4.0+11974",
+        };
+
+        string printersCode = (await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, body)).Headers.GetValues("Code").Single();
+
+        // Act
+        HttpResponseMessage strangersRegistration = await EnrolmentFlowHelper.SendPrinterRegisterAsync(stranger, body);
+        string strangersCode = strangersRegistration.Headers.GetValues("Code").Single();
+
+        (HSUser _, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
+        using (appClient)
+        {
+            HttpResponseMessage claim = await appClient.PostAsJsonAsync(
+                "/api/v1/printers/register", new { name = "Workshop MK4", code = printersCode }, TestContext.Current.CancellationToken);
+            claim.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+
+        // The stranger polls first, which is the race they would have to win.
+        HttpResponseMessage strangersPoll = await EnrolmentFlowHelper.SendPollAsync(stranger, strangersCode);
+        HttpResponseMessage printersPoll = await EnrolmentFlowHelper.SendPollAsync(printer, printersCode);
+
+        // Assert
+        strangersRegistration.StatusCode.Should().Be(HttpStatusCode.OK);
+        strangersCode.Should().NotBe(printersCode);
+        strangersRegistration.Headers.GetValues("Temporary-Code").Should().NotContain(printersCode);
+
+        strangersPoll.StatusCode.Should().Be(HttpStatusCode.Accepted, "nobody claimed the stranger's code");
+        strangersPoll.Headers.Contains("Token").Should().BeFalse();
+
+        printersPoll.StatusCode.Should().Be(HttpStatusCode.OK);
+        printersPoll.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
+
+        HttpResponseMessage afterwards = await EnrolmentFlowHelper.SendPollAsync(stranger, strangersCode);
+        afterwards.StatusCode.Should().Be(HttpStatusCode.NotFound, "the printer's enrolment ended every other code for its fingerprint");
+    }
+
+    /// <summary>
+    /// A printer whose fingerprint already holds as many claimed registrations as it may is told 429,
+    /// rather than the refusal surfacing as a server error.
+    /// </summary>
+    [Fact]
+    public async Task ARegistrationPastTheCapOfClaimedOnesIsAnswered429()
+    {
+        // Arrange
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        object body = new
+        {
+            sn = "E2E-SERIAL-0003",
+            fingerprint = "E2E-FINGERPRINT-0003",
+            printer_type = "1.3.5",
+            firmware = "6.4.0+11974",
+        };
+
+        (HSUser _, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
+        using (appClient)
+        {
+            for (int attempt = 0; attempt < PrusaConnectService.MaxPendingRegistrationsPerFingerprint; attempt++)
+            {
+                string code = (await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, body)).Headers.GetValues("Code").Single();
+
+                HttpResponseMessage claim = await appClient.PostAsJsonAsync(
+                    "/api/v1/printers/register", new { name = $"Claim {attempt}", code }, TestContext.Current.CancellationToken);
+                claim.StatusCode.Should().Be(HttpStatusCode.Created);
+            }
+        }
+
+        // Act
+        HttpResponseMessage refused = await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, body);
+
+        // Assert
+        refused.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        refused.Headers.Contains("Code").Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A claimed code whose fingerprint has meanwhile been enrolled to a different printer is answered
+    /// like an unknown one: 404, no token, and the same on the next poll.
+    /// </summary>
+    [Fact]
+    public async Task ACodeClaimedForAFingerprintEnrolledElsewhereSincePollsAs404()
+    {
+        // Arrange
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        const string Fingerprint = "E2E-FINGERPRINT-0004-LONG-ENOUGH-TO-TRUNCATE";
+
+        string code = (await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, new
+        {
+            sn = "E2E-SERIAL-0004",
+            fingerprint = Fingerprint,
+            printer_type = "1.3.5",
+            firmware = "6.4.0+11974",
+        })).Headers.GetValues("Code").Single();
+
+        (HSUser _, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
+        using (appClient)
+        {
+            HttpResponseMessage claim = await appClient.PostAsJsonAsync(
+                "/api/v1/printers/register", new { name = "Claimed first", code }, TestContext.Current.CancellationToken);
+            claim.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+
+        // What a USB-key first contact leaves behind: the same fingerprint, enrolled to another printer.
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+            Printer claimed = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
+
+            Printer other = new()
+            {
+                Uuid = Guid.NewGuid(),
+                Type = PrinterType.PrusaConnect,
+                TeamId = claimed.TeamId,
+                Status = PrinterStatus.Unknown,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            };
+
+            context.Printers.Add(other);
+            context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
+            {
+                Printer = other,
+                FingerPrintKey = PrinterFingerprint.Key(Fingerprint),
+                FullFingerPrint = Fingerprint,
+                HashedToken = "not-a-real-hash",
+                EnrolledAt = DateTimeOffset.UtcNow,
+            });
+
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Act
+        HttpResponseMessage poll = await EnrolmentFlowHelper.SendPollAsync(printer, code);
+        HttpResponseMessage again = await EnrolmentFlowHelper.SendPollAsync(printer, code);
+
+        // Assert
+        poll.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        poll.Headers.Contains("Token").Should().BeFalse();
+        again.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     /// <summary>

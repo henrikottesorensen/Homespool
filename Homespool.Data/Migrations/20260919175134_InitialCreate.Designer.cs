@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260916170301_InitialCreate")]
+    [Migration("20260919175134_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -809,8 +809,7 @@ namespace Homespool.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FingerPrint")
-                        .IsUnique();
+                    b.HasIndex("FingerPrint");
 
                     b.HasIndex("PrinterId");
 

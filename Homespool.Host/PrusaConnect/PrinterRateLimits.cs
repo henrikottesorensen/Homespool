@@ -16,8 +16,8 @@ namespace Homespool.Host.PrusaConnect;
 /// <summary>
 /// Caps how fast the printer endpoints can be hit: a window per printer where the request names one,
 /// under a ceiling on each route's total. These are the only routes an unauthenticated caller on the
-/// internet can reach, and both registration verbs cost something: <c>POST /p/register</c> creates or
-/// renews a database row per call, and <c>GET /p/register</c> is a guessing oracle for a pending
+/// internet can reach, and both registration verbs cost something: <c>POST /p/register</c> writes a
+/// database row per call, and <c>GET /p/register</c> is a guessing oracle for a pending
 /// registration code.
 /// </summary>
 /// <remarks>

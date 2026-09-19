@@ -303,6 +303,131 @@ public class WebSocketHandlerParsingTests
         await act.Should().ThrowAsync<JsonException>();
     }
 
+    /// <summary>
+    /// A brace inside a string or a comment does not end a message, however the bytes are split.
+    /// </summary>
+    /// <remarks>
+    /// The handler finds where a document ends before parsing it, so it is exactly the places a
+    /// brace is not structure that it has to get right: strings, a quote or backslash escaped inside
+    /// one, and both kinds of comment the reader is configured to skip - including a line comment
+    /// ended by a bare carriage return, and a block comment closed by <c>**/</c>. Ending early would
+    /// hand the parser half a message; ending late would swallow the next one, so the count is
+    /// asserted as well as the content.
+    /// </remarks>
+    /// <param name="chunkSize">Bytes per read.</param>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(7)]
+    [InlineData(4096)]
+    public async Task BracesInsideStringsAndCommentsDoNotEndAMessage(int chunkSize)
+    {
+        // Arrange
+        // Each comment hides a brace, and the message's own closing brace follows the \r-ended one:
+        // a scanner that missed any of these would end early or run on into the next message.
+        const string Tricky =
+            """/* {{ */ {"path":"/usb/{a}[b]\"}\\","n":1 /** } **/ ,"l":[[1],{"x":[]}],"m":{"k":"]" // ]""" + "\n" +
+            "} // }" + "\r" + "}";
+
+        // Act
+        IReadOnlyList<string> received = await RunHandlerAsync(Tricky + SlimTelemetry, chunkSize);
+
+        // Assert
+        received.Should().HaveCount(2, "a brace in a string or comment must neither end a message nor hide the next");
+
+        // The raw text keeps the comments inside the object, so reading it back has to allow them.
+        using JsonDocument first = JsonDocument.Parse(received[0],
+                                                      new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip });
+
+        first.RootElement.GetProperty("path").GetString().Should().Be("/usb/{a}[b]\"}\\");
+        first.RootElement.GetProperty("m").GetProperty("k").GetString().Should().Be("]");
+        received[1].Should().Be(SlimTelemetry);
+    }
+
+    /// <summary>
+    /// A document that is not an object, or a <c>/</c> that starts no comment, is a protocol
+    /// violation found before the document ends.
+    /// </summary>
+    /// <remarks>
+    /// Every message either reference client renders is an object. A top-level number or literal
+    /// also has no closing byte to look for, so the handler could only find its end by re-parsing
+    /// the whole buffer on every read - the cost the scan exists to remove.
+    /// </remarks>
+    /// <param name="payload">What the printer sends.</param>
+    [Theory]
+    [InlineData("[1]")]
+    [InlineData("\"PRINTING\"")]
+    [InlineData("42")]
+    [InlineData("null")]
+    [InlineData("/* a comment first */ [1]")]
+    [InlineData("""/x {"state":"IDLE"}""")]
+    [InlineData("""{"state":"IDLE" / }""")]
+    public async Task NotAnObjectOrAStraySlashThrowsForTheCallerToCloseOn(string payload)
+    {
+        // Act
+        Func<Task> act = () => RunHandlerAsync(payload, chunkSize: 1);
+
+        // Assert
+        await act.Should().ThrowAsync<JsonException>();
+    }
+
+    /// <summary>
+    /// The printer closing part-way through a message is malformed input, not an ordinary end.
+    /// </summary>
+    /// <remarks>
+    /// An unfinished document is buffered while more may arrive. Once the stream has ended nothing
+    /// will, and returning quietly would drop the half message without a word.
+    /// </remarks>
+    [Fact]
+    public async Task ClosingPartWayThroughAMessageThrows()
+    {
+        // Act
+        Func<Task> act = () => RunHandlerAsync(SlimTelemetry + """{"state":"IDL""", chunkSize: 4096);
+
+        // Assert
+        await act.Should().ThrowAsync<JsonException>();
+    }
+
+    /// <summary>
+    /// A comment after the last message is not an unfinished message: the printer closing then is an
+    /// ordinary end, and the message before it is still delivered.
+    /// </summary>
+    /// <remarks>
+    /// A line comment the close cuts off counts as finished, since nothing but the end of the stream
+    /// was left to end it.
+    /// </remarks>
+    /// <param name="trailer">What follows the last message.</param>
+    [Theory]
+    [InlineData("// tail")]
+    [InlineData("// tail\n")]
+    [InlineData("/* tail */")]
+    [InlineData(" /* a */ // b")]
+    public async Task ACommentAfterTheLastMessageEndsQuietly(string trailer)
+    {
+        // Act
+        IReadOnlyList<string> received = await RunHandlerAsync(SlimTelemetry + trailer, chunkSize: 1);
+
+        // Assert
+        received.Should().ContainSingle().Which.Should().Be(SlimTelemetry);
+    }
+
+    /// <summary>
+    /// A comment the close leaves unfinished still throws when it cannot be the end: a block comment
+    /// missing its <c>*/</c>, or a line comment inside a message that never closed.
+    /// </summary>
+    /// <param name="trailer">What follows the last complete message.</param>
+    [Theory]
+    [InlineData("/* tail")]
+    [InlineData("""{"state":"IDLE" // open""")]
+    public async Task AnUnfinishedCommentAtTheCloseThrows(string trailer)
+    {
+        // Act
+        Func<Task> act = () => RunHandlerAsync(SlimTelemetry + trailer, chunkSize: 1);
+
+        // Assert
+        await act.Should().ThrowAsync<JsonException>();
+    }
+
     private static Task<IReadOnlyList<string>> RunHandlerAsync(string payload, int chunkSize)
     {
         return RunHandlerAsync(Encoding.UTF8.GetBytes(payload), [chunkSize]);

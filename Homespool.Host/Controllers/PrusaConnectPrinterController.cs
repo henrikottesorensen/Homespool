@@ -470,7 +470,20 @@ public class PrusaConnectPrinterController : ControllerBase
 
         using (document)
         {
-            ConnectionMessage? message = _dispatcher.Classify(printerId, document.RootElement);
+            ConnectionMessage? message;
+
+            try
+            {
+                message = _dispatcher.Classify(printerId, document.RootElement);
+            }
+            catch (JsonException e)
+            {
+                // JSON that parsed but is not a message - not an object, or not the shape it claims.
+                // The same protocol violation as a body that does not parse, and refused the same way.
+                _logger.LogWarning(e, "Printer {PrinterId} posted JSON that is not a printer message.", printerId);
+
+                return TypedResults.BadRequest();
+            }
 
             if (message is InboundTransferRequestMessage)
             {

@@ -76,8 +76,10 @@ public sealed class LoginFlowTests : IAsyncLifetime
     /// <see cref="IdentityUser{TKey}.EmailConfirmed"/> directly, rather than going through
     /// <c>AccountConfirmationPolicy</c>, so the unconfirmed-account test doesn't depend on the test
     /// factory's SMTP configuration to produce an unconfirmed account.
+    /// <paramref name="withPassword"/> false is the shape <c>ExternalLogin</c> creates: an account
+    /// that proves itself to a provider and stores no hash of its own.
     /// </summary>
-    private async Task CreateUserAsync(string email, bool confirmed)
+    private async Task CreateUserAsync(string email, bool confirmed, bool withPassword = true)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
@@ -90,7 +92,10 @@ public sealed class LoginFlowTests : IAsyncLifetime
         await emailStore.SetEmailAsync(user, email, CancellationToken.None);
         user.EmailConfirmed = confirmed;
 
-        IdentityResult result = await userManager.CreateAsync(user, Password);
+        IdentityResult result = withPassword ?
+            await userManager.CreateAsync(user, Password) :
+            await userManager.CreateAsync(user);
+
         result.Succeeded.Should().BeTrue("account creation is setup for this test, not what it verifies");
     }
 
@@ -425,6 +430,39 @@ public sealed class LoginFlowTests : IAsyncLifetime
         // Assert
         afterUnconfirmed.Should().Be(1, "an account that may not sign in is refused after a decoy, not before one");
         afterLockedOut.Should().Be(1, "and so is one already locked out");
+    }
+
+    /// <summary>
+    /// <b>An account that signs in with a provider costs a verification too.</b> It stores no hash, and
+    /// Identity's comparison answers false without running one, so this is the third branch that would
+    /// otherwise be cheap among expensive ones - and the most telling of them, because a cheap answer
+    /// here names the door as well as the account.
+    /// </summary>
+    /// <remarks>
+    /// Counted rather than timed, for the reason the first of these three tests gives in full.
+    /// </remarks>
+    [Fact]
+    public async Task AnAccountThatSignsInWithAProviderVerifiesAPasswordToo()
+    {
+        // Arrange - the shape ExternalLogin creates: confirmed by the provider, no password of its own
+        await CreateUserAsync("provider@example.com", confirmed: true, withPassword: false);
+
+        CountingPasswordHasher counter = new();
+
+        using WebApplicationFactory<Controllers.PrinterAppController> counted =
+            _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(
+                                            services => services.AddSingleton<IPasswordHasher<HSUser>>(counter)));
+
+        using (IServiceScope scope = counted.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+        }
+
+        // Act - any password at all, since no password is this account's
+        int afterProviderOnly = await AttemptAsync(counted, "provider@example.com", Password);
+
+        // Assert
+        afterProviderOnly.Should().Be(1, "an account with no stored hash is refused after a decoy, not before one");
     }
 
     /// <summary>

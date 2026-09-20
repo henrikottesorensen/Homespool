@@ -36,16 +36,18 @@ namespace Homespool.Host.Authentication;
 /// what a wrong password costs, and the wording is the same for both.
 /// </para>
 /// <para>
-/// <b>Every refusal pays a verification, and one gap survives that.</b> An account that exists but may
-/// not sign in - deactivated, or already locked out - returns from the pre-sign-in check without ever
-/// reaching the password comparison, so it spends the same decoy an unknown identifier does; without
-/// it that branch answers in microseconds where every other outcome costs a PBKDF2, which is the same
-/// oracle in a different place. What a decoy cannot cover is the response itself: <c>Login</c>
-/// redirects a locked-out account to <c>Lockout</c> while re-rendering the form for everything else,
-/// which confirms the account exists - deliberately, in exchange for telling its owner why they are
-/// being turned away. The thing that would blunt the guessing that finds it, the per-address
-/// <c>SignIn</c> rate limit, is inert where no proxy is trusted. So: one message, and one hash on
-/// every path; one status code still differs, by decision.
+/// <b>Every refusal pays a verification, and one gap survives that.</b> Two branches never reach the
+/// password comparison and spend the same decoy an unknown identifier does: an account that exists but
+/// may not sign in - deactivated, or already locked out - returns from the pre-sign-in check first, and
+/// an account that signs in only with a provider has no stored hash for the comparison to run against.
+/// Without it either branch answers in microseconds where every other outcome costs a PBKDF2, which is
+/// the same oracle in a different place - and the provider-only one is the more telling of the two,
+/// since a cheap answer there names the door as well as the account. What a decoy cannot cover is the
+/// response itself: <c>Login</c> redirects a locked-out account to <c>Lockout</c> while re-rendering
+/// the form for everything else, which confirms the account exists - deliberately, in exchange for
+/// telling its owner why they are being turned away. The thing that would blunt the guessing that
+/// finds it, the per-address <c>SignIn</c> rate limit, is inert where no proxy is trusted. So: one
+/// message, and one hash on every path; one status code still differs, by decision.
 /// </para>
 /// <para>
 /// <b>On a step-up the account is the session's.</b> A <see cref="PasswordCredential"/> carries only
@@ -141,12 +143,34 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
             return SignInRefusals.Fail(refusal, "The account may not sign in.");
         }
 
-        if (!await _users.CheckPasswordAsync(user, password))
+        // An account that signs in with a provider stores no hash, and the comparison below answers
+        // false without running one - so without a decoy it is the cheap answer among expensive ones,
+        // and cheap here says more than the branches above give away: the account exists *and* the
+        // provider is the door. Spending one when there is nothing to compare against keeps the cost
+        // the same as a wrong password's; spending it on every failed comparison instead would cost a
+        // real wrong password two hashes and open the gap the other way round.
+        bool hasPassword = await _users.HasPasswordAsync(user);
+
+        if (!hasPassword)
+        {
+            PasswordVerificationDecoy.Verify(_hasher, password);
+        }
+
+        if (!hasPassword || !await _users.CheckPasswordAsync(user, password))
         {
             bool lockedOut = await _rules.RecordFailureAsync(user);
 
-            Logger.LogInformation("Password sign-in refused for user {UserId}: wrong password{LockedOut}.",
+            // The reason is a property rather than two message texts because the refusal is one: an
+            // operator asked why somebody cannot sign in is owed "this account signs in with a
+            // provider" rather than "wrong password", which is the answer that sends them looking for
+            // a password that does not exist.
+            string reason = hasPassword ?
+                "wrong password" :
+                "the account has no password and signs in with a provider";
+
+            Logger.LogInformation("Password sign-in refused for user {UserId}: {Reason}{LockedOut}.",
                                   user.Id,
+                                  reason,
                                   lockedOut ? ", now locked out" : string.Empty);
 
             return SignInRefusals.Fail(lockedOut ? SignInRefusal.LockedOut : SignInRefusal.Invalid, "Invalid login attempt.");

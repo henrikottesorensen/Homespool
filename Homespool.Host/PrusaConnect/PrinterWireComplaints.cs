@@ -19,8 +19,9 @@ namespace Homespool.Host.PrusaConnect;
 /// <para>
 /// <b>Every site that goes through this can be driven by whoever holds a printer's token</b>, and
 /// on the socket at wire rate: nothing limits how many messages a connection may carry, and an
-/// unreadable <c>INFO</c> or a message carrying <c>nan</c> does not even cost the connection. A line
-/// per occurrence is therefore a way to fill the disk. See <see cref="LogThrottle"/> for the numbers
+/// unreadable <c>INFO</c> or a message carrying <c>nan</c> does not even cost the connection. Over
+/// HTTP the rate limiter bounds it, at three a second for as long as the sender likes. A line per
+/// occurrence is therefore a way to fill the disk. See <see cref="LogThrottle"/> for the numbers
 /// that rule came from.
 /// </para>
 /// <para>
@@ -67,6 +68,18 @@ public sealed class PrinterWireComplaints
         Say(printerId, complaint, LogText.Clean(cause.Message, MaxDetailLength));
     }
 
+    /// <summary>Something was refused for a reason that is ours to word, not a parser's.</summary>
+    /// <param name="printerId">The printer it came from.</param>
+    /// <param name="complaint">What was refused.</param>
+    /// <param name="detail">The particulars, in our own words. Nothing off the wire belongs here
+    /// uncleaned; the other overload is the one that cleans.</param>
+    public void Refused(int printerId, WireComplaint complaint, string detail)
+    {
+        ArgumentNullException.ThrowIfNull(detail);
+
+        Say(printerId, complaint, detail);
+    }
+
     /// <summary>
     /// A message carried non-finite numbers that are not JSON, and was read all the same - see
     /// <see cref="NonFiniteNumberPatcher"/>. Said because what is stored will show no reading where
@@ -98,6 +111,8 @@ public sealed class PrinterWireComplaints
             WireComplaint.UnreadableMessage => "sent a message that could not be read",
             WireComplaint.UnreadableInfo => "sent an INFO event whose data could not be read",
             WireComplaint.NonFiniteNumbers => "sent non-finite numbers that are not JSON",
+            WireComplaint.BodyTooLarge => "posted a body over the size ceiling",
+            WireComplaint.InlineTransferOverHttp => "requested an inline transfer chunk over HTTP, which cannot be served",
             _ => throw new ArgumentOutOfRangeException(nameof(complaint), complaint, null),
         };
 

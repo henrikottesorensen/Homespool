@@ -1331,15 +1331,17 @@ ask_ports() {
     plan_set PORT "$http"
     plan_set HTTPS_PORT "$https"
 
-    # The redirect's port suffix is derived from HTTPS_PORT by the proxy at start, so it is only
-    # written when the two are not the same fact - the port a browser should ask for differs from
-    # the published one the moment a router forwards 443 inward or a tunnel sits in front. A value
+    # The port suffix is derived from HTTPS_PORT by the proxy at start, so it is only written when
+    # the two are not the same fact - the port a browser should ask for differs from the published
+    # one the moment a router forwards 443 inward or a tunnel sits in front. It is named in the
+    # redirect and in every link the application builds, so a wrong answer here reaches somebody
+    # reading a password-reset mail, not only somebody who typed http. A value
     # already in the file overrides that derivation (under either name - compose.yaml still honours
     # the pre-rename HTTPS_PORT_SUFFIX), so saying "no" here must refresh it rather than leave it
     # stale against a port that just changed; writing the new name is the refresh, since it wins.
     say
     if ask_yes_no "  Do browsers reach this machine through a forward or tunnel, on a different port" n; then
-        say $"  The redirect has to name the port a BROWSER should ask for - \":8443\" form, or empty for 443."
+        say $"  Redirects and emailed links have to name the port a BROWSER should ask for - \":8443\" form, or empty for 443."
         plan_set REDIRECT_PORT_SUFFIX "$(ask "  Port suffix in the redirect" "$(env_get REDIRECT_PORT_SUFFIX)")"
     elif key_present "$env_file" REDIRECT_PORT_SUFFIX || key_present "$env_file" HTTPS_PORT_SUFFIX; then
         if [ "$https" = 443 ]; then

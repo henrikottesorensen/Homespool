@@ -175,7 +175,7 @@ Configuration lives in two places:
 |---|---|
 | `USER_HOSTS` | The names people browse to, separated by semicolons. Any other `Host` is refused, and each name gets its own certificate. |
 | `PRINTER_HOST` | The address printers use to reach this machine: its own LAN name or address, never a proxy's. Required before **Add printer** will produce a bundle. |
-| `PORT` / `HTTPS_PORT` | Where HTTP and HTTPS are published for people. HTTP redirects to HTTPS. |
+| `PORT` / `HTTPS_PORT` | Where HTTP and HTTPS are published for people. HTTP redirects to HTTPS. Behind a router or tunnel that changes the port, `REDIRECT_PORT_SUFFIX` names the one browsers should use — it appears in the redirect and in emailed links. |
 | `PRINTER_PORT` | The TLS port printers connect to. Default 15443. |
 | `TRANSFER_PORT` | Plain-HTTP port for file downloads on the older printer transport. LAN only; do not expose it to the internet. |
 | `TZ` | The IANA timezone timestamps are shown in. Containers default to UTC. |
@@ -192,7 +192,9 @@ Both reach their containers as files, and compose does not recreate a container 
 Every other setting takes effect on a plain `up -d`.
 
 If you run the application outside compose, set `AllowedHosts` to the names people browse to,
-semicolon-separated. On its own, the app answers only `localhost`.
+semicolon-separated. On its own, the app answers only `localhost`. `AllowedHosts` matches names and
+never ports, so without the shipped proxy in front the port in a link the application builds is the
+one the request carried.
 
 ### Ports to open
 
@@ -213,7 +215,9 @@ printers on the older transport.
   certificate.
 - **Your own reverse proxy** in front of the people-facing side works: put it on the stack's proxy
   network and pass the browser's `Host` header through unchanged, which Traefik and Caddy do by
-  default and nginx needs `proxy_set_header Host $http_host` for. Do not put a generic proxy in
+  default and nginx needs `proxy_set_header Host $http_host` for. The name is what has to survive
+  the hop — the port in links comes from `REDIRECT_PORT_SUFFIX`, so set that to the port browsers
+  ask *your* proxy for when it is not 443. Do not put a generic proxy in
   front of the printer port. The firmware's TLS stack needs a record size and ciphersuite that
   proxies do not use by default, and the shipped nginx handles it; see
   [docs/printer-tls.md](docs/printer-tls.md) before replacing it.

@@ -698,9 +698,12 @@ services:
       # an alias - see .env.example.
       USER_HOSTS: "${USER_HOSTS:-localhost}"
 
-      # The redirect from the HTTP listener has to name the port HTTPS is actually published on -
-      # $host carries none. Derived from HTTPS_PORT by 15-redirect-port-suffix.envsh at container
-      # start: empty for 443 so the common case keeps a clean URL, ":8443"-shaped otherwise.
+      # The port a browser should ask for, named in two places that must agree: the redirect from
+      # the HTTP listener, and the Host the proxy passes to the application, which is what every
+      # emailed link is built from. Neither can read it off the request - $host carries no port, and
+      # the client's own is not a fact about this deployment. Derived from HTTPS_PORT by
+      # 15-redirect-port-suffix.envsh at container start: empty for 443 so the common case keeps a
+      # clean URL, ":8443"-shaped otherwise.
       # "auto" is the derivation sentinel - it means neither name below is in .env. Setting
       # REDIRECT_PORT_SUFFIX there overrides the derivation, explicit empty included, for the
       # deployment where a router forwards 443 inward and the browser's port is not the published
@@ -709,10 +712,10 @@ services:
       HTTPS_PORT: "${HTTPS_PORT:-443}"
       REDIRECT_PORT_SUFFIX: "${REDIRECT_PORT_SUFFIX-${HTTPS_PORT_SUFFIX-auto}}"
 
-      # Restricts envsubst to those variables. WITHOUT THIS the template's own $host, $request_uri
-      # and $homespool_upstream are all substituted with nothing, nginx starts on a configuration
-      # that parses and redirects everyone to "https://", and the cause looks nothing like the
-      # symptom. The filter is the whole safety of this arrangement.
+      # Restricts envsubst to those variables. WITHOUT THIS the templates' own $host, $request_uri,
+      # $server_port and $homespool_upstream are all substituted with nothing, nginx starts on a
+      # configuration that parses and redirects everyone to "https://", and the cause looks nothing
+      # like the symptom. The filter is the whole safety of this arrangement.
       NGINX_ENVSUBST_FILTER: "REDIRECT_PORT_SUFFIX|USER_SERVER_NAMES"
 
       # Read by 26-user-tls-servers.sh, which sends Strict-Transport-Security only on names served
@@ -727,6 +730,11 @@ services:
       # entrypoint renders it there, substituting the HTTPS port into the redirect.
       - ./nginx/homespool.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./nginx/homespool-proxy.conf:/etc/nginx/homespool-proxy.conf:ro
+
+      # Which Host each listener passes on, which is what the application builds its absolute URLs
+      # from. A template like the one above, and for the same reason: it names the port a browser
+      # should ask for, and that is REDIRECT_PORT_SUFFIX - already in the envsubst filter below.
+      - ./nginx/homespool-public-host.conf.template:/etc/nginx/templates/00-public-host.conf.template:ro
 
       # The body of the user-facing TLS listener, included once per name by the blocks
       # 26-user-tls-servers.sh generates into conf.d at start. NOT into conf.d itself: it is a

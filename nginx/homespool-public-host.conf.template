@@ -1,0 +1,51 @@
+# The Host the application is told about, decided per listener. Rendered into conf.d at start and
+# read by homespool-proxy.conf, which every server block includes.
+#
+# WHY THE APPLICATION CARES: it builds every absolute URL from this header - the login challenge,
+# ReturnUrl, and the links in outgoing mail, a password reset above all. So this value chooses where
+# an emailed token points.
+#
+# WHY A MAP RATHER THAN A HEADER LINE PER SERVER BLOCK: homespool-proxy.conf is one shared file
+# precisely so the header set cannot drift between listeners, and the right answer here still
+# differs between them. $server_port is the port nginx accepted the connection on - the internal
+# one, not the published one - so the choice is made by where the request arrived rather than by
+# anything the client sent.
+#
+# WHY A PORT AT ALL: $host is the Host header with the port stripped, so on a stack publishing HTTPS
+# anywhere but 443 a link built from it names the scheme's default and sends people to a closed
+# door. The port has to come from somewhere, and the only two candidates are the client's request
+# and this deployment's own configuration.
+#
+# THE NAME IS THE CLIENT'S, THE PORT IS THE DEPLOYMENT'S. The name is checked twice - the default
+# server refuses one this deployment does not know, and the application checks the same list again
+# through AllowedHosts. Neither check looks at a port: server_name matching drops it, and so does
+# host filtering, whose patterns cannot carry one. Taking the port from the client too would
+# therefore let whoever sends a password-reset request choose the port in the link the account's
+# owner receives, on a name that passes both checks. It comes from ${REDIRECT_PORT_SUFFIX} instead -
+# the same value the plain-HTTP redirect names, so a redirect and a link cannot disagree about which
+# port a browser should ask for.
+#
+# A TEMPLATE, rendered into conf.d by the base image's envsubst step. Only the variables named in
+# NGINX_ENVSUBST_FILTER are substituted - REDIRECT_PORT_SUFFIX is already there for the redirect -
+# which is what keeps $host, $http_host and $server_port below from being blanked.
+#
+# The 00- prefix is for whoever reads conf.d, not for nginx: a map resolves wherever it is defined,
+# whatever order the directory is included in. It sorts first because that is where a definition
+# belongs.
+map $server_port $hs_public_host {
+    # The printer, transfer and legacy printer listeners. Nothing they serve builds an absolute URL
+    # from the request: a printer learns where to reach this server from the configured printer host
+    # and port, which is what its provisioning bundle carries. Passed through untouched.
+    default  $http_host;
+
+    # Plain HTTP for people, which proxies /health and redirects everything else to TLS. It builds
+    # no links, and a port named here would be the wrong one anyway - the answer for anyone who is
+    # not a health probe is "come back over TLS".
+    8080     $host;
+
+    # TLS for people, where every emailed link is built. The suffix is empty for the standard 443 so
+    # ordinary deployments get a clean URL, ":8443"-shaped otherwise, and overridable in .env for
+    # the deployment where a router forwards 443 inward and the browser's port is not the published
+    # one.
+    8443     $host${REDIRECT_PORT_SUFFIX};
+}

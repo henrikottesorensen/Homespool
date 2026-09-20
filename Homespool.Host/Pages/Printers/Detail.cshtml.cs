@@ -435,9 +435,10 @@ public class DetailModel : PageModel
     /// <remarks>
     /// <para>
     /// Built from the live request rather than from configuration, so it is right behind a reverse
-    /// proxy and on a non-standard port with nothing to keep in step. <c>Request.Host</c> carries the
-    /// port because the proxy forwards <c>$http_host</c> rather than <c>$host</c> - which strips it,
-    /// and which cost a session once already.
+    /// proxy and on a non-standard port with nothing to keep in step. <c>Request.Host</c> carries a
+    /// port because the proxy is configured to send one: the name the request asked for, with the
+    /// port this deployment publishes rather than the port the client typed. A bare name here would
+    /// hand out an address on the scheme's default port, which on this stack is a closed door.
     /// </para>
     /// <para>
     /// The trailing slash is deliberate: the slicer appends <c>api/version</c> to whatever it is

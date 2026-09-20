@@ -57,7 +57,26 @@ ssid=$(value_of ssid)
 psk=$(value_of psk)
 country=$(value_of country)
 
+# Half a credential is a typo, not a configuration, and saying so is the whole difference between
+# "oh, I forgot the network name" and "but I typed something in". Both lines empty is the steady
+# state of every card and stays silent; one of the two is somebody who meant to connect.
+#
+# Not a failed unit: the board may be perfectly happy on ethernet, and a red entry in
+# `systemctl --failed` for the life of the card is a worse lie than none. The message repeats every
+# boot because the file does, which is the point - it is still wrong.
+#
+# The passphrase is left where it is. Blanking it would mean retyping it alongside the ssid they
+# came back to add, for no gain: this board could not have used it. The line below says so, so
+# nobody has to guess whether it survived.
 if [ -z "$ssid" ] || [ -z "$psk" ]; then
+    if [ -n "$psk" ]; then
+        echo "homespool-wifi: ssid is empty, so nothing was configured. Add the network name to" >&2
+        echo "homespool-wifi: homespool-wifi.txt and reboot - your psk is still in the file." >&2
+    elif [ -n "$ssid" ]; then
+        echo "homespool-wifi: psk is empty, so nothing was configured. Add the passphrase for" >&2
+        echo "homespool-wifi: '$ssid' to homespool-wifi.txt and reboot." >&2
+    fi
+
     exit 0
 fi
 

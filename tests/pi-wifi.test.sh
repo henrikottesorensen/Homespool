@@ -318,17 +318,31 @@ fi
 # What becomes of the passphrase when it is not applied
 # ------------------------------------------------------------------------------------------------
 
-if test_case "a psk typed without an ssid is kept, and nothing is said about it"; then
+if test_case "a psk typed without an ssid is kept, and the board says which line is missing"; then
     # Kept deliberately, the same trade the login suite makes for a failing chpasswd: a credential
     # the board could not use is the owner's to correct rather than this script's to discard, and
     # they have to open this file again anyway to supply the missing ssid. What it costs is a
-    # passphrase sitting in the clear on the boot partition until they do.
+    # passphrase sitting in the clear on the boot partition until they do - so the message says it
+    # is still there, which is the question anyone who reads it will have.
     write_conf "" "swordfish"
 
     out="$(run_script)"
+    status=$?
 
     assert_eq "swordfish" "$(conf_line psk)"
-    assert_eq "" "$out"
+    assert_contains "$out" "ssid is empty"
+    assert_contains "$out" "your psk is still in the file"
+    assert_eq 0 "$status" "a board happy on ethernet must not carry a failed unit for the card's life"
+fi
+
+if test_case "an ssid typed without a psk says so too, and names the network"; then
+    write_conf "homenet" ""
+
+    out="$(run_script)"
+
+    assert_missing "$root/var/lib/iwd" "half a credential configures nothing"
+    assert_contains "$out" "psk is empty"
+    assert_contains "$out" "'homenet'"
 fi
 
 if test_case "a psk that could not be written is kept for another go"; then

@@ -159,6 +159,56 @@ public sealed class ExternalLoginsPageTests : IAsyncLifetime
         (await LoginCountAsync()).Should().Be(1, "and the account keeps the only credential it had");
     }
 
+    /// <summary>
+    /// The link handler refuses a scheme name nobody registered as an external provider, rather than
+    /// challenging whatever the form named.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Six names, because the handler used to answer each of them differently</b> and only two of
+    /// those answers looked like a fault. A name nobody has heard of and an empty one threw, so the
+    /// endpoint filled the log with stack traces on demand. The other four <i>are</i> registered
+    /// schemes and are not external providers: the printer protocol's and the API token's answered
+    /// their own 401, the passkey scheme began an assertion ceremony, and a cookie scheme answered a
+    /// 302 to the login page — which is the one a caller could mistake for the link flow starting.
+    /// </para>
+    /// <para>
+    /// The sibling case on the sign-in page is <c>ExternalLoginProviderTests</c>; that one is anonymous
+    /// and this one is not, which is the whole difference between the two findings. Reaching here costs
+    /// a session, a recent proof and an antiforgery token, so the rig has to sign in and prove before
+    /// it can post — and that is why this lives with the page's own suite rather than beside its
+    /// sibling.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("NoSuchProvider")]
+    [InlineData("")]
+    [InlineData("PrusaConnect")]
+    [InlineData("ApiToken")]
+    [InlineData("Passkey")]
+    [InlineData("Identity.Application")]
+    public async Task LinkingRefusesASchemeThatIsNotAnExternalProvider(string provider)
+    {
+        using HttpClient client = await SignedInAsync(withPassword: true, withLogin: false);
+
+        string page = await client.GetStringAsync("/Account/Manage/ExternalLogins", TestContext.Current.CancellationToken);
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["provider"] = provider,
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(page),
+        });
+
+        using HttpResponseMessage response =
+            await client.PostAsync("/Account/Manage/ExternalLogins?handler=LinkLogin", body,
+                                   TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
+                                        "the name went straight to ChallengeResult, so a proved session could run any " +
+                                        "registered scheme's challenge from this page and fault it with a name nobody " +
+                                        "registered");
+    }
+
     private async Task<HttpResponseMessage> PostRemoveAsync(HttpClient client, string page, string? password)
     {
         Dictionary<string, string> form = new()

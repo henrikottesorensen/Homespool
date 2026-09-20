@@ -257,6 +257,96 @@ public class SettingsStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A submission that leaves the password out is refused exactly as the placeholder is: leaving it
+    /// out keeps the stored one just the same, and a request that was not built by the page can leave
+    /// out whatever it likes.
+    /// </summary>
+    [Fact]
+    public void ASecretLeftOutOfTheSubmissionCannotCarryOverEither()
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SaveMailServer(store);
+
+        string? stored = configuration["Smtp:ProtectedPassword"];
+
+        Dictionary<string, string?> form = Form(store);
+
+        form.Remove("Smtp:Password");
+        form["Smtp:Host"] = "attacker.example.net";
+
+        SettingsSaveResult result = store.Save(form);
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Should().ContainKey("Smtp:Password");
+        configuration["Smtp:Host"].Should().Be("mail.example.com", "a refused save writes nothing");
+        configuration["Smtp:ProtectedPassword"].Should().Be(stored);
+    }
+
+    /// <summary>The test button reaches the same server a save would, so it refuses the omission too.</summary>
+    [Fact]
+    public void TheCandidateRefusesASecretLeftOutOfTheSubmission()
+    {
+        (SettingsStore store, _) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form.Remove("Smtp:Password");
+        form["Smtp:Host"] = "attacker.example.net";
+
+        SettingsCandidate<SmtpOptions> candidate = store.CandidateFor<SmtpOptions>(form);
+
+        candidate.Value.Should().BeNull();
+        candidate.Errors.Should().ContainKey("Smtp:Password");
+    }
+
+    /// <summary>
+    /// With no password in force there is nothing to carry anywhere, so naming a server is an
+    /// ordinary edit - which is how mail gets configured in the first place.
+    /// </summary>
+    [Fact]
+    public void ASecretLeftOutWithNoneStoredDoesNotBlockTheSave()
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "mail.example.com",
+            ["Smtp:Port"] = "587",
+            ["Smtp:UserName"] = "postmaster",
+        });
+
+        result.Saved.Should().BeTrue();
+        configuration["Smtp:Host"].Should().Be("mail.example.com");
+    }
+
+    /// <summary>
+    /// The password may stay where it is for an edit that leaves the server alone, whether the form
+    /// carried the mask or nothing at all.
+    /// </summary>
+    [Fact]
+    public void ASecretLeftOutSurvivesAnEditThatKeepsTheServer()
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SaveMailServer(store);
+
+        string? stored = configuration["Smtp:ProtectedPassword"];
+
+        Dictionary<string, string?> form = Form(store);
+
+        form.Remove("Smtp:Password");
+        form["Smtp:FromName"] = "Workshop";
+
+        store.Save(form).Saved.Should().BeTrue();
+
+        configuration["Smtp:ProtectedPassword"].Should().Be(stored);
+        configuration["Smtp:FromName"].Should().Be("Workshop");
+    }
+
+    /// <summary>
     /// The case that must keep working, or a password could never be changed.
     /// </summary>
     [Fact]

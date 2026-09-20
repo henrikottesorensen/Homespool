@@ -263,6 +263,12 @@ public sealed class SettingsStore
     /// A placeholder is refused here whether or not a secret is stored. With nothing stored there is
     /// nothing to carry, and the answer that works is still to type one.
     /// </para>
+    /// <para>
+    /// <b>A secret left out of the submission counts as the placeholder</b>, since it has the same
+    /// effect: <see cref="Save"/> leaves the stored one where it is while writing the new server
+    /// beside it. A browser posts every field on the form, so this is the shape a request has when
+    /// it was not built by the page.
+    /// </para>
     /// </remarks>
     private List<string> SecretsThatCannotCarryOver(IReadOnlyDictionary<string, string?> submitted)
     {
@@ -270,15 +276,9 @@ public sealed class SettingsStore
 
         foreach (IGrouping<Type, EditableSetting> group in EditableSettings.All.GroupBy(setting => setting.OptionsType))
         {
-            List<string> masked =
-            [
-                .. group.Where(setting => setting.IsSecret &&
-                                          submitted.TryGetValue(setting.Path, out string? value) &&
-                                          value == SecretPlaceholder)
-                        .Select(setting => setting.Path),
-            ];
+            List<EditableSetting> secrets = [.. group.Where(setting => setting.IsSecret)];
 
-            if (masked.Count == 0)
+            if (secrets.Count == 0)
             {
                 continue;
             }
@@ -298,13 +298,36 @@ public sealed class SettingsStore
                 section,
                 binding.ToDictionary(setting => setting.Key, setting => submitted[setting.Path]));
 
-            if (binding.Any(setting => !SameDestination(group.Key, setting.Key, current, proposed)))
+            if (binding.All(setting => SameDestination(group.Key, setting.Key, current, proposed)))
             {
-                refused.AddRange(masked);
+                continue;
             }
+
+            refused.AddRange(secrets.Where(setting => CarriesOver(setting, submitted, current))
+                                    .Select(setting => setting.Path));
         }
 
         return refused;
+    }
+
+    /// <summary>
+    /// Whether this secret would keep its stored value rather than being given a new one.
+    /// </summary>
+    /// <remarks>
+    /// The placeholder says so outright. A path the submission never mentions says the same thing by
+    /// omission, but only when there is a value to keep - a section with no secret in force has
+    /// nothing to carry anywhere, and refusing there would block a save that changes a host before
+    /// mail is configured at all.
+    /// </remarks>
+    private bool CarriesOver(EditableSetting setting, IReadOnlyDictionary<string, string?> submitted, object current)
+    {
+        if (submitted.TryGetValue(setting.Path, out string? value))
+        {
+            return value == SecretPlaceholder;
+        }
+
+        return !string.IsNullOrEmpty(_configuration[setting.StoredPath]) ||
+               !string.IsNullOrEmpty(setting.OptionsType.GetProperty(setting.Key)!.GetValue(current) as string);
     }
 
     private static bool SameDestination(Type type, string key, object current, object proposed)

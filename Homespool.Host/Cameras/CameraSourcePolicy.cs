@@ -356,6 +356,15 @@ public sealed class CameraSourcePolicy
             return CameraSourceCheck.Refused("Cameras_SourceScheme", uri.Scheme);
         }
 
+        // What follows '#' is not part of the address this check resolves, but the sidecar reads it
+        // as options - and one of them, transport=, holds an address it dials instead of the host
+        // checked here, carrying the credential with it. So a fragment naming an address defeats
+        // every check below, and there is no camera that needs one.
+        if (uri.Fragment.Contains("://", StringComparison.OrdinalIgnoreCase))
+        {
+            return CameraSourceCheck.Refused("Cameras_SourceFragmentAddress");
+        }
+
         if (!_options.CurrentValue.RefuseLoopbackAndLinkLocal)
         {
             return CameraSourceCheck.Accepted;

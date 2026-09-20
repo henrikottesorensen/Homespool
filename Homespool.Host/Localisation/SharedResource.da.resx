@@ -1944,6 +1944,9 @@
   <data name="Cameras_PrinterNotOnTeam" xml:space="preserve">
     <value>Denne printer findes ikke, eller den hører ikke til kameraets team.</value>
   </data>
+  <data name="Cameras_SourceFragmentAddress" xml:space="preserve">
+    <value>Den del af adressen, der står efter #, indeholder en anden adresse, som dette kamera ikke kan bruge. Fjern den.</value>
+  </data>
   <data name="Cameras_PasswordNotCarriedOver" xml:space="preserve">
     <value>Skriv kameraets adgangskode igen, eller fjern den, hvis den nye adresse ikke kræver en. Adressen eller brugernavnet er ændret, og en gemt adgangskode kan kun bruges med det kamera og brugernavn, den blev gemt sammen med.</value>
   </data>

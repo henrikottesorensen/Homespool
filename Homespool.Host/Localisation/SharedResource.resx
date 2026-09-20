@@ -2013,6 +2013,9 @@
   <data name="Cameras_PrinterNotOnTeam" xml:space="preserve">
     <value>That printer does not exist, or is not on the camera&apos;s team.</value>
   </data>
+  <data name="Cameras_SourceFragmentAddress" xml:space="preserve">
+    <value>The part of the address after # names another address, which this camera cannot use. Remove it.</value>
+  </data>
   <data name="Cameras_PasswordNotCarriedOver" xml:space="preserve">
     <value>Type the camera's password again, or remove it if the new address needs none. The address or user name has changed, and a saved password can only be used with the camera and user name it was saved with.</value>
     <comment>"Address" is the camera's source as typed into the form.</comment>

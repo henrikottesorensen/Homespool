@@ -206,6 +206,41 @@ public class CameraSourcePolicyTests
     }
 
     /// <summary>
+    /// A fragment naming another address is refused, whatever the host in front of it is.
+    /// </summary>
+    /// <remarks>
+    /// The sidecar reads what follows <c>#</c> as options, and <c>transport=</c> is an address it
+    /// dials instead of the host this check resolved - with the source's credential. So a fragment
+    /// carrying an address makes every check here answer a question about the wrong host.
+    /// </remarks>
+    [Theory]
+    [InlineData("rtsp://admin:secret@camera.example/live#transport=ws://attacker.example/x")]
+    [InlineData("rtsp://camera.example/live#transport=WSS://attacker.example/x")]
+    [InlineData("http://camera.example/snapshot.jpg#raw=http://127.0.0.1:1984/api")]
+    public async Task AFragmentNamingAnAddressIsRefused(string source)
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse("the address the sidecar would dial is not the one checked here");
+        check.Error!.Key.Should().Be("Cameras_SourceFragmentAddress");
+    }
+
+    /// <summary>A fragment that names no address is left alone - it is the sidecar's own vocabulary.</summary>
+    [Theory]
+    [InlineData("rtsp://camera.example/live#backchannel=0")]
+    [InlineData("rtsp://camera.example/live#media=video")]
+    public async Task AFragmentThatNamesNoAddressIsAccepted(string source)
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeTrue();
+    }
+
+    /// <summary>
     /// Homespool's container identity - the name it answers to inside the Compose network.
     /// </summary>
     [Fact]

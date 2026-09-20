@@ -47,7 +47,8 @@ else
                             @if (Homespool.Host.Pages.Cameras.IndexModel.IsAttached(camera))
                             {
                                 @* Attached cameras are the server's, not a team's - worth saying so
-                                   where somebody is deciding whether they may remove one. *@
+                                   where somebody is deciding whether they may remove one, and the
+                                   only explanation of an empty action cell for everybody else. *@
                                 <span class="badge border border-secondary text-body-secondary ms-1">@Localiser["Cameras_Attached"]</span>
                             }
                         </td>
@@ -64,12 +65,19 @@ else
                             }
                         </td>
                         <td class="text-end">
-                            <a class="btn btn-sm btn-outline-secondary"
-                               asp-page="/Cameras/Index" asp-route-edit="@camera.Uuid">@Localiser["Cameras_Edit"]</a>
-                            <form method="post" asp-page-handler="Delete" class="d-inline">
-                                <input type="hidden" name="uuid" value="@camera.Uuid" />
-                                <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Cameras_Remove"]</button>
-                            </form>
+                            @* An attached camera is the server's, so only an administrator is offered
+                               either control - and both, because editing its source away releases the
+                               device just as removing it does. The badge beside the name is what says
+                               why the cell is empty. *@
+                            @if (Model.MayChange(camera))
+                            {
+                                <a class="btn btn-sm btn-outline-secondary"
+                                   asp-page="/Cameras/Index" asp-route-edit="@camera.Uuid">@Localiser["Cameras_Edit"]</a>
+                                <form method="post" asp-page-handler="Delete" class="d-inline">
+                                    <input type="hidden" name="uuid" value="@camera.Uuid" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Cameras_Remove"]</button>
+                                </form>
+                            }
                         </td>
                     </tr>
                 }

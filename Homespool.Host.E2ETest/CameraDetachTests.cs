@@ -16,7 +16,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// Who may edit an attached camera onto the network, through the real Cameras page.
+/// The attached-camera rule on the real Cameras page: who may edit one onto the network, and who is
+/// offered the controls to try.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -114,6 +115,79 @@ public sealed class CameraDetachTests : IAsyncLifetime
             (await StoredSourceAsync(uuid)).Should().Be(NetworkSource,
                                                         "the administrator who could claim the device is who may release it");
         }
+    }
+
+    /// <summary>
+    /// The list offers a non-administrator neither control for an attached camera, while still
+    /// showing them the camera.
+    /// </summary>
+    /// <remarks>
+    /// The camera's uuid reaches the markup in exactly two places, the edit link and the removal
+    /// form's hidden field, so its absence is the whole of "no controls offered" - and the name being
+    /// present is what proves the row rendered at all.
+    /// </remarks>
+    [Fact]
+    public async Task ANonAdministratorIsOfferedNoControlsForAnAttachedCamera()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-controls-member@example.com");
+
+        using (client)
+        {
+            Guid uuid = await SeedAttachedCameraAsync(await TeamIdAsync(user));
+
+            string page = await GetPageAsync(client, "/Cameras");
+
+            page.Should().Contain("Seeded camera", "the camera is on this member's team and they may see it");
+            page.Should().NotContain(uuid.ToString(), "neither control belongs to somebody who could not have claimed the device");
+        }
+    }
+
+    /// <summary>
+    /// The list offers an administrator both controls for the same camera.
+    /// </summary>
+    [Fact]
+    public async Task AnAdministratorIsOfferedTheControlsForAnAttachedCamera()
+    {
+        (HSUser admin, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-controls-admin@example.com", AdminBootstrap.AdminRole);
+
+        using (client)
+        {
+            Guid uuid = await SeedAttachedCameraAsync(await TeamIdAsync(admin));
+
+            string page = await GetPageAsync(client, "/Cameras");
+
+            page.Should().Contain(uuid.ToString(), "the administrator who may claim the device is offered both controls");
+        }
+    }
+
+    /// <summary>
+    /// A hand-typed edit link renders no form for a non-administrator, the other way to the box the
+    /// hidden button leads to.
+    /// </summary>
+    [Fact]
+    public async Task TheEditFormIsNotOfferedForAnAttachedCameraToANonAdministrator()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-edit-url@example.com");
+
+        using (client)
+        {
+            Guid uuid = await SeedAttachedCameraAsync(await TeamIdAsync(user));
+
+            string page = await GetPageAsync(client, $"/Cameras?edit={uuid}");
+
+            page.Should().Contain("Seeded camera", "the list is still theirs to read");
+            page.Should().NotContain(uuid.ToString(), "a uuid in the query string must not conjure the form the button withholds");
+        }
+    }
+
+    private static async Task<string> GetPageAsync(HttpClient client, string url)
+    {
+        using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
+
+        return await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<int> TeamIdAsync(HSUser user)

@@ -146,6 +146,19 @@ public class IndexModel : PageModel
         return CameraSourcePolicy.IsLocalDevice(camera.Source);
     }
 
+    /// <summary>Whether to offer this account the controls that change or remove this camera.</summary>
+    /// <remarks>
+    /// <b>What the page offers, not what the page enforces.</b> <see cref="CameraService"/> refuses
+    /// both acts on an attached camera to a non-administrator whatever the markup does; this spares
+    /// somebody a control whose only outcome would be a refusal. Editing and removing are one
+    /// question because they are one act - changing an attached camera's source releases its device
+    /// exactly as removing it does.
+    /// </remarks>
+    public bool MayChange(Camera camera)
+    {
+        return !IsAttached(camera) || IsAdministrator;
+    }
+
     /// <summary>What to call a camera — see <see cref="CameraDisplayNames"/>.</summary>
     public string DisplayName(Camera camera)
     {
@@ -167,6 +180,14 @@ public class IndexModel : PageModel
             Editing = await _access
                             .FindAsync(uuid, CallerResolver.For(userId.Value, User), Capability.ManageCamera, cancellationToken)
                             .ConfigureAwait(false);
+
+            // A hand-typed uuid is the other way to the edit form, so the rule that hides the button
+            // is applied to the form as well - otherwise the only thing on offer is a box whose save
+            // can only be refused.
+            if (Editing is not null && !MayChange(Editing))
+            {
+                Editing = null;
+            }
 
             // The camera being edited holds its device, so it is not in AvailableDevices - that list
             // is deliberately the unclaimed ones. Its sizes are asked for separately.

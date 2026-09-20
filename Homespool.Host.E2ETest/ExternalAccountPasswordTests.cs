@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -58,6 +59,12 @@ public sealed class ExternalAccountPasswordTests : IAsyncLifetime
     /// </remarks>
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
     private const string Address = "provider-user@example.com";
+
+    /// <summary>How long to wait for a send that should happen. Only paid when something is wrong.</summary>
+    private static readonly TimeSpan SendDeadline = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long a send that should not happen is given to happen anyway. Always paid.</summary>
+    private static readonly TimeSpan QuietWindow = TimeSpan.FromSeconds(2);
 
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("extpwd");
     private readonly CapturingSink _logs = new();
@@ -157,8 +164,11 @@ public sealed class ExternalAccountPasswordTests : IAsyncLifetime
         // the response alone passes just as well against no guard at all. What separates the two is
         // whether a reset link went out, which only the send attempt records - SMTP is unconfigured
         // here, so LoggingEmailSender logs every attempt with the address it would have used.
-        _logs.HasEventWith(("Email", Address)).Should()
-             .BeFalse("an external account must not be sent a reset link it could use to acquire a password");
+        //
+        // Waited out rather than read once: the page queues its mail and answers, so an attempt that
+        // has not been logged by the time the redirect arrives has not necessarily been refused.
+        (await NoSendIsAttemptedForAsync(Address)).Should()
+            .BeTrue("an external account must not be sent a reset link it could use to acquire a password");
 
         external.Dispose();
         unknown.Dispose();
@@ -183,8 +193,41 @@ public sealed class ExternalAccountPasswordTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
         response.Headers.Location!.OriginalString.Should().Contain("ForgotPasswordConfirmation");
 
-        _logs.HasEventWith(("Email", "ordinary@example.com")).Should()
-             .BeTrue("the guard is about accounts with no password, not about reset in general");
+        (await ASendIsAttemptedForAsync("ordinary@example.com", SendDeadline)).Should()
+            .BeTrue("the guard is about accounts with no password, not about reset in general");
+    }
+
+    /// <summary>
+    /// Waits up to <paramref name="window"/> for the send attempt against <paramref name="email"/> to
+    /// be logged, which happens on the deferred sender's loop a moment after the page has answered.
+    /// </summary>
+    private async Task<bool> ASendIsAttemptedForAsync(string email, TimeSpan window)
+    {
+        DateTime deadline = DateTime.UtcNow + window;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (_logs.HasEventWith(("Email", email)))
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(20), TestContext.Current.CancellationToken);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Waits out <see cref="QuietWindow"/> and reports that nothing was attempted in it - the shape
+    /// the Mailpit client uses for the same problem. With the send off the request, "not logged yet"
+    /// and "refused" look alike at the moment the response arrives, and only one of them is what is
+    /// being asserted; this is a shorter window than the positive wait because it is always paid in
+    /// full, and a queue that has not drained a single message in it is not the case being guarded.
+    /// </summary>
+    private async Task<bool> NoSendIsAttemptedForAsync(string email)
+    {
+        return !await ASendIsAttemptedForAsync(email, QuietWindow);
     }
 
     private async Task<HttpResponseMessage> PostForgotPasswordAsync(HttpClient client, string email)

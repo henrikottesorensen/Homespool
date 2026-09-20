@@ -32,14 +32,14 @@ namespace Homespool.Host.Pages.Account;
 public class ResendEmailConfirmationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly IEmailSender _emailSender;
+    private readonly IDeferredEmailSender _emailSender;
     private readonly AttemptLimiter _attemptLimiter;
     private readonly TimeProvider _timeProvider;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ResendEmailConfirmationModel(
         UserManager<HSUser> userManager,
-        IEmailSender emailSender,
+        IDeferredEmailSender emailSender,
         AttemptLimiter attemptLimiter,
         TimeProvider timeProvider,
         IStringLocalizer<SharedResource> localiser)
@@ -129,9 +129,10 @@ public class ResendEmailConfirmationModel : PageModel
             _localiser["Email_ConfirmSubject"].Value,
             _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)].Value));
 
-        // Result deliberately discarded, for the same reason as ForgotPassword: this is only reached when the
-        // account exists, so reporting a send failure would confirm its existence.
-        _ = await _emailSender.SendEmailAsync(Input.Email, subject, body);
+        // Queued rather than sent here, for the same two reasons as ForgotPassword: this is only
+        // reached when the account exists and is unconfirmed, so reporting a send failure would
+        // confirm as much - and so would waiting for the send, which took long enough to time.
+        _emailSender.Enqueue(Input.Email, subject, body);
 
         ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
         return Page();

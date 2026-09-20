@@ -377,6 +377,16 @@ public static class Program
 
             builder.Services.AddHostedService<Mail.SmtpConnectivityProbe>();
 
+            // The password-reset and confirmation-resend forms send through this rather than through
+            // IEmailSender directly: both answer the same way whether or not the typed address
+            // belongs to an account, and awaiting an SMTP conversation on the one path that has mail
+            // to send made that answer measurably slower for a registered address. Registered ahead
+            // of TelemetryWriter deliberately - hosted services stop in reverse, so the telemetry
+            // flush takes the shutdown budget it is sized for before this one's drain begins.
+            builder.Services.AddSingleton<Mail.DeferredEmailSender>();
+            builder.Services.AddSingleton<Mail.IDeferredEmailSender>(sp => sp.GetRequiredService<Mail.DeferredEmailSender>());
+            builder.Services.AddHostedService(sp => sp.GetRequiredService<Mail.DeferredEmailSender>());
+
             // Resolves the "confirm accounts at creation" rule once from SmtpOptions, so account-creation
             // pages inject this instead of SmtpOptions. Singleton: SMTP config is fixed at startup.
             builder.Services.AddSingleton<Mail.AccountConfirmationPolicy>();

@@ -24,7 +24,8 @@ public interface IEmailSender
     /// <remarks>
     /// Callers must decide what to do with a <see cref="EmailSendResult.Failed"/> result. Most should surface it -
     /// silently telling someone to check an inbox that will never receive anything is a bad failure. The exceptions
-    /// are password reset and confirmation resend, where reporting it would reveal whether an account exists.
+    /// are password reset and confirmation resend, where reporting it would reveal whether an account exists; those
+    /// two send through <see cref="IDeferredEmailSender"/>, which gives up the wait as well as the result.
     /// </remarks>
     Task<EmailSendResult> SendEmailAsync(string email, string subject, string htmlMessage);
 }

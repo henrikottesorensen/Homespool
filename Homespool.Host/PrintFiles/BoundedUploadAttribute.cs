@@ -22,22 +22,24 @@ namespace Homespool.Host.PrintFiles;
 /// ceiling itself, used as written with nothing added: an endpoint naming its own number is
 /// describing the whole request rather than a file inside it, and quietly granting it 64 KB more
 /// than it asked for is the kind of surprise this attribute exists to remove. Prefer the first
-/// wherever the payload is a print file, so one setting still moves every endpoint carrying it
-/// together - at the next restart, per the paragraph below.
+/// wherever the payload is a print file, so one setting still moves every endpoint carrying it -
+/// though not all at the same moment, per the paragraph below.
 /// </para>
 /// <para>
-/// <b>That cap is read once, when the endpoint's filter is built, so a saved change is obeyed at the
-/// next restart.</b> <see cref="IsReusable"/> is <see langword="true"/>, so MVC calls
-/// <see cref="CreateInstance"/> at the first request an endpoint serves and caches the filter on that
-/// endpoint's action descriptor; the filter holds the <see cref="PrintFileStorageOptions"/> instance
-/// the monitor had at that moment, and a configuration reload replaces that instance rather than
-/// changing it. <b>The other readers of the setting take <c>IOptionsSnapshot</c> and do follow a
-/// save</b>, so between a save and a restart a page refuses by the new number while the body is still
-/// allowed to arrive under the old one - which is why <c>EditableSettings</c> grades
-/// <see cref="PrintFileStorageOptions.MaxUploadBytes"/> <c>Restart</c> rather than have the Settings
-/// page promise a bound that is only half in force. <b>A snapshot cannot be taken here instead</b>:
-/// <see cref="CreateInstance"/> is handed the first request's <c>RequestServices</c>, so anything
-/// scoped resolved in it would outlive the scope it came from.
+/// <b>That cap is fixed at an endpoint's first request: not per upload, and not at startup either.</b>
+/// <see cref="IsReusable"/> is <see langword="true"/>, so MVC calls <see cref="CreateInstance"/> at
+/// the first request an endpoint serves and caches the filter on that endpoint's action descriptor;
+/// the filter holds the <see cref="PrintFileStorageOptions"/> instance the monitor had at that
+/// moment, and a configuration reload replaces that instance rather than changing it. <b>So a saved
+/// cap arrives unevenly.</b> The save reloads configuration, so the other readers - all
+/// <c>IOptionsSnapshot</c> - use the new number on their next upload, and an endpoint that has not
+/// served a request yet builds its filter from it; an endpoint that has keeps the ceiling it started
+/// with until the process restarts. In between, a page can refuse by the new number while a body is
+/// still allowed to arrive under the old one, and two endpoints can enforce different caps - which is
+/// why <c>EditableSettings</c> grades <see cref="PrintFileStorageOptions.MaxUploadBytes"/>
+/// <c>Restart</c>, covering the worst of that rather than the best. <b>A snapshot cannot be taken
+/// here instead</b>: <see cref="CreateInstance"/> is handed the first request's
+/// <c>RequestServices</c>, so anything scoped resolved in it would outlive the scope it came from.
 /// </para>
 /// <para>
 /// <b>Only a signed-in caller is granted either ceiling; a stranger gets none.</b> A signed-out request

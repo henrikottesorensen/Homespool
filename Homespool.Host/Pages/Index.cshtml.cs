@@ -192,9 +192,10 @@ public class IndexModel : PageModel
     /// <para>
     /// <b>The upload is bounded by <see cref="BoundedUploadAttribute"/> on this class</b>, at the
     /// configured cap plus form overhead and before a byte is read - the same bound the Files page
-    /// carries, and what makes the cap this page advertises the cap it enforces. <b>Between a save and
-    /// a restart it does not</b>: the dialog reads the setting as it is now and the bound is the one
-    /// this page started with, which is what <c>MaxUploadBytes</c> being graded <c>Restart</c> says.
+    /// carries, and what makes the cap this page advertises the cap it enforces. <b>From a save until
+    /// a restart it does not</b>: a save reloads configuration, so the dialog reads the new setting
+    /// at once, while the bound stays the one this page was built with - which is what
+    /// <c>MaxUploadBytes</c> being graded <c>Restart</c> says.
     /// <b>Because the
     /// parameter is a list, both halves of that bound are load-bearing here</b>: the multipart limit
     /// applies to each file, and the server's ceiling to the sum of them, so several files spend one

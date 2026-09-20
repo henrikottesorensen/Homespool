@@ -271,11 +271,20 @@ echo "    partition - before first boot, or at any point afterwards, for as long
 echo "    still has neither."
 
 # --privileged: mmdebstrap mounts pseudo-filesystems in private namespaces and genimage wants loop
-# devices. -v on the repo rather than a copy, so a failed build can be re-run against an edit without
+# devices. A bind rather than a copy, so a failed build can be re-run against an edit without
 # rebuilding the payload.
+#
+# pi/ rather than the whole checkout, because that is all this reads: the payload, the asset
+# directory and -S below are the only paths it is given, and all three are under here. What that
+# keeps out of reach is the rest of the tree, .git included - a hook planted there would run on this
+# machine, as whoever next commits.
+#
+# :ro is an accident guard and nothing more. A privileged container remounts a bind read-write in
+# one command, silently, and the write lands on the host - measured, not assumed. What holds is the
+# path that is never mounted, which is why the line above matters and this word does not.
 run_imagegen() {
     docker run --rm --privileged \
-        -v "$repo_root:/repo" \
+        -v "$pi_dir:/repo/pi:ro" \
         -v homespool-ig-work:/opt/rpi-image-gen/work \
         homespool-imagegen \
         ./rpi-image-gen build "$1" -S /repo/pi -c homespool.yaml -- "${overrides[@]}"

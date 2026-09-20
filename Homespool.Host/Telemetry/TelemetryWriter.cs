@@ -1055,7 +1055,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // MMU block never reach here as values. See PrinterIdentityUpdate.
             bool hasFirmware = info.Firmware is not null;
             bool hasModel = info.Model is not null;
-            bool hasNozzle = info.NozzleDiameter is not null;
+
+            // Not finite is not reported, like the zero the edge already drops: the stored nozzle stays.
+            float? nozzleDiameter = FiniteFloat.OrNull(info.NozzleDiameter);
+            bool hasNozzle = nozzleDiameter is not null;
             bool hasMmuBlock = info.HasMmu is not null;
 
             bool fillsSerial = info.SerialNumber is not null &&
@@ -1091,7 +1094,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // not reported one sends no value, and a literal 0.0 mm nozzle does not exist.
             if (hasNozzle)
             {
-                printer.NozzleDiameter = info.NozzleDiameter;
+                printer.NozzleDiameter = nozzleDiameter;
                 context.Entry(printer).Property(p => p.NozzleDiameter).IsModified = true;
             }
 
@@ -1171,7 +1174,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 // Refreshed wholesale, because every field here describes the hardware as it stands
                 // today and the printer has just told us what that is. A nozzle swap is exactly the
                 // event this table exists to hear about.
-                row.NozzleDiameter = reported.NozzleDiameter;
+                row.NozzleDiameter = FiniteFloat.OrNull(reported.NozzleDiameter);
                 row.Hardened = reported.Hardened;
                 row.HighFlow = reported.HighFlow;
                 row.Material = reported.Material;

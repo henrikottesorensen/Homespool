@@ -481,6 +481,89 @@ public class PrinterLiveStateMergerTests
     /// here (the job-block clear, the atomic blocks, the coalesce) still bites end to end - a
     /// mutation in either half fails these tests exactly as it did when both halves were one class.
     /// </summary>
+    /// <summary>
+    /// A float that is infinite or NaN is stored as no reading - not kept, and not left showing the
+    /// last good number, because the printer did speak for the field.
+    /// </summary>
+    /// <remarks>
+    /// Nothing has to be malformed for one to arrive: <c>"temp_nozzle":1e39</c> is valid JSON, and a
+    /// number too large for a float parses to infinity. SQLite refuses NaN outright, which would
+    /// fail a write shared with other printers' samples, and keeps infinity, which then fails every
+    /// response that serializes the row.
+    /// </remarks>
+    [Theory]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
+    [InlineData(float.NaN)]
+    public void AFloatThatIsNotFiniteIsStoredAsNoReading(float notFinite)
+    {
+        // Arrange
+        PrinterLiveState state = NewState();
+
+        Merge(state,
+              new TelemetryDTO { Status = "PRINTING", NozzleTemperature = 215.2f, BedTemperature = 60.0f, ZAxis = 1.2f },
+              DateTimeOffset.UtcNow);
+
+        // Act
+        Merge(state,
+              new TelemetryDTO { Status = "PRINTING", NozzleTemperature = notFinite, ZAxis = notFinite },
+              DateTimeOffset.UtcNow);
+
+        // Assert
+        state.NozzleTemperature.Should().BeNull();
+        state.ZAxis.Should().BeNull();
+        state.BedTemperature.Should().Be(60.0f, "a field the message did not speak for keeps its last-known value");
+
+        TelemetrySample sample = PrinterLiveStateMerger.ToSample(state, DateTimeOffset.UtcNow);
+
+        sample.NozzleTemperature.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Every float an update can carry goes through the same rule, the per-slot ones included. The
+    /// update is filled by reflection, so a float field added to it later and merged without the rule
+    /// fails here rather than in production.
+    /// </summary>
+    [Fact]
+    public void NoFloatAnUpdateCarriesCanReachTheStateAsInfinity()
+    {
+        // Arrange
+        PrinterLiveState state = NewState();
+
+        TelemetryUpdate update = new()
+        {
+            Status = PrinterStatus.Printing,
+            Slots = [new SlotUpdate(1, "PLA", float.PositiveInfinity, float.NaN, float.NegativeInfinity)],
+        };
+
+        List<System.Reflection.PropertyInfo> floatFields = typeof(TelemetryUpdate)
+                                                           .GetProperties()
+                                                           .Where(property => property.PropertyType == typeof(Field<float?>))
+                                                           .ToList();
+
+        foreach (System.Reflection.PropertyInfo field in floatFields)
+        {
+            field.SetValue(update, Field<float?>.Of(float.PositiveInfinity));
+        }
+
+        // Act
+        PrinterLiveStateMerger.Apply(state, update, DateTimeOffset.UtcNow);
+
+        // Assert
+        floatFields.Should().HaveCount(FloatsOf(state).Count, "every float on the state has a field that feeds it");
+
+        FloatsOf(state).Should().AllSatisfy(value => value.Should().BeNull());
+        FloatsOf(state.Slots.Single()).Should().NotBeEmpty().And.AllSatisfy(value => value.Should().BeNull());
+    }
+
+    private static List<float?> FloatsOf(object entity)
+    {
+        return entity.GetType().GetProperties()
+                     .Where(property => property.PropertyType == typeof(float?))
+                     .Select(property => (float?)property.GetValue(entity))
+                     .ToList();
+    }
+
     private static void Merge(PrinterLiveState state, TelemetryDTO telemetry, DateTimeOffset receivedAt)
     {
         PrinterLiveStateMerger.Apply(state, PrusaTelemetryMapping.ToUpdate(telemetry), receivedAt);

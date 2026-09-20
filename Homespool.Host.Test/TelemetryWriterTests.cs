@@ -983,6 +983,55 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// A nozzle diameter too large for a float is valid JSON that parses to infinity. It is treated
+    /// as not reported: the stored nozzle stays, and the rest of the same <c>INFO</c> is still applied.
+    /// </summary>
+    /// <remarks>
+    /// Stored, it would stay: SQLite keeps infinity, and every response that serializes the printer
+    /// would then fail on it.
+    /// </remarks>
+    [Fact]
+    public async Task ANozzleDiameterThatOverflowsIsTreatedAsNotReported()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        using JsonDocument brass = JsonDocument.Parse("""{"nozzle_diameter":0.4}""");
+        using JsonDocument overflowing = JsonDocument.Parse("""{"nozzle_diameter":1e39,"firmware":"9.9.9"}""");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = brass.RootElement.Clone(),
+        });
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.NozzleDiameter != null, TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(5));
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO
+        {
+            EventType = PrinterEventType.Info, Status = "IDLE", Data = overflowing.RootElement.Clone(),
+        });
+
+        // Assert - the firmware is what shows the second INFO was applied at all
+        bool applied = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            return await context.Printers.AnyAsync(p => p.Firmware == "9.9.9", TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(5));
+
+        applied.Should().BeTrue();
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.Printers.SingleAsync(TestContext.Current.CancellationToken)).NozzleDiameter.Should()
+                                                                                  .BeApproximately(0.4f, 0.001f);
+    }
+
+    /// <summary>
     /// A nozzle diameter survives the round trip through SQLite as the value the printer sent, and
     /// serialises as <c>0.4</c> rather than <c>0.40000000596046448</c>.
     /// </summary>

@@ -22,6 +22,12 @@ namespace Homespool.Host.Telemetry;
 /// the protocol edge that heard it (<c>PrusaTelemetryMapping</c> for Prusa Connect), because the
 /// answer differs per protocol and even per model.
 /// </para>
+/// <para>
+/// <b>One judgement is made here all the same, because it is the same for every protocol</b>: a
+/// float that is infinite or NaN is assigned as null - see <see cref="FiniteFloat"/>. Null rather
+/// than keeping the last-known value, because the printer did speak for the field, and a stale
+/// number left standing would read as what it said.
+/// </para>
 /// </remarks>
 public static class PrinterLiveStateMerger
 {
@@ -74,27 +80,27 @@ public static class PrinterLiveStateMerger
 
         if (update.FilamentUsed.IsPresent)
         {
-            state.FilamentUsed = update.FilamentUsed.Value;
+            state.FilamentUsed = FiniteFloat.OrNull(update.FilamentUsed.Value);
         }
 
         if (update.NozzleTemperature.IsPresent)
         {
-            state.NozzleTemperature = update.NozzleTemperature.Value;
+            state.NozzleTemperature = FiniteFloat.OrNull(update.NozzleTemperature.Value);
         }
 
         if (update.BedTemperature.IsPresent)
         {
-            state.BedTemperature = update.BedTemperature.Value;
+            state.BedTemperature = FiniteFloat.OrNull(update.BedTemperature.Value);
         }
 
         if (update.TargetNozzleTemperature.IsPresent)
         {
-            state.TargetNozzleTemperature = update.TargetNozzleTemperature.Value;
+            state.TargetNozzleTemperature = FiniteFloat.OrNull(update.TargetNozzleTemperature.Value);
         }
 
         if (update.TargetBedTemperature.IsPresent)
         {
-            state.TargetBedTemperature = update.TargetBedTemperature.Value;
+            state.TargetBedTemperature = FiniteFloat.OrNull(update.TargetBedTemperature.Value);
         }
 
         if (update.Speed.IsPresent)
@@ -114,32 +120,32 @@ public static class PrinterLiveStateMerger
 
         if (update.XAxis.IsPresent)
         {
-            state.XAxis = update.XAxis.Value;
+            state.XAxis = FiniteFloat.OrNull(update.XAxis.Value);
         }
 
         if (update.YAxis.IsPresent)
         {
-            state.YAxis = update.YAxis.Value;
+            state.YAxis = FiniteFloat.OrNull(update.YAxis.Value);
         }
 
         if (update.ZAxis.IsPresent)
         {
-            state.ZAxis = update.ZAxis.Value;
+            state.ZAxis = FiniteFloat.OrNull(update.ZAxis.Value);
         }
 
         if (update.HeatbreakTemperature.IsPresent)
         {
-            state.HeatbreakTemperature = update.HeatbreakTemperature.Value;
+            state.HeatbreakTemperature = FiniteFloat.OrNull(update.HeatbreakTemperature.Value);
         }
 
         if (update.PsuTemperature.IsPresent)
         {
-            state.PsuTemperature = update.PsuTemperature.Value;
+            state.PsuTemperature = FiniteFloat.OrNull(update.PsuTemperature.Value);
         }
 
         if (update.AmbientTemperature.IsPresent)
         {
-            state.AmbientTemperature = update.AmbientTemperature.Value;
+            state.AmbientTemperature = FiniteFloat.OrNull(update.AmbientTemperature.Value);
         }
 
         if (update.ExtruderFilamentSensorStatus.IsPresent)
@@ -154,7 +160,7 @@ public static class PrinterLiveStateMerger
 
         if (update.ChamberTemperature.IsPresent)
         {
-            state.ChamberTemperature = update.ChamberTemperature.Value;
+            state.ChamberTemperature = FiniteFloat.OrNull(update.ChamberTemperature.Value);
         }
 
         if (update.ChamberTargetTemperature.IsPresent)
@@ -223,9 +229,9 @@ public static class PrinterLiveStateMerger
             }
 
             existing.Material = slot.Material;
-            existing.Temperature = slot.Temperature;
-            existing.HotendFanRpm = slot.HotendFanRpm;
-            existing.PrintFanRpm = slot.PrintFanRpm;
+            existing.Temperature = FiniteFloat.OrNull(slot.Temperature);
+            existing.HotendFanRpm = FiniteFloat.OrNull(slot.HotendFanRpm);
+            existing.PrintFanRpm = FiniteFloat.OrNull(slot.PrintFanRpm);
         }
     }
 

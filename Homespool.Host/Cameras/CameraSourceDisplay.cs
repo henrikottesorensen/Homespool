@@ -27,12 +27,19 @@ namespace Homespool.Host.Cameras;
 /// that must keep working.
 /// </para>
 /// <para>
-/// <b>The stored password only goes back where it came from.</b> It is restored when the scheme, the
-/// user name and the host and port are the ones it was stored with; the path and query may change
-/// freely, since the credential still reaches the same server. Otherwise whoever can edit a camera
-/// could name a server of their own and have the sidecar hand it a password they were never shown -
-/// and that password usually opens the camera's own administration, which no permission here covers.
-/// A mask that was not restored is left in place, and the caller refuses it rather than storing it.
+/// <b>The stored password only goes back into the source it was stored in.</b> Everything except the
+/// password has to match, byte for byte. Otherwise whoever can edit a camera could name a server of
+/// their own and have the sidecar hand it a password they were never shown - and that password
+/// usually opens the camera's own administration, which no permission here covers. A mask that was
+/// not restored is left in place, and the caller refuses it rather than storing it.
+/// </para>
+/// <para>
+/// <b>Byte for byte rather than "the same destination".</b> Comparing only the scheme, user, host and
+/// port left the rest of the source free, and the rest of the source decides where the sidecar
+/// dials: go2rtc reads what follows <c>#</c> as options, and <c>transport=</c> holds an address it
+/// connects to instead of the host in front of it, credential and all. Every relaxation of this
+/// comparison is a bet on which parts of a source the sidecar treats as an address, and that bet is
+/// only visible in somebody else's source tree.
 /// </para>
 /// <para>
 /// <b>String surgery rather than <see cref="Uri"/>.</b> Parsing and re-serialising normalises -
@@ -94,8 +101,8 @@ public static class CameraSourceDisplay
     /// <param name="stored">The source currently held for this camera.</param>
     /// <returns>
     /// <paramref name="submitted"/> unchanged unless it carries the placeholder,
-    /// <paramref name="stored"/> has a password to put in its place, and the scheme, user name, host
-    /// and port of the two agree. An unchanged result can still carry the placeholder - see
+    /// <paramref name="stored"/> has a password to put in its place, and the two are otherwise
+    /// identical. An unchanged result can still carry the placeholder - see
     /// <see cref="CarriesHiddenPassword"/>.
     /// </returns>
     public static string RestoreHiddenPassword(string submitted, string stored)
@@ -133,14 +140,20 @@ public static class CameraSourceDisplay
             return submitted;
         }
 
-        if (!SameDestination(submitted, start, separator, stored, storedStart, storedSeparator))
+        int storedPasswordStart = storedSeparator + 1;
+        int storedPasswordLength = storedStart + storedLength - storedPasswordStart;
+
+        if (!SameApartFromThePassword(submitted,
+                                      passwordStart,
+                                      passwordLength,
+                                      stored,
+                                      storedPasswordStart,
+                                      storedPasswordLength))
         {
             return submitted;
         }
 
-        int storedPasswordStart = storedSeparator + 1;
-        string storedPassword = stored.Substring(storedPasswordStart,
-                                                 storedStart + storedLength - storedPasswordStart);
+        string storedPassword = stored.Substring(storedPasswordStart, storedPasswordLength);
 
         return submitted.Remove(passwordStart, passwordLength).Insert(passwordStart, storedPassword);
     }
@@ -223,46 +236,25 @@ public static class CameraSourceDisplay
     }
 
     /// <summary>
-    /// Whether two sources carrying a credential send it to the same place: everything before the
-    /// password, and the host and port after it.
+    /// Whether two sources are the same but for the password each carries.
     /// </summary>
     /// <remarks>
-    /// The scheme and host are compared ignoring case, as a URL treats them; the user name exactly.
-    /// A port written in one and left to its default in the other counts as a difference - that only
-    /// costs somebody re-typing a password, where treating them as equal would need a table of
-    /// default ports for every scheme go2rtc accepts.
+    /// Compared exactly, including case: a host that differs only in case names the same server, but
+    /// letting that through means deciding which other differences are cosmetic too, and the answer
+    /// lives in the sidecar's source rather than in this one. Re-typing a password is the cost of
+    /// not deciding.
     /// </remarks>
-    private static bool SameDestination(string submitted,
-                                        int submittedStart,
-                                        int submittedSeparator,
-                                        string stored,
-                                        int storedStart,
-                                        int storedSeparator)
+    private static bool SameApartFromThePassword(string submitted,
+                                                 int passwordStart,
+                                                 int passwordLength,
+                                                 string stored,
+                                                 int storedPasswordStart,
+                                                 int storedPasswordLength)
     {
-        // Up to and including "://", which takes in a prefix such as go2rtc's "ffmpeg:rtsp".
-        if (!string.Equals(submitted[..submittedStart], stored[..storedStart], StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        if (!string.Equals(submitted[submittedStart..submittedSeparator],
-                           stored[storedStart..storedSeparator],
-                           StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return string.Equals(HostAndPort(submitted), HostAndPort(stored), StringComparison.OrdinalIgnoreCase);
-    }
-
-    /// <summary>The authority with its userinfo removed - the host, and the port if one is written.</summary>
-    private static string HostAndPort(string source)
-    {
-        TryFindUserInfo(source, out int start, out int length, out int authorityEnd);
-
-        int hostStart = start + length + 1;
-
-        return source[hostStart..authorityEnd];
+        return string.Equals(submitted[..passwordStart], stored[..storedPasswordStart], StringComparison.Ordinal) &&
+               string.Equals(submitted[(passwordStart + passwordLength)..],
+                             stored[(storedPasswordStart + storedPasswordLength)..],
+                             StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -270,17 +262,8 @@ public static class CameraSourceDisplay
     /// </summary>
     private static bool TryFindUserInfo(string source, out int start, out int length)
     {
-        return TryFindUserInfo(source, out start, out length, out _);
-    }
-
-    /// <summary>
-    /// Locates the userinfo component, and where the authority it belongs to ends.
-    /// </summary>
-    private static bool TryFindUserInfo(string source, out int start, out int length, out int authorityEnd)
-    {
         start = 0;
         length = 0;
-        authorityEnd = 0;
 
         if (string.IsNullOrEmpty(source))
         {
@@ -294,7 +277,7 @@ public static class CameraSourceDisplay
         }
 
         int authorityStart = scheme + 3;
-        authorityEnd = source.Length;
+        int authorityEnd = source.Length;
 
         for (int index = authorityStart; index < source.Length; index++)
         {

@@ -780,6 +780,28 @@ services:
     group_add:
       - "1654"
 
+    # nginx is uid 101 here with no root in the image at all, and every listener is above 1024 -
+    # that is what the unprivileged base image buys, and it is why Compose publishes the low ports
+    # onto 8080, 8443, 15443, 15080 and 15800 instead of nginx binding them. So there is no
+    # capability in use to take away; what these two add is that nothing in here can acquire one.
+    # Dropping the bounding set means no binary runs with a capability whatever its file says, and
+    # no-new-privileges means a setuid binary runs as the caller. Measured against the same image
+    # without them: the entrypoint hooks mint the self-signed certificates and write the user
+    # server blocks, the TLS listener serves them, an unknown name still gets 444, and
+    # `nginx -s reload` works - which is the path 20-printer-listener.sh takes when the printer
+    # leaf appears and is the one that would stop the printer listener ever starting.
+    #
+    # group_add above is untouched by this: a supplementary group is not a capability, so the leaf's
+    # private key is still readable.
+    #
+    # NOT read_only, and not narrowly: the base image's entrypoint renders the templates into
+    # /etc/nginx/conf.d, so a read-only filesystem leaves default.conf unrendered - and the
+    # container starts anyway, serving a configuration nobody wrote.
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+
     # Whatever address Docker hands out: the application trusts forwarded headers from this whole
     # network (XForwarded__KnownNetworks above), which is sound because the network holds this
     # container and the application and nothing else. Not a pinned ipv4_address - Docker does not

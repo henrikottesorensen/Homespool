@@ -6,8 +6,12 @@ namespace Homespool.Host.PrusaConnect.DTO.EventMessages;
 /// firmware sentinel value, not something this DTO interprets.</summary>
 public class InfoToolDTO
 {
+    /// <summary>
+    /// Nullable because JSON's only way to write a float that is not a number is <c>null</c>, and a
+    /// <c>null</c> into a plain <c>float</c> throws - here taking the whole <c>INFO</c> identity with it.
+    /// </summary>
     [JsonPropertyName("nozzle_diameter")]
-    public float NozzleDiameter { get; set; }
+    public float? NozzleDiameter { get; set; }
 
     [JsonPropertyName("high_flow")]
     public bool HighFlow { get; set; }

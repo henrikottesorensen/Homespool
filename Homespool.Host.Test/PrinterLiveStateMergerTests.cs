@@ -610,6 +610,77 @@ public class PrinterLiveStateMergerTests
         slot.PrintFanRpm.Should().Be(5000.0f);
     }
 
+    /// <summary>
+    /// A <c>null</c> where a float belongs is read, and stored as no reading - in the chamber block
+    /// and in a numbered slot, the two places a plain <c>float</c> used to throw on it.
+    /// </summary>
+    /// <remarks>
+    /// <c>null</c> is the only thing JSON offers for a float that is not a number, so it is what a
+    /// correct printer sends for one. Through the production dispatcher and mapping, because the
+    /// failure this guards against is a throw inside their deserialization: it used to cost the
+    /// printer its connection.
+    /// </remarks>
+    [Fact]
+    public void ANullWhereAFloatBelongsIsReadAndStoredAsNoReading()
+    {
+        // Arrange
+        PrinterLiveState state = NewState();
+
+        using (JsonDocument earlier = JsonDocument.Parse(
+                   """{"state":"PRINTING","chamber":{"temp":35.6},"slot":{"active":1,"1":{"material":"PLA","temp":215.0,"fan_hotend":8000.0,"fan_print":5000.0}}}"""))
+        {
+            Merge(state, Classified(earlier), DateTimeOffset.UtcNow);
+        }
+
+        using JsonDocument document = JsonDocument.Parse(
+            """{"state":"PRINTING","chamber":{"temp":null},"slot":{"active":1,"1":{"material":"PETG","temp":null,"fan_hotend":null,"fan_print":null}}}""");
+
+        // Act
+        Merge(state, Classified(document), DateTimeOffset.UtcNow);
+
+        // Assert
+        state.ChamberTemperature.Should().BeNull();
+
+        PrinterLiveSlotState slot = state.Slots.Single();
+
+        slot.Temperature.Should().BeNull();
+        slot.HotendFanRpm.Should().BeNull();
+        slot.PrintFanRpm.Should().BeNull();
+        slot.Material.Should().Be("PETG", "the rest of the slot is still read");
+    }
+
+    /// <summary>
+    /// A chamber block without <c>temp</c> has no chamber temperature. Read into a plain
+    /// <c>float</c> it was 0 degrees, which is a reading nobody took.
+    /// </summary>
+    [Fact]
+    public void AChamberBlockWithoutATemperatureHasNone()
+    {
+        // Arrange
+        PrinterLiveState state = NewState();
+
+        using JsonDocument document = JsonDocument.Parse("""{"state":"IDLE","chamber":{"target_temp":20}}""");
+
+        // Act
+        Merge(state, Classified(document), DateTimeOffset.UtcNow);
+
+        // Assert
+        state.ChamberTemperature.Should().BeNull();
+        state.ChamberTargetTemperature.Should().Be(20);
+    }
+
+    /// <summary>Telemetry as the production dispatcher reads it off the wire.</summary>
+    private static TelemetryDTO Classified(JsonDocument document)
+    {
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
+                                           new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                                           TimeProvider.System,
+                                           PrinterTrafficLogTests.Off);
+
+        return dispatcher.Classify(1, document.RootElement)
+                         .Should().BeOfType<InboundTelemetryMessage>().Subject.Telemetry;
+    }
+
     private static List<float?> FloatsOf(object entity)
     {
         return entity.GetType().GetProperties()

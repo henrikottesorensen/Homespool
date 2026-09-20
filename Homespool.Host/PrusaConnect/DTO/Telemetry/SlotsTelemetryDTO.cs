@@ -29,17 +29,22 @@ public class SlotsTelemetryDTO
 
 /// <summary>One numbered entry inside <see cref="SlotsTelemetryDTO.Slots"/>. <c>fan_hotend</c>/
 /// <c>fan_print</c> are floats on the wire despite being <c>uint16_t</c> in firmware.</summary>
+/// <remarks>
+/// The floats are nullable because JSON's only way to write one that is not a number is
+/// <c>null</c>, and a <c>null</c> into a plain <c>float</c> throws - which costs the printer its
+/// connection over one slot's reading.
+/// </remarks>
 public class ToolTelemetryDTO
 {
     [JsonPropertyName("material")]
     public string? Material { get; set; }
 
     [JsonPropertyName("temp")]
-    public float Temperature { get; set; }
+    public float? Temperature { get; set; }
 
     [JsonPropertyName("fan_hotend")]
-    public float HotendFan { get; set; }
+    public float? HotendFan { get; set; }
 
     [JsonPropertyName("fan_print")]
-    public float PrintFan { get; set; }
+    public float? PrintFan { get; set; }
 }

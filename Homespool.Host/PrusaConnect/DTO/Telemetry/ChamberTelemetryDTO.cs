@@ -6,8 +6,13 @@ namespace Homespool.Host.PrusaConnect.DTO.Telemetry;
 
 public class ChamberTelemetryDTO
 {
+    /// <summary>
+    /// Nullable because JSON's only way to write a float that is not a number is <c>null</c>, and a
+    /// <c>null</c> into a plain <c>float</c> throws - which costs the printer its connection over
+    /// one unreadable sensor. It also keeps a block without the key from reading as 0 degrees.
+    /// </summary>
     [JsonPropertyName("temp")]
-    public float Temperature { get; set; }
+    public float? Temperature { get; set; }
 
     [JsonPropertyName("target_temp")]
     public int TargetTemperature { get; set; }

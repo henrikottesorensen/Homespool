@@ -231,6 +231,34 @@ public class MessageDispatcherTests
         inboundEvent.Identity.NozzleDiameter.Should().Be(float.PositiveInfinity, "judging it is the writer's job, where it would be stored");
     }
 
+    /// <summary>
+    /// An <c>INFO</c> with a <c>null</c> nozzle diameter - the printer's own, or one tool's - still
+    /// yields its identity, with that diameter unreported. Read into a plain <c>float</c> the
+    /// <c>null</c> threw, the payload "could not be read", and firmware, model and serial went with it.
+    /// </summary>
+    [Fact]
+    public void AnInfoWithANullNozzleDiameterStillYieldsItsIdentity()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(
+            """{"event":"INFO","state":"IDLE","data":{"firmware":"6.10.1","nozzle_diameter":null,"tools":{"1":{"nozzle_diameter":null,"high_flow":true,"hardened":false,"material":"PETG"},"2":{"nozzle_diameter":0.6,"high_flow":false,"hardened":true,"material":"PLA"}}}}""");
+
+        // Act
+        ConnectionMessage? message = NewDispatcher().Classify(printerId: 1, document.RootElement);
+
+        // Assert
+        InboundEventMessage inboundEvent = message.Should().BeOfType<InboundEventMessage>().Subject;
+
+        inboundEvent.Identity.Should().NotBeNull();
+        inboundEvent.Identity.Firmware.Should().Be("6.10.1");
+        inboundEvent.Identity.NozzleDiameter.Should().BeNull();
+
+        inboundEvent.Identity.Tools.Should().HaveCount(2);
+        inboundEvent.Identity.Tools![0].NozzleDiameter.Should().BeNull();
+        inboundEvent.Identity.Tools[0].HighFlow.Should().BeTrue("the rest of the tool is still read");
+        inboundEvent.Identity.Tools[1].NozzleDiameter.Should().Be(0.6f);
+    }
+
     [Fact]
     public void AnOrdinaryMessageSaysNothingAboutNonFiniteNumbers()
     {

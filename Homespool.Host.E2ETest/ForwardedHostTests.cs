@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -103,13 +105,32 @@ public sealed class ForwardedHostTests : IAsyncLifetime
 
         // Assert
         answer.StatusCode.Should().Be(HttpStatusCode.Redirect, "a known, confirmed address is sent on to the confirmation page");
-        _sender.Sent.Should().ContainSingle("one reset mail goes to the address");
 
-        string mail = _sender.Sent[0].body;
+        string mail = (await AwaitTheResetMailAsync()).body;
 
         mail.Should().Contain("https://localhost/Account/ResetPassword",
                               "the scheme comes from the trusted proxy's X-Forwarded-Proto and the host from the browser's own Host header");
         mail.Should().NotContain("attacker.example", "X-Forwarded-Host is not honoured, from the proxy or from anybody");
+    }
+
+    /// <summary>
+    /// Waits for the one reset mail, which arrives shortly after the response rather than before it.
+    /// </summary>
+    /// <remarks>
+    /// Not a race this test invented: the page hands the mail to a queue and answers, deliberately, so
+    /// that a registered address does not take an SMTP conversation longer to answer than an unknown
+    /// one. The wait is what that costs a test which wants to read the link.
+    /// </remarks>
+    private async Task<(string email, string subject, string body)> AwaitTheResetMailAsync()
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+
+        while (_sender.Sent.IsEmpty && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(20), TestContext.Current.CancellationToken);
+        }
+
+        return _sender.Sent.Should().ContainSingle("one reset mail goes to the address").Subject;
     }
 
     private static async Task CreateConfirmedUserAsync(IServiceScope scope)
@@ -150,13 +171,18 @@ public sealed class ForwardedHostTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// Concurrent because the send no longer happens on the request: the page queues the mail and
+    /// <c>DeferredEmailSender</c>'s loop is the thread that arrives here, while the test thread is
+    /// the one reading.
+    /// </summary>
     private sealed class RecordingEmailSender : IEmailSender
     {
-        public List<(string email, string subject, string body)> Sent { get; } = [];
+        public ConcurrentQueue<(string email, string subject, string body)> Sent { get; } = new();
 
         public Task<EmailSendResult> SendEmailAsync(string email, string subject, string htmlMessage)
         {
-            Sent.Add((email, subject, htmlMessage));
+            Sent.Enqueue((email, subject, htmlMessage));
 
             return Task.FromResult(EmailSendResult.Sent);
         }

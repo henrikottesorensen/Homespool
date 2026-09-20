@@ -68,7 +68,8 @@ public class SmtpEmailSender : IEmailSender
         {
             // Reported, not thrown: these callers are page handlers, and several have already created a user row by
             // the time mail is sent. Each call site decides whether to surface this - most should, but password reset
-            // and confirmation resend must not, because there the send is only attempted when the account exists.
+            // and confirmation resend must not, because there the send is only attempted when the account exists;
+            // those two reach this through DeferredEmailSender, which logs what it could not send.
             _logger.LogError(ex, "Failed to send email to {Email} with subject {Subject}.", email, subject);
 
             return EmailSendResult.Failed;

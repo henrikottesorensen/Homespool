@@ -32,14 +32,14 @@ namespace Homespool.Host.Pages.Account;
 public class ForgotPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly IEmailSender _emailSender;
+    private readonly IDeferredEmailSender _emailSender;
     private readonly AttemptLimiter _attemptLimiter;
     private readonly TimeProvider _timeProvider;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ForgotPasswordModel(
         UserManager<HSUser> userManager,
-        IEmailSender emailSender,
+        IDeferredEmailSender emailSender,
         AttemptLimiter attemptLimiter,
         TimeProvider timeProvider,
         IStringLocalizer<SharedResource> localiser)
@@ -133,11 +133,15 @@ public class ForgotPasswordModel : PageModel
                 _localiser["Email_ResetPasswordSubject"].Value,
                 _localiser["Email_ResetPasswordBody", HtmlEncoder.Default.Encode(callbackUrl)].Value));
 
-            // Result deliberately discarded. The send is only attempted when the account exists and is
-            // confirmed - see the early return above - so surfacing a failure here would distinguish
-            // "account exists, mail broke" from "no such account", which is exactly what that early return
-            // is written to hide. The failure is in the log and in the startup SMTP probe instead.
-            _ = await _emailSender.SendEmailAsync(Input.Email, subject, body);
+            // Queued rather than sent here, and both halves of that matter. The result is discarded
+            // because the send is only attempted when the account exists and is confirmed - see the
+            // early return above - so surfacing a failure would distinguish "account exists, mail
+            // broke" from "no such account", which is exactly what that early return is written to
+            // hide; the failure is in the log and in the startup SMTP probe instead. And the wait
+            // goes with it: awaiting a whole SMTP conversation here made the answer for a registered
+            // address measurably slower than the one an unknown address gets, which says the same
+            // thing to anyone willing to time two requests.
+            _emailSender.Enqueue(Input.Email, subject, body);
 
             return RedirectToPage("./ForgotPasswordConfirmation");
         }

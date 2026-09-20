@@ -32,14 +32,14 @@ namespace Homespool.Host.Pages.Account;
 public class ResendEmailConfirmationModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly IEmailSender _emailSender;
+    private readonly IDeferredEmailSender _emailSender;
     private readonly AttemptLimiter _attemptLimiter;
     private readonly TimeProvider _timeProvider;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ResendEmailConfirmationModel(
         UserManager<HSUser> userManager,
-        IEmailSender emailSender,
+        IDeferredEmailSender emailSender,
         AttemptLimiter attemptLimiter,
         TimeProvider timeProvider,
         IStringLocalizer<SharedResource> localiser)
@@ -85,7 +85,14 @@ public class ResendEmailConfirmationModel : PageModel
         }
 
         HSUser user = await _userManager.FindByEmailAsync(Input.Email);
-        if (user == null)
+
+        // The second test is this page's own precondition, and it was missing: a confirmed address
+        // has nothing left to confirm, so mailing one is a link that changes nothing - and it is what
+        // let this form mail every registered address rather than only the unconfirmed ones, which is
+        // the population it exists for. Silently, and before anything is counted, for the reason the
+        // null arm is silent: a refusal that looked different would say the address is registered,
+        // and grinding at a confirmed address should cost nothing and produce nothing.
+        if (user == null || await _userManager.IsEmailConfirmedAsync(user))
         {
             ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
             return Page();
@@ -122,9 +129,10 @@ public class ResendEmailConfirmationModel : PageModel
             _localiser["Email_ConfirmSubject"].Value,
             _localiser["Email_ConfirmBody", HtmlEncoder.Default.Encode(callbackUrl)].Value));
 
-        // Result deliberately discarded, for the same reason as ForgotPassword: this is only reached when the
-        // account exists, so reporting a send failure would confirm its existence.
-        _ = await _emailSender.SendEmailAsync(Input.Email, subject, body);
+        // Queued rather than sent here, for the same two reasons as ForgotPassword: this is only
+        // reached when the account exists and is unconfirmed, so reporting a send failure would
+        // confirm as much - and so would waiting for the send, which took long enough to time.
+        _emailSender.Enqueue(Input.Email, subject, body);
 
         ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
         return Page();

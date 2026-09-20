@@ -264,7 +264,9 @@ public class IndexModel : PageModel
     /// <b>That write is bounded by <see cref="BoundedUploadAttribute"/> on this class, and has to
     /// be.</b> The <c>file.Length</c> check below reads a file that is already on disk, so it decides
     /// what to keep rather than what to accept - on its own it bounds nothing. The attribute applies
-    /// the same configured cap before a byte is read.
+    /// that cap before a byte is read - the cap as it stood when this page first served a request,
+    /// where the check below reads the current one. They differ only between a save and a restart,
+    /// which is what <c>MaxUploadBytes</c> being graded <c>Restart</c> is about.
     /// </para>
     /// </remarks>
     public async Task<IActionResult> OnPostUploadAsync(IFormFile? file,

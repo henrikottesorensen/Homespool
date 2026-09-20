@@ -95,13 +95,16 @@ public static class EditableSettings
 
         // What this deployment stores, of both kinds. Uploads sit here rather than under a heading of
         // their own because "how much disk does this take" is one question, and a reader should not
-        // have to know that files and telemetry are bound from different classes to find it. Read per
-        // upload in PrintFileController, OctoPrintCompatController, Files/Index and
-        // BoundedUploadAttribute.
+        // have to know that files and telemetry are bound from different classes to find it.
+        // The half-obeyed case the remarks above describe, and graded accordingly: PrintFileController,
+        // OctoPrintCompatController, Files/Index and TileDrop read it per upload through a snapshot,
+        // but BoundedUploadFilter is built once per endpoint and keeps the value it was built with.
+        // So a save moves what a handler refuses and not what a body may arrive as - half a number,
+        // which this grade answers with none of it until the next restart.
         new(typeof(PrintFileStorageOptions),
             PrintFileStorageOptions.SectionName,
             nameof(PrintFileStorageOptions.MaxUploadBytes),
-            SettingGrade.Live,
+            SettingGrade.Restart,
             DisplayGroup: StorageOptions.SectionName,
             DisplaySubgroup: "PrintFiles"),
 

@@ -152,8 +152,11 @@ public sealed class SettingsFile
         // therefore atomic. A temporary directory would make it a copy, which is what this avoids.
         string temporaryPath = _path + ".tmp";
 
-        File.WriteAllText(temporaryPath, contents.ToJsonString(WriteOptions));
-        Restrict(temporaryPath);
+        // The stored secrets are ciphertext by the time they arrive here, so what the mode protects
+        // is the rest: mail server, addresses and the other settings an administrator typed.
+        RestrictedFile.Write(temporaryPath,
+                             contents.ToJsonString(WriteOptions),
+                             UnixFileMode.UserRead | UnixFileMode.UserWrite);
         File.Move(temporaryPath, _path, overwrite: true);
     }
 
@@ -165,15 +168,5 @@ public sealed class SettingsFile
         {
             Directory.CreateDirectory(directory);
         }
-    }
-
-    private static void Restrict(string path)
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            return;
-        }
-
-        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 }

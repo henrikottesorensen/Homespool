@@ -2187,12 +2187,20 @@ apply() {
         }
     ' "$pairs" "$env_file" > "$tmp"
 
-    # Copied over rather than moved, so an existing file keeps its own ownership and mode.
+    # Narrowed before the secrets go in rather than after, because the secrets are in $tmp and the
+    # next line is what puts them here. This is the path that covers a .env the wizard did not
+    # create - the README offers starting from .env.example by hand, and that file is 664 in the
+    # repository - so without this the generated passwords land in a world-readable file and are
+    # only shut away once the write has finished. The two files the wizard creates itself are made
+    # at their mode under umask 077 and never depended on this.
+    #
+    # $tmp is mktemp's, which is 0600, so the rendered copy was never wide either.
+    chmod 600 "$env_file" 2>/dev/null || true
+
+    # Copied over rather than moved, so an existing file keeps its own ownership - and, now that the
+    # line above has set it, the mode this wrote rather than mktemp's.
     cat "$tmp" > "$env_file"
     rm -f "$tmp" "$pairs"
-
-    # A file holding a sidecar password should not be world-readable.
-    chmod 600 "$env_file" 2>/dev/null || true
 }
 
 # ------------------------------------------------------------------------------------------------

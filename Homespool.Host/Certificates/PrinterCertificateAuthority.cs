@@ -71,6 +71,13 @@ public class PrinterCertificateAuthority
     private const string EncryptedKeyPemLabel = "ENCRYPTED PRIVATE KEY";
 
     /// <summary>
+    /// The leaf key's mode: owner read-write, group read, and named once so the write and the
+    /// re-assertion on an older deployment's key cannot drift apart.
+    /// </summary>
+    private const UnixFileMode ProxyKeyMode =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+
+    /// <summary>
     /// How the authority's key is encrypted when a passphrase is configured.
     /// </summary>
     /// <remarks>
@@ -783,18 +790,22 @@ public class PrinterCertificateAuthority
     /// Writes a key-bearing file as close to owner-only as the platform allows.
     /// </summary>
     /// <remarks>
-    /// Best-effort rather than guaranteed: <c>File.SetUnixFileMode</c> does nothing on Windows, and
-    /// the containerised deployment runs as a single user anyway. It is worth doing because the
+    /// Best-effort rather than guaranteed: a mode is not expressible on Windows, and the
+    /// containerised deployment runs as a single user anyway. It is worth doing because the
     /// alternative is a CA private key inheriting whatever the directory default happens to be.
+    /// <see cref="RestrictedFile"/> carries why the mode goes on at creation rather than after.
     /// </remarks>
     private static void WriteFile(string path, byte[] contents)
     {
-        File.WriteAllBytes(path, contents);
-
-        if (!OperatingSystem.IsWindows() && !path.EndsWith(".der", StringComparison.OrdinalIgnoreCase))
+        // The .der is the authority certificate in binary form - public material, and left at the
+        // directory default deliberately.
+        if (path.EndsWith(".der", StringComparison.OrdinalIgnoreCase))
         {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+            File.WriteAllBytes(path, contents);
+            return;
         }
+
+        RestrictedFile.Write(path, contents, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
     /// <summary>
@@ -830,9 +841,7 @@ public class PrinterCertificateAuthority
     /// </summary>
     private static void WriteProxyKeyFile(string path, byte[] contents)
     {
-        File.WriteAllBytes(path, contents);
-
-        SetProxyKeyMode(path);
+        RestrictedFile.Write(path, contents, ProxyKeyMode);
     }
 
     /// <summary>
@@ -843,7 +852,7 @@ public class PrinterCertificateAuthority
     {
         if (!OperatingSystem.IsWindows())
         {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
+            File.SetUnixFileMode(path, ProxyKeyMode);
         }
     }
 }

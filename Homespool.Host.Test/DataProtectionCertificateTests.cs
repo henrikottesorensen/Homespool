@@ -172,6 +172,39 @@ public sealed class DataProtectionCertificateTests : IDisposable
     }
 
     /// <summary>
+    /// A wide temporary file left by an interrupted run is narrowed rather than inherited.
+    /// </summary>
+    /// <remarks>
+    /// The write asks for the mode at creation, which is what keeps the key off a 0644 file for the
+    /// gap between the bytes landing and the mode being set. That request is ignored for a file that
+    /// already exists, and the temporary name is fixed rather than random - so the set afterwards is
+    /// the only thing covering this case, and removing it as redundant is what this catches. The
+    /// rename carries the mode with the inode, so the key ends up as wide as the leftover was.
+    /// </remarks>
+    [Fact]
+    public void AWideTemporaryFileLeftByAnInterruptedRunDoesNotCarryIntoTheKey()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Arrange
+        Directory.CreateDirectory(_root);
+        string temporary = KeyPath + ".tmp";
+        File.WriteAllText(temporary, "whatever the interrupted run got as far as");
+        File.SetUnixFileMode(temporary,
+                             UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                                                   UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        // Act
+        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
+
+        // Assert
+        File.GetUnixFileMode(KeyPath).Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    /// <summary>
     /// No passphrase is a refusal, before anything touches the disk - the same gate the printer
     /// authority keeps. Minting an unprotected key "for now" would be the state this arrangement
     /// exists to remove, and minting under an empty passphrase would be no protection at all.

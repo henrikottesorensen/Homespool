@@ -229,27 +229,27 @@ msgstr ""
 #: setup-env.sh:2088
 msgid "Created $env_file from .env.example."
 msgstr ""
-#: setup-env.sh:2257
+#: setup-env.sh:2265
 msgid "Homespool - .env setup"
 msgstr ""
-#: setup-env.sh:2260
+#: setup-env.sh:2268
 msgid "Editing the existing file, and only the settings below are touched:"
 msgstr ""
-#: setup-env.sh:2263
+#: setup-env.sh:2271
 msgid "No .env yet. One will be created from .env.example, with these settings filled in."
 msgstr ""
-#: setup-env.sh:2283
+#: setup-env.sh:2291
 msgid "Nothing to change."
 msgstr ""
-#: setup-env.sh:2292
+#: setup-env.sh:2300
 msgid "--dry-run: nothing written."
 msgstr ""
-#: setup-env.sh:2298
+#: setup-env.sh:2306
 msgid "Write these"
 msgstr ""
-#: setup-env.sh:2307
+#: setup-env.sh:2315
 msgid "Written. Bring the stack up with:"
 msgstr ""
-#: setup-env.sh:2309
+#: setup-env.sh:2317
 msgid "    docker compose up -d"
 msgstr ""

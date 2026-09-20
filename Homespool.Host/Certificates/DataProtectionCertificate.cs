@@ -283,11 +283,6 @@ public static class DataProtectionCertificate
     /// </summary>
     private static void WriteFile(string path, byte[] contents)
     {
-        File.WriteAllBytes(path, contents);
-
-        if (!OperatingSystem.IsWindows())
-        {
-            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-        }
+        RestrictedFile.Write(path, contents, UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 }

@@ -1923,6 +1923,63 @@ public sealed class TelemetryWriterTests : IDisposable
     // ---------- ForgetPrinterAsync ----------
 
     /// <summary>
+    /// <b>One printer reporting a temperature that is not a number does not stop anybody else
+    /// persisting</b> - nor itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same mechanism as the deleted printer below, reached by a value instead of a missing row:
+    /// SQLite refuses to store NaN, a flush commits its whole batch in one transaction, and a failed
+    /// flush keeps its buffers - so one NaN in one sample would fail the batch for every printer and
+    /// re-fail it on every retry. The rule that keeps it out is applied where an update meets an
+    /// entity; this is the test that it holds at the point where failing is expensive.
+    /// </para>
+    /// <para>
+    /// Two printers, for the reason given below: asserting only on the one that sent it would pass
+    /// against a writer that had stopped persisting altogether.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public async Task ATemperatureThatIsNotANumberDoesNotPoisonTheFlush(float notFinite)
+    {
+        // Arrange - one batch holding both printers' rows, written by the shutdown flush.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync(printerId: 1);
+        await SeedPrinterAsync(printerId: 2);
+
+        // Act
+        for (int i = 0; i < 5; i++)
+        {
+            writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow.AddSeconds(i),
+                           new TelemetryDTO { Status = "PRINTING", NozzleTemperature = notFinite, BedTemperature = 60.0f });
+            writer.Enqueue(printerId: 2, DateTimeOffset.UtcNow.AddSeconds(i),
+                           new TelemetryDTO { Status = "PRINTING", NozzleTemperature = 215.0f });
+        }
+
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        await using HomespoolDbContext verification = NewVerificationContext();
+
+        (await verification.TelemetrySamples.CountAsync(s => s.PrinterId == 2, TestContext.Current.CancellationToken))
+            .Should().Be(5, $"one printer's unreadable sensor must not stop anybody else persisting. Log:\n{LogDump()}");
+
+        List<TelemetrySample> own = await verification.TelemetrySamples.Where(s => s.PrinterId == 1)
+                                                      .ToListAsync(TestContext.Current.CancellationToken);
+
+        own.Should().HaveCount(5);
+        own.Should().AllSatisfy(sample =>
+        {
+            sample.NozzleTemperature.Should().BeNull();
+            sample.BedTemperature.Should().Be(60.0f, "the rest of the message is still stored");
+        });
+
+        LogRecords.Should().NotContain(record => record.Level == LogLevel.Error, $"Log:\n{LogDump()}");
+    }
+
+    /// <summary>
     /// <b>Deleting a printer does not poison the flush for every other printer.</b>
     /// </summary>
     /// <remarks>

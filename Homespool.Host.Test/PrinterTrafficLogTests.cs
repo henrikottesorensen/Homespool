@@ -330,7 +330,7 @@ public sealed class PrinterTrafficLogTests : IDisposable
     /// </summary>
     /// <remarks>
     /// This is the mutation guard for moving the <c>RecordInbound</c> call below the parse in
-    /// <see cref="MessageDispatcher.Classify"/>, which is what a tidying edit would do.
+    /// <see cref="MessageDispatcher.Classify(int, JsonElement)"/>, which is what a tidying edit would do.
     /// </remarks>
     [Fact]
     public void AMessageThatCannotBeDeserializedIsStillRecorded()
@@ -352,6 +352,66 @@ public sealed class PrinterTrafficLogTests : IDisposable
         // Assert
         Records().Should().ContainSingle()
                  .Which.GetProperty("json").GetProperty("job_id").GetInt32().Should().Be(736);
+    }
+
+    /// <summary>
+    /// The written lines as text. A line recording a non-finite number is not JSON, so
+    /// <see cref="Records"/> cannot read it - which is the point of it.
+    /// </summary>
+    private List<string> Lines()
+    {
+        return Directory.EnumerateFiles(_directory)
+                        .SelectMany(File.ReadAllLines)
+                        .Where(line => !string.IsNullOrWhiteSpace(line))
+                        .ToList();
+    }
+
+    /// <summary>
+    /// A non-finite number is recorded as the printer spelled it, bare and where it stood, and a
+    /// string the printer did send stays a string beside it - even one spelled <c>"NaN"</c>.
+    /// </summary>
+    /// <remarks>
+    /// The message reaches this log parsed, with a quoted literal standing in for what the parser
+    /// could not read. Writing that literal would be this file reporting a string that was never on
+    /// the wire, in the one message whose wire form is the whole question.
+    /// </remarks>
+    [Fact]
+    public void ANonFiniteNumberIsRecordedAsThePrinterSpelledIt()
+    {
+        // Arrange
+        PrinterTrafficLog log = NewLog();
+
+        // Act - as mended from {"event":"FILE_INFO","data":{"note":"NaN","layer_height":nan,"arr":[-inf,"NaN"]}}
+        log.RecordInbound(4,
+                          Parse("""{"event":"FILE_INFO","data":{"note":"NaN","layer_height":"NaN","arr":["-Infinity","NaN"]}}"""),
+                          [new NonFiniteToken(2, "nan"), new NonFiniteToken(3, "-inf")]);
+        log.Dispose();
+
+        // Assert
+        Lines().Should().ContainSingle()
+               .Which.Should().EndWith(""","json":{"event":"FILE_INFO","data":{"note":"NaN","layer_height":nan,"arr":[-inf,"NaN"]}}}""");
+    }
+
+    /// <summary>
+    /// A replacement is known by which string of the document it is, so the strings inside a value
+    /// that is redacted rather than written still have to be counted - and a non-finite number that
+    /// is itself a secret's value is redacted like any other.
+    /// </summary>
+    [Fact]
+    public void StringsInsideARedactedValueAreStillCounted()
+    {
+        // Arrange
+        PrinterTrafficLog log = NewLog();
+
+        // Act - as mended from {"event":"INFO","token":{"a":"x","b":[nan]},"key":inf,"v":NaN,"w":"NaN"}
+        log.RecordInbound(4,
+                          Parse("""{"event":"INFO","token":{"a":"x","b":["NaN"]},"key":"Infinity","v":"NaN","w":"NaN"}"""),
+                          [new NonFiniteToken(2, "nan"), new NonFiniteToken(3, "inf"), new NonFiniteToken(4, "NaN")]);
+        log.Dispose();
+
+        // Assert
+        Lines().Should().ContainSingle()
+               .Which.Should().EndWith(""","json":{"event":"INFO","token":"<redacted>","key":"<redacted>","v":NaN,"w":"NaN"}}""");
     }
 
     public void Dispose()

@@ -406,7 +406,7 @@ public class PrusaConnectPrinterController : ControllerBase
     /// <remarks>
     /// <para>
     /// <b>One body for both routes, because the message decides what it is.</b>
-    /// <see cref="MessageDispatcher.Classify"/> sorts on the payload's own <c>event</c> property and
+    /// <see cref="MessageDispatcher.Classify(int, JsonElement)"/> sorts on the payload's own <c>event</c> property and
     /// is the only place that decision is made; keying off the URL instead would be a second
     /// classifier free to disagree with it.
     /// </para>
@@ -430,6 +430,7 @@ public class PrusaConnectPrinterController : ControllerBase
         int printerId = int.Parse(User.FindFirstValue(HSClaimTypes.PrinterId)!);
 
         JsonDocument document;
+        IReadOnlyList<NonFiniteToken> nonFinite = [];
 
         try
         {
@@ -441,7 +442,32 @@ public class PrusaConnectPrinterController : ControllerBase
             // everyone.
             await using LengthLimitingStream bounded = new(Request.Body, _options.MaxIncomingMessageBytes);
 
-            document = await JsonDocument.ParseAsync(bounded, cancellationToken: cancellationToken);
+            // Read whole before parsing, which is what ParseAsync did with it anyway: a body the
+            // parser refuses has to be looked at a second time, and a stream is only read once.
+            using MemoryStream received = new();
+
+            await bounded.CopyToAsync(received, cancellationToken);
+
+            ReadOnlyMemory<byte> bytes = received.GetBuffer().AsMemory(0, (int)received.Length);
+
+            try
+            {
+                document = JsonDocument.Parse(bytes);
+            }
+            catch (JsonException)
+            {
+                // Only now, on a body that is refused anyway: the patcher costs an exception for
+                // every token it mends, and an ordinary message never pays for it.
+                NonFinitePatch? patch = NonFiniteNumberPatcher.TryPatch(bytes.Span, default);
+
+                if (patch is null)
+                {
+                    throw;
+                }
+
+                nonFinite = patch.Tokens;
+                document = JsonDocument.Parse(patch.Document);
+            }
         }
         catch (UploadTooLargeException)
         {
@@ -474,7 +500,7 @@ public class PrusaConnectPrinterController : ControllerBase
 
             try
             {
-                message = _dispatcher.Classify(printerId, document.RootElement);
+                message = _dispatcher.Classify(printerId, document.RootElement, nonFinite);
             }
             catch (JsonException e)
             {

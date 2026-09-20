@@ -304,6 +304,69 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A body carrying a non-finite number is accepted, with the production dispatcher behind it.
+    /// </summary>
+    /// <remarks>
+    /// This is what the Python SDK posts for a valid gcode file whose metadata says
+    /// <c>layer_height = nan</c>: <c>float()</c> reads it and <c>json.dumps</c> writes it back as a
+    /// bare <c>NaN</c>, spaces after the colons and all. It used to be a 400 on every retry, for a
+    /// number nothing here reads.
+    /// </remarks>
+    [Fact]
+    public async Task ABodyCarryingANonFiniteNumberIsAccepted()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        // Act
+        using HttpRequestMessage request = Post(
+            "/p/events",
+            identity,
+            token,
+            """{"event": "FILE_INFO", "state": "IDLE", "data": {"size": 1024, "layer_height": NaN, "max_layer_z": Infinity, "path": "/usb/NAN.GCO"}}""");
+
+        using HttpResponseMessage response =
+            await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        _logs.Failures.Should().BeEmpty("mending the body must not leave anything failing behind the response");
+    }
+
+    /// <summary>
+    /// Mending non-finite numbers has not made the transport forgiving of anything else.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"event": "FILE_INFO", "data": {"layer_height": NaNx}}""")]
+    [InlineData("""{"event": "FILE_INFO", "data": {"layer_height": NaN,, }}""")]
+    [InlineData("NaN")]
+    public async Task AlmostANonFiniteNumberIsStillRefused(string body)
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        // Act
+        using HttpRequestMessage request = Post("/p/events", identity, token, body);
+
+        using HttpResponseMessage response =
+            await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _logs.Failures.Should().BeEmpty("a malformed body is the client's fault, not an error of ours");
+    }
+
+    /// <summary>
     /// The transport lives on the printer listener alone, like the rest of <c>/p/*</c> - reaching it
     /// on the user port is a 404 before authentication is even attempted.
     /// </summary>

@@ -177,6 +177,19 @@ public sealed class PrinterTrafficLog : IDisposable
     /// </remarks>
     public void RecordInbound(int printerId, JsonElement root)
     {
+        RecordInbound(printerId, root, []);
+    }
+
+    /// <inheritdoc cref="RecordInbound(int, JsonElement)"/>
+    /// <param name="printerId">The printer the message came from.</param>
+    /// <param name="root">The parsed message.</param>
+    /// <param name="nonFinite">The non-finite numbers that were replaced with a quoted literal before
+    /// <paramref name="root"/> could be parsed. Each is written back as the printer spelled it, bare,
+    /// where it stood - so <b>a line recording one is not valid JSON, exactly as the message was
+    /// not</b>. The quoted literal there would be this file reporting a string the printer never
+    /// sent.</param>
+    public void RecordInbound(int printerId, JsonElement root, IReadOnlyList<NonFiniteToken> nonFinite)
+    {
         if (_sink is null || (!_telemetry && IsTelemetryShaped(root)))
         {
             return;
@@ -189,7 +202,7 @@ public sealed class PrinterTrafficLog : IDisposable
             writer.WriteStartObject();
             WriteEnvelope(writer, printerId, "p2s");
             writer.WritePropertyName("json");
-            WriteRedacted(writer, root);
+            WriteRedacted(writer, root, nonFinite.Count == 0 ? null : new WireSpellings(nonFinite));
             writer.WriteEndObject();
         }
 
@@ -301,7 +314,7 @@ public sealed class PrinterTrafficLog : IDisposable
     /// <see cref="JsonDocument"/> enforces a maximum depth of 64, and nothing reaches this that was
     /// not parsed first.
     /// </remarks>
-    private static void WriteRedacted(Utf8JsonWriter writer, JsonElement element)
+    private static void WriteRedacted(Utf8JsonWriter writer, JsonElement element, WireSpellings? spellings)
     {
         switch (element.ValueKind)
         {
@@ -314,11 +327,15 @@ public sealed class PrinterTrafficLog : IDisposable
                     {
                         writer.WriteString(property.Name, Redacted);
 
+                        // Not written, but still counted: a replacement is known by which string of
+                        // the document it is, and the ones in here are strings of the document too.
+                        spellings?.Skip(property.Value);
+
                         continue;
                     }
 
                     writer.WritePropertyName(property.Name);
-                    WriteRedacted(writer, property.Value);
+                    WriteRedacted(writer, property.Value, spellings);
                 }
 
                 writer.WriteEndObject();
@@ -330,10 +347,17 @@ public sealed class PrinterTrafficLog : IDisposable
 
                 foreach (JsonElement item in element.EnumerateArray())
                 {
-                    WriteRedacted(writer, item);
+                    WriteRedacted(writer, item, spellings);
                 }
 
                 writer.WriteEndArray();
+
+                break;
+
+            case JsonValueKind.String when spellings?.Next() is { } spelling:
+                // Unvalidated on purpose - it is not JSON, which is the thing being recorded. The
+                // patcher's grammar is what keeps it to a sign and ASCII letters.
+                writer.WriteRawValue(spelling, skipInputValidation: true);
 
                 break;
 
@@ -346,6 +370,61 @@ public sealed class PrinterTrafficLog : IDisposable
                 element.WriteTo(writer);
 
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Hands each replacement its wire spelling back, by counting every string value of the document
+    /// in the order the patcher counted them - document order, which is the order
+    /// <see cref="WriteRedacted"/> walks in.
+    /// </summary>
+    private sealed class WireSpellings(IReadOnlyList<NonFiniteToken> tokens)
+    {
+        private int _stringsSeen;
+        private int _next;
+
+        /// <summary>Counts one string value. Its wire spelling if it is a replacement, otherwise null.</summary>
+        public string? Next()
+        {
+            int ordinal = _stringsSeen++;
+
+            if (_next < tokens.Count && tokens[_next].StringOrdinal == ordinal)
+            {
+                return tokens[_next++].Spelling;
+            }
+
+            return null;
+        }
+
+        /// <summary>Counts the string values of a value that is not being written.</summary>
+        public void Skip(JsonElement element)
+        {
+            switch (element.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (JsonProperty property in element.EnumerateObject())
+                    {
+                        Skip(property.Value);
+                    }
+
+                    break;
+
+                case JsonValueKind.Array:
+                    foreach (JsonElement item in element.EnumerateArray())
+                    {
+                        Skip(item);
+                    }
+
+                    break;
+
+                case JsonValueKind.String:
+                    Next();
+
+                    break;
+
+                default:
+                    break;
+            }
         }
     }
 
@@ -372,7 +451,7 @@ public sealed class PrinterTrafficLog : IDisposable
     /// Whether this message is telemetry, for the volume switch alone.
     /// </summary>
     /// <remarks>
-    /// <b>Not a second classifier.</b> <see cref="MessageDispatcher.Classify"/> owns what a message
+    /// <b>Not a second classifier.</b> <see cref="MessageDispatcher.Classify(int, JsonElement)"/> owns what a message
     /// <em>is</em>, and this must not grow into a rival: it answers only "may this be skipped", and
     /// a message it guesses wrong about is one record too many or too few in a diagnostic file. The
     /// test is deliberately the cheap half of the dispatcher's - anything with an <c>event</c> or a

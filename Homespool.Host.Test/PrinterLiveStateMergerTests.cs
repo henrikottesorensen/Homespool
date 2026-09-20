@@ -5,6 +5,8 @@ using System.Text.Json;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.Logging.Abstractions;
+
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.Telemetry;
@@ -554,6 +556,58 @@ public class PrinterLiveStateMergerTests
 
         FloatsOf(state).Should().AllSatisfy(value => value.Should().BeNull());
         FloatsOf(state.Slots.Single()).Should().NotBeEmpty().And.AllSatisfy(value => value.Should().BeNull());
+    }
+
+    /// <summary>
+    /// The whole path for telemetry a printer wrote with bare <c>nan</c> and <c>inf</c> in it: mended
+    /// to quoted literals, read by the wire DTOs as the floats they name, and stored as no reading -
+    /// with the connection kept, which the non-nullable chamber and slot floats used to cost.
+    /// </summary>
+    /// <remarks>
+    /// Through the production dispatcher and mapping rather than a deserialize of its own, because
+    /// accepting the quoted form is a property of how those two read a message: a read that loses it
+    /// throws here.
+    /// </remarks>
+    [Fact]
+    public void TelemetryWrittenWithBareNanAndInfIsReadAndStoredAsNoReading()
+    {
+        // Arrange
+        PrinterLiveState state = NewState();
+
+        Merge(state, new TelemetryDTO { Status = "PRINTING", NozzleTemperature = 215.2f, BedTemperature = 60.0f }, DateTimeOffset.UtcNow);
+
+        byte[] wire = System.Text.Encoding.UTF8.GetBytes(
+            """{"state":"PRINTING","temp_nozzle":nan,"temp_bed":60.5,"chamber":{"temp":-inf},"slot":{"active":1,"1":{"material":"PLA","temp":inf,"fan_hotend":nan,"fan_print":5000.0}}}""");
+
+        // Act
+        NonFinitePatch? patch = NonFiniteNumberPatcher.TryPatch(wire, default);
+
+        patch.Should().NotBeNull();
+
+        using JsonDocument document = JsonDocument.Parse(patch.Document);
+
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
+                                           new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                                           TimeProvider.System,
+                                           PrinterTrafficLogTests.Off);
+
+        TelemetryDTO telemetry = dispatcher.Classify(1, document.RootElement, patch.Tokens)
+                                           .Should().BeOfType<InboundTelemetryMessage>().Subject.Telemetry;
+
+        Merge(state, telemetry, DateTimeOffset.UtcNow);
+
+        // Assert
+        telemetry.NozzleTemperature.Should().Be(float.NaN, "the DTO carries what the printer said; judging it is not its job");
+
+        state.NozzleTemperature.Should().BeNull();
+        state.BedTemperature.Should().Be(60.5f);
+        state.ChamberTemperature.Should().BeNull();
+
+        PrinterLiveSlotState slot = state.Slots.Single();
+
+        slot.Temperature.Should().BeNull();
+        slot.HotendFanRpm.Should().BeNull();
+        slot.PrintFanRpm.Should().Be(5000.0f);
     }
 
     private static List<float?> FloatsOf(object entity)

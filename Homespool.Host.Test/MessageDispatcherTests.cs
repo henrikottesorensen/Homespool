@@ -12,7 +12,7 @@ using Homespool.Host.PrusaConnect;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// <see cref="MessageDispatcher.Classify"/> - one parsed wire message in, one typed
+/// <see cref="MessageDispatcher.Classify(int, JsonElement)"/> - one parsed wire message in, one typed
 /// <see cref="ConnectionMessage"/> out. Pure classification: what the actor <i>does</i> with each
 /// message (correlation, the sink) is covered by <see cref="PrinterConnectionActorTests"/>.
 /// </summary>
@@ -176,6 +176,74 @@ public class MessageDispatcherTests
         InboundEventMessage inboundEvent = message.Should().BeOfType<InboundEventMessage>().Subject;
         inboundEvent.Event.CommandId.Should().Be(42u);
         inboundEvent.Event.EventType.Should().Be(Homespool.Model.PrinterEventType.Finished);
+    }
+
+    /// <summary>
+    /// A mended message is classified like any other, and says so once: what is stored will show no
+    /// reading where the printer sent one of these, and this line is what explains why.
+    /// </summary>
+    [Fact]
+    public void AMendedMessageIsClassifiedAndSaysWhatWasReplaced()
+    {
+        // Arrange - as mended from a FILE_INFO carrying layer_height nan and max_layer_z inf, twice nan
+        using JsonDocument document = JsonDocument.Parse(
+            """{"event":"FILE_INFO","state":"IDLE","data":{"layer_height":"NaN","max_layer_z":"Infinity","x":"NaN"}}""");
+        FakeLogger<MessageDispatcher> logger = new();
+        MessageDispatcher dispatcher = new(logger, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off);
+
+        // Act
+        ConnectionMessage? message = dispatcher.Classify(
+            printerId: 7,
+            document.RootElement,
+            [new NonFiniteToken(2, "nan"), new NonFiniteToken(3, "inf"), new NonFiniteToken(4, "nan")]);
+
+        // Assert
+        message.Should().BeOfType<InboundEventMessage>();
+
+        FakeLogRecord warning = logger.Collector.GetSnapshot().Should()
+                                      .ContainSingle(record => record.Level == LogLevel.Warning).Subject;
+
+        warning.StructuredState.Should().Contain(pair => pair.Key == "PrinterId" && pair.Value == "7");
+        warning.StructuredState.Should().Contain(pair => pair.Key == "Count" && pair.Value == "3");
+        warning.StructuredState.Should().Contain(pair => pair.Key == "Spellings" && pair.Value == "nan inf");
+    }
+
+    /// <summary>
+    /// An <c>INFO</c> whose nozzle diameter was mended to a quoted literal still yields its identity,
+    /// carrying the float the literal names. Read without accepting that form, the payload "could
+    /// not be read" and the whole identity - firmware, model, serial - would be dropped with it.
+    /// </summary>
+    [Fact]
+    public void AnInfoWithAQuotedLiteralStillYieldsItsIdentity()
+    {
+        // Arrange - as mended from "nozzle_diameter":inf
+        using JsonDocument document = JsonDocument.Parse(
+            """{"event":"INFO","state":"IDLE","data":{"firmware":"6.10.1","nozzle_diameter":"Infinity"}}""");
+
+        // Act
+        ConnectionMessage? message = NewDispatcher().Classify(printerId: 1, document.RootElement, [new NonFiniteToken(3, "inf")]);
+
+        // Assert
+        InboundEventMessage inboundEvent = message.Should().BeOfType<InboundEventMessage>().Subject;
+
+        inboundEvent.Identity.Should().NotBeNull();
+        inboundEvent.Identity.Firmware.Should().Be("6.10.1");
+        inboundEvent.Identity.NozzleDiameter.Should().Be(float.PositiveInfinity, "judging it is the writer's job, where it would be stored");
+    }
+
+    [Fact]
+    public void AnOrdinaryMessageSaysNothingAboutNonFiniteNumbers()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(MinimalEvent);
+        FakeLogger<MessageDispatcher> logger = new();
+        MessageDispatcher dispatcher = new(logger, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off);
+
+        // Act
+        dispatcher.Classify(printerId: 7, document.RootElement);
+
+        // Assert
+        logger.Collector.GetSnapshot().Should().NotContain(record => record.Level == LogLevel.Warning);
     }
 
     [Fact]

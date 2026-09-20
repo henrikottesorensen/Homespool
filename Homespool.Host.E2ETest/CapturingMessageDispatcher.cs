@@ -10,7 +10,7 @@ using Homespool.Host.PrusaConnect;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// Records every call to <see cref="MessageDispatcher.Classify"/> instead of acting on it, so a test
+/// Records every call to <see cref="MessageDispatcher.Classify(int, JsonElement)"/> instead of acting on it, so a test
 /// can assert directly on what reached the dispatcher - the printer id the auth handler resolved, and
 /// the parsed message - rather than scraping console output.
 /// </summary>
@@ -42,7 +42,7 @@ internal sealed class CapturingMessageDispatcher : MessageDispatcher
 
     public List<(int printerId, JsonElement root)> Calls { get; } = [];
 
-    public override ConnectionMessage? Classify(int printerId, JsonElement root)
+    public override ConnectionMessage? Classify(int printerId, JsonElement root, IReadOnlyList<NonFiniteToken> nonFinite)
     {
         // Cloned: WebSocketHandler disposes the JsonDocument backing root immediately after this call
         // returns, so a test inspecting Calls afterward would otherwise hit ObjectDisposedException.

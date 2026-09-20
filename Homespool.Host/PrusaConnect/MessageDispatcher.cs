@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.PrusaConnect.DTO;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
@@ -55,14 +58,36 @@ public class MessageDispatcher
     /// production shape maps to it, but test spies use it to observe the stream without an actor.</returns>
     /// <exception cref="JsonException">The document is not a printer message: a root that is not an
     /// object, or an object that does not deserialize as the shape it claims to be.</exception>
-    public virtual ConnectionMessage? Classify(int printerId, JsonElement root)
+    public ConnectionMessage? Classify(int printerId, JsonElement root)
+    {
+        return Classify(printerId, root, []);
+    }
+
+    /// <inheritdoc cref="Classify(int, JsonElement)"/>
+    /// <param name="printerId">The printer the message came from.</param>
+    /// <param name="root">The parsed message.</param>
+    /// <param name="nonFinite">The non-finite numbers <see cref="NonFiniteNumberPatcher"/> replaced
+    /// with their quoted literals so that <paramref name="root"/> could be parsed at all; empty for a
+    /// message that parsed as it arrived.</param>
+    public virtual ConnectionMessage? Classify(int printerId, JsonElement root, IReadOnlyList<NonFiniteToken> nonFinite)
     {
         DateTimeOffset receivedAt = _timeProvider.GetUtcNow();
 
         // Before any deserialization below, deliberately: a message that will not parse is the one
         // with the least other evidence behind it, since it costs the connection and leaves only an
         // exception. Off unless somebody turned it on.
-        _traffic.RecordInbound(printerId, root);
+        _traffic.RecordInbound(printerId, root, nonFinite);
+
+        // Said here, once for both transports: what is stored will show no reading where the
+        // printer sent one of these, and nothing else explains why.
+        if (nonFinite.Count > 0)
+        {
+            _logger.LogWarning(
+                "Printer {PrinterId} sent {Count} non-finite number(s) that are not JSON: {Spellings}.",
+                printerId,
+                nonFinite.Count,
+                string.Join(' ', nonFinite.Select(token => token.Spelling).Distinct()));
+        }
 
         // Every message either reference client renders is an object. Checked here because
         // JsonElement's property accessors throw InvalidOperationException on anything else, and
@@ -74,7 +99,7 @@ public class MessageDispatcher
 
         if (root.TryGetProperty("event", out _))
         {
-            EventDTO eventDto = root.Deserialize<EventDTO>()!;
+            EventDTO eventDto = root.Deserialize<EventDTO>(InboundWireJson.Options)!;
 
             _logger.LogDebug("event {EventType}", eventDto.EventType);
 
@@ -94,7 +119,7 @@ public class MessageDispatcher
             // transfers::Download::InlineRequest (render.cpp:100-119) - the printer requesting the
             // next chunk of a Connect-initiated file upload. Has neither "event" nor "state", so it
             // would otherwise fall into the telemetry branch and fail TelemetryDTO's required Status.
-            InlineRequestDTO request = root.Deserialize<InlineRequestDTO>()!;
+            InlineRequestDTO request = root.Deserialize<InlineRequestDTO>(InboundWireJson.Options)!;
 
             _logger.LogDebug("transfer chunk request file_id={FileId} {Start}..{End}",
                              request.FileId, request.Start, request.End);
@@ -102,7 +127,7 @@ public class MessageDispatcher
             return new InboundTransferRequestMessage(receivedAt, request);
         }
 
-        TelemetryDTO telemetryDto = root.Deserialize<TelemetryDTO>()!;
+        TelemetryDTO telemetryDto = root.Deserialize<TelemetryDTO>(InboundWireJson.Options)!;
 
         // Trace, one level below the others: telemetry arrives roughly once a second per printer,
         // vs. events/transfer requests, which are merely frequent-per-printer rather than continuous.
@@ -135,7 +160,7 @@ public class MessageDispatcher
 
         try
         {
-            if (data.Deserialize<InfoEventDataDTO>() is { } info)
+            if (data.Deserialize<InfoEventDataDTO>(InboundWireJson.Options) is { } info)
             {
                 _unknownFields.Record(printerId, "event:Info.data", info.Unknown);
 

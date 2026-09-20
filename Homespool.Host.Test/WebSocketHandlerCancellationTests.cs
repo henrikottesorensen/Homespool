@@ -122,7 +122,7 @@ public class WebSocketHandlerCancellationTests
     {
         public List<string> Received { get; } = [];
 
-        public override ConnectionMessage? Classify(int printerId, JsonElement root)
+        public override ConnectionMessage? Classify(int printerId, JsonElement root, IReadOnlyList<NonFiniteToken> nonFinite)
         {
             Received.Add(root.GetRawText());
 

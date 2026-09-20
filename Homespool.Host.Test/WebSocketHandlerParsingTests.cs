@@ -428,6 +428,70 @@ public class WebSocketHandlerParsingTests
         await act.Should().ThrowAsync<JsonException>();
     }
 
+    /// <summary>
+    /// A message carrying a non-finite number is delivered with its quoted literal in its place, the message
+    /// after it is delivered too, and the dispatcher is told what was replaced - however the bytes
+    /// are split, a split inside the token included.
+    /// </summary>
+    /// <remarks>
+    /// Firmware renders a gcode file's float metadata with no finiteness check, so a valid file
+    /// saying <c>; layer_height = nan</c> produces exactly this <c>FILE_INFO</c>, and it used to cost
+    /// the printer its connection. The second message is what proves the arithmetic: the mended copy
+    /// is longer than what arrived, and consuming the copy's length from the wire instead of the
+    /// original's would eat the front of the next message.
+    /// </remarks>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7)]
+    [InlineData(4096)]
+    public async Task ANonFiniteNumberIsDeliveredAsItsLiteralAndTheNextMessageSurvives(int chunkSize)
+    {
+        // Arrange
+        const string FirmwareFileInfo =
+            """{"event":"FILE_INFO","command_id":42,"state":"IDLE","data":{"size":1024,"layer_height":nan,"max_layer_z":-inf,"path":"/usb/NAN.GCO"}}""";
+
+        Pipe wire = new();
+
+        RecordingMessageDispatcher dispatcher = new();
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions);
+
+        // Act
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
+                                                CancellationToken.None);
+
+        await WriteInChunksAsync(wire.Writer, Encoding.UTF8.GetBytes(FirmwareFileInfo + "\n" + SlimTelemetry), chunkSize);
+        await wire.Writer.CompleteAsync();
+
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        dispatcher.Received.Should().Equal(
+            """{"event":"FILE_INFO","command_id":42,"state":"IDLE","data":{"size":1024,"layer_height":"NaN","max_layer_z":"-Infinity","path":"/usb/NAN.GCO"}}""",
+            SlimTelemetry);
+
+        dispatcher.NonFinite.Should().HaveCount(2);
+        dispatcher.NonFinite[0].Should().Equal(new NonFiniteToken(2, "nan"), new NonFiniteToken(3, "-inf"));
+        dispatcher.NonFinite[1].Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Mending non-finite numbers must not have made the parser forgiving of anything else: a near
+    /// miss, and a real one beside other damage, still end the connection.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"state":"IDLE","v":nanx}""")]
+    [InlineData("""{"state":"IDLE","v":infinit}""")]
+    [InlineData("""{"state":"IDLE","v":nan,,"w":1}""")]
+    [InlineData("""{"state":"IDLE" nan}""")]
+    public async Task AlmostANonFiniteNumberStillThrowsForTheCallerToCloseOn(string payload)
+    {
+        // Act
+        Func<Task> act = () => RunHandlerAsync(payload, chunkSize: 1);
+
+        // Assert
+        await act.Should().ThrowAsync<JsonException>();
+    }
+
     private static Task<IReadOnlyList<string>> RunHandlerAsync(string payload, int chunkSize)
     {
         return RunHandlerAsync(Encoding.UTF8.GetBytes(payload), [chunkSize]);
@@ -509,9 +573,12 @@ public class WebSocketHandlerParsingTests
     {
         public List<string> Received { get; } = [];
 
-        public override ConnectionMessage? Classify(int printerId, JsonElement root)
+        public List<IReadOnlyList<NonFiniteToken>> NonFinite { get; } = [];
+
+        public override ConnectionMessage? Classify(int printerId, JsonElement root, IReadOnlyList<NonFiniteToken> nonFinite)
         {
             Received.Add(root.GetRawText());
+            NonFinite.Add(nonFinite);
 
             return null;
         }

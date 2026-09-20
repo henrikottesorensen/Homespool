@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.Generic;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
@@ -91,34 +92,16 @@ public class WebSocketHandler
                         break;
                     }
 
-                    JsonDocument jsonDocument;
-
-                    // Block scope: Utf8JsonReader is a ref struct and must not be in scope across
-                    // the PostAsync await below.
-                    {
-                        // The one parse this document gets, over exactly the bytes the scanner found.
-                        // Malformed JSON throws here.
-                        Utf8JsonReader jsonReader = new(buffer.Slice(0, bytesConsumed), isFinalBlock: true,
-                                                        new JsonReaderState(ReaderOptions));
-
-                        jsonDocument = JsonDocument.ParseValue(ref jsonReader);
-
-                        // The scanner and the reader disagreeing about where the document ends would
-                        // silently drop whatever the reader left over, so it fails closed instead.
-                        if (jsonReader.BytesConsumed != bytesConsumed)
-                        {
-                            jsonDocument.Dispose();
-
-                            throw new JsonException(
-                                $"The message ended at byte {jsonReader.BytesConsumed}, not at byte {bytesConsumed}.");
-                        }
-                    }
+                    // The one parse this document gets, over exactly the bytes the scanner found.
+                    // Malformed JSON throws here.
+                    JsonDocument jsonDocument = ParseDocument(buffer.Slice(0, bytesConsumed),
+                                                              out IReadOnlyList<NonFiniteToken> nonFinite);
 
                     // JsonDocument rents its backing memory from a pool. Failing to return it leaks
                     // on every single telemetry message.
                     using (jsonDocument)
                     {
-                        ConnectionMessage? message = _dispatcher.Classify(printerId, jsonDocument.RootElement);
+                        ConnectionMessage? message = _dispatcher.Classify(printerId, jsonDocument.RootElement, nonFinite);
 
                         if (message is not null)
                         {
@@ -189,6 +172,58 @@ public class WebSocketHandler
         }
 
         _logger.LogInformation("WebSocket handler terminating");
+    }
+
+    /// <summary>
+    /// Parses one whole document, mending it first if the only thing wrong with it is a non-finite
+    /// number - see <see cref="NonFiniteNumberPatcher"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not inlined because <see cref="Utf8JsonReader"/> is a ref struct, and must not be in scope
+    /// across the read loop's awaits.
+    /// </remarks>
+    private static JsonDocument ParseDocument(ReadOnlySequence<byte> bytes, out IReadOnlyList<NonFiniteToken> nonFinite)
+    {
+        nonFinite = [];
+
+        try
+        {
+            return ParseWhole(bytes);
+        }
+        catch (JsonException)
+        {
+            // Only now, on a document that is lost anyway: the patcher costs an exception for every
+            // token it mends, and an ordinary message never pays for it.
+            NonFinitePatch? patch = NonFiniteNumberPatcher.TryPatch(bytes.IsSingleSegment ? bytes.FirstSpan : bytes.ToArray(),
+                                                                    ReaderOptions);
+
+            if (patch is null)
+            {
+                throw;
+            }
+
+            nonFinite = patch.Tokens;
+
+            return ParseWhole(new ReadOnlySequence<byte>(patch.Document));
+        }
+    }
+
+    private static JsonDocument ParseWhole(ReadOnlySequence<byte> bytes)
+    {
+        Utf8JsonReader jsonReader = new(bytes, isFinalBlock: true, new JsonReaderState(ReaderOptions));
+
+        JsonDocument jsonDocument = JsonDocument.ParseValue(ref jsonReader);
+
+        // The scanner and the reader disagreeing about where the document ends would silently drop
+        // whatever the reader left over, so it fails closed instead.
+        if (jsonReader.BytesConsumed != bytes.Length)
+        {
+            jsonDocument.Dispose();
+
+            throw new JsonException($"The message ended at byte {jsonReader.BytesConsumed}, not at byte {bytes.Length}.");
+        }
+
+        return jsonDocument;
     }
 
     /// <summary>

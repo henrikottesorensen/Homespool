@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
+using Homespool.Host.PrusaConnect.DTO;
 using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
@@ -468,7 +469,7 @@ public static class PrusaTelemetryMapping
                 continue;
             }
 
-            ToolTelemetryDTO? tool = value.Deserialize<ToolTelemetryDTO>();
+            ToolTelemetryDTO? tool = value.Deserialize<ToolTelemetryDTO>(InboundWireJson.Options);
 
             if (tool is null)
             {

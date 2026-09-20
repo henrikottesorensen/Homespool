@@ -36,7 +36,8 @@ internal sealed class CapturingMessageDispatcher : MessageDispatcher
         : base(NullLogger<MessageDispatcher>.Instance,
                new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                TimeProvider.System,
-               NoTrafficLog)
+               NoTrafficLog,
+               new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance))
     {
     }
 

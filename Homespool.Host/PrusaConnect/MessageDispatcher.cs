@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 
 using Microsoft.Extensions.Logging;
@@ -9,6 +8,7 @@ using Homespool.Host.PrusaConnect.DTO;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.PrusaConnect.DTO.Telemetry;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
+using Homespool.Host.PrusaConnect.Enums;
 using Homespool.Host.Services;
 
 namespace Homespool.Host.PrusaConnect;
@@ -38,16 +38,19 @@ public class MessageDispatcher
     private readonly UnknownFieldTracker _unknownFields;
     private readonly TimeProvider _timeProvider;
     private readonly PrinterTrafficLog _traffic;
+    private readonly PrinterWireComplaints _complaints;
 
     public MessageDispatcher(ILogger<MessageDispatcher> logger,
                              UnknownFieldTracker unknownFields,
                              TimeProvider timeProvider,
-                             PrinterTrafficLog traffic)
+                             PrinterTrafficLog traffic,
+                             PrinterWireComplaints complaints)
     {
         _logger = logger;
         _unknownFields = unknownFields;
         _timeProvider = timeProvider;
         _traffic = traffic;
+        _complaints = complaints;
     }
 
     /// <summary>
@@ -78,15 +81,11 @@ public class MessageDispatcher
         // exception. Off unless somebody turned it on.
         _traffic.RecordInbound(printerId, root, nonFinite);
 
-        // Said here, once for both transports: what is stored will show no reading where the
-        // printer sent one of these, and nothing else explains why.
+        // Said here, once for both transports - and through the throttle, because a printer can
+        // send these as fast as the socket will carry them.
         if (nonFinite.Count > 0)
         {
-            _logger.LogWarning(
-                "Printer {PrinterId} sent {Count} non-finite number(s) that are not JSON: {Spellings}.",
-                printerId,
-                nonFinite.Count,
-                string.Join(' ', nonFinite.Select(token => token.Spelling).Distinct()));
+            _complaints.Mended(printerId, nonFinite);
         }
 
         // Every message either reference client renders is an object. Checked here because
@@ -170,8 +169,9 @@ public class MessageDispatcher
         catch (JsonException e)
         {
             // Off the wire and attacker-shaped, so a malformed INFO must not cost the connection.
-            // The event row itself is still persisted, payload and all.
-            _logger.LogWarning(e, "Printer {PrinterId} sent an INFO event whose data could not be read.", printerId);
+            // The event row itself is still persisted, payload and all. Which is also why this is
+            // throttled: it costs the sender nothing to repeat.
+            _complaints.Refused(printerId, WireComplaint.UnreadableInfo, e);
         }
 
         return null;

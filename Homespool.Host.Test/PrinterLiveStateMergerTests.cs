@@ -589,7 +589,8 @@ public class PrinterLiveStateMergerTests
         MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
                                            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                                            TimeProvider.System,
-                                           PrinterTrafficLogTests.Off);
+                                           PrinterTrafficLogTests.Off,
+                                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         TelemetryDTO telemetry = dispatcher.Classify(1, document.RootElement, patch.Tokens)
                                            .Should().BeOfType<InboundTelemetryMessage>().Subject.Telemetry;
@@ -675,7 +676,8 @@ public class PrinterLiveStateMergerTests
         MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
                                            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                                            TimeProvider.System,
-                                           PrinterTrafficLogTests.Off);
+                                           PrinterTrafficLogTests.Off,
+                                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         return dispatcher.Classify(1, document.RootElement)
                          .Should().BeOfType<InboundTelemetryMessage>().Subject.Telemetry;

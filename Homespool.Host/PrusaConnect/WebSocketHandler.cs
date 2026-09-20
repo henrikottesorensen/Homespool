@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
+using Homespool.Host.PrusaConnect.Enums;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -18,14 +19,17 @@ public class WebSocketHandler
     private readonly ILogger<WebSocketHandler> _logger;
     private readonly MessageDispatcher _dispatcher;
     private readonly PrusaConnectOptions _options;
+    private readonly PrinterWireComplaints _complaints;
 
     public WebSocketHandler(ILogger<WebSocketHandler> logger,
                             MessageDispatcher dispatcher,
-                            IOptionsMonitor<PrusaConnectOptions> options)
+                            IOptionsMonitor<PrusaConnectOptions> options,
+                            PrinterWireComplaints complaints)
     {
         _logger = logger;
         _dispatcher = dispatcher;
         _options = options.CurrentValue;
+        _complaints = complaints;
     }
 
     private static readonly JsonReaderOptions ReaderOptions = new()
@@ -131,8 +135,9 @@ public class WebSocketHandler
             }
             catch (JsonException e)
             {
-                // Bad data from printer. Rethrow so the caller closes the connection on it.
-                _logger.LogError(e, "Bad JSON input received from Printer: ");
+                // Bad data from the printer, which is the printer's fault and not an error of ours.
+                // Rethrow so the caller closes the connection on it.
+                _complaints.Refused(printerId, WireComplaint.UnreadableMessage, e);
                 throw;
             }
 

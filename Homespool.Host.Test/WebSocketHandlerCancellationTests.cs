@@ -46,7 +46,8 @@ public class WebSocketHandlerCancellationTests
 
     private static WebSocketHandler NewHandler(RecordingMessageDispatcher dispatcher)
     {
-        return new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions);
+        return new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions,
+                   new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
     }
 
     /// <summary>
@@ -118,7 +119,8 @@ public class WebSocketHandlerCancellationTests
         : MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
                             new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                             TimeProvider.System,
-                            PrinterTrafficLogTests.Off)
+                            PrinterTrafficLogTests.Off,
+                            new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance))
     {
         public List<string> Received { get; } = [];
 

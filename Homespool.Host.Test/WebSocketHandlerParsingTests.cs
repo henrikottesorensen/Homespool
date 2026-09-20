@@ -8,7 +8,9 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 
 using NSubstitute;
@@ -214,7 +216,8 @@ public class WebSocketHandlerParsingTests
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance,
                                        new RecordingMessageDispatcher(),
-                                       TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+                                       TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }),
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
@@ -250,7 +253,8 @@ public class WebSocketHandlerParsingTests
         RecordingMessageDispatcher dispatcher = new();
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher,
-                                       TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }));
+                                       TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }),
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
@@ -288,7 +292,8 @@ public class WebSocketHandlerParsingTests
         // broken input. A printer sending garbage should still be disconnected.
         Pipe wire = new();
 
-        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher(), DefaultOptions);
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher(), DefaultOptions,
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
@@ -301,6 +306,47 @@ public class WebSocketHandlerParsingTests
 
         // Assert
         await act.Should().ThrowAsync<JsonException>();
+    }
+
+    /// <summary>
+    /// A message that cannot be read is reported as the printer's fault: a warning that names the
+    /// printer, with no exception attached, and nothing at Error from the handler itself.
+    /// </summary>
+    /// <remarks>
+    /// It used to be an Error carrying the parser's stack trace and no printer id - forty lines that
+    /// said an operator's server had failed, about a printer nobody could identify.
+    /// </remarks>
+    [Fact]
+    public async Task AMessageThatCannotBeReadIsReportedAsThePrintersFault()
+    {
+        // Arrange
+        Pipe wire = new();
+
+        FakeLogger<WebSocketHandler> handlerLog = new();
+        FakeLogger<PrinterWireComplaints> complaintLog = new();
+
+        WebSocketHandler handler = new(handlerLog, new RecordingMessageDispatcher(), DefaultOptions, new PrinterWireComplaints(complaintLog));
+
+        // Act
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 42, Substitute.For<IPrinterConnectionActor>(),
+                                                CancellationToken.None);
+
+        await WriteInChunksAsync(wire.Writer, Encoding.UTF8.GetBytes("""{"job_id":301,,,}"""), chunkSize: 4096);
+        await wire.Writer.CompleteAsync();
+
+        Func<Task> act = async () => await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        await act.Should().ThrowAsync<JsonException>("the caller still closes the connection on it");
+
+        FakeLogRecord warning = complaintLog.Collector.GetSnapshot().Should().ContainSingle().Subject;
+
+        warning.Level.Should().Be(LogLevel.Warning);
+        warning.Exception.Should().BeNull();
+        warning.StructuredState.Should().Contain(pair => pair.Key == "PrinterId" && pair.Value == "42");
+
+        handlerLog.Collector.GetSnapshot().Should().NotContain(
+            record => record.Level >= LogLevel.Warning || record.Exception != null);
     }
 
     /// <summary>
@@ -453,7 +499,8 @@ public class WebSocketHandlerParsingTests
         Pipe wire = new();
 
         RecordingMessageDispatcher dispatcher = new();
-        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions);
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions,
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
@@ -510,7 +557,8 @@ public class WebSocketHandlerParsingTests
         Pipe wire = new();
 
         RecordingMessageDispatcher dispatcher = new();
-        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions);
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions,
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
                                                 CancellationToken.None);
@@ -569,7 +617,8 @@ public class WebSocketHandlerParsingTests
         : MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
                             new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                             TimeProvider.System,
-                            PrinterTrafficLogTests.Off)
+                            PrinterTrafficLogTests.Off,
+                            new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance))
     {
         public List<string> Received { get; } = [];
 

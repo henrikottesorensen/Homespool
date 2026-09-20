@@ -268,6 +268,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         _logs.Failures.Should().BeEmpty("a malformed body is the client's fault, not an error of ours");
+        _logs.WithException.Should().BeEmpty("the refusal is said in a sentence; the parser's stack trace says nothing more");
     }
 
     /// <summary>
@@ -301,6 +302,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         _logs.Failures.Should().BeEmpty("a malformed body is the client's fault, not an error of ours");
+        _logs.WithException.Should().BeEmpty("the refusal is said in a sentence; the parser's stack trace says nothing more");
     }
 
     /// <summary>
@@ -364,6 +366,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         _logs.Failures.Should().BeEmpty("a malformed body is the client's fault, not an error of ours");
+        _logs.WithException.Should().BeEmpty("the refusal is said in a sentence; the parser's stack trace says nothing more");
     }
 
     /// <summary>

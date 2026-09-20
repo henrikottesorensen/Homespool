@@ -21,7 +21,8 @@ public class MessageDispatcherTests
     private static MessageDispatcher NewDispatcher()
     {
         return new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System,
-                   PrinterTrafficLogTests.Off);
+                   PrinterTrafficLogTests.Off,
+                   new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
     }
 
     private static UnknownFieldTracker NewTracker()
@@ -129,7 +130,8 @@ public class MessageDispatcherTests
         // Arrange - the escape spelt as JSON spells it
         using JsonDocument document = JsonDocument.Parse("{\"state\":\"IDLE\\u001B[2J" + new string('x', 100) + "\"}");
         FakeLogger<MessageDispatcher> logger = new();
-        MessageDispatcher dispatcher = new(logger, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off);
+        MessageDispatcher dispatcher = new(logger, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off,
+                                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         // Act
         dispatcher.Classify(printerId: 1, document.RootElement);
@@ -179,17 +181,18 @@ public class MessageDispatcherTests
     }
 
     /// <summary>
-    /// A mended message is classified like any other, and says so once: what is stored will show no
-    /// reading where the printer sent one of these, and this line is what explains why.
+    /// A mended message is classified like any other, and is reported as mended: what is stored
+    /// will show no reading where the printer sent one of these, and that line is what explains why.
     /// </summary>
     [Fact]
-    public void AMendedMessageIsClassifiedAndSaysWhatWasReplaced()
+    public void AMendedMessageIsClassifiedAndReportedAsMended()
     {
         // Arrange - as mended from a FILE_INFO carrying layer_height nan and max_layer_z inf, twice nan
         using JsonDocument document = JsonDocument.Parse(
             """{"event":"FILE_INFO","state":"IDLE","data":{"layer_height":"NaN","max_layer_z":"Infinity","x":"NaN"}}""");
-        FakeLogger<MessageDispatcher> logger = new();
-        MessageDispatcher dispatcher = new(logger, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off);
+        FakeLogger<PrinterWireComplaints> complaintLog = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System,
+                                           PrinterTrafficLogTests.Off, new PrinterWireComplaints(complaintLog));
 
         // Act
         ConnectionMessage? message = dispatcher.Classify(
@@ -200,12 +203,46 @@ public class MessageDispatcherTests
         // Assert
         message.Should().BeOfType<InboundEventMessage>();
 
-        FakeLogRecord warning = logger.Collector.GetSnapshot().Should()
-                                      .ContainSingle(record => record.Level == LogLevel.Warning).Subject;
+        FakeLogRecord warning = complaintLog.Collector.GetSnapshot().Should().ContainSingle().Subject;
 
+        warning.Level.Should().Be(LogLevel.Warning);
         warning.StructuredState.Should().Contain(pair => pair.Key == "PrinterId" && pair.Value == "7");
-        warning.StructuredState.Should().Contain(pair => pair.Key == "Count" && pair.Value == "3");
-        warning.StructuredState.Should().Contain(pair => pair.Key == "Spellings" && pair.Value == "nan inf");
+        warning.StructuredState.Should().Contain(pair => pair.Key == "Detail" && pair.Value == "3 in this message: nan inf");
+    }
+
+    /// <summary>
+    /// An <c>INFO</c> whose data will not read keeps the connection and yields no identity - and is
+    /// reported through the throttle without its exception, because keeping the connection is
+    /// exactly what makes it free to repeat.
+    /// </summary>
+    [Fact]
+    public void AnInfoThatWillNotReadIsReportedOnceAndWithoutItsException()
+    {
+        // Arrange - firmware is a string on the wire
+        using JsonDocument document = JsonDocument.Parse("""{"event":"INFO","state":"IDLE","data":{"firmware":{"not":"a string"}}}""");
+        FakeLogger<PrinterWireComplaints> complaintLog = new();
+        FakeLogger<MessageDispatcher> dispatcherLog = new();
+        MessageDispatcher dispatcher = new(dispatcherLog, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off,
+                                           new PrinterWireComplaints(complaintLog) { Interval = TimeSpan.FromMinutes(10) });
+
+        // Act
+        ConnectionMessage? message = null;
+
+        for (int i = 0; i < 50; i++)
+        {
+            message = dispatcher.Classify(printerId: 7, document.RootElement);
+        }
+
+        // Assert
+        message.Should().BeOfType<InboundEventMessage>().Which.Identity.Should().BeNull();
+
+        FakeLogRecord warning = complaintLog.Collector.GetSnapshot().Should().ContainSingle("fifty of them are one line").Subject;
+
+        warning.Exception.Should().BeNull();
+        warning.StructuredState.Should().Contain(
+            pair => pair.Key == "Complaint" && pair.Value == "sent an INFO event whose data could not be read");
+
+        dispatcherLog.Collector.GetSnapshot().Should().NotContain(record => record.Level >= LogLevel.Warning);
     }
 
     /// <summary>
@@ -264,14 +301,15 @@ public class MessageDispatcherTests
     {
         // Arrange
         using JsonDocument document = JsonDocument.Parse(MinimalEvent);
-        FakeLogger<MessageDispatcher> logger = new();
-        MessageDispatcher dispatcher = new(logger, NewTracker(), TimeProvider.System, PrinterTrafficLogTests.Off);
+        FakeLogger<PrinterWireComplaints> complaintLog = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System,
+                                           PrinterTrafficLogTests.Off, new PrinterWireComplaints(complaintLog));
 
         // Act
         dispatcher.Classify(printerId: 7, document.RootElement);
 
         // Assert
-        logger.Collector.GetSnapshot().Should().NotContain(record => record.Level == LogLevel.Warning);
+        complaintLog.Collector.GetSnapshot().Should().BeEmpty();
     }
 
     [Fact]

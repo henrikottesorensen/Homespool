@@ -41,6 +41,14 @@ public sealed class CapturingSink : ILogEventSink
         _events.Where(e => e.Level >= LogEventLevel.Error).ToList();
 
     /// <summary>
+    /// Every event with an exception attached, at any level. A request that was refused because of
+    /// what the client sent should produce none: the stack trace would be the parser's, which says
+    /// nothing about the request and reads as a fault of ours.
+    /// </summary>
+    public IReadOnlyList<LogEvent> WithException =>
+        _events.Where(e => e.Exception is not null).ToList();
+
+    /// <summary>
     /// The first scalar value logged under <paramref name="propertyName"/>, or <c>null</c> if nothing
     /// matches. Strips the surrounding quotes <see cref="ScalarValue"/>'s default rendering adds for
     /// strings.

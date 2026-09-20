@@ -340,7 +340,8 @@ public sealed class PrinterTrafficLogTests : IDisposable
         MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
                                            new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                                            TimeProvider.System,
-                                           log);
+                                           log,
+                                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
 
         // Act - telemetry without the required "state", which throws on the way to a TelemetryDTO
         Action classify = () => dispatcher.Classify(1, Parse("""{"job_id": 736}"""));

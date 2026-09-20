@@ -23,6 +23,7 @@ using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO;
+using Homespool.Host.PrusaConnect.Enums;
 using Homespool.Host.RateLimiting;
 using Homespool.Host.Services;
 
@@ -52,6 +53,7 @@ public class PrusaConnectPrinterController : ControllerBase
     private readonly PrusaConnectService _prusaConnectService;
     private readonly PrinterConnectionSession _session;
     private readonly MessageDispatcher _dispatcher;
+    private readonly PrinterWireComplaints _complaints;
     private readonly HttpPrinterSessions _sessions;
     private readonly PrusaConnect.Transfers.ITransferContentStore _content;
     private readonly IHostApplicationLifetime _lifetime;
@@ -73,6 +75,7 @@ public class PrusaConnectPrinterController : ControllerBase
                                          IHostApplicationLifetime lifetime,
                                          IOptionsSnapshot<PrusaConnectOptions> options,
                                          IOptions<Listeners.ListenerOptions> listeners,
+                                         PrinterWireComplaints complaints,
                                          ILogger<PrusaConnectPrinterController> logger)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -81,6 +84,7 @@ public class PrusaConnectPrinterController : ControllerBase
         _prusaConnectService = prusaConnectService;
         _session = session;
         _dispatcher = dispatcher;
+        _complaints = complaints;
         _sessions = sessions;
         _content = content;
         _lifetime = lifetime;
@@ -483,7 +487,7 @@ public class PrusaConnectPrinterController : ControllerBase
             // A body that is not JSON is a protocol violation, and this codebase treats those as the
             // client's fault rather than an error of ours. On the socket the equivalent closes the
             // connection; here the request is simply refused and the printer retries.
-            _logger.LogWarning(e, "Printer {PrinterId} posted a body that is not JSON.", printerId);
+            _complaints.Refused(printerId, WireComplaint.UnreadableMessage, e);
 
             return TypedResults.BadRequest();
         }
@@ -506,7 +510,7 @@ public class PrusaConnectPrinterController : ControllerBase
             {
                 // JSON that parsed but is not a message - not an object, or not the shape it claims.
                 // The same protocol violation as a body that does not parse, and refused the same way.
-                _logger.LogWarning(e, "Printer {PrinterId} posted JSON that is not a printer message.", printerId);
+                _complaints.Refused(printerId, WireComplaint.UnreadableMessage, e);
 
                 return TypedResults.BadRequest();
             }

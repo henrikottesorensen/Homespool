@@ -427,6 +427,7 @@ public static class Program
             // "this firmware sends a field we do not model" is a fact about the deployment, and a
             // per-request instance would forget it between messages.
             builder.Services.AddSingleton<PrusaConnect.UnknownFieldTracker>();
+            builder.Services.AddSingleton<PrusaConnect.PrinterWireComplaints>();
 
             // One store, two faces: actors resolve hashes through ITransferContentStore, request
             // handlers register files through ITransferOffers. Singleton because an offer has to

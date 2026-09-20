@@ -163,8 +163,10 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
         new MessageDispatcher(NullLogger<MessageDispatcher>.Instance,
                               new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
                               TimeProvider.System,
-                              PrinterTrafficLogTests.Off),
-        TestOptions.Monitor(new PrusaConnectOptions()))
+                              PrinterTrafficLogTests.Off,
+                              new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance)),
+        TestOptions.Monitor(new PrusaConnectOptions()),
+        new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance))
     {
         public override Task HandlePrusaWebsocket(PipeReader input,
                                                   int printerId,

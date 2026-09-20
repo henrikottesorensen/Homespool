@@ -29,7 +29,8 @@ public class UnknownFieldTrackerTests
         UnknownFieldTracker tracker = new(NullLogger<UnknownFieldTracker>.Instance);
 
         return (new MessageDispatcher(NullLogger<MessageDispatcher>.Instance, tracker, TimeProvider.System,
-                                      PrinterTrafficLogTests.Off), tracker);
+                                      PrinterTrafficLogTests.Off,
+                                      new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance)), tracker);
     }
 
     private static void Classify(MessageDispatcher dispatcher, string json)

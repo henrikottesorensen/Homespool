@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
-using Homespool.Host.Exceptions;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -97,16 +96,7 @@ public class CameraAccessService
     /// </remarks>
     public async Task<Camera?> FindAsync(Guid uuid, Caller caller, Capability capability, CancellationToken cancellationToken)
     {
-        // The credential's refusal is said out loud, where the team's deliberately is not: the silence
-        // stops a UUID being confirmed, and a caller's own key leaks nothing about anybody else.
-        //
-        // First, before the row is looked for: a refusal raised after the lookup answers one way for a
-        // camera that exists and another for one that does not, which confirms the UUID it was meant to
-        // keep quiet about. It needs no database either.
-        if (!caller.Allows(capability))
-        {
-            throw CredentialScopeDeniedException.For(capability);
-        }
+        CredentialScope.Require(caller, capability);
 
         Camera? camera = await _dbContext.Cameras
                                          .Include(entity => entity.Printer)

@@ -9,7 +9,6 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
-using Homespool.Host.Exceptions;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -173,6 +172,11 @@ public class CameraService
                                                      string? resolution,
                                                      CancellationToken cancellationToken)
     {
+        // Before the team is resolved, not only before the membership is read: the refusal for a team
+        // this account is not in is the refusal for one that does not exist, and a scope check raised
+        // between them would tell the two apart.
+        CredentialScope.Require(caller, Capability.ManageCamera);
+
         int? namedTeamId = await _dbContext.Teams
                                            .Where(team => team.Uuid == teamUuid)
                                            .Select(team => (int?)team.Id)
@@ -391,6 +395,14 @@ public class CameraService
                                                                string source,
                                                                CancellationToken cancellationToken)
     {
+        // The membership row below is read here rather than through the access service, so the
+        // credential is asked here too: a scope must not slip past a gate because it went round it.
+        //
+        // Above the attached-device branch, which answers on the administrator role alone and would
+        // otherwise return before the credential was ever asked - letting a token that never named
+        // ManageCamera save an attached camera, provided its owner is an administrator.
+        CredentialScope.Require(caller, Capability.ManageCamera);
+
         if (CameraSourcePolicy.IsLocalDevice(source))
         {
             bool isAdministrator = await _access.IsAdministratorAsync(caller.UserId, cancellationToken)
@@ -406,13 +418,6 @@ public class CameraService
                                                      member => member.TeamId == teamId && member.UserId == caller.UserId,
                                                      cancellationToken)
                                                  .ConfigureAwait(false);
-
-        // Reading the row directly rather than through CameraAccessService is why the credential half
-        // has to be spelled here too: a scope must not slip past a gate because it went round it.
-        if (!caller.Allows(Capability.ManageCamera))
-        {
-            throw CredentialScopeDeniedException.For(Capability.ManageCamera);
-        }
 
         bool permitted = membership is not null &&
                          CapabilitySet.Parse(membership.Capabilities).Allows(Capability.ManageCamera);

@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles.GCode;
 using Homespool.Model;
@@ -34,6 +35,14 @@ namespace Homespool.Host.PrintFiles;
 /// read path below can heal a missing row on the spot and why <see cref="PrintFileReconciler"/> can
 /// afford to be a plain directory walk.
 /// </para>
+/// <para>
+/// <b>The credential gate is here rather than in the controllers and pages</b>, on the same argument
+/// as <see cref="Authorisation.PrinterAccessService"/>: a rule living with the callers is one the next
+/// caller forgets. Every entry point below opens with
+/// <see cref="Authorisation.CredentialScope.Require"/> and asks nothing further, because a file has no
+/// team - it lives at <c>{userId}/{name}</c>, so nobody else can reach it and its owner cannot be
+/// refused it. The only question is which of their own powers this key was given.
+/// </para>
 /// </remarks>
 public sealed class PrintFileCatalog
 {
@@ -49,30 +58,9 @@ public sealed class PrintFileCatalog
     }
 
     /// <summary>Everything the caller has uploaded. Straight through to the store.</summary>
-    /// <summary>
-    /// Refuses when the credential did not name <paramref name="capability"/>.
-    /// </summary>
-    /// <remarks>
-    /// <b>The gate is here rather than in the controllers and pages</b>, on the same argument as
-    /// <c>PrinterAccessService</c>: a rule living with the callers is one the next caller forgets. It
-    /// asks only the credential, because a file has no team - it lives at <c>{userId}/{name}</c>, so
-    /// nobody else can reach it and its owner cannot be refused it. The only question is which of
-    /// their own powers this key was given.
-    /// </remarks>
-    /// <exception cref="CredentialScopeDeniedException">The credential does not permit it.</exception>
-    private static void Require(Caller caller, Capability capability)
-    {
-        ArgumentNullException.ThrowIfNull(caller);
-
-        if (!caller.Allows(capability))
-        {
-            throw CredentialScopeDeniedException.For(capability);
-        }
-    }
-
     public IReadOnlyList<StoredFile> List(Caller caller)
     {
-        Require(caller, Capability.ViewOwnFiles);
+        CredentialScope.Require(caller, Capability.ViewOwnFiles);
 
         return _store.List(caller.UserId);
     }
@@ -80,7 +68,7 @@ public sealed class PrintFileCatalog
     /// <summary>One of the caller's files by name, or null. Straight through.</summary>
     public StoredFile? Find(Caller caller, string fileName)
     {
-        Require(caller, Capability.ViewOwnFiles);
+        CredentialScope.Require(caller, Capability.ViewOwnFiles);
 
         return _store.Find(caller.UserId, fileName);
     }
@@ -112,7 +100,7 @@ public sealed class PrintFileCatalog
                                           Stream content,
                                           CancellationToken cancellationToken)
     {
-        Require(caller, Capability.UploadOwnFiles);
+        CredentialScope.Require(caller, Capability.UploadOwnFiles);
 
         return _store.StageAsync(caller.UserId, fileName, content, cancellationToken);
     }
@@ -122,7 +110,7 @@ public sealed class PrintFileCatalog
     {
         // Throwing away your own half-finished upload is part of uploading, not manipulation of a
         // file that exists - nothing is published under a name yet.
-        Require(caller, Capability.UploadOwnFiles);
+        CredentialScope.Require(caller, Capability.UploadOwnFiles);
 
         return _store.Discard(caller.UserId, token);
     }
@@ -186,7 +174,7 @@ public sealed class PrintFileCatalog
                                             CancellationToken cancellationToken,
                                             string? userName = null)
     {
-        Require(caller, RequiredToWrite(overwrite));
+        CredentialScope.Require(caller, RequiredToWrite(overwrite));
 
         PublishedFile published =
             await _store.SaveAsync(caller.UserId, fileName, content, overwrite, cancellationToken, userName);
@@ -221,7 +209,7 @@ public sealed class PrintFileCatalog
                                                 CancellationToken cancellationToken,
                                                 string? userName = null)
     {
-        Require(caller, RequiredToWrite(overwrite));
+        CredentialScope.Require(caller, RequiredToWrite(overwrite));
 
         PublishedFile? published = _store.Publish(caller.UserId, token, overwrite, userName);
 
@@ -249,7 +237,7 @@ public sealed class PrintFileCatalog
                                                string newName,
                                                CancellationToken cancellationToken)
     {
-        Require(caller, Capability.ManipulateOwnFiles);
+        CredentialScope.Require(caller, Capability.ManipulateOwnFiles);
 
         long userId = caller.UserId;
 
@@ -293,7 +281,7 @@ public sealed class PrintFileCatalog
     /// </remarks>
     public async Task<PrintFileDeletion> DeleteAsync(Caller caller, string fileName, CancellationToken cancellationToken)
     {
-        Require(caller, Capability.ManipulateOwnFiles);
+        CredentialScope.Require(caller, Capability.ManipulateOwnFiles);
 
         long userId = caller.UserId;
 

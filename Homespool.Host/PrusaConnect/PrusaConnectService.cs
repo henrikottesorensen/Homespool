@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -728,10 +729,7 @@ public class PrusaConnectService
     private static void RequireManage(TeamMember? membership, Caller caller)
     {
         // Told apart, so a narrowed token is not mistaken for missing team access.
-        if (!caller.Allows(Capability.ManagePrinter))
-        {
-            throw CredentialScopeDeniedException.For(Capability.ManagePrinter);
-        }
+        CredentialScope.Require(caller, Capability.ManagePrinter);
 
         // A team that does not exist and a team the caller is not in both arrive here as null, and get
         // the same refusal.

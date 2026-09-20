@@ -223,6 +223,39 @@ public class SettingsFileTests : IDisposable
                       .Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
     }
 
+    /// <summary>
+    /// A wide temporary file left by an interrupted write is narrowed rather than inherited.
+    /// </summary>
+    /// <remarks>
+    /// The write asks for the mode at creation, which is what keeps the settings off a 0644 file for
+    /// the gap between the bytes landing and the mode being set. That request is ignored for a file
+    /// that already exists, and the temporary name is fixed rather than random - so the set
+    /// afterwards is the only thing covering this case, and removing it as redundant is what this
+    /// catches. The rename carries the mode with the inode.
+    /// </remarks>
+    [Fact]
+    public void AWideTemporaryFileLeftByAnInterruptedWriteDoesNotCarryIntoTheSettings()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        File(out SettingsFile file);
+
+        string temporary = file.Path + ".tmp";
+        System.IO.File.WriteAllText(temporary, "{}");
+        System.IO.File.SetUnixFileMode(temporary,
+                                       UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                                                             UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        file.Write(new JsonObject { ["Smtp"] = new JsonObject { ["Password"] = "ciphertext" } });
+
+        System.IO.File.GetUnixFileMode(file.Path)
+                      .Should()
+                      .Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (!disposing)

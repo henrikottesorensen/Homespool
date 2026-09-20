@@ -1724,10 +1724,17 @@ ensure_go2rtc_config_file() {
         return 0
     fi
 
+    # The mode first, and on its own, because it is the half that has to hold whatever else fails.
+    # go2rtc stores a camera's source as it was given it, so an RTSP URL carrying a password ends up
+    # in this file in plaintext - and the umask default is world-readable on every machine this runs
+    # on. Chained onto the chgrp below it would be skipped exactly where it is needed: a host whose
+    # chgrp fails is one where nothing else is going to narrow the file either.
+    chmod 660 "$config" 2>/dev/null
+
     # Group write is what the sidecar needs: it runs as a uid that owns nothing here but has this
     # group. chgrp needs no root for anybody already in the group, which is the person who plugged
     # the camera in - and root, where this runs as root, can do it regardless.
-    if chgrp "$gid" "$config" 2>/dev/null && chmod 660 "$config" 2>/dev/null; then
+    if chgrp "$gid" "$config" 2>/dev/null; then
         fmt=$"Created %s for the camera sidecar, writable by group %s."
         say "$(printf "$fmt" "$config" "$gid")"
         return 0
@@ -2180,12 +2187,20 @@ apply() {
         }
     ' "$pairs" "$env_file" > "$tmp"
 
-    # Copied over rather than moved, so an existing file keeps its own ownership and mode.
+    # Narrowed before the secrets go in rather than after, because the secrets are in $tmp and the
+    # next line is what puts them here. This is the path that covers a .env the wizard did not
+    # create - the README offers starting from .env.example by hand, and that file is 664 in the
+    # repository - so without this the generated passwords land in a world-readable file and are
+    # only shut away once the write has finished. The two files the wizard creates itself are made
+    # at their mode under umask 077 and never depended on this.
+    #
+    # $tmp is mktemp's, which is 0600, so the rendered copy was never wide either.
+    chmod 600 "$env_file" 2>/dev/null || true
+
+    # Copied over rather than moved, so an existing file keeps its own ownership - and, now that the
+    # line above has set it, the mode this wrote rather than mktemp's.
     cat "$tmp" > "$env_file"
     rm -f "$tmp" "$pairs"
-
-    # A file holding a sidecar password should not be world-readable.
-    chmod 600 "$env_file" 2>/dev/null || true
 }
 
 # ------------------------------------------------------------------------------------------------

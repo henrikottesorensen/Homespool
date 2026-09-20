@@ -175,81 +175,81 @@ msgstr ""
 #: setup-env.sh:1722
 msgid "%s was empty, and now holds a starting point the camera sidecar can write over."
 msgstr ""
-#: setup-env.sh:1731
+#: setup-env.sh:1738
 msgid "Created %s for the camera sidecar, writable by group %s."
 msgstr ""
-#: setup-env.sh:1740
+#: setup-env.sh:1747
 msgid "Created %s for the camera sidecar."
 msgstr ""
-#: setup-env.sh:1745
+#: setup-env.sh:1752
 msgid "Created %s but could not give it group %s, so the camera sidecar cannot write it and adding a camera will fail. Fix it with: sudo chgrp %s %s && sudo chmod 660 %s"
 msgstr ""
-#: setup-env.sh:1761
+#: setup-env.sh:1768
 msgid "No source of randomness found, and the server refuses to start without CA_PASSPHRASE. Set it by hand to the output of: openssl rand -base64 24 (run anywhere)."
 msgstr ""
-#: setup-env.sh:1766
+#: setup-env.sh:1773
 msgid "Generated a passphrase for the printer CA key; the server encrypts the key with it on its next start. Do not lose it - without it the key cannot be read and every printer would need re-provisioning from a USB stick. Back .env up separately from data/."
 msgstr ""
-#: setup-env.sh:1806
+#: setup-env.sh:1813
 msgid "Detected $address as the address printers reach this server on."
 msgstr ""
-#: setup-env.sh:1836
+#: setup-env.sh:1843
 msgid "/16 from 172.16 to 172.31 is taken. Set the network's range in .env by hand."
 msgstr ""
-#: setup-env.sh:1841
+#: setup-env.sh:1848
 msgid "$candidate instead."
 msgstr ""
-#: setup-env.sh:1905
+#: setup-env.sh:1912
 msgid "Once the certificate is in place, the site can tell browsers to insist on HTTPS for the public name and to refuse any certificate warning for it - for two years at a time. That is HSTS. It is sent only on a name that actually holds an issued certificate; a .lan name or an address never gets it."
 msgstr ""
-#: setup-env.sh:1907
+#: setup-env.sh:1914
 msgid "  Turn on HSTS for the public name"
 msgstr ""
-#: setup-env.sh:1923
+#: setup-env.sh:1930
 msgid "HSTS was on for that name. Browsers that saw it will refuse the self-signed certificate it now falls back to until the two years they were told about run down - keep the public name and its certificate for that long if you can, or expect to clear the name from each browser by hand."
 msgstr ""
-#: setup-env.sh:1944
+#: setup-env.sh:1951
 msgid "The compose network $label ($subnet) collides with:$colliding"
 msgstr ""
-#: setup-env.sh:1946
+#: setup-env.sh:1953
 msgid "A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 msgstr ""
-#: setup-env.sh:1950
+#: setup-env.sh:1957
 msgid "Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
 msgstr ""
-#: setup-env.sh:1996
+#: setup-env.sh:2003
 msgid "This stack has run before, so the printer certificate has already been issued - and it is issued once. Changing PRINTER_HOST in .env does not change what that certificate covers. Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
 msgstr ""
-#: setup-env.sh:2034
+#: setup-env.sh:2041
 msgid "This will change:"
 msgstr ""
-#: setup-env.sh:2067
+#: setup-env.sh:2074
 msgid "Every other line - comments, blank lines, and any key not listed - is left as it is."
 msgstr ""
-#: setup-env.sh:2081
+#: setup-env.sh:2088
 msgid "Created $env_file from .env.example."
 msgstr ""
-#: setup-env.sh:2250
+#: setup-env.sh:2265
 msgid "Homespool - .env setup"
 msgstr ""
-#: setup-env.sh:2253
+#: setup-env.sh:2268
 msgid "Editing the existing file, and only the settings below are touched:"
 msgstr ""
-#: setup-env.sh:2256
+#: setup-env.sh:2271
 msgid "No .env yet. One will be created from .env.example, with these settings filled in."
 msgstr ""
-#: setup-env.sh:2276
+#: setup-env.sh:2291
 msgid "Nothing to change."
 msgstr ""
-#: setup-env.sh:2285
+#: setup-env.sh:2300
 msgid "--dry-run: nothing written."
 msgstr ""
-#: setup-env.sh:2291
+#: setup-env.sh:2306
 msgid "Write these"
 msgstr ""
-#: setup-env.sh:2300
+#: setup-env.sh:2315
 msgid "Written. Bring the stack up with:"
 msgstr ""
-#: setup-env.sh:2302
+#: setup-env.sh:2317
 msgid "    docker compose up -d"
 msgstr ""

@@ -942,6 +942,50 @@ if test_case "the seeded .env is not world-readable even before the chmod"; then
     assert_eq "600" "$seeded_mode" "the seed copy carries its mode from the moment it exists"
 fi
 
+if test_case "a .env the wizard did not create is narrowed before the secrets go into it"; then
+    # The sibling of the case above, and the one the seed's umask cannot cover: a .env copied from
+    # .env.example by hand is 664, and the wizard then writes CA_PASSPHRASE and GO2RTC_PASSWORD into
+    # it. A mode read after apply proves nothing here either - the chmod sets it whichever side of
+    # the write it is on - so what is observed is the chmod itself, through a stub that records
+    # whether the secret had already landed when it ran.
+    use_temp_env "GO2RTC_PASSWORD=" "GO2RTC_PASSWORD="
+    chmod 664 "$env_file"
+
+    sandbox_path
+    chmod_log="$temp_env_dir/chmod-calls"
+    export chmod_log
+    # REMOVED first, for the reason sandbox_path gives about its own stub copies: the entries it
+    # makes are symlinks to the real binaries, and a redirection over one follows it and writes to
+    # /bin/chmod. Only SIP stops that being the last thing this suite ever does on a Mac.
+    rm -f "$PATH/chmod"
+    cat > "$PATH/chmod" <<'STUB'
+#!/bin/sh
+# Records, for each existing file this is asked to chmod, whether the generated password is in it
+# yet - then does the real thing. /bin/chmod by absolute path, because this stub is what `chmod`
+# now resolves to.
+for arg in "$@"; do
+    [ -f "$arg" ] || continue
+    if grep -q hunter2 "$arg" 2>/dev/null; then
+        echo "present" >> "$chmod_log"
+    else
+        echo "absent" >> "$chmod_log"
+    fi
+done
+exec /bin/chmod "$@"
+STUB
+    /bin/chmod +x "$PATH/chmod"
+    # bash remembers where it found a command. chmod was run a few lines above, before the sandbox
+    # existed, so without this the stub is installed and never reached.
+    hash -r
+
+    plan_set GO2RTC_PASSWORD hunter2
+    apply >/dev/null 2>&1
+
+    assert_eq "absent" "$(head -1 "$chmod_log")" "the mode is narrowed before the password is written"
+    assert_contains "$(cat "$env_file")" "hunter2" "and the password did get written"
+    unset chmod_log
+fi
+
 if test_case "an interrupted apply leaves no temp files behind"; then
     # The pairs file holds every pending value, the password included, and the patched copy holds
     # the whole .env - so both have to go however the run ends, not only when it reaches the rm.
@@ -1530,6 +1574,18 @@ if test_case "the sidecar config file is created beside .env"; then
     # file for its password, and an empty first one makes it panic on the write Homespool does at
     # startup. `streams: {}` is the least we can invent - the sidecar rewrites the file over it.
     assert_eq "streams: {}" "$(cat "$temp_env_dir/go2rtc.yaml")" "created with something to parse"
+fi
+
+if test_case "the sidecar config file is not world-readable"; then
+    # go2rtc stores a camera's source as it was handed it, so an RTSP URL with a password in it is a
+    # plaintext password in this file. Nothing here has that yet - the secret arrives later, when the
+    # sidecar rewrites the file in place and keeps the mode - which is why the mode has to be right
+    # at creation, on every machine, not only where the chgrp beside it happens to work.
+    use_temp_env "PRINTER_HOST="
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    # GNU stat first, for the reason given at the .env mode test above.
+    mode="$(stat -c '%a' "$temp_env_dir/go2rtc.yaml" 2>/dev/null || stat -f '%Lp' "$temp_env_dir/go2rtc.yaml")"
+    assert_eq "660" "$mode" "not world-readable"
 fi
 
 if test_case "an existing but empty sidecar config is seeded"; then

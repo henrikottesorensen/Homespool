@@ -160,6 +160,75 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     }
 
     /// <summary>
+    /// Re-minting over a key file that is already there narrows it, rather than writing into
+    /// whatever mode it found.
+    /// </summary>
+    /// <remarks>
+    /// The write asks for the mode at creation, which is what keeps the key off a 0644 file for the
+    /// gap between the bytes landing and the mode being set - the runtime image's umask is 0022. That
+    /// request is ignored for a file that already exists, which is every re-mint, so the set
+    /// afterwards is the only thing covering this path and removing it as redundant is what this
+    /// catches.
+    /// </remarks>
+    [Fact]
+    public void ReMintingOverAWideKeyFileNarrowsItRatherThanInheritingIt()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        authority.IssueLeaf(["192.168.13.238"]).Dispose();
+
+        File.SetUnixFileMode(authority.LeafKeyPemPath,
+                             UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                                                   UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        // Act
+        authority.IssueLeaf(["192.168.13.238"]).Dispose();
+
+        // Assert
+        File.GetUnixFileMode(authority.LeafKeyPemPath)
+            .Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead);
+    }
+
+    /// <summary>
+    /// The authority key does not inherit a wide temporary file left by an interrupted mint.
+    /// </summary>
+    /// <remarks>
+    /// Same shape as the leaf above, and the key is ciphertext rather than plaintext - but the
+    /// temporary name is fixed rather than random, the rename carries the mode with the inode, and
+    /// a key file whose mode depends on how the previous run ended is not something to leave
+    /// standing.
+    /// </remarks>
+    [Fact]
+    public void TheAuthorityKeyDoesNotInheritAWideLeftoverTemporaryFile()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        Directory.CreateDirectory(Path.GetDirectoryName(authority.AuthorityKeyPemPath)!);
+        string temporary = authority.AuthorityKeyPemPath + ".tmp";
+        File.WriteAllText(temporary, "whatever the interrupted mint got as far as");
+        File.SetUnixFileMode(temporary,
+                             UnixFileMode.UserRead | UnixFileMode.UserWrite |
+                                                   UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+
+        // Act
+        authority.EnsureLeaf(["192.168.13.238"]).Dispose();
+
+        // Assert
+        File.GetUnixFileMode(authority.AuthorityKeyPemPath)
+            .Should().Be(UnixFileMode.UserRead | UnixFileMode.UserWrite);
+    }
+
+    /// <summary>
     /// A bare IP address is carried as a <c>dNSName</c> SAN, not as the RFC-correct <c>iPAddress</c>.
     /// </summary>
     /// <remarks>

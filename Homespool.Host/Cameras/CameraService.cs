@@ -190,7 +190,7 @@ public class CameraService
             return CameraSaveOutcome.Refused("Cameras_NotYourTeam");
         }
 
-        CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, teamId, source, cancellationToken)
+        CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, teamId, source, existingSource: null, cancellationToken)
             .ConfigureAwait(false);
 
         if (refusal is not null)
@@ -296,7 +296,7 @@ public class CameraService
             return CameraSaveOutcome.Refused("Cameras_PasswordNotCarriedOver");
         }
 
-        CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, camera.TeamId, source, cancellationToken)
+        CameraSaveOutcome? refusal = await CheckPermittedAsync(caller, camera.TeamId, source, camera.Source, cancellationToken)
             .ConfigureAwait(false);
 
         if (refusal is not null)
@@ -390,9 +390,18 @@ public class CameraService
     /// Whether this account may put <paramref name="source"/> on a camera owned by this team, or
     /// the refusal to show them.
     /// </summary>
+    /// <remarks>
+    /// <b>Both ends of the change are asked about, not only the one arriving.</b>
+    /// <paramref name="existingSource"/> is what the camera holds today, and null when one is being
+    /// added. A source naming an attached device claims that device, and a source replacing one
+    /// releases it - and releasing a device is what <see cref="DeleteAsync"/> refuses to anybody who
+    /// could not have claimed it. Taken from the stored row rather than the form, so nothing
+    /// submitted can decide which rule applies.
+    /// </remarks>
     private async Task<CameraSaveOutcome?> CheckPermittedAsync(Caller caller,
                                                                int teamId,
                                                                string source,
+                                                               string? existingSource,
                                                                CancellationToken cancellationToken)
     {
         // The membership row below is read here rather than through the access service, so the
@@ -403,7 +412,7 @@ public class CameraService
         // ManageCamera save an attached camera, provided its owner is an administrator.
         CredentialScope.Require(caller, Capability.ManageCamera);
 
-        if (CameraSourcePolicy.IsLocalDevice(source))
+        if (CameraSourcePolicy.IsLocalDevice(source) || CameraSourcePolicy.IsLocalDevice(existingSource))
         {
             bool isAdministrator = await _access.IsAdministratorAsync(caller.UserId, cancellationToken)
                                                 .ConfigureAwait(false);

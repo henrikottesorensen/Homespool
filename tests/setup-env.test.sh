@@ -1532,6 +1532,18 @@ if test_case "the sidecar config file is created beside .env"; then
     assert_eq "streams: {}" "$(cat "$temp_env_dir/go2rtc.yaml")" "created with something to parse"
 fi
 
+if test_case "the sidecar config file is not world-readable"; then
+    # go2rtc stores a camera's source as it was handed it, so an RTSP URL with a password in it is a
+    # plaintext password in this file. Nothing here has that yet - the secret arrives later, when the
+    # sidecar rewrites the file in place and keeps the mode - which is why the mode has to be right
+    # at creation, on every machine, not only where the chgrp beside it happens to work.
+    use_temp_env "PRINTER_HOST="
+    ensure_go2rtc_config_file >/dev/null 2>&1
+    # GNU stat first, for the reason given at the .env mode test above.
+    mode="$(stat -c '%a' "$temp_env_dir/go2rtc.yaml" 2>/dev/null || stat -f '%Lp' "$temp_env_dir/go2rtc.yaml")"
+    assert_eq "660" "$mode" "not world-readable"
+fi
+
 if test_case "an existing but empty sidecar config is seeded"; then
     use_temp_env "PRINTER_HOST="
     : > "$temp_env_dir/go2rtc.yaml"

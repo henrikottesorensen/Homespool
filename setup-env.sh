@@ -1724,10 +1724,17 @@ ensure_go2rtc_config_file() {
         return 0
     fi
 
+    # The mode first, and on its own, because it is the half that has to hold whatever else fails.
+    # go2rtc stores a camera's source as it was given it, so an RTSP URL carrying a password ends up
+    # in this file in plaintext - and the umask default is world-readable on every machine this runs
+    # on. Chained onto the chgrp below it would be skipped exactly where it is needed: a host whose
+    # chgrp fails is one where nothing else is going to narrow the file either.
+    chmod 660 "$config" 2>/dev/null
+
     # Group write is what the sidecar needs: it runs as a uid that owns nothing here but has this
     # group. chgrp needs no root for anybody already in the group, which is the person who plugged
     # the camera in - and root, where this runs as root, can do it regardless.
-    if chgrp "$gid" "$config" 2>/dev/null && chmod 660 "$config" 2>/dev/null; then
+    if chgrp "$gid" "$config" 2>/dev/null; then
         fmt=$"Created %s for the camera sidecar, writable by group %s."
         say "$(printf "$fmt" "$config" "$gid")"
         return 0

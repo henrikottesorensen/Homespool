@@ -43,12 +43,6 @@ public sealed class ExternalLoginProviderTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Three shapes that all used to reach <c>ChallengeResult</c>: a name nobody has heard of, an
-    /// empty one, and — the interesting one — <c>PrusaConnect</c>, which <i>is</i> a registered
-    /// authentication scheme but is the printer protocol's, not an external identity provider's.
-    /// Challenging it from a sign-in page got its 401; harmless, and not a thing to leave reachable.
-    /// </summary>
-    /// <summary>
     /// The login page offers a button for a registered provider, and none when there is none.
     /// </summary>
     /// <remarks>
@@ -97,6 +91,13 @@ public sealed class ExternalLoginProviderTests : IAsyncLifetime
         withProvider.Should().Contain("Example provider", "and it is named by its configured display name");
     }
 
+    /// <summary>
+    /// Four shapes that all used to reach <c>ChallengeResult</c>: a name nobody has heard of, an empty
+    /// one, and — the interesting pair — <c>PrusaConnect</c> and <c>ApiToken</c>, which <i>are</i>
+    /// registered authentication schemes but are the printer protocol's and the API's, not external
+    /// identity providers'. Challenging either from a sign-in page got its 401; harmless, and not a
+    /// thing to leave reachable.
+    /// </summary>
     [Theory]
     [InlineData("NoSuchProvider")]
     [InlineData("")]

@@ -3,6 +3,7 @@
 
 #nullable disable
 
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
@@ -167,15 +168,41 @@ public class ExternalLoginsModel : PageModel
         return Page();
     }
 
-    /// <summary>Begins linking a provider to the signed-in account.</summary>
+    /// <summary>Begins linking a provider to the signed-in account, if the named one is registered.</summary>
     /// <remarks>
-    /// The external cookie is cleared first, exactly as the sign-in flow does: a stale one from an
-    /// earlier attempt would be picked up by the callback below and linked instead of the identity the
-    /// person is about to authenticate as.
+    /// <para>
+    /// <b>The name is checked because it arrives from the form</b>, exactly as the sign-in flow checks
+    /// it. Unchecked, it reached <see cref="ChallengeResult"/> as posted: a scheme nobody registered
+    /// threw and answered 500, and a name that <i>is</i> a scheme but not an external provider ran that
+    /// handler's challenge instead - the printer scheme's 401, a cookie scheme's redirect to the login
+    /// page, the passkey scheme beginning an assertion ceremony. None of them is a way into this
+    /// account, and none of them is a thing an account page should be able to reach.
+    /// </para>
+    /// <para>
+    /// <b>Checked before the sign-out below</b>, so a post naming nothing leaves an external cookie a
+    /// concurrent flow is still using where it is.
+    /// </para>
+    /// <para>
+    /// <b>400 rather than a message.</b> The page renders a button per registered provider, so nothing
+    /// a person can do here reaches this; the caller is a hand-made request, and there is no human to
+    /// write prose for.
+    /// </para>
+    /// <para>
+    /// The external cookie is cleared before the challenge, exactly as the sign-in flow does: a stale
+    /// one from an earlier attempt would be picked up by the callback below and linked instead of the
+    /// identity the person is about to authenticate as.
+    /// </para>
     /// </remarks>
     [RequireRecentProof]
     public async Task<IActionResult> OnPostLinkLoginAsync(string provider)
     {
+        IReadOnlyList<AuthenticationScheme> external = await _externalSignIn.ProvidersAsync();
+
+        if (!external.Any(scheme => string.Equals(scheme.Name, provider, StringComparison.Ordinal)))
+        {
+            return BadRequest();
+        }
+
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
         string redirectUrl = Url.Page("./ExternalLogins", pageHandler: "LinkLoginCallback");

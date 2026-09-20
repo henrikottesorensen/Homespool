@@ -12,8 +12,15 @@
 # exactly like a wrong password.
 set -eu
 
-CONF=/boot/firmware/homespool-wifi.txt
-IWD_DIR=/var/lib/iwd
+# One prefix in front of every path, exactly as homespool-login.sh takes one and for the same
+# reason: tests/pi-wifi.test.sh points the whole set at a temporary tree. Empty in every real
+# invocation - the unit passes no environment at all, and anything able to set it here is already
+# root on the box.
+ROOT="${HOMESPOOL_WIFI_ROOT:-}"
+
+CONF="$ROOT/boot/firmware/homespool-wifi.txt"
+IWD_DIR="$ROOT/var/lib/iwd"
+IWD_CONF_DIR="$ROOT/etc/iwd"
 
 # Lift the rfkill soft block before anything else, and unconditionally - it is not related to whether
 # a credential was configured, and a blocked radio is worth clearing even on an ethernet deployment.
@@ -50,7 +57,26 @@ ssid=$(value_of ssid)
 psk=$(value_of psk)
 country=$(value_of country)
 
+# Half a credential is a typo, not a configuration, and saying so is the whole difference between
+# "oh, I forgot the network name" and "but I typed something in". Both lines empty is the steady
+# state of every card and stays silent; one of the two is somebody who meant to connect.
+#
+# Not a failed unit: the board may be perfectly happy on ethernet, and a red entry in
+# `systemctl --failed` for the life of the card is a worse lie than none. The message repeats every
+# boot because the file does, which is the point - it is still wrong.
+#
+# The passphrase is left where it is. Blanking it would mean retyping it alongside the ssid they
+# came back to add, for no gain: this board could not have used it. The line below says so, so
+# nobody has to guess whether it survived.
 if [ -z "$ssid" ] || [ -z "$psk" ]; then
+    if [ -n "$psk" ]; then
+        echo "homespool-wifi: ssid is empty, so nothing was configured. Add the network name to" >&2
+        echo "homespool-wifi: homespool-wifi.txt and reboot - your psk is still in the file." >&2
+    elif [ -n "$ssid" ]; then
+        echo "homespool-wifi: psk is empty, so nothing was configured. Add the passphrase for" >&2
+        echo "homespool-wifi: '$ssid' to homespool-wifi.txt and reboot." >&2
+    fi
+
     exit 0
 fi
 
@@ -110,7 +136,7 @@ echo "homespool-wifi: configured '$ssid'"
 #
 # Worth carrying forward: `status: 16` appeared both with SAE (Pi 4) and without it (Pi 3B), so it
 # means the AP stopped answering mid-handshake and nothing more specific. It is not an SAE marker.
-mkdir -p /etc/iwd
+mkdir -p "$IWD_CONF_DIR"
 {
     printf '[General]\n'
     printf 'EnableNetworkConfiguration=false\n'
@@ -118,11 +144,13 @@ mkdir -p /etc/iwd
         printf 'Country=%s\n' "$country"
     fi
     printf '\n[DriverQuirks]\nSaeDisable=brcmfmac\n'
-} > /etc/iwd/main.conf
+} > "$IWD_CONF_DIR/main.conf"
 
-# if, not `[ -n "$country" ] && echo ...`. That form is the last command in this block, so under
-# `set -e` an empty country would exit non-zero - and homespool-firstboot.service's Restart=on-failure would
-# then retry a script that had in fact done its job, forever.
+# if, not `[ -n "$country" ] && echo ...`. An AND-list whose test fails carries status 1, so that
+# form decides the whole script's exit status whenever it is the last command to run - and a unit
+# reported as failed for the want of an optional country is a lie about a board that configured
+# itself correctly. `set -e` is not the mechanism: it is documented not to fire on any command of an
+# AND-list but the last, and measured not to, in dash and bash alike.
 if [ -n "$country" ]; then
     echo "homespool-wifi: regulatory country set to $country"
 fi

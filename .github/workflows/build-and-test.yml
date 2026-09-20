@@ -77,6 +77,13 @@ jobs:
       - name: Test the Pi login provisioning script
         run: ./tests/pi-login.test.sh
 
+      # The card's other boot-partition file, and the same argument: a board that cannot join the
+      # network is as headless as one nobody can log into, and this script fails silently in every
+      # direction - an SSID hashed into a file name iwd never looks for, an invisible carriage
+      # return, a passphrase left in the clear on the one partition any desktop machine can read.
+      - name: Test the Pi Wi-Fi provisioning script
+        run: ./tests/pi-wifi.test.sh
+
       # The proxy's name derivation, which decides what the deployment answers to and what gets a
       # certificate. Linux, because it sources a file the nginx image's dash reads - and because
       # bash 3.2, which is what a Mac would run it under, cannot parse that file at all.

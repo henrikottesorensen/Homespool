@@ -186,6 +186,14 @@ mmdebstrap:
     - mkdir -p $1/opt/homespool
     - cp -a ${IGconf_homespool_payload}/. $1/opt/homespool/
 
+    # Root, whatever the build host thinks. `cp -a` preserves ownership, and what it preserves is
+    # whatever uid the builder sees through the bind mount: 0 on a Mac, where Docker Desktop maps
+    # every host file to root, and the build user's own uid on a Linux host, where the mount carries
+    # real ids. Without this the card's ownership is a property of the machine that happened to
+    # build it - invisible while that uid is also the device user's, and a stack directory the
+    # device user cannot write the moment it is not.
+    - chown -R 0:0 $1/opt/homespool
+
     # The camera sidecar's configuration, shipped empty so the card has it before anything runs.
     # compose.yaml bind-mounts this ONE FILE, and Docker invents a DIRECTORY at a bind-mount path
     # that is missing - which go2rtc then fails on, reporting a directory where it wanted its
@@ -194,10 +202,10 @@ mmdebstrap:
     # file too and the unit runs it before `docker compose up`, so this is the belt to that braces.
     # Neither is trusted on its own with a fault that presents as "the sidecar will not start".
     #
-    # Here rather than in the payload, because only this hook runs as root: the payload is staged as
-    # whoever ran build.sh and `cp -a` above would carry that uid onto the card, producing a file the
-    # sidecar cannot write - which is worse than an absent one, being a quiet 400 on saving a camera
-    # instead of a container that will not start.
+    # Here rather than in the payload, because only this hook runs as root and can therefore set an
+    # owner and group the payload cannot carry. Staged as a file it would arrive root-owned 0644
+    # after the chown above, which the sidecar cannot write - worse than an absent one, being a
+    # quiet 400 on saving a camera instead of a container that will not start.
     #
     # Empty is a valid configuration: go2rtc reads it, starts, and writes the first camera into it.
     # Group 44 is video on Debian and Raspberry Pi OS, which is what this image is; the sidecar runs

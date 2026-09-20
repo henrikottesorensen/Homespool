@@ -85,7 +85,14 @@ public class ResendEmailConfirmationModel : PageModel
         }
 
         HSUser user = await _userManager.FindByEmailAsync(Input.Email);
-        if (user == null)
+
+        // The second test is this page's own precondition, and it was missing: a confirmed address
+        // has nothing left to confirm, so mailing one is a link that changes nothing - and it is what
+        // let this form mail every registered address rather than only the unconfirmed ones, which is
+        // the population it exists for. Silently, and before anything is counted, for the reason the
+        // null arm is silent: a refusal that looked different would say the address is registered,
+        // and grinding at a confirmed address should cost nothing and produce nothing.
+        if (user == null || await _userManager.IsEmailConfirmedAsync(user))
         {
             ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
             return Page();

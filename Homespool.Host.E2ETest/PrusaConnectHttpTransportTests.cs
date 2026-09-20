@@ -370,6 +370,54 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A printer that keeps posting what is refused is told so in the log once, not once per request.
+    /// </summary>
+    /// <remarks>
+    /// The rate limiter bounds these at three a second per token, which is still three lines a second
+    /// for as long as the sender likes. Two refusals are covered here because they were the two left
+    /// speaking every time: a body over the ceiling, and an inline transfer chunk asked for over a
+    /// transport that has no socket to answer on.
+    /// </remarks>
+    /// <param name="complaint">What the log is expected to say, once.</param>
+    /// <param name="oversized">Whether the body is past the ceiling, or an inline chunk request.</param>
+    [Theory]
+    [InlineData("posted a body over the size ceiling", true)]
+    [InlineData("requested an inline transfer chunk over HTTP, which cannot be served", false)]
+    public async Task ARepeatedRefusalIsLoggedOnce(string complaint, bool oversized)
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        string body = """{"transfer":"inline","file_id":1,"start":0,"end":1023}""";
+
+        if (oversized)
+        {
+            body = $$"""{"state":"IDLE","junk":"{{new string('x', 2 * 1024 * 1024)}}"}""";
+        }
+
+        // Act
+        for (int i = 0; i < 4; i++)
+        {
+            using HttpRequestMessage request = Post("/p/telemetry", identity, token, body);
+
+            using HttpResponseMessage response =
+                await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        }
+
+        // Assert
+        _logs.CountEventsWith(("Complaint", complaint)).Should().Be(1, "four refusals inside one window are one line");
+        _logs.Failures.Should().BeEmpty();
+        _logs.WithException.Should().BeEmpty();
+    }
+
+    /// <summary>
     /// The transport lives on the printer listener alone, like the rest of <c>/p/*</c> - reaching it
     /// on the user port is a 404 before authentication is even attempted.
     /// </summary>

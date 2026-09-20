@@ -13,4 +13,10 @@ public enum WireComplaint
 
     /// <summary>The message carried <c>nan</c> or <c>inf</c>, and was read with those replaced.</summary>
     NonFiniteNumbers = 3,
+
+    /// <summary>A body posted over HTTP was past the size ceiling, and refused unread.</summary>
+    BodyTooLarge = 4,
+
+    /// <summary>An inline transfer chunk was asked for over HTTP, where there is no socket to answer on.</summary>
+    InlineTransferOverHttp = 5,
 }

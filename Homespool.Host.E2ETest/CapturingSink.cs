@@ -70,6 +70,17 @@ public sealed class CapturingSink : ILogEventSink
     /// first. When two requests in one test log the same property, only the conjunction is
     /// meaningful.
     /// </summary>
+    /// <summary>
+    /// How many events carry every one of <paramref name="properties"/> - for a site that is meant to
+    /// speak once however often it is provoked, where "at least one" would pass against a flood.
+    /// </summary>
+    public int CountEventsWith(params (string name, string value)[] properties)
+    {
+        return _events.Count(e => properties.All(p =>
+                                                     e.Properties.TryGetValue(p.name, out LogEventPropertyValue? v) &&
+                                                     Render(v) == p.value));
+    }
+
     public bool HasEventWith(params (string name, string value)[] properties)
     {
         return _events.Any(e => properties.All(p =>

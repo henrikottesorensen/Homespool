@@ -195,8 +195,15 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime
 
     /// <summary>
     /// Malformed JSON is a protocol violation: the socket is closed with <c>PolicyViolation</c>, the
-    /// status the printer sees, rather than the connection merely dropping.
+    /// status the printer sees, rather than the connection merely dropping - and it is the printer's
+    /// violation, so nothing on our side is logged as having failed.
     /// </summary>
+    /// <remarks>
+    /// The exception used to leave the action, and the pipeline logged it as unhandled twice over -
+    /// the exception handler and the request log, each at Error with the parser's 53-line stack
+    /// trace - on every connection that sent garbage. The close status alone never showed that; only
+    /// the log does.
+    /// </remarks>
     [Fact]
     public async Task MalformedJsonClosesWithPolicyViolation()
     {
@@ -215,6 +222,49 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime
         result.MessageType.Should().Be(WebSocketMessageType.Close,
                                        "garbage on the wire ends the connection rather than being skipped");
         socket.CloseStatus.Should().Be(WebSocketCloseStatus.PolicyViolation);
+
+        await WaitForFailuresOrTimeoutAsync();
+
+        _logs.Failures.Should().BeEmpty("a printer sending garbage is the printer's fault, not an error of ours");
+        _logs.WithException.Should().BeEmpty("the refusal is said in a sentence; the parser's stack trace says nothing more");
+        _logs.CountEventsWith(("Complaint", "sent a message that could not be read")).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A message that never ends is closed on with <c>MessageTooBig</c> once it passes the ceiling,
+    /// and - like malformed JSON - is the printer's doing: one warning with the numbers in it, and
+    /// nothing logged as a failure of ours.
+    /// </summary>
+    [Fact]
+    public async Task AMessageThatNeverEndsClosesWithMessageTooBigAndFailsNothingServerSide()
+    {
+        // Arrange
+        using WebSocket socket = await ConnectAsPrinterAsync();
+
+        // An object that opens a string and never closes it, past the 1 MiB default.
+        byte[] opening = Encoding.UTF8.GetBytes("""{"state":"IDLE","junk":" """.TrimEnd());
+        byte[] filler = Encoding.UTF8.GetBytes(new string('x', 64 * 1024));
+
+        // Act
+        await socket.SendAsync(opening, WebSocketMessageType.Text, endOfMessage: false, CancellationToken.None);
+
+        for (int i = 0; i < 20 && socket.State == WebSocketState.Open; i++)
+        {
+            await socket.SendAsync(filler, WebSocketMessageType.Text, endOfMessage: false, CancellationToken.None);
+        }
+
+        byte[] buffer = new byte[256];
+        WebSocketReceiveResult result = await socket.ReceiveAsync(buffer, TestContext.Current.CancellationToken)
+                                                    .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        result.MessageType.Should().Be(WebSocketMessageType.Close);
+        socket.CloseStatus.Should().Be(WebSocketCloseStatus.MessageTooBig);
+
+        await WaitForFailuresOrTimeoutAsync();
+
+        _logs.Failures.Should().BeEmpty("a printer that never finishes a message is not an error of ours");
+        _logs.WithException.Should().BeEmpty();
     }
 
     /// <summary>

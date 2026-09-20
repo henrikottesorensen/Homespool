@@ -181,6 +181,16 @@ public class PrusaConnectPrinterController : ControllerBase
                 return TypedResults.Empty;
             }
         }
+        catch (Exception e) when (e is JsonException or PrinterMessageTooLargeException)
+        {
+            // The printer's protocol violation, and already dealt with by the time it gets here: the
+            // session closed the socket with the status that names it, and whoever noticed has said
+            // so in the log. Letting it leave the action would hand it to the pipeline, which logs an
+            // unhandled exception twice - the exception handler and the request log, each at Error
+            // with the parser's stack trace - for a fault that is not ours, on every reconnect.
+            // Empty rather than a status for the reason given above: the response began at the 101.
+            return TypedResults.Empty;
+        }
         catch (Exception e) when (e is ArgumentNullException or InvalidOperationException)
         {
             return TypedResults.BadRequest();
@@ -477,8 +487,9 @@ public class PrusaConnectPrinterController : ControllerBase
         {
             // Answered like any other unusable body. Firmware reads status codes here and treats every
             // 4xx alike, so introducing a 413 it has never been sent buys nothing.
-            _logger.LogWarning("Printer {PrinterId} sent a body over the {Limit}-byte ceiling.",
-                               printerId, _options.MaxIncomingMessageBytes);
+            _complaints.Refused(printerId,
+                                WireComplaint.BodyTooLarge,
+                                string.Create(System.Globalization.CultureInfo.InvariantCulture, $"the ceiling is {_options.MaxIncomingMessageBytes} bytes"));
 
             return TypedResults.BadRequest();
         }
@@ -521,9 +532,7 @@ public class PrusaConnectPrinterController : ControllerBase
                 // answer is a frame on the same socket. There is nothing to answer with here, so
                 // refuse it rather than accept a request that can never be served. Structurally it
                 // could not be served anyway: HttpPrinterConnection is not an IChunkStreamingConnection.
-                _logger.LogWarning(
-                    "Printer {PrinterId} requested an inline transfer chunk over HTTP, which cannot be served.",
-                    printerId);
+                _complaints.Refused(printerId, WireComplaint.InlineTransferOverHttp, "refused with a 400");
 
                 return TypedResults.BadRequest();
             }

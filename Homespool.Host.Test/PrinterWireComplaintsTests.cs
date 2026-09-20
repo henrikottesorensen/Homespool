@@ -150,6 +150,35 @@ public class PrinterWireComplaintsTests
         detail.Length.Should().BeLessThan(260);
     }
 
+    /// <summary>
+    /// A refusal that is ours to word goes through the same throttle as one a parser worded, under
+    /// its own complaint - so it neither floods nor uses up another complaint's line.
+    /// </summary>
+    [Theory]
+    [InlineData(WireComplaint.BodyTooLarge, "posted a body over the size ceiling")]
+    [InlineData(WireComplaint.InlineTransferOverHttp, "requested an inline transfer chunk over HTTP, which cannot be served")]
+    public void ARefusalInOurOwnWordsIsThrottledToo(WireComplaint complaint, string said)
+    {
+        // Arrange
+        FakeLogger<PrinterWireComplaints> logger = new();
+        PrinterWireComplaints complaints = new(logger) { Interval = TimeSpan.FromMinutes(10) };
+
+        // Act
+        for (int i = 0; i < 100; i++)
+        {
+            complaints.Refused(7, complaint, "the particulars");
+        }
+
+        complaints.Refused(7, WireComplaint.UnreadableMessage, Unreadable);
+
+        // Assert
+        List<FakeLogRecord> lines = Lines(logger);
+
+        lines.Select(line => Property(line, "Complaint")).Should().Equal(said, "sent a message that could not be read");
+        Property(lines[0], "Detail").Should().Be("the particulars");
+        lines.Should().OnlyContain(line => line.Level == LogLevel.Warning && line.Exception == null);
+    }
+
     [Fact]
     public void AMendedMessageSaysHowManyAndWhichSpellings()
     {

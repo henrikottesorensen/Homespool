@@ -18,8 +18,11 @@ Type=oneshot
 Environment=COMPOSE_DIR=@COMPOSE_DIR@
 
 # The provider's credentials are an env_file on the certs service, read from /etc/lego/dns.env by
-# the container. Nothing needs to be in this unit's environment, and deliberately so: a credential
-# here would be readable in `systemctl show` to every user on the machine.
+# the compose CLI that this unit starts - on the host, before any container exists, the values
+# reaching the container as environment. So it is this unit running as root that makes a root-owned
+# 0600 credentials file readable, and nothing about the container's own privileges bears on it.
+# Nothing needs to be in this unit's environment, and deliberately so: a credential here would be
+# readable in `systemctl show` to every user on the machine.
 ExecStart=/usr/local/sbin/homespool-renew-cert
 
 [Install]

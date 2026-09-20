@@ -871,6 +871,23 @@ services:
     # cannot read one, and lego would have had to run as root and hand the files over afterwards.
     user: "101:101"
 
+    # Nothing in here needs a capability: it makes an outbound TLS call and writes files into the
+    # volume below as the uid above, so dropping the bounding set takes away a set this process
+    # never had an effective bit in, and no-new-privileges closes the setuid route. They reach the
+    # `docker compose run` one-off containers this service is only ever started as, which is the
+    # part worth checking rather than assuming.
+    #
+    # THEY DO NOT COST IT THE DNS CREDENTIAL, which is the thing to satisfy yourself about before
+    # touching this. The env_file below is opened by the compose CLI ON THE HOST, before this
+    # container exists, and its values arrive as environment - the file is never in here, so no
+    # capability of this container's was ever between it and the token. Measured on a deployment
+    # with the real root-owned credentials file, both ways: the same variables arrive with the pair
+    # as without, the provider's token among them.
+    cap_drop:
+      - ALL
+    security_opt:
+      - "no-new-privileges:true"
+
     # The provider's credentials, under whatever names that provider uses - CLOUDFLARE_DNS_API_TOKEN,
     # AWS_ACCESS_KEY_ID, and so on for the hundred-odd providers lego supports. `lego dnshelp -c
     # <provider>` names them; acme/README.md has the common ones.

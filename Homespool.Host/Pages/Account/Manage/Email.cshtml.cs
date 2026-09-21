@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -79,15 +77,15 @@ public class EmailModel : PageModel
     /// <summary>Whether the person has proved themselves recently, so the change button is worth showing.</summary>
     public bool Proved { get; private set; }
 
-    public string Email { get; set; }
+    public string? Email { get; set; }
 
     public bool IsEmailConfirmed { get; set; }
 
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     public class InputModel
     {
@@ -95,12 +93,14 @@ public class EmailModel : PageModel
         [EmailAddress]
         [StorableEmailAddress]
         [Display(Name = "Manage_NewEmail")]
-        public string NewEmail { get; set; }
+        public string NewEmail { get; set; } = string.Empty;
     }
 
     private async Task LoadAsync(HSUser user)
     {
-        string email = await _userManager.GetEmailAsync(user);
+        // RequireUniqueEmail makes the user validator refuse a blank address on create and update, so
+        // every stored account has one.
+        string email = (await _userManager.GetEmailAsync(user))!;
         Email = email;
 
         Input = new InputModel
@@ -114,7 +114,7 @@ public class EmailModel : PageModel
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
@@ -127,7 +127,7 @@ public class EmailModel : PageModel
     [RequireRecentProof]
     public async Task<IActionResult> OnPostChangeEmailAsync(CancellationToken cancellationToken)
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
@@ -139,7 +139,7 @@ public class EmailModel : PageModel
             return Page();
         }
 
-        string email = await _userManager.GetEmailAsync(user);
+        string? email = await _userManager.GetEmailAsync(user);
         if (Input.NewEmail != email)
         {
             if (!await TryStartCooldownAsync(user.Id, LimitedAction.ChangeEmail, cancellationToken))
@@ -150,11 +150,13 @@ public class EmailModel : PageModel
 
             string code = await _userManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+            // Names a page of this application, so the route always resolves.
             string callbackUrl = Url.Page(
                 "/Account/ConfirmEmailChange",
                 pageHandler: null,
                 values: new { userUuid = user.Uuid, email = Input.NewEmail, code = code },
-                protocol: Request.Scheme);
+                protocol: Request.Scheme)!;
 
             // The account's language, like every mail to an account. The culture provider usually
             // resolved the same one for this request, but only when a language is stored - and the
@@ -177,7 +179,7 @@ public class EmailModel : PageModel
 
     public async Task<IActionResult> OnPostSendVerificationEmailAsync(CancellationToken cancellationToken)
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
@@ -195,14 +197,17 @@ public class EmailModel : PageModel
             return RedirectToPage();
         }
 
-        string email = await _userManager.GetEmailAsync(user);
+        // Never blank: RequireUniqueEmail, as LoadAsync says.
+        string email = (await _userManager.GetEmailAsync(user))!;
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+        // Names a page of this application, so the route always resolves.
         string callbackUrl = Url.Page(
             "/Account/ConfirmEmail",
             pageHandler: null,
             values: new { userUuid = user.Uuid, code = code },
-            protocol: Request.Scheme);
+            protocol: Request.Scheme)!;
 
         // The account's language, for the reason given on the change-address send above.
         (string subject, string body) = UserCultures.InCulture(user.Language, () => (

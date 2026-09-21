@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,33 +50,33 @@ public class ResetPasswordModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     public class InputModel
     {
         [Required]
         [EmailAddress]
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
 
         [Required]
         [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [DataType(DataType.Password)]
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
 
         [DataType(DataType.Password)]
         [Display(Name = "Account_ConfirmPassword")]
         [Compare("Password", ErrorMessage = "Validation_PasswordMismatch")]
-        public string ConfirmPassword { get; set; }
+        public string? ConfirmPassword { get; set; }
 
         [Required]
-        public string Code { get; set; }
+        public string Code { get; set; } = string.Empty;
     }
 
-    public IActionResult OnGet(string code = null)
+    public IActionResult OnGet(string? code = null)
     {
         // Missing and malformed answer the same way: both mean there is no usable code here, and
         // the distinction is not one the person holding the link can act on differently.
-        string token = EmailedToken.Decode(code);
+        string? token = EmailedToken.Decode(code);
 
         if (token is null)
         {
@@ -100,7 +98,7 @@ public class ResetPasswordModel : PageModel
             return Page();
         }
 
-        HSUser user = await _userManager.FindByEmailAsync(Input.Email);
+        HSUser? user = await _userManager.FindByEmailAsync(Input.Email);
         if (user == null)
         {
             // Refused the way a bad token is, rather than sent to the confirmation page. An address no

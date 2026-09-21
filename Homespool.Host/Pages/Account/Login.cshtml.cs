@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -58,9 +56,9 @@ public class LoginModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    public IList<AuthenticationScheme> ExternalLogins { get; set; }
+    public IList<AuthenticationScheme> ExternalLogins { get; set; } = [];
 
     /// <summary>
     /// Whether the passkey button is offered on this request: a relying-party id is configured and it
@@ -76,10 +74,10 @@ public class LoginModel : PageModel
     /// </remarks>
     public bool PasskeysAvailable { get; set; }
 
-    public string ReturnUrl { get; set; }
+    public string? ReturnUrl { get; set; }
 
     [TempData]
-    public string ErrorMessage { get; set; }
+    public string? ErrorMessage { get; set; }
 
     public class InputModel
     {
@@ -92,17 +90,17 @@ public class LoginModel : PageModel
         /// </remarks>
         [Required]
         [Display(Name = "Account_EmailOrUsername")]
-        public string Login { get; set; }
+        public string Login { get; set; } = string.Empty;
 
         [Required]
         [DataType(DataType.Password)]
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
 
         [Display(Name = "Account_RememberMe")]
         public bool RememberMe { get; set; }
     }
 
-    public async Task OnGetAsync(string returnUrl = null)
+    public async Task OnGetAsync(string? returnUrl = null)
     {
         if (!string.IsNullOrEmpty(ErrorMessage))
         {
@@ -163,7 +161,7 @@ public class LoginModel : PageModel
     /// of an oracle for passkeys than it is for passwords.
     /// </para>
     /// </remarks>
-    public async Task<IActionResult> OnPostPasskeyAsync(string credential = null, bool rememberMe = false, string returnUrl = null)
+    public async Task<IActionResult> OnPostPasskeyAsync(string? credential = null, bool rememberMe = false, string? returnUrl = null)
     {
         returnUrl ??= Url.Content("~/");
 
@@ -207,7 +205,7 @@ public class LoginModel : PageModel
         return LocalRedirect(returnUrl);
     }
 
-    public async Task<IActionResult> OnPostAsync(string returnUrl = null)
+    public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
     {
         returnUrl ??= Url.Content("~/");
 
@@ -254,7 +252,8 @@ public class LoginModel : PageModel
             return Page();
         }
 
-        HSUser user = await _userManager.GetUserAsync(password.Principal);
+        // The scheme has just loaded this account, and accounts are deactivated rather than deleted.
+        HSUser user = (await _userManager.GetUserAsync(password.Principal))!;
 
         if (await _signIn.OwesSecondFactorAsync(HttpContext, user))
         {

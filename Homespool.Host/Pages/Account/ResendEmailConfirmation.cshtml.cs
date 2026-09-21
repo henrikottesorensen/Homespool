@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -52,13 +50,13 @@ public class ResendEmailConfirmationModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     public class InputModel
     {
         [Required]
         [EmailAddress]
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
     }
 
     public void OnGet()
@@ -72,7 +70,7 @@ public class ResendEmailConfirmationModel : PageModel
             return Page();
         }
 
-        HSUser user = await _userManager.FindByEmailAsync(Input.Email);
+        HSUser? user = await _userManager.FindByEmailAsync(Input.Email);
 
         // The second test is this page's own precondition, and it was missing: a confirmed address
         // has nothing left to confirm, so mailing one is a link that changes nothing - and it is what
@@ -105,11 +103,13 @@ public class ResendEmailConfirmationModel : PageModel
 
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+        // Names a page of this application, so the route always resolves.
         string callbackUrl = Url.Page(
             "/Account/ConfirmEmail",
             pageHandler: null,
             values: new { userUuid = user.Uuid, code = code },
-            protocol: Request.Scheme);
+            protocol: Request.Scheme)!;
 
         // The account's language, not the request's: this page is anonymous, so the browser asking
         // may not belong to the person who reads what it sends.
@@ -122,7 +122,9 @@ public class ResendEmailConfirmationModel : PageModel
         // confirm as much - and so would waiting for the send, which took long enough to time.
         // To the stored address rather than the typed one, for the reason ForgotPassword gives: the
         // lookup folds look-alike spellings onto this account, and the link belongs to its owner.
-        _emailSender.Enqueue(user.Email, subject, body);
+        // RequireUniqueEmail makes the user validator refuse a blank address on create and update, so
+        // every stored account has one.
+        _emailSender.Enqueue(user.Email!, subject, body);
 
         ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
         return Page();

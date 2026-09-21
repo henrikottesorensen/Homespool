@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -66,9 +64,9 @@ public class EnableAuthenticatorModel : PageModel
         _localiser = localiser;
     }
 
-    public string SharedKey { get; set; }
+    public string? SharedKey { get; set; }
 
-    public string AuthenticatorUri { get; set; }
+    public string? AuthenticatorUri { get; set; }
 
     /// <summary>
     /// The codes minted by a first enable, rendered by that POST's own response; null renders the
@@ -82,16 +80,16 @@ public class EnableAuthenticatorModel : PageModel
     /// A refresh re-submits the form, finds codes already issued and goes to
     /// <c>TwoFactorAuthentication</c> without showing them again.
     /// </remarks>
-    public string[] RecoveryCodes { get; private set; }
+    public string[]? RecoveryCodes { get; private set; }
 
     /// <summary>The confirmation shown above freshly minted codes, in the same response.</summary>
-    public string IssuedMessage { get; private set; }
+    public string? IssuedMessage { get; private set; }
 
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     public class InputModel
     {
@@ -99,12 +97,12 @@ public class EnableAuthenticatorModel : PageModel
         [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
         [Display(Name = "Manage_VerificationCode")]
-        public string Code { get; set; }
+        public string Code { get; set; } = string.Empty;
     }
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
@@ -117,7 +115,7 @@ public class EnableAuthenticatorModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
@@ -159,7 +157,9 @@ public class EnableAuthenticatorModel : PageModel
 
             if (issuedRecoveryCodes)
             {
-                IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+                // Null means the store refused the update, so no codes were saved to show.
+                IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10) ??
+                    throw new InvalidOperationException("The new recovery codes could not be stored.");
                 RecoveryCodes = recoveryCodes.ToArray();
             }
 
@@ -184,16 +184,21 @@ public class EnableAuthenticatorModel : PageModel
     private async Task LoadSharedKeyAndQrCodeUriAsync(HSUser user)
     {
         // Load the authenticator key & QR code URI to display on the form
-        string unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
+        string? unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrEmpty(unformattedKey))
         {
             await _userManager.ResetAuthenticatorKeyAsync(user);
-            unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
+
+            // Null straight after a reset means the store refused to save the new key.
+            unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user) ??
+                throw new InvalidOperationException("The new authenticator key could not be stored.");
         }
 
         SharedKey = FormatKey(unformattedKey);
 
-        string email = await _userManager.GetEmailAsync(user);
+        // Never blank: RequireUniqueEmail makes the user validator refuse a blank address on create
+        // and update.
+        string email = (await _userManager.GetEmailAsync(user))!;
         AuthenticatorUri = GenerateQrCodeUri(email, unformattedKey);
     }
 

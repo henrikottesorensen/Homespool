@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -104,14 +102,14 @@ public class ExternalLoginModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    public string ProviderDisplayName { get; set; }
+    public string ProviderDisplayName { get; set; } = string.Empty;
 
-    public string ReturnUrl { get; set; }
+    public string? ReturnUrl { get; set; }
 
     [TempData]
-    public string ErrorMessage { get; set; }
+    public string? ErrorMessage { get; set; }
 
     public class InputModel
     {
@@ -127,14 +125,14 @@ public class ExternalLoginModel : PageModel
         [Required]
         [StringLength(HSUser.UsernameMaxLength)]
         [Display(Name = "Account_Username")]
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
     }
 
     /// <summary>
     /// The invite's bound address, shown read-only. The account is created as this, never as anything
     /// the caller supplied.
     /// </summary>
-    public string Email { get; private set; }
+    public string? Email { get; private set; }
 
     public IActionResult OnGet()
     {
@@ -172,18 +170,18 @@ public class ExternalLoginModel : PageModel
     /// short JWT names this codebase uses stop matching.
     /// </para>
     /// </remarks>
-    public async Task<IActionResult> OnPostAsync(string provider, string returnUrl = null, Guid? inviteUuid = null,
-                                                 string code = null)
+    public async Task<IActionResult> OnPostAsync(string? provider, string? returnUrl = null, Guid? inviteUuid = null,
+                                                 string? code = null)
     {
         IEnumerable<AuthenticationScheme> external = await _externalSignIn.ProvidersAsync();
 
-        if (!external.Any(scheme => string.Equals(scheme.Name, provider, StringComparison.Ordinal)))
+        if (provider is null || !external.Any(scheme => string.Equals(scheme.Name, provider, StringComparison.Ordinal)))
         {
             return BadRequest();
         }
 
         // Request a redirect to the external login provider.
-        string redirectUrl = Url.Page("./ExternalLogin", pageHandler: "Callback", values: new { returnUrl });
+        string? redirectUrl = Url.Page("./ExternalLogin", pageHandler: "Callback", values: new { returnUrl });
         AuthenticationProperties properties = ExternalSignIn.ChallengeProperties(provider, redirectUrl, ExternalRoundTrip.SignIn);
 
         // An invite presented here rides through the provider and back, so the callback can spend it
@@ -198,8 +196,8 @@ public class ExternalLoginModel : PageModel
         return new ChallengeResult(provider, properties);
     }
 
-    public async Task<IActionResult> OnGetCallbackAsync(CancellationToken cancellationToken, string returnUrl = null,
-                                                        string remoteError = null)
+    public async Task<IActionResult> OnGetCallbackAsync(CancellationToken cancellationToken, string? returnUrl = null,
+                                                        string? remoteError = null)
     {
         returnUrl = returnUrl ?? Url.Content("~/");
         if (remoteError != null)
@@ -208,7 +206,7 @@ public class ExternalLoginModel : PageModel
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 
-        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);
+        ExternalLoginInfo? info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);
         if (info == null)
         {
             ErrorMessage = _localiser["Account_ExternalLoginError"];
@@ -256,7 +254,7 @@ public class ExternalLoginModel : PageModel
         // No account is linked, so this is a creation - and registration is invite-only. Whether the
         // provider authenticated somebody is not the question; whether an invite says they may have an
         // account here is.
-        Invitation invitation = await ResolveInviteAsync(info, cancellationToken);
+        Invitation? invitation = await ResolveInviteAsync(info, cancellationToken);
 
         if (invitation is null)
         {
@@ -270,7 +268,7 @@ public class ExternalLoginModel : PageModel
         }
 
         ReturnUrl = returnUrl;
-        ProviderDisplayName = info.ProviderDisplayName;
+        ProviderDisplayName = info.ProviderDisplayName ?? info.LoginProvider;
         Email = invitation.Email;
 
         return Page();
@@ -296,13 +294,13 @@ public class ExternalLoginModel : PageModel
     /// transaction as the account it authorises.
     /// </para>
     /// </remarks>
-    private async Task<Invitation> ResolveInviteAsync(ExternalLoginInfo info, CancellationToken cancellationToken)
+    private async Task<Invitation?> ResolveInviteAsync(ExternalLoginInfo info, CancellationToken cancellationToken)
     {
-        IDictionary<string, string> items = info.AuthenticationProperties?.Items;
+        IDictionary<string, string?>? items = info.AuthenticationProperties?.Items;
 
         if (items is not null &&
-            items.TryGetValue(InviteUuidKey, out string uuidText) &&
-            items.TryGetValue(InviteTokenKey, out string token) &&
+            items.TryGetValue(InviteUuidKey, out string? uuidText) &&
+            items.TryGetValue(InviteTokenKey, out string? token) &&
             Guid.TryParse(uuidText, out Guid inviteUuid))
         {
             return await _invitationService.ValidateAsync(inviteUuid, DecodeToken(token), RedeemableHere, cancellationToken);
@@ -330,23 +328,23 @@ public class ExternalLoginModel : PageModel
             return false;
         }
 
-        string verified = principal.FindFirstValue(JwtClaimTypes.EmailVerified);
+        string? verified = principal.FindFirstValue(JwtClaimTypes.EmailVerified);
 
         return string.Equals(verified, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>Reverses the Base64Url encoding the accept link uses. Null or invalid input yields null.</summary>
-    private static string DecodeToken(string code)
+    private static string? DecodeToken(string? code)
     {
         return EmailedToken.Decode(code);
     }
 
-    public async Task<IActionResult> OnPostConfirmationAsync(CancellationToken cancellationToken, string returnUrl = null)
+    public async Task<IActionResult> OnPostConfirmationAsync(CancellationToken cancellationToken, string? returnUrl = null)
     {
         returnUrl = returnUrl ?? Url.Content("~/");
 
         // Get the information about the user from the external login provider
-        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);
+        ExternalLoginInfo? info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);
         if (info == null)
         {
             ErrorMessage = _localiser["Account_ExternalLoginConfirmError"];
@@ -356,7 +354,7 @@ public class ExternalLoginModel : PageModel
         // Re-resolved on post rather than carried from the GET: the invite could have been spent or
         // have expired while this form sat on screen, and the page holds nothing that would say so.
         // Same reasoning as Register's re-validation, and the same consequence if it is skipped.
-        Invitation invitation = await ResolveInviteAsync(info, cancellationToken);
+        Invitation? invitation = await ResolveInviteAsync(info, cancellationToken);
 
         if (invitation is null)
         {
@@ -365,7 +363,7 @@ public class ExternalLoginModel : PageModel
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 
-        ProviderDisplayName = info.ProviderDisplayName;
+        ProviderDisplayName = info.ProviderDisplayName ?? info.LoginProvider;
         ReturnUrl = returnUrl;
         Email = invitation.Email;
 
@@ -443,11 +441,13 @@ public class ExternalLoginModel : PageModel
         {
             string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+            // Names a page of this application, so the route always resolves.
             string callbackUrl = Url.Page(
                 "/Account/ConfirmEmail",
                 pageHandler: null,
                 values: new { userUuid = user.Uuid, code = code, returnUrl },
-                protocol: Request.Scheme);
+                protocol: Request.Scheme)!;
 
             // The request's culture, and correct: the person registering is the person who
             // reads this. There is also nothing stored to consult - the account was created

@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
@@ -47,15 +45,15 @@ public class LoginWith2faModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     public bool RememberMe { get; set; }
 
-    public string ReturnUrl { get; set; }
+    public string? ReturnUrl { get; set; }
 
     /// <summary>The sentence the login page shows when this page sends somebody back to it.</summary>
     [TempData]
-    public string ErrorMessage { get; set; }
+    public string? ErrorMessage { get; set; }
 
     public class InputModel
     {
@@ -63,15 +61,15 @@ public class LoginWith2faModel : PageModel
         [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
         [Display(Name = "Account_AuthenticatorCode")]
-        public string TwoFactorCode { get; set; }
+        public string TwoFactorCode { get; set; } = string.Empty;
 
         [Display(Name = "Account_RememberMachine")]
         public bool RememberMachine { get; set; }
     }
 
-    public async Task<IActionResult> OnGetAsync(bool rememberMe, string returnUrl = null)
+    public async Task<IActionResult> OnGetAsync(bool rememberMe, string? returnUrl = null)
     {
-        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
+        HSUser? user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             return SignInAgain(returnUrl);
@@ -83,11 +81,11 @@ public class LoginWith2faModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(bool rememberMe, string returnUrl = null)
+    public async Task<IActionResult> OnPostAsync(bool rememberMe, string? returnUrl = null)
     {
         // Before the form is validated: a code field that is empty or malformed is not worth
         // correcting when nothing is pending to present it for.
-        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
+        HSUser? user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             return SignInAgain(returnUrl);
@@ -111,7 +109,7 @@ public class LoginWith2faModel : PageModel
                 await _signIn.RememberClientAsync(HttpContext, user);
             }
 
-            string loginProvider = await _rules.PendingLoginProviderAsync(HttpContext);
+            string? loginProvider = await _rules.PendingLoginProviderAsync(HttpContext);
             await _signIn.SignInAsync(HttpContext, code.Principal, rememberMe, loginProvider);
 
             _logger.LogInformation("User with ID {UserId} logged in with 2fa.", user.Id);
@@ -137,7 +135,7 @@ public class LoginWith2faModel : PageModel
     /// cookie the password step wrote ran out while the person fetched their authenticator, or it
     /// was never written. The two look the same from here, and the answer to both is the login page.
     /// </summary>
-    private RedirectToPageResult SignInAgain(string returnUrl)
+    private RedirectToPageResult SignInAgain(string? returnUrl)
     {
         ErrorMessage = _localiser["Account_TwoFactorSignInExpired"];
 

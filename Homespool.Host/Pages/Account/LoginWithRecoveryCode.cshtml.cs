@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
@@ -48,13 +46,13 @@ public class LoginWithRecoveryCodeModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    public string ReturnUrl { get; set; }
+    public string? ReturnUrl { get; set; }
 
     /// <summary>The sentence the login page shows when this page sends somebody back to it.</summary>
     [TempData]
-    public string ErrorMessage { get; set; }
+    public string? ErrorMessage { get; set; }
 
     public class InputModel
     {
@@ -62,12 +60,12 @@ public class LoginWithRecoveryCodeModel : PageModel
         [Required]
         [DataType(DataType.Text)]
         [Display(Name = "Account_RecoveryCode")]
-        public string RecoveryCode { get; set; }
+        public string RecoveryCode { get; set; } = string.Empty;
     }
 
-    public async Task<IActionResult> OnGetAsync(string returnUrl = null)
+    public async Task<IActionResult> OnGetAsync(string? returnUrl = null)
     {
-        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
+        HSUser? user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             return SignInAgain(returnUrl);
@@ -78,11 +76,11 @@ public class LoginWithRecoveryCodeModel : PageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(string returnUrl = null)
+    public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
     {
         // Before the form is validated: a code field that is empty is not worth correcting when
         // nothing is pending to present it for.
-        HSUser user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
+        HSUser? user = await _rules.PendingTwoFactorAccountAsync(HttpContext);
         if (user is null)
         {
             return SignInAgain(returnUrl);
@@ -97,7 +95,7 @@ public class LoginWithRecoveryCodeModel : PageModel
 
         if (code.Succeeded)
         {
-            string loginProvider = await _rules.PendingLoginProviderAsync(HttpContext);
+            string? loginProvider = await _rules.PendingLoginProviderAsync(HttpContext);
             await _signIn.SignInAsync(HttpContext, code.Principal, isPersistent: false, loginProvider);
 
             _logger.LogInformation("User with ID {UserId} logged in with a recovery code.", user.Id);
@@ -123,7 +121,7 @@ public class LoginWithRecoveryCodeModel : PageModel
     /// cookie the password step wrote ran out while the person looked for their recovery codes, or
     /// it was never written. The two look the same from here, and the answer to both is the login page.
     /// </summary>
-    private RedirectToPageResult SignInAgain(string returnUrl)
+    private RedirectToPageResult SignInAgain(string? returnUrl)
     {
         ErrorMessage = _localiser["Account_TwoFactorSignInExpired"];
 

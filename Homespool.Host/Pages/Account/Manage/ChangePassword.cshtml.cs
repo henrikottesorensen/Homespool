@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
 
@@ -47,10 +45,10 @@ public class ChangePasswordModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
     /// <summary>
     /// Whether this account has a local password at all. False means it signs in with an external
@@ -76,23 +74,23 @@ public class ChangePasswordModel : PageModel
         [Required]
         [DataType(DataType.Password)]
         [Display(Name = "Manage_CurrentPassword")]
-        public string OldPassword { get; set; }
+        public string OldPassword { get; set; } = string.Empty;
 
         [Required]
         [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [DataType(DataType.Password)]
         [Display(Name = "Manage_NewPassword")]
-        public string NewPassword { get; set; }
+        public string NewPassword { get; set; } = string.Empty;
 
         [DataType(DataType.Password)]
         [Display(Name = "Manage_ConfirmNewPassword")]
         [Compare("NewPassword", ErrorMessage = "Validation_NewPasswordMismatch")]
-        public string ConfirmPassword { get; set; }
+        public string? ConfirmPassword { get; set; }
     }
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
@@ -129,7 +127,7 @@ public class ChangePasswordModel : PageModel
     /// </remarks>
     public async Task<IActionResult> OnPostAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");

@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -52,20 +50,20 @@ public class ForgotPasswordModel : PageModel
     }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     public class InputModel
     {
         [Required]
         [EmailAddress]
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         if (ModelState.IsValid)
         {
-            HSUser user = await _userManager.FindByEmailAsync(Input.Email);
+            HSUser? user = await _userManager.FindByEmailAsync(Input.Email);
 
             // The third test is what makes "an external account has no local password" a rule rather
             // than a preference. ResetPasswordAsync does not care whether a password already exists -
@@ -107,11 +105,13 @@ public class ForgotPasswordModel : PageModel
             // visit https://go.microsoft.com/fwlink/?LinkID=532713
             string code = await _userManager.GeneratePasswordResetTokenAsync(user);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+            // Names a page of this application, so the route always resolves.
             string callbackUrl = Url.Page(
                 "/Account/ResetPassword",
                 pageHandler: null,
                 values: new { code },
-                protocol: Request.Scheme);
+                protocol: Request.Scheme)!;
 
             // Written in the account's language rather than the request's. Nobody has to be signed in
             // to ask for a reset, so the browser here belongs to whoever typed the address - which may
@@ -134,7 +134,9 @@ public class ForgotPasswordModel : PageModel
             // which folds more than case: NFC maps the kelvin sign to K and the uppercasing maps a
             // long s to S, so a look-alike spelling finds this account - and mailing that spelling
             // would hand the reset token to whoever holds the look-alike mailbox.
-            _emailSender.Enqueue(user.Email, subject, body);
+            // RequireUniqueEmail makes the user validator refuse a blank address on create and update, so
+            // every stored account has one.
+            _emailSender.Enqueue(user.Email!, subject, body);
 
             return RedirectToPage("./ForgotPasswordConfirmation");
         }

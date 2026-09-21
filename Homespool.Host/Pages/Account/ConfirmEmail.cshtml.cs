@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -38,22 +36,22 @@ public class ConfirmEmailModel : PageModel
     }
 
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
-    public async Task<IActionResult> OnGetAsync(Guid? userUuid, string code, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnGetAsync(Guid? userUuid, string? code, CancellationToken cancellationToken)
     {
         if (userUuid == null || code == null)
         {
             return RedirectToPage("/Index");
         }
 
-        HSUser user = await _userManager.Users.SingleOrDefaultAsync(candidate => candidate.Uuid == userUuid, cancellationToken);
+        HSUser? user = await _userManager.Users.SingleOrDefaultAsync(candidate => candidate.Uuid == userUuid, cancellationToken);
         if (user == null)
         {
             return NotFound($"Unable to load user with UUID '{userUuid}'.");
         }
 
-        string token = EmailedToken.Decode(code);
+        string? token = EmailedToken.Decode(code);
 
         if (token is null)
         {

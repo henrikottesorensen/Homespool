@@ -71,9 +71,11 @@ public class Disable2faModel : PageModel
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
         }
 
+        // Nothing links here with two-factor off, but a typed URL or a tab left open while it was
+        // turned off elsewhere still arrives, and the two-factor page shows the real state.
         if (!await _userManager.GetTwoFactorEnabledAsync(user))
         {
-            throw new InvalidOperationException($"Cannot disable 2FA for user as it's not currently enabled.");
+            return RedirectToPage("./TwoFactorAuthentication");
         }
 
         return Page();

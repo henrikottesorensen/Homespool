@@ -153,6 +153,43 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The pages that act on two-factor, reached with it off - by a typed URL, or a tab left open
+    /// while it was turned off elsewhere. Nothing links there in that state, so the reader is sent to
+    /// the page that shows the real one, not to an error page, and nothing is minted on the way.
+    /// </summary>
+    [Theory]
+    [InlineData("GET", "/Account/Manage/GenerateRecoveryCodes")]
+    [InlineData("POST", "/Account/Manage/GenerateRecoveryCodes")]
+    [InlineData("GET", "/Account/Manage/Disable2fa")]
+    public async Task APageForTwoFactorReachedWithItOffGoesToTheTwoFactorPage(string method, string path)
+    {
+        (HSUser user, CookieJar jar) = await SeedAsync($"off-{method}-{path.Length}@example.com");
+
+        using HttpClient client = CreateClient();
+
+        // Proved, so the page's own gate is passed and what answers is the handler.
+        await ProveAsync(client, jar);
+
+        using HttpResponseMessage response = method == "GET" ?
+            await GetAsync(client, jar, path) :
+            await PostAsync(client, jar, path, new()
+            {
+                ["__RequestVerificationToken"] = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage"),
+            });
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect, "a state the reader did nothing wrong in is not a server error");
+        response.Headers.Location!.OriginalString.Should().Contain("/Account/Manage/TwoFactorAuthentication");
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        HSUser after = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)) ??
+                       throw new InvalidOperationException("the account should exist");
+
+        (await userManager.CountRecoveryCodesAsync(after))
+            .Should().Be(0, "an account without two-factor has nothing for recovery codes to recover");
+    }
+
+    /// <summary>
     /// The button that started this: an <c>asp-page</c> naming a page that does not exist renders as
     /// <c>href=""</c> rather than failing, so it reloads the page it is on and looks like nothing
     /// happened. A rendered link is not evidence of a reachable one.

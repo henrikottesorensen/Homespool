@@ -3,7 +3,6 @@
 
 #nullable disable
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -79,10 +78,13 @@ public class GenerateRecoveryCodesModel : PageModel
             return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
         }
 
+        // Nothing links here with two-factor off, but a typed URL or a tab left open while it was
+        // turned off elsewhere still arrives. The two-factor page shows the real state, so that is
+        // where the reader goes, rather than to an error page for a state they did nothing wrong in.
         bool isTwoFactorEnabled = await _userManager.GetTwoFactorEnabledAsync(user);
         if (!isTwoFactorEnabled)
         {
-            throw new InvalidOperationException($"Cannot generate recovery codes for user because they do not have 2FA enabled.");
+            return RedirectToPage("./TwoFactorAuthentication");
         }
 
         return Page();
@@ -100,7 +102,7 @@ public class GenerateRecoveryCodesModel : PageModel
         string userId = await _userManager.GetUserIdAsync(user);
         if (!isTwoFactorEnabled)
         {
-            throw new InvalidOperationException($"Cannot generate recovery codes for user as they do not have 2FA enabled.");
+            return RedirectToPage("./TwoFactorAuthentication");
         }
 
         IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);

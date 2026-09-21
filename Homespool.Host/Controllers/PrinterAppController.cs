@@ -94,8 +94,8 @@ public class PrinterAppController : ControllerBase
                 user.Id, body.Code, body.Name, body.Location, body.TeamUuid, CallerResolver.For(user, User), cancellationToken);
 
             // Re-read rather than mapping the claimed entity directly, so the response carries the
-            // permission flags and describes the same resource the next GET will. Mapping it bare
-            // would report canRead/canUse/canManage as false to the person who just claimed it.
+            // caller's capabilities and describes the same resource the next GET will. Mapping it bare
+            // would report an empty capability list to the person who just claimed it.
             PrinterWithState? claimed = await _printerQueryService.GetPrinterWithStateForUserAsync(
                 printer.Uuid, CallerResolver.For(user, User), cancellationToken);
 

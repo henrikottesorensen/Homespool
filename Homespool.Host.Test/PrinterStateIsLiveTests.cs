@@ -256,6 +256,56 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     }
 
     /// <summary>
+    /// A scoped token is told what it may do, not what its owner may: the membership narrowed by the
+    /// scope, on the list and the single read alike. The scope names a file capability the membership
+    /// cannot grant, so a union would show here as well as a missing intersection.
+    /// </summary>
+    [Fact]
+    public async Task ThePermissionFlagsAreNarrowedByTheCredentialsScope()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle);
+        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format(
+                                             [Capability.ViewQueue, Capability.Print, Capability.UploadOwnFiles])));
+        PrinterQueryService service = new(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System);
+
+        // Act
+        IReadOnlyList<PrinterWithState> listed = await service.ListPrintersWithStateForUserAsync(scoped, CancellationToken.None);
+        PrinterWithState? found = await service.GetPrinterWithStateForUserAsync(printer.Uuid, scoped, CancellationToken.None);
+
+        // Assert
+        string[] expected = [nameof(Capability.ViewPrinter), nameof(Capability.ViewQueue), nameof(Capability.Print)];
+
+        PrinterReadDTO.FromEntity(listed.Should().ContainSingle().Subject).Capabilities
+                      .Should().BeEquivalentTo(expected, "the membership grants the rest, but this credential cannot use it");
+        PrinterReadDTO.FromEntity(found!).Capabilities
+                      .Should().BeEquivalentTo(expected, "a single read answers as the list does");
+    }
+
+    /// <summary>
+    /// The edit's response is narrowed the same way, since it is built by its own query rather than
+    /// the list's.
+    /// </summary>
+    [Fact]
+    public async Task PatchNarrowsThePermissionFlagsByTheCredentialsScope()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle);
+        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ManagePrinter])));
+
+        // Act
+        PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
+            .UpdatePrinterAsync(printer.Uuid, scoped, "Renamed", "Garage", CancellationToken.None);
+
+        // Assert
+        PrinterReadDTO.FromEntity(updated!).Capabilities
+                      .Should().BeEquivalentTo([nameof(Capability.ViewPrinter), nameof(Capability.ManagePrinter)],
+                                               "the membership also grants Print and ControlPrinter, which this credential does not");
+    }
+
+    /// <summary>
     /// An edit reports the same state the next read will. A PATCH answering <c>UNKNOWN</c> while a GET
     /// a second later says <c>PRINTING</c> would read as the edit having reset something.
     /// </summary>

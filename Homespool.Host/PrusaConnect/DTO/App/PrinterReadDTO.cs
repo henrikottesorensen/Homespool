@@ -131,7 +131,7 @@ public class PrinterReadDTO
 
     /// <summary>
     /// What the caller may do to this printer - <c>Capability</c> names, as the membership grants
-    /// them.
+    /// them and the credential's scope leaves them.
     /// </summary>
     /// <remarks>
     /// <b>The useful field, and the reason it is a list rather than flags.</b> Without it a client has
@@ -173,14 +173,14 @@ public class PrinterReadDTO
     }
 
     /// <summary>
-    /// Maps a printer already paired with its live state and the calling user's membership.
+    /// Maps a printer already paired with its live state and what the caller may do to it.
     /// </summary>
     /// <remarks>
-    /// The permission flags are answerable only here, not on the two-argument overload: they describe
-    /// the <em>caller</em>, and a mapper handed a bare <see cref="Printer"/> has not been told who is
-    /// asking. Absent membership reports all three false, which is the safe reading - though the
-    /// queries in <see cref="PrinterQueryService"/> always supply it, and a printer visible without a
-    /// membership row is not a state this application can produce.
+    /// <see cref="Capabilities"/> is answerable only here, not on the two-argument overload: it
+    /// describes the <em>caller</em>, and a mapper handed a bare <see cref="Printer"/> has not been
+    /// told who is asking. It renders <see cref="PrinterWithState.Capabilities"/> as given rather than
+    /// working anything out, because the scope is known only where the caller is, which is
+    /// <see cref="PrinterQueryService"/>.
     /// </remarks>
     public static PrinterReadDTO FromEntity(PrinterWithState printer)
     {
@@ -190,11 +190,11 @@ public class PrinterReadDTO
 
         dto.TeamUuid = printer.Team?.Uuid ?? dto.TeamUuid;
         dto.TeamName = printer.Team?.Name;
-        dto.Capabilities = CapabilitySet.Parse(printer.Membership?.Capabilities)
-                                        .Granted
-                                        .OrderBy(capability => capability)
-                                        .Select(capability => capability.ToString())
-                                        .ToList();
+        dto.Capabilities = printer.Capabilities
+                                  .Granted
+                                  .OrderBy(capability => capability)
+                                  .Select(capability => capability.ToString())
+                                  .ToList();
 
         return dto;
     }

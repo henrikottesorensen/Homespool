@@ -74,6 +74,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         row.Name.Should().Be("handcopied.gcode");
         row.Size.Should().Be(3);
         row.Digest.Should().BeNull();
+        row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "indexed, but nobody has read it");
     }
 
     /// <summary>A row whose file left without us is removed - the disk is the truth.</summary>

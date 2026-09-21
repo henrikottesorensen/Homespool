@@ -212,6 +212,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         row.Should().NotBeNull();
         row!.Name.Should().Be("orphan.gcode");
         row.Digest.Should().BeNull("resolving does not read the file to hash it");
+        row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "nor to read its metadata");
     }
 
     [Fact]

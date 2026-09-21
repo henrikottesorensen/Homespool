@@ -65,6 +65,52 @@ public sealed class PrintFileCatalog
         return _store.List(caller.UserId);
     }
 
+    /// <summary>
+    /// Everything the caller has uploaded, each with its row where it has one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The disk decides what is listed; the rows only describe it.</b> A file with no row is still
+    /// the caller's file - the startup reconcile or the next print will index it - so it is listed
+    /// with nothing known about it rather than left out.
+    /// </para>
+    /// <para>
+    /// One query for all of the caller's rows, matched by name the way the store matches names,
+    /// case-insensitively, as <c>PrintFileReconciler</c> matches them.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<CataloguedFile>> ListAsync(Caller caller, CancellationToken cancellationToken)
+    {
+        CredentialScope.Require(caller, Capability.ViewOwnFiles);
+
+        IReadOnlyList<StoredFile> files = _store.List(caller.UserId);
+
+        Dictionary<string, PrintFile> rows = await _dbContext.PrintFiles
+                                                             .AsNoTracking()
+                                                             .Where(row => row.UserId == caller.UserId)
+                                                             .ToDictionaryAsync(row => row.Name,
+                                                                                StringComparer.OrdinalIgnoreCase,
+                                                                                cancellationToken);
+
+        return [.. files.Select(file => new CataloguedFile(file, rows.GetValueOrDefault(file.FileName)))];
+    }
+
+    /// <summary>
+    /// The row describing a file the caller already holds, or null when it has none.
+    /// </summary>
+    /// <remarks>
+    /// <b>Authorises nothing, and takes a <see cref="StoredFile"/> so that it need not.</b> One is only
+    /// in hand after a call that was gated - an upload, a rename - and this answers what that call
+    /// just wrote. Requiring <see cref="Capability.ViewOwnFiles"/> here would refuse a token scoped to
+    /// upload the description of the file it has just uploaded.
+    /// </remarks>
+    public Task<PrintFile?> RowForAsync(long userId, StoredFile file, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return FindRowAsync(userId, file.FileName, cancellationToken);
+    }
+
     /// <summary>One of the caller's files by name, or null. Straight through.</summary>
     public StoredFile? Find(Caller caller, string fileName)
     {

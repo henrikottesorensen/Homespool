@@ -64,8 +64,13 @@ public class PrintFileController : ControllerBase
     }
 
     /// <summary>Everything the caller has uploaded. <c>GET /api/v1/files</c>.</summary>
+    /// <remarks>
+    /// Each file with what it says it was sliced for - see <see cref="PrintFileMetadataReadDTO"/> -
+    /// so a script can choose a printer, or skip re-uploading bytes it already sent, without
+    /// downloading anything.
+    /// </remarks>
     [HttpGet]
-    public async Task<Results<Ok<IReadOnlyList<PrintFileReadDTO>>, ForbiddenProblem>> List()
+    public async Task<Results<Ok<IReadOnlyList<PrintFileReadDTO>>, ForbiddenProblem>> List(CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
 
@@ -74,8 +79,9 @@ public class PrintFileController : ControllerBase
             return this.NoAccount();
         }
 
-        return TypedResults.Ok<IReadOnlyList<PrintFileReadDTO>>(
-            _files.List(CallerResolver.For(user, User)).Select(PrintFileReadDTO.FromStored).ToList());
+        IReadOnlyList<CataloguedFile> files = await _files.ListAsync(CallerResolver.For(user, User), cancellationToken);
+
+        return TypedResults.Ok<IReadOnlyList<PrintFileReadDTO>>([.. files.Select(PrintFileReadDTO.From)]);
     }
 
     /// <summary>
@@ -144,7 +150,8 @@ public class PrintFileController : ControllerBase
             return this.BadRequestProblem(e.Message);
         }
 
-        return TypedResults.Ok(PrintFileReadDTO.FromStored(stored));
+        // The row the save just wrote, so the answer carries what the reader found in these bytes.
+        return TypedResults.Ok(PrintFileReadDTO.From(stored, await _files.RowForAsync(user.Id, stored, cancellationToken)));
     }
 
     /// <summary>Downloads a file back. <c>GET /api/v1/files/{fileName}</c>.</summary>
@@ -211,7 +218,7 @@ public class PrintFileController : ControllerBase
                 return this.NotFoundProblem();
             }
 
-            return TypedResults.Ok(PrintFileReadDTO.FromStored(renamed));
+            return TypedResults.Ok(PrintFileReadDTO.From(renamed, await _files.RowForAsync(user.Id, renamed, cancellationToken)));
         }
         catch (PrintFileNameConflictException e)
         {

@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.PrusaConnect.DTO.App;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -213,7 +214,7 @@ public sealed class UsernameTests : IDisposable
     {
         HSUser user = new() { UserName = "henrik", Email = "rig@example.com" };
 
-        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null).Name.Should().Be("henrik");
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Caller.Unscoped(1)).Name.Should().Be("henrik");
     }
 
     /// <summary>
@@ -226,7 +227,39 @@ public sealed class UsernameTests : IDisposable
     {
         HSUser user = new() { Email = "rig@example.com" };
 
-        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null).Name.Should().Be("rig@example.com");
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Caller.Unscoped(1)).Name.Should().Be("rig@example.com");
+    }
+
+    /// <summary>
+    /// A credential whose scope leaves out <see cref="Capability.ViewAccountDetails"/> is not told
+    /// the address, and one whose scope includes it is.
+    /// </summary>
+    [Fact]
+    public void TheAppApiWithholdsTheEmailFromAScopeWithoutViewAccountDetails()
+    {
+        HSUser user = new() { UserName = "henrik", Email = "rig@example.com" };
+
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Scoped(Capability.ViewPrinter))
+                   .Email.Should().BeNull();
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Scoped(Capability.ViewAccountDetails))
+                   .Email.Should().Be("rig@example.com");
+    }
+
+    /// <summary>
+    /// The name's fallback does not hand over the address the field above withholds.
+    /// </summary>
+    [Fact]
+    public void TheNameFallbackDoesNotRevealAWithheldEmail()
+    {
+        HSUser user = new() { Email = "rig@example.com" };
+
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Scoped(Capability.ViewPrinter))
+                   .Name.Should().BeEmpty();
+    }
+
+    private static Caller Scoped(params Capability[] scope)
+    {
+        return Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format(scope)));
     }
 
     private static UserManager<HSUser> Users(HomespoolDbContext context)

@@ -2222,6 +2222,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Capability_ManipulateOwnFiles" xml:space="preserve">
     <value>Omdøbe, slette og erstatte dine filer</value>
   </data>
+  <data name="Capability_ViewAccountDetails" xml:space="preserve">
+    <value>Se din e-mailadresse</value>
+  </data>
   <data name="Capability_Everything" xml:space="preserve">
     <value>Alt hvad du kan</value>
   </data>

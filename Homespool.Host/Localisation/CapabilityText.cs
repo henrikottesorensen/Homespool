@@ -65,6 +65,7 @@ public class CapabilityText
             Capability.UploadOwnFiles,
             Capability.ManipulateOwnFiles,
         ]),
+        ("Manage_Profile", [Capability.ViewAccountDetails]),
     ];
 
     /// <summary>What this capability is called, in the reader's language.</summary>

@@ -147,7 +147,7 @@ curl -sS -c "$JAR" -b "$JAR" -o /dev/null \
 # comes next rather than for a known job; narrow it at the call site if that ever matters.
 SCOPE_ARGS=""
 for scope in ViewPrinter ControlPrinter ManagePrinter Print ViewQueue ViewHistory \
-             ViewOwnFiles UploadOwnFiles ManipulateOwnFiles ViewCamera ManageCamera; do
+             ViewOwnFiles UploadOwnFiles ManipulateOwnFiles ViewCamera ManageCamera ViewAccountDetails; do
     SCOPE_ARGS="$SCOPE_ARGS --data-urlencode Input.Scope=$scope"
 done
 

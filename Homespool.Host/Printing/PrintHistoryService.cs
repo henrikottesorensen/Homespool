@@ -114,12 +114,20 @@ public class PrintHistoryService
     }
 
     /// <summary>
-    /// One finished print on this printer, by the handle it has carried since it was queued.
+    /// The newest print on this printer carrying the handle it was queued under, running or finished.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Keyed on <see cref="PrintJob.PrintUuid"/> rather than the row id</b>, matching the queue's
     /// own controls: it is the handle minted at enqueue and carried through every stage, so it is what
     /// a page already has to hand and the only one worth putting in a form.
+    /// </para>
+    /// <para>
+    /// <b>The newest, because the handle is not unique.</b> A full drive or a refused transfer writes a
+    /// <see cref="PrintState.Failed"/> row while the entry stays queued, and the print that follows
+    /// writes another under the same handle. Every such row came from one queue entry, so they name the
+    /// same file and the same person, and the latest is the one nearest the truth.
+    /// </para>
     /// </remarks>
     public async Task<PrintJob?> FindAsync(int printerId,
                                            Guid printUuid,
@@ -130,8 +138,10 @@ public class PrintHistoryService
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
-                               .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.PrintUuid == printUuid,
-                                                     cancellationToken);
+                               .Where(job => job.PrinterId == printerId && job.PrintUuid == printUuid)
+                               .OrderByDescending(job => job.StartedAt)
+                               .ThenByDescending(job => job.Id)
+                               .FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>

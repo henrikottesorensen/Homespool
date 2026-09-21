@@ -79,6 +79,30 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// One enqueue can leave several rows under one handle - a full drive writes a <c>Failed</c> row
+    /// while the entry stays queued, and the print that follows writes another - and either row's
+    /// button still queues the file once.
+    /// </summary>
+    [Fact]
+    public async Task PrintingAgainAHandleWithSeveralAttemptsQueuesTheFileOnce()
+    {
+        (Guid uuid, Guid printUuid, HttpClient client) = await SeedAsync("reprint-twice@example.com", "benchy.bgcode");
+
+        using (client)
+        {
+            await UploadAsync(client, "benchy.bgcode");
+            await AddFailedAttemptAsync(uuid, printUuid, "benchy.bgcode");
+
+            string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
+
+            using HttpResponseMessage posted = await PostReprintAsync(client, uuid, page, printUuid);
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            (await QueuedNamesAsync(uuid)).Should().ContainSingle().Which.Should().Be("benchy.bgcode");
+        }
+    }
+
+    /// <summary>
     /// A history row outlives the file it names, and then the answer is a sentence rather than a
     /// queued print of nothing.
     /// </summary>
@@ -218,6 +242,43 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
                             .Where(q => q.PrinterId == printerId)
                             .Select(q => q.PrintFile!.Name)
                             .ToListAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A second row under an existing handle, shaped as the queue's full-drive hold writes it: opened
+    /// and closed in one moment, before the print that eventually ran.
+    /// </summary>
+    private async Task AddFailedAttemptAsync(Guid uuid, Guid printUuid, string fileName)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        PrintJob finished = await context.PrintJobs
+                                         .AsNoTracking()
+                                         .SingleAsync(job => job.PrintUuid == printUuid,
+                                                      TestContext.Current.CancellationToken);
+
+        int printerId = await context.Printers
+                                     .AsNoTracking()
+                                     .Where(p => p.Uuid == uuid)
+                                     .Select(p => p.Id)
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        DateTimeOffset held = finished.StartedAt.AddMinutes(-30);
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            FileName = fileName,
+            State = PrintState.Failed,
+            StartedAt = held,
+            EndedAt = held,
+            QueuedByUserId = finished.QueuedByUserId,
+            PrintUuid = printUuid,
+            Reason = "Not enough space on the printer.",
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<(Guid uuid, Guid printUuid, HttpClient client)> SeedAsync(string email,

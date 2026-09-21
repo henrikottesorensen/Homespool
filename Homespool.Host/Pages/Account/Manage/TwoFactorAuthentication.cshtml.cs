@@ -78,7 +78,7 @@ public class TwoFactorAuthenticationModel : PageModel
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         HasAuthenticator = await _userManager.GetAuthenticatorKeyAsync(user) != null;
@@ -94,7 +94,7 @@ public class TwoFactorAuthenticationModel : PageModel
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await _signIn.ForgetClientAsync(HttpContext);

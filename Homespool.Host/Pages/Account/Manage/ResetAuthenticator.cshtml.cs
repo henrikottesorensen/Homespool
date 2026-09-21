@@ -85,7 +85,7 @@ public class ResetAuthenticatorModel : PageModel
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         return Page();
@@ -96,7 +96,7 @@ public class ResetAuthenticatorModel : PageModel
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         string userId = await _userManager.GetUserIdAsync(user);

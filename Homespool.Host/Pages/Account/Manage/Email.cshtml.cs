@@ -141,7 +141,7 @@ public class EmailModel : PageModel
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadAsync(user);
@@ -154,7 +154,7 @@ public class EmailModel : PageModel
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         if (!ModelState.IsValid)
@@ -204,7 +204,7 @@ public class EmailModel : PageModel
         HSUser user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         if (!ModelState.IsValid)

@@ -50,7 +50,7 @@ public class ConfirmEmailModel : PageModel
         HSUser user = await _userManager.Users.SingleOrDefaultAsync(candidate => candidate.Uuid == userUuid, cancellationToken);
         if (user == null)
         {
-            return NotFound($"Unable to load user with UUID '{userUuid}'.");
+            return NotFound();
         }
 
         string token = EmailedToken.Decode(code);

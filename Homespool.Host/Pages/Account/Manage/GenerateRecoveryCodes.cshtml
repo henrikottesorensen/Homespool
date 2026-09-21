@@ -1,27 +1,38 @@
 @page
 @model GenerateRecoveryCodesModel
 @{
-    ViewData["Title"] = Localiser["TwoFactor_GenerateCodesTitle"].Value;
+    ViewData["Title"] = Model.RecoveryCodes is null ?
+        Localiser["TwoFactor_GenerateCodesTitle"].Value :
+        Localiser["TwoFactor_RecoveryCodesTitle"].Value;
 }
 
-<partial name="_StatusMessage" for="StatusMessage" />
-<h1>@ViewData["Title"]</h1>
-<div class="alert alert-warning" role="alert">
-    <p>
-        <span class="glyphicon glyphicon-warning-sign"></span>
-        <strong>@Localiser["TwoFactor_KeepCodesSafe"]</strong>
-    </p>
-    <p>
-        @Localiser["TwoFactor_LoseDeviceWarning"]
-    </p>
-    <p>
-        @HtmlLocaliser["TwoFactor_NewCodesKeepKeys", Markup.Link(Url.Page("./ResetAuthenticator"), Localiser["TwoFactor_ResetKeysLink"].Value)]
-    </p>
-</div>
-<div>
-    @* Nothing to prove here: the page is reached only with a recent proof, earned on the one page
-       that takes every credential the account holds. *@
-    <form method="post">
-        <button class="btn btn-danger" type="submit">@Localiser["TwoFactor_GenerateCodes"]</button>
-    </form>
-</div>
+@if (Model.RecoveryCodes is not null)
+{
+    <partial name="_StatusMessage" model="Model.IssuedMessage" />
+    <h1>@ViewData["Title"]</h1>
+    <partial name="_RecoveryCodes" model="Model.RecoveryCodes" />
+}
+else
+{
+    <partial name="_StatusMessage" for="StatusMessage" />
+    <h1>@ViewData["Title"]</h1>
+    <div class="alert alert-warning" role="alert">
+        <p>
+            <span class="glyphicon glyphicon-warning-sign"></span>
+            <strong>@Localiser["TwoFactor_KeepCodesSafe"]</strong>
+        </p>
+        <p>
+            @Localiser["TwoFactor_LoseDeviceWarning"]
+        </p>
+        <p>
+            @HtmlLocaliser["TwoFactor_NewCodesKeepKeys", Markup.Link(Url.Page("./ResetAuthenticator"), Localiser["TwoFactor_ResetKeysLink"].Value)]
+        </p>
+    </div>
+    <div>
+        @* Nothing to prove here: the page is reached only with a recent proof, earned on the one page
+           that takes every credential the account holds. *@
+        <form method="post">
+            <button class="btn btn-danger" type="submit">@Localiser["TwoFactor_GenerateCodes"]</button>
+        </form>
+    </div>
+}

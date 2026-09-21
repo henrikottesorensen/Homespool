@@ -32,6 +32,14 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// The proof is <see cref="RecentProof"/>, earned at <c>Account/Reauthenticate</c> with any credential
 /// the account holds - and not the authenticator code in particular, because the codes are for the
 /// person whose authenticator is gone. The whole page is gated, GET included.
+/// <para>
+/// <b>The codes are rendered by the POST that mints them, not carried through a redirect.</b> They
+/// are stored hashed, so that response is the only time they exist in the clear, and a redirect
+/// would have to carry them in the <c>TempData</c> cookie - which is not bound to the account, stays
+/// decryptable after it has been read, and so is a portable copy of ten live credentials. Refreshing
+/// the response re-submits the form and mints a fresh set, which replaces the one shown and is shown
+/// in full itself, so nothing is lost by it.
+/// </para>
 /// </remarks>
 [Authorize]
 [RequireRecentProof]
@@ -50,12 +58,8 @@ public class GenerateRecoveryCodesModel : PageModel
         _localiser = localiser;
     }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
-    [TempData]
-    public string[] RecoveryCodes { get; set; }
+    /// <summary>The codes just minted, set only by a successful POST; null renders the form.</summary>
+    public string[] RecoveryCodes { get; private set; }
 
     /// <summary>
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
@@ -63,6 +67,9 @@ public class GenerateRecoveryCodesModel : PageModel
     /// </summary>
     [TempData]
     public string StatusMessage { get; set; }
+
+    /// <summary>The confirmation shown above freshly minted codes, in the same response.</summary>
+    public string IssuedMessage { get; private set; }
 
     public async Task<IActionResult> OnGetAsync()
     {
@@ -100,7 +107,10 @@ public class GenerateRecoveryCodesModel : PageModel
         RecoveryCodes = recoveryCodes.ToArray();
 
         _logger.LogInformation("User with ID '{UserId}' has generated new 2FA recovery codes.", userId);
-        StatusMessage = _localiser["TwoFactor_CodesGenerated"];
-        return RedirectToPage("./ShowRecoveryCodes");
+
+        // Not StatusMessage: that is a TempData property, and a value set on one would outlive this
+        // response and show again on the next page.
+        IssuedMessage = _localiser["TwoFactor_CodesGenerated"];
+        return Page();
     }
 }

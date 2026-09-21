@@ -1,11 +1,8 @@
-@page
-@model ShowRecoveryCodesModel
-@{
-    ViewData["Title"] = Localiser["TwoFactor_RecoveryCodesTitle"].Value;
-}
+@model string[]
 
-<partial name="_StatusMessage" for="StatusMessage" />
-<h1>@ViewData["Title"]</h1>
+@*  The one render of a set of recovery codes, drawn by the response to the post that minted them.
+    They are never handed to another request: a redirect would carry them in the TempData cookie,
+    which any signed-in session can have decrypted and which stays good after it has been read. *@
 <div class="alert alert-warning" role="alert">
     <p>
         <strong>@Localiser["TwoFactor_KeepCodesSafe"]</strong>
@@ -20,13 +17,13 @@
             steps by two and indexes row + 1 unconditionally, which throws on any odd count. Both
             callers ask for ten today, so the guard costs nothing and stops the count becoming a
             load-bearing coincidence. *@
-        @for (int row = 0; row < Model.RecoveryCodes.Length; row += 2)
+        @for (int row = 0; row < Model.Length; row += 2)
         {
             <div>
-                <code class="recovery-code me-2">@Model.RecoveryCodes[row]</code>
-                @if (row + 1 < Model.RecoveryCodes.Length)
+                <code class="recovery-code me-2">@Model[row]</code>
+                @if (row + 1 < Model.Length)
                 {
-                    <code class="recovery-code">@Model.RecoveryCodes[row + 1]</code>
+                    <code class="recovery-code">@Model[row + 1]</code>
                 }
             </div>
         }

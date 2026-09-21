@@ -74,7 +74,6 @@ public class RecentProofDeclarationTests
             "IndexModel",
             "ChangePasswordModel",
             "LanguageModel",
-            "ShowRecoveryCodesModel",
             "TwoFactorAuthenticationModel");
     }
 

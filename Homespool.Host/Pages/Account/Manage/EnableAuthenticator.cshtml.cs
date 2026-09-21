@@ -79,11 +79,21 @@ public class EnableAuthenticatorModel : PageModel
     public string AuthenticatorUri { get; set; }
 
     /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
+    /// The codes minted by a first enable, rendered by that POST's own response; null renders the
+    /// setup form.
     /// </summary>
-    [TempData]
-    public string[] RecoveryCodes { get; set; }
+    /// <remarks>
+    /// <b>Not carried through a redirect.</b> The codes are stored hashed, so that response is the only
+    /// time they exist in the clear, and a redirect would have to carry them in the <c>TempData</c>
+    /// cookie - which is not bound to the account and stays decryptable after it has been read, so a
+    /// copy of it is ten live credentials that any signed-in session could have the server read out.
+    /// A refresh re-submits the form, finds codes already issued and goes to
+    /// <c>TwoFactorAuthentication</c> without showing them again.
+    /// </remarks>
+    public string[] RecoveryCodes { get; private set; }
+
+    /// <summary>The confirmation shown above freshly minted codes, in the same response.</summary>
+    public string IssuedMessage { get; private set; }
 
     /// <summary>
     ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
@@ -182,11 +192,17 @@ public class EnableAuthenticatorModel : PageModel
 
         _logger.LogInformation("User with ID '{UserId}' has enabled 2FA with an authenticator app.", userId);
 
-        StatusMessage = _localiser["TwoFactor_AppVerified"];
+        // Rendered only after the commit, so nobody is ever shown recovery codes that were rolled
+        // back. Not StatusMessage alongside the codes: that is a TempData property, and a value set on
+        // one outlives this response and shows again on the next page.
+        if (issuedRecoveryCodes)
+        {
+            IssuedMessage = _localiser["TwoFactor_AppVerified"];
+            return Page();
+        }
 
-        // The redirect happens only after the commit, so nobody is ever sent to a page showing
-        // recovery codes that were rolled back.
-        return issuedRecoveryCodes ? RedirectToPage("./ShowRecoveryCodes") : RedirectToPage("./TwoFactorAuthentication");
+        StatusMessage = _localiser["TwoFactor_AppVerified"];
+        return RedirectToPage("./TwoFactorAuthentication");
     }
 
     private async Task LoadSharedKeyAndQrCodeUriAsync(HSUser user)

@@ -47,17 +47,16 @@ public sealed class TwoFactorEnrolmentMiddleware
     private const string EnrolmentPath = "/Account/Manage/EnableAuthenticator";
 
     /// <summary>
-    /// What such an account may still reach: the enrolment page, the proof it asks for, the codes it
-    /// produces, the way out, and the sign-in pages it may bounce through.
+    /// What such an account may still reach: the enrolment page, the proof it asks for, the way out,
+    /// and the sign-in pages it may bounce through.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>ShowRecoveryCodes</c> is not optional company for the enrolment page — it is the single
-    /// render of a secret nothing can produce again, so shutting an account
-    /// out of it would complete enrolment while withholding the codes.
+    /// The recovery codes need no entry of their own: the enrolment POST shows them in its own
+    /// response, and that path is already here.
     /// </para>
     /// <para>
-    /// <c>Reauthenticate</c> is not optional either. The enrolment page shows a seed, so it asks for a
+    /// <c>Reauthenticate</c> is not optional. The enrolment page shows a seed, so it asks for a
     /// recent proof, and a sign-in is not one; holding the proof page back would send the account from
     /// enrolment to the proof and straight back again, for ever. Letting it through opens nothing: the
     /// page grants the proof cookie and then returns to wherever the account was going, which is here.
@@ -71,7 +70,6 @@ public sealed class TwoFactorEnrolmentMiddleware
     [
         EnrolmentPath,
         "/Account/Reauthenticate",
-        "/Account/Manage/ShowRecoveryCodes",
         "/Account/Logout",
         "/Account/Login",
         "/Account/LoginWith2fa",

@@ -1,45 +1,56 @@
 @page
 @model EnableAuthenticatorModel
 @{
-    ViewData["Title"] = Localiser["TwoFactor_ConfigureAppTitle"].Value;
+    ViewData["Title"] = Model.RecoveryCodes is null ?
+        Localiser["TwoFactor_ConfigureAppTitle"].Value :
+        Localiser["TwoFactor_RecoveryCodesTitle"].Value;
 }
 
-<partial name="_StatusMessage" for="StatusMessage" />
-<h1>@ViewData["Title"]</h1>
-<div>
-    <p>@Localiser["TwoFactor_Steps"]</p>
-    <ol class="list">
-        <li>
-            <p>
-                @HtmlLocaliser["TwoFactor_DownloadApp", Markup.Link("https://go.microsoft.com/fwlink/?Linkid=825072", "Android"), Markup.Link("https://go.microsoft.com/fwlink/?Linkid=825073", "iOS"), Markup.Link("https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&hl=en", "Android"), Markup.Link("https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8", "iOS")]
-            </p>
-        </li>
-        <li>
-            <p>@HtmlLocaliser["TwoFactor_ScanKeyInto", Markup.Kbd(Model.SharedKey)]</p>
-            <div class="alert alert-info">@HtmlLocaliser["TwoFactor_LearnQr", Markup.Link("https://go.microsoft.com/fwlink/?Linkid=852423", Localiser["TwoFactor_EnableQrLink"].Value)]</div>
-            <div id="qrCode"></div>
-            <div id="qrCodeData" data-url="@Model.AuthenticatorUri"></div>
-        </li>
-        <li>
-            <p>
-                @Localiser["TwoFactor_AfterScanning"]
-            </p>
-            <div class="row">
-                <div class="col-md-6">
-                    <form id="send-code" method="post">
-                        <div class="form-floating mb-3">
-                            <input asp-for="Input.Code" class="form-control" autocomplete="off" placeholder="@Localiser["Account_EnterCodePlaceholder"]"/>
-                            <label asp-for="Input.Code" class="control-label form-label">@Localiser["TwoFactor_VerificationCode"]</label>
-                            <span asp-validation-for="Input.Code" class="text-danger"></span>
-                        </div>
-                        <button type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["TwoFactor_Verify"]</button>
-                        <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
-                    </form>
+@if (Model.RecoveryCodes is not null)
+{
+    <partial name="_StatusMessage" model="Model.IssuedMessage" />
+    <h1>@ViewData["Title"]</h1>
+    <partial name="_RecoveryCodes" model="Model.RecoveryCodes" />
+}
+else
+{
+    <partial name="_StatusMessage" for="StatusMessage" />
+    <h1>@ViewData["Title"]</h1>
+    <div>
+        <p>@Localiser["TwoFactor_Steps"]</p>
+        <ol class="list">
+            <li>
+                <p>
+                    @HtmlLocaliser["TwoFactor_DownloadApp", Markup.Link("https://go.microsoft.com/fwlink/?Linkid=825072", "Android"), Markup.Link("https://go.microsoft.com/fwlink/?Linkid=825073", "iOS"), Markup.Link("https://play.google.com/store/apps/details?id=com.google.android.apps.authenticator2&hl=en", "Android"), Markup.Link("https://itunes.apple.com/us/app/google-authenticator/id388497605?mt=8", "iOS")]
+                </p>
+            </li>
+            <li>
+                <p>@HtmlLocaliser["TwoFactor_ScanKeyInto", Markup.Kbd(Model.SharedKey)]</p>
+                <div class="alert alert-info">@HtmlLocaliser["TwoFactor_LearnQr", Markup.Link("https://go.microsoft.com/fwlink/?Linkid=852423", Localiser["TwoFactor_EnableQrLink"].Value)]</div>
+                <div id="qrCode"></div>
+                <div id="qrCodeData" data-url="@Model.AuthenticatorUri"></div>
+            </li>
+            <li>
+                <p>
+                    @Localiser["TwoFactor_AfterScanning"]
+                </p>
+                <div class="row">
+                    <div class="col-md-6">
+                        <form id="send-code" method="post">
+                            <div class="form-floating mb-3">
+                                <input asp-for="Input.Code" class="form-control" autocomplete="off" placeholder="@Localiser["Account_EnterCodePlaceholder"]"/>
+                                <label asp-for="Input.Code" class="control-label form-label">@Localiser["TwoFactor_VerificationCode"]</label>
+                                <span asp-validation-for="Input.Code" class="text-danger"></span>
+                            </div>
+                            <button type="submit" class="w-100 btn btn-lg btn-primary">@Localiser["TwoFactor_Verify"]</button>
+                            <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
+                        </form>
+                    </div>
                 </div>
-            </div>
-        </li>
-    </ol>
-</div>
+            </li>
+        </ol>
+    </div>
+}
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />

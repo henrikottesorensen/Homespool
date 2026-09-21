@@ -85,11 +85,15 @@ map $hs_starting_language $hs_starting_suffix {
 # composed from the same variable, since a proxy is not the only way in.
 server {
     listen 8080 default_server;
+    # Replaces the base image's http-level log, which writes query strings; homespool-access-log.conf.
+    access_log /var/log/nginx/access.log homespool;
     return 444;
 }
 
 server {
     listen 8443 ssl default_server;
+    # Replaces the base image's http-level log, which writes query strings; homespool-access-log.conf.
+    access_log /var/log/nginx/access.log homespool;
 
     # A TLS default server still has to complete a handshake before it can see the Host, so a
     # certificate is unavoidable here even though the answer is always 444.
@@ -111,6 +115,8 @@ server {
 
 server {
     listen 8080;
+    # Replaces the base image's http-level log, which writes query strings; homespool-access-log.conf.
+    access_log /var/log/nginx/access.log homespool;
 
     # No literal `localhost` appended here: ${USER_SERVER_NAMES} already contains it, folded in and
     # deduplicated by 16-user-server-names.envsh. Appending one is what produced

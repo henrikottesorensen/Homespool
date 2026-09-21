@@ -60,10 +60,6 @@ public class GenerateRecoveryCodesModel : PageModel
     /// <summary>The codes just minted, set only by a successful POST; null renders the form.</summary>
     public string[] RecoveryCodes { get; private set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [TempData]
     public string StatusMessage { get; set; }
 

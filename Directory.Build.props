@@ -79,16 +79,38 @@
     </PropertyGroup>
 
     <!--
-        Keeps the three most recent runs per test project. Enough to compare a failure against the
-        runs either side of it, which is what a flake needs, without accumulating a file per run
-        forever in a directory nobody looks at.
+        Keeps the three most recent runs per test project, and every run that did not finish clean.
+
+        Three is enough to compare a failure against the runs either side of it. It is not enough on
+        its own, because it treats a failed run like any other, and the move a flake invites - run it
+        again, three times, to see whether it recurs - is exactly three runs: the reruns delete the
+        one file that names the test. So a run is deleted only when it is proven clean, which is its
+        ResultSummary saying Completed. A failure says Failed; a crash, an abort or a file cut off
+        mid-write says something else or nothing - all kept, since deciding they did not matter is
+        the mistake this exists to prevent. Test output cannot forge the marker; a trx escapes it.
+
+        The runs kept that way are capped at the ten newest, so a project that stays red for a week
+        does not grow the directory without bound.
+
+        Before the tests, not after them. A target hung after VSTest does not run when VSTest fails,
+        so a prune there ran only on green runs: a red streak grew the directory until the next pass,
+        and the cap above would never have applied to the runs it is for. Pruning first means every
+        run prunes, and the one about to be written joins what is kept - so right after a run there
+        can be four recent files, or eleven unclean ones, rather than three and ten.
 
         Not run on Windows: nothing here is developed or built there, and the cost of skipping it is
         an ignored directory growing. ContinueOnError because losing old results must never fail a
-        test run - the results being pruned are the least valuable thing in the room.
+        test run.
     -->
-    <Target Name="PruneOldTestResults" AfterTargets="VSTest" Condition="'$(OS)' != 'Windows_NT'">
-        <Exec Command="ls -1t &quot;$(VSTestResultsDirectory)&quot;/$(MSBuildProjectName)_*.trx 2>/dev/null | tail -n +4 | while read -r stale; do rm -f &quot;$stale&quot;; done"
+    <Target Name="PruneOldTestResults" BeforeTargets="VSTest" Condition="'$(OS)' != 'Windows_NT'">
+        <Exec Command="results=&quot;$(VSTestResultsDirectory)&quot;
+clean='&lt;ResultSummary outcome=&quot;Completed&quot;'
+ls -1t &quot;$results&quot;/$(MSBuildProjectName)_*.trx 2>/dev/null | tail -n +4 | while read -r old; do
+    grep -qF &quot;$clean&quot; &quot;$old&quot; &amp;&amp; rm -f &quot;$old&quot;
+done
+ls -1t &quot;$results&quot;/$(MSBuildProjectName)_*.trx 2>/dev/null | while read -r kept; do
+    grep -qF &quot;$clean&quot; &quot;$kept&quot; || echo &quot;$kept&quot;
+done | tail -n +11 | while read -r old; do rm -f &quot;$old&quot;; done"
               ContinueOnError="true"
               StandardOutputImportance="low" />
     </Target>

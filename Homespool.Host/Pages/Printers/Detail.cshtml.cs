@@ -573,6 +573,24 @@ public class DetailModel : PageModel
     public bool StatusSuccess { get; set; }
 
     /// <summary>
+    /// The print whose file has changed since it ran, while the page is asking whether to print the
+    /// current version anyway - or null when it is asking nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Carried in TempData beside the status line that explains it, so the question lives for exactly
+    /// the one redirect the answer to "print again" takes, as the Files page's replace question does.
+    /// </para>
+    /// <para>
+    /// <b>Typed <see cref="Guid"/>, not <see cref="string"/>.</b> TempData's serializer reads back any
+    /// string shaped like a guid as a <see cref="Guid"/>, and then cannot assign it to a string property:
+    /// the page after the redirect fails with a cast error rather than showing the question.
+    /// </para>
+    /// </remarks>
+    [TempData]
+    public Guid? ReprintChanged { get; set; }
+
+    /// <summary>
     /// The cameras watching this printer that the caller may see. Empty is the ordinary case.
     /// </summary>
     public IReadOnlyList<Camera> Cameras { get; private set; } = [];
@@ -885,14 +903,22 @@ public class DetailModel : PageModel
     /// transfer and a print, and it advances only when the printer is ready - so a reprint takes the
     /// same route as every other way a file reaches a printer.
     /// </para>
+    /// <para>
+    /// <b>A file overwritten since that print is asked about, not printed.</b> The page comes back with
+    /// the sentence and a second button that posts here again with <paramref name="changed"/> set.
+    /// </para>
     /// </remarks>
-    public Task<IActionResult> OnPostReprintAsync(Guid uuid, Guid printUuid, CancellationToken cancellationToken)
+    /// <param name="uuid">The printer.</param>
+    /// <param name="printUuid">The history row's handle.</param>
+    /// <param name="changed">Print the file as it is now, even if it has changed since that print.</param>
+    /// <param name="cancellationToken">Aborted with the request.</param>
+    public Task<IActionResult> OnPostReprintAsync(Guid uuid, Guid printUuid, bool changed, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
             try
             {
-                EnqueueOutcome? outcome = await _queueService.ReprintAsync(printer.Id, printUuid, caller, cancellationToken);
+                EnqueueOutcome? outcome = await _queueService.ReprintAsync(printer.Id, printUuid, caller, changed, cancellationToken);
 
                 if (outcome is null)
                 {
@@ -907,6 +933,12 @@ public class DetailModel : PageModel
                     (_localiser["Files_Queued", outcome.File.Name].Value, true) :
                     (string.Join(' ', outcome.Warnings.Select(_errors.For)),
                      outcome.Severity != PrintCompatibilitySeverity.Hold);
+            }
+            catch (PrintFileChangedException e)
+            {
+                ReprintChanged = printUuid;
+
+                return (_errors.For(e), false);
             }
             catch (Exception e) when (e is PrintNotYoursException or PrintFileNotFoundException)
             {

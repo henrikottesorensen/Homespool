@@ -164,12 +164,23 @@ public class PrintJobController : ControllerBase
     /// what is missing is the thing it would print. The new entry has a handle of its own, and the
     /// response carries any warnings about the file and the printer, as <c>POST …/queue</c> does.
     /// </para>
+    /// <para>
+    /// <b>A file overwritten since that print is also <c>409</c></b>, unless <c>?changed=true</c> says
+    /// the current version is wanted. Asked before queueing rather than warned after, because a ready
+    /// printer starts the print within seconds. Where either digest is unknown there is nothing to
+    /// compare, and the reprint goes ahead.
+    /// </para>
     /// </remarks>
+    /// <param name="printerUuid">The printer the print ran on.</param>
+    /// <param name="printUuid">The handle the print was queued under.</param>
+    /// <param name="changed">Print the file as it is now, even if it has changed since that print.</param>
+    /// <param name="cancellationToken">Aborted with the request.</param>
     [HttpPost]
     [Route("printers/{printerUuid:guid}/jobs/{printUuid:guid}/reprint")]
     public async Task<Results<Created<EnqueuedPrintReadDTO>, ForbiddenProblem, NotFoundProblem, ConflictProblem>> Reprint(
         Guid printerUuid,
         Guid printUuid,
+        [FromQuery] bool changed,
         CancellationToken cancellationToken)
     {
         (Printer? printer, Caller? caller) = await ResolveAsync(printerUuid, cancellationToken);
@@ -186,7 +197,7 @@ public class PrintJobController : ControllerBase
 
         try
         {
-            EnqueueOutcome? outcome = await _queue.ReprintAsync(printer.Id, printUuid, caller, cancellationToken);
+            EnqueueOutcome? outcome = await _queue.ReprintAsync(printer.Id, printUuid, caller, changed, cancellationToken);
 
             if (outcome is null)
             {
@@ -201,6 +212,10 @@ public class PrintJobController : ControllerBase
             return this.ForbiddenProblem(_errors.For(e));
         }
         catch (PrintFileNotFoundException e)
+        {
+            return this.ConflictProblem(_errors.For(e));
+        }
+        catch (PrintFileChangedException e)
         {
             return this.ConflictProblem(_errors.For(e));
         }

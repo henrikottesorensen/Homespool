@@ -2336,6 +2336,12 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Printers_ReprintNotYours" xml:space="preserve">
     <value>Kun den, der lagde et print i køen, kan printe det igen — filen findes blandt dine egne.</value>
   </data>
+  <data name="Printers_ReprintChanged" xml:space="preserve">
+    <value>{0} er ændret siden sidste print. Printer du det igen, bliver det af den nye version.</value>
+  </data>
+  <data name="Printers_ReprintCurrent" xml:space="preserve">
+    <value>Print den nuværende version</value>
+  </data>
   <data name="Printers_Chamber" xml:space="preserve">
     <value>Kammer</value>
   </data>

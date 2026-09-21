@@ -44,6 +44,20 @@
     </div>
 }
 
+@* The status line above says the file changed since that print; this is the answer to it. It posts
+   the same handler with changed=true, so the question lives exactly one redirect, like the Files
+   page's "replace it?". Not dismissed on a timer: it is a question, and it waits for somebody. *@
+@if (Model.ReprintChanged is not null)
+{
+    <div class="alert alert-warning" role="alert">
+        <form method="post" asp-page-handler="Reprint" asp-route-uuid="@uuid" class="d-inline">
+            <input type="hidden" name="printUuid" value="@Model.ReprintChanged" />
+            <input type="hidden" name="changed" value="true" />
+            <button type="submit" class="btn btn-sm btn-warning">@Localiser["Printers_ReprintCurrent"]</button>
+        </form>
+    </div>
+}
+
 @*  A printer paying for the plaintext escape hatch that its own firmware says it no longer needs.
     Deliberately NOT dismissible and NOT inside the live region: it describes a standing state
     rather than the outcome of something just pressed, so it should still be here tomorrow, and it

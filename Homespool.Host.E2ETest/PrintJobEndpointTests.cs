@@ -215,6 +215,73 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A file overwritten since the print is not printed unasked - the queue would start it within
+    /// seconds of a ready printer - and asking with <c>changed=true</c> prints the current version.
+    /// </summary>
+    [Fact]
+    public async Task AFileChangedSinceThePrintIsRefusedUntilTheCallerSaysSo()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "changed@example.com");
+
+        using (client)
+        {
+            Guid uuid = await AddPrinterAsync(user.Id);
+            string printed = await UploadDigestAsync(client, "benchy.bgcode", "G28 ; the one that printed\n");
+            Guid job = await AddPrintAsync(uuid, "benchy.bgcode", user.Id, PrintState.Finished, Morning, digest: printed);
+            await UploadDigestAsync(client, "benchy.bgcode", "G28 ; re-sliced since\n");
+
+            // Act
+            using HttpResponseMessage refused = await ReprintAsync(client, uuid, job);
+            using JsonDocument queuedBefore = await ListAsync(client, $"/api/v1/printers/{uuid}/queue");
+            using HttpResponseMessage accepted = await ReprintAsync(client, uuid, job, changed: true);
+
+            // Assert
+            refused.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            (await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+                .Should().Contain("benchy.bgcode");
+            queuedBefore.RootElement.GetProperty("prints").GetArrayLength().Should().Be(0, "nothing is queued unasked");
+            accepted.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+    }
+
+    /// <summary>
+    /// The same bytes under the same name are the same print, and a file with no digest has nothing to
+    /// compare - both print again without being asked.
+    /// </summary>
+    [Fact]
+    public async Task UnchangedOrUncomparableFilesPrintAgainWithoutAsking()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "unchanged@example.com");
+
+        using (client)
+        {
+            Guid uuid = await AddPrinterAsync(user.Id);
+            string digest = await UploadDigestAsync(client, "same.bgcode", "G28 ; same\n");
+            Guid same = await AddPrintAsync(uuid, "same.bgcode", user.Id, PrintState.Finished, Morning, digest: digest);
+
+            // Uploaded again byte for byte: a new write, the same content.
+            await UploadDigestAsync(client, "same.bgcode", "G28 ; same\n");
+
+            await UploadDigestAsync(client, "old.bgcode", "G28 ; from before digests\n");
+            Guid old = await AddPrintAsync(uuid, "old.bgcode", user.Id, PrintState.Finished, Morning.AddHours(1),
+                                           digest: "not-this-file");
+            await ForgetDigestAsync(user.Id, "old.bgcode");
+
+            // Act
+            using HttpResponseMessage sameAgain = await ReprintAsync(client, uuid, same);
+            using HttpResponseMessage oldAgain = await ReprintAsync(client, uuid, old);
+
+            // Assert
+            sameAgain.StatusCode.Should().Be(HttpStatusCode.Created);
+            oldAgain.StatusCode.Should().Be(HttpStatusCode.Created, "a file with no digest cannot be said to have changed");
+        }
+    }
+
+    /// <summary>
     /// Somebody else's print is refused, however printable - the file is looked up among the caller's
     /// own, so going ahead would print the caller's file under that name.
     /// </summary>
@@ -369,10 +436,24 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
         }
     }
 
-    private static async Task<HttpResponseMessage> ReprintAsync(HttpClient client, Guid printer, Guid print)
+    private static async Task<HttpResponseMessage> ReprintAsync(HttpClient client, Guid printer, Guid print, bool changed = false)
     {
-        return await client.PostAsync($"/api/v1/printers/{printer}/jobs/{print}/reprint", content: null,
-                                      TestContext.Current.CancellationToken);
+        return await client.PostAsync($"/api/v1/printers/{printer}/jobs/{print}/reprint{(changed ? "?changed=true" : string.Empty)}",
+                                      content: null, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Uploads a file and answers the digest the store took of it.</summary>
+    private static async Task<string> UploadDigestAsync(HttpClient client, string name, string content)
+    {
+        using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes(content)));
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/files/{name}?overwrite=true", body,
+                                                                    TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using JsonDocument payload = await ReadAsync(response);
+
+        return payload.RootElement.GetProperty("digest").GetString()!;
     }
 
     private static async Task<JsonDocument> ListAsync(HttpClient client, string url)
@@ -408,6 +489,19 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
                                                          CancellationToken.None);
 
         return plaintext;
+    }
+
+    /// <summary>A file as the startup reconcile indexes one found on disk: no digest.</summary>
+    private async Task ForgetDigestAsync(long userId, string name)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.UserId == userId && row.Name == name,
+                                                              TestContext.Current.CancellationToken);
+        file.Digest = null;
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>The file's own account of which printer it was sliced for, as the reader writes it at upload.</summary>
@@ -462,7 +556,8 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
                                            DateTimeOffset startedAt,
                                            bool ended = true,
                                            long? stoppedBy = null,
-                                           Guid? printUuid = null)
+                                           Guid? printUuid = null,
+                                           string? digest = null)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
@@ -484,6 +579,7 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
             CommandedAt = startedAt,
             EndedAt = ended ? startedAt.AddMinutes(30) : null,
             StoppedByUserId = stoppedBy,
+            Digest = digest,
         };
 
         context.PrintJobs.Add(job);

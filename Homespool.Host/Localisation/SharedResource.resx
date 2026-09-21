@@ -2436,6 +2436,12 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Printers_ReprintNotYours" xml:space="preserve">
     <value>Only whoever queued a print can print it again — the file is looked up among your own.</value>
   </data>
+  <data name="Printers_ReprintChanged" xml:space="preserve">
+    <value>{0} has changed since the last print. Printing it again will print the new version.</value>
+  </data>
+  <data name="Printers_ReprintCurrent" xml:space="preserve">
+    <value>Print the current version</value>
+  </data>
   <data name="Printers_Chamber" xml:space="preserve">
     <value>Chamber</value>
   </data>

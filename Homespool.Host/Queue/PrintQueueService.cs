@@ -217,6 +217,9 @@ public class PrintQueueService
     /// </exception>
     /// <exception cref="PrintNotYoursException">Somebody else queued that print.</exception>
     /// <exception cref="PrintFileNotFoundException">The caller no longer has a file by that name.</exception>
+    /// <exception cref="PrintFileChangedException">
+    /// The file under that name is not the bytes that printed, and <paramref name="acceptChanged"/> is false.
+    /// </exception>
     /// <remarks>
     /// <para>
     /// <b>Only the person who queued a print may print it again, and that is a correctness rule
@@ -226,14 +229,29 @@ public class PrintQueueService
     /// repeating theirs. Nothing fails; the wrong thing prints.
     /// </para>
     /// <para>
+    /// <b>The name finds the file; the digest says whether it is still the one that printed.</b> An
+    /// overwrite since then leaves the name and changes the bytes, so a reprint would print something
+    /// the person never saw print. That is refused unless <paramref name="acceptChanged"/> says the
+    /// current version is wanted - asked before queueing, because the queue starts a print on a ready
+    /// printer within seconds and a warning afterwards would come too late. Only compared when both
+    /// digests are known: files from before digests were taken, or indexed from the disk, have none,
+    /// and there is nothing to compare them with.
+    /// </para>
+    /// <para>
     /// <b>It queues rather than prints</b>, so a reprint takes the same route as every other way a file
     /// reaches a printer, and the new entry carries a handle of its own.
     /// </para>
     /// </remarks>
+    /// <param name="printerId">The printer the print ran on.</param>
+    /// <param name="printUuid">The handle the print was queued under.</param>
+    /// <param name="caller">Who is asking.</param>
+    /// <param name="acceptChanged">Queue the file as it is now, even if it has changed since that print.</param>
+    /// <param name="cancellationToken">Aborted with the request.</param>
     /// <returns>Null if this printer has no print under that handle.</returns>
     public async Task<EnqueueOutcome?> ReprintAsync(int printerId,
                                                     Guid printUuid,
                                                     Caller caller,
+                                                    bool acceptChanged,
                                                     CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(caller);
@@ -248,6 +266,17 @@ public class PrintQueueService
         if (job.QueuedByUserId != caller.UserId)
         {
             throw new PrintNotYoursException();
+        }
+
+        if (!acceptChanged && job.Digest is not null)
+        {
+            PrintFile? current = await _files.ResolveAsync(caller.UserId, job.FileName, cancellationToken);
+
+            // A missing file falls through to the enqueue, which says so in its own words.
+            if (current?.Digest is not null && !string.Equals(current.Digest, job.Digest, StringComparison.Ordinal))
+            {
+                throw new PrintFileChangedException(job.FileName);
+            }
         }
 
         return await EnqueueAsync(printerId, caller, job.FileName, cancellationToken);

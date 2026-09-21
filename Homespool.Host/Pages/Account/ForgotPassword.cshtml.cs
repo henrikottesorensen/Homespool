@@ -141,7 +141,12 @@ public class ForgotPasswordModel : PageModel
             // goes with it: awaiting a whole SMTP conversation here made the answer for a registered
             // address measurably slower than the one an unknown address gets, which says the same
             // thing to anyone willing to time two requests.
-            _emailSender.Enqueue(Input.Email, subject, body);
+            //
+            // To the stored address, never the typed one. The lookup matched on the normalised key,
+            // which folds more than case: NFC maps the kelvin sign to K and the uppercasing maps a
+            // long s to S, so a look-alike spelling finds this account - and mailing that spelling
+            // would hand the reset token to whoever holds the look-alike mailbox.
+            _emailSender.Enqueue(user.Email, subject, body);
 
             return RedirectToPage("./ForgotPasswordConfirmation");
         }

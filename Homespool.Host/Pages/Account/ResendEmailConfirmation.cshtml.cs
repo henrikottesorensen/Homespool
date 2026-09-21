@@ -132,7 +132,9 @@ public class ResendEmailConfirmationModel : PageModel
         // Queued rather than sent here, for the same two reasons as ForgotPassword: this is only
         // reached when the account exists and is unconfirmed, so reporting a send failure would
         // confirm as much - and so would waiting for the send, which took long enough to time.
-        _emailSender.Enqueue(Input.Email, subject, body);
+        // To the stored address rather than the typed one, for the reason ForgotPassword gives: the
+        // lookup folds look-alike spellings onto this account, and the link belongs to its owner.
+        _emailSender.Enqueue(user.Email, subject, body);
 
         ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
         return Page();

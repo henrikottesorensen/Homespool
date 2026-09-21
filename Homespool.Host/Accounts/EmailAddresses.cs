@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics.CodeAnalysis;
 
 using Homespool.Host.Services;
@@ -35,5 +36,41 @@ public static class EmailAddresses
         return !string.IsNullOrEmpty(address) &&
                address.Length <= MaxLength &&
                PrintableText.IsPrintable(address);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="first"/> and <paramref name="second"/> are the same address, ignoring
+    /// case - in any script, but only case.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Both folds have to agree, and that is the whole trick.</b> A single fold does more than case:
+    /// <see cref="string.ToUpperInvariant"/> maps a long s (U+017F) to S, and
+    /// <see cref="string.ToLowerInvariant"/> maps the kelvin sign (U+212A) to k, so either one alone lets
+    /// a look-alike mailbox meet an address it is not. Each of those mappings goes one way only - the
+    /// long s lowercases to itself, the kelvin sign uppercases to itself - so asking for both refuses
+    /// them while still meeting every genuine pair: an exhaustive run over every scalar value finds no
+    /// character outside ASCII that matches one inside it this way, and finds å and Å, æ and Æ, ø and Ø
+    /// matching as they should.
+    /// </para>
+    /// <para>
+    /// <b>No NFC, on purpose.</b> NFC maps the kelvin sign to a plain K, which both folds then agree
+    /// with, so normalising first would let back in exactly what this refuses. The cost is that an
+    /// address sent with a combining ring does not meet the same address with a precomposed å. An
+    /// address is normally written precomposed, so the cost is expected to be narrow - expected, not
+    /// measured against any provider.
+    /// </para>
+    /// <para>
+    /// <b>In C#, never in SQL.</b> SQLite's <c>upper()</c> and <c>lower()</c> fold a-z and nothing
+    /// else, so a comparison translated there cannot see this rule at all.
+    /// </para>
+    /// </remarks>
+    public static bool SameAddress(string first, string second)
+    {
+        ArgumentNullException.ThrowIfNull(first);
+        ArgumentNullException.ThrowIfNull(second);
+
+        return string.Equals(first.ToUpperInvariant(), second.ToUpperInvariant(), StringComparison.Ordinal) &&
+               string.Equals(first.ToLowerInvariant(), second.ToLowerInvariant(), StringComparison.Ordinal);
     }
 }

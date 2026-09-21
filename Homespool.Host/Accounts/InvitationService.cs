@@ -196,17 +196,15 @@ public class InvitationService
     /// outstanding until it lapses; both are single-use, and spending either spends only itself.
     /// </para>
     /// <para>
-    /// <b>No index on <see cref="Invitation.Email"/>, and that is a decision.</b> Adding one means
-    /// regenerating the migration in place, which against a deployed appliance is the whole procedure
-    /// for a migration against a deployed appliance. At one-to-tens of printers this table holds
-    /// tens of rows and the scan
-    /// is free; the moment it does not, the index is a separate and obvious change.
-    /// </para>
-    /// <para>
-    /// <see cref="string.ToUpper()"/> translates to SQLite's <c>upper()</c>, which folds ASCII only —
-    /// the same fold ASP.NET Identity's default normaliser applies to the addresses it stores, so the
-    /// two agree. An address differing only in the case of a non-ASCII character would not match; no
-    /// invite can be issued that way either, since the administrator types the address that is stored.
+    /// <b>The address is compared in memory, over the outstanding invites.</b>
+    /// <see cref="EmailAddresses.SameAddress"/> ignores case in any script while refusing the folds
+    /// that turn one mailbox into another, and SQLite cannot express it: its <c>upper()</c> folds a-z
+    /// only, which left a lowercase å never matching even itself, while a one-sided
+    /// <see cref="string.ToUpperInvariant"/> matched a long s to a plain s - a different mailbox
+    /// redeeming somebody else's invitation, behind an opt-in and an <c>email_verified</c> that vouch
+    /// for the look-alike mailbox rather than the invited one. At one-to-tens of printers this table
+    /// holds tens of rows, and the outstanding ones are fewer; an index on
+    /// <see cref="Invitation.Email"/> would not serve this comparison, so there is none.
     /// </para>
     /// </remarks>
     public async Task<Invitation?> FindOutstandingForEmailAsync(string? email, CancellationToken cancellationToken)
@@ -216,15 +214,16 @@ public class InvitationService
             return null;
         }
 
-        string normalised = email.Trim().ToUpperInvariant();
+        string asserted = email.Trim();
         DateTimeOffset now = DateTimeOffset.UtcNow;
 
-        return await _dbContext.Invitations
-                               .Where(i => i.UsedAt == null &&
-                                           i.ExpiresAt > now &&
-                                           i.Email.ToUpper() == normalised)
-                               .OrderByDescending(i => i.CreatedAt)
-                               .FirstOrDefaultAsync(cancellationToken);
+        // Tracked, not AsNoTracking: the caller spends the one it gets inside its own transaction.
+        List<Invitation> outstanding = await _dbContext.Invitations
+                                                       .Where(i => i.UsedAt == null && i.ExpiresAt > now)
+                                                       .OrderByDescending(i => i.CreatedAt)
+                                                       .ToListAsync(cancellationToken);
+
+        return outstanding.FirstOrDefault(i => EmailAddresses.SameAddress(i.Email, asserted));
     }
 
     /// <summary>

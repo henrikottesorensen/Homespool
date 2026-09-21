@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Pages.Account;
+using Homespool.Host.PrusaConnect;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -114,6 +115,103 @@ public sealed class LookalikeAddressTests : IDisposable
     }
 
     /// <summary>
+    /// A provider asserting a look-alike address does not redeem the invitation issued to the real
+    /// one. The provider's <c>email_verified</c> vouches for the look-alike mailbox, not the invited one.
+    /// </summary>
+    [Theory]
+    [InlineData(0x017F, 's')]
+    [InlineData(0x212A, 'k')]
+    public async Task ALookalikeAddressDoesNotFindTheInvitation(int lookalike, char replaces)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService invitations = await InvitedAsync(context);
+
+        // Act
+        Invitation? found = await invitations.FindOutstandingForEmailAsync(
+            Spell(Stored, replaces, lookalike), TestContext.Current.CancellationToken);
+
+        // Assert
+        found.Should().BeNull("a different mailbox is not the one the administrator invited");
+    }
+
+    /// <summary>
+    /// And the fix did not turn into exact matching: people and providers still disagree about case.
+    /// </summary>
+    [Fact]
+    public async Task TheInvitedAddressStillMatchesInAnyAsciiCase()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService invitations = await InvitedAsync(context);
+
+        // Act
+        Invitation? found = await invitations.FindOutstandingForEmailAsync(
+            " Kasper@EXAMPLE.net ", TestContext.Current.CancellationToken);
+
+        // Assert
+        found.Should().NotBeNull();
+        found!.Email.Should().Be(Stored);
+    }
+
+    /// <summary>
+    /// The case of a Danish letter is still only case: an invitation written with å or Å is found by
+    /// either spelling, and by the same spelling - which, with SQL doing the folding, a lowercase å
+    /// never was.
+    /// </summary>
+    [Theory]
+    [InlineData(0x00E5, 0x00E5)]
+    [InlineData(0x00C5, 0x00E5)]
+    [InlineData(0x00E5, 0x00C5)]
+    [InlineData(0x00E6, 0x00C6)]
+    [InlineData(0x00D8, 0x00F8)]
+    public async Task AnInvitationIsFoundWhateverTheCaseOfANonAsciiLetter(int invited, int claimed)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        string address = char.ConvertFromUtf32(invited) + "se@example.net";
+        InvitationService invitations = await InvitedAsync(context, address);
+
+        // Act
+        Invitation? found = await invitations.FindOutstandingForEmailAsync(
+            char.ConvertFromUtf32(claimed) + "se@example.net", TestContext.Current.CancellationToken);
+
+        // Assert
+        found.Should().NotBeNull();
+        found!.Email.Should().Be(address);
+    }
+
+    [Theory]
+    [InlineData(0x00E5, 0x00C5)]
+    [InlineData(0x00E6, 0x00C6)]
+    [InlineData(0x00F8, 0x00D8)]
+    [InlineData((int)'a', (int)'A')]
+    public void LettersDifferingOnlyInCaseAreTheSameAddress(int lower, int upper)
+    {
+        EmailAddresses.SameAddress(char.ConvertFromUtf32(lower) + "@example.net",
+                                   char.ConvertFromUtf32(upper) + "@EXAMPLE.NET")
+                      .Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Each of these is folded onto an ASCII letter by one of the two invariant case mappings and
+    /// not by the other, which is what the rule turns on.
+    /// </summary>
+    [Theory]
+    [InlineData(0x017F, (int)'s')]
+    [InlineData(0x017F, (int)'S')]
+    [InlineData(0x212A, (int)'k')]
+    [InlineData(0x212A, (int)'K')]
+    [InlineData(0x0131, (int)'i')]
+    [InlineData(0x0130, (int)'I')]
+    public void ALookalikeIsNotTheSameAddress(int lookalike, int ascii)
+    {
+        EmailAddresses.SameAddress(char.ConvertFromUtf32(lookalike) + "@example.net",
+                                   char.ConvertFromUtf32(ascii) + "@example.net")
+                      .Should().BeFalse();
+    }
+
+    /// <summary>
     /// <paramref name="address"/> with its first <paramref name="replaces"/> spelled as
     /// <paramref name="codePoint"/> instead.
     /// </summary>
@@ -128,6 +226,18 @@ public sealed class LookalikeAddressTests : IDisposable
     {
         return new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
                                   NullLogger<AttemptLimiter>.Instance);
+    }
+
+    private static async Task<InvitationService> InvitedAsync(HomespoolDbContext context, string address = Stored)
+    {
+        (UserManager<HSUser> users, _, _, _) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser administrator = await SeedUserAsync(users, "admin@example.net", confirmed: true);
+
+        InvitationService invitations = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        await invitations.CreateAsync(address, teamId: null, administrator.Id, expiresAt: null,
+                                      TestContext.Current.CancellationToken);
+
+        return invitations;
     }
 
     private static async Task<HSUser> SeedUserAsync(UserManager<HSUser> users, string email, bool confirmed)

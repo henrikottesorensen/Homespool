@@ -135,4 +135,20 @@ public enum Capability
     /// upload is refused, which is the 409 an existing name already gives.
     /// </remarks>
     ManipulateOwnFiles = 11,
+
+    /// <summary>See your own email address over the API.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>About a credential, like the file capabilities</b>, and not in <c>CapabilityPresets</c> for
+    /// the same reason: an account's details are its own, so no membership can grant or withhold
+    /// them. What this narrows is a token. A key minted for a slicer or a script has no use for its
+    /// owner's address, and one read out of a config file should not hand it over.
+    /// </para>
+    /// <para>
+    /// <b>It gates a field, not <c>GET /api/v1/user</c> itself.</b> Scripts call that endpoint to
+    /// check that a token works at all, so it answers any token. Only the address is held back, and
+    /// the username is not, since a username cannot contain <c>@</c> and so is never an address.
+    /// </para>
+    /// </remarks>
+    ViewAccountDetails = 12,
 }

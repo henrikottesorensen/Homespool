@@ -2322,6 +2322,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Capability_ManipulateOwnFiles" xml:space="preserve">
     <value>Rename, delete and replace your files</value>
   </data>
+  <data name="Capability_ViewAccountDetails" xml:space="preserve">
+    <value>See your email address</value>
+  </data>
   <data name="Capability_Everything" xml:space="preserve">
     <value>Everything you can do</value>
   </data>

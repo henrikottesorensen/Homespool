@@ -19,6 +19,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Controllers;
@@ -139,11 +140,13 @@ public class PrinterAppController : ControllerBase
             return this.NoAccount();
         }
 
+        Caller caller = CallerResolver.For(user, User);
+
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        Printer? defaultPrinter = await _defaults.ResolvePrinterAsync(user, CallerResolver.For(user, User), cancellationToken);
+        Printer? defaultPrinter = await _defaults.ResolvePrinterAsync(user, caller, cancellationToken);
 
-        return TypedResults.Ok(UserReadDTO.FromEntity(user, memberships, defaultPrinter?.Uuid));
+        return TypedResults.Ok(UserReadDTO.FromEntity(user, memberships, defaultPrinter?.Uuid, caller));
     }
 
     [HttpGet]

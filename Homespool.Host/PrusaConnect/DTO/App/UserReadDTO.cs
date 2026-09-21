@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrusaConnect.DTO.App;
@@ -22,6 +23,10 @@ public class UserReadDTO
 
     public required string Name { get; set; }
 
+    /// <summary>
+    /// The account's email address, or null when the credential's scope does not include
+    /// <see cref="Capability.ViewAccountDetails"/>.
+    /// </summary>
     public string? Email { get; set; }
 
     public required IReadOnlyList<TeamMembershipDTO> Teams { get; set; }
@@ -37,13 +42,26 @@ public class UserReadDTO
     /// </remarks>
     public Guid? DefaultPrinterUuid { get; set; }
 
-    public static UserReadDTO FromEntity(HSUser user, IReadOnlyList<TeamMember> memberships, Guid? defaultPrinterUuid)
+    /// <summary>Maps an account for <paramref name="caller"/>, who is that account.</summary>
+    /// <remarks>
+    /// <b>The address is withheld from the name's fallback as well</b>, or a caller without
+    /// <see cref="Capability.ViewAccountDetails"/> would be handed it in the other field.
+    /// </remarks>
+    public static UserReadDTO FromEntity(HSUser user,
+                                         IReadOnlyList<TeamMember> memberships,
+                                         Guid? defaultPrinterUuid,
+                                         Caller caller)
     {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(caller);
+
+        string? email = caller.Allows(Capability.ViewAccountDetails) ? user.Email : null;
+
         return new()
         {
             Uuid = user.Uuid,
-            Name = user.UserName ?? user.Email ?? string.Empty,
-            Email = user.Email,
+            Name = user.UserName ?? email ?? string.Empty,
+            Email = email,
             Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),
             DefaultPrinterUuid = defaultPrinterUuid,
         };

@@ -54,6 +54,7 @@ public class CameraAccessService
         return await _dbContext.Cameras
                                .Where(camera => teams.Contains(camera.TeamId))
                                .Include(camera => camera.Printer)
+                               .Include(camera => camera.Team)
                                .OrderBy(camera => camera.Name ?? string.Empty)
                                .ThenBy(camera => camera.Id)
                                .AsNoTracking()

@@ -3,12 +3,12 @@
 
 #nullable disable
 
-using Homespool.Host.Mail;
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Mail;
 
 namespace Homespool.Host.Pages.Account;
 

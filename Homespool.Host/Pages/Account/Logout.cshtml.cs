@@ -5,12 +5,12 @@
 
 using System.Threading.Tasks;
 
-using Homespool.Host.Authentication;
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Authentication;
 
 namespace Homespool.Host.Pages.Account;
 

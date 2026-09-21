@@ -405,6 +405,11 @@ public sealed class PrintFileCatalog
             Size = file.Length,
             Digest = digest,
             UploadedAt = file.UploadedAt,
+
+            // True until Describe reads the bytes, which an upload does next and a lazy resolve never
+            // does - so a row indexed on the way to a print says nobody has looked, rather than
+            // carrying the default that means nobody wrote a state at all.
+            MetadataState = PrintFileMetadataState.Unread,
         };
 
         _dbContext.PrintFiles.Add(row);

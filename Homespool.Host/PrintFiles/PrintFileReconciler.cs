@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrintFiles;
@@ -112,6 +113,11 @@ public sealed class PrintFileReconciler : BackgroundService
                         Size = file.Length,
                         Digest = null,
                         UploadedAt = file.UploadedAt,
+
+                        // Indexed without being read, for the reason the digest is left null: a pass
+                        // over every file's bytes would stand between the process starting and it
+                        // serving. Unread says exactly that; the default would say nothing.
+                        MetadataState = PrintFileMetadataState.Unread,
                     });
 
                     added++;

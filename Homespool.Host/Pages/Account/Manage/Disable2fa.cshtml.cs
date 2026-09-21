@@ -62,7 +62,7 @@ public class Disable2faModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         // Nothing links here with two-factor off, but a typed URL or a tab left open while it was
@@ -80,7 +80,7 @@ public class Disable2faModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         IdentityResult disable2faResult = await _userManager.SetTwoFactorEnabledAsync(user, false);

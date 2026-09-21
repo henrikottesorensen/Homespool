@@ -158,7 +158,7 @@ public class ExternalLoginsModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadAsync(user);
@@ -215,7 +215,7 @@ public class ExternalLoginsModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         // Keyed on the signed-in account, so a callback carrying somebody else's external cookie
@@ -271,7 +271,7 @@ public class ExternalLoginsModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadAsync(user);

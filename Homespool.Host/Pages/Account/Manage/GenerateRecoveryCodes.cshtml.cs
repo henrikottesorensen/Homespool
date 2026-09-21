@@ -70,7 +70,7 @@ public class GenerateRecoveryCodesModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         // Nothing links here with two-factor off, but a typed URL or a tab left open while it was
@@ -90,7 +90,7 @@ public class GenerateRecoveryCodesModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         bool isTwoFactorEnabled = await _userManager.GetTwoFactorEnabledAsync(user);

@@ -106,7 +106,7 @@ public class EnableAuthenticatorModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadSharedKeyAndQrCodeUriAsync(user);
@@ -119,7 +119,7 @@ public class EnableAuthenticatorModel : PageModel
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         if (!ModelState.IsValid)

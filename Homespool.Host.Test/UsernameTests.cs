@@ -213,7 +213,7 @@ public sealed class UsernameTests : IDisposable
     {
         HSUser user = new() { UserName = "henrik", Email = "rig@example.com" };
 
-        UserReadDTO.FromEntity(user, []).Name.Should().Be("henrik");
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null).Name.Should().Be("henrik");
     }
 
     /// <summary>
@@ -226,7 +226,7 @@ public sealed class UsernameTests : IDisposable
     {
         HSUser user = new() { Email = "rig@example.com" };
 
-        UserReadDTO.FromEntity(user, []).Name.Should().Be("rig@example.com");
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null).Name.Should().Be("rig@example.com");
     }
 
     private static UserManager<HSUser> Users(HomespoolDbContext context)

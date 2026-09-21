@@ -46,6 +46,7 @@ public class PrinterAppController : ControllerBase
     private readonly RegistrationCodeClaim _registrationCodeClaim;
     private readonly PrinterQueryService _printerQueryService;
     private readonly TeamService _teamService;
+    private readonly DefaultPrinterService _defaults;
     private readonly UserManager<HSUser> _userManager;
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<PrinterAppController> _logger;
@@ -53,6 +54,7 @@ public class PrinterAppController : ControllerBase
     public PrinterAppController(RegistrationCodeClaim registrationCodeClaim,
                                 PrinterQueryService printerQueryService,
                                 TeamService teamService,
+                                DefaultPrinterService defaults,
                                 UserManager<HSUser> userManager,
                                 UnitOfWork unitOfWork,
                                 ILogger<PrinterAppController> logger)
@@ -60,6 +62,7 @@ public class PrinterAppController : ControllerBase
         _registrationCodeClaim = registrationCodeClaim;
         _printerQueryService = printerQueryService;
         _teamService = teamService;
+        _defaults = defaults;
         _userManager = userManager;
         _unitOfWork = unitOfWork;
         _logger = logger;
@@ -138,7 +141,9 @@ public class PrinterAppController : ControllerBase
 
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        return TypedResults.Ok(UserReadDTO.FromEntity(user, memberships));
+        Printer? defaultPrinter = await _defaults.ResolvePrinterAsync(user, CallerResolver.For(user, User), cancellationToken);
+
+        return TypedResults.Ok(UserReadDTO.FromEntity(user, memberships, defaultPrinter?.Uuid));
     }
 
     [HttpGet]

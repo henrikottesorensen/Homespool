@@ -26,7 +26,18 @@ public class UserReadDTO
 
     public required IReadOnlyList<TeamMembershipDTO> Teams { get; set; }
 
-    public static UserReadDTO FromEntity(HSUser user, IReadOnlyList<TeamMember> memberships)
+    /// <summary>
+    /// The printer this person has chosen as their default, or null when they have chosen none - or
+    /// chose one they can no longer see.
+    /// </summary>
+    /// <remarks>
+    /// <b>Read-only, and a preference rather than a destination.</b> The pages use it to pre-select a
+    /// printer; nothing in this API sends work to it, and every call that acts on a printer still names
+    /// one.
+    /// </remarks>
+    public Guid? DefaultPrinterUuid { get; set; }
+
+    public static UserReadDTO FromEntity(HSUser user, IReadOnlyList<TeamMember> memberships, Guid? defaultPrinterUuid)
     {
         return new()
         {
@@ -34,6 +45,7 @@ public class UserReadDTO
             Name = user.UserName ?? user.Email ?? string.Empty,
             Email = user.Email,
             Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),
+            DefaultPrinterUuid = defaultPrinterUuid,
         };
     }
 }

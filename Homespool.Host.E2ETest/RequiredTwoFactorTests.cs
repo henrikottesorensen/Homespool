@@ -70,19 +70,16 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The enrolment page itself, and the one render of the recovery codes, stay reachable — or the
-    /// gate would hold an account somewhere it cannot leave.
+    /// The enrolment page itself, which also renders the recovery codes it mints, stays reachable —
+    /// or the gate would hold an account somewhere it cannot leave.
     /// </summary>
     /// <remarks>
-    /// <b>"Was not sent to enrol", not "did not redirect".</b> Two of these three redirect for reasons
-    /// of their own and always did: <c>Logout</c> lands on the home page, and <c>ShowRecoveryCodes</c>
-    /// sends a reader holding no codes to <c>TwoFactorAuthentication</c> rather than drawing an empty
-    /// list. Asserting on the absence of a redirect failed against correct
-    /// behaviour and would have been "fixed" by exempting less.
+    /// <b>"Was not sent to enrol", not "did not redirect".</b> <c>Logout</c> redirects for a reason of
+    /// its own and always did, landing on the home page. Asserting on the absence of a redirect fails
+    /// against correct behaviour and would be "fixed" by exempting less.
     /// </remarks>
     [Theory]
     [InlineData("/Account/Manage/EnableAuthenticator")]
-    [InlineData("/Account/Manage/ShowRecoveryCodes")]
     [InlineData("/Account/Logout")]
     public async Task TheWayOutStaysOpen(string path)
     {

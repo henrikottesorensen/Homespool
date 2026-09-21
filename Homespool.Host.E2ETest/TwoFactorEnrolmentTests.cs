@@ -24,11 +24,12 @@ namespace Homespool.Host.E2ETest;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Written after the enable flow was found to answer 500.</b> Both callers that mint recovery
-/// codes redirected to a <c>ShowRecoveryCodes</c> page that did not exist - it was Identity.UI's, and
-/// was never brought across when that package was removed. The account was left with two-factor on
-/// and ten recovery codes it had never been shown, which is the one state
-/// <c>EnableAuthenticatorModel</c>'s transaction exists to prevent the database half of.
+/// <b>The recovery codes are shown by the response to the post that mints them, and only there.</b>
+/// They are stored hashed, so a set minted and not displayed is lost, and an account left with
+/// two-factor on and codes it was never shown is the one state <c>EnableAuthenticatorModel</c>'s
+/// transaction exists to prevent the database half of. They are not handed to another request
+/// either: the <c>TempData</c> cookie a redirect would carry them in is not bound to the account and
+/// stays decryptable after it has been read.
 /// </para>
 /// <para>
 /// <b>Nothing caught it, and the reason is worth keeping.</b> <see cref="LoginWith2faTests"/> seeds
@@ -59,7 +60,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
     /// <summary>
     /// The whole point: a person who turns on an authenticator app is shown the recovery codes that
-    /// were minted for them. They are stored hashed, so this request is the only chance they get.
+    /// were minted for them, in the response to that post, and in no cookie.
     /// </summary>
     [Fact]
     public async Task EnablingAnAuthenticatorShowsTheRecoveryCodes()
@@ -71,25 +72,44 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         await ProveAsync(client, jar);
         string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/EnableAuthenticator");
 
-        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/EnableAuthenticator", new()
+        Dictionary<string, string> form = new()
         {
             ["Input.Code"] = await CurrentCodeAsync(user.Id),
             ["__RequestVerificationToken"] = token,
+        };
+
+        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/EnableAuthenticator", form);
+
+        await ShouldShowLiveCodesAndCarryNoneAsync(post, user.Id);
+
+        // A refresh of that response is the same post again. The codes are only ever shown once, so it
+        // must land on the two-factor page rather than mint or show a second set.
+        using HttpResponseMessage refresh = await PostAsync(client, jar, "/Account/Manage/EnableAuthenticator", form);
+
+        refresh.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        refresh.Headers.Location!.OriginalString.Should().Contain("/Account/Manage/TwoFactorAuthentication");
+    }
+
+    /// <summary>
+    /// The other page that mints codes: a fresh set is shown by the post that generated it, and the
+    /// set shown is the set stored.
+    /// </summary>
+    [Fact]
+    public async Task GeneratingRecoveryCodesShowsThemInTheResponse()
+    {
+        (HSUser user, CookieJar jar) = await SeedAsync("regenerate@example.com", withTwoFactor: true);
+
+        using HttpClient client = CreateClient();
+
+        await ProveAsync(client, jar);
+        string token = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/GenerateRecoveryCodes");
+
+        using HttpResponseMessage post = await PostAsync(client, jar, "/Account/Manage/GenerateRecoveryCodes", new()
+        {
+            ["__RequestVerificationToken"] = token,
         });
 
-        post.StatusCode.Should().Be(HttpStatusCode.Redirect,
-                                    "a verified code enables two-factor and hands the codes on - a 500 here means the " +
-                                    "page it hands them to is missing, which is exactly what this test was written for");
-
-        post.Headers.Location!.OriginalString
-            .Should().Contain("/Account/Manage/ShowRecoveryCodes");
-
-        using HttpResponseMessage codes = await GetAsync(client, jar, post.Headers.Location.OriginalString);
-        string html = await codes.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-        codes.StatusCode.Should().Be(HttpStatusCode.OK);
-        CountOccurrences(html, "recovery-code")
-            .Should().Be(10, "ten codes are generated, and a code that is generated but not displayed is lost");
+        await ShouldShowLiveCodesAndCarryNoneAsync(post, user.Id);
     }
 
     /// <summary>
@@ -130,23 +150,6 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         (await userManager.GetTwoFactorEnabledAsync(after))
             .Should().BeFalse("the enabled flag is enabled against the key that was just thrown away");
-    }
-
-    /// <summary>
-    /// A refresh, a back button or a direct visit has no codes to show - and must not render an empty
-    /// page that reads as though the codes were lost.
-    /// </summary>
-    [Fact]
-    public async Task RecoveryCodesAreNotShownToAReaderWhoHasNone()
-    {
-        (HSUser _, CookieJar jar) = await SeedAsync("norecovery@example.com");
-
-        using HttpClient client = CreateClient();
-
-        using HttpResponseMessage response = await GetAsync(client, jar, "/Account/Manage/ShowRecoveryCodes");
-
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        response.Headers.Location!.OriginalString.Should().Contain("/Account/Manage/TwoFactorAuthentication");
     }
 
     /// <summary>
@@ -260,6 +263,37 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         opened.StatusCode.Should().Be(HttpStatusCode.Redirect, "no proof was earned, so the page still waits for one");
         (await TwoFactorEnabledAsync(user.Id))
             .Should().BeTrue("a locked-out account is refused before its password is even compared");
+    }
+
+    /// <summary>
+    /// <paramref name="post"/> rendered ten recovery codes that redeem for the account, and set no
+    /// <c>TempData</c> cookie that could carry them to another request.
+    /// </summary>
+    private async Task ShouldShowLiveCodesAndCarryNoneAsync(HttpResponseMessage post, long userId)
+    {
+        string html = await post.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        post.StatusCode.Should().Be(HttpStatusCode.OK, "the codes are rendered by the post that minted them");
+
+        List<string> codes = RecoveryCodesIn(html);
+        codes.Should().HaveCount(10, "ten codes are generated, and a code that is generated but not displayed is lost");
+
+        IEnumerable<string> tempData = post.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies) ?
+            cookies.Where(c => c.StartsWith(".AspNetCore.Mvc.CookieTempDataProvider=", StringComparison.Ordinal)) :
+            [];
+
+        tempData.Select(c => c.Split(';')[0].Split('=', 2)[1])
+            .Should().AllSatisfy(value => value.Should().BeEmpty(
+                "a TempData cookie is not bound to the account and stays decryptable once read, so the codes must " +
+                "not ride in one - an expiry deleting an old one is fine"));
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        HSUser user = await userManager.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture)) ??
+                      throw new InvalidOperationException("the account should exist");
+
+        (await userManager.RedeemTwoFactorRecoveryCodeAsync(user, codes[0])).Succeeded
+            .Should().BeTrue("the codes shown have to be the codes stored, or showing them was worth nothing");
     }
 
     private async Task<bool> TwoFactorEnabledAsync(long userId)
@@ -424,18 +458,21 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
             await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
-    private static int CountOccurrences(string haystack, string needle)
+    private static List<string> RecoveryCodesIn(string html)
     {
-        int count = 0;
-        int at = haystack.IndexOf(needle, StringComparison.Ordinal);
+        const string Marker = "<code class=\"recovery-code";
+
+        List<string> codes = [];
+        int at = html.IndexOf(Marker, StringComparison.Ordinal);
 
         while (at >= 0)
         {
-            count++;
-            at = haystack.IndexOf(needle, at + needle.Length, StringComparison.Ordinal);
+            int open = html.IndexOf('>', at) + 1;
+            codes.Add(html[open..html.IndexOf('<', open)]);
+            at = html.IndexOf(Marker, open, StringComparison.Ordinal);
         }
 
-        return count;
+        return codes;
     }
 
     public async ValueTask DisposeAsync()

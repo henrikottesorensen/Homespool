@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.PrusaConnect;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -171,7 +172,7 @@ public sealed class InvitationServiceTests : IDisposable
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
         // Act
-        Invitation? validated = await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None);
+        Invitation? validated = await service.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None);
 
         // Assert
         validated.Should().NotBeNull();
@@ -198,16 +199,173 @@ public sealed class InvitationServiceTests : IDisposable
 
         (Invitation used, string usedToken) = await service.CreateAsync(
             "used@example.com", null, 1, null, CancellationToken.None);
-        Invitation usedTracked = (await service.ValidateAsync(used.Uuid, usedToken, CancellationToken.None))!;
+        Invitation usedTracked = (await service.ValidateAsync(used.Uuid, usedToken, [InvitationType.Signup], CancellationToken.None))!;
         await service.MarkUsedAsync(usedTracked, CancellationToken.None);
 
         // Assert
-        (await service.ValidateAsync(outstanding.Uuid, "not-the-right-token", CancellationToken.None)).Should().BeNull();
-        (await service.ValidateAsync(Guid.NewGuid(), outstandingToken, CancellationToken.None)).Should().BeNull("unknown uuid");
-        (await service.ValidateAsync(expired.Uuid, expiredToken, CancellationToken.None)).Should().BeNull("expired");
-        (await service.ValidateAsync(used.Uuid, usedToken, CancellationToken.None)).Should().BeNull("already used");
-        (await service.ValidateAsync(outstanding.Uuid, null, CancellationToken.None)).Should().BeNull("null token");
-        (await service.ValidateAsync(outstanding.Uuid, string.Empty, CancellationToken.None)).Should().BeNull("empty token");
+        (await service.ValidateAsync(outstanding.Uuid, "not-the-right-token", [InvitationType.Signup], CancellationToken.None)).Should().BeNull();
+        (await service.ValidateAsync(Guid.NewGuid(), outstandingToken, [InvitationType.Signup], CancellationToken.None)).Should().BeNull("unknown uuid");
+        (await service.ValidateAsync(expired.Uuid, expiredToken, [InvitationType.Signup], CancellationToken.None)).Should().BeNull("expired");
+        (await service.ValidateAsync(used.Uuid, usedToken, [InvitationType.Signup], CancellationToken.None)).Should().BeNull("already used");
+        (await service.ValidateAsync(outstanding.Uuid, null, [InvitationType.Signup], CancellationToken.None)).Should().BeNull("null token");
+        (await service.ValidateAsync(outstanding.Uuid, string.Empty, [InvitationType.Signup], CancellationToken.None)).Should().BeNull("empty token");
+    }
+
+    /// <summary>
+    /// A recovery's token is as good as any invite's, so what stops a page that only creates accounts
+    /// from being handed one is the types it says it accepts - and a refusal on type looks exactly
+    /// like every other refusal.
+    /// </summary>
+    [Fact]
+    public async Task ValidateAsyncReturnsARecoveryOnlyToACallerThatAcceptsOne()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService service = NewService(context);
+
+        (Invitation recovery, string token) = await service.CreateRecoveryAsync(
+            42, "owner@example.com", clearsTwoFactor: false, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        // Act
+        Invitation? signupOnly = await service.ValidateAsync(recovery.Uuid, token, [InvitationType.Signup], CancellationToken.None);
+        Invitation? either = await service.ValidateAsync(
+            recovery.Uuid, token, [InvitationType.Signup, InvitationType.Recovery], CancellationToken.None);
+
+        // Assert
+        signupOnly.Should().BeNull();
+        either.Should().NotBeNull();
+        either!.Type.Should().Be(InvitationType.Recovery);
+    }
+
+    /// <summary>The same in the other direction: a caller that only redeems recoveries is not handed a signup.</summary>
+    [Fact]
+    public async Task ValidateAsyncDoesNotReturnASignupToACallerThatOnlyAcceptsRecoveries()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService service = NewService(context);
+
+        (Invitation signup, string token) = await service.CreateAsync(
+            "invitee@example.com", null, 1, null, CancellationToken.None);
+
+        // Act
+        Invitation? validated = await service.ValidateAsync(signup.Uuid, token, [InvitationType.Recovery], CancellationToken.None);
+
+        // Assert
+        validated.Should().BeNull();
+        signup.Type.Should().Be(InvitationType.Signup);
+    }
+
+    /// <summary>
+    /// A row whose type and <c>RecoversUserId</c> disagree is refused by both lookups, whichever
+    /// types the caller accepts.
+    /// </summary>
+    /// <remarks>
+    /// The signup-with-an-account case is the one a deployment can actually hold: a recovery issued
+    /// before the column existed, labelled a signup by its default. Handing it to a caller that
+    /// creates accounts is the defect this column exists to prevent, so the default must not
+    /// reintroduce it.
+    /// </remarks>
+    [Theory]
+    [InlineData(InvitationType.Signup, 42L)]
+    [InlineData(InvitationType.Recovery, null)]
+    public async Task AnInviteWhoseTypeAndAccountDisagreeIsRefused(InvitationType type, long? recoversUserId)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService service = NewService(context);
+        TokenService tokens = new();
+        string token = tokens.GenerateToken(InvitationService.InviteTokenLength);
+
+        Invitation row = new()
+        {
+            HashedToken = tokens.HashToken(token),
+            Type = type,
+            Email = "owner@example.com",
+            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+            RecoversUserId = recoversUserId,
+        };
+        context.Invitations.Add(row);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        InvitationType[] either = [InvitationType.Signup, InvitationType.Recovery];
+
+        // Act
+        Invitation? validated = await service.ValidateAsync(row.Uuid, token, either, CancellationToken.None);
+        Invitation? found = await service.FindOutstandingForEmailAsync("owner@example.com", either, CancellationToken.None);
+
+        // Assert
+        validated.Should().BeNull();
+        found.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A row written without a type reads back as a signup. That default is what a deployment's
+    /// existing rows receive when the column is added to them, so it is pinned here rather than
+    /// left to whatever the migration happened to say.
+    /// </summary>
+    [Fact]
+    public async Task ARowWrittenWithoutATypeIsASignup()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        // Act
+        await context.Database.ExecuteSqlRawAsync(
+            "INSERT INTO \"Invitations\" (\"Uuid\", \"HashedToken\", \"Email\", \"CreatedAt\", \"ExpiresAt\", \"InvitedBy\", \"ClearsTwoFactor\") " +
+            "VALUES ('6f1c1d2e-0000-4000-8000-000000000001', 'hash', 'old@example.com', 0, 0, 1, 0)",
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
+        stored.Type.Should().Be(InvitationType.Signup);
+    }
+
+    // ---------- FindOutstandingForEmailAsync ----------
+
+    /// <summary>
+    /// The address door passes over a recovery sent to the address it matched: that invite names an
+    /// account, and a caller that only creates accounts has nothing it could do with it.
+    /// </summary>
+    [Fact]
+    public async Task FindOutstandingForEmailAsyncPassesOverATypeTheCallerDoesNotAccept()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService service = NewService(context);
+
+        await service.CreateRecoveryAsync(
+            42, "owner@example.com", clearsTwoFactor: false, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        // Act
+        Invitation? found = await service.FindOutstandingForEmailAsync("owner@example.com", [InvitationType.Signup], CancellationToken.None);
+
+        // Assert
+        found.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A newer invite of a type the caller cannot redeem does not hide an older one it can - the type
+    /// is filtered after the newest-first order, not by taking the newest and then checking it.
+    /// </summary>
+    [Fact]
+    public async Task FindOutstandingForEmailAsyncIsNotHiddenByANewerInviteOfAnotherType()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService service = NewService(context);
+
+        (Invitation signup, _) = await service.CreateAsync("owner@example.com", null, 1, null, CancellationToken.None);
+        await service.CreateRecoveryAsync(
+            42, "owner@example.com", clearsTwoFactor: false, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        // Act
+        Invitation? found = await service.FindOutstandingForEmailAsync("OWNER@example.com", [InvitationType.Signup], CancellationToken.None);
+
+        // Assert
+        found.Should().NotBeNull();
+        found!.Id.Should().Be(signup.Id);
     }
 
     // ---------- MarkUsedAsync ----------
@@ -226,7 +384,7 @@ public sealed class InvitationServiceTests : IDisposable
         (Invitation invitation, string plaintext) = await service.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
-        Invitation tracked = (await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None))!;
+        Invitation tracked = (await service.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None))!;
 
         // Act
         await service.MarkUsedAsync(tracked, CancellationToken.None);
@@ -236,7 +394,7 @@ public sealed class InvitationServiceTests : IDisposable
             await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.UsedAt.Should().NotBeNull();
 
-        (await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should().BeNull();
+        (await service.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should().BeNull();
     }
 
     // ---------- RevokeAsync ----------
@@ -262,7 +420,7 @@ public sealed class InvitationServiceTests : IDisposable
             await context.Invitations.SingleAsync(i => i.Id == invitation.Id, TestContext.Current.CancellationToken);
         stored.ExpiresAt.Should().BeOnOrBefore(DateTimeOffset.UtcNow);
 
-        (await service.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should().BeNull();
+        (await service.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should().BeNull();
     }
 
     /// <summary>

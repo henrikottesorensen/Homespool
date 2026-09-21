@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Data;
@@ -432,6 +433,15 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // The public identifier the accept link and the revoke button carry, as on Printer.
             entity.HasIndex(e => e.Uuid)
                   .IsUnique();
+
+            // Text, like every enum column here. The default is for rows that predate the column:
+            // adding it to a deployed table needs a value for them, and a signup is what every
+            // invite was before recoveries existed. A recovery issued before the column arrives is
+            // labelled wrongly by it, so a deployment is checked for outstanding ones before
+            // upgrading.
+            entity.Property(e => e.Type)
+                  .HasConversion<string>()
+                  .HasDefaultValue(InvitationType.Signup);
 
             // A nullable team target: null invites mint a new account with its own default team,
             // non-null ones join an existing team. Restrict so an invite cannot outlive its target

@@ -13,6 +13,7 @@ using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Pages.Admin.Invites;
 using Homespool.Host.PrusaConnect;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -72,6 +73,7 @@ public sealed class IndexModelTests : IDisposable
         Invitation invitation = new()
         {
             HashedToken = "irrelevant",
+            Type = InvitationType.Signup,
             Email = "invitee@example.com",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
@@ -89,6 +91,7 @@ public sealed class IndexModelTests : IDisposable
         Invitation invitation = new()
         {
             HashedToken = "irrelevant",
+            Type = InvitationType.Signup,
             Email = "invitee@example.com",
             CreatedAt = DateTimeOffset.UtcNow.AddHours(-2),
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1),
@@ -105,6 +108,7 @@ public sealed class IndexModelTests : IDisposable
         Invitation invitation = new()
         {
             HashedToken = "irrelevant",
+            Type = InvitationType.Signup,
             Email = "invitee@example.com",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
@@ -128,6 +132,7 @@ public sealed class IndexModelTests : IDisposable
         Invitation invitation = new()
         {
             HashedToken = "irrelevant",
+            Type = InvitationType.Signup,
             Email = "invitee@example.com",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
@@ -155,6 +160,7 @@ public sealed class IndexModelTests : IDisposable
         Invitation invitation = new()
         {
             HashedToken = "irrelevant",
+            Type = InvitationType.Signup,
             Email = "invitee@example.com",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
@@ -177,6 +183,7 @@ public sealed class IndexModelTests : IDisposable
         Invitation invitation = new()
         {
             HashedToken = "irrelevant",
+            Type = InvitationType.Signup,
             Email = "invitee@example.com",
             CreatedAt = DateTimeOffset.UtcNow,
             ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
@@ -234,7 +241,7 @@ public sealed class IndexModelTests : IDisposable
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().Be("Invitation revoked.");
 
-        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should()
             .BeNull("revoking soft-expires the invite");
     }
 }

@@ -76,6 +76,26 @@ public class Invitation
     public long? RecoversUserId { get; set; }
 
     /// <summary>
+    /// Whether this invite creates an account or recovers one. <see cref="InvitationType.Recovery"/>
+    /// goes with a <see cref="RecoversUserId"/>, and <see cref="InvitationType.Signup"/> without one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Stored, so what an invite is for is a fact about the row</b> rather than an inference from
+    /// whether another column happens to be null. The two are kept in agreement by
+    /// <c>InvitationService</c>, which is the only thing that creates invitations, and a reader that
+    /// finds them disagreeing refuses the invite rather than choosing one.
+    /// </para>
+    /// <para>
+    /// <b>Required, although the column has a default.</b> The default exists so that a column added
+    /// to an existing table has something to give the rows already in it; a new invitation has no
+    /// such excuse, and an omitted type would otherwise arrive as a signup without anybody having
+    /// said so.
+    /// </para>
+    /// </remarks>
+    public required InvitationType Type { get; set; }
+
+    /// <summary>
     /// Whether redeeming this recovery also clears the account's authenticator. False on every
     /// ordinary invite, and on a recovery unless the administrator said the person had lost their
     /// second factor as well as their password.

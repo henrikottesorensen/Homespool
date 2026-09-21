@@ -176,7 +176,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (Invitation used, string usedToken) = await invitationService.CreateAsync(
             "used@example.com", null, 1, null, CancellationToken.None);
-        Invitation usedTracked = (await invitationService.ValidateAsync(used.Uuid, usedToken, CancellationToken.None))!;
+        Invitation usedTracked = (await invitationService.ValidateAsync(used.Uuid, usedToken, [InvitationType.Signup], CancellationToken.None))!;
         await invitationService.MarkUsedAsync(usedTracked, CancellationToken.None);
 
         // Assert: unknown uuid
@@ -235,7 +235,7 @@ public sealed class RegisterModelTests : IDisposable
 
         httpContext.Response.Headers.Should().ContainKey("Set-Cookie", "signing in writes the auth cookie");
 
-        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should()
             .BeNull("the invite is spent");
     }
 
@@ -269,7 +269,7 @@ public sealed class RegisterModelTests : IDisposable
 
         emailSender.SentEmails.Should().ContainSingle(e => e.email == "invitee@example.com" && e.subject == "Confirm your email");
 
-        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should()
             .BeNull("the invite is spent regardless of the confirmation path");
     }
 
@@ -360,7 +360,7 @@ public sealed class RegisterModelTests : IDisposable
         model.InviteValid.Should().BeTrue("sanity check: the invite was good at GET time");
 
         // Someone else raced this invite between the GET and the submit.
-        Invitation tracked = (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None))!;
+        Invitation tracked = (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None))!;
         await invitationService.MarkUsedAsync(tracked, CancellationToken.None);
 
         // Act
@@ -398,7 +398,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
             .Be(0);
-        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should()
             .NotBeNull("an invite is never spent by a rejected submission");
     }
 
@@ -433,7 +433,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
             .Be(1, "no second row for the duplicate email");
-        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should()
             .NotBeNull("the failed attempt must not spend the invite");
     }
 
@@ -489,7 +489,7 @@ public sealed class RegisterModelTests : IDisposable
 
         (await context.Users.CountAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken)).Should()
             .Be(0, "the whole transaction rolled back, including the user row");
-        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, CancellationToken.None)).Should()
+        (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should()
             .NotBeNull("a rolled-back accept must not spend the invite");
     }
 }

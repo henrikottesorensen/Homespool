@@ -19,6 +19,7 @@ using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Pages.Admin.Invites;
 using Homespool.Host.PrusaConnect;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -187,7 +188,7 @@ public sealed class CreateModelTests : IDisposable
         string code = ExtractQueryValue(model.AcceptLink!, "code")!;
         string plaintext = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(code));
 
-        (await invitationService.ValidateAsync(stored.Uuid, plaintext, CancellationToken.None)).Should().NotBeNull();
+        (await invitationService.ValidateAsync(stored.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should().NotBeNull();
     }
 
     /// <summary>Selecting an existing team binds the invite to it instead of minting a new-account invite.</summary>

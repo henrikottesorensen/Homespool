@@ -225,6 +225,45 @@ public sealed class RecoveryInviteTests : IDisposable
         (await users.CheckPasswordAsync(bystander, OldPassword)).Should().BeTrue();
     }
 
+    /// <summary>
+    /// A recovery whose account cannot be found is a dead link, not a signup: the page says so on
+    /// the way in, and a post creates nothing and leaves the invite unspent.
+    /// </summary>
+    /// <remarks>
+    /// The username is filled in so that the signup branch, were it reached, would succeed - an
+    /// account appearing at the address is what this asserts against, and a form the signup branch
+    /// refused for want of a name would pass for the wrong reason.
+    /// </remarks>
+    [Fact]
+    public async Task ARecoveryForAnAccountThatIsGoneCreatesNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+
+        InvitationService invitations = NewInvitationService(context);
+        (Invitation invite, string token) = await invitations.CreateRecoveryAsync(
+            9999, "gone@example.com", clearsTwoFactor: false, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        (RegisterModel viewing, _) = NewModel(context, users, provider, invitations, invite, token);
+        (RegisterModel posting, _) = NewModel(context, users, provider, invitations, invite, token);
+        posting.Input.Username = "newcomer";
+
+        // Act
+        await viewing.OnGetAsync(returnUrl: null, CancellationToken.None);
+        IActionResult result = await posting.OnPostAsync(returnUrl: null, CancellationToken.None);
+
+        // Assert
+        viewing.InviteValid.Should().BeFalse("there is nothing left for the link to recover");
+
+        result.Should().BeOfType<PageResult>();
+        posting.InviteValid.Should().BeFalse();
+        (await users.FindByEmailAsync("gone@example.com")).Should().BeNull("a recovery is not a signup");
+
+        Invitation stored = await context.Invitations.SingleAsync(i => i.Id == invite.Id, TestContext.Current.CancellationToken);
+        stored.UsedAt.Should().BeNull();
+    }
+
     [Fact]
     public async Task ASpentRecoveryCannotBeRedeemedAgain()
     {

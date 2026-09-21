@@ -190,6 +190,57 @@ public sealed class ExternalOidcDexTests
     }
 
     /// <summary>
+    /// A recovery's token carried through the provider is refused, and the recovery survives it.
+    /// </summary>
+    /// <remarks>
+    /// The account has moved address since the recovery was issued, which is the case that matters:
+    /// with the address still held, creating an account on it fails as a duplicate anyway. Once it is
+    /// free, a provider page that treated every invite as a signup would make a new account there and
+    /// spend the recovery on it, leaving the account it named exactly as locked out as before.
+    /// </remarks>
+    [RequiresDexFact]
+    public async Task ARecoveryTokenCarriedThroughTheProviderCreatesNoAccount()
+    {
+        using Fixture fixture = new(allowInviteMatchByEmail: false);
+
+        (Invitation recovery, string token) =
+            await fixture.CreateRecoveryForAMovedAccountAsync(TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage callback = await fixture.DriveProviderSignInAsync(
+            TestContext.Current.CancellationToken,
+            recovery.Uuid,
+            WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token)));
+
+        callback.StatusCode.Should().Be(HttpStatusCode.Redirect, "a recovery is not an invitation to create an account");
+        callback.Headers.Location!.OriginalString.Should().Contain("/Account/Login");
+
+        (await fixture.FindUserAsync(DexFixture.MockEmail)).Should().BeNull("nothing authorised a new account");
+        (await fixture.ReloadInviteAsync(recovery.Id, TestContext.Current.CancellationToken))!
+            .UsedAt.Should().BeNull("the recovery is still there to be redeemed on Register");
+    }
+
+    /// <summary>
+    /// The address door passes over a recovery too: the provider verifying the address the recovery
+    /// was sent to authorises no account.
+    /// </summary>
+    [RequiresDexFact]
+    public async Task ARecoveryIsNotClaimedByAVerifiedAddress()
+    {
+        using Fixture fixture = new(allowInviteMatchByEmail: true);
+
+        (Invitation recovery, _) = await fixture.CreateRecoveryForAMovedAccountAsync(TestContext.Current.CancellationToken);
+
+        using HttpResponseMessage callback = await fixture.DriveProviderSignInAsync(TestContext.Current.CancellationToken);
+
+        callback.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        callback.Headers.Location!.OriginalString.Should().Contain("/Account/Login");
+
+        (await fixture.FindUserAsync(DexFixture.MockEmail)).Should().BeNull("nothing authorised a new account");
+        (await fixture.ReloadInviteAsync(recovery.Id, TestContext.Current.CancellationToken))!
+            .UsedAt.Should().BeNull();
+    }
+
+    /// <summary>
     /// A host configured against the dex fixture, plus the two clients and the seeding the tests need.
     /// </summary>
     private sealed class Fixture : IDisposable
@@ -257,6 +308,30 @@ public sealed class ExternalOidcDexTests
             // audit information and no part of what these tests exercise.
             return await scope.ServiceProvider.GetRequiredService<InvitationService>()
                               .CreateAsync(email, teamId: null, invitedBy: 1, expiresAt: null, cancellationToken);
+        }
+
+        /// <summary>
+        /// A recovery issued to an account at dex's mock address, after which the account moved to
+        /// another - so the address the recovery carries belongs to nobody, and only its id says whose
+        /// it is.
+        /// </summary>
+        public async Task<(Invitation invitation, string token)> CreateRecoveryForAMovedAccountAsync(
+            CancellationToken cancellationToken)
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+
+            HSUser owner = new("owner") { Email = DexFixture.MockEmail, EmailConfirmed = true };
+            (await users.CreateAsync(owner)).Succeeded.Should().BeTrue();
+
+            (Invitation invitation, string token) recovery =
+                await scope.ServiceProvider.GetRequiredService<InvitationService>()
+                           .CreateRecoveryAsync(owner.Id, DexFixture.MockEmail, clearsTwoFactor: false, invitedBy: 1,
+                                                expiresAt: null, cancellationToken);
+
+            (await users.SetEmailAsync(owner, "moved@example.com")).Succeeded.Should().BeTrue();
+
+            return recovery;
         }
 
         public async Task<Invitation?> ReloadInviteAsync(int id, CancellationToken cancellationToken)

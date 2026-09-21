@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Accounts;
@@ -28,6 +30,23 @@ namespace Homespool.Host.Accounts;
 public class InvitationService
 {
     public const int InviteTokenLength = 32;
+
+    /// <summary>
+    /// Whether a row's <see cref="Invitation.Type"/> and <see cref="Invitation.RecoversUserId"/>
+    /// agree: a recovery names an account, and a signup does not.
+    /// </summary>
+    /// <remarks>
+    /// Nothing but this class writes invitations, and it always writes the two together, so a row
+    /// failing this was written by something else - most plausibly a recovery issued before the
+    /// column existed and given its default. Refused rather than resolved: either reading of such a
+    /// row would be a guess about what an administrator meant. An expression rather than a method so
+    /// the address lookup can run it in SQL.
+    /// </remarks>
+    private static readonly Expression<Func<Invitation, bool>> Coherent =
+        i => (i.Type == InvitationType.Recovery && i.RecoversUserId != null) ||
+             (i.Type == InvitationType.Signup && i.RecoversUserId == null);
+
+    private static readonly Func<Invitation, bool> IsCoherent = Coherent.Compile();
 
     private readonly HomespoolDbContext _dbContext;
     private readonly TokenService _tokenService;
@@ -82,6 +101,7 @@ public class InvitationService
             UsedAt = null,
             InvitedBy = invitedBy,
             TeamId = teamId,
+            Type = InvitationType.Signup,
         };
 
         _dbContext.Invitations.Add(invitation);
@@ -133,6 +153,7 @@ public class InvitationService
             UsedAt = null,
             InvitedBy = invitedBy,
             TeamId = null,
+            Type = InvitationType.Recovery,
             RecoversUserId = userId,
             ClearsTwoFactor = clearsTwoFactor,
         };
@@ -145,16 +166,29 @@ public class InvitationService
 
     /// <summary>
     /// Loads invite <paramref name="inviteUuid"/> and returns it only if it is outstanding (not used, not
-    /// expired) <b>and</b> <paramref name="plaintextToken"/> verifies against its stored hash. Returns
-    /// <c>null</c> on any failure without distinguishing which — a wrong token, a used invite, an
-    /// expired one and an unknown uuid are indistinguishable to the caller, so nothing here is an oracle.
+    /// expired), of a type in <paramref name="accepts"/>, <b>and</b> <paramref name="plaintextToken"/>
+    /// verifies against its stored hash. Returns <c>null</c> on any failure without distinguishing
+    /// which — a wrong token, a used invite, an expired one, one of the wrong type and an unknown uuid
+    /// are indistinguishable to the caller, so nothing here is an oracle.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>The caller names the types it can redeem.</b> Both types arrive through the same link, so a
+    /// page that only creates accounts would otherwise be handed a recovery and create an account on
+    /// it - spending the recovery without recovering anything.
+    /// </para>
+    /// <para>
     /// The returned entity is tracked by the request-scoped context, so a caller inside a transaction
     /// can pass it straight to <see cref="MarkUsedAsync"/> to spend it atomically.
+    /// </para>
     /// </remarks>
-    public async Task<Invitation?> ValidateAsync(Guid inviteUuid, string? plaintextToken, CancellationToken cancellationToken)
+    public async Task<Invitation?> ValidateAsync(Guid inviteUuid,
+                                                 string? plaintextToken,
+                                                 IReadOnlyCollection<InvitationType> accepts,
+                                                 CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(accepts);
+
         if (string.IsNullOrEmpty(plaintextToken))
         {
             return null;
@@ -162,7 +196,11 @@ public class InvitationService
 
         Invitation? invitation = await _dbContext.Invitations.SingleOrDefaultAsync(i => i.Uuid == inviteUuid, cancellationToken);
 
-        if (invitation is null || invitation.UsedAt is not null || invitation.ExpiresAt <= DateTimeOffset.UtcNow)
+        if (invitation is null ||
+            invitation.UsedAt is not null ||
+            invitation.ExpiresAt <= DateTimeOffset.UtcNow ||
+            !accepts.Contains(invitation.Type) ||
+            !IsCoherent(invitation))
         {
             return null;
         }
@@ -173,13 +211,15 @@ public class InvitationService
     }
 
     /// <summary>
-    /// Finds an outstanding invite bound to <paramref name="email"/>, newest first, or <c>null</c>.
+    /// Finds the newest outstanding invite bound to <paramref name="email"/> of a type in
+    /// <paramref name="accepts"/>, or <c>null</c>.
     /// <b>This authenticates nobody.</b> Unlike <see cref="ValidateAsync"/> there is no token to
     /// verify, so the caller must already have established that the presented address belongs to the
     /// caller — see <c>OidcOptions.AllowInviteMatchByEmail</c>, which is the only thing that reaches
     /// here and does so only against a provider-verified address.
     /// </summary>
     /// <param name="email">The address to match, compared case-insensitively.</param>
+    /// <param name="accepts">The types the caller can redeem; any other is passed over.</param>
     /// <param name="cancellationToken">Cancels the query.</param>
     /// <remarks>
     /// <para>
@@ -196,6 +236,10 @@ public class InvitationService
     /// outstanding until it lapses; both are single-use, and spending either spends only itself.
     /// </para>
     /// <para>
+    /// <b>The type is part of the query, not a check on the result</b>, so a newer invite of a type
+    /// the caller cannot redeem does not hide an older one it can.
+    /// </para>
+    /// <para>
     /// <b>The address is compared in memory, over the outstanding invites.</b>
     /// <see cref="EmailAddresses.SameAddress"/> ignores case in any script while refusing the folds
     /// that turn one mailbox into another, and SQLite cannot express it: its <c>upper()</c> folds a-z
@@ -207,8 +251,12 @@ public class InvitationService
     /// <see cref="Invitation.Email"/> would not serve this comparison, so there is none.
     /// </para>
     /// </remarks>
-    public async Task<Invitation?> FindOutstandingForEmailAsync(string? email, CancellationToken cancellationToken)
+    public async Task<Invitation?> FindOutstandingForEmailAsync(string? email,
+                                                                IReadOnlyCollection<InvitationType> accepts,
+                                                                CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(accepts);
+
         if (string.IsNullOrWhiteSpace(email))
         {
             return null;
@@ -219,7 +267,10 @@ public class InvitationService
 
         // Tracked, not AsNoTracking: the caller spends the one it gets inside its own transaction.
         List<Invitation> outstanding = await _dbContext.Invitations
-                                                       .Where(i => i.UsedAt == null && i.ExpiresAt > now)
+                                                       .Where(i => i.UsedAt == null &&
+                                                                   i.ExpiresAt > now &&
+                                                                   accepts.Contains(i.Type))
+                                                       .Where(Coherent)
                                                        .OrderByDescending(i => i.CreatedAt)
                                                        .ToListAsync(cancellationToken);
 

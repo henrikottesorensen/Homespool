@@ -50,6 +50,13 @@ public class ExternalLoginModel : PageModel
     /// <summary><see cref="InviteUuidKey"/>'s companion, the Base64Url token from the accept link.</summary>
     private const string InviteTokenKey = "homespool.invite_token";
 
+    /// <summary>
+    /// The only type this page redeems. Everything after the callback creates an account, so a
+    /// recovery reaching it would be spent on a new account instead of giving its own back - and
+    /// would do so wherever the address it was sent to no longer belongs to the account it names.
+    /// </summary>
+    private static readonly InvitationType[] RedeemableHere = [InvitationType.Signup];
+
     private readonly LocalSignIn _signIn;
 
     private readonly ExternalSignIn _externalSignIn;
@@ -318,7 +325,7 @@ public class ExternalLoginModel : PageModel
             items.TryGetValue(InviteTokenKey, out string token) &&
             Guid.TryParse(uuidText, out Guid inviteUuid))
         {
-            return await _invitationService.ValidateAsync(inviteUuid, DecodeToken(token), cancellationToken);
+            return await _invitationService.ValidateAsync(inviteUuid, DecodeToken(token), RedeemableHere, cancellationToken);
         }
 
         if (!_oidc.AllowInviteMatchByEmail || !ProviderVerifiedTheAddress(info.Principal))
@@ -328,6 +335,7 @@ public class ExternalLoginModel : PageModel
 
         return await _invitationService.FindOutstandingForEmailAsync(
             info.Principal.FindFirstValue(JwtClaimTypes.Email),
+            RedeemableHere,
             cancellationToken);
     }
 

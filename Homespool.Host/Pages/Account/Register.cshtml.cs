@@ -41,6 +41,9 @@ namespace Homespool.Host.Pages.Account;
 [AllowAnonymous] // The invite token is the credential here, not a session.
 public class RegisterModel : PageModel
 {
+    /// <summary>Both types: this page creates accounts and is where a recovery is redeemed.</summary>
+    private static readonly InvitationType[] RedeemableHere = [InvitationType.Signup, InvitationType.Recovery];
+
     private readonly LocalSignIn _signIn;
     private readonly LocalSignInRules _rules;
     private readonly ExternalSignIn _externalSignIn;
@@ -123,8 +126,9 @@ public class RegisterModel : PageModel
     /// the reason this exists (Henrik, 2026-08-22).
     /// </para>
     /// <para>
-    /// <b>Not offered on a recovery.</b> The provider path only ever creates an account and never reads
-    /// <c>RecoversUserId</c>, so a recovery is redeemed with a password on this page and nowhere else.
+    /// <b>Not offered on a recovery.</b> The provider path only ever creates an account and refuses a
+    /// recovery invite however it arrives, so a recovery is redeemed with a password on this page and
+    /// nowhere else. Hiding the button is presentation; the refusal is what holds.
     /// </para>
     /// </remarks>
     public IList<AuthenticationScheme> ExternalLogins { get; private set; } = [];
@@ -188,14 +192,17 @@ public class RegisterModel : PageModel
     {
         ReturnUrl = returnUrl;
 
-        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), cancellationToken);
+        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), RedeemableHere, cancellationToken);
 
         InviteValid = invitation is not null;
         Email = invitation?.Email;
 
-        if (invitation is not null)
+        if (invitation is not null &&
+            await ResolveExistingAccountAsync(invitation) is null &&
+            Recovering)
         {
-            await ResolveExistingAccountAsync(invitation);
+            // Shown as the dead link it is, rather than as a form whose submission can only fail.
+            InviteValid = false;
         }
 
         ExternalLogins = [.. await _externalSignIn.ProvidersAsync()];
@@ -215,21 +222,20 @@ public class RegisterModel : PageModel
     /// </remarks>
     private async Task<HSUser> ResolveExistingAccountAsync(Invitation invitation)
     {
-        if (invitation.RecoversUserId is long recovered)
+        if (invitation.Type == InvitationType.Recovery)
         {
+            // Set before the lookup, not after it: a recovery whose account cannot be found is still
+            // a recovery, and the caller refuses it as one. Deciding it by whether the lookup
+            // succeeded would hand a missing account to the signup branch below.
+            Recovering = true;
+            RecoveryClearsTwoFactor = invitation.ClearsTwoFactor;
+
             // Named, not looked up: the address on a recovery is where the link was sent, and the id
             // is who it is for. A miss means the account is gone, which is a recovery that can no
             // longer be redeemed rather than one to redirect at somebody else.
-            HSUser subject = await _userManager.FindByIdAsync(recovered.ToString(CultureInfo.InvariantCulture));
+            HSUser subject = await _userManager.FindByIdAsync(invitation.RecoversUserId!.Value.ToString(CultureInfo.InvariantCulture));
 
-            if (subject is null)
-            {
-                return null;
-            }
-
-            Recovering = true;
-            RecoveryClearsTwoFactor = invitation.ClearsTwoFactor;
-            ExistingUsername = subject.UserName;
+            ExistingUsername = subject?.UserName;
 
             return subject;
         }
@@ -244,7 +250,7 @@ public class RegisterModel : PageModel
 
         // Re-validate on post: the token could be tampered with, and the invite could have expired or
         // been spent since the form was rendered.
-        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), cancellationToken);
+        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), RedeemableHere, cancellationToken);
 
         if (invitation is null)
         {

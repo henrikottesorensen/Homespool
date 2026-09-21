@@ -221,6 +221,12 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("TeamId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("Signup");
+
                     b.Property<long?>("UsedAt")
                         .HasColumnType("INTEGER");
 

@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 using Homespool.Data;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -313,6 +314,7 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         Invitation row = new()
         {
             HashedToken = "hash",
+            Type = InvitationType.Signup,
             Email = "someone@example.com",
             CreatedAt = ChronologicalOrder[0],
             ExpiresAt = ChronologicalOrder[0].AddHours(48),

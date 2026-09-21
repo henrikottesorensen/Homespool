@@ -13,6 +13,7 @@ using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -129,7 +130,7 @@ public sealed class LookalikeAddressTests : IDisposable
 
         // Act
         Invitation? found = await invitations.FindOutstandingForEmailAsync(
-            Spell(Stored, replaces, lookalike), TestContext.Current.CancellationToken);
+            Spell(Stored, replaces, lookalike), [InvitationType.Signup], TestContext.Current.CancellationToken);
 
         // Assert
         found.Should().BeNull("a different mailbox is not the one the administrator invited");
@@ -147,7 +148,7 @@ public sealed class LookalikeAddressTests : IDisposable
 
         // Act
         Invitation? found = await invitations.FindOutstandingForEmailAsync(
-            " Kasper@EXAMPLE.net ", TestContext.Current.CancellationToken);
+            " Kasper@EXAMPLE.net ", [InvitationType.Signup], TestContext.Current.CancellationToken);
 
         // Assert
         found.Should().NotBeNull();
@@ -174,7 +175,7 @@ public sealed class LookalikeAddressTests : IDisposable
 
         // Act
         Invitation? found = await invitations.FindOutstandingForEmailAsync(
-            char.ConvertFromUtf32(claimed) + "se@example.net", TestContext.Current.CancellationToken);
+            char.ConvertFromUtf32(claimed) + "se@example.net", [InvitationType.Signup], TestContext.Current.CancellationToken);
 
         // Assert
         found.Should().NotBeNull();

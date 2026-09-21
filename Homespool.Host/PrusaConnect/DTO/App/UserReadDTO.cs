@@ -62,7 +62,7 @@ public class UserReadDTO
             Uuid = user.Uuid,
             Name = user.UserName ?? email ?? string.Empty,
             Email = email,
-            Teams = memberships.Select(TeamMembershipDTO.FromEntity).ToList(),
+            Teams = memberships.Select(member => TeamMembershipDTO.FromEntity(member, caller)).ToList(),
             DefaultPrinterUuid = defaultPrinterUuid,
         };
     }

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -16,8 +17,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// <c>GET /api/v1/user</c> answers every credential, and gives the address only to one allowed to
-/// see it.
+/// <c>GET /api/v1/user</c> answers every credential, gives the address only to one allowed to see it,
+/// and reports each team's capabilities as the credential may use them.
 /// </summary>
 /// <remarks>
 /// The withheld case is asserted on the raw body, where a leak would show, rather than on the one
@@ -85,9 +86,34 @@ public sealed class UserEndpointTests : IAsyncLifetime
         user.RootElement.GetProperty("email").GetString().Should().Be(Address);
     }
 
-    /// <summary>A signed-in browser session is not narrowed, so it sees the address.</summary>
+    /// <summary>
+    /// A team's capabilities are what the token may use there, not what its owner holds. The owner
+    /// created the team and holds every printer and camera capability on it.
+    /// </summary>
     [Fact]
-    public async Task ASignedInSessionIsToldTheAddress()
+    public async Task ATeamsCapabilitiesAreNarrowedByTheTokensScope()
+    {
+        // Arrange
+        using HttpClient client = await TokenClientAsync(Capability.UploadOwnFiles, Capability.Print);
+
+        // Act
+        (_, string raw) = await GetUserAsync(client);
+
+        // Assert
+        using JsonDocument user = JsonDocument.Parse(raw);
+        string?[] capabilities = [.. user.RootElement.GetProperty("teams")[0].GetProperty("capabilities")
+                                         .EnumerateArray().Select(capability => capability.GetString())];
+
+        capabilities.Should().BeEquivalentTo(
+            [nameof(Capability.ViewPrinter), nameof(Capability.Print)],
+            "Print implies ViewPrinter, and UploadOwnFiles is no membership's to grant");
+    }
+
+    /// <summary>
+    /// A signed-in browser session is not narrowed, so it sees the address and the whole membership.
+    /// </summary>
+    [Fact]
+    public async Task ASignedInSessionIsToldTheAddressAndTheWholeMembership()
     {
         // Arrange
         (_, HttpClient signedIn) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, Address);
@@ -101,6 +127,10 @@ public sealed class UserEndpointTests : IAsyncLifetime
 
         using JsonDocument user = JsonDocument.Parse(raw);
         user.RootElement.GetProperty("email").GetString().Should().Be(Address);
+        user.RootElement.GetProperty("teams")[0].GetProperty("capabilities").EnumerateArray()
+            .Select(capability => capability.GetString())
+            .Should().Contain([nameof(Capability.ManagePrinter), nameof(Capability.ManageCamera)],
+                              "the team's creator holds these, and a session narrows nothing");
     }
 
     private static async Task<(HttpStatusCode status, string raw)> GetUserAsync(HttpClient client)

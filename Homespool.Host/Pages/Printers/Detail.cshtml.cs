@@ -875,19 +875,10 @@ public class DetailModel : PageModel
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Only the person who queued a print may print it again, and that is a correctness rule
-    /// rather than a permission one</b> (Henrik, 2026-08-20). The file is resolved by name in the
-    /// caller's own tree - <see cref="PrintJob.FileName"/> is a record of what ran, not a pointer at
-    /// it - so offering the button on somebody else's row would offer to print <em>your</em>
-    /// <c>bracket.bgcode</c> under the impression you were repeating <em>theirs</em>. Two people on
-    /// one team having different models under one name is ordinary, and the failure is silent: it
-    /// prints, and prints the wrong thing.
-    /// </para>
-    /// <para>
     /// <b>The post carries the history row's handle, not a filename.</b> So this means "print that row
     /// again" rather than "queue this name", which is what the button says, and the ownership check
-    /// has a row to make it against. A caller can still queue any of their own files - that is what
-    /// the Files page is for - so this is not a boundary, it is the handler meaning what it says.
+    /// has a row to make it against. The check itself, and why it is a correctness rule rather than a
+    /// permission one, is <see cref="PrintQueueService.ReprintAsync"/>'s, shared with the API.
     /// </para>
     /// <para>
     /// It queues rather than prints. The producer loop is what turns the head of the queue into a
@@ -899,35 +890,25 @@ public class DetailModel : PageModel
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            PrintJob? job = await _historyService.FindAsync(printer.Id, printUuid, caller, cancellationToken);
-
-            if (job is null)
-            {
-                return (_localiser["Printers_JobGone"].Value, false);
-            }
-
-            // Re-checked rather than merely not rendered - the same rule this page states for every
-            // other control. Nothing here is destructive, but a print is a physical outcome and this
-            // one would be quietly the wrong file.
-            if (job.QueuedByUserId != caller.UserId)
-            {
-                return (_localiser["Printers_ReprintNotYours"].Value, false);
-            }
-
             try
             {
-                EnqueueOutcome outcome = await _queueService.EnqueueAsync(printer.Id, caller, job.FileName, cancellationToken);
+                EnqueueOutcome? outcome = await _queueService.ReprintAsync(printer.Id, printUuid, caller, cancellationToken);
+
+                if (outcome is null)
+                {
+                    return (_localiser["Printers_JobGone"].Value, false);
+                }
 
                 // Queued either way - the loop is what stops a print that must not happen, and this is
                 // the moment to say so while somebody is still looking at the screen. Files_Queued
                 // rather than a printer-prefixed twin of it: the sentence is the same one, and a
                 // second key holding it would be a second thing to translate and to let drift.
                 return outcome.Warnings.Count == 0 ?
-                    (_localiser["Files_Queued", job.FileName].Value, true) :
+                    (_localiser["Files_Queued", outcome.File.Name].Value, true) :
                     (string.Join(' ', outcome.Warnings.Select(_errors.For)),
                      outcome.Severity != PrintCompatibilitySeverity.Hold);
             }
-            catch (PrintFileNotFoundException e)
+            catch (Exception e) when (e is PrintNotYoursException or PrintFileNotFoundException)
             {
                 return (_errors.For(e), false);
             }

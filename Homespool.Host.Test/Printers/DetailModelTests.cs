@@ -124,12 +124,14 @@ public sealed class DetailModelTests : IDisposable
                                   NullLogger<UserFileStore>.Instance);
 
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+        QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System);
+        PrintHistoryService history = new(context, access, snapshots, new UserNameLookup(context));
+
         PrintQueueService queueService = new(context, access,
                                              new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance),
                                              TimeProvider.System,
-                                             QueueSignal);
-
-        QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System);
+                                             QueueSignal,
+                                             history);
 
         // One localiser, shared by the page and by the three text services it now holds, so a word
         // inside a sentence reads in the same language as the sentence.
@@ -152,7 +154,7 @@ public sealed class DetailModelTests : IDisposable
                                 // rather than quietly pulling filament out of something.
                                 new PrinterFilamentService(commands: null!, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
                                 new ToolTargetReader(context, TestTelemetryContext.For(context)),
-                                new PrintHistoryService(context, access, snapshots, new UserNameLookup(context)),
+                                history,
                                 new UserNameLookup(context),
                                 snapshots,
                                 access,

@@ -10,6 +10,7 @@ using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.Printing;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -45,18 +46,21 @@ public class PrintQueueService
     private readonly PrintFileCatalog _files;
     private readonly TimeProvider _timeProvider;
     private readonly QueueSignal _signal;
+    private readonly PrintHistoryService _history;
 
     public PrintQueueService(HomespoolDbContext dbContext,
                              PrinterAccessService access,
                              PrintFileCatalog files,
                              TimeProvider timeProvider,
-                             QueueSignal signal)
+                             QueueSignal signal,
+                             PrintHistoryService history)
     {
         _dbContext = dbContext;
         _access = access;
         _files = files;
         _timeProvider = timeProvider;
         _signal = signal;
+        _history = history;
     }
 
     /// <summary>
@@ -206,6 +210,50 @@ public class PrintQueueService
     }
 
     /// <summary>
+    /// Queues one of the caller's own prints again, by the handle it was queued under.
+    /// </summary>
+    /// <exception cref="TeamAccessDeniedException">
+    /// Caller lacks <c>CanRead</c> on the printer's history or <c>CanUse</c> on its queue.
+    /// </exception>
+    /// <exception cref="PrintNotYoursException">Somebody else queued that print.</exception>
+    /// <exception cref="PrintFileNotFoundException">The caller no longer has a file by that name.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>Only the person who queued a print may print it again, and that is a correctness rule
+    /// rather than a permission one.</b> <see cref="PrintJob.FileName"/> is a record of what ran, not
+    /// a pointer at it, so the file is resolved by name among the caller's own - and on somebody
+    /// else's row that would print <i>your</i> file of that name while you believed you were
+    /// repeating theirs. Nothing fails; the wrong thing prints.
+    /// </para>
+    /// <para>
+    /// <b>It queues rather than prints</b>, so a reprint takes the same route as every other way a file
+    /// reaches a printer, and the new entry carries a handle of its own.
+    /// </para>
+    /// </remarks>
+    /// <returns>Null if this printer has no print under that handle.</returns>
+    public async Task<EnqueueOutcome?> ReprintAsync(int printerId,
+                                                    Guid printUuid,
+                                                    Caller caller,
+                                                    CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(caller);
+
+        PrintJob? job = await _history.FindAsync(printerId, printUuid, caller, cancellationToken);
+
+        if (job is null)
+        {
+            return null;
+        }
+
+        if (job.QueuedByUserId != caller.UserId)
+        {
+            throw new PrintNotYoursException();
+        }
+
+        return await EnqueueAsync(printerId, caller, job.FileName, cancellationToken);
+    }
+
+    /// <summary>
     /// How this file and this printer disagree, for telling whoever just queued it.
     /// </summary>
     /// <remarks>
@@ -225,7 +273,7 @@ public class PrintQueueService
 
         if (printer is null)
         {
-            return new EnqueueOutcome(queued, [], []);
+            return new EnqueueOutcome(queued, file, [], []);
         }
 
         List<PrinterTool> tools = await _dbContext.PrinterTools
@@ -237,6 +285,7 @@ public class PrintQueueService
 
         return new EnqueueOutcome(
             queued,
+            file,
             findings,
             [.. findings.Select(finding => PrintCompatibilityDescription.For(finding, file, printer, tools))]);
     }

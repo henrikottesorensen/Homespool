@@ -24,6 +24,10 @@ namespace Homespool.Host.Queue;
 /// </para>
 /// </remarks>
 /// <param name="Queued">The entry, now sitting at the end of the printer's queue.</param>
+/// <param name="File">
+/// The file the entry names, as the caller's library holds it - so a response can quote its name and
+/// size without re-reading the queue, and the name is the stored one rather than however it was typed.
+/// </param>
 /// <param name="Findings">
 /// How the file and the printer disagree, most serious first. Empty means nothing is known to be
 /// wrong - which includes the printer never having said what hardware it has.
@@ -38,6 +42,7 @@ namespace Homespool.Host.Queue;
 /// </para>
 /// </param>
 public sealed record EnqueueOutcome(QueuedPrint Queued,
+                                    PrintFile File,
                                     IReadOnlyList<PrintCompatibilityFinding> Findings,
                                     IReadOnlyList<MessageKey> Warnings)
 {

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Accounts;
 
@@ -57,5 +58,33 @@ public sealed class UserNameLookup
                                .AsNoTracking()
                                .Where(user => ids.Contains(user.Id) && user.UserName != null)
                                .ToDictionaryAsync(user => user.Id, user => user.UserName!, cancellationToken);
+    }
+
+    /// <summary>
+    /// The public handle and name for each of the given ids, keyed by id. Ids with no readable
+    /// account are absent.
+    /// </summary>
+    /// <remarks>
+    /// For the API, which names a person by <see cref="HSUser.Uuid"/> as it names everything else and
+    /// never by the row id this is keyed on.
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<long, UserReference>> ReferencesForAsync(IEnumerable<long> userIds,
+                                                                                   CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(userIds);
+
+        long[] ids = userIds.Distinct().ToArray();
+
+        if (ids.Length == 0)
+        {
+            return new Dictionary<long, UserReference>();
+        }
+
+        return await _dbContext.Users
+                               .AsNoTracking()
+                               .Where(user => ids.Contains(user.Id) && user.UserName != null)
+                               .ToDictionaryAsync(user => user.Id,
+                                                  user => new UserReference(user.Uuid, user.UserName!),
+                                                  cancellationToken);
     }
 }

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
+using Homespool.Host.DTO;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -44,6 +47,7 @@ namespace Homespool.Host.Controllers;
 public class CameraController : ControllerBase
 {
     private readonly CameraAccessService _access;
+    private readonly PrinterAccessService _printerAccess;
     private readonly CameraFrameCache _frames;
     private readonly Go2RtcClient _streamServer;
     private readonly CameraStreamRelay _relay;
@@ -52,6 +56,7 @@ public class CameraController : ControllerBase
     private readonly UserManager<HSUser> _userManager;
 
     public CameraController(CameraAccessService access,
+                            PrinterAccessService printerAccess,
                             CameraFrameCache frames,
                             Go2RtcClient streamServer,
                             CameraStreamRelay relay,
@@ -60,12 +65,65 @@ public class CameraController : ControllerBase
                             UserManager<HSUser> userManager)
     {
         _access = access;
+        _printerAccess = printerAccess;
         _frames = frames;
         _streamServer = streamServer;
         _relay = relay;
         _liveView = liveView;
         _streamLimiter = streamLimiter;
         _userManager = userManager;
+    }
+
+    /// <summary>
+    /// Every camera the caller may watch. <c>GET /api/v1/cameras</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Opens no camera.</b> Codecs come from what is already known - see
+    /// <see cref="CameraLiveAvailability.Remembered"/> - because asking every camera would wait out the
+    /// probe deadline of each one that is off, on every call.
+    /// </para>
+    /// <para>
+    /// <b>A bound printer is named only to a caller who may see it.</b> <c>ViewCamera</c> and
+    /// <c>ViewPrinter</c> are granted separately, and a camera that named its printer to somebody
+    /// holding only the first would disclose a printer the second was withheld to hide.
+    /// </para>
+    /// </remarks>
+    [HttpGet]
+    public async Task<Results<Ok<IReadOnlyList<CameraReadDTO>>, ForbiddenProblem>> List(CancellationToken cancellationToken)
+    {
+        long? userId = UserId();
+        if (userId is null)
+        {
+            return this.NoAccount();
+        }
+
+        Caller caller = CallerResolver.For(userId.Value, User);
+
+        IReadOnlyList<Camera> cameras = await _access.ListAsync(caller, cancellationToken).ConfigureAwait(false);
+
+        List<CameraReadDTO> listed = new(cameras.Count);
+
+        foreach (Camera camera in cameras)
+        {
+            bool printerVisible = camera.PrinterId is int printerId &&
+                                  await _printerAccess.AllowsAsync(printerId, caller, Capability.ViewPrinter, cancellationToken)
+                                                      .ConfigureAwait(false);
+
+            KnownCodecs? known = _liveView.Remembered(camera.Uuid);
+
+            listed.Add(new CameraReadDTO
+            {
+                Uuid = camera.Uuid,
+                Name = camera.Name,
+                TeamUuid = camera.Team!.Uuid,
+                PrinterUuid = printerVisible ? camera.Printer?.Uuid : null,
+                Codecs = known is null ? null : [.. known.Codecs.Order(StringComparer.Ordinal)],
+                Transport = known?.Transport,
+            });
+        }
+
+        return TypedResults.Ok<IReadOnlyList<CameraReadDTO>>(listed);
     }
 
     /// <summary>

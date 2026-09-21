@@ -59,6 +59,24 @@ public class DefaultPrinterService
     }
 
     /// <summary>
+    /// The caller's default printer itself, or null on the same terms as <see cref="ResolveAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// For a caller that has to name the printer rather than look it up - the API, which answers with
+    /// its uuid. Resolved first, so the printer is only fetched once it is known to be the caller's to
+    /// see, and never through a path that would say which way a lost one failed.
+    /// </remarks>
+    public async Task<Printer?> ResolvePrinterAsync(HSUser user, Caller caller, CancellationToken cancellationToken)
+    {
+        if (await ResolveAsync(user, caller, cancellationToken) is not int printerId)
+        {
+            return null;
+        }
+
+        return await _access.RequireAsync(printerId, caller, Capability.ViewPrinter, cancellationToken);
+    }
+
+    /// <summary>
     /// Makes <paramref name="printerId"/> the caller's default, or refuses if they may not see it.
     /// </summary>
     /// <returns>Whether the choice was stored.</returns>

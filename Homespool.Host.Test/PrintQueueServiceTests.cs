@@ -854,7 +854,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
     private PrintQueueService NewQueue(HomespoolDbContext context)
     {
-        return new(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), NewCatalog(context), TimeProvider.System, _signal);
+        return new(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), NewCatalog(context), TimeProvider.System, _signal, NewHistory(context));
     }
 
     private HomespoolDbContext NewContext()

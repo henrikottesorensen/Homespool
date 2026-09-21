@@ -116,13 +116,19 @@ public class PrintQueueController : ControllerBase
     /// <c>POST /api/v1/printers/{printerUuid}/queue</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Queueing is not sending.</b> Nothing is transferred here and no command reaches the printer -
     /// the entry is a row, and the printer's producer loop decides when to move the bytes and when to
     /// start the print. <c>POST printers/{uuid}/files</c> is the call that sends a file right now.
+    /// </para>
+    /// <para>
+    /// <b>A file the printer cannot print is queued anyway, and the response says so</b> in its
+    /// warnings - a <c>Hold</c> is the queue telling you now that it will stop at this entry later.
+    /// </para>
     /// </remarks>
     [HttpPost]
     [Route("printers/{printerUuid:guid}/queue")]
-    public async Task<Results<Created<QueuedPrintReadDTO>, ForbiddenProblem, NotFoundProblem>> Enqueue(
+    public async Task<Results<Created<EnqueuedPrintReadDTO>, ForbiddenProblem, NotFoundProblem>> Enqueue(
         Guid printerUuid,
         [FromBody] EnqueueRequest body,
         CancellationToken cancellationToken)
@@ -145,13 +151,10 @@ public class PrintQueueController : ControllerBase
         {
             EnqueueOutcome outcome = await _queue.EnqueueAsync(printer.Id, caller, body.Name, cancellationToken);
 
-            // Re-read so the response carries the file's name and size, which the entity does not hold.
-            IReadOnlyList<QueuedPrint> queue = await _queue.ListAsync(printer.Id, caller, cancellationToken);
-            QueuedPrintReadDTO created = QueuedPrintReadDTO.FromQueuedPrint(queue.Single(entry => entry.Id == outcome.Queued.Id));
-
             // Location is the queue the entry now sits in - the same URL CreatedAtAction would have
             // composed, built through the same helper.
-            return TypedResults.Created(Url.Action(nameof(List), new { printerUuid }), created);
+            return TypedResults.Created(Url.Action(nameof(List), new { printerUuid }),
+                                        EnqueuedPrintReadDTO.FromOutcome(outcome, _errors.For));
         }
         catch (PrintFileNotFoundException e)
         {

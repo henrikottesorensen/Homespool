@@ -150,7 +150,11 @@ public sealed class IndexModelTests : IDisposable
 
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
         PrintFileCatalog catalog = new(store, context, NullLogger<PrintFileCatalog>.Instance);
-        PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal);
+        PrintHistoryService history = new(context,
+                                          access,
+                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System),
+                                          new UserNameLookup(context));
+        PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal, history);
 
         // The drop machinery, real rather than substituted: it is a sealed class, and nothing here
         // drops anything - the page only needs one to be constructed.

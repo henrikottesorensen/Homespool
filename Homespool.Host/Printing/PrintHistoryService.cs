@@ -98,28 +98,62 @@ public class PrintHistoryService
     }
 
     /// <summary>Finished prints, newest first.</summary>
+    public Task<IReadOnlyList<PrintJob>> ListAsync(int printerId,
+                                                   Caller caller,
+                                                   CancellationToken cancellationToken)
+    {
+        return ListAsync(printerId, caller, before: null, RecentCount, cancellationToken);
+    }
+
+    /// <summary>
+    /// Finished prints that started before <paramref name="before"/>, newest first, at most
+    /// <paramref name="limit"/> of them.
+    /// </summary>
+    /// <remarks>
+    /// <b>The cursor is a start time rather than a handle</b>, because <see cref="PrintJob.PrintUuid"/>
+    /// is not unique and so cannot say where a page ended. Two rows starting in the same instant on one
+    /// printer would straddle a page boundary badly; a printer runs one print at a time, and the rows the
+    /// queue writes for a hold carry the moment it was noticed, so the case is not worth a compound
+    /// cursor.
+    /// </remarks>
     public async Task<IReadOnlyList<PrintJob>> ListAsync(int printerId,
                                                          Caller caller,
+                                                         DateTimeOffset? before,
+                                                         int limit,
                                                          CancellationToken cancellationToken)
     {
         await _access.RequireAsync(printerId, caller, Capability.ViewHistory, cancellationToken);
 
-        return await _dbContext.PrintJobs
-                               .AsNoTracking()
-                               .Where(job => job.PrinterId == printerId && job.EndedAt != null)
-                               .OrderByDescending(job => job.StartedAt)
-                               .ThenByDescending(job => job.Id)
-                               .Take(RecentCount)
-                               .ToListAsync(cancellationToken);
+        IQueryable<PrintJob> finished = _dbContext.PrintJobs
+                                                  .AsNoTracking()
+                                                  .Where(job => job.PrinterId == printerId && job.EndedAt != null);
+
+        if (before is not null)
+        {
+            finished = finished.Where(job => job.StartedAt < before.Value);
+        }
+
+        return await finished.OrderByDescending(job => job.StartedAt)
+                             .ThenByDescending(job => job.Id)
+                             .Take(limit)
+                             .ToListAsync(cancellationToken);
     }
 
     /// <summary>
-    /// One finished print on this printer, by the handle it has carried since it was queued.
+    /// The newest print on this printer carrying the handle it was queued under, running or finished.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Keyed on <see cref="PrintJob.PrintUuid"/> rather than the row id</b>, matching the queue's
     /// own controls: it is the handle minted at enqueue and carried through every stage, so it is what
     /// a page already has to hand and the only one worth putting in a form.
+    /// </para>
+    /// <para>
+    /// <b>The newest, because the handle is not unique.</b> A full drive or a refused transfer writes a
+    /// <see cref="PrintState.Failed"/> row while the entry stays queued, and the print that follows
+    /// writes another under the same handle. Every such row came from one queue entry, so they name the
+    /// same file and the same person, and the latest is the one nearest the truth.
+    /// </para>
     /// </remarks>
     public async Task<PrintJob?> FindAsync(int printerId,
                                            Guid printUuid,
@@ -130,8 +164,10 @@ public class PrintHistoryService
 
         return await _dbContext.PrintJobs
                                .AsNoTracking()
-                               .SingleOrDefaultAsync(job => job.PrinterId == printerId && job.PrintUuid == printUuid,
-                                                     cancellationToken);
+                               .Where(job => job.PrinterId == printerId && job.PrintUuid == printUuid)
+                               .OrderByDescending(job => job.StartedAt)
+                               .ThenByDescending(job => job.Id)
+                               .FirstOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>
@@ -146,7 +182,7 @@ public class PrintHistoryService
     /// </para>
     /// <para>
     /// Takes rows the caller already holds, so it authorises nothing itself: reaching a
-    /// <see cref="PrintJob"/> at all has been through <see cref="ListAsync"/> or
+    /// <see cref="PrintJob"/> at all has been through <see cref="ListAsync(int, Caller, CancellationToken)"/> or
     /// <see cref="GetActiveAsync"/> already, and this adds no way to ask about a printer you could
     /// not already read.
     /// </para>
@@ -185,7 +221,7 @@ public class PrintHistoryService
     /// "where do you send work", and the person who queued a job is the one who decided that.
     /// </para>
     /// <para>
-    /// <b>Every job in the window counts, finished or not</b> - unlike <see cref="ListAsync"/>, which
+    /// <b>Every job in the window counts, finished or not</b> - unlike <see cref="ListAsync(int, Caller, CancellationToken)"/>, which
     /// shows history and therefore wants <c>EndedAt</c> set. A print running right now is the
     /// strongest evidence there is that you use this printer, and excluding it would drop a printer
     /// down the page at the exact moment you were watching it work.

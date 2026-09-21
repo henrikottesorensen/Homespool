@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -217,6 +218,74 @@ public sealed class DefaultPrinterPageTests : IAsyncLifetime
             (await ReadDefaultAsync(user.Id)).Should().Be(
                 printers[0].Id, "a refusal must not take the caller's own choice with it");
         }
+    }
+
+    /// <summary>The API names the default by the printer's uuid, as it names every printer.</summary>
+    [Fact]
+    public async Task TheApiNamesTheDefaultByUuid()
+    {
+        (HSUser user, IReadOnlyList<Printer> printers, HttpClient client) =
+            await SeedAsync("default-api@example.com", printerCount: 2);
+
+        using (client)
+        {
+            await SetDefaultAsync(user.Id, printers[1].Id);
+
+            JsonElement read = await GetUserAsync(client);
+
+            read.GetProperty("defaultPrinterUuid").GetGuid().Should().Be(printers[1].Uuid);
+        }
+    }
+
+    /// <summary>No choice reads as null, not as whichever printer sorts first.</summary>
+    [Fact]
+    public async Task TheApiAnswersNullWhenNothingIsChosen()
+    {
+        (HSUser _, IReadOnlyList<Printer> _, HttpClient client) =
+            await SeedAsync("default-api-none@example.com", printerCount: 2);
+
+        using (client)
+        {
+            JsonElement read = await GetUserAsync(client);
+
+            read.GetProperty("defaultPrinterUuid").ValueKind.Should().Be(JsonValueKind.Null);
+        }
+    }
+
+    /// <summary>
+    /// A stored default the caller can no longer see reads as null - the column is a plain id, and
+    /// answering it unresolved would name a printer they have lost.
+    /// </summary>
+    [Fact]
+    public async Task TheApiDoesNotNameADefaultTheCallerCanNoLongerSee()
+    {
+        (HSUser user, IReadOnlyList<Printer> _, HttpClient client) =
+            await SeedAsync("default-api-lost@example.com", printerCount: 1);
+
+        (HSUser _, IReadOnlyList<Printer> theirs, HttpClient other) =
+            await SeedAsync("default-api-keeper@example.com", printerCount: 1);
+
+        using (client)
+        using (other)
+        {
+            await SetDefaultAsync(user.Id, theirs[0].Id);
+
+            JsonElement read = await GetUserAsync(client);
+
+            read.GetProperty("defaultPrinterUuid").ValueKind.Should().Be(JsonValueKind.Null);
+        }
+    }
+
+    private static async Task<JsonElement> GetUserAsync(HttpClient client)
+    {
+        using HttpResponseMessage response = await client.GetAsync("/api/v1/user", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using JsonDocument payload =
+            JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        return payload.RootElement.Clone();
     }
 
     private async Task<string> GetDetailAsync(HttpClient client, Guid uuid)

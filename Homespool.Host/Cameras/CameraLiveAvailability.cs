@@ -119,6 +119,33 @@ public sealed class CameraLiveAvailability
             _codecs.TryAdd(cameraUuid, codecs);
         }
 
+        return TransportFor(codecs);
+    }
+
+    /// <summary>
+    /// What is already known about this camera's codecs, without asking it - or null when nothing is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>For a listing, which must not open cameras.</b> <see cref="HowToWatchAsync"/> probes on a
+    /// miss, and a list that did so would open every camera it names and wait out the deadline of each
+    /// one that is off.
+    /// </para>
+    /// <para>
+    /// <b>A miss is rare, and it means the camera has not answered since this process started.</b> The
+    /// memo is filled at startup by <see cref="CameraStreamReconciler"/> and after every save that
+    /// proves the camera is on, so what is left is a camera that was off at both moments.
+    /// </para>
+    /// </remarks>
+    public KnownCodecs? Remembered(Guid cameraUuid)
+    {
+        return _codecs.TryGetValue(cameraUuid, out IReadOnlySet<string>? codecs) ?
+            new KnownCodecs(codecs, TransportFor(codecs)) :
+            null;
+    }
+
+    private LiveTransport TransportFor(IReadOnlySet<string> codecs)
+    {
         if (codecs.Contains(JpegCodec))
         {
             return LiveTransport.Mjpeg;

@@ -103,13 +103,7 @@ public class ResendEmailConfirmationModel : PageModel
 
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-        // Names a page of this application, so the route always resolves.
-        string callbackUrl = Url.Page(
-            "/Account/ConfirmEmail",
-            pageHandler: null,
-            values: new { userUuid = user.Uuid, code = code },
-            protocol: Request.Scheme)!;
+        string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmail", new { userUuid = user.Uuid, code = code });
 
         // The account's language, not the request's: this page is anonymous, so the browser asking
         // may not belong to the person who reads what it sends.
@@ -122,9 +116,7 @@ public class ResendEmailConfirmationModel : PageModel
         // confirm as much - and so would waiting for the send, which took long enough to time.
         // To the stored address rather than the typed one, for the reason ForgotPassword gives: the
         // lookup folds look-alike spellings onto this account, and the link belongs to its owner.
-        // RequireUniqueEmail makes the user validator refuse a blank address on create and update, so
-        // every stored account has one.
-        _emailSender.Enqueue(user.Email!, subject, body);
+        _emailSender.Enqueue(IdentityConfiguration.EmailOf(user), subject, body);
 
         ModelState.AddModelError(string.Empty, _localiser["Account_VerificationSent"]);
         return Page();

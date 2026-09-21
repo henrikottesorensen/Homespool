@@ -105,13 +105,7 @@ public class ForgotPasswordModel : PageModel
             // visit https://go.microsoft.com/fwlink/?LinkID=532713
             string code = await _userManager.GeneratePasswordResetTokenAsync(user);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-            // Names a page of this application, so the route always resolves.
-            string callbackUrl = Url.Page(
-                "/Account/ResetPassword",
-                pageHandler: null,
-                values: new { code },
-                protocol: Request.Scheme)!;
+            string callbackUrl = EmailedToken.Link(Url, "/Account/ResetPassword", new { code });
 
             // Written in the account's language rather than the request's. Nobody has to be signed in
             // to ask for a reset, so the browser here belongs to whoever typed the address - which may
@@ -134,9 +128,7 @@ public class ForgotPasswordModel : PageModel
             // which folds more than case: NFC maps the kelvin sign to K and the uppercasing maps a
             // long s to S, so a look-alike spelling finds this account - and mailing that spelling
             // would hand the reset token to whoever holds the look-alike mailbox.
-            // RequireUniqueEmail makes the user validator refuse a blank address on create and update, so
-            // every stored account has one.
-            _emailSender.Enqueue(user.Email!, subject, body);
+            _emailSender.Enqueue(IdentityConfiguration.EmailOf(user), subject, body);
 
             return RedirectToPage("./ForgotPasswordConfirmation");
         }

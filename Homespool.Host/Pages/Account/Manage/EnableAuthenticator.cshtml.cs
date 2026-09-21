@@ -20,6 +20,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
@@ -196,9 +197,7 @@ public class EnableAuthenticatorModel : PageModel
 
         SharedKey = FormatKey(unformattedKey);
 
-        // Never blank: RequireUniqueEmail makes the user validator refuse a blank address on create
-        // and update.
-        string email = (await _userManager.GetEmailAsync(user))!;
+        string email = IdentityConfiguration.EmailOf(user);
         AuthenticatorUri = GenerateQrCodeUri(email, unformattedKey);
     }
 

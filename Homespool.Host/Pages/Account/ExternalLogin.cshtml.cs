@@ -441,13 +441,7 @@ public class ExternalLoginModel : PageModel
         {
             string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-            // Names a page of this application, so the route always resolves.
-            string callbackUrl = Url.Page(
-                "/Account/ConfirmEmail",
-                pageHandler: null,
-                values: new { userUuid = user.Uuid, code = code, returnUrl },
-                protocol: Request.Scheme)!;
+            string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmail", new { userUuid = user.Uuid, code = code, returnUrl });
 
             // The request's culture, and correct: the person registering is the person who
             // reads this. There is also nothing stored to consult - the account was created

@@ -485,13 +485,12 @@ public class RegisterModel : PageModel
         // The owner's only signal, if this recovery was not theirs. Sent to the account's own address
         // rather than the invite's, which is the same string today and need not stay so, and written in
         // the account's language: the browser redeeming the link is exactly the one that may not be
-        // the owner's. The page says nothing about the notice either way, for the same reason. Never
-        // blank: RequireUniqueEmail makes the user validator refuse a blank address on create and update.
+        // the owner's. The page says nothing about the notice either way, for the same reason.
         (string noticeSubject, string noticeBody) = UserCultures.InCulture(subject.Language, () => (
             _localiser["Email_RecoveredSubject"].Value,
             _localiser["Email_RecoveredBody"].Value));
 
-        if (await _emailSender.SendEmailAsync(subject.Email!, noticeSubject, noticeBody) == EmailSendResult.Failed)
+        if (await _emailSender.SendEmailAsync(IdentityConfiguration.EmailOf(subject), noticeSubject, noticeBody) == EmailSendResult.Failed)
         {
             _logger.LogWarning("User {UserId} was recovered, and the notice to the account's address could not be sent.", subject.Id);
         }
@@ -506,7 +505,7 @@ public class RegisterModel : PageModel
                 return RedirectToPage("./Lockout");
 
             case SignInRefusal.NotAllowed when !subject.EmailConfirmed:
-                return await HoldForConfirmationAsync(subject, subject.Email!, subject.Language, returnUrl);
+                return await HoldForConfirmationAsync(subject, IdentityConfiguration.EmailOf(subject), subject.Language, returnUrl);
 
             case SignInRefusal.NotAllowed:
                 ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
@@ -544,13 +543,7 @@ public class RegisterModel : PageModel
     {
         string confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         confirmToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmToken));
-
-        // Names a page of this application, so the route always resolves.
-        string callbackUrl = Url.Page(
-            "/Account/ConfirmEmail",
-            pageHandler: null,
-            values: new { userUuid = user.Uuid, code = confirmToken, returnUrl },
-            protocol: Request.Scheme)!;
+        string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmail", new { userUuid = user.Uuid, code = confirmToken, returnUrl });
 
         (string subject, string body) = UserCultures.InCulture(language, () => (
             _localiser["Email_ConfirmSubject"].Value,

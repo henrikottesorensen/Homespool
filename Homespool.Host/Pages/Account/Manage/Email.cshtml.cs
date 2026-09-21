@@ -98,9 +98,7 @@ public class EmailModel : PageModel
 
     private async Task LoadAsync(HSUser user)
     {
-        // RequireUniqueEmail makes the user validator refuse a blank address on create and update, so
-        // every stored account has one.
-        string email = (await _userManager.GetEmailAsync(user))!;
+        string email = IdentityConfiguration.EmailOf(user);
         Email = email;
 
         Input = new InputModel
@@ -150,13 +148,7 @@ public class EmailModel : PageModel
 
             string code = await _userManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-            // Names a page of this application, so the route always resolves.
-            string callbackUrl = Url.Page(
-                "/Account/ConfirmEmailChange",
-                pageHandler: null,
-                values: new { userUuid = user.Uuid, email = Input.NewEmail, code = code },
-                protocol: Request.Scheme)!;
+            string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmailChange", new { userUuid = user.Uuid, email = Input.NewEmail, code = code });
 
             // The account's language, like every mail to an account. The culture provider usually
             // resolved the same one for this request, but only when a language is stored - and the
@@ -197,17 +189,10 @@ public class EmailModel : PageModel
             return RedirectToPage();
         }
 
-        // Never blank: RequireUniqueEmail, as LoadAsync says.
-        string email = (await _userManager.GetEmailAsync(user))!;
+        string email = IdentityConfiguration.EmailOf(user);
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-
-        // Names a page of this application, so the route always resolves.
-        string callbackUrl = Url.Page(
-            "/Account/ConfirmEmail",
-            pageHandler: null,
-            values: new { userUuid = user.Uuid, code = code },
-            protocol: Request.Scheme)!;
+        string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmail", new { userUuid = user.Uuid, code = code });
 
         // The account's language, for the reason given on the change-address send above.
         (string subject, string body) = UserCultures.InCulture(user.Language, () => (

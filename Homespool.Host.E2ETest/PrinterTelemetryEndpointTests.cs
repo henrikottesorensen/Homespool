@@ -269,6 +269,34 @@ public sealed class PrinterTelemetryEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A window ending so near the start of the calendar that the default window cannot be laid
+    /// before it is refused, not a server error.
+    /// </summary>
+    [Fact]
+    public async Task AnEndTooEarlyForTheDefaultWindowIsRefused()
+    {
+        // Arrange
+        (Guid uuid, int _, HttpClient client) = await SeedAsync("window-floor@example.com");
+
+        using (client)
+        {
+            // Act
+            using HttpResponseMessage response = await client.GetAsync(
+                $"/api/v1/printers/{uuid}/telemetry/temperatures?to=0001-01-01T00:00:00Z",
+                TestContext.Current.CancellationToken);
+
+            // An explicit start that early is fine: cutting it to a day only moves it later.
+            using HttpResponseMessage explicitStart = await client.GetAsync(
+                $"/api/v1/printers/{uuid}/telemetry/temperatures?from=0001-01-01T00:00:00Z&to=0001-01-03T00:00:00Z",
+                TestContext.Current.CancellationToken);
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            explicitStart.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+    }
+
+    /// <summary>
     /// Another user's printer is not found by either endpoint, as it is not found anywhere else.
     /// </summary>
     [Fact]

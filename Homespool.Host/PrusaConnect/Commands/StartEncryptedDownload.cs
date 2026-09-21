@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 
+using Homespool.Model;
+
 namespace Homespool.Host.PrusaConnect.Commands;
 
 /// <summary>
@@ -116,4 +118,13 @@ public class StartEncryptedDownload : ISendableCommand
             return arguments;
         }
     }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The same as <see cref="StartConnectDownload.RequiredCapability"/>: the same file for the same
+    /// print, only fetched differently. Which of the two goes out depends on the printer's connection,
+    /// so a stricter answer here would make whether a <c>Print</c>-scoped credential can print depend
+    /// on the transport.
+    /// </remarks>
+    public Capability RequiredCapability => Capability.Print;
 }

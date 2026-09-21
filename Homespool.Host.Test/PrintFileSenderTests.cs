@@ -361,6 +361,37 @@ public sealed class PrintFileSenderTests : IDisposable
         content!.Dispose();
     }
 
+    /// <summary>
+    /// A credential scoped to what a slicer's print-host key holds - upload and print, nothing more -
+    /// gets the file sent on either transport. The membership grants <c>ControlPrinter</c>, so the
+    /// scope is the only thing that could refuse it.
+    /// </summary>
+    /// <remarks>
+    /// The encrypted command used to inherit the <c>ControlPrinter</c> default, so the same key that
+    /// printed on a websocket printer was refused on an HTTP one, after the <c>Print</c> gate in front
+    /// of the choice had already let it through.
+    /// </remarks>
+    [Theory]
+    [InlineData(true, StartConnectDownload.Wire)]
+    [InlineData(false, StartEncryptedDownload.Wire)]
+    public async Task APrintScopedCredentialIsSentTheFileOnEitherTransport(bool canStreamChunks, string expectedWire)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        StoredFile file = WriteFile("model.gcode", 4096);
+        IPrinterConnectionActor actor = Connect(canStreamChunks, PrinterEventType.Finished);
+        Caller slicer = Caller.Scoped(Owner, CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+
+        // Act
+        FileSendResult result = await NewSender(context).SendAsync(
+            await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+            file, slicer, TestContext.Current.CancellationToken);
+
+        // Assert
+        result.WireName.Should().Be(expectedWire);
+        SentCommand(actor).WireName.Should().Be(expectedWire, "the command reached the printer rather than being refused");
+    }
+
     private IPrinterConnectionActor Connect(bool canStreamChunks,
                                            PrinterEventType reply,
                                            string? reason = null,

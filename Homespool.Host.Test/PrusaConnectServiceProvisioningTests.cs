@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -68,7 +69,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         }
     }
 
-    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canManage, bool isDefault)
+    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, IReadOnlyList<Capability> capabilities, bool isDefault)
     {
         Team team = new()
         {
@@ -79,7 +80,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
                 new TeamMember
                 {
                     UserId = userId,
-                    Capabilities = TestMemberships.Graded(true, true, canManage),
+                    Capabilities = TestMemberships.Literal(capabilities),
                     IsDefault = isDefault,
                 },
             },
@@ -104,7 +105,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         // Act
         (Printer printer, string token) = await service.ProvisionPrinterAsync("Bench printer", "Workshop", teamUuid: null, caller: Caller.Unscoped(1));
@@ -135,7 +136,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         // Act
         (Printer printer, string token) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
@@ -165,7 +166,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         // Act
         (Printer _, string token) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
@@ -179,14 +180,14 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     /// adding a printer is a structural change to the team either way.
     /// </summary>
     [Fact]
-    public async Task ProvisioningIntoAnExplicitTeamRequiresCanManage()
+    public async Task ProvisioningIntoAnExplicitTeamRequiresManagePrinter()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        TeamMember managed = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: false);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        TeamMember managed = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: false);
 
         // Act
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: managed.Team!.Uuid, caller: Caller.Unscoped(1));
@@ -208,11 +209,11 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         TeamMember target = someoneElsesTeam ?
-            await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true) :
-            await AddTeamAsync(context, userId: 1, canManage: false, isDefault: false);
+            await AddTeamAsync(context, userId: 2, CapabilityPresets.Manager, isDefault: true) :
+            await AddTeamAsync(context, userId: 1, CapabilityPresets.Operator, isDefault: false);
 
         // Act
         Func<Task> provision = () => service.ProvisionPrinterAsync(null, null, teamUuid: target.Team!.Uuid, caller: Caller.Unscoped(1));
@@ -253,7 +254,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         // Act
         await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
@@ -284,7 +285,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         PrusaConnectProvisioning stale =
@@ -319,7 +320,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         (Printer fresh, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
         (Printer expired, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
@@ -351,7 +352,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         (Printer printer, string original) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // Act
@@ -379,25 +380,26 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     /// printer, but not manage its team, cannot mint a fresh credential for it.
     /// </summary>
     /// <remarks>
-    /// The member-without-CanManage case specifically, not a stranger - a stranger is refused by the
-    /// membership lookup alone, which would leave the permission check itself unguarded.
+    /// The member-without-<c>ManagePrinter</c> case specifically, not a stranger - a stranger is
+    /// refused by the membership lookup alone, which would leave the permission check itself
+    /// unguarded.
     /// </remarks>
     [Fact]
-    public async Task RegeneratingRequiresCanManageOnThePrintersTeam()
+    public async Task RegeneratingRequiresManagePrinterOnThePrintersTeam()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
-        // a genuine member of the printer's own team, but without CanManage
+        // a genuine member of the printer's own team, but without ManagePrinter
         context.TeamMembers.Add(new TeamMember
         {
             TeamId = printer.TeamId,
             UserId = 2,
-            Capabilities = TestMemberships.Graded(true, true, false),
+            Capabilities = TestMemberships.Literal(CapabilityPresets.Operator),
             IsDefault = false,
         });
 
@@ -421,10 +423,10 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
-        await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 2, CapabilityPresets.Manager, isDefault: true);
 
         // Act
         Func<Task> regenerate = () => service.RegenerateProvisioningTokenAsync(printer.Id, caller: Caller.Unscoped(2));
@@ -459,7 +461,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        TeamMember team = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        TeamMember team = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         Printer printer = new()
         {
@@ -506,7 +508,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // first contact: the token is promoted into the enrolled table and the provisioning row goes
@@ -557,7 +559,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         context.PrusaConnectProvisionings.RemoveRange(context.PrusaConnectProvisionings);
@@ -584,7 +586,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning

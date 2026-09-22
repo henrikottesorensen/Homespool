@@ -469,7 +469,7 @@ public sealed class PrintFileSenderTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Owner, Capabilities = TestMemberships.Graded(true, true, false) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Owner, Capabilities = TestMemberships.Literal(CapabilityPresets.Operator) });
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

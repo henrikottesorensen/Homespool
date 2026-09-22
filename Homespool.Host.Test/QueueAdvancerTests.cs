@@ -656,7 +656,6 @@ public sealed class QueueAdvancerTests : IDisposable
         row.TransferStartedAt.Should().Be(started, "nothing should interrupt a transfer that is merely slow");
     }
 
-    /// <summary>Puts real bytes where the store expects this user's file.</summary>
     /// <summary>
     /// <b>The loop acts within the authority the work was accepted under, not merely as its owner.</b>
     /// An entry whose recorded scope cannot print is left alone, though the person who queued it can
@@ -722,6 +721,7 @@ public sealed class QueueAdvancerTests : IDisposable
         context.PrintJobs.Should().NotBeEmpty("Print is what queueing and starting both need");
     }
 
+    /// <summary>Puts real bytes where the store expects this user's file.</summary>
     private async Task WriteFileOnDiskAsync(string name)
     {
         string directory = Path.Combine(_storeRoot, "1-owner");
@@ -1972,7 +1972,7 @@ public sealed class QueueAdvancerTests : IDisposable
         {
             TeamId = team.Id,
             UserId = 1,
-            Capabilities = TestMemberships.Graded(true, true, false),
+            Capabilities = TestMemberships.Literal(CapabilityPresets.Operator),
         });
 
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });

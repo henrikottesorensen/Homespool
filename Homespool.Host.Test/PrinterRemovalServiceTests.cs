@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -67,7 +68,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Workshop");
 
         context.PrinterLiveStates.Add(new PrinterLiveState { PrinterId = printer.Id });
@@ -123,7 +124,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         ITelemetryEviction telemetry = Substitute.For<ITelemetryEviction>();
@@ -143,7 +144,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Idle);
@@ -167,7 +168,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Printing);
@@ -204,7 +205,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Printing);
@@ -224,7 +225,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // Act
@@ -245,7 +246,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: false);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Operator);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // Act
@@ -269,10 +270,10 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember owner = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember owner = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, owner.TeamId);
 
-        await AddTeamAsync(context, userId: 2, canManage: true);
+        await AddTeamAsync(context, userId: 2, CapabilityPresets.Manager);
 
         // Act
         string? name = await NewService(context)
@@ -295,7 +296,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        TeamMember membership = await AddTeamAsync(context, userId: 1, canManage: true);
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
@@ -342,7 +343,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
             NullLogger<PrinterRemovalService>.Instance);
     }
 
-    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canManage)
+    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, IReadOnlyList<Capability> capabilities)
     {
         Team team = new()
         {
@@ -353,7 +354,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
                 new TeamMember
                 {
                     UserId = userId,
-                    Capabilities = TestMemberships.Graded(canRead: true, canUse: true, canManage),
+                    Capabilities = TestMemberships.Literal(capabilities),
                     IsDefault = true,
                 },
             },

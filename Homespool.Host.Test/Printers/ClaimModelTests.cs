@@ -18,6 +18,7 @@ using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test.Printers;
@@ -136,7 +137,7 @@ public sealed class ClaimModelTests : IDisposable
         {
             TeamId = usableOnly.Id,
             UserId = user.Id,
-            Capabilities = TestMemberships.Graded(true, true, false),
+            Capabilities = TestMemberships.Literal(CapabilityPresets.Operator),
             IsDefault = false,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -145,7 +146,7 @@ public sealed class ClaimModelTests : IDisposable
         await model.OnGetAsync(CancellationToken.None);
 
         // Assert
-        model.TeamOptions.Should().HaveCount(1, "the default team is CanManage; the second team is CanUse only");
+        model.TeamOptions.Should().HaveCount(1, "the default team grants ManagePrinter; the second only Print and ControlPrinter");
     }
 
     // ---------- OnPostAsync ----------

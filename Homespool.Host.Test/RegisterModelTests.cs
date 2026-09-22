@@ -466,7 +466,7 @@ public sealed class RegisterModelTests : IDisposable
         {
             TeamId = dummyTeam.Id,
             UserId = nextUserId,
-            Capabilities = TestMemberships.Graded(true, true, true),
+            Capabilities = TestMemberships.Literal(CapabilityPresets.Manager),
             IsDefault = true,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

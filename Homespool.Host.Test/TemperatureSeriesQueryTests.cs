@@ -96,7 +96,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
             {
                 CreatedBy = userId,
                 CreatedAt = Start,
-                Members = { new TeamMember { UserId = userId, Capabilities = TestMemberships.Graded(true, true, true), IsDefault = true } },
+                Members = { new TeamMember { UserId = userId, Capabilities = TestMemberships.Literal(CapabilityPresets.Manager), IsDefault = true } },
             };
 
             context.Teams.Add(team);

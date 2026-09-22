@@ -89,7 +89,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         printer.RemoteReadyAllowed.Should().BeFalse();
     }
 
-    /// <summary>Turning it on and off again, by somebody holding <c>CanManage</c>.</summary>
+    /// <summary>Turning it on and off again, by somebody holding <c>ManagePrinter</c>.</summary>
     [Fact]
     public async Task AManagerCanAllowItAndTakeItBack()
     {
@@ -114,8 +114,8 @@ public sealed class RemoteReadyAllowedTests : IDisposable
     }
 
     /// <summary>
-    /// <b>Running a printer is not deciding for it.</b> <c>CanUse</c> presses Set ready; only
-    /// <c>CanManage</c> decides whether that press can be honest, which is the split this feature
+    /// <b>Running a printer is not deciding for it.</b> <c>Print</c> presses Set ready; only
+    /// <c>ManagePrinter</c> decides whether that press can be honest, which is the split this feature
     /// rests on.
     /// </summary>
     [Fact]
@@ -221,13 +221,13 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Reader, Capabilities = TestMemberships.Graded(true, false, false) });
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = User, Capabilities = TestMemberships.Graded(true, true, false) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Reader, Capabilities = TestMemberships.Literal(CapabilityPresets.Viewer) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = User, Capabilities = TestMemberships.Literal(CapabilityPresets.Operator) });
         context.TeamMembers.Add(new TeamMember
         {
             TeamId = team.Id,
             UserId = Manager,
-            Capabilities = TestMemberships.Graded(true, true, true),
+            Capabilities = TestMemberships.Literal(CapabilityPresets.Manager),
         });
 
         _printerUuid = Guid.NewGuid();

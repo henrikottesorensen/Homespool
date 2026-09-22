@@ -2772,9 +2772,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="AdminUsers_RefusedSelf" xml:space="preserve">
     <value>Du kan ikke deaktivere din egen konto: en administrator, der lukker sin egen konto, er den eneste, der ikke kan åbne den igen.</value>
   </data>
-  <data name="AdminUsers_RefusedLastAdmin" xml:space="preserve">
-    <value>Det er den eneste administrator, der stadig er aktiv. Gør en anden til administrator først, ellers står denne installation uden nogen, der kan administrere den.</value>
-  </data>
   <data name="AdminUsers_Gone" xml:space="preserve">
     <value>Den konto findes ikke længere.</value>
   </data>

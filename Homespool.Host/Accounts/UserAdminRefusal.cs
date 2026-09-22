@@ -18,23 +18,17 @@ public enum UserAdminRefusal
     /// <summary>
     /// The administrator aimed at their own account. Refused for deactivation, and not out of
     /// paternalism: an administrator who closes their own account is the one person who cannot then
-    /// reopen it. Refused for a passkey revoke too, because their own passkeys have their own page.
+    /// reopen it - and this refusal, beside <see cref="NotAnAdministrator"/>, is what keeps at least
+    /// one administrator open. Refused for a passkey revoke too, because their own passkeys have their
+    /// own page.
     /// </summary>
     Self = 3,
 
     /// <summary>
-    /// The subject is the only administrator still active. Deactivating them would leave the
-    /// deployment with nobody who can administer it and no way back - first-time setup stays closed
-    /// while an administrator account exists, deactivated or not - so the repair would be editing the
-    /// database.
+    /// The account asking is not an open administrator: closed, never one, or no account at all. The
+    /// service asks for itself, by <see cref="Administrators.Open"/>, rather than trusting its caller
+    /// to have - a role claim is what a cookie was issued with, and a caller that is not the page
+    /// may have checked nothing. The page answers this as a forbidden rather than a message.
     /// </summary>
-    LastAdministrator = 4,
-
-    /// <summary>
-    /// The administrator asking is closed themselves. Their session ends on its next request, because
-    /// closing moves the stamp, but the cookie's role is still no evidence the account is open - so
-    /// the service asks, rather than trusting that the session check or the page already did.
-    /// The page answers this as a forbidden rather than a message.
-    /// </summary>
-    ClosedAdministrator = 5,
+    NotAnAdministrator = 5,
 }

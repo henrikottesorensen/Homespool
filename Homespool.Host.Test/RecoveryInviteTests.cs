@@ -165,6 +165,7 @@ public sealed class RecoveryInviteTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
 
         InvitationService invitations = NewInvitationService(context);

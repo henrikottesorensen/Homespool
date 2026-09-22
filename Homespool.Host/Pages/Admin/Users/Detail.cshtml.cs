@@ -351,7 +351,7 @@ public class DetailModel : PageModel
 
         UserAdminResult result = await act(administrator.Id, Id);
 
-        if (result.Refusal is UserAdminRefusal.ClosedAdministrator)
+        if (result.Refusal is UserAdminRefusal.NotAnAdministrator)
         {
             // The page's policy already reads the row, so this is reached only when the account was
             // closed between that read and the act. Same answer: nothing to tell the session, and
@@ -363,7 +363,6 @@ public class DetailModel : PageModel
         {
             UserAdminRefusal.None => describe(result),
             UserAdminRefusal.Self when refusedSelf is not null => refusedSelf,
-            UserAdminRefusal.LastAdministrator => _localiser["AdminUsers_RefusedLastAdmin"].Value,
             UserAdminRefusal.NoSuchAccount => _localiser["AdminUsers_Gone"].Value,
             _ => throw new InvalidOperationException($"User administration answered {result.Refusal}, which no act produces."),
         };

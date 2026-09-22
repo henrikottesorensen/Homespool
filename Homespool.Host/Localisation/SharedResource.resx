@@ -2875,9 +2875,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="AdminUsers_RefusedSelf" xml:space="preserve">
     <value>You cannot deactivate your own account: an administrator who closes their own account is the one person who cannot reopen it.</value>
   </data>
-  <data name="AdminUsers_RefusedLastAdmin" xml:space="preserve">
-    <value>That is the only administrator still active. Make somebody else an administrator first, or this deployment would be left with nobody who can administer it.</value>
-  </data>
   <data name="AdminUsers_Gone" xml:space="preserve">
     <value>That account no longer exists.</value>
   </data>

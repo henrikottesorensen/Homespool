@@ -22,21 +22,26 @@ namespace Homespool.Host.Accounts;
 /// <remarks>
 /// <para>
 /// <b>One service behind both administration pages, because the guards must exist once.</b> Whether
-/// an act is refused - your own account, the last administrator standing - is a property of the act
-/// rather than of the button that asked for it, and a second page reimplementing either check is how
-/// the two come to disagree.
+/// an act is refused - who is asking, or your own account - is a property of the act rather than of
+/// the button that asked for it, and a second page reimplementing either check is how the two come
+/// to disagree.
 /// </para>
 /// <para>
-/// <b>Every act first asks whether the administrator asking is still open.</b> A closed
-/// administrator's session ends on its next request, because closing moves the stamp - but that is
-/// the session check's doing, and the role the cookie carries is no evidence of it. The
-/// administration pages' policy reads the row for the same reason; this class asks for itself
-/// because a refusal is a property of the act, and a caller that is not the page gets it too. It
-/// also makes a Self check on reopening
-/// unnecessary: an open administrator aiming at their own account finds nothing to reopen, and a
-/// closed one is refused before aiming. It also leaves the last-administrator refusal with no route
-/// from the page - the one administrator left is refused as themselves, and the closed one who used
-/// to reach it is refused sooner - so that guard now stands for a caller the page is not.
+/// <b>Every act first asks whether the account asking is an open administrator</b>, by
+/// <see cref="Administrators.Open"/>, rather than trusting its caller: a role claim is what a cookie
+/// was issued with, not what the account is now, and a caller that is not the administration pages
+/// may have checked nothing. It also makes a Self check on reopening unnecessary: an open
+/// administrator aiming at their own account finds nothing to reopen, and a closed one is refused
+/// before aiming.
+/// </para>
+/// <para>
+/// <b>Why there is no last-administrator guard.</b> Closing the last open administrator cannot be
+/// asked for. The asker must be an open administrator, and may not close their own account, so the
+/// subject of a closure that goes through is always a second one. The two refusals together keep an
+/// administrator open - which matters because first-time setup stays shut while any administrator
+/// row exists, so a deployment with none left would be repaired only by editing the database. Allow
+/// an administrator to close their own account, or let anything but an open administrator ask, and
+/// that guarantee goes with it.
 /// </para>
 /// <para>
 /// <b>What is deliberately not here.</b> No hard delete: attribution is history, and deleting the
@@ -94,10 +99,10 @@ public sealed class UserAdministration
     /// <b>The checks and the writes are one serializable transaction.</b> The writes, because
     /// the half-done states are each worse than either end: an account marked closed whose tokens
     /// still authenticate, or tokens destroyed on an account that is still open. The checks, because
-    /// the last-administrator answer is only true of the moment it is read: two administrators
-    /// closing each other at once would each count two, each pass, and leave none - a state that
-    /// keeps first-time setup closed and is repaired only by editing the database. Holding the write
-    /// lock from the first read makes the second of them read the first's committed row instead.
+    /// "the asker is an open administrator" is only true of the moment it is read: two administrators
+    /// closing each other at once would each find themselves open, each pass, and leave none. Holding
+    /// the write lock from the first read makes the second of them read the first's committed row,
+    /// and be refused as no longer an administrator.
     /// </para>
     /// <para>
     /// <b>The tokens are deleted, not left to the sign-in check that would now refuse them.</b> The
@@ -122,9 +127,9 @@ public sealed class UserAdministration
         // A refusal returns from inside the transaction; disposing it uncommitted writes nothing.
         await using (IDbContextTransaction transaction = await _unitOfWork.BeginSerializableTransactionAsync(cancellationToken))
         {
-            if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+            if (!await IsOpenAdministratorAsync(administratorId, cancellationToken))
             {
-                return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+                return UserAdminResult.Refused(UserAdminRefusal.NotAnAdministrator);
             }
 
             HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -137,11 +142,6 @@ public sealed class UserAdministration
             if (userId == administratorId)
             {
                 return UserAdminResult.Refused(UserAdminRefusal.Self);
-            }
-
-            if (await IsLastActiveAdministratorAsync(userId, cancellationToken))
-            {
-                return UserAdminResult.Refused(UserAdminRefusal.LastAdministrator);
             }
 
             if (user.DeactivatedAt is not null)
@@ -183,9 +183,9 @@ public sealed class UserAdministration
                                                        long userId,
                                                        CancellationToken cancellationToken)
     {
-        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        if (!await IsOpenAdministratorAsync(administratorId, cancellationToken))
         {
-            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+            return UserAdminResult.Refused(UserAdminRefusal.NotAnAdministrator);
         }
 
         HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -224,9 +224,9 @@ public sealed class UserAdministration
                                                          long userId,
                                                          CancellationToken cancellationToken)
     {
-        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        if (!await IsOpenAdministratorAsync(administratorId, cancellationToken))
         {
-            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+            return UserAdminResult.Refused(UserAdminRefusal.NotAnAdministrator);
         }
 
         if (!await _dbContext.Users.AnyAsync(u => u.Id == userId, cancellationToken))
@@ -273,9 +273,9 @@ public sealed class UserAdministration
     {
         ArgumentNullException.ThrowIfNull(credentialId);
 
-        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        if (!await IsOpenAdministratorAsync(administratorId, cancellationToken))
         {
-            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+            return UserAdminResult.Refused(UserAdminRefusal.NotAnAdministrator);
         }
 
         HSUser? user = await _dbContext.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -324,9 +324,9 @@ public sealed class UserAdministration
                                                          long userId,
                                                          CancellationToken cancellationToken)
     {
-        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        if (!await IsOpenAdministratorAsync(administratorId, cancellationToken))
         {
-            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+            return UserAdminResult.Refused(UserAdminRefusal.NotAnAdministrator);
         }
 
         HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
@@ -359,30 +359,11 @@ public sealed class UserAdministration
     }
 
     /// <summary>
-    /// Whether the account asking, <paramref name="administratorId"/>, is closed - or is no account at
-    /// all, which is refused the same way rather than trusted.
+    /// Whether the account asking, <paramref name="administratorId"/>, is an open administrator - read
+    /// on every act, not taken from the caller.
     /// </summary>
-    /// <remarks>
-    /// Read from the row on every act, not from the caller's claims: the claims are what the cookie
-    /// was issued with, not what the account is now.
-    /// </remarks>
-    private async Task<bool> IsClosedAdministratorAsync(long administratorId, CancellationToken cancellationToken)
+    private async Task<bool> IsOpenAdministratorAsync(long administratorId, CancellationToken cancellationToken)
     {
-        return !await _dbContext.Users.AnyAsync(u => u.Id == administratorId && u.DeactivatedAt == null, cancellationToken);
-    }
-
-    /// <summary>
-    /// Whether <paramref name="userId"/> is an administrator and the only one still active.
-    /// </summary>
-    /// <remarks>
-    /// One query for both halves, and it is <see cref="Administrators.Open"/> - the definition every
-    /// other administrator decision asks - so the count and the "is this one of them" test cannot
-    /// answer from different pictures of the same table, or from a different idea of who counts.
-    /// </remarks>
-    private async Task<bool> IsLastActiveAdministratorAsync(long userId, CancellationToken cancellationToken)
-    {
-        long[] activeAdministrators = await Administrators.Open(_dbContext).ToArrayAsync(cancellationToken);
-
-        return activeAdministrators.Contains(userId) && activeAdministrators.Length == 1;
+        return await Administrators.Open(_dbContext).ContainsAsync(administratorId, cancellationToken);
     }
 }

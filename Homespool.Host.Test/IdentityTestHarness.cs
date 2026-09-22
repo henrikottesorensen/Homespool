@@ -1,6 +1,9 @@
 using System;
 using System.Linq;
 using System.Security.Claims;
+using System.Threading.Tasks;
+
+using AwesomeAssertions;
 
 using Duende.IdentityModel;
 
@@ -114,6 +117,26 @@ internal static class IdentityTestHarness
         string local = at < 0 ? email : email[..at];
 
         return string.Concat(local.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_' ? c : '-'));
+    }
+
+    /// <summary>
+    /// Grants <paramref name="user"/> the administrator role, creating the role first if this
+    /// database has none yet. Every administrator act asks the account's row for the role, so an
+    /// account a test has acting as administrator has to hold it.
+    /// </summary>
+    public static async Task MakeAdministratorAsync(IServiceProvider provider, UserManager<HSUser> users, HSUser user)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        ArgumentNullException.ThrowIfNull(users);
+
+        RoleManager<IdentityRole<long>> roles = provider.GetRequiredService<RoleManager<IdentityRole<long>>>();
+
+        if (!await roles.RoleExistsAsync(AdminBootstrap.AdminRole))
+        {
+            (await roles.CreateAsync(new IdentityRole<long>(AdminBootstrap.AdminRole))).Succeeded.Should().BeTrue();
+        }
+
+        (await users.AddToRoleAsync(user, AdminBootstrap.AdminRole)).Succeeded.Should().BeTrue();
     }
 
     /// <summary>

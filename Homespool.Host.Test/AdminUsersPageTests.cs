@@ -77,6 +77,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser alice = await AddUserAsync(users, "alice@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, alice);
         HSUser bob = await AddUserAsync(users, "bob@example.com");
         await SeedPasskeyAsync(users, bob, "phone");
         await new ApiTokenService(context).CreateAsync(bob.Id, "laptop", [Capability.Print], CancellationToken.None);
@@ -106,6 +107,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         await SeedPasskeyAsync(users, subject, "phone");
         await new ApiTokenService(context).CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
@@ -133,6 +135,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
@@ -149,6 +152,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         await new ApiTokenService(context).CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
@@ -169,6 +173,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
@@ -191,6 +196,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
         model.ClearAuthenticator = true;
 
@@ -216,6 +222,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         await Administration(context, provider).DeactivateAsync(admin.Id, subject.Id, CancellationToken.None);
 
@@ -239,6 +246,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
@@ -267,6 +275,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         subject.Language = "da";
         (await users.UpdateAsync(subject)).Succeeded.Should().BeTrue();
@@ -288,6 +297,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
         UserPasskeyInfo laptop = await SeedPasskeyAsync(users, subject, "laptop");
@@ -311,6 +321,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         (DetailModel gone, _) = NewDetail(context, provider, users, admin);
         (DetailModel malformed, _) = NewDetail(context, provider, users, admin);
@@ -334,6 +345,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, admin, "phone");
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
@@ -354,6 +366,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
 
         for (int attempt = 0; attempt < 9; attempt++)

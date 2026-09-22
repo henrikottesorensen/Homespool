@@ -28,9 +28,10 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// <b>The refusals are what this file is for.</b> A service that acted on everything would pass any
-/// test asserting that deactivation deactivates, so the guards - your own account, the last
-/// administrator standing, an administrator who is closed themselves - carry their own tests, and
-/// each was checked by removing the guard and watching exactly one of them fail.
+/// test asserting that deactivation deactivates, so the guards - an asker who is not an open
+/// administrator, and your own account - carry their own tests, and each was checked by removing the
+/// guard and watching its tests fail. Between them they are also what keeps one administrator open,
+/// which the concurrent-closure test holds them to.
 /// </remarks>
 public sealed class UserAdministrationTests : IDisposable
 {
@@ -56,6 +57,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         ApiTokenService tokens = new(context);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
@@ -91,6 +93,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         LocalSignInRules rules = provider.GetRequiredService<LocalSignInRules>();
 
@@ -111,9 +114,9 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser other = await AddUserAsync(users, "other@example.com");
-        await MakeAdministratorAsync(provider, users, admin);
-        await MakeAdministratorAsync(provider, users, other);
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, other);
 
         // Act
         UserAdminResult result = await Administration(context, provider)
@@ -125,33 +128,41 @@ public sealed class UserAdministrationTests : IDisposable
     }
 
     /// <summary>
-    /// The second call is made by an ordinary account, because nobody who can reach the button is
-    /// left to make it once one administrator remains: that administrator is refused as themselves,
-    /// and a closed one is refused before it aims. The guard is a property of the act all the same,
-    /// for a caller that is not the page.
+    /// An account that does not hold the administrator role is refused every act, whatever it aims
+    /// at: the service asks the row rather than trusting its caller to have checked.
     /// </summary>
     [Fact]
-    public async Task TheLastActiveAdministratorCannotBeDeactivated()
+    public async Task AnAccountThatIsNotAnAdministratorIsRefusedEveryAct()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
-        HSUser deputy = await AddUserAsync(users, "deputy@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser clerk = await AddUserAsync(users, "clerk@example.com");
-        await MakeAdministratorAsync(provider, users, admin);
-        await MakeAdministratorAsync(provider, users, deputy);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        ApiTokenService tokens = new(context);
+        await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
+        UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
         UserAdministration administration = Administration(context, provider);
 
         // Act
-        UserAdminResult first = await administration.DeactivateAsync(admin.Id, deputy.Id, CancellationToken.None);
-        UserAdminResult second = await administration.DeactivateAsync(clerk.Id, admin.Id, CancellationToken.None);
+        UserAdminResult[] results =
+        [
+            await administration.DeactivateAsync(clerk.Id, admin.Id, CancellationToken.None),
+            await administration.DeactivateAsync(clerk.Id, subject.Id, CancellationToken.None),
+            await administration.ReactivateAsync(clerk.Id, subject.Id, CancellationToken.None),
+            await administration.RevokeTokensAsync(clerk.Id, subject.Id, CancellationToken.None),
+            await administration.RevokePasskeyAsync(clerk.Id, subject.Id, phone.CredentialId, CancellationToken.None),
+            await administration.ClearLockoutAsync(clerk.Id, subject.Id, CancellationToken.None),
+        ];
 
         // Assert
-        first.Succeeded.Should().BeTrue("two administrators were active, so closing one leaves one");
-        second.Refusal.Should().Be(UserAdminRefusal.LastAdministrator,
-                                   "the first deactivation left this account as the only administrator who can sign in");
-        admin.DeactivatedAt.Should().BeNull();
+        results.Select(r => r.Refusal).Should().AllBeEquivalentTo(UserAdminRefusal.NotAnAdministrator);
+        admin.DeactivatedAt.Should().BeNull("an ordinary account cannot close the administrator");
+        subject.DeactivatedAt.Should().BeNull();
+        (await tokens.ListAsync(subject.Id, CancellationToken.None)).Should().ContainSingle();
+        (await users.GetPasskeysAsync(subject)).Should().ContainSingle();
     }
 
     /// <summary>
@@ -167,9 +178,9 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext seed = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(seed);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser deputy = await AddUserAsync(users, "deputy@example.com");
-        await MakeAdministratorAsync(provider, users, admin);
-        await MakeAdministratorAsync(provider, users, deputy);
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, deputy);
 
         await using HomespoolDbContext first = await MigratedContextAsync();
         await using HomespoolDbContext second = await MigratedContextAsync();
@@ -188,8 +199,8 @@ public sealed class UserAdministrationTests : IDisposable
         // Assert
         results.Count(r => r.Succeeded).Should().Be(1, "whichever commits first closes its subject");
         results.Single(r => !r.Succeeded).Refusal.Should().BeOneOf(
-            [UserAdminRefusal.LastAdministrator, UserAdminRefusal.ClosedAdministrator],
-            "the other reads the committed closure: its subject is now the last administrator, or it is closed itself");
+            [UserAdminRefusal.NotAnAdministrator],
+            "the other reads the committed closure: it is closed itself, so no longer an administrator");
 
         await using HomespoolDbContext check = await MigratedContextAsync();
         (await check.Users.CountAsync(u => u.DeactivatedAt == null, TestContext.Current.CancellationToken))
@@ -209,11 +220,11 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser deputy = await AddUserAsync(users, "deputy@example.com");
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         HSUser stranger = await AddUserAsync(users, "stranger@example.com");
-        await MakeAdministratorAsync(provider, users, admin);
-        await MakeAdministratorAsync(provider, users, deputy);
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, deputy);
         ApiTokenService tokens = new(context);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
@@ -238,12 +249,12 @@ public sealed class UserAdministrationTests : IDisposable
         UserAdminResult lockout = await administration.ClearLockoutAsync(deputy.Id, subject.Id, CancellationToken.None);
 
         // Assert
-        reopenSelf.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
-        reopenOther.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
-        deactivate.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
-        revoke.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
-        passkey.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
-        lockout.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        reopenSelf.Refusal.Should().Be(UserAdminRefusal.NotAnAdministrator);
+        reopenOther.Refusal.Should().Be(UserAdminRefusal.NotAnAdministrator);
+        deactivate.Refusal.Should().Be(UserAdminRefusal.NotAnAdministrator);
+        revoke.Refusal.Should().Be(UserAdminRefusal.NotAnAdministrator);
+        passkey.Refusal.Should().Be(UserAdminRefusal.NotAnAdministrator);
+        lockout.Refusal.Should().Be(UserAdminRefusal.NotAnAdministrator);
         deputy.DeactivatedAt.Should().NotBeNull("the closed administrator stays closed");
         stranger.DeactivatedAt.Should().NotBeNull();
         subject.DeactivatedAt.Should().BeNull();
@@ -270,31 +281,8 @@ public sealed class UserAdministrationTests : IDisposable
             .DeactivateAsync(9999, subject.Id, CancellationToken.None);
 
         // Assert
-        result.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        result.Refusal.Should().Be(UserAdminRefusal.NotAnAdministrator);
         subject.DeactivatedAt.Should().BeNull();
-    }
-
-    /// <summary>
-    /// An ordinary account is not covered by the administrator guard, however few of them there are -
-    /// otherwise the last user on a deployment could never be closed.
-    /// </summary>
-    [Fact]
-    public async Task TheGuardCountsAdministratorsRatherThanAccounts()
-    {
-        // Arrange
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
-        HSUser admin = await AddUserAsync(users, "admin@example.com");
-        HSUser subject = await AddUserAsync(users, "subject@example.com");
-        await MakeAdministratorAsync(provider, users, admin);
-
-        // Act
-        UserAdminResult result = await Administration(context, provider)
-            .DeactivateAsync(admin.Id, subject.Id, CancellationToken.None);
-
-        // Assert
-        result.Succeeded.Should().BeTrue();
-        subject.DeactivatedAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -304,6 +292,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         ApiTokenService tokens = new(context);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
@@ -328,6 +317,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         HSUser bystander = await AddUserAsync(users, "bystander@example.com");
         ApiTokenService tokens = new(context);
@@ -352,6 +342,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
         UserPasskeyInfo laptop = await SeedPasskeyAsync(users, subject, "laptop");
@@ -381,6 +372,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
         CapturingEmailSender mail = new();
@@ -407,6 +399,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         HSUser bystander = await AddUserAsync(users, "bystander@example.com");
         UserPasskeyInfo theirs = await SeedPasskeyAsync(users, bystander, "theirs");
@@ -432,6 +425,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, admin, "phone");
         CapturingEmailSender mail = new();
 
@@ -456,6 +450,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         AttemptLimiter limiter = provider.GetRequiredService<AttemptLimiter>();
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -490,6 +485,7 @@ public sealed class UserAdministrationTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         UserAdministration administration = Administration(context, provider);
 
         // Act
@@ -555,22 +551,6 @@ public sealed class UserAdministrationTests : IDisposable
         (await users.AddOrUpdatePasskeyAsync(user, passkey)).Succeeded.Should().BeTrue();
 
         return passkey;
-    }
-
-    /// <summary>
-    /// Puts <paramref name="user"/> in the administrator role, seeding the role itself the way
-    /// <see cref="AdminBootstrap"/> does on a first start.
-    /// </summary>
-    private static async Task MakeAdministratorAsync(IServiceProvider provider, UserManager<HSUser> users, HSUser user)
-    {
-        RoleManager<IdentityRole<long>> roles = provider.GetRequiredService<RoleManager<IdentityRole<long>>>();
-
-        if (!await roles.RoleExistsAsync(AdminBootstrap.AdminRole))
-        {
-            (await roles.CreateAsync(new IdentityRole<long>(AdminBootstrap.AdminRole))).Succeeded.Should().BeTrue();
-        }
-
-        (await users.AddToRoleAsync(user, AdminBootstrap.AdminRole)).Succeeded.Should().BeTrue();
     }
 
     /// <summary>

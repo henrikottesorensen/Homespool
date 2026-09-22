@@ -110,6 +110,15 @@ public class GenerateRecoveryCodesModel : PageModel
         // Not StatusMessage: that is a TempData property, and a value set on one would outlive this
         // response and show again on the next page.
         IssuedMessage = _localiser["TwoFactor_CodesGenerated"];
+
+        // Ten credentials in the clear, in this response and nowhere else afterwards - they are
+        // stored hashed. A response carrying an antiforgery token gets both directives anyway, and
+        // every page under the layout carries one because the navigation posts to sign out; said here
+        // so that the codes do not depend on a form somewhere else staying a form. Both directives,
+        // in this order, because that is exactly what the antiforgery token would otherwise write over
+        // the top of - and warn about while doing it.
+        Response.Headers.CacheControl = "no-cache, no-store";
+
         return Page();
     }
 }

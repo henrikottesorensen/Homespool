@@ -170,7 +170,14 @@ public class ApiTokensModel : PageModel
         // rather than theoretical: the back/forward cache holds the rendered page in memory, so
         // without it a Back navigation can put the secret back on screen long after the person who
         // created it has walked away from a shared machine.
-        Response.Headers.CacheControl = "no-store";
+        //
+        // Both directives, and in this order, because the view is about to render a form: generating
+        // an antiforgery token sets exactly `no-cache, no-store` itself, and overrides anything here
+        // that is not already both - logging a framework warning about the override as it goes, on
+        // every successful mint. Saying the same thing the framework will say keeps the intent stated
+        // where the secret is created rather than left to a form elsewhere in the layout, and leaves
+        // the log to carry real problems only.
+        Response.Headers.CacheControl = "no-cache, no-store";
 
         // Listed after the create, so the new token appears in the table alongside its one-time secret.
         await LoadAsync(user, cancellationToken);

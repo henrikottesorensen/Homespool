@@ -283,10 +283,17 @@ public sealed class ApiTokensPageTests : IDisposable
     }
 
     /// <summary>
-    /// The response carrying the one-time secret says <c>no-store</c>. POST responses are not
-    /// cacheable anyway, so the case this closes is the back/forward cache putting the secret back on
-    /// screen after the fact.
+    /// The response carrying the one-time secret says <c>no-cache, no-store</c>. POST responses are
+    /// not cacheable anyway, so the case this closes is the back/forward cache putting the secret back
+    /// on screen after the fact.
     /// </summary>
+    /// <remarks>
+    /// <b>Both directives, because rendering the form would otherwise replace them with both and warn
+    /// about it.</b> This test sees the page model alone, where whatever the handler sets is what the
+    /// response carries; through the real pipeline the antiforgery token in the layout sets
+    /// <c>no-cache, no-store</c> over the top of anything narrower. Asserting one directive here
+    /// therefore used to pass while describing a response nobody receives.
+    /// </remarks>
     [Fact]
     public async Task TheResponseCarryingANewSecretIsNotStorable()
     {
@@ -299,7 +306,7 @@ public sealed class ApiTokensPageTests : IDisposable
 
         // Assert
         model.CreatedToken.Should().NotBeNull("this is the response that carries the secret");
-        httpContext.Response.Headers.CacheControl.ToString().Should().Be("no-store");
+        httpContext.Response.Headers.CacheControl.ToString().Should().Be("no-cache, no-store");
     }
 
     /// <summary>

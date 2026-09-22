@@ -211,6 +211,9 @@
   <data name="Account_VerificationSent" xml:space="preserve">
     <value>Verification email sent. Please check your email.</value>
   </data>
+  <data name="Account_VerificationSentOrRecent" xml:space="preserve">
+    <value>If that address is waiting to be confirmed, a verification email has been sent to it now or within the last {0} minutes. Please check your email.</value>
+  </data>
   <data name="Manage_EmailChangeSent" xml:space="preserve">
     <value>Confirmation link to change email sent. Please check your email.</value>
   </data>
@@ -1319,7 +1322,7 @@
     <value>You&apos;ve successfully authenticated with {0}. Please choose an email address and a username for this site below, then click the Register button to finish logging in.</value>
   </data>
   <data name="Account_CheckEmailToReset" xml:space="preserve">
-    <value>Please check your email to reset your password.</value>
+    <value>If a password can be reset for that address, a link has been sent to it now or within the last {0} minutes. Please check your email: a recent link still works.</value>
   </data>
   <data name="Account_RecoveryCodeIntro" xml:space="preserve">
     <value>You have requested to log in with a recovery code. This login will not be remembered until you provide an authenticator app code at log in or disable 2FA and log in again.</value>

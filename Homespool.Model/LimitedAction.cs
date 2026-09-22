@@ -52,20 +52,20 @@ public enum LimitedAction
     DisableTwoFactor = 3,
 
     /// <summary>
-    /// A password-reset email sent by the anonymous forgot-password form, counted against the
-    /// account it is addressed to.
+    /// A password-reset email sent by the anonymous forgot-password form, which holds the account it
+    /// is addressed to to a fixed cooldown.
     /// </summary>
     /// <remarks>
-    /// The failure being counted is a send, not a wrong answer - each one costs the target an inbox
-    /// entry and the deployment SMTP quota, and nothing else bounds an anonymous caller who knows an
-    /// address. Completing the reset clears the count, so the backoff only ever stands between an
-    /// address and mail nobody is acting on.
+    /// A send, not a wrong answer - each one costs the target an inbox entry and the deployment SMTP
+    /// quota, and nothing else bounds an anonymous caller who knows an address. A cooldown and never a
+    /// count: the caller is not the account, so a wait that grew with use would be grown by a stranger
+    /// and served by the person who needs the mail.
     /// </remarks>
     SendPasswordResetEmail = 4,
 
     /// <summary>
-    /// A confirmation email sent by the anonymous resend-confirmation form, counted against the
-    /// account it is addressed to.
+    /// A confirmation email sent by the anonymous resend-confirmation form, which holds the account it
+    /// is addressed to to a fixed cooldown.
     /// </summary>
     /// <remarks>
     /// Separate from <see cref="SendPasswordResetEmail"/> for the same reason every member is
@@ -113,9 +113,9 @@ public enum LimitedAction
     /// <c>Pages/Account/Manage/Email</c>. Held to a fixed cooldown after each send rather than counted.
     /// </summary>
     /// <remarks>
-    /// Not <see cref="SendConfirmationEmail"/>, though it is the same mail: that counter is spent by
-    /// anonymous callers who know the address, and a short cooldown written into its row could cut a
-    /// longer backoff short. Separate from <see cref="ChangeEmail"/> so that verifying and then
+    /// Not <see cref="SendConfirmationEmail"/>, though it is the same mail: that cooldown is started by
+    /// anonymous callers who know the address, and sharing its row would let them hold the owner's
+    /// own button off. Separate from <see cref="ChangeEmail"/> so that verifying and then
     /// correcting an address does not mean waiting between the two.
     /// </remarks>
     SendVerificationEmail = 9,

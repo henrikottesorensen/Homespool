@@ -18,7 +18,6 @@ using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.RateLimiting;
 using Homespool.Host.Services;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account;
@@ -30,21 +29,18 @@ public class ResetPasswordModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly ApiTokenService _apiTokens;
     private readonly UnitOfWork _unitOfWork;
-    private readonly AttemptLimiter _attemptLimiter;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ResetPasswordModel> _logger;
 
     public ResetPasswordModel(UserManager<HSUser> userManager,
                               ApiTokenService apiTokens,
                               UnitOfWork unitOfWork,
-                              AttemptLimiter attemptLimiter,
                               IStringLocalizer<SharedResource> localiser,
                               ILogger<ResetPasswordModel> logger)
     {
         _userManager = userManager;
         _apiTokens = apiTokens;
         _unitOfWork = unitOfWork;
-        _attemptLimiter = attemptLimiter;
         _localiser = localiser;
         _logger = logger;
     }
@@ -131,11 +127,6 @@ public class ResetPasswordModel : PageModel
             }
 
             int revoked = await _apiTokens.RevokeAllForUserAsync(user.Id, cancellationToken);
-
-            // A completed reset is what the counted emails were for, so the send backoff clears with
-            // it. Inside the transaction deliberately: ResetAsync saves through the ambient context,
-            // so a rollback takes the clearing with it.
-            await _attemptLimiter.ResetAsync(user.Id, LimitedAction.SendPasswordResetEmail, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 

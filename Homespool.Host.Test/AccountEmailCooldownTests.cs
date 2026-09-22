@@ -1,7 +1,5 @@
 using System;
 using System.IO;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -10,21 +8,20 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Pages.Account;
-using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The per-account bound on the two anonymous forms that send mail to a typed address.
+/// The per-account cooldown on the two anonymous forms that send mail to a typed address.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -34,15 +31,23 @@ namespace Homespool.Host.Test;
 /// stable handle the caller offers, so the target account is what the limiter keys on.
 /// </para>
 /// <para>
+/// <b>The wait must not be something a stranger can grow.</b> The caller is not the account, so a
+/// counted backoff here is a lever: whoever knows the address runs it up, and the owner serves it
+/// when they need the mail. A fixed cooldown that a refused request does not restart leaves nothing
+/// to run up.
+/// </para>
+/// <para>
 /// <b>The refusal must be invisible from outside.</b> Both forms already answer identically for
-/// unknown and known addresses so as not to be enumeration oracles; a backed-off account has to get
-/// that same answer, or the backoff itself becomes the existence signal.
+/// unknown and known addresses so as not to be enumeration oracles; an account inside its cooldown
+/// has to get that same answer, or the cooldown itself becomes the existence signal.
 /// </para>
 /// </remarks>
-public sealed class AccountEmailBackoffTests : IDisposable
+public sealed class AccountEmailCooldownTests : IDisposable
 {
+    private static readonly DateTimeOffset Start = new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero);
+
     private readonly string _databasePath =
-        Path.Combine(Path.GetTempPath(), $"hs-email-backoff-{Guid.NewGuid():N}.db");
+        Path.Combine(Path.GetTempPath(), $"hs-email-cooldown-{Guid.NewGuid():N}.db");
 
     public void Dispose()
     {
@@ -55,18 +60,19 @@ public sealed class AccountEmailBackoffTests : IDisposable
         }
     }
 
-    /// <summary>Each reset mail is counted against the account it is addressed to.</summary>
+    /// <summary>Each reset mail starts the cooldown on the account it is addressed to, and counts nothing.</summary>
     [Fact]
-    public async Task AResetRequestIsCountedAgainstTheAccountItMails()
+    public async Task AResetRequestStartsTheCooldownOnTheAccountItMails()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser user = await SeedUserAsync(users, "counted@example.com");
+        HSUser user = await SeedUserAsync(users, "cooled@example.com");
         CapturingEmailSender sender = new();
+        FakeTimeProvider time = new(Start);
 
-        await NewForgotModel(context, users, httpContext, sender, "counted@example.com")
+        await NewForgotModel(context, users, httpContext, sender, "cooled@example.com", time)
             .OnPostAsync(TestContext.Current.CancellationToken);
 
         sender.SentEmails.Should().ContainSingle();
@@ -75,67 +81,75 @@ public sealed class AccountEmailBackoffTests : IDisposable
             .SingleAsync(a => a.UserId == user.Id && a.Action == LimitedAction.SendPasswordResetEmail,
                          TestContext.Current.CancellationToken);
 
-        attempt.FailedCount.Should().Be(1, "a send is what this limiter counts");
+        attempt.LockoutEnd.Should().Be(Start + ForgotPasswordModel.SendCooldown);
+        attempt.FailedCount.Should().Be(0, "a count is what a stranger could run up");
     }
 
     /// <summary>
-    /// A backed-off account gets the identical redirect and no mail - the answer an unknown address
-    /// gets, because a refusal that looked different would say the address is registered.
+    /// An account inside its cooldown gets the identical redirect and no mail - the answer an unknown
+    /// address gets, because a refusal that looked different would say the address is registered.
     /// </summary>
     [Fact]
-    public async Task ABackedOffAccountIsAnsweredIdenticallyAndGetsNoMail()
+    public async Task AnAccountInsideItsCooldownIsAnsweredIdenticallyAndGetsNoMail()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        HSUser user = await SeedUserAsync(users, "bombed@example.com");
-
-        context.UserActionAttempts.Add(new UserActionAttempt
-        {
-            UserId = user.Id,
-            Action = LimitedAction.SendPasswordResetEmail,
-            FailedCount = 6,
-            LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(10),
-        });
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-
+        await SeedUserAsync(users, "bombed@example.com");
         CapturingEmailSender sender = new();
-        IActionResult result = await NewForgotModel(context, users, httpContext, sender, "bombed@example.com")
+        FakeTimeProvider time = new(Start);
+
+        await NewForgotModel(context, users, httpContext, sender, "bombed@example.com", time)
             .OnPostAsync(TestContext.Current.CancellationToken);
 
-        sender.SentEmails.Should().BeEmpty("the backoff is the whole point");
+        time.Advance(TimeSpan.FromMinutes(1));
+
+        IActionResult result = await NewForgotModel(context, users, httpContext, sender, "bombed@example.com", time)
+            .OnPostAsync(TestContext.Current.CancellationToken);
+
+        sender.SentEmails.Should().ContainSingle("the second request is inside the first one's cooldown");
         result.Should().BeOfType<RedirectToPageResult>()
               .Which.PageName.Should().Be("./ForgotPasswordConfirmation",
                                           "the refusal must be indistinguishable from a send");
     }
 
     /// <summary>
-    /// Grinding at one address stops producing mail once the allowance is spent: with the default
-    /// five free attempts, the sixth send arms the backoff and the seventh is refused.
+    /// Polling the form for somebody else's address neither grows their wait nor restarts it: a request
+    /// a minute for an hour produces one mail per cooldown, and the owner is never further than one
+    /// cooldown from the next.
     /// </summary>
     [Fact]
-    public async Task GrindingAtAnAddressStopsProducingMail()
+    public async Task PollingAnAddressNeitherGrowsNorRestartsItsWait()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
-        await SeedUserAsync(users, "ground@example.com");
+        HSUser user = await SeedUserAsync(users, "polled@example.com");
         CapturingEmailSender sender = new();
+        FakeTimeProvider time = new(Start);
 
-        for (int i = 0; i < 10; i++)
+        for (int minute = 0; minute < 60; minute++)
         {
-            await NewForgotModel(context, users, httpContext, sender, "ground@example.com")
+            await NewForgotModel(context, users, httpContext, sender, "polled@example.com", time)
                 .OnPostAsync(TestContext.Current.CancellationToken);
+
+            time.Advance(TimeSpan.FromMinutes(1));
         }
 
-        // The first backoff is 30 seconds and this loop takes far less, so the count is exact: five
-        // free sends, a sixth that arms the lockout as it goes out, and nothing after it.
-        sender.SentEmails.Should().HaveCount(6, "ten requests must not become ten emails");
+        int expected = (int)(TimeSpan.FromHours(1) / ForgotPasswordModel.SendCooldown);
+
+        sender.SentEmails.Should().HaveCount(expected, "a refused request must not push the next send back");
+
+        TimeSpan? remaining = await NewLimiter(context).RemainingLockoutAsync(
+            user.Id, LimitedAction.SendPasswordResetEmail, time.GetUtcNow(), TestContext.Current.CancellationToken);
+
+        (remaining ?? TimeSpan.Zero).Should().BeLessThanOrEqualTo(ForgotPasswordModel.SendCooldown,
+                                                                 "sixty requests must not have bought a longer wait than one");
     }
 
-    /// <summary>An unknown address counts nothing, so the table cannot say what exists.</summary>
+    /// <summary>An unknown address starts nothing, so the table cannot say what exists.</summary>
     [Fact]
     public async Task AnUnknownAddressWritesNothing()
     {
@@ -144,7 +158,7 @@ public sealed class AccountEmailBackoffTests : IDisposable
             IdentityTestHarness.BuildIdentityServices(context);
 
         CapturingEmailSender sender = new();
-        await NewForgotModel(context, users, httpContext, sender, "nobody@example.com")
+        await NewForgotModel(context, users, httpContext, sender, "nobody@example.com", TimeProvider.System)
             .OnPostAsync(TestContext.Current.CancellationToken);
 
         sender.SentEmails.Should().BeEmpty();
@@ -153,75 +167,45 @@ public sealed class AccountEmailBackoffTests : IDisposable
     }
 
     /// <summary>
-    /// A completed reset clears the count - the counted mail was acted on, so the backoff only ever
-    /// stands between an address and mail nobody is using.
+    /// The resend-confirmation form is held the same way, on its own row, and answers a send and a
+    /// refusal with one sentence - which names the cooldown, so that it is true of both.
     /// </summary>
     [Fact]
-    public async Task CompletingTheResetClearsTheBackoff()
+    public async Task AResendStartsTheCooldownAndAnAccountInsideItGetsTheSameSentence()
     {
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
-            IdentityTestHarness.BuildIdentityServices(context);
-
-        HSUser user = await SeedUserAsync(users, "recovers@example.com");
-
-        AttemptLimiter limiter = NewLimiter(context);
-        for (int i = 0; i < 3; i++)
-        {
-            await limiter.RecordFailedAttemptAsync(user.Id, LimitedAction.SendPasswordResetEmail,
-                                                   DateTimeOffset.UtcNow, CancellationToken.None);
-        }
-
-        ResetPasswordModel model = new(users, new ApiTokenService(context), new UnitOfWork(context),
-                                       NewLimiter(context), TestLocaliser.Shared(),
-                                       NullLogger<ResetPasswordModel>.Instance)
-        {
-            PageContext = IdentityTestHarness.NewPageContext(httpContext),
-            Input = new ResetPasswordModel.InputModel
-            {
-                Email = "recovers@example.com",
-                Password = "Different-Horse-Battery-Staple-2!",
-                ConfirmPassword = "Different-Horse-Battery-Staple-2!",
-                Code = await users.GeneratePasswordResetTokenAsync(user),
-            },
-        };
-
-        await model.OnPostAsync(CancellationToken.None);
-
-        (await context.UserActionAttempts.AsNoTracking().CountAsync(TestContext.Current.CancellationToken))
-            .Should().Be(0, "a completed reset is what the counted emails were for");
-    }
-
-    /// <summary>The resend-confirmation form is bounded the same way, on its own counter.</summary>
-    [Fact]
-    public async Task AResendIsCountedAndABackedOffAccountGetsTheSameSentence()
-    {
+        using RequestCulture request = RequestCulture.English();
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
             IdentityTestHarness.BuildIdentityServices(context);
 
         HSUser user = await SeedUserAsync(users, "resend@example.com", confirmed: false);
         CapturingEmailSender sender = new();
+        FakeTimeProvider time = new(Start);
 
-        await NewResendModel(context, users, httpContext, sender, "resend@example.com")
-            .OnPostAsync(TestContext.Current.CancellationToken);
+        ResendEmailConfirmationModel sent = NewResendModel(context, users, httpContext, sender, "resend@example.com", time);
+        await sent.OnPostAsync(TestContext.Current.CancellationToken);
 
         sender.SentEmails.Should().ContainSingle();
 
-        // The send above already created the row, so the backoff is armed on it rather than added.
-        UserActionAttempt attempt = await context.UserActionAttempts
+        UserActionAttempt attempt = await context.UserActionAttempts.AsNoTracking()
             .SingleAsync(a => a.UserId == user.Id && a.Action == LimitedAction.SendConfirmationEmail,
                          TestContext.Current.CancellationToken);
 
-        attempt.FailedCount = 6;
-        attempt.LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(10);
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        attempt.LockoutEnd.Should().Be(Start + ResendEmailConfirmationModel.SendCooldown);
 
-        IActionResult result = await NewResendModel(context, users, httpContext, sender, "resend@example.com")
-            .OnPostAsync(TestContext.Current.CancellationToken);
+        time.Advance(TimeSpan.FromMinutes(1));
 
-        sender.SentEmails.Should().ContainSingle("the backed-off resend must not mail");
-        result.Should().BeOfType<PageResult>("the same page and the same sentence as a successful resend");
+        ResendEmailConfirmationModel refused = NewResendModel(context, users, httpContext, sender, "resend@example.com", time);
+        IActionResult result = await refused.OnPostAsync(TestContext.Current.CancellationToken);
+
+        sender.SentEmails.Should().ContainSingle("the resend inside the cooldown must not mail");
+        result.Should().BeOfType<PageResult>("the same page as a successful resend");
+
+        string sentence = SentenceOf(sent);
+
+        SentenceOf(refused).Should().Be(sentence, "the refusal must be indistinguishable from a send");
+        sentence.Should().Contain($"{(int)ResendEmailConfirmationModel.SendCooldown.TotalMinutes} minutes",
+                                  "the sentence is only true of a refusal if it says how recent the last mail can be");
     }
 
     /// <summary>
@@ -241,38 +225,15 @@ public sealed class AccountEmailBackoffTests : IDisposable
         (await users.UpdateAsync(user)).Succeeded.Should().BeTrue();
         CapturingEmailSender sender = new();
 
-        await NewResendModel(context, users, httpContext, sender, "dane@example.com")
+        await NewResendModel(context, users, httpContext, sender, "dane@example.com", TimeProvider.System)
             .OnPostAsync(TestContext.Current.CancellationToken);
 
         sender.SentEmails.Should().ContainSingle().Which.subject.Should().Be("Bekræft din e-mailadresse");
     }
 
-    /// <summary>Confirming the address clears the resend counter.</summary>
-    [Fact]
-    public async Task ConfirmingTheAddressClearsTheBackoff()
+    private static string SentenceOf(ResendEmailConfirmationModel model)
     {
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        (UserManager<HSUser> users, _, DefaultHttpContext httpContext, _) =
-            IdentityTestHarness.BuildIdentityServices(context);
-
-        HSUser user = await SeedUserAsync(users, "confirms@example.com", confirmed: false);
-
-        await NewLimiter(context).RecordFailedAttemptAsync(user.Id, LimitedAction.SendConfirmationEmail,
-                                                           DateTimeOffset.UtcNow, CancellationToken.None);
-
-        string token = await users.GenerateEmailConfirmationTokenAsync(user);
-
-        ConfirmEmailModel model = new(users, NewLimiter(context), TestLocaliser.Shared())
-        {
-            PageContext = IdentityTestHarness.NewPageContext(httpContext),
-        };
-
-        await model.OnGetAsync(user.Uuid,
-                               WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token)),
-                               TestContext.Current.CancellationToken);
-
-        (await context.UserActionAttempts.AsNoTracking().CountAsync(TestContext.Current.CancellationToken))
-            .Should().Be(0);
+        return model.ModelState[string.Empty]!.Errors.Should().ContainSingle().Which.ErrorMessage;
     }
 
     private static AttemptLimiter NewLimiter(HomespoolDbContext context)
@@ -285,9 +246,10 @@ public sealed class AccountEmailBackoffTests : IDisposable
                                                       UserManager<HSUser> users,
                                                       DefaultHttpContext httpContext,
                                                       CapturingEmailSender sender,
-                                                      string email)
+                                                      string email,
+                                                      TimeProvider time)
     {
-        return new ForgotPasswordModel(users, sender, NewLimiter(context), TimeProvider.System,
+        return new ForgotPasswordModel(users, sender, NewLimiter(context), time,
                                        TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
@@ -300,9 +262,10 @@ public sealed class AccountEmailBackoffTests : IDisposable
                                                                UserManager<HSUser> users,
                                                                DefaultHttpContext httpContext,
                                                                CapturingEmailSender sender,
-                                                               string email)
+                                                               string email,
+                                                               TimeProvider time)
     {
-        return new ResendEmailConfirmationModel(users, sender, NewLimiter(context), TimeProvider.System,
+        return new ResendEmailConfirmationModel(users, sender, NewLimiter(context), time,
                                                 TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

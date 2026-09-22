@@ -29,6 +29,14 @@ namespace Homespool.Host.Pages.Account;
 [EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class ForgotPasswordModel : PageModel
 {
+    /// <summary>How long an account waits after one reset mail before this form will send it another.</summary>
+    /// <remarks>
+    /// Far shorter than a reset link lives, and a later link does not cancel an earlier one - so
+    /// whenever a send is refused, a link that still works is already in the inbox. The confirmation
+    /// page names this figure, which is what lets it be true for every caller.
+    /// </remarks>
+    public static readonly TimeSpan SendCooldown = TimeSpan.FromMinutes(15);
+
     private readonly UserManager<HSUser> _userManager;
     private readonly IDeferredEmailSender _emailSender;
     private readonly AttemptLimiter _attemptLimiter;
@@ -83,13 +91,17 @@ public class ForgotPasswordModel : PageModel
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
 
-            // Each send is counted against the account the mail is addressed to, and a backed-off
-            // account is answered with the same redirect and no mail. The address is the only handle
+            // Each send starts a fixed cooldown on the account the mail is addressed to, and an account
+            // inside it is answered with the same redirect and no mail. The address is the only handle
             // an anonymous caller offers, so the target account - not the caller - is the thing that
             // can be bounded; without this, anyone who knows an address can fill its inbox and drain
             // the deployment's SMTP quota at request rate. Silently, for the reason the arm above is
             // silent: a refusal that looked different here would say the address is registered.
-            // Completing the reset clears the count - see ResetPasswordModel.
+            //
+            // A cooldown rather than a counted backoff, because the caller is not the account: a wait
+            // that grew with use would be grown by whoever knows the address and served by the person
+            // who needs the mail. This one never grows and a refused request does not restart it, so
+            // the most a stranger can do is make the owner use a link under SendCooldown old.
             DateTimeOffset now = _timeProvider.GetUtcNow();
 
             if (await _attemptLimiter.RemainingLockoutAsync(
@@ -98,8 +110,8 @@ public class ForgotPasswordModel : PageModel
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
 
-            await _attemptLimiter.RecordFailedAttemptAsync(
-                user.Id, LimitedAction.SendPasswordResetEmail, now, cancellationToken);
+            await _attemptLimiter.StartCooldownAsync(
+                user.Id, LimitedAction.SendPasswordResetEmail, now, SendCooldown, cancellationToken);
 
             // For more information on how to enable account confirmation and password reset please
             // visit https://go.microsoft.com/fwlink/?LinkID=532713

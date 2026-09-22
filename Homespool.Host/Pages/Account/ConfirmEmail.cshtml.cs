@@ -14,7 +14,6 @@ using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account;
@@ -23,15 +22,12 @@ namespace Homespool.Host.Pages.Account;
 public class ConfirmEmailModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
-    private readonly AttemptLimiter _attemptLimiter;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ConfirmEmailModel(UserManager<HSUser> userManager,
-                             AttemptLimiter attemptLimiter,
                              IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
-        _attemptLimiter = attemptLimiter;
         _localiser = localiser;
     }
 
@@ -63,13 +59,6 @@ public class ConfirmEmailModel : PageModel
         }
 
         IdentityResult result = await _userManager.ConfirmEmailAsync(user, token);
-
-        if (result.Succeeded)
-        {
-            // A confirmed address is what the counted confirmation emails were for, so the send
-            // backoff on ResendEmailConfirmation clears with it.
-            await _attemptLimiter.ResetAsync(user.Id, LimitedAction.SendConfirmationEmail, cancellationToken);
-        }
 
         StatusMessage = result.Succeeded ?
             _localiser["Account_EmailConfirmed"] :

@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 
@@ -27,11 +29,13 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     private readonly TokenService _tokenService;
     private readonly UnitOfWork _unitOfWork;
     private readonly VerifiedPrinterTokens _verifiedTokens;
+    private readonly ProvisioningHashBudget _hashBudget;
 
     public PrusaConnectPrinterAuthenticationHandler(HomespoolDbContext dbContext,
                                                     TokenService tokenService,
                                                     UnitOfWork unitOfWork,
                                                     VerifiedPrinterTokens verifiedTokens,
+                                                    ProvisioningHashBudget hashBudget,
                                                     IOptionsMonitor<PrusaConnectAuthenticationSchemeOptions> options,
                                                     ILoggerFactory loggerFactory,
                                                     UrlEncoder encoder)
@@ -41,6 +45,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         _tokenService = tokenService;
         _unitOfWork = unitOfWork;
         _verifiedTokens = verifiedTokens;
+        _hashBudget = hashBudget;
     }
 
     private static AuthenticationTicket BuildTicket(int printerId, Printer printer)
@@ -303,17 +308,26 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
 
     /// <summary>
     /// First contact for a USB-provisioned printer. The provisioning table holds only unbound tokens
-    /// (binding deletes the row), one per printer at most, so a per-row
-    /// <see cref="TokenService.VerifyToken"/> is cheap; it cannot be pushed into SQL because the
-    /// stored value is a salted PBKDF2 hash. A match is promoted into the enrolled table under a
-    /// transaction, so every later request from this printer takes the hot path above.
+    /// (binding deletes the row), one per printer at most, and each is checked with a
+    /// <see cref="TokenService.VerifyToken"/>; that cannot be pushed into SQL because the stored value
+    /// is a salted PBKDF2 hash. A match is promoted into the enrolled table under a transaction, so
+    /// every later request from this printer takes the hot path above.
     /// </summary>
     /// <remarks>
-    /// <b>The age filter is what keeps "cheap" true, and it belongs in the query.</b> This is the
-    /// path an unknown fingerprint reaches, so its cost is chosen by whoever sends the request: one
-    /// PBKDF2 per row that comes back, before anything has been authenticated. Filtering in SQL means
-    /// an expired credential costs an index read rather than a hash, and the rate limiter on the
-    /// endpoints in front of this bounds how often even that can be asked for.
+    /// <para>
+    /// <b>This is the path an unknown fingerprint reaches, so its cost is chosen by whoever sends the
+    /// request</b>: one PBKDF2 per live row, before anything has been authenticated, and any account can
+    /// add rows. Two things bound it. The age filter belongs in the query, so an expired credential
+    /// costs an index read rather than a hash. And every hash is drawn from
+    /// <see cref="ProvisioningHashBudget"/>, which caps the work across all callers however many rows
+    /// there are - the route limits in front of this count requests, which is the wrong unit here.
+    /// </para>
+    /// <para>
+    /// <b>The candidates are shuffled</b> because the budget can run out part-way through them. In a
+    /// fixed order a printer whose row came after more rows than the budget allows would never be
+    /// reached while a flood lasted; shuffled, each retry checks a different subset, so a real printer
+    /// gets through within a few of the retries firmware makes on its own.
+    /// </para>
     /// </remarks>
     private async Task<AuthenticateResult> BindProvisionedPrinterAsync(string fingerprint, string token)
     {
@@ -324,8 +338,19 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
                                                                  .Include(p => p.Printer)
                                                                  .ToListAsync();
 
+        RandomNumberGenerator.Shuffle(CollectionsMarshal.AsSpan(pending));
+
         foreach (PrusaConnectProvisioning candidate in pending)
         {
+            if (!_hashBudget.TryTake())
+            {
+                ReportExhaustedBudget();
+
+                // The same answer an unknown printer gets, so a printer that happened to arrive
+                // during a flood retries exactly as it would have anyway.
+                return AuthenticateResult.Fail("Printer unknown");
+            }
+
             if (_tokenService.VerifyToken(token, candidate.HashedToken))
             {
                 return await PromoteProvisionedPrinterAsync(candidate, fingerprint, token);
@@ -344,6 +369,26 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             PrusaConnectService.ProvisioningTokenLifetime.TotalHours);
 
         return AuthenticateResult.Fail("Printer unknown");
+    }
+
+    /// <summary>
+    /// Says, at most once a <see cref="ProvisioningHashBudget.ReportInterval"/>, that first contacts
+    /// are being refused for want of hashes - the one line a flood produces, rather than one a request.
+    /// </summary>
+    private void ReportExhaustedBudget()
+    {
+        if (_hashBudget.TakeReport() is not { } refused)
+        {
+            return;
+        }
+
+        Logger.LogWarning(
+            "The printer port's budget for checking USB-key provisioning tokens is spent: {Refused} hash(es) refused since " +
+            "the last report. Unknown fingerprints are arriving faster than {HashesPerSecond} hashes a second allow, so a " +
+            "USB-key printer making first contact now is refused as unknown and will get through when it retries after " +
+            "the traffic eases.",
+            refused,
+            ProvisioningHashBudget.HashesPerSecond);
     }
 
     private async Task<AuthenticateResult> PromoteProvisionedPrinterAsync(PrusaConnectProvisioning provisioning,

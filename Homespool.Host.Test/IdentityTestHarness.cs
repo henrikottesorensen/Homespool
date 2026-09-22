@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
@@ -47,6 +48,10 @@ internal static class IdentityTestHarness
         // Host assembly, and a test asserts on the error code rather than the wording.
         services.AddLocalization();
         services.AddSingleton(context);
+
+        // Empty, as a run with no settings file has it: the passkey scheme reads AllowedHosts from here,
+        // and a test that wants served names registers a configuration of its own over this one.
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddSingleton<IHttpContextAccessor>(new HttpContextAccessor { HttpContext = httpContext });
 
         // The Identity.Application cookie scheme is what LocalSignIn.SignInAsync writes to, and

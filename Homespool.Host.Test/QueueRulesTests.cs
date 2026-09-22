@@ -367,6 +367,61 @@ public class QueueRulesTests
     }
 
     /// <summary>
+    /// A head queued under an authority that may no longer print waits under its own reason, whatever
+    /// the printer is doing and wherever its file is - the rules never answer a send the gate refuses.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllStates))]
+    public void AHeadWhoseQueuerLostAccessWaitsInEveryState(PrinterStatus status)
+    {
+        foreach ((bool arrived, string? path) in new[] { (false, (string?)null), (true, null), (true, "/usb/A~1.BGC") })
+        {
+            QueueAction action = QueueRules.Decide(
+                Situation(status, arrived, path) with { HeadAuthorityLapsed = true });
+
+            action.Kind.Should().Be(QueueActionKind.Wait);
+            action.Reason.Should().Be(QueueWaitReason.QueuerLostAccess);
+        }
+    }
+
+    /// <summary>
+    /// It outranks a hold, because every remedy a hold names ends in a send this authority would be
+    /// refused - and it does not route the advancer back into the transfer path as a space hold would.
+    /// </summary>
+    [Theory]
+    [InlineData(PrintHoldReason.InsufficientSpace)]
+    [InlineData(PrintHoldReason.TransferRefused)]
+    [InlineData(PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle)]
+    public void ALapsedQueuerOutranksAHold(PrintHoldReason hold)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: false, path: null) with
+            {
+                HeadAuthorityLapsed = true,
+                HoldReason = hold,
+            });
+
+        action.Reason.Should().Be(QueueWaitReason.QueuerLostAccess);
+    }
+
+    /// <summary>
+    /// A transfer already running is still reported as one: the bytes are moving, and saying otherwise
+    /// would contradict the printer.
+    /// </summary>
+    [Fact]
+    public void ATransferAlreadyRunningIsStillReportedWhenTheQueuerLostAccess()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: false, path: null) with
+            {
+                HeadAuthorityLapsed = true,
+                TransferInFlight = true,
+            });
+
+        action.Reason.Should().Be(QueueWaitReason.Transferring);
+    }
+
+    /// <summary>
     /// Between refused attempts the decision is a wait, so a page does not say "sending" while the
     /// loop is deliberately not sending.
     /// </summary>
@@ -413,7 +468,8 @@ public class QueueRulesTests
         bool expected = reason is QueueWaitReason.Transferring or
                                   QueueWaitReason.TransferRetrying or
                                   QueueWaitReason.AwaitingPrinterPath or
-                                  QueueWaitReason.PrinterNotAvailable;
+                                  QueueWaitReason.PrinterNotAvailable or
+                                  QueueWaitReason.QueuerLostAccess;
 
         MessageKey? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
 
@@ -421,8 +477,9 @@ public class QueueRulesTests
     }
 
     /// <summary>
-    /// Of the reasons that get a sentence, only the printer not being ready is the queue stopped on a
-    /// person - and that is what decides whether the page states it or whispers it.
+    /// Of the reasons that get a sentence, only the printer not being ready and a queuer who lost
+    /// access are the queue stopped on a person - and that is what decides whether the page states it
+    /// or whispers it.
     /// </summary>
     /// <remarks>
     /// <b>Every member, so a new reason cannot be added without deciding this about it.</b> The
@@ -436,9 +493,27 @@ public class QueueRulesTests
     /// </remarks>
     [Theory]
     [MemberData(nameof(AllWaitReasons))]
-    public void OnlyAPrinterThatIsNotReadyIsWaitingOnAPerson(QueueWaitReason reason)
+    public void OnlyTheWaitsAPersonClearsAreWaitingOnAPerson(QueueWaitReason reason)
     {
         QueueWaitDescription.NeedsAPerson(reason)
+                            .Should().Be(reason is QueueWaitReason.PrinterNotAvailable or
+                                                   QueueWaitReason.QueuerLostAccess);
+    }
+
+    /// <summary>
+    /// Only a printer that is not ready is cleared by making it ready - the one wait the page puts a
+    /// button beside.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="OnlyTheWaitsAPersonClearsAreWaitingOnAPerson"/> because a queuer who
+    /// lost access also waits on a person, and a ready printer would only let the loop be refused
+    /// again.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(AllWaitReasons))]
+    public void OnlyAPrinterThatIsNotReadyIsClearedByMakingItReady(QueueWaitReason reason)
+    {
+        QueueWaitDescription.ClearedByMakingReady(reason)
                             .Should().Be(reason == QueueWaitReason.PrinterNotAvailable);
     }
 

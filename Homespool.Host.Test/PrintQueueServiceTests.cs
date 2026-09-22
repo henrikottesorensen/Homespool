@@ -481,6 +481,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                              long userId,
                                              params Capability[] capabilities)
     {
+        TestAccounts.Add(context, userId);
         context.TeamMembers.Add(TestMemberships.With(teamId, userId, capabilities));
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -837,7 +838,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                        new QueueSnapshotReader(context, TestTelemetryContext.For(context),
                                                                new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
-                                                               TimeProvider.System),
+                                                               TimeProvider.System,
+                                                               new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance)),
                                        new UserNameLookup(context));
     }
 

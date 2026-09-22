@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Model;
@@ -48,16 +49,19 @@ public class QueueSnapshotReader
     private readonly TelemetryDbContext _telemetry;
     private readonly PrinterConnectionRegistry _registry;
     private readonly TimeProvider _timeProvider;
+    private readonly PrinterAccessService _access;
 
     public QueueSnapshotReader(HomespoolDbContext dbContext,
                                TelemetryDbContext telemetry,
                                PrinterConnectionRegistry registry,
-                               TimeProvider timeProvider)
+                               TimeProvider timeProvider,
+                               PrinterAccessService access)
     {
         _dbContext = dbContext;
         _telemetry = telemetry;
         _registry = registry;
         _timeProvider = timeProvider;
+        _access = access;
     }
 
     /// <summary>
@@ -117,6 +121,12 @@ public class QueueSnapshotReader
                                                   .Where(tool => tool.PrinterId == printerId)
                                                   .ToListAsync(cancellationToken);
 
+        // The question every send the loop makes for this entry will ask - the same service, the
+        // same authority and the same capability - so the page cannot say "sending" about a file the
+        // gate will refuse, and the loop does not spend a pass finding that out.
+        bool authorityLapsed = !await _access.AllowsAsync(printerId, QueueAdvancer.CallerFor(head),
+                                                          Capability.Print, cancellationToken);
+
         return new QueueSnapshot(
             _registry.IsConnected(printerId),
             live?.Status ?? PrinterStatus.Unknown,
@@ -125,7 +135,8 @@ public class QueueSnapshotReader
             IsTransferInFlight(onPrinter),
             printInFlight,
             CompatibilityHold(head.PrintFile, printer, tools) ?? onPrinter?.HoldReason,
-            TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()));
+            TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()),
+            authorityLapsed);
     }
 
     /// <summary>

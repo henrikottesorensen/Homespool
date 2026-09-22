@@ -38,8 +38,9 @@ namespace Homespool.Host.Queue;
 /// <b>It acts as the user who queued the print.</b> The loop is not a principal and must not become a
 /// way around <see cref="Capability.Print"/>: every command goes out under
 /// <see cref="QueuedPrint.QueuedByUserId"/>, so a member whose access is revoked between queueing and
-/// printing simply stops advancing. That is also the only handle on <i>whose</i> file it is, since the
-/// store is keyed by user.
+/// printing - a closed account included - stops advancing, and the rules say why
+/// (<see cref="QueueWaitReason.QueuerLostAccess"/>). That is also the only handle on <i>whose</i>
+/// file it is, since the store is keyed by user.
 /// </para>
 /// <para>
 /// <b>Everything it needs is persisted, so a tick is stateless.</b> It holds no per-printer memory
@@ -290,7 +291,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// queued it, which is privilege escalation across a time boundary: the membership half is
     /// re-checked at send time, and this is what re-checks the credential half beside it.
     /// </remarks>
-    private static Caller CallerFor(QueuedPrint head)
+    internal static Caller CallerFor(QueuedPrint head)
     {
         return Caller.Scoped(head.QueuedByUserId, CapabilitySet.Parse(head.QueuedByScope));
     }

@@ -290,6 +290,68 @@ public sealed class PrinterAccessServiceTests : IDisposable
             .Should().BeTrue("the same person on an unscoped credential withdraws their own work");
     }
 
+    /// <summary>
+    /// <b>A closed account keeps its membership row and can do nothing with it</b>, on every entry
+    /// point. Sign-in refusing it covers a person; this covers what acts as them without signing in -
+    /// the queue loop, on the authority recorded when they queued a print.
+    /// </summary>
+    [Fact]
+    public async Task AClosedAccountsMembershipGrantsNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        HSUser manager = await context.Users.SingleAsync(user => user.Id == Manager, TestContext.Current.CancellationToken);
+        manager.DeactivatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+        Guid uuid = (await context.Printers.SingleAsync(TestContext.Current.CancellationToken)).Uuid;
+
+        // Act & Assert
+        (await access.AllowsAsync(1, Caller.Unscoped(Manager), Capability.ViewPrinter, TestContext.Current.CancellationToken))
+            .Should().BeFalse("the row is still there, and it no longer grants the least of what it held");
+
+        await FluentActions
+              .Awaiting(() => access.RequireAsync(1, Caller.Unscoped(Manager), Capability.Print,
+                                                  TestContext.Current.CancellationToken))
+              .Should().ThrowAsync<TeamAccessDeniedException>();
+
+        (await access.FindAsync(uuid, Caller.Unscoped(Manager), Capability.ViewPrinter, TestContext.Current.CancellationToken))
+            .Should().BeNull();
+
+        (await access.AllowsWithdrawingAsync(1, Caller.Unscoped(Manager), Manager, TestContext.Current.CancellationToken))
+            .Should().BeFalse("not even their own work");
+
+        (await context.TeamMembers.CountAsync(member => member.UserId == Manager, TestContext.Current.CancellationToken))
+            .Should().Be(1, "closing an account keeps it listed");
+
+        (await access.AllowsAsync(1, Caller.Unscoped(User), Capability.Print, TestContext.Current.CancellationToken))
+            .Should().BeTrue("the team's other members are untouched");
+    }
+
+    /// <summary>
+    /// A membership with no account behind it grants nothing either - the column is a plain id, so
+    /// the row can outlive an account removed by hand.
+    /// </summary>
+    [Fact]
+    public async Task AMembershipWithNoAccountGrantsNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        int teamId = (await context.Printers.SingleAsync(TestContext.Current.CancellationToken)).TeamId;
+        context.TeamMembers.Add(TestMemberships.Manager(teamId, Stranger));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
+        // Act
+        bool allowed = await access.AllowsAsync(1, Caller.Unscoped(Stranger), Capability.ViewPrinter,
+                                                TestContext.Current.CancellationToken);
+
+        // Assert
+        allowed.Should().BeFalse();
+    }
+
     private async Task<HomespoolDbContext> SeedAsync()
     {
         HomespoolDbContext context = new(new DbContextOptionsBuilder<HomespoolDbContext>()
@@ -302,6 +364,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
+        TestAccounts.Add(context, Reader, User, Manager);
         context.TeamMembers.Add(TestMemberships.Viewer(team.Id, Reader));
         context.TeamMembers.Add(TestMemberships.Operator(team.Id, User));
         context.TeamMembers.Add(TestMemberships.Manager(team.Id, Manager));

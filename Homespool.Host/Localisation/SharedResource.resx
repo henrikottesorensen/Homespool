@@ -2121,6 +2121,14 @@
     <value>Waiting for the printer to be made ready.</value>
     <comment>States a rule nothing else on the page does - only a person offers a printer up for work - and that rule is what makes a correctly-working queue look broken to somebody who does not know it.</comment>
   </data>
+  <data name="Queue_WaitQueuerLostAccess" xml:space="preserve">
+    <value>{0} was queued by an account that can no longer print on this printer, so the queue has stopped here. Cancel this print, or restore the account's access, to let the queue carry on.</value>
+    <comment>The account was closed, left the team, or lost the right to print. Both remedies are named because the reader may hold either one: whoever manages the printer can cancel the print, and an administrator can reopen the account or restore the membership.</comment>
+  </data>
+  <data name="Queue_WaitQueuerLostAccessUnnamed" xml:space="preserve">
+    <value>The next print was queued by an account that can no longer print on this printer, so the queue has stopped here. Cancel this print, or restore the account's access, to let the queue carry on.</value>
+    <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
+  </data>
   <data name="Ini_HowToLoad" xml:space="preserve">
     <value>Homespool provisioning. Copy this file to the root of a USB stick - not into a folder, or the printer will not find it - and load it from the printer&apos;s own menu:</value>
     <comment>Ends at the colon. The menu path follows on a line of its own, unwrapped and in English, because it names a menu in the printer&apos;s firmware and is the one thing in this comment somebody will hunt for. Same class as the PrusaSlicer paths.</comment>

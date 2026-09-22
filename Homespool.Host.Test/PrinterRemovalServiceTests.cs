@@ -337,7 +337,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         return new PrinterRemovalService(
             context,
             new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-            new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System),
+            new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System,
+                                    new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance)),
             registry,
             telemetry ?? Substitute.For<ITelemetryEviction>(),
             NullLogger<PrinterRemovalService>.Instance);
@@ -345,6 +346,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
     private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, IReadOnlyList<Capability> capabilities)
     {
+        TestAccounts.Add(context, userId);
+
         Team team = new()
         {
             CreatedBy = userId,

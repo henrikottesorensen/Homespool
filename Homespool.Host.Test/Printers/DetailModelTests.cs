@@ -125,7 +125,7 @@ public sealed class DetailModelTests : IDisposable
                                   NullLogger<UserFileStore>.Instance);
 
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
-        QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System);
+        QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System, access);
         PrintHistoryService history = new(context, access, snapshots, new UserNameLookup(context));
 
         PrintQueueService queueService = new(context, access,
@@ -566,6 +566,65 @@ public sealed class DetailModelTests : IDisposable
 
         // Assert
         model.CanWithdraw(entry).Should().Be(offered);
+    }
+
+    /// <summary>
+    /// A queue stopped behind a closed account's print says so, loudly, and offers no Set ready - a
+    /// ready printer would only let the loop be refused again.
+    /// </summary>
+    [Fact]
+    public async Task AQueueStoppedBehindAClosedAccountSaysWhyAndOffersNoSetReady()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry, UserManager<HSUser> users) =
+            await NewModelWithUsersAsync(context);
+        HSUser other = await AddUserAsync(users, "other");
+
+        Printer printer = NewPrinter(team.Id);
+        printer.RemoteReadyAllowed = true;
+        context.Printers.Add(printer);
+        context.TeamMembers.Add(TestMemberships.Operator(team.Id, other.Id));
+
+        PrintFile file = new() { UserId = other.Id, Name = "theirs.bgcode", Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
+        context.PrintFiles.Add(file);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.QueuedPrints.Add(new QueuedPrint
+        {
+            PrinterId = printer.Id,
+            PrintFileId = file.Id,
+            PrintUuid = Guid.NewGuid(),
+            QueuedByUserId = other.Id,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedAt = DateTimeOffset.UtcNow,
+        });
+
+        // Idle rather than Ready: the one state where the page would otherwise offer Set ready.
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+
+        other.DeactivatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        registry.Register(printer.Id, actor, overPlaintext: false);
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.CanPrint.Should().BeTrue("the reader could press Set ready, so its absence is the rule and not the permission");
+        model.WaitingReason.Should().Be(QueueWaitReason.QueuerLostAccess);
+        model.WaitingOn.Should().Contain("theirs.bgcode");
+        model.WaitingOnAPerson.Should().BeTrue();
+        model.WaitingOnMakingReady.Should().BeFalse();
+        model.QueueStatusOf(0).Should().Be(QueueEntryStatus.Held);
     }
 
     private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string name)

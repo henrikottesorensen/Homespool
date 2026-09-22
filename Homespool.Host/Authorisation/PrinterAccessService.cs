@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Exceptions;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -282,8 +283,8 @@ public class PrinterAccessService
 
         // Only the column: nothing here needs the row, and projecting keeps a tracked entity from
         // being mutated by an unrelated save in the same scope, which would silently change an answer
-        // already given.
-        string? stored = await _dbContext.TeamMembers
+        // already given. Open accounts only, so a closed member is refused as a stranger is.
+        string? stored = await Memberships.Open(_dbContext)
                                          .AsNoTracking()
                                          .Where(member => member.TeamId == teamId && member.UserId == userId)
                                          .Select(member => member.Capabilities)

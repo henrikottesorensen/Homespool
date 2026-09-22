@@ -224,7 +224,8 @@ public class DetailModel : PageModel
             return QueueEntryStatus.Waiting;
         }
 
-        if (HoldKind is not null || WaitingReason == QueueWaitReason.IncompatibleWithPrinter)
+        if (HoldKind is not null ||
+            WaitingReason is QueueWaitReason.IncompatibleWithPrinter or QueueWaitReason.QueuerLostAccess)
         {
             return QueueEntryStatus.Held;
         }
@@ -414,6 +415,12 @@ public class DetailModel : PageModel
     /// into those the loop clears and those it does not.
     /// </remarks>
     public bool WaitingOnAPerson => QueueWaitDescription.NeedsAPerson(WaitingReason);
+
+    /// <summary>
+    /// Whether the person the queue is waiting on would clear it by making the printer ready - the
+    /// one wait with a button beside it. See <see cref="QueueWaitDescription.ClearedByMakingReady"/>.
+    /// </summary>
+    public bool WaitingOnMakingReady => QueueWaitDescription.ClearedByMakingReady(WaitingReason);
 
     /// <summary>
     /// Whether the caller holds <see cref="Capability.Print"/>: queueing, reprinting, setting the

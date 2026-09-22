@@ -69,6 +69,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                                        long userId,
                                                        IReadOnlyList<Capability> capabilities)
     {
+        TestAccounts.Add(context, userId);
+
         Team team = new()
         {
             CreatedBy = userId,
@@ -326,6 +328,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
+        TestAccounts.Add(context, 1);
         context.TeamMembers.Add(TestMemberships.With(team.Id, 1, Capability.ViewPrinter, Capability.Print));
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -383,6 +386,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // A contributor: may put work on the printer, may not steer it.
+        TestAccounts.Add(context, 1);
         context.TeamMembers.Add(TestMemberships.With(team.Id, 1, [.. CapabilityPresets.Contributor]));
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -442,6 +446,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
+        TestAccounts.Add(context, 1);
         context.TeamMembers.Add(TestMemberships.With(team.Id, 1, [.. CapabilityPresets.Contributor]));
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 

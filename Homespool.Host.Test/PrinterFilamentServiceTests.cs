@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
@@ -402,7 +403,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
 
         return new PrinterFilamentService(commands: null!,
-                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System),
+                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System,
+                                                                  new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance)),
                                           new ToolTargetReader(context, TestTelemetryContext.For(context)));
     }
 

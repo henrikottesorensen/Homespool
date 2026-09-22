@@ -126,6 +126,9 @@ public static class AuthenticationBuilderExtensions
 
     public static AuthenticationBuilder AddPrusaConnectPrinterAuthentication(this AuthenticationBuilder builder)
     {
+        // One per process, since what it remembers has to outlive the request that proved it.
+        builder.Services.AddSingleton<VerifiedPrinterTokens>();
+
         builder.AddScheme<PrusaConnectAuthenticationSchemeOptions, PrusaConnectPrinterAuthenticationHandler>(
             Schemes.PrusaConnectPrinter,
             options => { });

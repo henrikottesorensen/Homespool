@@ -150,6 +150,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
             context,
             new TokenService(),
             new UnitOfWork(context),
+            new VerifiedPrinterTokens(TimeProvider.System),
             new StaticOptionsMonitor(),
             NullLoggerFactory.Instance,
             UrlEncoder.Default);

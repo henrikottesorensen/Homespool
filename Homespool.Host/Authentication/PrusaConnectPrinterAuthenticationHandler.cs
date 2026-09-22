@@ -26,10 +26,12 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     private readonly HomespoolDbContext _dbContext;
     private readonly TokenService _tokenService;
     private readonly UnitOfWork _unitOfWork;
+    private readonly VerifiedPrinterTokens _verifiedTokens;
 
     public PrusaConnectPrinterAuthenticationHandler(HomespoolDbContext dbContext,
                                                     TokenService tokenService,
                                                     UnitOfWork unitOfWork,
+                                                    VerifiedPrinterTokens verifiedTokens,
                                                     IOptionsMonitor<PrusaConnectAuthenticationSchemeOptions> options,
                                                     ILoggerFactory loggerFactory,
                                                     UrlEncoder encoder)
@@ -38,6 +40,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         _dbContext = dbContext;
         _tokenService = tokenService;
         _unitOfWork = unitOfWork;
+        _verifiedTokens = verifiedTokens;
     }
 
     private static AuthenticationTicket BuildTicket(int printerId, Printer printer)
@@ -181,8 +184,18 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             return AuthenticateResult.Fail("Printer enrolment incomplete");
         }
 
+        // The row was read above whatever the memo holds, so a removed printer or a replaced credential
+        // is refused before the memo is asked anything. A miss is not a refusal: it falls through to
+        // the full verification, which is what keeps a wrong token's cost where it was.
+        if (_verifiedTokens.IsVerified(auth.HashedToken, token))
+        {
+            return AuthenticateResult.Success(BuildTicket(auth.PrinterId, auth.Printer));
+        }
+
         if (_tokenService.VerifyToken(token, auth.HashedToken))
         {
+            _verifiedTokens.Remember(auth.HashedToken, token);
+
             return AuthenticateResult.Success(BuildTicket(auth.PrinterId, auth.Printer));
         }
 

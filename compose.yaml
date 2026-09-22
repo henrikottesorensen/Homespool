@@ -848,11 +848,17 @@ services:
   # runs this service once per name in ACME_HOSTS, overriding LEGO_DOMAINS each time.
   #
   # Pinned to the major, not a digest. This container holds the DNS API token and writes every
-  # user-facing TLS key, and `docker compose run` pulls whatever the tag points at on the next
-  # timer - so an untagged image meant an unreviewed build about twice a month (lego released
+  # user-facing TLS key, and homespool-renew-cert.sh pulls whatever the tag points at before each
+  # daily run - so an untagged image meant an unreviewed build about twice a month (lego released
   # fourteen times between May and August 2026). A digest would be stricter but goes stale at
   # that cadence; the major keeps patch releases flowing and makes a breaking change a deliberate
   # edit here.
+  #
+  # The pull is the script's, not compose's. `docker compose run` does NOT re-pull a tag it already
+  # has - the default pull_policy is `missing` - so without it the first lego:v5 this machine
+  # fetched would run forever. Not `pull_policy: always` here either: the script starts this
+  # service several times a run, and that would make every one of those starts, reads included,
+  # fail whenever the registry cannot be reached.
   certs:
     logging: *logging
     image: goacme/lego:v5

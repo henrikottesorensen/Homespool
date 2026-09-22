@@ -88,6 +88,11 @@ test_case() {
 # Every invocation, flattened, for assertions about what was asked of the daemon.
 printf '%s\n' "$*" >> "$STUB_LOG"
 
+# A registry that cannot be reached, for the case that asks for one.
+case " $* " in
+    *" pull "*) [ -n "${STUB_PULL_FAILS:-}" ] && exit 1 ;;
+esac
+
 # The `-c` payload is the last argument when there is one.
 payload=''
 for a in "$@"; do payload="$a"; done
@@ -132,6 +137,7 @@ renew() {
         STUB_VERIFY_LOG="$scratch/verify.log" \
         STUB_ACME_HOSTS="$1" \
         STUB_CERTS_CHANGE="${2:-}" \
+        STUB_PULL_FAILS="${3:-}" \
             "$posix_sh" "$script" 2>&1
     )"
     status=$?
@@ -154,6 +160,27 @@ if test_case "a certificate that actually changed restarts the proxy"; then
     assert_status "$status" 0 "the run still succeeds"
     assert_contains "$(asked)" "restart proxy" "the proxy is restarted"
     assert_contains "$out" "certificates changed" "and says why"
+fi
+
+if test_case "the lego image is pulled before any name is renewed"; then
+    # compose.yaml floats lego on its major, and `compose run` never re-pulls a tag it already has -
+    # so without this the first lego:v5 the machine fetched is the one it runs for good.
+    renew "homespool.example.com"
+    pull_line="$(grep -n -- "pull --quiet certs" "$scratch/docker.log" | head -1 | cut -d: -f1)"
+    run_line="$(grep -n -- "LEGO_DOMAINS=" "$scratch/docker.log" | head -1 | cut -d: -f1)"
+    if [ -n "$pull_line" ] && [ -n "$run_line" ] && [ "$pull_line" -lt "$run_line" ]; then
+        passed=$((passed + 1))
+    else
+        fail "the pull comes before the first run" "pull at line ${pull_line:-none}, run at line ${run_line:-none}"
+    fi
+    assert_contains "$(asked)" "--profile certs pull --quiet certs" "through the certs profile, which is where the service lives"
+fi
+
+if test_case "a registry that cannot be reached warns, and the renewal goes ahead anyway"; then
+    renew "homespool.example.com" "" 1
+    assert_status "$status" 0 "an unreachable registry is not a failed renewal"
+    assert_contains "$out" "could not pull the current lego image" "but it is said"
+    assert_contains "$(asked)" "LEGO_DOMAINS=homespool.example.com" "and the name is still renewed with the image already here"
 fi
 
 if test_case "a hostile name never reaches a shell, and is refused by name"; then

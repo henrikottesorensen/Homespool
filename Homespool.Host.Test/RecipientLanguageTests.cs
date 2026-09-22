@@ -1,18 +1,13 @@
 using System;
 using System.Globalization;
-using System.IO;
-using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 
-using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
-using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
 
@@ -28,80 +23,12 @@ namespace Homespool.Host.Test;
 /// </para>
 /// <para>
 /// The alert service's own send loop is covered by <c>TelemetryAlertMailpitTests</c>, which needs a
-/// Mailpit container. These cover the two pieces that do not: resolving a language from an address,
-/// and Identity's one corrected message reading from resources.
+/// Mailpit container, and its recipients' languages by <c>AlertRecipientsTests</c>. This covers
+/// Identity's one corrected message reading from resources.
 /// </para>
 /// </remarks>
-public sealed class RecipientLanguageTests : IDisposable
+public sealed class RecipientLanguageTests
 {
-    private readonly string _databasePath =
-        Path.Combine(Path.GetTempPath(), $"hs-recipient-language-{Guid.NewGuid():N}.db");
-
-    public void Dispose()
-    {
-        foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-    }
-
-    /// <summary>
-    /// An address, not a user id - because that is all a sender has.
-    /// </summary>
-    [Fact]
-    public async Task ARecipientsLanguageIsFoundByTheirAddress()
-    {
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        UserCultures cultures = new(context);
-
-        await AddUserAsync(context, "dane@example.com", "da");
-        await AddUserAsync(context, "brit@example.com", null);
-
-        (await cultures.ForEmailAsync("dane@example.com", TestContext.Current.CancellationToken))
-            .Should().Be("da");
-
-        (await cultures.ForEmailAsync("brit@example.com", TestContext.Current.CancellationToken))
-            .Should().BeNull("nobody chose, so the caller falls back rather than being told English");
-
-        (await cultures.ForEmailAsync("nobody@example.com", TestContext.Current.CancellationToken))
-            .Should().BeNull("an address with no account is not an error, just nothing to go on");
-    }
-
-    /// <summary>
-    /// Casing must not decide somebody's language, which is why the lookup is on the normalised
-    /// address rather than the one that was typed.
-    /// </summary>
-    [Fact]
-    public async Task TheAddressIsMatchedRegardlessOfCasing()
-    {
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        UserCultures cultures = new(context);
-
-        await AddUserAsync(context, "Mixed.Case@Example.COM", "da");
-
-        (await cultures.ForEmailAsync("mixed.case@example.com", TestContext.Current.CancellationToken))
-            .Should().Be("da");
-    }
-
-    /// <summary>
-    /// A stored culture that is no longer shipped degrades to the default rather than throwing on
-    /// every email to whoever had selected it.
-    /// </summary>
-    [Fact]
-    public async Task ALanguageNoLongerShippedReadsAsNoChoice()
-    {
-        await using HomespoolDbContext context = await MigratedContextAsync();
-        UserCultures cultures = new(context);
-
-        await AddUserAsync(context, "german@example.com", "de-DE");
-
-        (await cultures.ForEmailAsync("german@example.com", TestContext.Current.CancellationToken))
-            .Should().BeNull();
-    }
-
     /// <summary>
     /// Identity's one corrected message now reads from resources, so a rejection arrives in the
     /// language the page is being rendered in.
@@ -152,30 +79,5 @@ public sealed class RecipientLanguageTests : IDisposable
             CultureInfo.CurrentCulture = previousCulture;
             CultureInfo.CurrentUICulture = previousUiCulture;
         }
-    }
-
-    private static async Task AddUserAsync(HomespoolDbContext context, string email, string? language)
-    {
-        context.Users.Add(new HSUser(email.Split('@')[0].Replace('.', '-'))
-        {
-            Email = email,
-            NormalizedEmail = email.ToUpperInvariant(),
-            EmailConfirmed = true,
-            Language = language,
-        });
-
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-    }
-
-    private async Task<HomespoolDbContext> MigratedContextAsync()
-    {
-        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-                                                       .UseSqlite($"Data Source={_databasePath}")
-                                                       .Options;
-
-        HomespoolDbContext context = new(options);
-        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
-
-        return context;
     }
 }

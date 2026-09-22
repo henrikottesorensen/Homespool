@@ -4,17 +4,14 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
-using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
-using Homespool.Model.Entities;
 
 namespace Homespool.Host.Health;
 
@@ -29,11 +26,10 @@ namespace Homespool.Host.Health;
 /// that it cannot do anything.
 /// </para>
 /// <para>
-/// <b>Recipients are cached deliberately.</b> They live in the database, and the alert worth sending
-/// most is the one about the database being unreachable - resolving them on demand would fail
-/// exactly when it matters. The list is refreshed on every healthy poll and used from cache when
-/// things go wrong, so an outage is reported to whoever was an administrator when things last
-/// worked.
+/// <b>Recipients are re-read every poll and kept when the read fails</b>, by
+/// <see cref="AlertRecipients"/>: a closed administrator stops receiving alerts within a poll, and
+/// an outage of the database the list lives in is still reported, to whoever was an administrator
+/// at the last read that worked.
 /// </para>
 /// </remarks>
 public sealed class TelemetryAlertService : BackgroundService
@@ -48,7 +44,8 @@ public sealed class TelemetryAlertService : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<TelemetryAlertService> _logger;
 
-    private IReadOnlyList<string> _recipients = [];
+    private readonly AlertRecipients _recipients;
+
     private bool _alerted;
 
     public TelemetryAlertService(HealthCheckService healthChecks,
@@ -58,6 +55,7 @@ public sealed class TelemetryAlertService : BackgroundService
         _healthChecks = healthChecks;
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _recipients = new AlertRecipients(scopeFactory, logger);
     }
 
     /// <summary>Reuses each check's own description, so the email, the banner and <c>/health</c> all
@@ -106,16 +104,11 @@ public sealed class TelemetryAlertService : BackgroundService
         {
             HealthReport report = await _healthChecks.CheckHealthAsync(cancellationToken);
 
-            if (ShouldRefreshRecipients())
-            {
-                // Attempted whatever the health status. This used to run only while Healthy, on the
-                // reasoning that health implies a reachable database - but it does not: DiscardedEvents
-                // is cumulative, so a service stays Unhealthy long after the database recovers. Gating
-                // on it meant a writer that had ever dropped events could never learn who to tell.
-                // Having nobody to alert is exactly when the attempt is worth making; if the database
-                // really is down this throws, is caught below, and is retried on the next poll.
-                await RefreshRecipientsAsync(cancellationToken);
-            }
+            // Whatever the health status: health does not imply a reachable database or its absence -
+            // DiscardedEvents is cumulative, so a service stays Unhealthy long after the database
+            // recovers. A read that fails keeps the last list rather than throwing, so the alert
+            // below is still sent.
+            await _recipients.RefreshAsync(cancellationToken);
 
             switch (AlertTransition.Decide(report.Status, _alerted))
             {
@@ -152,7 +145,9 @@ public sealed class TelemetryAlertService : BackgroundService
         Func<IStringLocalizer<SharedResource>, string> body,
         CancellationToken cancellationToken)
     {
-        if (_recipients.Count == 0)
+        IReadOnlyList<AlertRecipient> recipients = _recipients.Current;
+
+        if (recipients.Count == 0)
         {
             _logger.LogWarning("{Subject}, but no administrator address is known to send it to.", subjectKey);
 
@@ -163,22 +158,19 @@ public sealed class TelemetryAlertService : BackgroundService
         IEmailSender sender = scope.ServiceProvider.GetRequiredService<IEmailSender>();
         IStringLocalizer<SharedResource> localiser =
             scope.ServiceProvider.GetRequiredService<IStringLocalizer<SharedResource>>();
-        UserCultures cultures = scope.ServiceProvider.GetRequiredService<UserCultures>();
 
         bool anySent = false;
 
-        foreach (string recipient in _recipients)
+        foreach (AlertRecipient recipient in recipients)
         {
             // Composed per recipient rather than once for everyone: two administrators can read
             // Homespool in different languages, and there is no request here to inherit a culture
             // from. This is the path HSUser.Language exists for.
-            string? culture = await cultures.ForEmailAsync(recipient, cancellationToken);
-
             (string subject, string message) = UserCultures.InCulture(
-                culture,
+                recipient.Culture,
                 () => (localiser[subjectKey].Value, body(localiser)));
 
-            EmailSendResult result = await sender.SendEmailAsync(recipient, subject, message);
+            EmailSendResult result = await sender.SendEmailAsync(recipient.Email, subject, message);
 
             if (result == EmailSendResult.Sent)
             {
@@ -186,48 +178,10 @@ public sealed class TelemetryAlertService : BackgroundService
             }
             else
             {
-                _logger.LogWarning("Could not email the health alert to {Recipient}.", recipient);
+                _logger.LogWarning("Could not email the health alert to {Recipient}.", recipient.Email);
             }
         }
 
         return anySent;
-    }
-
-    /// <summary>
-    /// Read once, and only until there is somebody to read.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Reading a single time at startup would be enough if administrators existed by then, but a
-    /// fresh deployment starts before anyone has been through <c>/setup</c>, so the first read finds
-    /// nobody. Retrying only while the list is empty covers that without polling for something that
-    /// never changes: an ordinary start with an administrator already present reads once and stops,
-    /// and a new install picks the first one up within a poll of setup completing.
-    /// </para>
-    /// <para>
-    /// The list barely moves: <c>AddToRoleAsync</c> for the administrator role is called in exactly
-    /// one place, <c>Setup.OnPostAsync</c>, and nothing ever revokes it - so the population is fixed
-    /// at setup. The single way this cache can go stale is an administrator changing their own
-    /// address on Account/Manage/Email, after which alerts go to the old one until the service
-    /// restarts. Accepted deliberately: closing it means either a hook from that page into this
-    /// service, or re-reading on a schedule for a list that otherwise never changes at all.
-    /// </para>
-    /// </remarks>
-    private bool ShouldRefreshRecipients()
-    {
-        return _recipients.Count == 0;
-    }
-
-    private async Task RefreshRecipientsAsync(CancellationToken cancellationToken)
-    {
-        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-
-        IList<HSUser> admins = await users.GetUsersInRoleAsync(AdminBootstrap.AdminRole);
-
-        _recipients = admins.Select(a => a.Email)
-                            .Where(email => !string.IsNullOrWhiteSpace(email))
-                            .Select(email => email!)
-                            .ToList();
     }
 }

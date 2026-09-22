@@ -11,15 +11,27 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Read-only, for every job. Nothing here pushes, comments or publishes, so the token each run is handed
+# needs to read the repository and nothing more - and a step that turns out to be compromised gets that
+# much and no further. Without this block the token takes the repository's default, which a settings
+# change can widen without anything in this file saying so.
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v7
+      # Every action is pinned to a commit, with the release it was in beside it. A tag is a movable
+      # pointer: whoever controls the action's repository can repoint `v7` at different code, and every
+      # run after that executes it with this job's token and secrets - the tj-actions/changed-files
+      # compromise, March 2025, was exactly that. A commit cannot be moved. Dependabot proposes the
+      # updates (.github/dependabot.yml) and keeps the comment in step.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           # `global.json` sets a floor - 10.0.302, rolling forward to the newest feature band a
           # machine has - because Roslyn ships inside the SDK, so an older band silently enforces
@@ -31,7 +43,7 @@ jobs:
       # The Host's build runs ESLint over wwwroot/js and needs Node for it. Stated rather than taken from
       # the runner image, whose Node version is the image's to change, and ESLint refuses one too old.
       # 24 to match NODE_MAJOR in Homespool.Host/Dockerfile.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
 
@@ -149,7 +161,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Test setup-env.sh on Apple's bash 3.2
         run: /bin/bash tests/setup-env.test.sh

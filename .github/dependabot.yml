@@ -1,0 +1,16 @@
+# The workflow's actions are pinned to commits, which never move on their own - so something has to
+# propose the move. Dependabot opens a pull request with the new commit and rewrites the release
+# comment beside it, and the pin changes only when that is merged.
+#
+# Actions only. The container base images float on purpose (see the comment on `certs` in
+# compose.yaml, and --pull in build.sh): their patch releases are the point, and a digest here would
+# freeze them between pull requests nobody is obliged to merge.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

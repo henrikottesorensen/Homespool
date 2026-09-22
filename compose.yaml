@@ -356,8 +356,8 @@ services:
     # never restart on it. A monitor is told the overall status and nothing more; the report behind
     # it goes to a signed-in administrator only, since it maps the deployment for whoever asks.
 
-  # go2rtc reads cameras, so Homespool does not have to know how: go2rtc ingests RTSP, ONVIF, HTTP
-  # and V4L2 and re-serves every one of them as a plain JPEG over HTTP,
+  # go2rtc reads cameras, so Homespool does not have to know how: go2rtc ingests RTSP, HTTP and V4L2
+  # and re-serves every one of them as a plain JPEG over HTTP,
   # which is why there is no camera protocol anywhere in the application.
   #
   # Homespool owns this container's configuration: cameras are added in Homespool, which registers

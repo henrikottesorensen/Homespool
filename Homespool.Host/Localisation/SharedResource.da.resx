@@ -1918,7 +1918,7 @@
     <value>Det er ikke en fuldstændig adresse. En kameraadresse ligner noget som f.eks. rtsp://192.168.1.50/live eller http://192.168.1.50/snapshot.jpg.</value>
   </data>
   <data name="Cameras_SourceScheme" xml:space="preserve">
-    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, http, https, rtmp eller onvif.</value>
+    <value>Homespool kan ikke læse kameraer over {0}. Brug rtsp, rtsps, http, https eller rtmp.</value>
   </data>
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">
     <value>{0} slår op til {1}, som er selve denne server og ikke et kamera på dit netværk.</value>

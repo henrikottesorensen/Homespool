@@ -61,13 +61,17 @@ public sealed class CameraSourcePolicy
     /// Schemes a camera source may use. Everything else is refused.
     /// </summary>
     /// <remarks>
-    /// <b><c>onvif</c> is here because go2rtc resolves it to a stream itself</b>, which is the whole
-    /// reason the sidecar exists — an ONVIF camera is one address rather than a discovery step the
-    /// person adding it has to perform by hand. It names a host like the others, so the
-    /// reachability check below applies to it unchanged.
+    /// <b><c>onvif</c> is not here, although go2rtc reads it.</b> For an ONVIF address the sidecar
+    /// asks the device for its stream address and opens whatever the reply names, and nothing checks
+    /// the reply: its own screening refuses only <c>exec</c>, <c>echo</c>, <c>expr</c> and
+    /// whitespace. So the host checked below is not the source that gets opened. A device answering
+    /// with an <c>ffmpeg:</c> source would claim an attached camera without the administrator that
+    /// claim requires. One answering with the sidecar's own RTSP port on loopback, which asks no
+    /// credential of loopback, would relay another team's stream. Every ONVIF camera also serves the
+    /// RTSP address it would have answered with, and that address can be entered here directly.
     /// </remarks>
     private static readonly HashSet<string> AllowedSchemes =
-        new(StringComparer.OrdinalIgnoreCase) { "rtsp", "rtsps", "http", "https", "rtmp", "onvif" };
+        new(StringComparer.OrdinalIgnoreCase) { "rtsp", "rtsps", "http", "https", "rtmp" };
 
     private readonly IHostAddressResolver _resolver;
     private readonly IOptionsMonitor<CameraOptions> _options;

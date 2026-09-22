@@ -27,8 +27,6 @@ public class CameraSourcePolicyTests
     [InlineData("http://192.168.1.50/snapshot.jpg")]
     [InlineData("https://cam.example/snapshot")]
     [InlineData("rtmp://192.168.1.50/stream")]
-    [InlineData("onvif://192.168.1.50")]
-    [InlineData("onvif://user:pass@cam.example")]
     public async Task AnOrdinaryCameraAddressIsAccepted(string source)
     {
         CameraSourcePolicy policy = Build();
@@ -108,21 +106,23 @@ public class CameraSourcePolicyTests
     }
 
     /// <summary>
-    /// The same refusal through <c>onvif</c>, which is worth its own test rather than another row
-    /// above: .NET has no registered parser for that scheme, so whether it populates
-    /// <c>Uri.Host</c> at all is what decides if the check above applies to it or silently passes
-    /// everything. An empty host would resolve to nothing and accept a loopback address.
+    /// An <c>onvif</c> address is refused however ordinary its host, because the host is not what
+    /// the sidecar ends up reading: it asks the device for a stream address and opens whatever
+    /// comes back, unchecked - an <c>ffmpeg:</c> source or the sidecar's own loopback RTSP port
+    /// included. Its own test rather than rows above, since the host here resolves to an ordinary
+    /// camera and the refusal must not depend on it.
     /// </summary>
-    [Fact]
-    public async Task AnOnvifHostResolvingToThisServerIsRefused()
+    [Theory]
+    [InlineData("onvif://192.168.1.50")]
+    [InlineData("onvif://user:pass@cam.example")]
+    public async Task AnOnvifAddressIsRefusedWhereverItPoints(string source)
     {
-        CameraSourcePolicy policy = Build("127.0.0.1");
+        CameraSourcePolicy policy = Build();
 
-        CameraSourceCheck check = await policy.CheckAsync("onvif://sneaky.example", CancellationToken.None);
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
 
         check.IsAcceptable.Should().BeFalse();
-        TestLocaliser.Errors().For(check.Error!)
-                     .Should().Contain("sneaky.example", "the host has to be parsed for the check to bite");
+        check.Error!.Key.Should().Be("Cameras_SourceScheme");
     }
 
     /// <summary>

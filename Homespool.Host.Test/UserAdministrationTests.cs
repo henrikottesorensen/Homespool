@@ -329,12 +329,12 @@ public sealed class UserAdministrationTests : IDisposable
 
         for (int attempt = 0; attempt < 9; attempt++)
         {
-            await limiter.RecordFailedAttemptAsync(subject.Id, LimitedAction.SendPasswordResetEmail, now, CancellationToken.None);
+            await limiter.RecordFailedAttemptAsync(subject.Id, LimitedAction.ClaimPrinter, now, CancellationToken.None);
             await users.AccessFailedAsync(subject);
         }
 
         (await users.IsLockedOutAsync(subject)).Should().BeTrue("the fixture has to reach the state being cleared");
-        (await limiter.RemainingLockoutAsync(subject.Id, LimitedAction.SendPasswordResetEmail, now, CancellationToken.None))
+        (await limiter.RemainingLockoutAsync(subject.Id, LimitedAction.ClaimPrinter, now, CancellationToken.None))
             .Should().NotBeNull();
 
         // Act
@@ -346,7 +346,7 @@ public sealed class UserAdministrationTests : IDisposable
         result.Affected.Should().Be(1, "one backoff row was standing");
         (await users.IsLockedOutAsync(subject)).Should().BeFalse();
         subject.AccessFailedCount.Should().Be(0);
-        (await limiter.RemainingLockoutAsync(subject.Id, LimitedAction.SendPasswordResetEmail, now, CancellationToken.None))
+        (await limiter.RemainingLockoutAsync(subject.Id, LimitedAction.ClaimPrinter, now, CancellationToken.None))
             .Should().BeNull();
     }
 

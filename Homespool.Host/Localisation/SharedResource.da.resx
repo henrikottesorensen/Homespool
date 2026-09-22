@@ -198,6 +198,9 @@
   <data name="Account_VerificationSent" xml:space="preserve">
     <value>Bekræftelsesmailen er sendt. Se efter i din indbakke.</value>
   </data>
+  <data name="Account_VerificationSentOrRecent" xml:space="preserve">
+    <value>Hvis adressen afventer bekræftelse, er der sendt en bekræftelsesmail til den nu eller inden for de seneste {0} minutter. Se efter i din indbakke.</value>
+  </data>
   <data name="Manage_EmailChangeSent" xml:space="preserve">
     <value>Linket til at bekræfte den nye e-mailadresse er sendt. Se efter i din indbakke.</value>
   </data>
@@ -1282,7 +1285,7 @@
     <value>Du er blevet godkendt med {0}. Vælg en e-mailadresse og et brugernavn til dette websted nedenfor, og klik på Registrér for at fuldføre login.</value>
   </data>
   <data name="Account_CheckEmailToReset" xml:space="preserve">
-    <value>Tjek din e-mail for at nulstille din adgangskode.</value>
+    <value>Hvis adgangskoden kan nulstilles for den adresse, er der sendt et link til den nu eller inden for de seneste {0} minutter. Se efter i din indbakke: Et nyligt link virker stadig.</value>
   </data>
   <data name="Account_RecoveryCodeIntro" xml:space="preserve">
     <value>Du har valgt at logge ind med en gendannelseskode. Dette login huskes ikke, før du enten indtaster en kode fra tofaktorappen ved login eller slår tofaktorgodkendelse fra og logger ind igen.</value>

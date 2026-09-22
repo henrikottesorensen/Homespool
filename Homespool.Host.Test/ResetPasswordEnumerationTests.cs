@@ -101,9 +101,6 @@ public sealed class ResetPasswordEnumerationTests : IDisposable
         ResetPasswordModel model = new(users,
                                        new ApiTokenService(context),
                                        new UnitOfWork(context),
-                                       new AttemptLimiter(context,
-                                                          TestOptions.Snapshot(new AttemptLimitOptions()),
-                                                          NullLogger<AttemptLimiter>.Instance),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)
         {

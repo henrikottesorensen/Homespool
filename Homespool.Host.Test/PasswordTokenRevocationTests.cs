@@ -206,8 +206,6 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "attacker's", CapabilitySet.Everything, CancellationToken.None);
 
         ResetPasswordModel model = new(users, tokens, new UnitOfWork(context),
-                                       new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
-                                                          NullLogger<AttemptLimiter>.Instance),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)
         {
@@ -249,8 +247,6 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         ResetPasswordModel model = new(users, tokens, new UnitOfWork(context),
-                                       new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
-                                                          NullLogger<AttemptLimiter>.Instance),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)
         {

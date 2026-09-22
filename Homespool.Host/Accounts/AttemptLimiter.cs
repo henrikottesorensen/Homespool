@@ -234,9 +234,8 @@ public class AttemptLimiter
     /// <para>
     /// <b>For an administrator unsticking an account, and nothing else.</b> Every other caller resets
     /// the one action it just saw succeed - which is what keeps a backoff meaningful. This is the
-    /// operator's override, and it exists because the backoffs an account can be held under are not
-    /// all ones the account can clear by succeeding: the two mail counters are spent by whoever knows
-    /// the address, and the person they lock out is the one who needs the mail.
+    /// operator's override, for an account whose owner cannot wait out a backoff that has grown to its
+    /// cap. The cooldowns go with it, which costs nothing: each is short and ends on its own.
     /// </para>
     /// <para>
     /// Bulk and untracked, like <c>ApiTokenService.RevokeAllForUserAsync</c>: there is nothing to

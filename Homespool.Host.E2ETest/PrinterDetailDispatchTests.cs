@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -27,14 +28,15 @@ namespace Homespool.Host.E2ETest;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The refused caller sees the buttons.</b> The page renders the queue controls for anybody
-/// holding <c>Print</c>, while reordering and acting on somebody else's work need
-/// <c>ControlPrinter</c> - so a Contributor posting them is exactly the "a button that is not
-/// rendered is not a permission check" case the page's own remarks name, driven from outside.
+/// <b>The refused posts are made without the buttons.</b> The page hides a control from anybody
+/// whose capabilities its service would refuse, so a Contributor posting Move or Pause is the "a
+/// button that is not rendered is not a permission check" case the page's own remarks name, driven
+/// from outside. What each preset is offered is asserted separately, on the rendered page.
 /// </para>
 /// <para>
-/// <b>Asserted on the database and the printer rather than on the page.</b> The queue order is a
-/// stored fact and a pause is a device state; what the page says about either is presentation.
+/// <b>The posts are asserted on the database and the printer rather than on the page.</b> The queue
+/// order is a stored fact and a pause is a device state; what the page says about either is
+/// presentation.
 /// </para>
 /// </remarks>
 public sealed class PrinterDetailDispatchTests : IAsyncLifetime
@@ -251,6 +253,170 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A Contributor holds <c>Print</c> and not <c>ControlPrinter</c>, so the page offers them only
+    /// what the first permits: removing their own queue entry, and none of the machine controls.
+    /// </summary>
+    /// <remarks>
+    /// The printer is connected, has a hotend and reports PLA loaded, so each absent control is
+    /// absent for the capability and not because its other condition failed - the Operator test
+    /// below is the proof those conditions hold.
+    /// </remarks>
+    [Fact]
+    public async Task AContributorIsOfferedOnlyWhatPrintPermits()
+    {
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ReportingPrinterAsync();
+        (HSUser contributor, HttpClient contributorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "detail-offer-contributor@example.com");
+
+        using (ownerClient)
+        using (contributorClient)
+        {
+            await JoinAsync(contributor.Id, await TeamOfAsync(uuid), CapabilityPresets.Contributor);
+
+            await UploadAsync(ownerClient, "owners.gcode");
+            await UploadAsync(contributorClient, "mine.gcode");
+            Guid theirs = await EnqueueAsync(ownerClient, uuid, "owners.gcode");
+            Guid theirOwn = await EnqueueAsync(contributorClient, uuid, "mine.gcode");
+
+            string html = await GetPageAsync(contributorClient, uuid);
+
+            foreach (string handler in (string[])["Pause", "Resume", "Stop", "Preheat", "Cooldown", "Unload", "Move"])
+            {
+                html.Should().NotContain($"handler={handler}\"", $"{handler} needs ControlPrinter, which a Contributor lacks");
+            }
+
+            html.Should().Contain($"value=\"{theirOwn}\"", "removing your own entry is what Print permits");
+            html.Should().NotContain($"value=\"{theirs}\"", "removing somebody else's entry needs ControlPrinter");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// An Operator holds <c>ControlPrinter</c>, so the page offers the machine controls and removing
+    /// anybody's queue entry.
+    /// </summary>
+    [Fact]
+    public async Task AnOperatorIsOfferedTheMachineControls()
+    {
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ReportingPrinterAsync();
+        (HSUser @operator, HttpClient operatorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "detail-offer-operator@example.com");
+
+        using (ownerClient)
+        using (operatorClient)
+        {
+            await JoinAsync(@operator.Id, await TeamOfAsync(uuid), CapabilityPresets.Operator);
+
+            await UploadAsync(ownerClient, "owners.gcode");
+            Guid theirs = await EnqueueAsync(ownerClient, uuid, "owners.gcode");
+
+            string html = await GetPageAsync(operatorClient, uuid);
+
+            foreach (string handler in (string[])["Pause", "Resume", "Stop", "Preheat", "Cooldown", "Unload", "Move", "Cancel"])
+            {
+                html.Should().Contain($"handler={handler}\"", $"an Operator may {handler}");
+            }
+
+            html.Should().Contain($"value=\"{theirs}\"", "ControlPrinter removes anybody's entry");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// Unloading through the page empties the tool on the printer, the printer reports it, and the
+    /// page stops offering to unload filament that is no longer there.
+    /// </summary>
+    /// <remarks>
+    /// The fake's idle interval is a minute, far past the wait here, so the report arriving at all
+    /// proves it was sent because the material changed - the way firmware sends telemetry - and not
+    /// on the timer.
+    /// </remarks>
+    [Fact]
+    public async Task UnloadingThroughThePageIsReportedAndTheButtonGoes()
+    {
+        SyntheticTelemetrySource source = new() { IdleInterval = TimeSpan.FromMinutes(1) };
+        (Guid uuid, long _, HttpClient client, FakePrinterClient fake, Task run) =
+            await ReportingPrinterAsync(new FakePrinterOptions { TelemetrySource = source });
+
+        using (client)
+        {
+            (await GetPageAsync(client, uuid)).Should().Contain("handler=Unload\"", "PLA is loaded and reported");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, uuid, "Unload", [new("tool", "1")]);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            (await WaitForMaterialAsync(uuid, expected: null)).Should().BeTrue(
+                "the emptied tool must reach the server well inside the fake's minute-long idle interval");
+
+            fake.Device.MaterialOf(1).Should().BeNull();
+            Encoding.ASCII.GetString(fake.ReceivedCommands.Single().Payload.Span).Should().Be("M702 T0 W0");
+            (await GetPageAsync(client, uuid)).Should().NotContain("handler=Unload\"", "there is nothing left to unload");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="ConnectedPrinterAsync"/> with telemetry, returning once the server has heard the
+    /// fake's loaded PLA - the page offers Unload only for a material the printer has named.
+    /// </summary>
+    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> ReportingPrinterAsync(
+        FakePrinterOptions? options = null)
+    {
+        (Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run) connected =
+            await ConnectedPrinterAsync(options ?? new FakePrinterOptions { TelemetrySource = new SyntheticTelemetrySource() });
+
+        (await WaitForMaterialAsync(connected.uuid, FakeDevice.DefaultMaterial)).Should().BeTrue(
+            "the first telemetry, sent on connect, names the loaded material");
+
+        return connected;
+    }
+
+    /// <summary>Waits for the server's live state to say <paramref name="expected"/> is loaded; null is empty.</summary>
+    private async Task<bool> WaitForMaterialAsync(Guid uuid, string? expected)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            int printerId = await context.Printers
+                                         .Where(printer => printer.Uuid == uuid)
+                                         .Select(printer => printer.Id)
+                                         .SingleAsync(TestContext.Current.CancellationToken);
+
+            PrinterLiveState? live = await context.PrinterLiveStates
+                                                  .AsNoTracking()
+                                                  .SingleOrDefaultAsync(state => state.PrinterId == printerId,
+                                                                        TestContext.Current.CancellationToken);
+
+            if (live is not null && live.Material == expected)
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+        }
+
+        return false;
+    }
+
+    private static async Task<string> GetPageAsync(HttpClient client, Guid uuid)
+    {
+        using HttpResponseMessage page = await client.GetAsync($"/Printers/Detail/{uuid}",
+                                                               TestContext.Current.CancellationToken);
+
+        page.StatusCode.Should().Be(HttpStatusCode.OK, "the reader is a member who can see the printer");
+
+        return await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
     /// What a cookie session's refused post looks like: the access-denied redirect, since pages
     /// answer people rather than scripts. The API's 403 twin lives in
     /// <c>PrinterControllerDispatchTests</c>.
@@ -379,12 +545,13 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     /// An enrolled, connected printer whose owner is signed in - the intent tests need a live
     /// socket, both to pause and to prove nothing was sent.
     /// </summary>
-    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> ConnectedPrinterAsync()
+    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> ConnectedPrinterAsync(
+        FakePrinterOptions? options = null)
     {
         (PrinterIdentity identity, string token, int printerId, long userId) =
             await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
 
-        FakePrinterClient fake = new(identity, TimeProvider.System) { Token = token };
+        FakePrinterClient fake = new(identity, TimeProvider.System, options) { Token = token };
         await fake.ConnectAsync(FakePrinterConnections.ViaTestServerAsync(_factory), TestContext.Current.CancellationToken);
         Task run = fake.RunAsync(TestContext.Current.CancellationToken);
 

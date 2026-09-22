@@ -234,7 +234,7 @@ public class DetailModel : PageModel
             QueueEntryStatus.Waiting;
     }
 
-    /// <summary>Who is reading the page, for the one row-level decision it has to make.</summary>
+    /// <summary>Who is reading the page, for the decisions that turn on whose work something is.</summary>
     private long _readerId;
 
     /// <summary>
@@ -242,15 +242,44 @@ public class DetailModel : PageModel
     /// </summary>
     /// <remarks>
     /// <b>Your own prints only</b> - see <see cref="OnPostReprintAsync"/> for why that is about
-    /// printing the right file rather than about permission. <see cref="CanUse"/> as well, because
+    /// printing the right file rather than about permission. <see cref="CanPrint"/> as well, because
     /// reprinting is still queueing, and somebody who may only watch this printer may not.
     /// </remarks>
     public bool CanReprint(PrintJob job)
     {
         ArgumentNullException.ThrowIfNull(job);
 
-        return CanUse && job.QueuedByUserId == _readerId;
+        return CanPrint && job.QueuedByUserId == _readerId;
     }
+
+    /// <summary>
+    /// Whether the reader may take this entry out of the queue: their own with
+    /// <see cref="Capability.Print"/>, anybody's with <see cref="Capability.ControlPrinter"/>.
+    /// </summary>
+    /// <remarks>
+    /// The same rule as <see cref="PrinterAccessService.AllowsWithdrawingAsync"/>, which is what
+    /// refuses the post; this only keeps the button off rows where pressing it could only fail.
+    /// </remarks>
+    public bool CanWithdraw(QueuedPrint entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return CanControlPrinter || (CanPrint && entry.QueuedByUserId == _readerId);
+    }
+
+    /// <summary>Whether any queue row has a control for this reader, and so whether the column is drawn.</summary>
+    public bool QueueHasActions => CanControlPrinter || Queue.Any(CanWithdraw);
+
+    /// <summary>
+    /// Whether the reader may stop what this printer is running.
+    /// </summary>
+    /// <remarks>
+    /// <b>The rule <see cref="PrintStopService"/> enforces</b>: stopping your own print is
+    /// <see cref="Capability.Print"/>, and stopping anybody else's - or a print with no open row, which
+    /// is nobody's to withdraw - is <see cref="Capability.ControlPrinter"/>. Read from
+    /// <see cref="ActivePrint"/>, which is as old as the page; the service decides again on the post.
+    /// </remarks>
+    public bool CanStop => CanControlPrinter || (CanPrint && ActivePrint?.QueuedByUserId == _readerId);
 
     /// <summary>The nozzle, and whether it is climbing towards a setpoint or sitting on one.</summary>
     public HeaterReading Nozzle { get; private set; } = new(null, null, HeaterState.Unknown);
@@ -387,33 +416,44 @@ public class DetailModel : PageModel
     public bool WaitingOnAPerson => QueueWaitDescription.NeedsAPerson(WaitingReason);
 
     /// <summary>
-    /// Whether the caller may change the queue, which decides whether the controls render at all.
+    /// Whether the caller holds <see cref="Capability.Print"/>: queueing, reprinting, setting the
+    /// printer ready, and withdrawing their own work.
     /// </summary>
     /// <remarks>
-    /// Rendering is not the enforcement - <see cref="PrintQueueService"/> is, and it checks again on
-    /// every post. This only keeps buttons off a page where pressing them could only fail.
+    /// Rendering is not the enforcement - the services are, and they check again on every post. The
+    /// three capability flags only keep buttons off a page where pressing them could only fail.
     /// </remarks>
-    public bool CanUse { get; private set; }
+    public bool CanPrint { get; private set; }
 
     /// <summary>
-    /// Whether the caller may change this printer's settings - today, only whether it can be marked
-    /// ready from here.
+    /// Whether the caller holds <see cref="Capability.ControlPrinter"/>: pause, resume, the heaters,
+    /// unloading filament, reordering the queue, and stopping or withdrawing anybody's work.
     /// </summary>
     /// <remarks>
-    /// <b>A different permission from <see cref="CanUse"/>, and deliberately so.</b> Pressing Set
-    /// ready is a printer control; deciding that pressing it is honest for this machine is a standing
-    /// judgement about the machine, which is <c>CanManage</c>'s business. So somebody who has stood in
-    /// the garage decides once, and members who never have inherit that decision rather than being
-    /// asked to make it about a printer they cannot see.
+    /// <b>Not implied by <see cref="CanPrint"/>, nor the other way round.</b> A Contributor holds
+    /// <see cref="Capability.Print"/> alone, so every control here is gated on the capability its
+    /// service checks rather than on one flag for "may use the printer".
     /// </remarks>
-    public bool CanManage { get; private set; }
+    public bool CanControlPrinter { get; private set; }
+
+    /// <summary>
+    /// Whether the caller holds <see cref="Capability.ManagePrinter"/>: whether the printer can be
+    /// marked ready from here, and removing it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Separate from <see cref="CanPrint"/>, which presses Set ready, and deliberately so.</b>
+    /// Deciding that pressing it is honest for this machine is a standing judgement about the
+    /// machine. So somebody who has stood in the garage decides once, and members who never have
+    /// inherit that decision rather than being asked to make it about a printer they cannot see.
+    /// </remarks>
+    public bool CanManagePrinter { get; private set; }
 
     /// <summary>
     /// Whether this is the reader's default printer - the one pages pick when they have to pick one.
     /// </summary>
     /// <remarks>
     /// <b>A fact about the reader, not about the printer</b>, so it is not behind
-    /// <see cref="CanManage"/> and two people looking at the same page can honestly disagree. Being
+    /// <see cref="CanManagePrinter"/> and two people looking at the same page can honestly disagree. Being
     /// able to see the printer at all is the whole permission it needs, which
     /// <c>[Authorize]</c> plus the 404 above have already established by the time this is read.
     /// </remarks>
@@ -467,21 +507,6 @@ public class DetailModel : PageModel
     /// </remarks>
     public string? LoadedMaterial { get; private set; }
 
-    /// <summary>
-    /// Whether the Unload control is offered.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Absent rather than disabled, and absent rather than refusing.</b> A printer that has not
-    /// named its filament almost always has nothing in it, so there is nothing to unload and no
-    /// refusal worth reading. The one case this hides that is not that - a printer whose filament
-    /// type was never set - is one where the command would block on a dialog at the panel anyway.
-    /// </para>
-    /// <para>
-    /// <b>Not a permission check.</b> <see cref="PrinterFilamentService"/> re-establishes all of
-    /// this, on this page's standing rule that a button which is not rendered is not a check.
-    /// </para>
-    /// </remarks>
     /// <summary>
     /// Every tool this printer reports, for the picker and for the single-tool button alike.
     /// </summary>
@@ -546,9 +571,22 @@ public class DetailModel : PageModel
     /// Whether unloading is offered at all.
     /// </summary>
     /// <remarks>
-    /// <b>Keyed on there being something to unload, not on which tool is picked.</b> That gate went
-    /// when <c>M702</c> gained an explicit <c>T</c>: firmware changes to the target tool itself, so a
-    /// toolchanger resting with nothing on the carriage can still unload any of its heads.
+    /// <para>
+    /// <b>Absent rather than disabled, and absent rather than refusing.</b> A printer that has not
+    /// named its filament almost always has nothing in it, so there is nothing to unload and no
+    /// refusal worth reading. The one case this hides that is not that - a printer whose filament
+    /// type was never set - is one where the command would block on a dialog at the panel anyway.
+    /// </para>
+    /// <para>
+    /// <b>Keyed on there being something to unload, not on which tool is picked.</b> <c>M702</c>
+    /// carries an explicit <c>T</c> and firmware changes to the target tool itself, so a toolchanger
+    /// resting with nothing on the carriage can still unload any of its heads.
+    /// </para>
+    /// <para>
+    /// <b>Not a permission check.</b> The view also asks <see cref="CanControlPrinter"/>, and
+    /// <see cref="PrinterFilamentService"/> re-establishes all of it, on this page's standing rule
+    /// that a button which is not rendered is not a check.
+    /// </para>
     /// </remarks>
     public bool UnloadShown => Connected && UnloadableTools.Count > 0;
 
@@ -611,13 +649,11 @@ public class DetailModel : PageModel
             return NotFound();
         }
 
-        _readerId = caller.UserId;
-
-        CanManage = await _access.AllowsAsync(Statistics.Printer.Id, caller, Capability.ManagePrinter, cancellationToken);
+        CanManagePrinter = await _access.AllowsAsync(Statistics.Printer.Id, caller, Capability.ManagePrinter, cancellationToken);
 
         // Only read when the control it gates would be rendered; reading slides the window, and an
         // account that cannot manage the printer never sees the removal disclosure.
-        RemovalProved = CanManage && _proof.IsProved(HttpContext, user.Id);
+        RemovalProved = CanManagePrinter && _proof.IsProved(HttpContext, user.Id);
 
         // Compared against what is stored, not resolved: the printer in front of us is one the caller
         // can see, so if the stored id names it the switch is on.
@@ -639,26 +675,6 @@ public class DetailModel : PageModel
         return Page();
     }
 
-    /// <summary>
-    /// The status card on its own, for the poll that keeps it current.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>It answers with rendered HTML rather than JSON, and that is the load-bearing choice.</b>
-    /// Every word on the card is localised and every number is culture-formatted - a comma decimal
-    /// separator in <c>da</c>, a temperature widened by SQLite that has to be narrowed before it is
-    /// printed. Answering with JSON would mean a second
-    /// implementation of all of that in JavaScript, kept in step by hand, with the resource files
-    /// unable to see it. Rendering it here means the poll costs one partial and no vocabulary at all
-    /// on the client.
-    /// </para>
-    /// <para>
-    /// <b>The control strip is deliberately not in this partial.</b> It carries a filament
-    /// <c>select</c>, and replacing the markup underneath somebody every two seconds would reset
-    /// their choice mid-press. Controls change what the printer does; this changes what the page
-    /// says.
-    /// </para>
-    /// </remarks>
     /// <summary>
     /// The unload dialog's tool rows, fetched when it opens.
     /// </summary>
@@ -689,6 +705,26 @@ public class DetailModel : PageModel
         return Partial("_UnloadTools", this);
     }
 
+    /// <summary>
+    /// The status card on its own, for the poll that keeps it current.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It answers with rendered HTML rather than JSON, and that is the load-bearing choice.</b>
+    /// Every word on the card is localised and every number is culture-formatted - a comma decimal
+    /// separator in <c>da</c>, a temperature widened by SQLite that has to be narrowed before it is
+    /// printed. Answering with JSON would mean a second
+    /// implementation of all of that in JavaScript, kept in step by hand, with the resource files
+    /// unable to see it. Rendering it here means the poll costs one partial and no vocabulary at all
+    /// on the client.
+    /// </para>
+    /// <para>
+    /// <b>The control strip is deliberately not in this partial.</b> It carries a filament
+    /// <c>select</c>, and replacing the markup underneath somebody every two seconds would reset
+    /// their choice mid-press. Controls change what the printer does; this changes what the page
+    /// says.
+    /// </para>
+    /// </remarks>
     public async Task<IActionResult> OnGetStatusAsync(Guid uuid, CancellationToken cancellationToken)
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -787,7 +823,12 @@ public class DetailModel : PageModel
         OnPlaintextAndCouldUseTls = _connectionRegistry.IsOnPlaintextListener(statistics.Printer.Id) &&
                                     PrusaConnect.PrinterFirmwareVersion.CanLoadCustomCertificate(Firmware);
 
-        CanUse = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.Print, cancellationToken);
+        // Set here rather than in OnGetAsync because the queue's poll renders per-row controls too,
+        // and whose entry a row is decides which of them it gets.
+        _readerId = caller.UserId;
+
+        CanPrint = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.Print, cancellationToken);
+        CanControlPrinter = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.ControlPrinter, cancellationToken);
 
         Nozzle = HeaterReading.For(statistics.LiveState?.NozzleTemperature, statistics.LiveState?.TargetNozzleTemperature);
         Bed = HeaterReading.For(statistics.LiveState?.BedTemperature, statistics.LiveState?.TargetBedTemperature);
@@ -979,7 +1020,8 @@ public class DetailModel : PageModel
     /// <para>
     /// <b>The flag is re-checked here, not merely consulted when rendering.</b> A button that is not
     /// rendered is not a permission check - the same rule <see cref="ActAsync"/> states for
-    /// <c>CanRead</c> - and this one guards a physical outcome rather than a page.
+    /// a caller who may only view the printer - and this one guards a physical outcome rather than a
+    /// page.
     /// </para>
     /// <para>
     /// <b>Nothing in the post carries the answer to the prompt.</b> There is no "I confirmed"
@@ -1246,7 +1288,7 @@ public class DetailModel : PageModel
     /// back to the page with something to say.
     /// </summary>
     /// <remarks>
-    /// The <see cref="TeamAccessDeniedException"/> arm is what a caller holding <c>CanRead</c> alone
+    /// The <see cref="TeamAccessDeniedException"/> arm is what a caller holding <see cref="Capability.ViewPrinter"/> alone
     /// gets if they post anyway. The buttons are not rendered for them - but a button that is not
     /// rendered is not a permission check.
     /// </remarks>

@@ -23,7 +23,7 @@ else
                 <th scope="col">@Localiser["Common_Queued"]</th>
                 <th scope="col">@Localiser["Queue_QueuedBy"]</th>
                 <th scope="col">@Localiser["Common_Status"]</th>
-                @if (Model.CanUse)
+                @if (Model.QueueHasActions)
                 {
                     <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
                 }
@@ -54,31 +54,40 @@ else
                        anything but waiting, because the loop never looks past it. *@
                     <td>@Model.QueueStatusText(Model.QueueStatusOf(index))</td>
 
-                    @if (Model.CanUse)
+                    @* Reordering moves everybody's work, so it is ControlPrinter's; removing an entry
+                       is Print's for your own and ControlPrinter's for anybody's. A row with neither
+                       keeps its empty cell so the columns still line up. *@
+                    @if (Model.QueueHasActions)
                     {
                         <td class="text-nowrap">
-                            <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="printUuid" value="@job.PrintUuid" />
-                                <input type="hidden" name="position" value="@(index - 1)" />
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
-                                        @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
-                            </form>
-                            <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="printUuid" value="@job.PrintUuid" />
-                                <input type="hidden" name="position" value="@(index + 1)" />
-                                <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                        title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
-                                        @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
-                            </form>
-                            <form method="post" asp-page-handler="Cancel" asp-route-uuid="@uuid"
-                                  class="d-inline">
-                                <input type="hidden" name="printUuid" value="@job.PrintUuid" />
-                                <button type="submit" class="btn btn-sm btn-outline-danger"
-                                        aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
-                            </form>
+                            @if (Model.CanControlPrinter)
+                            {
+                                <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
+                                      class="d-inline">
+                                    <input type="hidden" name="printUuid" value="@job.PrintUuid" />
+                                    <input type="hidden" name="position" value="@(index - 1)" />
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                            title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
+                                            @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
+                                </form>
+                                <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
+                                      class="d-inline">
+                                    <input type="hidden" name="printUuid" value="@job.PrintUuid" />
+                                    <input type="hidden" name="position" value="@(index + 1)" />
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                            title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
+                                            @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
+                                </form>
+                            }
+                            @if (Model.CanWithdraw(job))
+                            {
+                                <form method="post" asp-page-handler="Cancel" asp-route-uuid="@uuid"
+                                      class="d-inline">
+                                    <input type="hidden" name="printUuid" value="@job.PrintUuid" />
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
+                                </form>
+                            }
                         </td>
                     }
                 </tr>

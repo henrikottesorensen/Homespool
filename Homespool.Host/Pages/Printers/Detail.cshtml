@@ -69,14 +69,15 @@
 </div>
 
 @* Outside the refreshed region on purpose - see OnGetStatusAsync. Every control here reaches the
-   machine, so all of them are hidden without CanUse rather than rendered and refused. *@
-@if (Model.CanUse)
+   machine, so each is hidden unless the reader holds what its service checks, rather than rendered
+   and refused: Set ready and stopping your own print are Print's, the rest ControlPrinter's. *@
+@if (Model.CanPrint || Model.CanControlPrinter)
 {
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
         @* Gated only on being connected, not on whether a print is actually running - the firmware's
            own refusal ("No print to pause") is the real guard, and it is a better sentence than one
            composed here from a status a second old. *@
-        @if (Model.Connected)
+        @if (Model.Connected && Model.CanControlPrinter)
         {
             <form method="post" asp-page-handler="Pause" asp-route-uuid="@uuid" class="d-inline">
                 <button type="submit" class="btn btn-outline-secondary">@Localiser["Intent_PausePrint"]</button>
@@ -84,6 +85,9 @@
             <form method="post" asp-page-handler="Resume" asp-route-uuid="@uuid" class="d-inline">
                 <button type="submit" class="btn btn-outline-secondary">@Localiser["Intent_ResumePrint"]</button>
             </form>
+        }
+        @if (Model.Connected && Model.CanStop)
+        {
             <form method="post" asp-page-handler="Stop" asp-route-uuid="@uuid" class="d-inline">
                 <button type="submit" class="btn btn-outline-danger">@Localiser["Intent_StopPrint"]</button>
             </form>
@@ -95,7 +99,7 @@
 
            Absent on a toolchanger with nothing picked: M140 is the bed and would apply, M104 is the
            nozzle and would not, so the pair half-lands while the frame is answered Accepted. *@
-        @if (Model.Tools.ReachesAHotend)
+        @if (Model.CanControlPrinter && Model.Tools.ReachesAHotend)
         {
         <form method="post" asp-page-handler="Preheat" asp-route-uuid="@uuid"
               class="d-flex align-items-center gap-2">
@@ -122,7 +126,7 @@
            firmware will run the unload without stopping at a dialog on the panel - and which usually
            just means there is nothing in the machine to take out. No confirm dialog, matching
            preheat: this changes the physical world, but harmlessly and on purpose. *@
-        @if (Model.UnloadShown)
+        @if (Model.CanControlPrinter && Model.UnloadShown)
         {
             @* One tool means no choice to make, so it stays a plain button; several means a real
                one, so it opens a picker. Same rule either way - ask only when something is being
@@ -149,7 +153,7 @@
            machine was never pure friction - it forced somebody to look. Off unless this printer has
            been judged one whose sheet can be read from here, so the control is absent rather than
            refusing. *@
-        @if (Model.Statistics.Printer.RemoteReadyAllowed)
+        @if (Model.CanPrint && Model.Statistics.Printer.RemoteReadyAllowed)
         {
             <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#set-ready">
                 @Localiser["Intent_SetPrinterReady"]
@@ -161,17 +165,19 @@
        like a safety control and is not one. Said on the page rather than only in the refusal, so
        nobody has to press it to find out.
 
-       It used to end by sending the reader to the printers list to stop a print. Stop is on this page
-       now, two controls to the left, so the sentence went with it. *@
-    <p class="text-body-secondary small">
-        @Localiser["Printers_PreheatBoth"]
-        @HtmlLocaliser["Printers_PreheatWarning", Markup.Strong(Localiser["Printers_CoolingIncluded"].Value)]
-    </p>
+       It does not say where to stop a print: Stop is on this page, two controls to the left. *@
+    @if (Model.CanControlPrinter && Model.Tools.ReachesAHotend)
+    {
+        <p class="text-body-secondary small">
+            @Localiser["Printers_PreheatBoth"]
+            @HtmlLocaliser["Printers_PreheatWarning", Markup.Strong(Localiser["Printers_CoolingIncluded"].Value)]
+        </p>
+    }
 
     @* Said beside the button rather than only after pressing it: the unload runs for minutes and
        the printer declines other gcode while it does, so somebody who presses Cool down next and
        meets a refusal should already know why. *@
-    @if (Model.UnloadShown)
+    @if (Model.CanControlPrinter && Model.UnloadShown)
     {
         <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
     }
@@ -197,9 +203,9 @@
 </form>
 
 @* Whether the ready prompt can be answered honestly for this printer is a standing judgement about
-   the machine, so it sits behind CanManage rather than CanUse: decided once by somebody who has seen
-   it, inherited by everyone who has not. *@
-@if (Model.CanManage)
+   the machine, so it sits behind CanManagePrinter rather than CanPrint: decided once by somebody who
+   has seen it, inherited by everyone who has not. *@
+@if (Model.CanManagePrinter)
 {
     @* The switch is the control, not a picture of one. An unchecked checkbox posts nothing, so the
        handler's bool binds false on its own and no hidden field is needed to carry the flipped
@@ -263,9 +269,9 @@
                             @Localiser["Cameras_Capturing"]
                         </div>
                         @* In the picture, bottom left, mirroring maximise on the right - which is
-                           where a video player puts a play control. Icon-only, so every label it used
-                           to show as text is now its accessible name, and the words that used to sit
-                           on the button (connecting, failed, stalled) go to the note below the frame.
+                           where a video player puts a play control. Icon-only, so each state's label
+                           is its accessible name, and the words for the states (connecting, failed,
+                           stalled) go to the note below the frame.
 
                            Hidden until the server says this camera may be offered. Nothing can report
                            a camera's codec before something watches it, so the button is offered
@@ -338,18 +344,17 @@
 </div>
 
 @* Outside the queue's refreshed region, and it has to be. These are rendered from SlicerUrl and
-   CanManage, which only the full page load resolves - inside the polled partial a queue refresh
-   re-rendered them from a handler that sets neither, so the address blanked and the toggle vanished
+   CanManagePrinter, which only the full page load resolves - inside the polled partial a queue refresh
+   would re-render them from a handler that sets neither, blanking the address and hiding the toggle
    until the next reload. *@
-@* Shown rather than tucked away (Henrik, 2026-08-20). These were behind a disclosure on the
-   reasoning that setup is not state - true, but the slicer address is what somebody opens this page
-   to copy the first several times they use it, and a control nobody can find is a control that is
-   not there. *@
+@* Shown rather than behind a disclosure. Setup is not state, but the slicer address is what
+   somebody opens this page to copy the first several times they use it, and a control nobody can
+   find is a control that is not there. *@
 
-@* Only for someone who may change this printer's queue: a CanRead visitor given this URL would get
+@* Only for someone who may queue on this printer: a view-only visitor given this URL would get
    an upload that succeeds and then a 403 from the queue, which is a worse answer than not offering
    it. *@
-@if (Model.CanUse)
+@if (Model.CanPrint)
 {
     <h2 class="h5">@Localiser["Printers_SlicerHeading"]</h2>
 
@@ -385,8 +390,8 @@
     <p class="visually-hidden" role="status" aria-live="polite" data-copy-status></p>
 }
 
-@* Everything below is a record rather than a state. Closed by default: it used to be seventy rows
-   of table, and a page whose height is spent on history buries the thing somebody opened it for. *@
+@* Everything below is a record rather than a state. Closed by default, because a page whose height
+   is spent on history buries the thing somebody opened it for. *@
 <details class="printer-archive">
     <summary>@Localiser["Printers_PrintHistory"]</summary>
 
@@ -516,10 +521,10 @@
    read before it. Ellipsis on the trigger, the convention the unload picker already sets: this
    button opens a question rather than answering one.
 
-   The dialog is inside this CanManage block rather than down with the others, deliberately. The
-   unload picker's comment records what the alternative cost: a modal that sat beside an unrelated
-   block inherited that block's condition, and its trigger pointed at markup that was simply absent. *@
-@if (Model.CanManage)
+   The dialog is inside this CanManagePrinter block rather than down with the others, deliberately: a
+   modal placed beside an unrelated block inherits that block's condition, and its trigger then points
+   at markup that is simply absent. *@
+@if (Model.CanManagePrinter)
 {
     <details class="printer-archive">
         <summary>@Localiser["Printers_RemoveHeading"]</summary>
@@ -535,8 +540,7 @@
     <div class="modal fade" id="remove-printer" tabindex="-1" aria-labelledby="remove-printer-heading"
          aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
-            @* The danger border the card here used to carry, kept when the warning moved into the
-               dialog. It is the only thing marking this dialog apart from the two benign ones on the
+            @* The danger border is the only thing marking this dialog apart from the two benign ones on the
                page - set-ready and the unload picker share its shape otherwise - so a person who
                opened the wrong one can see it before reading it. A Bootstrap utility rather than a
                colour of our own; the utility wins on !important over .modal-content's own border. *@
@@ -595,11 +599,11 @@
     </div>
 }
 
-@* The dialog is gated on CanUse and on there being a choice - and on nothing else. It first
-   went in beside the Set ready modal and inherited that block's RemoteReadyAllowed, so the
-   trigger pointed at markup which was simply absent on any printer without the ready toggle:
-   a button that did nothing, with no error anywhere. *@
-@if (Model.CanUse && Model.UnloadNeedsPicker)
+@* The dialog is gated on the same two things as its trigger - CanControlPrinter and there being a
+   choice - and on nothing else. Beside the Set ready modal it would inherit that block's
+   RemoteReadyAllowed, and on any printer without the ready toggle the trigger would point at markup
+   that is simply absent: a button that does nothing, with no error anywhere. *@
+@if (Model.CanControlPrinter && Model.UnloadNeedsPicker)
 {
     @* A picker, not a confirmation - which is why it exists here and the single-tool button has no
        dialog at all. It is the thing that reaches tools that are not on the carriage: M702 carries an
@@ -638,7 +642,7 @@
         </div>
 }
 
-@if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
+@if (Model.CanPrint && Model.Statistics.Printer.RemoteReadyAllowed)
 {
     <div class="modal fade" id="set-ready" tabindex="-1" aria-labelledby="set-ready-heading" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">

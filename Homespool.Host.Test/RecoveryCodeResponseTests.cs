@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using OtpNet;
 
 using Homespool.Data;
+using Homespool.Host.Authentication;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -95,6 +96,7 @@ public sealed class RecoveryCodeResponseTests : IDisposable
         string key = (await users.GetAuthenticatorKeyAsync(user))!;
 
         EnableAuthenticatorModel model = new(users,
+                                             httpContext.RequestServices.GetRequiredService<LocalSignIn>(),
                                              new UnitOfWork(context),
                                              NullLogger<EnableAuthenticatorModel>.Instance,
                                              UrlEncoder.Default,

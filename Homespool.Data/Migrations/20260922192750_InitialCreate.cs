@@ -286,6 +286,31 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "UserSessions",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
+                    UserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    SecretHash = table.Column<string>(type: "TEXT", nullable: false),
+                    SecurityStamp = table.Column<string>(type: "TEXT", nullable: false),
+                    PasskeyCredentialId = table.Column<byte[]>(type: "BLOB", maxLength: 1024, nullable: true),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    ExpiresAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_UserSessions", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_UserSessions_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "Invitations",
                 columns: table => new
                 {
@@ -1025,6 +1050,23 @@ namespace Homespool.Data.Migrations
                 table: "UserActionAttempts",
                 columns: new[] { "UserId", "Action" },
                 unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserSessions_SecretHash",
+                table: "UserSessions",
+                column: "SecretHash",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserSessions_UserId",
+                table: "UserSessions",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_UserSessions_Uuid",
+                table: "UserSessions",
+                column: "Uuid",
+                unique: true);
         }
 
         /// <inheritdoc />
@@ -1098,6 +1140,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "UserActionAttempts");
+
+            migrationBuilder.DropTable(
+                name: "UserSessions");
 
             migrationBuilder.DropTable(
                 name: "AspNetRoles");

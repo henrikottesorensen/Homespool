@@ -2722,10 +2722,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Ophæv udelukkelse</value>
   </data>
   <data name="AdminUsers_DeactivateWhy" xml:space="preserve">
-    <value>At deaktivere lukker en konto: hverken adgangskode, adgangsnøgle, engangskode eller API-token accepteres bagefter, og kontoens tokens slettes i stedet for at blive sat i bero. Kontoen beholder sit navn, sine hold og sin historik og kan genåbnes her — konti slettes aldrig, så det står fast, hvem der har printet, og hvem der har stoppet et print. En browser, der allerede er logget ind, virker i op til fem minutter endnu.</value>
+    <value>At deaktivere lukker en konto: hverken adgangskode, adgangsnøgle, engangskode eller API-token accepteres bagefter, og kontoens tokens slettes i stedet for at blive sat i bero. Kontoen beholder sit navn, sine hold og sin historik og kan genåbnes her — konti slettes aldrig, så det står fast, hvem der har printet, og hvem der har stoppet et print. En browser, der allerede er logget ind, bliver logget ud ved næste sidevisning.</value>
   </data>
   <data name="AdminUsers_PasskeysExplanation" xml:space="preserve">
-    <value>Tilbagekald en adgangsnøgle, hvis ejeren har mistet den enhed, den ligger på: en browser, der er logget ind med den, bliver logget ud inden for få minutter, og de kan stadig logge ind med deres adgangskode og tilmelde en ny.</value>
+    <value>Tilbagekald en adgangsnøgle, hvis ejeren har mistet den enhed, den ligger på: en browser, der er logget ind med den, bliver logget ud ved næste sidevisning, og de kan stadig logge ind med deres adgangskode og tilmelde en ny.</value>
   </data>
   <data name="AdminUsers_PasskeySynced" xml:space="preserve">
     <value>Synkroniseret på tværs af ejerens enheder</value>

@@ -11,6 +11,7 @@ using Duende.IdentityModel;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 
@@ -20,9 +21,9 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The stamp validators, driven through the cookie schemes they are wired to: a session or a
-/// remembered browser older than the validation interval is re-checked against the account's
-/// security stamp, kept when it matches and ended when it does not.
+/// The two validators, driven through the cookie schemes they are wired to: a session is checked
+/// against its row on every request and nothing more, and a remembered browser older than the interval
+/// is re-checked against the account's security stamp.
 /// </summary>
 /// <remarks>
 /// <b>One clock for the cookies and the validators.</b> The container's <see cref="TimeProvider"/>
@@ -52,8 +53,13 @@ public sealed class StampValidatorTests : IDisposable
         return LocalSchemeRig.CreateAsync(_databasePath, services => services.AddSingleton<TimeProvider>(_clock));
     }
 
+    /// <summary>
+    /// Nothing re-reads the account into the cookie on a timer: a claim added underneath an aged
+    /// session leaves it signed in, unchanged and not re-issued. A person's own changes reach their
+    /// cookie through the refresh; a change to somebody else's account moves its stamp.
+    /// </summary>
     [Fact]
-    public async Task AnAgedSessionWithTheSameStampIsRebuiltKeepingItsMethodAndPasskey()
+    public async Task AnAgedSessionIsNeitherRebuiltNorReissued()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
@@ -69,19 +75,19 @@ public sealed class StampValidatorTests : IDisposable
         AuthenticateResult session = await later.AuthenticateAsync(IdentityConstants.ApplicationScheme);
 
         session.Succeeded.Should().BeTrue("the stamp still matches");
-        ClaimsPrincipal rebuilt = session.Principal!;
-        rebuilt.FindFirstValue(JwtClaimTypes.NickName).Should().Be("the owner", "the principal is rebuilt from the account");
-        rebuilt.FindFirstValue(JwtClaimTypes.AuthenticationMethod).Should().Be(PasskeyAuthenticationHandler.AuthenticationMethod, "how the person signed in survives the rebuild");
-        rebuilt.FindFirstValue(HSClaimTypes.PasskeyCredentialId).Should().Be(Base64Url.EncodeToString(phone.CredentialId), "the renewed cookie must still name the passkey, or the next check could not end it");
+        session.Principal!.FindFirstValue(JwtClaimTypes.NickName).Should().BeNull("the principal is the cookie's, not rebuilt from the account");
+        session.Principal!.FindFirstValue(HSClaimTypes.PasskeyCredentialId).Should().Be(Base64Url.EncodeToString(phone.CredentialId));
+        later.Response.Headers.SetCookie.Should().BeEmpty("an aged session inside its sliding window is not re-issued");
     }
 
     /// <summary>
     /// The lost-device case: the passkey is removed from another browser, and only the sessions that
     /// signed in with it end - not the owner's session on a second passkey, and not their password
-    /// session, which is the one they are most likely revoking from.
+    /// session, which is the one they are most likely revoking from. On the very next request: no
+    /// clock moves here.
     /// </summary>
     [Fact]
-    public async Task AnAgedSessionWhosePasskeyWasRemovedIsEndedAndNoOtherSessionIs()
+    public async Task ASessionWhosePasskeyWasRemovedIsEndedAtOnceAndNoOtherSessionIs()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
@@ -92,7 +98,6 @@ public sealed class StampValidatorTests : IDisposable
         string passwordSession = await rig.SessionCookieAsync(user);
 
         await rig.Users.RemovePasskeyAsync(user, phone.CredentialId);
-        _clock.Advance(PastTheInterval);
 
         DefaultHttpContext onPhone = rig.NewRequest(phoneSession);
         DefaultHttpContext onLaptop = rig.NewRequest(laptopSession);
@@ -105,26 +110,28 @@ public sealed class StampValidatorTests : IDisposable
     }
 
     /// <summary>
-    /// A passkey session that does not say which passkey - one issued before sessions named it - cannot
-    /// be checked, and a revoke would silently miss it, so it is ended rather than trusted.
+    /// A passkey sign-in that does not say which passkey could not be ended by revoking it, which is
+    /// the one thing a lost device's owner can do - so it never becomes a session.
     /// </summary>
     [Fact]
-    public async Task AnAgedPasskeySessionThatNamesNoPasskeyIsEnded()
+    public async Task APasskeySignInThatNamesNoPasskeyIsRefused()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
         await SeedPasskeyAsync(rig, user);
-        string session = await PasskeySessionCookieAsync(rig, user, credentialId: null);
-        _clock.Advance(PastTheInterval);
 
-        DefaultHttpContext later = rig.NewRequest(session);
+        Func<Task> signIn = () => PasskeySessionCookieAsync(rig, user, credentialId: null);
 
-        (await later.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeFalse();
-        rig.Cleared(later, IdentityConstants.ApplicationScheme).Should().BeTrue();
+        await signIn.Should().ThrowAsync<InvalidOperationException>();
+        (await rig.Context.UserSessions.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
+    /// <summary>
+    /// A password change elsewhere, a closed account: the stamp moves, and every session that was
+    /// signed in under the old one is refused on its next request - no clock moves here.
+    /// </summary>
     [Fact]
-    public async Task AnAgedSessionWithAChangedStampIsEndedAlongWithEverythingElse()
+    public async Task ASessionWithAChangedStampIsEndedAtOnceAlongWithEverythingElse()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
@@ -132,7 +139,6 @@ public sealed class StampValidatorTests : IDisposable
         string remembered = await rig.RememberedMachineCookieAsync(user);
 
         (await rig.Users.UpdateSecurityStampAsync(user)).Succeeded.Should().BeTrue();
-        _clock.Advance(PastTheInterval);
 
         DefaultHttpContext later = rig.NewRequest(session, remembered);
         AuthenticateResult result = await later.AuthenticateAsync(IdentityConstants.ApplicationScheme);

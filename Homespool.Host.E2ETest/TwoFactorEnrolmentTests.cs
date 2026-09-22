@@ -266,6 +266,10 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         post.Headers.Location!.OriginalString.Should().Contain("/Account/Manage/TwoFactorAuthentication");
 
         (await TwoFactorEnabledAsync(user.Id)).Should().BeFalse();
+
+        // Turning two-factor off moves the stamp; the browser that did it stays signed in.
+        using HttpResponseMessage after = await GetAsync(client, jar, "/Account/Manage/TwoFactorAuthentication");
+        after.StatusCode.Should().Be(HttpStatusCode.OK, "the page refreshed this browser's session rather than ending it");
     }
 
     /// <summary>
@@ -394,10 +398,6 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     {
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, email);
 
-        CookieJar jar = new();
-        jar.Seed(client.DefaultRequestHeaders.GetValues("Cookie").First());
-        client.Dispose();
-
         if (withTwoFactor)
         {
             using IServiceScope scope = _factory.Services.CreateScope();
@@ -407,7 +407,16 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
             await userManager.ResetAuthenticatorKeyAsync(fresh);
             await userManager.SetTwoFactorEnabledAsync(fresh, true);
+
+            // Both moved the stamp, which ended the session the client was minted with; a sign-in
+            // made now is the browser that set the authenticator up.
+            client.Dispose();
+            client = await EnrolmentFlowHelper.SignInAsAsync(_factory, fresh);
         }
+
+        CookieJar jar = new();
+        jar.Seed(client.DefaultRequestHeaders.GetValues("Cookie").First());
+        client.Dispose();
 
         return (user, jar);
     }

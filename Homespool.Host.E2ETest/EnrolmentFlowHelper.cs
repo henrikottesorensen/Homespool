@@ -21,6 +21,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Controllers;
 using Homespool.Host.Mail;
@@ -230,11 +231,23 @@ public static class EnrolmentFlowHelper
                                                          .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
                                                          .Get(IdentityConstants.ApplicationScheme);
 
-        // IssuedUtc, because real sign-in sets it and SecurityStampValidator reads it: with no issue
-        // time it treats the ticket as due for revalidation on every single request, so any operation
-        // that moves the security stamp - enabling an authenticator, re-keying one, changing a
-        // password - signs the test client out mid-flow in a way production would not.
-        AuthenticationProperties properties = new() { IssuedUtc = DateTimeOffset.UtcNow };
+        // A session row and the secret naming it, as LocalSignIn records them: a cookie without a live
+        // row signs nobody in. The stamp is the one the principal carries, so the row goes stale
+        // exactly when the account's stamp moves - and a page that moves it and refreshes the sign-in
+        // brings the row along, as it does for a real browser.
+        DateTimeOffset issued = DateTimeOffset.UtcNow;
+        DateTimeOffset expires = issued + cookieOptions.ExpireTimeSpan;
+        string stamp = principal.FindFirstValue(scope.ServiceProvider
+                                                     .GetRequiredService<IOptions<IdentityOptions>>()
+                                                     .Value.ClaimsIdentity.SecurityStampClaimType)!;
+        string secret = await scope.ServiceProvider
+                                   .GetRequiredService<UserSessionService>()
+                                   .StartAsync(user.Id, stamp, passkeyCredentialId: null, expires, TestContext.Current.CancellationToken);
+        ((ClaimsIdentity)principal.Identity!).AddClaim(new Claim(HSClaimTypes.SessionSecret, secret));
+
+        // IssuedUtc and ExpiresUtc, because real sign-in sets both and the handler slides the cookie,
+        // and its session row with it, from them.
+        AuthenticationProperties properties = new() { IssuedUtc = issued, ExpiresUtc = expires };
         AuthenticationTicket ticket = new(principal, properties, IdentityConstants.ApplicationScheme);
         string protectedTicket = cookieOptions.TicketDataFormat.Protect(ticket);
 
@@ -247,6 +260,27 @@ public static class EnrolmentFlowHelper
         client.DefaultRequestHeaders.Add(SameOriginWriteFilter.HeaderName, SameOriginWriteFilter.SameOrigin);
 
         return client;
+    }
+
+    /// <summary>
+    /// Clears the password of the account at <paramref name="email"/> through the store, leaving its
+    /// security stamp alone - the passwordless state an external sign-in creates, reached without
+    /// ending the sessions a fixture signed in beforehand, as <c>UserManager.RemovePasswordAsync</c>
+    /// would.
+    /// </summary>
+    public static async Task ClearPasswordHashAsync(WebApplicationFactory<PrinterAppController> factory, string email)
+    {
+        ArgumentNullException.ThrowIfNull(factory);
+
+        using IServiceScope scope = factory.Services.CreateScope();
+        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        IUserPasswordStore<HSUser> store = (IUserPasswordStore<HSUser>)scope.ServiceProvider.GetRequiredService<IUserStore<HSUser>>();
+
+        HSUser user = (await userManager.FindByEmailAsync(email))!;
+        await store.SetPasswordHashAsync(user, null, TestContext.Current.CancellationToken);
+
+        (await store.UpdateAsync(user, TestContext.Current.CancellationToken)).Succeeded.Should()
+            .BeTrue("the passwordless state is the premise of the tests that ask for it");
     }
 
     /// <summary>Reads back an account seeded elsewhere, by the address it was created with.</summary>

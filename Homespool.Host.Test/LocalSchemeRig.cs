@@ -135,6 +135,9 @@ internal sealed class LocalSchemeRig : IAsyncDisposable
         return request.RequestServices.GetRequiredService<LocalSignInRules>();
     }
 
+    /// <summary>The application cookie's options, as its handler reads them.</summary>
+    public CookieAuthenticationOptions CookieOptions => _provider.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get(IdentityConstants.ApplicationScheme);
+
     /// <summary>The name of the cookie <paramref name="scheme"/> writes.</summary>
     public string CookieNameOf(string scheme)
     {

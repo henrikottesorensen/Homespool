@@ -50,7 +50,7 @@ public sealed class UserAdministrationTests : IDisposable
     }
 
     [Fact]
-    public async Task DeactivatingClosesTheAccountAndTakesItsTokensWithIt()
+    public async Task DeactivatingClosesTheAccountAndTakesItsTokensAndSessionsWithIt()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -60,6 +60,10 @@ public sealed class UserAdministrationTests : IDisposable
         ApiTokenService tokens = new(context);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         await tokens.CreateAsync(subject.Id, "pi", [Capability.Print], CancellationToken.None);
+        UserSessionService sessions = provider.GetRequiredService<UserSessionService>();
+        DateTimeOffset tomorrow = DateTimeOffset.UtcNow.AddDays(1);
+        await sessions.StartAsync(subject.Id, subject.SecurityStamp!, passkeyCredentialId: null, tomorrow, CancellationToken.None);
+        await sessions.StartAsync(admin.Id, admin.SecurityStamp!, passkeyCredentialId: null, tomorrow, CancellationToken.None);
         string stampBefore = subject.SecurityStamp!;
 
         // Act
@@ -72,6 +76,8 @@ public sealed class UserAdministrationTests : IDisposable
         subject.DeactivatedAt.Should().NotBeNull();
         subject.SecurityStamp.Should().NotBe(stampBefore, "the sessions the account already has must end");
         (await tokens.ListAsync(subject.Id, CancellationToken.None)).Should().BeEmpty();
+        (await context.UserSessions.AsNoTracking().Select(session => session.UserId).ToListAsync(CancellationToken.None))
+            .Should().Equal([admin.Id], "the account's sessions are deleted, not merely left stale, and nobody else's");
     }
 
     /// <summary>
@@ -507,6 +513,7 @@ public sealed class UserAdministrationTests : IDisposable
     {
         return new UserAdministration(context,
                                       new ApiTokenService(context),
+                                      provider.GetRequiredService<UserSessionService>(),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),
                                       time ?? TimeProvider.System,

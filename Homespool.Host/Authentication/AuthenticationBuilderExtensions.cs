@@ -108,6 +108,7 @@ public static class AuthenticationBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         builder.Services.AddScoped<LocalSignInRules>();
+        builder.Services.AddScoped<UserSessionService>();
         builder.Services.AddScoped<LocalSignIn>();
         builder.Services.AddScoped<ExternalSignIn>();
 

@@ -20,14 +20,15 @@ namespace Homespool.Host.Authentication;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The registrations are the framework's, line for line.</b> Each method below is the corresponding
-/// <c>Microsoft.AspNetCore.Identity</c> extension with nothing added and nothing removed; anything this
-/// deployment wants different is set afterwards through <c>ConfigureApplicationCookie</c> and its
-/// siblings, exactly as it was when the framework did the registering. <b>What the events resolve is
-/// not the framework's any more</b>: the two stamp validators are <see cref="SessionStampValidator"/>
-/// and <see cref="RememberedBrowserStampValidator"/>, and they are stricter than the originals in one
-/// way, ending the session when the remembered-browser cookie's stamp is stale as well as when the
-/// session's own is. What the transcription buys is
+/// <b>The registrations are the framework's, line for line</b>, but for one event. Each method below is
+/// the corresponding <c>Microsoft.AspNetCore.Identity</c> extension with nothing removed, and the
+/// application cookie adds <c>OnCheckSlidingExpiration</c> so that its session row slides with it.
+/// Anything this deployment wants different is set afterwards through <c>ConfigureApplicationCookie</c>
+/// and its siblings, exactly as it was when the framework did the registering. <b>What the events resolve is
+/// not the framework's any more</b>: the two validators are <see cref="SessionStampValidator"/>, which
+/// holds the application cookie to a live session row on every request, and
+/// <see cref="RememberedBrowserStampValidator"/>, which ends the session when the remembered-browser
+/// cookie's stamp is stale as well. What the transcription buys is
 /// that the scheme list, the cookie names, the lifetimes and the events are readable in one place
 /// alongside the printer, token and OpenID Connect schemes - and that a fifth cookie scheme, when one
 /// is needed, is added next to its four peers rather than bolted onto a black box.
@@ -56,10 +57,9 @@ public static class IdentityCookieSchemes
     }
 
     /// <summary>
-    /// <see cref="IdentityConstants.ApplicationScheme"/>: the signed-in session. Its principal is
-    /// re-checked against the account's security stamp on the interval
-    /// <see cref="SecurityStampValidatorOptions.ValidationInterval"/> sets, which is what signs every
-    /// other browser out after a password change.
+    /// <see cref="IdentityConstants.ApplicationScheme"/>: the signed-in session. Every request checks it
+    /// against its session row, which is what signs every other browser out after a password change,
+    /// and the row's expiry moves when the cookie slides.
     /// </summary>
     /// <remarks>
     /// The cookie name is left at the handler's default, which derives it from the scheme name - the
@@ -77,6 +77,10 @@ public static class IdentityCookieSchemes
             options.Events = new CookieAuthenticationEvents
             {
                 OnValidatePrincipal = SecurityStampValidator.ValidatePrincipalAsync,
+
+                // The one addition to the framework's registration: the session row follows the
+                // cookie when it slides. See SessionStampValidator.
+                OnCheckSlidingExpiration = SessionStampValidator.CheckSlidingExpirationAsync,
             };
         });
     }

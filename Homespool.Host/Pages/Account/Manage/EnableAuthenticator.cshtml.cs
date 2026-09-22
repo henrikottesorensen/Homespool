@@ -33,12 +33,19 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// holds it - behind a recent proof that the person at the keyboard holds the account.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>The seed is a credential, so showing it is gated.</b> A live session that could read the
 /// account's existing key could enrol it into an app of its own, and every code gate on the account
 /// would then be a gate it holds the key to. So the page asks for <see cref="RecentProof"/> before it
 /// renders anything, GET included. The code posted back is verified through the same scheme the
 /// step-ups use, but it is enrolment - the app proving it holds the seed - and not a proof of the
 /// person, which is why it stays beside the gate rather than replacing it.
+/// </para>
+/// <para>
+/// <b>Minting the seed and turning two-factor on both move the security stamp</b>, so each is followed
+/// by <see cref="LocalSignIn.RefreshSignInAsync"/>: every request checks its session against the
+/// stamp, and without the refresh the next page this browser asked for would sign it out.
+/// </para>
 /// </remarks>
 [Authorize]
 [RequireRecentProof]
@@ -47,18 +54,21 @@ public class EnableAuthenticatorModel : PageModel
     private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
 
     private readonly UserManager<HSUser> _userManager;
+    private readonly LocalSignIn _signIn;
     private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<EnableAuthenticatorModel> _logger;
     private readonly UrlEncoder _urlEncoder;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public EnableAuthenticatorModel(UserManager<HSUser> userManager,
+                                    LocalSignIn signIn,
                                     UnitOfWork unitOfWork,
                                     ILogger<EnableAuthenticatorModel> logger,
                                     UrlEncoder urlEncoder,
                                     IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
+        _signIn = signIn;
         _unitOfWork = unitOfWork;
         _logger = logger;
         _urlEncoder = urlEncoder;
@@ -167,6 +177,9 @@ public class EnableAuthenticatorModel : PageModel
             await transaction.CommitAsync(cancellationToken);
         }
 
+        // After the commit, so the cookie is never minted for a stamp a rollback would take away.
+        await _signIn.RefreshSignInAsync(HttpContext, user);
+
         _logger.LogInformation("User with ID '{UserId}' has enabled 2FA with an authenticator app.", userId);
 
         // Rendered only after the commit, so nobody is ever shown recovery codes that were rolled
@@ -198,6 +211,7 @@ public class EnableAuthenticatorModel : PageModel
         if (string.IsNullOrEmpty(unformattedKey))
         {
             await _userManager.ResetAuthenticatorKeyAsync(user);
+            await _signIn.RefreshSignInAsync(HttpContext, user);
 
             // Null straight after a reset means the store refused to save the new key.
             unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user) ??

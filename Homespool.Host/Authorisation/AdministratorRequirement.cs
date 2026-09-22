@@ -16,11 +16,12 @@ namespace Homespool.Host.Authorisation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why the role claim is not enough.</b> A cookie carries the role it was issued with until the
-/// security stamp is next re-checked, five minutes at most, so for that window an administrator
-/// closed as compromised still satisfies <c>[Authorize(Roles = …)]</c> on every administration page.
-/// This requirement costs one indexed read per request to those pages, which are a handful a day;
-/// the same read on every authenticated page was refused on cost, and this does not reopen that.
+/// <b>Why the role claim is not enough.</b> A cookie carries the role it was issued with. A closed
+/// administrator's session is refused on its next request, because closing moves the stamp, but
+/// that is the session check's doing: this requirement does not let the administration pages rest on
+/// it, which a bare <c>[Authorize(Roles = …)]</c> would.
+/// It costs one indexed read per request to those pages, which are a handful a day, beside the
+/// session check every signed-in request already makes.
 /// </para>
 /// <para>
 /// <b>The role is still read from the cookie first</b>, and a principal without it never reaches

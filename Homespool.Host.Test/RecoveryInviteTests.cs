@@ -173,6 +173,7 @@ public sealed class RecoveryInviteTests : IDisposable
 
         await new UserAdministration(context,
                                      new ApiTokenService(context),
+                                     provider.GetRequiredService<UserSessionService>(),
                                      provider.GetRequiredService<AttemptLimiter>(),
                                      new UnitOfWork(context),
                                      TimeProvider.System,

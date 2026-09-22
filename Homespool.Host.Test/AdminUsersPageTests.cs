@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Admin.Users;
 using Homespool.Host.PrusaConnect;
@@ -376,6 +377,7 @@ public sealed class AdminUsersPageTests : IDisposable
     {
         return new UserAdministration(context,
                                       new ApiTokenService(context),
+                                      provider.GetRequiredService<UserSessionService>(),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),
                                       TimeProvider.System,

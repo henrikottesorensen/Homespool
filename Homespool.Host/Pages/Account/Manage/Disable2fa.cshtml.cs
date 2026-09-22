@@ -36,20 +36,27 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// and the code is not it: the reset exists for the person whose device is gone, who cannot produce
 /// one, and a proof that the reset accepts and this page refuses would only send them next door.
 /// </para>
+/// <para>
+/// <b>Turning two-factor off moves the security stamp</b>, so it is followed by
+/// <see cref="LocalSignIn.RefreshSignInAsync"/>, or this browser would be signed out on its next page.
+/// </para>
 /// </remarks>
 [Authorize]
 [RequireRecentProof]
 public class Disable2faModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
+    private readonly LocalSignIn _signIn;
     private readonly ILogger<Disable2faModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public Disable2faModel(UserManager<HSUser> userManager,
+                           LocalSignIn signIn,
                            ILogger<Disable2faModel> logger,
                            IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
+        _signIn = signIn;
         _logger = logger;
         _localiser = localiser;
     }
@@ -88,6 +95,8 @@ public class Disable2faModel : PageModel
         {
             throw new InvalidOperationException($"Unexpected error occurred disabling 2FA.");
         }
+
+        await _signIn.RefreshSignInAsync(HttpContext, user);
 
         _logger.LogInformation("User with ID '{UserId}' has disabled 2fa.", _userManager.GetUserId(User));
         StatusMessage = _localiser["TwoFactor_Disabled"];

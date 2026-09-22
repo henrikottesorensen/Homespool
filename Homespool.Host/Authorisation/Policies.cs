@@ -26,7 +26,7 @@ public static class Policies
     /// <summary>
     /// The administration pages: the administrator role in the cookie <b>and</b> an account that is
     /// still open, which <see cref="AdministratorHandler"/> reads from the row. The role alone is what
-    /// a closed administrator's cookie keeps until its stamp is next re-checked.
+    /// the cookie was issued with, not what the account is now.
     /// </summary>
     public const string Administrator = nameof(Administrator);
 }

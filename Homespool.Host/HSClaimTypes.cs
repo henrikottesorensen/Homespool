@@ -24,4 +24,10 @@ public static class HSClaimTypes
     /// device out.
     /// </summary>
     public const string PasskeyCredentialId = "passkey-credential-id";
+
+    /// <summary>
+    /// The secret naming a signed-in browser's <c>UserSession</c> row, on the application cookie only.
+    /// A cookie without a live row signs nobody in, so this is what makes a session revocable.
+    /// </summary>
+    public const string SessionSecret = "session-secret";
 }

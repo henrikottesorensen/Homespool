@@ -114,9 +114,9 @@ public static class IdentityServices
         services.Configure(configure);
 
         // A second departure, and here rather than in Program for the same reason as the first: how
-        // often a session is re-checked against its account decides how long a deactivation, a
-        // password change or a revoked remembered-browser takes to bite, and a test asserting any of
-        // those must be measuring the interval the deployment runs.
+        // often a remembered browser is re-checked against its account decides how long a revoked one
+        // takes to be noticed, and a test asserting that must be measuring the interval the deployment
+        // runs.
         services.Configure<SecurityStampValidatorOptions>(IdentityConfiguration.ConfigureStampValidation);
 
         // The other departure: a validator of this application's own, run after Identity's. It is

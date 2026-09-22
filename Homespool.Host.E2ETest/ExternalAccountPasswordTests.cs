@@ -40,9 +40,10 @@ namespace Homespool.Host.E2ETest;
 /// <para>
 /// <b>The fixture signs in with a password and then removes it</b>, rather than driving a provider.
 /// What is under test is the passwordless state, not how an account arrives in it; the OIDC path that
-/// produces it for real is covered by <c>ExternalOidcDexTests</c>, which needs a container. Removing
-/// the password moves the security stamp, which is survivable here only because
-/// <c>SecurityStampValidator</c> revalidates on an interval rather than per request.
+/// produces it for real is covered by <c>ExternalOidcDexTests</c>, which needs a container. The hash
+/// is cleared through the store rather than <c>UserManager.RemovePasswordAsync</c>, which would also
+/// move the security stamp - and every request checks its session against the stamp, so the fixture
+/// would sign its own client out.
 /// </para>
 /// </remarks>
 public sealed class ExternalAccountPasswordTests : IAsyncLifetime
@@ -297,17 +298,12 @@ public sealed class ExternalAccountPasswordTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Leaves the account in the state an external sign-in creates: a user row with no password hash.
+    /// Leaves the account in the state an external sign-in creates: a user row with no password hash,
+    /// and the stamp the signed-in client's session was issued under.
     /// </summary>
     private async Task RemoveThePasswordAsync()
     {
-        using IServiceScope scope = _factory.Services.CreateScope();
-        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-
-        HSUser user = (await userManager.FindByEmailAsync(Address))!;
-        IdentityResult result = await userManager.RemovePasswordAsync(user);
-
-        result.Succeeded.Should().BeTrue("the passwordless state is the premise of these tests");
+        await EnrolmentFlowHelper.ClearPasswordHashAsync(_factory, Address);
     }
 
     private async Task<bool> HasPasswordAsync()

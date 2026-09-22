@@ -269,13 +269,7 @@ public sealed class ExternalLoginsPageTests : IAsyncLifetime
         // needs a password. What is under test is the state, not how an account reaches it.
         if (!withPassword)
         {
-            using IServiceScope scope = _factory.Services.CreateScope();
-            UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
-
-            HSUser user = (await userManager.FindByEmailAsync(Address))!;
-
-            (await userManager.RemovePasswordAsync(user)).Succeeded.Should()
-                .BeTrue("the provider-only state is the premise of these tests");
+            await EnrolmentFlowHelper.ClearPasswordHashAsync(_factory, Address);
         }
 
         return client;

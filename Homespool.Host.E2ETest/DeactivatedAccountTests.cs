@@ -17,8 +17,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// Closing an account from the administrator's screen, and what it closes: the API token stops on
-/// the next request, and the password stops signing in.
+/// Closing an account from the administrator's screen, and what it closes: the API token and the
+/// browser already signed in both stop on their next request, and the password stops signing in.
 /// </summary>
 /// <remarks>
 /// <b>Driven over HTTP because the value of the feature is at that seam.</b> The page-model tests
@@ -53,12 +53,12 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task DeactivatingAnAccountStopsItsApiTokenAndItsPassword()
+    public async Task DeactivatingAnAccountStopsItsApiTokenItsSessionAndItsPassword()
     {
         // Arrange
         (HSUser subject, HttpClient subjectClient) =
             await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "subject@example.com");
-        subjectClient.Dispose();
+        using HttpClient signedIn = subjectClient;
 
         string token = await MintTokenAsync(subject.Id);
 
@@ -66,6 +66,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         HttpResponseMessage before = await bearer.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
+        HttpResponseMessage sessionBefore = await signedIn.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
@@ -92,10 +93,13 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         }
 
         HttpResponseMessage after = await bearer.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
+        HttpResponseMessage sessionAfter = await signedIn.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 
         // Assert
         before.StatusCode.Should().Be(HttpStatusCode.OK, "the token worked before the account was closed");
         after.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "the token is gone, and the account may not sign in either way");
+        sessionBefore.StatusCode.Should().Be(HttpStatusCode.OK, "the browser was signed in before the account was closed");
+        sessionAfter.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "its session ended with the account, on its very next request");
 
         (await SignInAsync("subject@example.com")).Should().NotBe(
             HttpStatusCode.Redirect, "a closed account's password must not open a session");
@@ -140,14 +144,14 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// An administrator closed by another keeps a working session until the stamp is next re-checked,
-    /// five minutes on, and the cookie carries the role for all of it. Every button on this page is
-    /// refused to that session meanwhile: reopening themselves, reopening somebody else, and issuing a
-    /// recovery for an open account. The page's policy is what answers over HTTP; the service's own
-    /// refusal behind it is proved by the unit tests.
+    /// An administrator closed by another, in the middle of using the page: every button on it is
+    /// refused to the session they were signed in with - reopening themselves, reopening somebody
+    /// else, and issuing a recovery for an open account - because that session ended with the
+    /// account and the next request is sent to sign in. The row checks in the page's policy and the
+    /// service behind it are proved by the unit tests.
     /// </summary>
     [Fact]
-    public async Task AClosedAdministratorsLiveSessionCanReopenNobody()
+    public async Task AClosedAdministratorsSessionCanReopenNobody()
     {
         // Arrange
         (HSUser subject, HttpClient subjectClient) =
@@ -184,8 +188,8 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
             foreach (HttpResponseMessage refused in new[] { reopenSelf, reopenOther, recover })
             {
                 refused.StatusCode.Should().Be(HttpStatusCode.Redirect);
-                refused.Headers.Location!.ToString().Should().Contain("/Account/AccessDenied",
-                    "a closed administrator's session is forbidden the act, not told about it");
+                refused.Headers.Location!.ToString().Should().Contain("/Account/Login",
+                    "a closed administrator's session ended with the account");
             }
         }
 
@@ -194,12 +198,12 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The same window, on every administration page rather than one button: a closed administrator's
-    /// live cookie still carries the role, and each page's policy reads the row instead of believing
-    /// it. The open administrator is the control, so a refusal is the closure and not the pages.
+    /// The same, on every administration page rather than one button: the closed administrator's
+    /// cookie still carries the role, and no page is served to it. The open administrator is the
+    /// control, so a refusal is the closure and not the pages.
     /// </summary>
     [Fact]
-    public async Task AClosedAdministratorsLiveSessionLosesEveryAdministrationPage()
+    public async Task AClosedAdministratorsSessionLosesEveryAdministrationPage()
     {
         // Arrange
         string[] pages =
@@ -238,8 +242,8 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
                 HttpResponseMessage open = await admin.GetAsync(page, TestContext.Current.CancellationToken);
 
                 // Assert
-                closed.StatusCode.Should().Be(HttpStatusCode.Redirect, $"{page} must refuse the closed administrator's live cookie");
-                closed.Headers.Location!.ToString().Should().Contain("/Account/AccessDenied", $"{page} refuses, rather than asking for proof");
+                closed.StatusCode.Should().Be(HttpStatusCode.Redirect, $"{page} must refuse the closed administrator's cookie");
+                closed.Headers.Location!.ToString().Should().Contain("/Account/Login", $"{page} finds the session ended, rather than asking for proof");
                 open.StatusCode.Should().Be(HttpStatusCode.OK, $"{page} still serves the administrator who is open");
             }
         }

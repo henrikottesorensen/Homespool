@@ -27,10 +27,10 @@ namespace Homespool.Host.Accounts;
 /// the two come to disagree.
 /// </para>
 /// <para>
-/// <b>Every act first asks whether the administrator asking is still open.</b> A cookie outlives
-/// its account's closure until the security stamp is next re-checked, so for that window a closed
-/// administrator, the one an administrator closes for being compromised, still carries the role.
-/// The administration pages' policy reads the row for the same reason; this class asks for itself
+/// <b>Every act first asks whether the administrator asking is still open.</b> A closed
+/// administrator's session ends on its next request, because closing moves the stamp - but that is
+/// the session check's doing, and the role the cookie carries is no evidence of it. The
+/// administration pages' policy reads the row for the same reason; this class asks for itself
 /// because a refusal is a property of the act, and a caller that is not the page gets it too. It
 /// also makes a Self check on reopening
 /// unnecessary: an open administrator aiming at their own account finds nothing to reopen, and a
@@ -59,6 +59,7 @@ public sealed class UserAdministration
 {
     private readonly HomespoolDbContext _dbContext;
     private readonly ApiTokenService _tokens;
+    private readonly UserSessionService _sessions;
     private readonly AttemptLimiter _limiter;
     private readonly UnitOfWork _unitOfWork;
     private readonly TimeProvider _time;
@@ -67,6 +68,7 @@ public sealed class UserAdministration
 
     public UserAdministration(HomespoolDbContext dbContext,
                               ApiTokenService tokens,
+                              UserSessionService sessions,
                               AttemptLimiter limiter,
                               UnitOfWork unitOfWork,
                               TimeProvider time,
@@ -75,6 +77,7 @@ public sealed class UserAdministration
     {
         _dbContext = dbContext;
         _tokens = tokens;
+        _sessions = sessions;
         _limiter = limiter;
         _unitOfWork = unitOfWork;
         _time = time;
@@ -88,7 +91,7 @@ public sealed class UserAdministration
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The checks and the three writes are one serializable transaction.</b> The writes, because
+    /// <b>The checks and the writes are one serializable transaction.</b> The writes, because
     /// the half-done states are each worse than either end: an account marked closed whose tokens
     /// still authenticate, or tokens destroyed on an account that is still open. The checks, because
     /// the last-administrator answer is only true of the moment it is read: two administrators
@@ -102,11 +105,9 @@ public sealed class UserAdministration
     /// that reactivating an account does not silently hand a compromise back its credentials.
     /// </para>
     /// <para>
-    /// <b>The security stamp moves, which ends the account's browser sessions</b> - though not at
-    /// once: a session cookie is re-checked against the stamp on
-    /// <c>SecurityStampValidatorOptions.ValidationInterval</c>, so a signed-in browser keeps working
-    /// until that falls due. The tokens, which are read from the database on every request, stop
-    /// instantly.
+    /// <b>The account's sessions are deleted and its security stamp moves</b>, so a browser signed in
+    /// as it is refused on its next request, as a token is. The stamp is what also forgets its
+    /// remembered browsers.
     /// </para>
     /// </remarks>
     /// <param name="administratorId">Who is doing this, for the log and for the self check.</param>
@@ -160,6 +161,7 @@ public sealed class UserAdministration
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             revoked = await _tokens.RevokeAllForUserAsync(userId, cancellationToken);
+            await _sessions.RevokeAllAsync(userId, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
         }
@@ -250,8 +252,8 @@ public sealed class UserAdministration
     /// <remarks>
     /// <para>
     /// <b>The device's sessions end with it</b>, though not in this method: a session signed in with
-    /// a passkey names it, and <see cref="SessionStampValidator"/> ends one whose passkey is no longer
-    /// on the account when it next re-checks the cookie. The owner's other browsers are untouched.
+    /// a passkey names it, and a session whose passkey is no longer on the account is refused on its
+    /// next request. The owner's other browsers are untouched.
     /// </para>
     /// <para>
     /// <b>Refused for your own account.</b> An administrator's own passkeys have their own page, which
@@ -361,8 +363,8 @@ public sealed class UserAdministration
     /// all, which is refused the same way rather than trusted.
     /// </summary>
     /// <remarks>
-    /// Read from the row on every act, not from the caller's claims: the claims are what a closed
-    /// administrator's cookie still carries until its stamp is next re-checked.
+    /// Read from the row on every act, not from the caller's claims: the claims are what the cookie
+    /// was issued with, not what the account is now.
     /// </remarks>
     private async Task<bool> IsClosedAdministratorAsync(long administratorId, CancellationToken cancellationToken)
     {

@@ -1,115 +1,110 @@
 using System;
-using System.Buffers.Text;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
-using Duende.IdentityModel;
-
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
 
 /// <summary>
-/// The stamp check on the application cookie. A verified session gets a principal rebuilt from the
-/// account - so a changed name, role or address shows up without signing in again - and its cookie
-/// renewed; a stale one is ended.
+/// The check on the application cookie, made on every request: the cookie signs somebody in only while
+/// the <see cref="UserSession"/> it names is live.
 /// </summary>
 /// <remarks>
 /// <para>
-/// The rebuilt principal keeps the method, provider and passkey the session was signed in with,
-/// through <see cref="LocalSignIn.RebuiltPrincipalAsync"/>. The framework's validator rebuilt from the
-/// factory alone and noted, in a comment, that the authentication method was lost; a page that asks
-/// how someone signed in should not get a different answer after half an hour.
+/// <b>One query, every request, and nothing else.</b> It compares the account's stamp and looks for the
+/// session's passkey as well as the row, so a password change, a closed account, a revoked passkey or
+/// a revoked session ends the session on the browser's next request. The principal is not rebuilt from
+/// the account on a timer, as the framework's stamp validator does: every change a person makes to
+/// their own claims re-issues the cookie through <see cref="LocalSignIn.RefreshSignInAsync"/>, and every
+/// change made to somebody else's account moves its stamp, which ends its sessions outright. A change to
+/// another account's claims that did neither would not reach its cookie until the next sign-in - so
+/// such a change must move the stamp.
 /// </para>
 /// <para>
-/// <b>A session signed in with a passkey also needs that passkey to still be on the account.</b> A
-/// passkey is revoked because the device it lives on is gone, and that device is usually signed in:
-/// removing the credential without ending its session would leave the lost phone exactly as useful
-/// as before. The stamp cannot do this - moving it signs out every browser the owner has, including
-/// the one they are revoking from - so the session carries
-/// <see cref="HSClaimTypes.PasskeyCredentialId"/> and is checked against the passkey itself. A
-/// passkey session without that claim cannot be checked, and is ended rather than trusted.
+/// <b>A dead session ends everything on the browser</b>: its row, the application, external and pending
+/// cookies, and the remembered browser - as the framework's stamp validator does on a mismatch, since
+/// a dead session means the account changed underneath this browser or somebody ended it on purpose.
 /// </para>
 /// </remarks>
-public sealed class SessionStampValidator : StampValidator
+public sealed class SessionStampValidator : ISecurityStampValidator
 {
-    public SessionStampValidator(IOptions<SecurityStampValidatorOptions> options,
-                                 IOptions<IdentityOptions> identity,
-                                 UserManager<HSUser> users,
+    private readonly UserManager<HSUser> _users;
+    private readonly UserSessionService _sessions;
+    private readonly LocalSignIn _signIn;
+    private readonly ILogger<SessionStampValidator> _logger;
+
+    public SessionStampValidator(UserManager<HSUser> users,
+                                 UserSessionService sessions,
                                  LocalSignIn signIn,
                                  ILogger<SessionStampValidator> logger)
-        : base(options, identity, users, signIn, logger)
     {
-    }
-
-    /// <inheritdoc/>
-    protected override async Task<HSUser?> VerifiedAccountAsync(ClaimsPrincipal? principal)
-    {
-        if (principal is null)
-        {
-            return null;
-        }
-
-        HSUser? user = await Users.GetUserAsync(principal);
-
-        if (user is null || !await StampMatchesAsync(user, principal))
-        {
-            return null;
-        }
-
-        if (principal.HasClaim(JwtClaimTypes.AuthenticationMethod, PasskeyAuthenticationHandler.AuthenticationMethod) &&
-            !await PasskeyRemainsAsync(user, principal))
-        {
-            Logger.LogInformation("A session of user {UserId} was ended: the passkey it signed in with is no longer on the account.", user.Id);
-
-            return null;
-        }
-
-        return user;
+        _users = users;
+        _sessions = sessions;
+        _signIn = signIn;
+        _logger = logger;
     }
 
     /// <summary>
-    /// Whether the passkey <paramref name="principal"/> names is still one of <paramref name="user"/>'s.
+    /// The application cookie's <c>OnCheckSlidingExpiration</c>: when the handler is about to renew the
+    /// cookie, the session's row is moved to the renewed cookie's expiry, so that the sweep never
+    /// removes a session a cookie still carries. Once per half of the cookie's lifetime of use, and
+    /// only for a live row.
     /// </summary>
-    private async Task<bool> PasskeyRemainsAsync(HSUser user, ClaimsPrincipal principal)
+    public static async Task CheckSlidingExpirationAsync(CookieSlidingExpirationContext context)
     {
-        string? encoded = principal.FindFirstValue(HSClaimTypes.PasskeyCredentialId);
+        ArgumentNullException.ThrowIfNull(context);
 
-        if (encoded is null)
+        string? secret = context.Principal?.FindFirstValue(HSClaimTypes.SessionSecret);
+
+        if (!context.ShouldRenew || secret is null || context.Properties is not { IssuedUtc: { } issued, ExpiresUtc: { } expires })
         {
-            return false;
+            return;
         }
 
-        byte[] credentialId;
+        // What the handler will write: its own clock's now, plus the ticket's length.
+        DateTimeOffset now = (context.Options.TimeProvider ?? TimeProvider.System).GetUtcNow();
 
-        try
-        {
-            credentialId = Base64Url.DecodeFromChars(encoded);
-        }
-        catch (FormatException)
-        {
-            return false;
-        }
-
-        return await Users.GetPasskeyAsync(user, credentialId) is not null;
+        await context.HttpContext
+                     .RequestServices
+                     .GetRequiredService<UserSessionService>()
+                     .ExtendAsync(secret, now + (expires - issued), context.HttpContext.RequestAborted);
     }
 
     /// <inheritdoc/>
-    protected override async Task VerifiedAsync(HSUser user, CookieValidatePrincipalContext context)
+    public async Task ValidateAsync(CookieValidatePrincipalContext context)
     {
-        context.ReplacePrincipal(await SignIn.RebuiltPrincipalAsync(user, context.Principal!));
-        context.ShouldRenew = true;
+        ArgumentNullException.ThrowIfNull(context);
 
-        // On renewal without sliding expiration, the new ticket's length is measured from now so the
-        // renewal does not extend the expiry.
-        if (!context.Options.SlidingExpiration)
+        ClaimsPrincipal? principal = context.Principal;
+        string? userId = principal is null ? null : _users.GetUserId(principal);
+        string? secret = principal?.FindFirstValue(HSClaimTypes.SessionSecret);
+
+        bool live = userId is not null &&
+                    secret is not null &&
+                    long.TryParse(userId, out long id) &&
+                    await _sessions.IsLiveAsync(id, secret, context.HttpContext.RequestAborted);
+
+        if (live)
         {
-            context.Properties.IssuedUtc = Time.GetUtcNow();
+            return;
         }
+
+        _logger.LogDebug("Session validation failed; rejecting the cookie and ending the session.");
+
+        if (secret is not null)
+        {
+            await _sessions.EndAsync(secret, context.HttpContext.RequestAborted);
+        }
+
+        context.RejectPrincipal();
+        await _signIn.SignOutAsync(context.HttpContext);
+        await context.HttpContext.SignOutAsync(IdentityConstants.TwoFactorRememberMeScheme);
     }
 }

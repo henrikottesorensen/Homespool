@@ -15,8 +15,7 @@ namespace Homespool.Host.Authentication;
 /// <summary>
 /// Re-checks a cookie's principal against the account's security stamp once the cookie is older than
 /// <see cref="SecurityStampValidatorOptions.ValidationInterval"/>: a changed stamp - a new password,
-/// a re-keyed authenticator, a removed login - is what signs every other browser out, and this is
-/// where it does so.
+/// a re-keyed authenticator, a removed login - is what forgets every remembered browser.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,10 +26,15 @@ namespace Homespool.Host.Authentication;
 /// in the application set it.
 /// </para>
 /// <para>
-/// <b>A mismatch ends the whole session, not just the cookie being checked</b>: the application,
-/// external and pending cookies go, and the remembered browser with them, whichever of the two
-/// validated cookies noticed. That is the framework's behaviour, kept: a stale stamp on any of them
-/// means the account changed underneath this browser.
+/// <b>A mismatch ends the whole session, not just the cookie being checked</b>: the session's row, the
+/// application, external and pending cookies go, and the remembered browser with them. That is the
+/// framework's behaviour, kept: a stale stamp means the account changed underneath this browser.
+/// </para>
+/// <para>
+/// <b>Only the remembered-browser cookie is checked this way now.</b> The application cookie is checked
+/// on every request against its session row by <see cref="SessionStampValidator"/>, which compares the
+/// stamp as part of that and rebuilds nothing; the remembered browser is no session, grants nothing by
+/// itself, and stays on the interval.
 /// </para>
 /// </remarks>
 public abstract class StampValidator : ISecurityStampValidator

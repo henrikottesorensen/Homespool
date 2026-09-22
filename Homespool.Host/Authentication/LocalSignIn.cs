@@ -1,11 +1,14 @@
 using System;
+using System.Buffers.Text;
 using System.Globalization;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
 using Duende.IdentityModel;
 
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
@@ -33,14 +36,20 @@ namespace Homespool.Host.Authentication;
 /// it with its method, so it goes on the application cookie as it is rather than through the factory a
 /// second time. A completed second factor adds the provider it was pending for, as
 /// <see cref="JwtClaimTypes.IdentityProvider"/>. A refresh rebuilds the principal from the account
-/// and carries the method and provider over, where the framework's refresh keeps them and its stamp
-/// validator drops them.
+/// and carries the method and provider over, as the framework's refresh keeps them. A refresh is the
+/// only rebuild: nothing re-reads the account into the cookie on a timer.
 /// </para>
 /// <para>
 /// <b>The pending and remembered cookies carry <see cref="JwtClaimTypes.Subject"/></b>, not the
 /// framework's <c>ClaimTypes.Name</c>: both are written and read on this side now, and the house
 /// spells claims the JWT way. The remembered cookie also carries the account's security stamp, as the
 /// framework's does, so a stamp change revokes it - see <see cref="RememberedBrowserStampValidator"/>.
+/// </para>
+/// <para>
+/// <b>Every sign-in starts a new <see cref="UserSession"/></b>, and the application cookie carries its
+/// secret as <see cref="HSClaimTypes.SessionSecret"/>. A session the browser already had is ended
+/// first, so a sign-in never continues a session somebody else could have planted in the browser. A
+/// refresh keeps the session and brings its row up to the account's stamp; signing out deletes it.
 /// </para>
 /// </remarks>
 public sealed class LocalSignIn
@@ -49,21 +58,30 @@ public sealed class LocalSignIn
     private readonly IUserClaimsPrincipalFactory<HSUser> _claimsFactory;
     private readonly LocalSignInRules _rules;
     private readonly RecentProof _proof;
+    private readonly UserSessionService _sessions;
     private readonly IdentityOptions _options;
+    private readonly IOptionsMonitor<CookieAuthenticationOptions> _cookies;
+    private readonly TimeProvider _time;
     private readonly ILogger<LocalSignIn> _logger;
 
     public LocalSignIn(UserManager<HSUser> users,
                        IUserClaimsPrincipalFactory<HSUser> claimsFactory,
                        LocalSignInRules rules,
                        RecentProof proof,
+                       UserSessionService sessions,
                        IOptions<IdentityOptions> options,
+                       IOptionsMonitor<CookieAuthenticationOptions> cookies,
+                       TimeProvider time,
                        ILogger<LocalSignIn> logger)
     {
         _users = users;
         _claimsFactory = claimsFactory;
         _rules = rules;
         _proof = proof;
+        _sessions = sessions;
         _options = options.Value;
+        _cookies = cookies;
+        _time = time;
         _logger = logger;
     }
 
@@ -85,7 +103,11 @@ public sealed class LocalSignIn
         await context.SignOutAsync(IdentityConstants.ExternalScheme);
         await context.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
 
-        await SignInCoreAsync(context, principal, new AuthenticationProperties { IsPersistent = isPersistent });
+        await EndSessionAsync(context);
+
+        AuthenticationProperties properties = new() { IsPersistent = isPersistent };
+        await StartSessionAsync(context, principal, properties);
+        await SignInCoreAsync(context, principal, properties);
     }
 
     /// <summary>
@@ -129,16 +151,28 @@ public sealed class LocalSignIn
             return false;
         }
 
-        await SignInCoreAsync(context, await RebuiltPrincipalAsync(user, session.Principal), session.Properties);
+        ClaimsPrincipal rebuilt = await RebuiltPrincipalAsync(user, session.Principal);
+        string? secret = rebuilt.FindFirstValue(HSClaimTypes.SessionSecret);
+
+        // The row moves to the stamp the rebuilt principal carries, which is what keeps this browser
+        // signed in across a change to the account that ends every other one.
+        if (secret is null || !await _sessions.RefreshAsync(secret, StampOf(rebuilt), context.RequestAborted))
+        {
+            _logger.LogError("A sign-in refresh was refused because this browser's session has ended; sign in instead.");
+
+            return false;
+        }
+
+        await SignInCoreAsync(context, rebuilt, session.Properties);
 
         return true;
     }
 
     /// <summary>
     /// A fresh principal for <paramref name="user"/> from the claims factory, carrying the method,
-    /// provider and passkey claims <paramref name="current"/> was signed in with.
+    /// provider, passkey and session claims <paramref name="current"/> was signed in with.
     /// </summary>
-    public async Task<ClaimsPrincipal> RebuiltPrincipalAsync(HSUser user, ClaimsPrincipal current)
+    private async Task<ClaimsPrincipal> RebuiltPrincipalAsync(HSUser user, ClaimsPrincipal current)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(current);
@@ -149,7 +183,8 @@ public sealed class LocalSignIn
         {
             foreach (Claim carried in current.FindAll(claim => claim.Type is JwtClaimTypes.AuthenticationMethod or
                                                                              JwtClaimTypes.IdentityProvider or
-                                                                             HSClaimTypes.PasskeyCredentialId))
+                                                                             HSClaimTypes.PasskeyCredentialId or
+                                                                             HSClaimTypes.SessionSecret))
             {
                 identity.AddClaim(new Claim(carried.Type, carried.Value));
             }
@@ -219,8 +254,8 @@ public sealed class LocalSignIn
     }
 
     /// <summary>
-    /// Ends the session: the application cookie, the external and pending cookies a sign-in in
-    /// progress may have left, and any recent proof. The remembered browser stays remembered, as the
+    /// Ends the session: its row, the application cookie, the external and pending cookies a sign-in
+    /// in progress may have left, and any recent proof. The remembered browser stays remembered, as the
     /// framework leaves it.
     /// </summary>
     /// <remarks>
@@ -233,11 +268,89 @@ public sealed class LocalSignIn
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        await EndSessionAsync(context);
         await context.SignOutAsync(IdentityConstants.ApplicationScheme);
         await context.SignOutAsync(IdentityConstants.ExternalScheme);
         await context.SignOutAsync(IdentityConstants.TwoFactorUserIdScheme);
 
         _proof.Clear(context);
+    }
+
+    /// <summary>
+    /// Records a new session for <paramref name="principal"/> and puts its secret on the principal,
+    /// replacing any it arrived with, and fixes the cookie's issue and expiry times the row is kept in
+    /// step with.
+    /// </summary>
+    private async Task StartSessionAsync(HttpContext context, ClaimsPrincipal principal, AuthenticationProperties properties)
+    {
+        if (principal.Identity is not ClaimsIdentity identity)
+        {
+            throw new InvalidOperationException("A sign-in's principal has no claims identity to carry its session.");
+        }
+
+        string userId = _users.GetUserId(principal) ??
+                        throw new InvalidOperationException("A sign-in's principal names no account.");
+
+        DateTimeOffset issued = _time.GetUtcNow();
+        properties.IssuedUtc = issued;
+        properties.ExpiresUtc = issued + _cookies.Get(IdentityConstants.ApplicationScheme).ExpireTimeSpan;
+
+        string secret = await _sessions.StartAsync(long.Parse(userId, CultureInfo.InvariantCulture),
+                                                   StampOf(principal),
+                                                   PasskeyOf(principal),
+                                                   properties.ExpiresUtc.Value,
+                                                   context.RequestAborted);
+
+        foreach (Claim arrived in identity.FindAll(HSClaimTypes.SessionSecret).ToList())
+        {
+            identity.RemoveClaim(arrived);
+        }
+
+        identity.AddClaim(new Claim(HSClaimTypes.SessionSecret, secret));
+    }
+
+    /// <summary>
+    /// Deletes the row of the session this request was signed in with, when it was. Read from
+    /// <see cref="HttpContext.User"/> rather than by authenticating, so that it also serves a request
+    /// whose authentication is what is ending the session.
+    /// </summary>
+    private async Task EndSessionAsync(HttpContext context)
+    {
+        string? secret = context.User.FindFirstValue(HSClaimTypes.SessionSecret);
+
+        if (secret is not null)
+        {
+            await _sessions.EndAsync(secret, context.RequestAborted);
+        }
+    }
+
+    /// <summary>The account's security stamp as <paramref name="principal"/> carries it.</summary>
+    private string StampOf(ClaimsPrincipal principal)
+    {
+        return principal.FindFirstValue(_options.ClaimsIdentity.SecurityStampClaimType) ??
+               throw new InvalidOperationException("A session's principal carries no security stamp, so nothing could end it.");
+    }
+
+    /// <summary>
+    /// The passkey <paramref name="principal"/> was signed in with, or null when it was not a passkey
+    /// sign-in. A passkey sign-in that does not say which passkey is refused: its session could not be
+    /// ended by revoking the passkey, which is the one thing a lost device's owner can do.
+    /// </summary>
+    private static byte[]? PasskeyOf(ClaimsPrincipal principal)
+    {
+        if (!principal.HasClaim(JwtClaimTypes.AuthenticationMethod, PasskeyAuthenticationHandler.AuthenticationMethod))
+        {
+            return null;
+        }
+
+        string? encoded = principal.FindFirstValue(HSClaimTypes.PasskeyCredentialId);
+
+        if (encoded is not null && Base64Url.IsValid(encoded, out int length) && length > 0)
+        {
+            return Base64Url.DecodeFromChars(encoded);
+        }
+
+        throw new InvalidOperationException("A passkey sign-in must name the passkey it proved.");
     }
 
     private static async Task SignInCoreAsync(HttpContext context, ClaimsPrincipal principal, AuthenticationProperties? properties)

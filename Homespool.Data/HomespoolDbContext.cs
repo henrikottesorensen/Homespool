@@ -75,6 +75,10 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
     /// authenticated request; revoking one is deleting its row.</summary>
     public DbSet<ApiToken> ApiTokens { get; set; }
 
+    /// <summary>Signed-in browsers, one row per application cookie. Read on every cookie-authenticated
+    /// request; ending a session is deleting its row.</summary>
+    public DbSet<UserSession> UserSessions { get; set; }
+
     /// <summary>Per-account failed-attempt counts and backoffs, one row per account per action a
     /// limiter guards. Absent for an account that has not got anything wrong.</summary>
     public DbSet<UserActionAttempt> UserActionAttempts { get; set; }
@@ -475,6 +479,34 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
             // Cascade: a deleted account takes its credentials with it. Leaving them would leave live
             // bearer tokens pointing at a user id that no longer resolves.
+            entity.HasOne<HSUser>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<UserSession>(entity =>
+        {
+            // Every cookie-authenticated request looks its session up by this, and finding the row IS
+            // verifying the cookie's secret, as for ApiTokens.TokenHash. Unique for the same reason.
+            entity.HasIndex(e => e.SecretHash)
+                  .IsUnique();
+
+            // What a revoke names, since Id counts up.
+            entity.HasIndex(e => e.Uuid)
+                  .IsUnique();
+
+            // Listing and revoking an account's sessions.
+            entity.HasIndex(e => e.UserId);
+
+            // WebAuthn bounds a credential id at 1023 bytes; the passkey table's own limit.
+            entity.Property(e => e.PasskeyCredentialId)
+                  .HasMaxLength(1024);
+
+            // Cascade: a session outliving its account would sign in a user id that no longer resolves.
+            // Deliberately no foreign key to the passkey: a removed passkey ends its sessions through the
+            // liveness check, which the sweep then tidies, rather than by the database deleting rows
+            // underneath a request that has just read one.
             entity.HasOne<HSUser>()
                   .WithMany()
                   .HasForeignKey(e => e.UserId)

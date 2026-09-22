@@ -542,6 +542,10 @@ public static class Program
             // the rate limiter, which counts requests rather than rows.
             builder.Services.AddHostedService<PrusaConnect.RegistrationRetentionService>();
 
+            // Sweeps UserSession rows that no longer sign anybody in. Signing out deletes a row, but a
+            // browser that is closed or never comes back after a password change leaves its row behind.
+            builder.Services.AddHostedService<Authentication.SessionRetentionService>();
+
             // Scoped so its per-request memo of "may this account touch this printer" is bounded by
             // the request, which is the only window in which the answer cannot change.
             builder.Services.AddScoped<Authorisation.TeamCapabilityLookup>();

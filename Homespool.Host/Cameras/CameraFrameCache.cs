@@ -168,7 +168,7 @@ public sealed class CameraFrameCache
 
     private sealed class Entry
     {
-        public object Gate { get; } = new();
+        public Lock Gate { get; } = new();
 
         private CameraFrame? _frame;
 

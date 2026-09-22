@@ -39,6 +39,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     private readonly CommandAnswerPolicy _policy;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private readonly List<ServerCommandFrame> _receivedCommands = [];
+    private readonly Lock _receivedCommandsLock = new();
     private readonly TaskCompletionSource _telemetryCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WebSocket? _socket;
     private Exception? _replyFault;
@@ -73,7 +74,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     {
         get
         {
-            lock (_receivedCommands)
+            lock (_receivedCommandsLock)
             {
                 return _receivedCommands.ToArray();
             }
@@ -530,7 +531,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
                                Action? disconnect,
                                CancellationToken cancellationToken)
     {
-        lock (_receivedCommands)
+        lock (_receivedCommandsLock)
         {
             _receivedCommands.Add(frame);
         }

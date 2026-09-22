@@ -32,7 +32,7 @@ internal sealed class FakeWebSocket : WebSocket
     /// <summary>Recorded when a close frame is written.</summary>
     public const string CloseFrameSent = "close";
 
-    private readonly object _sync = new();
+    private readonly Lock _sync = new();
     private readonly List<string> _operations = [];
     private readonly TaskCompletionSource _sendGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

@@ -126,6 +126,13 @@ public static class AuthenticationBuilderExtensions
 
     public static AuthenticationBuilder AddPrusaConnectPrinterAuthentication(this AuthenticationBuilder builder)
     {
+        // One per process, since what it remembers has to outlive the request that proved it.
+        builder.Services.AddSingleton<VerifiedPrinterTokens>();
+
+        // One per process as well, since it is a bound on the whole port. A factory rather than a
+        // type registration, so the production limits are the constructor's defaults and nothing else.
+        builder.Services.AddSingleton(services => new ProvisioningHashBudget(services.GetRequiredService<TimeProvider>()));
+
         builder.AddScheme<PrusaConnectAuthenticationSchemeOptions, PrusaConnectPrinterAuthenticationHandler>(
             Schemes.PrusaConnectPrinter,
             options => { });

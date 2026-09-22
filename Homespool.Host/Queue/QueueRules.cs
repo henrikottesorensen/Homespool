@@ -101,6 +101,14 @@ public static class QueueRules
             return QueueAction.Wait(QueueWaitReason.Transferring);
         }
 
+        if (situation.HeadAuthorityLapsed)
+        {
+            // Ahead of the holds, because every remedy a hold names - freeing space, a nozzle, a
+            // person deciding - ends in a send this authority would be refused. It is the one thing
+            // in the way that a person has to clear first.
+            return QueueAction.Wait(QueueWaitReason.QueuerLostAccess);
+        }
+
         if (situation.HoldReason is { } hold)
         {
             // Ahead of the transfer branch, because a blocked file is precisely one that would

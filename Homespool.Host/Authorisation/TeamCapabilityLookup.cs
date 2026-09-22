@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -78,7 +79,7 @@ public class TeamCapabilityLookup
             return cached;
         }
 
-        List<TeamMember> memberships = await _dbContext.TeamMembers
+        List<TeamMember> memberships = await Memberships.Open(_dbContext)
                                                        .AsNoTracking()
                                                        .Where(member => member.UserId == userId)
                                                        .ToListAsync(cancellationToken)

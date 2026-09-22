@@ -253,7 +253,8 @@ public sealed class PrintHistoryUsageTests : IDisposable
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                        new QueueSnapshotReader(context, TestTelemetryContext.For(context),
                                                                new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
-                                                               TimeProvider.System),
+                                                               TimeProvider.System,
+                                                               new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance)),
                                        new UserNameLookup(context));
     }
 

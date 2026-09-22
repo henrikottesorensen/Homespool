@@ -721,6 +721,110 @@ public sealed class QueueAdvancerTests : IDisposable
         context.PrintJobs.Should().NotBeEmpty("Print is what queueing and starting both need");
     }
 
+    /// <summary>
+    /// <b>A closed account's queued print does not run</b>, and reopening the account resumes it.
+    /// </summary>
+    /// <remarks>
+    /// The loop acts as whoever queued the work and never signs in, so the sign-in gate that refuses
+    /// the person does nothing here: only the membership check at send time can. The entry is kept
+    /// rather than consumed, as it is for a member who left the team - closing an account is not a
+    /// decision about their prints.
+    /// </remarks>
+    [Fact]
+    public async Task AClosedAccountsQueuedPrintIsNotStartedUntilItIsReopened()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+
+        // A printer that would happily accept, so a refusal can only come from the account.
+        ConnectAccepting();
+
+        HSUser owner = await context.Users.SingleAsync(TestContext.Current.CancellationToken);
+        owner.DeactivatedAt = _clock.GetUtcNow();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        context.PrintJobs.Should().BeEmpty("nothing may be started on a closed account's authority");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(1, "and the entry stays where it is rather than being consumed");
+
+        // Act - reopened
+        owner = await context.Users.SingleAsync(TestContext.Current.CancellationToken);
+        owner.DeactivatedAt = null;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        context.PrintJobs.Should().NotBeEmpty("a reopened account's print carries on where it stopped");
+    }
+
+    /// <summary>
+    /// The snapshot says why the queue stopped, so the page and the rules tell the same story as the
+    /// gate - rather than answering "transfer" or "print" for a send that will be refused.
+    /// </summary>
+    [Fact]
+    public async Task TheSnapshotSaysWhenTheHeadsQueuerMayNoLongerPrint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await using TelemetryDbContext telemetry = TestTelemetryContext.For(context);
+        ConnectAccepting();
+
+        QueueSnapshot open = await NewSnapshotReader(context, telemetry).ReadAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        HSUser owner = await context.Users.SingleAsync(TestContext.Current.CancellationToken);
+        owner.DeactivatedAt = _clock.GetUtcNow();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        QueueSnapshot closed = await NewSnapshotReader(context, telemetry).ReadAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        open.HeadAuthorityLapsed.Should().BeFalse();
+        QueueRules.Decide(open).Kind.Should().Be(QueueActionKind.Print);
+
+        closed.HeadAuthorityLapsed.Should().BeTrue();
+        QueueRules.Decide(closed).Reason.Should().Be(QueueWaitReason.QueuerLostAccess);
+    }
+
+    /// <summary>
+    /// The same lapse from the other side: the account is open and its recorded scope never named
+    /// <see cref="Capability.Print"/>.
+    /// </summary>
+    [Fact]
+    public async Task TheSnapshotReadsTheRecordedScopeAsWellAsTheMembership()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await using TelemetryDbContext telemetry = TestTelemetryContext.For(context);
+
+        QueuedPrint head = await context.QueuedPrints.SingleAsync(TestContext.Current.CancellationToken);
+        head.QueuedByScope = CapabilitySet.Format([Capability.ViewPrinter, Capability.ViewQueue]);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        QueueSnapshot snapshot = await NewSnapshotReader(context, telemetry).ReadAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        snapshot.HeadAuthorityLapsed.Should().BeTrue("the loop acts on the credential that queued the work, not the owner's full rights");
+    }
+
+    /// <summary>A reader over this fixture's database, fresh so no earlier answer is memoised.</summary>
+    private QueueSnapshotReader NewSnapshotReader(HomespoolDbContext context, TelemetryDbContext telemetry)
+    {
+        return new QueueSnapshotReader(context, telemetry, _registry, _clock,
+                                       new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance));
+    }
+
     /// <summary>Puts real bytes where the store expects this user's file.</summary>
     private async Task WriteFileOnDiskAsync(string name)
     {

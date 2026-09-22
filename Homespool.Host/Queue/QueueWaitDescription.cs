@@ -52,6 +52,9 @@ public static class QueueWaitDescription
                 MessageKey.For("Queue_WaitTransferRetrying", fileName),
             QueueWaitReason.AwaitingPrinterPath => MessageKey.For("Queue_WaitAwaitingPath"),
             QueueWaitReason.PrinterNotAvailable => MessageKey.For("Queue_WaitPrinterNotReady"),
+            QueueWaitReason.QueuerLostAccess => fileName is null ?
+                MessageKey.For("Queue_WaitQueuerLostAccessUnnamed") :
+                MessageKey.For("Queue_WaitQueuerLostAccess", fileName),
 
             // InsufficientSpace and TransferRefused have their own banners, carrying the numbers or
             // the printer's words; PrintStarting is already on the page as the active print;
@@ -70,6 +73,8 @@ public static class QueueWaitDescription
     /// and awaiting-a-path are the loop working and clear themselves, so they want a footnote.
     /// <see cref="QueueWaitReason.PrinterNotAvailable"/> clears when somebody says the printer may
     /// take work, and nothing else on the page states that rule.
+    /// <see cref="QueueWaitReason.QueuerLostAccess"/> clears when somebody cancels the entry or
+    /// restores the access, and nothing else on the page says the queue has stopped at all.
     /// </para>
     /// <para>
     /// <b>InsufficientSpace also needs a person and is deliberately false</b> - it is not a case this
@@ -90,6 +95,20 @@ public static class QueueWaitDescription
     /// </para>
     /// </remarks>
     public static bool NeedsAPerson(QueueWaitReason? reason)
+    {
+        return reason is QueueWaitReason.PrinterNotAvailable or QueueWaitReason.QueuerLostAccess;
+    }
+
+    /// <summary>
+    /// Whether making the printer ready is what would clear the wait - the one remedy the page can
+    /// offer as a button beside the sentence.
+    /// </summary>
+    /// <remarks>
+    /// Narrower than <see cref="NeedsAPerson"/> on purpose. <see cref="QueueWaitReason.QueuerLostAccess"/>
+    /// also stops the queue on a person, but a ready printer would only let the loop be refused
+    /// again, so offering the button there names a remedy that cannot work.
+    /// </remarks>
+    public static bool ClearedByMakingReady(QueueWaitReason? reason)
     {
         return reason == QueueWaitReason.PrinterNotAvailable;
     }

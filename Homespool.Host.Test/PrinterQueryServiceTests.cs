@@ -69,6 +69,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
                                                        long userId,
                                                        IReadOnlyList<Capability> capabilities)
     {
+        TestAccounts.Add(context, userId);
+
         Team team = new()
         {
             CreatedBy = userId,
@@ -143,6 +145,36 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Assert
         printers.Should().BeEmpty("a scope that never named ViewPrinter cannot be shown printers");
+    }
+
+    /// <summary>
+    /// A listing refuses a closed account as the single-printer check does. It goes through
+    /// <c>TeamCapabilityLookup</c> rather than <c>PrinterAccessService</c>, so it needs the rule of
+    /// its own.
+    /// </summary>
+    [Fact]
+    public async Task ListPrintersForUserAsyncReturnsNothingToAClosedAccount()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        await AddPrinterAsync(context, membership.TeamId);
+
+        HSUser account = await context.Users.SingleAsync(user => user.Id == 1, TestContext.Current.CancellationToken);
+        account.DeactivatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IReadOnlyList<Printer> printers =
+            await new PrinterQueryService(context, TestTelemetryContext.For(context),
+                                          new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                          new TeamCapabilityLookup(context),
+                                          TimeProvider.System)
+                .ListPrintersForUserAsync(Caller.Unscoped(1), CancellationToken.None);
+
+        // Assert
+        printers.Should().BeEmpty("the membership is still listed, and grants nothing");
     }
 
     [Fact]

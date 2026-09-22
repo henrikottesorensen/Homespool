@@ -48,7 +48,7 @@ public enum QueueWaitReason
     /// <b>Only the states firmware would accept the flag from</b> - a machine that is busy is
     /// <see cref="PrinterBusy"/>, not this. The distinction is the whole reason this value is loud:
     /// it is the one wait a person clears by saying the sheet is empty, and
-    /// <c>QueueWaitDescription.NeedsAPerson</c> puts a button beside it on that basis. Offering that
+    /// <c>QueueWaitDescription.ClearedByMakingReady</c> puts a button beside it on that basis. Offering that
     /// button where the printer would refuse the press names a remedy that cannot work.
     /// </remarks>
     PrinterNotAvailable = 5,
@@ -125,4 +125,24 @@ public enum QueueWaitReason
     /// with the printer's words in it.
     /// </remarks>
     TransferRefused = 10,
+
+    /// <summary>
+    /// The head was queued under an authority that may no longer print here - the account was
+    /// closed, left the team, or lost <see cref="Capability.Print"/> on it. The queue stops behind it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It stops rather than skips</b>, for the reason <see cref="InsufficientSpace"/> does: a queue
+    /// runs in the order people set, and one that quietly reordered itself around an entry would print
+    /// a later file before an earlier one. Nor does the loop cancel the entry - a reopened account or a
+    /// restored membership resumes it.
+    /// </para>
+    /// <para>
+    /// <b>A person clears it, and not by making the printer ready</b>: somebody who may withdraw the
+    /// entry cancels it, or an administrator restores the access. Its sentence names both, because
+    /// nothing else on the page says the queue has stopped - the printer is idle, the file is
+    /// queued, and every send the loop makes is refused before it reaches the socket.
+    /// </para>
+    /// </remarks>
+    QueuerLostAccess = 11,
 }

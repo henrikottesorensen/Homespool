@@ -2031,6 +2031,12 @@
   <data name="Queue_WaitPrinterNotReady" xml:space="preserve">
     <value>Afventer at printeren bliver meldt klargjort.</value>
   </data>
+  <data name="Queue_WaitQueuerLostAccess" xml:space="preserve">
+    <value>{0} blev sat i kø af en konto, der ikke længere må printe på denne printer, så køen er gået i stå her. Annuller dette print, eller giv kontoen adgangen tilbage, så køen kan fortsætte.</value>
+  </data>
+  <data name="Queue_WaitQueuerLostAccessUnnamed" xml:space="preserve">
+    <value>Det næste print blev sat i kø af en konto, der ikke længere må printe på denne printer, så køen er gået i stå her. Annuller dette print, eller giv kontoen adgangen tilbage, så køen kan fortsætte.</value>
+  </data>
   <data name="Ini_HowToLoad" xml:space="preserve">
     <value>Klargøring fra Homespool. Kopiér denne fil til roden af en USB-nøgle - ikke ned i en mappe, ellers finder printeren den ikke - og indlæs den fra printerens egen menu:</value>
   </data>

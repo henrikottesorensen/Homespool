@@ -92,6 +92,8 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
 
         if (team is null)
         {
+            TestAccounts.Add(context, userId);
+
             team = new Team
             {
                 CreatedBy = userId,

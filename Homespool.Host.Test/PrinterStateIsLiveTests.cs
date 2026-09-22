@@ -80,6 +80,8 @@ public sealed class PrinterStateIsLiveTests : IDisposable
                                                        IReadOnlyList<Capability>? capabilities = null,
                                                        string? teamName = "Workshop")
     {
+        TestAccounts.Add(context, userId);
+
         Team team = new() { CreatedBy = userId, CreatedAt = DateTimeOffset.UtcNow, Name = teamName };
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

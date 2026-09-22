@@ -221,6 +221,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
+        TestAccounts.Add(context, Reader, User, Manager);
         context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Reader, Capabilities = TestMemberships.Literal(CapabilityPresets.Viewer) });
         context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = User, Capabilities = TestMemberships.Literal(CapabilityPresets.Operator) });
         context.TeamMembers.Add(new TeamMember

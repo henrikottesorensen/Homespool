@@ -152,7 +152,8 @@ public sealed class IndexModelTests : IDisposable
         PrintFileCatalog catalog = new(store, context, NullLogger<PrintFileCatalog>.Instance);
         PrintHistoryService history = new(context,
                                           access,
-                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System),
+                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), connectionRegistry,
+                                                                  TimeProvider.System, access),
                                           new UserNameLookup(context));
         PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal, history);
 

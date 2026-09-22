@@ -22,15 +22,14 @@ namespace Homespool.Host.Queue;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>One queue per printer, shared by everyone who may use it</b>: if you may use the printer,
-/// you may manipulate its queue - reorder
-/// it, cancel from it, including entries somebody else added. That is how a shared printer is
-/// actually used, and it needs no permission this app does not already have. A queue per person
-/// would have to answer whose turn it is, which is a question nobody asked.
+/// <b>One queue per printer, shared by everyone who may print on it.</b> A queue per person would
+/// have to answer whose turn it is, which is a question nobody asked.
 /// </para>
 /// <para>
-/// <b>Reading is <c>CanRead</c>, changing is <c>CanUse</c>.</b> Seeing what a printer will do next is
-/// the same class of thing as seeing its temperature. Unlike
+/// <b>Reading is <see cref="Capability.ViewQueue"/>; adding, and withdrawing your own entry, is
+/// <see cref="Capability.Print"/>; reordering, or withdrawing somebody else's, is
+/// <see cref="Capability.ControlPrinter"/>.</b> Seeing what a printer will do next is the same class
+/// of thing as seeing its temperature. Unlike
 /// <c>PrinterController.Storage</c>, none of this makes the printer go and work - it is all database.
 /// </para>
 /// <para>
@@ -67,7 +66,7 @@ public class PrintQueueService
     /// What <paramref name="printerId"/> will print, in the order it will print it.
     /// </summary>
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanRead</c> on the printer's team.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.ViewQueue"/> on the printer's team.</exception>
     public async Task<IReadOnlyList<QueuedPrint>> ListAsync(int printerId,
                                                             Caller caller,
                                                             CancellationToken cancellationToken)
@@ -131,7 +130,7 @@ public class PrintQueueService
     /// Adds one of the caller's files to the end of a printer's queue.
     /// </summary>
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c> on the printer's team.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.Print"/> on the printer's team.</exception>
     /// <exception cref="PrintFileNotFoundException">The caller has no file by that name.</exception>
     /// <remarks>
     /// <b>The same file may be queued more than once</b>, deliberately - printing two copies is an
@@ -213,7 +212,8 @@ public class PrintQueueService
     /// Queues one of the caller's own prints again, by the handle it was queued under.
     /// </summary>
     /// <exception cref="TeamAccessDeniedException">
-    /// Caller lacks <c>CanRead</c> on the printer's history or <c>CanUse</c> on its queue.
+    /// Caller lacks <see cref="Capability.ViewHistory"/> or <see cref="Capability.Print"/> on the
+    /// printer's team.
     /// </exception>
     /// <exception cref="PrintNotYoursException">Somebody else queued that print.</exception>
     /// <exception cref="PrintFileNotFoundException">The caller no longer has a file by that name.</exception>
@@ -323,7 +323,7 @@ public class PrintQueueService
     /// Moves a queued print to <paramref name="targetIndex"/>, counting from zero, and renumbers the
     /// queue around it. An index outside the queue is clamped to its ends.
     /// </summary>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c> on the printer's team.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.ControlPrinter"/> on the printer's team.</exception>
     /// <remarks>
     /// <para>
     /// Renumbering the whole queue rather than swapping two rows: at a depth measured in single digits
@@ -395,14 +395,13 @@ public class PrintQueueService
     /// <remarks>
     /// <para>
     /// <b>This never stops a print.</b> A job the loop has already started is a <c>Job</c>, not a queue
-    /// entry, and stopping it is a separate deliberate act - "don't cancel prints on people" (Henrik).
+    /// entry, and stopping it is a separate deliberate act, so withdrawing from the queue can never
+    /// cancel a print on somebody.
     /// </para>
     /// <para>
     /// <b>Whose entry it is decides who may remove it.</b> <see cref="Capability.Print"/> withdraws
-    /// your own, <see cref="Capability.ControlPrinter"/> withdraws anybody's. That narrows the older
-    /// rule that anyone able to use the printer could cancel anyone's entry - which was written when
-    /// the vocabulary could not tell the two apart. "The queue is the printer's, not the queuer's"
-    /// still holds, for whoever holds <see cref="Capability.ControlPrinter"/>.
+    /// your own, <see cref="Capability.ControlPrinter"/> withdraws anybody's: the queue is the
+    /// printer's rather than the queuer's, for whoever holds <see cref="Capability.ControlPrinter"/>.
     /// </para>
     /// </remarks>
     /// <returns>False if there is no such queued print on that printer.</returns>

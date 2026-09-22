@@ -67,7 +67,7 @@ public class PrinterPreheatService
     /// Heats nozzle and bed to a filament's preset.
     /// </summary>
     /// <exception cref="PrinterBusyException">The printer is in a state where this would interfere.</exception>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c>.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.ControlPrinter"/>.</exception>
     public Task<PreheatOutcome> PreheatAsync(int printerId,
                                              Caller caller,
                                              FilamentPreset preset,

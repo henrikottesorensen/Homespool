@@ -19,11 +19,12 @@ namespace Homespool.Host.Cameras;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The permission split lives here</b> (Henrik, 2026-08-08, calling it the least worst option).
-/// A networked camera needs <c>CanManage</c> on the team that will own it: it belongs to whoever
-/// can already reach it. A camera plugged into this machine needs <b>administrator</b>, because it
-/// is a property of the server rather than of a team - the same category as the printer
-/// certificate, and permissioned the same way. <c>CanManage</c> is per-team and there can be
+/// <b>The permission split lives here.</b>
+/// A networked camera needs <see cref="Capability.ManageCamera"/> on the team that will own it: it
+/// belongs to whoever can already reach it. A camera plugged into this machine needs
+/// <b>administrator</b>, because it is a property of the server rather than of a team - the same
+/// category as the printer certificate, and permissioned the same way.
+/// <see cref="Capability.ManageCamera"/> is per-team and there can be
 /// several teams, so team permission over one physical device would let two teams claim it with
 /// nothing to explain why the second gets nothing.
 /// </para>

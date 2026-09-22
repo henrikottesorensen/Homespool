@@ -32,7 +32,7 @@ namespace Homespool.Host.Authentication;
 /// <b>The principal is built by the same factory the sign-in cookie uses</b>, so a token-authenticated
 /// request is indistinguishable from a cookie-authenticated one to everything downstream:
 /// <c>UserManager.GetUserAsync(User)</c>, which every <c>/api/v1</c> action calls, and the
-/// <c>TeamMember.CanUse</c> checks behind <c>PrinterCommandService</c>. Hand-rolling the two claims
+/// capability checks behind <c>PrinterCommandService</c>. Hand-rolling the two claims
 /// those happen to need today would work until something read a third.
 /// </para>
 /// <para>

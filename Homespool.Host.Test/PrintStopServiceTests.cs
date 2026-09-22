@@ -435,8 +435,8 @@ public sealed class PrintStopServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Stopper, Capabilities = TestMemberships.Graded(true, true, false) });
-        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = SomebodyElse, Capabilities = TestMemberships.Graded(true, true, false) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = Stopper, Capabilities = TestMemberships.Literal(CapabilityPresets.Operator) });
+        context.TeamMembers.Add(new TeamMember { TeamId = team.Id, UserId = SomebodyElse, Capabilities = TestMemberships.Literal(CapabilityPresets.Operator) });
         context.TeamMembers.Add(new TeamMember
         {
             TeamId = team.Id,

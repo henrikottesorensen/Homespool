@@ -224,7 +224,7 @@
                        data-bs-toggle from the document, so a button replaced every two seconds still
                        opens the dialog, and a trigger holds no half-finished input to lose the way
                        the filament select does. *@
-                    @if (Model.CanUse && Model.Statistics.Printer.RemoteReadyAllowed)
+                    @if (Model.CanPrint && Model.Statistics.Printer.RemoteReadyAllowed)
                     {
                         <button type="button" class="btn btn-sm btn-primary"
                                 data-bs-toggle="modal" data-bs-target="#set-ready">

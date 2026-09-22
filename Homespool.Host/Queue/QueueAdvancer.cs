@@ -36,7 +36,7 @@ namespace Homespool.Host.Queue;
 /// </para>
 /// <para>
 /// <b>It acts as the user who queued the print.</b> The loop is not a principal and must not become a
-/// way around <c>TeamMember.CanUse</c>: every command goes out under
+/// way around <see cref="Capability.Print"/>: every command goes out under
 /// <see cref="QueuedPrint.QueuedByUserId"/>, so a member whose access is revoked between queueing and
 /// printing simply stops advancing. That is also the only handle on <i>whose</i> file it is, since the
 /// store is keyed by user.
@@ -282,23 +282,6 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
-    /// Every printer that needs a pass - one with work waiting, or one with a print in flight.
-    /// </summary>
-    /// <remarks>
-    /// <b>Two conditions because the pass does two jobs.</b> It advances the queue and it reconciles
-    /// the open print, and until 2026-08-04 it was scheduled by only the first - so a printer went
-    /// unvisited from the moment its last queue entry was consumed at <c>START_PRINT</c>, which is
-    /// exactly when its print row still needed closing. The last print of a session never closed, and
-    /// a row stuck <see cref="PrintState.Starting"/> blocked the next print for
-    /// <see cref="StartingStaleAfter"/>. The predicate predated print history by a day and nobody
-    /// revisited it when <see cref="ReconcilePrintAsync"/> moved in.
-    /// <para>
-    /// <c>Union</c> dedupes in SQL, and the second arm is served by the same partial unique index
-    /// (<c>PrinterId WHERE EndedAt IS NULL</c>) that enforces one active print per printer. Still
-    /// self-limiting: the row closes, the queue is empty, the printer drops off the list.
-    /// </para>
-    /// </remarks>
-    /// <summary>
     /// The authority a queue entry was accepted under - <b>not merely the person who queued it</b>.
     /// </summary>
     /// <remarks>
@@ -328,6 +311,23 @@ public sealed class QueueAdvancer : BackgroundService
         TransferRetryRules.Forget(onPrinter);
     }
 
+    /// <summary>
+    /// Every printer that needs a pass - one with work waiting, or one with a print in flight.
+    /// </summary>
+    /// <remarks>
+    /// <b>Two conditions because the pass does two jobs.</b> It advances the queue and it reconciles
+    /// the open print. Scheduled on queued work alone, a printer would go unvisited from the moment
+    /// its last queue entry is consumed at <c>START_PRINT</c> - exactly when its print row still needs
+    /// closing - so the last print of a session would never close, and a row stuck
+    /// <see cref="PrintState.Starting"/> would block the next print for
+    /// <see cref="StartingStaleAfter"/>. <see cref="ReconcilePrintAsync"/> is the half that needs the
+    /// second condition.
+    /// <para>
+    /// <c>Union</c> dedupes in SQL, and the second arm is served by the same partial unique index
+    /// (<c>PrinterId WHERE EndedAt IS NULL</c>) that enforces one active print per printer. Still
+    /// self-limiting: the row closes, the queue is empty, the printer drops off the list.
+    /// </para>
+    /// </remarks>
     private static Task<List<int>> PrintersNeedingAPassAsync(HomespoolDbContext dbContext,
                                                              CancellationToken cancellationToken)
     {

@@ -20,7 +20,7 @@ namespace Homespool.Host.Accounts;
 public static class TeamOptionSelectListBuilder
 {
     /// <summary>
-    /// Only <c>CanManage</c> memberships - adding a printer to a team is a structural change, the
+    /// Only memberships holding <see cref="Capability.ManagePrinter"/> - adding a printer to a team is a structural change, the
     /// same permission bar <see cref="PrusaConnect.PrusaConnectService"/> enforces server-side for
     /// both provisioning and claiming. The default team (<see cref="TeamMember.IsDefault"/>) is
     /// pre-selected.

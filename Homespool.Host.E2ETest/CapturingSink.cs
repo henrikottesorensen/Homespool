@@ -63,14 +63,6 @@ public sealed class CapturingSink : ILogEventSink
     }
 
     /// <summary>
-    /// Whether any single event carries every one of <paramref name="properties"/> with the given
-    /// value - the assertion for "one log line said both of these", which
-    /// <see cref="FindPropertyValue"/> cannot make: it reads properties across events, and the bag
-    /// underneath is unordered, so "the first match" is whichever event happened to be enumerated
-    /// first. When two requests in one test log the same property, only the conjunction is
-    /// meaningful.
-    /// </summary>
-    /// <summary>
     /// How many events carry every one of <paramref name="properties"/> - for a site that is meant to
     /// speak once however often it is provoked, where "at least one" would pass against a flood.
     /// </summary>
@@ -81,6 +73,14 @@ public sealed class CapturingSink : ILogEventSink
                                                      Render(v) == p.value));
     }
 
+    /// <summary>
+    /// Whether any single event carries every one of <paramref name="properties"/> with the given
+    /// value - the assertion for "one log line said both of these", which
+    /// <see cref="FindPropertyValue"/> cannot make: it reads properties across events, and the bag
+    /// underneath is unordered, so "the first match" is whichever event happened to be enumerated
+    /// first. When two requests in one test log the same property, only the conjunction is
+    /// meaningful.
+    /// </summary>
     public bool HasEventWith(params (string name, string value)[] properties)
     {
         return _events.Any(e => properties.All(p =>

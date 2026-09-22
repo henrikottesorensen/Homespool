@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -81,7 +82,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         }
     }
 
-    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, bool canManage, bool isDefault)
+    private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, IReadOnlyList<Capability> capabilities, bool isDefault)
     {
         Team team = new()
         {
@@ -92,7 +93,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
                 new TeamMember
                 {
                     UserId = userId,
-                    Capabilities = TestMemberships.Graded(true, true, canManage),
+                    Capabilities = TestMemberships.Literal(capabilities),
                     IsDefault = isDefault,
                 },
             },
@@ -115,7 +116,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
@@ -135,7 +136,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
     }
 
     /// <summary>
-    /// An explicit team id is honoured when the caller has CanManage on it - not just any membership.
+    /// An explicit team id is honoured when the caller holds <c>ManagePrinter</c> on it - not just any
+    /// membership.
     /// </summary>
     [Fact]
     public async Task ClaimingWithAnExplicitTeamIdUsesThatTeamWhenTheCallerCanManageIt()
@@ -144,8 +146,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        TeamMember managedTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: false);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        TeamMember managedTeam = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: false);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
@@ -166,8 +168,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        TeamMember unmanaged = await AddTeamAsync(context, userId: 1, canManage: false, isDefault: false);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        TeamMember unmanaged = await AddTeamAsync(context, userId: 1, CapabilityPresets.Operator, isDefault: false);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
@@ -188,8 +190,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        TeamMember someoneElses = await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        TeamMember someoneElses = await AddTeamAsync(context, userId: 2, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
@@ -212,7 +214,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         Caller slicerKey = Caller.Scoped(
@@ -238,7 +240,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         Caller enrolling = Caller.Scoped(
@@ -264,8 +266,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        TeamMember managedTeam = await AddTeamAsync(context, userId: 1, canManage: true, isDefault: false);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        TeamMember managedTeam = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: false);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         Caller slicerKey = Caller.Scoped(
@@ -292,8 +294,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        TeamMember unmanaged = await AddTeamAsync(context, userId: 1, canManage: false, isDefault: false);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        TeamMember unmanaged = await AddTeamAsync(context, userId: 1, CapabilityPresets.Operator, isDefault: false);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Fails both halves: the team does not permit managing, and the credential never named it.
@@ -322,7 +324,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: false, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Operator, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
@@ -343,8 +345,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
-        await AddTeamAsync(context, userId: 2, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        await AddTeamAsync(context, userId: 2, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         await service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: Caller.Unscoped(1));
@@ -371,7 +373,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
@@ -392,7 +394,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         PrusaConnectService service = NewService(context);
 
-        await AddTeamAsync(context, userId: 1, canManage: true, isDefault: true);
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         // Act
         Func<Task> unknown = () => service.ClaimPrinterAsync("NEVER-ISSUED", null, null, teamUuid: null, caller: Caller.Unscoped(1));

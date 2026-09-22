@@ -478,12 +478,6 @@ public class PrinterLiveStateMergerTests
     }
 
     /// <summary>
-    /// The composition this suite historically asserted as one call: the Prusa edge's mapping into
-    /// the neutral currency, then the mechanical apply. Kept composed so every policy assertion
-    /// here (the job-block clear, the atomic blocks, the coalesce) still bites end to end - a
-    /// mutation in either half fails these tests exactly as it did when both halves were one class.
-    /// </summary>
-    /// <summary>
     /// A float that is infinite or NaN is stored as no reading - not kept, and not left showing the
     /// last good number, because the printer did speak for the field.
     /// </summary>
@@ -691,6 +685,11 @@ public class PrinterLiveStateMergerTests
                      .ToList();
     }
 
+    /// <summary>
+    /// The Prusa edge's mapping into the neutral currency, then the mechanical apply - composed, so
+    /// every policy assertion here (the job-block clear, the atomic blocks, the coalesce) bites end to
+    /// end, and a mutation in either half fails these tests.
+    /// </summary>
     private static void Merge(PrinterLiveState state, TelemetryDTO telemetry, DateTimeOffset receivedAt)
     {
         PrinterLiveStateMerger.Apply(state, PrusaTelemetryMapping.ToUpdate(telemetry), receivedAt);

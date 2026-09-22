@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Threading;
@@ -483,6 +484,109 @@ public sealed class DetailModelTests : IDisposable
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
+    }
+
+    /// <summary>
+    /// Stop is offered on the rule <see cref="PrintStopService"/> enforces: your own print with
+    /// <see cref="Capability.Print"/>, anybody's with <see cref="Capability.ControlPrinter"/> - and a
+    /// print with no open row, which is nobody's to withdraw, only with the latter.
+    /// </summary>
+    [Theory]
+    [InlineData(false, "mine", true)]
+    [InlineData(false, "theirs", false)]
+    [InlineData(false, "none", false)]
+    [InlineData(true, "theirs", true)]
+    [InlineData(true, "none", true)]
+    public async Task StopIsOfferedOnTheRuleTheStopServiceEnforces(bool controlPrinter, string running, bool offered)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _, UserManager<HSUser> users) = await NewModelWithUsersAsync(context);
+        HSUser other = await AddUserAsync(users, "other");
+
+        await SetCapabilitiesAsync(context, user.Id,
+                                   controlPrinter ? CapabilityPresets.Operator : CapabilityPresets.Contributor);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        if (running != "none")
+        {
+            context.PrintJobs.Add(new PrintJob
+            {
+                PrinterId = printer.Id,
+                FileName = "running.bgcode",
+                QueuedByUserId = running == "mine" ? user.Id : other.Id,
+                StartedAt = DateTimeOffset.UtcNow,
+                State = PrintState.Printing,
+            });
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.CanControlPrinter.Should().Be(controlPrinter);
+        model.CanStop.Should().Be(offered);
+    }
+
+    /// <summary>
+    /// A queue entry's Remove button follows the rule the queue enforces: your own with
+    /// <see cref="Capability.Print"/>, anybody's with <see cref="Capability.ControlPrinter"/>.
+    /// </summary>
+    [Theory]
+    [InlineData(false, true, true)]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, true)]
+    public async Task RemoveIsOfferedOnTheRuleTheQueueEnforces(bool controlPrinter, bool mine, bool offered)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _, UserManager<HSUser> users) = await NewModelWithUsersAsync(context);
+        HSUser other = await AddUserAsync(users, "other");
+
+        await SetCapabilitiesAsync(context, user.Id,
+                                   controlPrinter ? CapabilityPresets.Operator : CapabilityPresets.Contributor);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        QueuedPrint entry = new()
+        {
+            PrinterId = printer.Id,
+            QueuedByUserId = mine ? user.Id : other.Id,
+            QueuedByScope = string.Empty,
+        };
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.CanWithdraw(entry).Should().Be(offered);
+    }
+
+    private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string name)
+    {
+        HSUser user = new(name) { Email = $"{name}@example.com", EmailConfirmed = true };
+        (await users.CreateAsync(user, "Sup3rSecret!23")).Succeeded.Should().BeTrue();
+
+        return user;
+    }
+
+    /// <summary>Replaces the signed-in owner's own capabilities on their default team.</summary>
+    private static async Task SetCapabilitiesAsync(HomespoolDbContext context,
+                                                   long userId,
+                                                   IReadOnlyList<Capability> capabilities)
+    {
+        TeamMember membership = await context.TeamMembers.SingleAsync(member => member.UserId == userId,
+                                                                      TestContext.Current.CancellationToken);
+
+        membership.Capabilities = CapabilitySet.Format(capabilities);
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]

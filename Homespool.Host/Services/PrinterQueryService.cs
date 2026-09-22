@@ -214,7 +214,7 @@ public class PrinterQueryService
 
     /// <summary>
     /// A single printer by its public <see cref="Printer.Uuid"/>, or <c>null</c> if it doesn't
-    /// exist <b>or</b> the caller lacks <c>CanRead</c> on its team - the two cases are
+    /// exist <b>or</b> the caller lacks <see cref="Capability.ViewPrinter"/> on its team - the two cases are
     /// indistinguishable on purpose, so a 404 never confirms a UUID belongs to someone else's team.
     /// </summary>
     /// <remarks>
@@ -227,18 +227,6 @@ public class PrinterQueryService
         return _access.FindAsync(uuid, caller, Capability.ViewPrinter, cancellationToken);
     }
 
-    /// <summary>
-    /// Updates a printer's user-editable fields - name and location only; moving it between teams
-    /// is deferred (needs a permission check on both the old and new team). Returns <c>null</c> under
-    /// the same "doesn't exist or caller can't even read it" rule as <see cref="GetPrinterForUserAsync"/>.
-    /// A caller who can read but not manage the printer's team gets <see cref="TeamAccessDeniedException"/>
-    /// instead - safe to distinguish, since reaching that branch already proves they can see the printer.
-    /// </summary>
-    /// <remarks>
-    /// Returns the live state alongside, so the response to an edit describes the same resource the
-    /// next <c>GET</c> will - a PATCH answering <c>UNKNOWN</c> while a GET one second later says
-    /// <c>PRINTING</c> would look like the edit had reset something.
-    /// </remarks>
     /// <summary>
     /// Sets whether this printer may be marked ready from its page - see
     /// <see cref="Printer.RemoteReadyAllowed"/> for what the flag asserts.
@@ -279,6 +267,18 @@ public class PrinterQueryService
         return allowed;
     }
 
+    /// <summary>
+    /// Updates a printer's user-editable fields - name and location only; moving it between teams
+    /// is deferred (needs a permission check on both the old and new team). Returns <c>null</c> under
+    /// the same "doesn't exist or caller can't even read it" rule as <see cref="GetPrinterForUserAsync"/>.
+    /// A caller who can read but not manage the printer's team gets <see cref="TeamAccessDeniedException"/>
+    /// instead - safe to distinguish, since reaching that branch already proves they can see the printer.
+    /// </summary>
+    /// <remarks>
+    /// Returns the live state alongside, so the response to an edit describes the same resource the
+    /// next <c>GET</c> will - a PATCH answering <c>UNKNOWN</c> while a GET one second later says
+    /// <c>PRINTING</c> would look like the edit had reset something.
+    /// </remarks>
     public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid,
                                                             Caller caller,
                                                             string? name,

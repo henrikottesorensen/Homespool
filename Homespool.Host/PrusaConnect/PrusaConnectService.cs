@@ -482,7 +482,7 @@ public class PrusaConnectService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Requires <c>CanManage</c> on the team that already owns it.</b> Reaching the printer's front
+    /// <b>Requires <see cref="Capability.ManagePrinter"/> on the team that already owns it.</b> Reaching the printer's front
     /// panel is enough to start a re-registration, so without this check anyone who can walk up to a
     /// printer could take it over by claiming the code it displays. The permission is on the owning
     /// team, not on any team the claimant nominated - the printer does not move, and
@@ -559,7 +559,7 @@ public class PrusaConnectService
     /// <see cref="ProvisionPrinterAsync"/> would mint a <em>second</em> printer for the same hardware,
     /// and the printer would then present a token the enrolled row does not know - the auth handler
     /// deliberately refuses to bind that (it cannot tell an accident from a takeover attempt). Here the
-    /// caller names the printer they mean and has proved <c>CanManage</c> on its team, so the new token
+    /// caller names the printer they mean and has proved <see cref="Capability.ManagePrinter"/> on its team, so the new token
     /// can be bound to the existing enrolment on first contact.
     /// </para>
     /// <para>
@@ -569,7 +569,7 @@ public class PrusaConnectService
     /// </para>
     /// </remarks>
     /// <exception cref="PrinterNotFoundException">No printer with that id.</exception>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanManage</c> on the printer's team.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.ManagePrinter"/> on the printer's team.</exception>
     /// <exception cref="ProvisioningTokenNotFoundException">
     /// The printer was never provisioned and is not enrolled — there is no enrolment for a reissued
     /// token to attach to.

@@ -5,6 +5,10 @@ namespace Homespool.FakePrinter;
 /// send so consecutive messages look like a real machine rather than a stuck one. Defaults are a
 /// cold, idle printer.
 /// </summary>
+/// <remarks>
+/// <b>What is loaded is not here</b>: it is <see cref="FakeDevice"/> state, because an <c>M702</c>
+/// changes it and a reading nothing can change would report filament the fake has just unloaded.
+/// </remarks>
 public sealed record TelemetryReadings(
     double NozzleTemperature = 25.0,
     double BedTemperature = 24.0,
@@ -12,7 +16,6 @@ public sealed record TelemetryReadings(
     double TargetBed = 0.0,
     int Speed = 100,
     int Flow = 100,
-    string Material = "PLA",
     double AxisZ = 0.0,
     int FanExtruder = 0,
     int FanPrint = 0,
@@ -27,7 +30,7 @@ public sealed record TelemetryReadings(
     // none, and why this builder is the only thing that can exercise the field's path.
     //
     // A plain comment, not ///: an XML doc comment cannot sit on a positional record parameter
-    // (CS1587), and documenting one parameter via <param> would oblige all fourteen (CS1573).
+    // (CS1587), and documenting one parameter via <param> would oblige all of them (CS1573).
     int? TimeToFilamentChange = null,
 
     // How many tools this printer reports, which decides whether a "slot" object is emitted at all:

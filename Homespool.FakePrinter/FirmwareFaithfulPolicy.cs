@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Homespool.FakePrinter;
 
@@ -11,7 +14,7 @@ namespace Homespool.FakePrinter;
 /// rejected as busy in between), a repeated command id is refused, and <c>SEND_INFO</c> yields an
 /// <c>INFO</c> event carrying the command id.
 /// </summary>
-public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
+public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
 {
     private readonly PrinterIdentity _identity;
     private readonly TimeProvider _time;
@@ -112,9 +115,30 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             _backgroundDoneAt = _time.GetTimestamp() +
                                 (long)(GcodeExecutionTime.TotalSeconds * _time.TimestampFrequency);
 
+            PlannedReply accepted = Reply(EventMessageBuilder.Build("ACCEPTED", device.WireState, frame.CommandId));
+
+            if (UnloadedTool(frame) is { } tool && device.MaterialOf(tool) is not null)
+            {
+                DeviceState before = device.BeginUnload();
+
+                return
+                [
+                    accepted,
+                    new PlannedReply(null, GcodeExecutionTime)
+                    {
+                        Complete = () =>
+                        {
+                            device.FinishUnload(tool, before);
+
+                            return EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId);
+                        },
+                    },
+                ];
+            }
+
             return
             [
-                Reply(EventMessageBuilder.Build("ACCEPTED", device.WireState, frame.CommandId)),
+                accepted,
                 new PlannedReply(
                     EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId),
                     GcodeExecutionTime),
@@ -123,6 +147,43 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
 
         return AnswerJson(frame, device);
     }
+
+    /// <summary>
+    /// The tool an <c>M702</c> in this gcode unloads, 1-based as the wire numbers tools; null for
+    /// gcode that unloads nothing the fake models.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The one gcode the fake acts on</b>, because it is the one whose effect the server reads
+    /// back: the tool's material goes to <c>---</c> in telemetry. Everything else is still
+    /// accepted and finished with no effect.
+    /// </para>
+    /// <para>
+    /// <b><c>T</c> is 0-based in gcode</b> - <c>T0</c> is the wire's tool 1. An <c>M702</c> without
+    /// one acts on the active tool in firmware; the fake does not track which tool is active, and the
+    /// server always names one, so that form is left without an effect rather than guessed at. So is
+    /// an unload of a tool already empty, which firmware answers with a dialog on the panel.
+    /// </para>
+    /// </remarks>
+    private static int? UnloadedTool(ServerCommandFrame frame)
+    {
+        string gcode = Encoding.ASCII.GetString(frame.Payload.Span);
+
+        foreach (string line in gcode.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            Match unload = UnloadLine().Match(line);
+
+            if (unload.Success && int.TryParse(unload.Groups["tool"].ValueSpan, CultureInfo.InvariantCulture, out int index))
+            {
+                return index + 1;
+            }
+        }
+
+        return null;
+    }
+
+    [GeneratedRegex(@"^M702\b.*\bT(?<tool>\d+)\b", RegexOptions.CultureInvariant)]
+    private static partial Regex UnloadLine();
 
     private static PlannedReply Reply(byte[] payload)
     {
@@ -302,26 +363,6 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
     }
 
     /// <summary>
-    /// Accepts a download and opens the negotiation: <c>TRANSFER_INFO</c> - <b>not</b>
-    /// <c>FINISHED</c> - followed immediately by the first range request.
-    /// </summary>
-    /// <remarks>
-    /// The rejection arms are <c>handle_transfer_result</c>'s (planner.cpp:801-824), each with its
-    /// machine-readable code. The ordering matters: firmware checks the path before it tries to take
-    /// the transfer slot (<c>init_transfer</c>, planner.cpp:209-221 runs before
-    /// <c>Transfer::begin</c>), so a bad path is refused even while another transfer is running.
-    /// </remarks>
-    /// <summary>
-    /// Answers a <c>SEND_FILE_INFO</c>: a directory enumerates, a file describes itself, and a path
-    /// outside <c>/usb</c> is refused before anything is rendered.
-    /// </summary>
-    /// <remarks>
-    /// The refusal wording is firmware's own - <c>path_allowed</c> fails and the planner builds
-    /// <c>Rejected{"Forbidden path"}</c> (planner.cpp:751-759). A path that is simply absent gets the
-    /// same treatment here: firmware would fail inside the renderer instead, but a refusal is the
-    /// honest answer a fake can give without inventing a second failure shape.
-    /// </remarks>
-    /// <summary>
     /// Answers a <c>START_PRINT</c>: the path is checked, then the machine, and success is reported as
     /// <c>JOB_INFO</c>.
     /// </summary>
@@ -446,6 +487,16 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             [Reply(EventMessageBuilder.BuildJobInfo(device.WireState, current, null, "FIN_OK", frame.CommandId))];
     }
 
+    /// <summary>
+    /// Answers a <c>SEND_FILE_INFO</c>: a directory enumerates, a file describes itself, and a path
+    /// outside <c>/usb</c> is refused before anything is rendered.
+    /// </summary>
+    /// <remarks>
+    /// The refusal wording is firmware's own - <c>path_allowed</c> fails and the planner builds
+    /// <c>Rejected{"Forbidden path"}</c> (planner.cpp:751-759). A path that is simply absent gets the
+    /// same treatment here: firmware would fail inside the renderer instead, but a refusal is the
+    /// honest answer a fake can give without inventing a second failure shape.
+    /// </remarks>
     private IReadOnlyList<PlannedReply> SendFileInfo(ServerCommandFrame frame, FakeDevice device)
     {
         string? path = PathArgument.TryParse(frame.Payload);
@@ -481,6 +532,16 @@ public sealed class FirmwareFaithfulPolicy : CommandAnswerPolicy
             ];
     }
 
+    /// <summary>
+    /// Accepts a download and opens the negotiation: <c>TRANSFER_INFO</c> - <b>not</b>
+    /// <c>FINISHED</c> - followed immediately by the first range request.
+    /// </summary>
+    /// <remarks>
+    /// The rejection arms are <c>handle_transfer_result</c>'s (planner.cpp:801-824), each with its
+    /// machine-readable code. The ordering matters: firmware checks the path before it tries to take
+    /// the transfer slot (<c>init_transfer</c>, planner.cpp:209-221 runs before
+    /// <c>Transfer::begin</c>), so a bad path is refused even while another transfer is running.
+    /// </remarks>
     private IReadOnlyList<PlannedReply> StartDownload(ServerCommandFrame frame, FakeDevice device)
     {
         StartDownloadArguments? arguments = StartDownloadArguments.TryParse(frame.Payload);

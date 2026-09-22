@@ -19,9 +19,9 @@ namespace Homespool.Host.Authorisation;
 /// <remarks>
 /// <para>
 /// <b>Resolved in memory, not in SQL, and that is the point.</b> Capabilities are a space-separated
-/// string, so the obvious translation of the old <c>member.CanRead</c> predicate is a padded
-/// <c>LIKE</c> - which is not indexable, and which matches one capability's name inside another's the
-/// day two of them share a prefix. Reading the membership rows first and filtering here is exact,
+/// string, so the obvious SQL translation of a capability check is a padded <c>LIKE</c> - which is
+/// not indexable, and which matches one capability's name inside another's the day two of them share
+/// a prefix. Reading the membership rows first and filtering here is exact,
 /// costs one small query, and leaves the caller filtering printers on <c>TeamId</c>, which is indexed
 /// (<c>IX_Printers_TeamId</c>).
 /// </para>

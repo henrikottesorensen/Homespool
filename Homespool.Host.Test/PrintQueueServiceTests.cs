@@ -27,9 +27,9 @@ namespace Homespool.Host.Test;
 /// <see cref="PrintQueueService"/> - the list a printer pulls from, and who may change it.
 /// </summary>
 /// <remarks>
-/// The permission split is the part worth pinning: <b>one shared queue per printer</b>, changed by
-/// anyone with <c>CanUse</c> including entries somebody else added, and merely readable with
-/// <c>CanRead</c>.
+/// The permission split is the part worth pinning: <b>one shared queue per printer</b>, added to
+/// with <c>Print</c>, reordered and cleared of anybody's entries with <c>ControlPrinter</c>, and
+/// merely readable with <c>ViewQueue</c>.
 /// </remarks>
 [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                  Justification = "TestTelemetryContext.For builds a second context over the same SQLite file the " +
@@ -70,7 +70,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
@@ -94,7 +94,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
@@ -121,7 +121,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode");
 
@@ -147,7 +147,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
@@ -172,7 +172,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
 
@@ -211,7 +211,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange - the file queued once and held
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
@@ -255,7 +255,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
 
         // Act
@@ -267,14 +267,15 @@ public sealed class PrintQueueServiceTests : IDisposable
     }
 
     /// <summary>
-    /// <c>CanRead</c> sees the queue but cannot change it - the split this service exists to hold.
+    /// <c>ViewQueue</c> without <c>Print</c> sees the queue but cannot add to it - the split this
+    /// service exists to hold.
     /// </summary>
     [Fact]
-    public async Task ReadingIsAllowedWithoutCanUseButChangingIsNot()
+    public async Task ReadingIsAllowedWithoutPrintButQueueingIsNot()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: false);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Viewer);
         PrintQueueService queue = NewQueue(context);
 
         // Act
@@ -293,7 +294,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
 
         // Act
@@ -304,16 +305,16 @@ public sealed class PrintQueueServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The queue is the printer's, not the queuer's: anyone with <c>CanUse</c> may cancel anyone's
-    /// entry.
+    /// The queue is the printer's, not the queuer's: anyone with <c>ControlPrinter</c> may cancel
+    /// anyone's entry.
     /// </summary>
     [Fact]
     public async Task AMemberWhoMayControlThePrinterMayCancelSomebodyElsesJob()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
-        await AddMemberAsync(context, printer.TeamId, Bob, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
+        await AddMemberAsync(context, printer.TeamId, Bob, [.. CapabilityPresets.Operator]);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
 
@@ -337,7 +338,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await AddUserAsync(context, Bob, "bob@example.com");
         await AddMemberAsync(context, printer.TeamId, Bob, Capability.ViewQueue, Capability.Print);
         PrintQueueService queue = NewQueue(context);
@@ -364,7 +365,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await AddMemberAsync(context, printer.TeamId, Bob, Capability.ViewQueue, Capability.Print);
         PrintQueueService queue = NewQueue(context);
         await UploadAsync(context, "one.gcode");
@@ -385,7 +386,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         PrintQueueService queue = NewQueue(context);
 
         // Act
@@ -406,7 +407,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
 
         Printer other = new() { Uuid = Guid.NewGuid(), TeamId = printer.TeamId };
         context.Printers.Add(other);
@@ -440,7 +441,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
 
         Printer other = new() { Uuid = Guid.NewGuid(), TeamId = printer.TeamId };
         context.Printers.Add(other);
@@ -475,18 +476,6 @@ public sealed class PrintQueueServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
-    private static async Task AddMemberAsync(HomespoolDbContext context, int teamId, long userId, bool canUse)
-    {
-        context.TeamMembers.Add(new TeamMember
-        {
-            TeamId = teamId,
-            UserId = userId,
-            Capabilities = TestMemberships.Graded(true, canUse, false),
-        });
-
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-    }
-
     private static async Task AddMemberAsync(HomespoolDbContext context,
                                              int teamId,
                                              long userId,
@@ -497,7 +486,6 @@ public sealed class PrintQueueServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
-    /// <summary>A user, a team they belong to, and a printer that team owns.</summary>
     /// <summary>
     /// Queueing a file the printer should not print says so, and still queues it.
     /// </summary>
@@ -512,7 +500,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "abrasive.gcode");
 
         printer.Model = "MK3.5";
@@ -561,7 +549,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task QueueingAFileThePrinterCanPrintSaysNothing()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "fine.gcode");
 
         printer.Model = "MK4S";
@@ -611,7 +599,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task AQueueHeldByTheWrongNozzleSaysSoOnThePage()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "abrasive.gcode");
 
         printer.Model = "MK4S";
@@ -653,7 +641,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task AQueueHeldOnARefusedTransferQuotesThePrinter(string? words, string quoted)
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "plus+sign.gcode");
         await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "plus+sign.gcode",
                                              TestContext.Current.CancellationToken);
@@ -686,7 +674,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     public async Task AQueueNothingIsWrongWithSaysNothing()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "fine.gcode");
 
         printer.Model = "MK4S";
@@ -718,7 +706,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer busy = await SeedAsync(context, canUse: true);
+        Printer busy = await SeedAsync(context, CapabilityPresets.Operator);
 
         Printer quiet = new() { Uuid = Guid.NewGuid(), TeamId = busy.TeamId };
         context.Printers.Add(quiet);
@@ -749,7 +737,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer granted = await SeedAsync(context, canUse: true);
+        Printer granted = await SeedAsync(context, CapabilityPresets.Operator);
 
         Printer withheld = new() { Uuid = Guid.NewGuid(), TeamId = granted.TeamId };
         context.Printers.Add(withheld);
@@ -779,7 +767,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        Printer printer = await SeedAsync(context, canUse: true);
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
 
         // Act
         IReadOnlyDictionary<int, int> counts =
@@ -789,7 +777,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         counts.Should().BeEmpty();
     }
 
-    private async Task<Printer> SeedAsync(HomespoolDbContext context, bool canUse)
+    /// <summary>A user, a team they belong to, and a printer that team owns.</summary>
+    private async Task<Printer> SeedAsync(HomespoolDbContext context, IReadOnlyList<Capability> capabilities)
     {
         HSUser user = new("alice@example.com")
         {
@@ -805,7 +794,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        await AddMemberAsync(context, team.Id, Alice, canUse);
+        await AddMemberAsync(context, team.Id, Alice, [.. capabilities]);
 
         Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = team.Id };
         context.Printers.Add(printer);

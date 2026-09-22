@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 
 using Homespool.Model;
@@ -27,59 +28,36 @@ internal static class TestMemberships
     }
 
     /// <summary>
-    /// The capability set equivalent to the old read/use/manage triple, for the fixtures that were
-    /// written against it.
+    /// A capability row written exactly as given, without the implication closure
+    /// <see cref="CapabilitySet.Format"/> applies.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Additive, not graded</b>, so the odd combinations survive translation. Several tests turn
-    /// <i>read</i> off while leaving the others on - which the three booleans allowed and no preset
-    /// does - and those tests are the ones checking that a printer stays invisible without it. A
-    /// grade-shaped translation quietly grants the missing capability back and the test passes for
-    /// the wrong reason.
-    /// </para>
-    /// <para>
-    /// <b>Written literally rather than through <see cref="CapabilitySet.Format"/></b>, because those
-    /// same combinations are no longer <i>writable</i>: an act implies the base view, so formatting
-    /// <c>Print</c> without <c>ViewPrinter</c> puts <c>ViewPrinter</c> back. A literal row is what a
-    /// column written before the closure rule looks like - so the two tests go on proving what they
-    /// were written to prove, and now also prove the closure is applied on the way <i>in</i> rather
+    /// <b>For the rows a fixture must be able to write and the application no longer can.</b> An act
+    /// implies the base view, so formatting <c>Print</c> without <c>ViewPrinter</c> puts
+    /// <c>ViewPrinter</c> back - and the tests checking that a printer stays invisible without it
+    /// would pass for the wrong reason. A literal row is what a column written before the closure
+    /// rule looks like, so those tests also prove the closure is applied on the way <i>in</i> rather
     /// than on the way out.
     /// </para>
+    /// <para>
+    /// <b>For a preset the two spellings are the same row</b>, since a preset is already closed.
+    /// </para>
     /// </remarks>
-    public static string Graded(bool canRead, bool canUse, bool canManage)
+    public static string Literal(IEnumerable<Capability> capabilities)
     {
-        System.Collections.Generic.List<Capability> capabilities = [];
-
-        if (canRead)
-        {
-            capabilities.AddRange(CapabilityPresets.Viewer);
-        }
-
-        if (canUse)
-        {
-            capabilities.Add(Capability.Print);
-            capabilities.Add(Capability.ControlPrinter);
-        }
-
-        if (canManage)
-        {
-            capabilities.Add(Capability.ManagePrinter);
-            capabilities.Add(Capability.ManageCamera);
-        }
-
         // Deliberately not CapabilitySet.Format - see the remarks above.
         return string.Join(' ', capabilities.Distinct().OrderBy(capability => capability));
     }
 
     public static TeamMember With(int teamId, long userId, params Capability[] capabilities)
     {
-        return With(teamId, userId, (System.Collections.Generic.IReadOnlyList<Capability>)capabilities);
+        return With(teamId, userId, (IReadOnlyList<Capability>)capabilities);
     }
 
     private static TeamMember With(int teamId,
                                    long userId,
-                                   System.Collections.Generic.IReadOnlyList<Capability> capabilities)
+                                   IReadOnlyList<Capability> capabilities)
     {
         return new TeamMember
         {

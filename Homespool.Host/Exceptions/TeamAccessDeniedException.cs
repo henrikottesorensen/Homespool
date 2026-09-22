@@ -4,7 +4,7 @@ namespace Homespool.Host.Exceptions;
 
 /// <summary>
 /// The caller lacks the permission a team-scoped action requires - e.g. claiming a printer into a
-/// team without <c>CanManage</c> on it, or naming a team the caller is not even a member of.
+/// team without <c>ManagePrinter</c> on it, or naming a team the caller is not even a member of.
 /// </summary>
 public class TeamAccessDeniedException : Exception
 {

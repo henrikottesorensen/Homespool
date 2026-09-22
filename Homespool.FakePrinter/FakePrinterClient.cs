@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -207,10 +208,23 @@ public sealed class FakePrinterClient : IAsyncDisposable
         await SendMessageAsync(EventMessageBuilder.BuildInfo(Identity, Device.WireState, null, Device.JobId, Device.FreeSpace),
                                cancellationToken);
 
-        Task read = ReadLoopAsync(socket, cancellationToken);
-        Task telemetry = TelemetryLoopAsync(socket, cancellationToken);
+        // The connection ending ends the telemetry too. The read loop is what sees it end, while the
+        // telemetry loop spends nearly all its time in a wait - fifteen seconds idle - that nothing
+        // else would cut short, so a closed fake would otherwise linger that long before finishing.
+        using CancellationTokenSource connection = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
-        await Task.WhenAll(read, telemetry);
+        Task read = ReadLoopAsync(socket, cancellationToken);
+        Task telemetry = TelemetryLoopAsync(socket, connection.Token);
+
+        try
+        {
+            await read;
+        }
+        finally
+        {
+            await connection.CancelAsync();
+            await telemetry;
+        }
     }
 
     /// <summary>
@@ -258,6 +272,10 @@ public sealed class FakePrinterClient : IAsyncDisposable
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                // Taken before the message is built, so a change landing while it is sent still
+                // wakes the wait below rather than being lost between the two.
+                Task changed = Device.NextTelemetryChange;
+
                 // A device event the printer decided to send - an attention it just raised -
                 // goes ahead of the timed telemetry, which is the order a real one produces: the
                 // state change is reported when it happens, not at the next tick.
@@ -283,12 +301,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
                                   cancellationToken);
                 }
 
-                TimeSpan delay = _options.TelemetrySource.DelayBeforeNext(Device);
-
-                if (delay > TimeSpan.Zero)
-                {
-                    await Task.Delay(delay, cancellationToken);
-                }
+                await WaitBeforeNextSendAsync(_options.TelemetrySource, changed, Stopwatch.GetTimestamp(), cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -563,9 +576,9 @@ public sealed class FakePrinterClient : IAsyncDisposable
                     await Task.Delay(reply.Delay, cancellationToken);
                 }
 
-                if (reply.Payload is not null)
+                if ((reply.Complete?.Invoke() ?? reply.Payload) is { } payload)
                 {
-                    await send(reply.Payload, cancellationToken);
+                    await send(payload, cancellationToken);
                 }
 
                 if (reply.DisconnectAfter)
@@ -614,7 +627,10 @@ public sealed class FakePrinterClient : IAsyncDisposable
         {
             while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
-                // See the HTTP loop: a raised attention is sent when it is raised.
+                // See the HTTP loop: a raised attention is sent when it is raised, and the change
+                // is taken before the message is built.
+                Task changed = Device.NextTelemetryChange;
+
                 byte[]? next = Device.PendingEvents.Count > 0 ?
                     Device.PendingEvents.Dequeue() :
                     _options.TelemetrySource.NextMessage(Device);
@@ -626,12 +642,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
                 await SendMessageAsync(next, cancellationToken);
 
-                TimeSpan delay = _options.TelemetrySource.DelayBeforeNext(Device);
-
-                if (delay > TimeSpan.Zero)
-                {
-                    await Task.Delay(delay, cancellationToken);
-                }
+                await WaitBeforeNextSendAsync(_options.TelemetrySource, changed, Stopwatch.GetTimestamp(), cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -645,6 +656,54 @@ public sealed class FakePrinterClient : IAsyncDisposable
         finally
         {
             _telemetryCompleted.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Waits out the source's interval - or, for a source with a <see cref="ITelemetrySource.ChangeInterval"/>,
+    /// until the device changes and that long has passed since the last send, whichever is sooner.
+    /// </summary>
+    /// <remarks>
+    /// Firmware's rule (planner.cpp): send when at least <c>TELEMETRY_INTERVAL_MIN</c> has passed
+    /// <i>and</i> either the content changed or the ordinary interval is up. Without it an unload
+    /// would reach the server a whole idle interval late - fifteen seconds on the websocket - and a
+    /// test watching for it would either wait that long or prove nothing.
+    /// </remarks>
+    private async Task WaitBeforeNextSendAsync(ITelemetrySource source,
+                                               Task changed,
+                                               long sentAt,
+                                               CancellationToken cancellationToken)
+    {
+        TimeSpan delay = source.DelayBeforeNext(Device);
+
+        if (source.ChangeInterval is not { } floor)
+        {
+            if (delay > TimeSpan.Zero)
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+
+            return;
+        }
+
+        using CancellationTokenSource interval = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task elapsed = Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.Zero, interval.Token);
+
+        if (await Task.WhenAny(elapsed, changed) == elapsed)
+        {
+            // Rethrows a cancellation, which the loops treat as shutdown.
+            await elapsed;
+
+            return;
+        }
+
+        await interval.CancelAsync();
+
+        TimeSpan remaining = floor - Stopwatch.GetElapsedTime(sentAt);
+
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining, cancellationToken);
         }
     }
 

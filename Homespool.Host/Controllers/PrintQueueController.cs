@@ -36,8 +36,10 @@ namespace Homespool.Host.Controllers;
 /// this <c>planned_jobs</c>; that is their vocabulary and this is not their API.
 /// </para>
 /// <para>
-/// Permission lives in <see cref="PrintQueueService"/> - reading needs <c>CanRead</c>, changing needs
-/// <c>CanUse</c> - so it is decided in one place rather than restated per action here.
+/// Permission lives in <see cref="PrintQueueService"/> - reading needs
+/// <see cref="Capability.ViewQueue"/>, adding needs <see cref="Capability.Print"/>, and reordering or
+/// withdrawing somebody else's entry needs <see cref="Capability.ControlPrinter"/> - so it is decided
+/// in one place rather than restated per action here.
 /// </para>
 /// </remarks>
 [ApiController]

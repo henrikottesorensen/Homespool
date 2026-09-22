@@ -77,8 +77,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context,
                                                        long userId,
                                                        PrinterStatus? liveStatus,
-                                                       bool canUse = true,
-                                                       bool canManage = true,
+                                                       IReadOnlyList<Capability>? capabilities = null,
                                                        string? teamName = "Workshop")
     {
         Team team = new() { CreatedBy = userId, CreatedAt = DateTimeOffset.UtcNow, Name = teamName };
@@ -89,7 +88,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         {
             TeamId = team.Id,
             UserId = userId,
-            Capabilities = TestMemberships.Graded(true, canUse, canManage),
+            Capabilities = TestMemberships.Literal(capabilities ?? CapabilityPresets.Manager),
             IsDefault = true,
         });
 
@@ -238,7 +237,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle, canUse: false, canManage: false);
+        await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle, capabilities: CapabilityPresets.Viewer);
 
         // Act
         IReadOnlyList<PrinterWithState> listed =

@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Homespool.FakePrinter;
 
@@ -13,14 +15,115 @@ namespace Homespool.FakePrinter;
 /// <remarks>
 /// Not thread-safe by design: it is owned by the connection's single command-processing loop, the
 /// same single-owner shape the firmware's planner has (and <c>PrinterConnectionActor</c> on the
-/// server side). One simplification against hardware: the real machine passes through transient
+/// server side). <b>The one exception is filament</b>: an <c>M702</c> completes on its delayed reply,
+/// off that loop, while the telemetry loop reads the materials - so those sit behind a lock, and the
+/// state change beside them is a single enum write. One simplification against hardware: the real machine passes through transient
 /// states (Aborting, heating phases) before settling; the fake transitions instantly, so an ack's
 /// <c>state</c> field shows the settled state rather than a transient one.
 /// </remarks>
 public sealed class FakeDevice
 {
+    /// <summary>
+    /// What firmware calls the material of an empty tool - <c>FilamentType::none</c>'s name
+    /// (<c>src/common/filament.cpp</c>). Telemetry carries this string rather than omitting the
+    /// field, so a fake reporting nothing loaded must send it too.
+    /// </summary>
+    public const string NoMaterial = "---";
+
+    /// <summary>The material every tool starts with, until a test loads or unloads one.</summary>
+    public const string DefaultMaterial = "PLA";
+
+    /// <summary>Guards <see cref="_materials"/> and <see cref="_telemetryChanged"/>, which the
+    /// telemetry loop reads while a command's reply task writes them.</summary>
+    private readonly Lock _gate = new();
+
+    /// <summary>
+    /// Per-tool loaded material, 1-based as the wire numbers tools; null is nothing loaded. A tool
+    /// with no entry holds <see cref="DefaultMaterial"/>, so a fake nobody set up reports a loaded
+    /// printer on however many tools <see cref="TelemetryReadings.Tools"/> says it has.
+    /// </summary>
+    private readonly Dictionary<int, string?> _materials = [];
+
+    /// <summary>Completed, and replaced, whenever something telemetry reports changes.</summary>
+    private TaskCompletionSource _telemetryChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>Current device state; starts <see cref="DeviceState.Idle"/> like a booted printer.</summary>
     public DeviceState State { get; private set; } = DeviceState.Idle;
+
+    /// <summary>
+    /// The material loaded in <paramref name="tool"/>, or null when it is empty. Tools are 1-based,
+    /// as the wire's <c>slot</c> keys are.
+    /// </summary>
+    public string? MaterialOf(int tool)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(tool, 1);
+
+        lock (_gate)
+        {
+            return _materials.TryGetValue(tool, out string? material) ? material : DefaultMaterial;
+        }
+    }
+
+    /// <summary>What telemetry says is in <paramref name="tool"/>: its material, or <see cref="NoMaterial"/>.</summary>
+    public string WireMaterialOf(int tool)
+    {
+        return MaterialOf(tool) ?? NoMaterial;
+    }
+
+    /// <summary>
+    /// Loads <paramref name="material"/> into <paramref name="tool"/> - test/scenario setup, standing
+    /// in for somebody at the panel, since no server command loads filament.
+    /// </summary>
+    public void LoadFilament(string material, int tool = 1)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(material);
+
+        SetMaterial(tool, material);
+    }
+
+    /// <summary>Empties <paramref name="tool"/>, as a completed <c>M702</c> does.</summary>
+    public void UnloadFilament(int tool = 1)
+    {
+        SetMaterial(tool, null);
+    }
+
+    /// <summary>
+    /// Completes the next time something telemetry reports changes - today, a tool's material.
+    /// </summary>
+    /// <remarks>
+    /// <b>Firmware sends telemetry when its content changes</b>, not only on its timer: the planner
+    /// hashes what it would send (<c>Printer::Params::telemetry_fingerprint</c>, materials included)
+    /// and sends once the hash moves and <c>TELEMETRY_INTERVAL_MIN</c> has passed. This is the
+    /// "moved" half; the telemetry loop applies the interval. State is not in that hash - firmware
+    /// reports a state change as an event - so a state change alone does not complete this.
+    /// </remarks>
+    public Task NextTelemetryChange
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _telemetryChanged.Task;
+            }
+        }
+    }
+
+    private void SetMaterial(int tool, string? material)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(tool, 1);
+
+        TaskCompletionSource changed;
+
+        lock (_gate)
+        {
+            _materials[tool] = material;
+
+            changed = _telemetryChanged;
+            _telemetryChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        changed.TrySetResult();
+    }
 
     /// <summary>The running (or paused) job's id; null when no job exists.</summary>
     public int? JobId { get; private set; }
@@ -234,6 +337,37 @@ public sealed class FakeDevice
         JobPath = null;
 
         return true;
+    }
+
+    /// <summary>
+    /// The state half of an <c>M702</c> starting: the machine reports <c>BUSY</c> for the whole
+    /// unload, as the MK3.5 did. Returns the state to go back to.
+    /// </summary>
+    internal DeviceState BeginUnload()
+    {
+        DeviceState before = State;
+        State = DeviceState.Busy;
+
+        return before;
+    }
+
+    /// <summary>
+    /// The end of an <c>M702</c>: the tool is empty and the machine returns to where it was.
+    /// </summary>
+    /// <remarks>
+    /// <b>Back to the state it left, which hardware has confirmed only from <c>Idle</c></b> - the
+    /// MK3.5 went <c>Idle</c>, <c>Busy</c>, <c>Idle</c>. What an unload from <c>Finished</c> or
+    /// <c>Stopped</c> ends on has not been observed. A state somebody forced in the meantime is left
+    /// alone rather than overwritten.
+    /// </remarks>
+    internal void FinishUnload(int tool, DeviceState before)
+    {
+        UnloadFilament(tool);
+
+        if (State == DeviceState.Busy)
+        {
+            State = before;
+        }
     }
 
     /// <summary>Forces an arbitrary state - test/scenario setup (e.g. Attention, Error).</summary>

@@ -222,7 +222,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// provision a printer in a team of their own could otherwise write that stick to hardware someone
     /// else owns and end up authenticating as it. The narrow query makes that impossible rather than
     /// merely checked - the authorisation was done when
-    /// <c>PrusaConnectService.RegenerateProvisioningTokenAsync</c> demanded <c>CanManage</c> on this
+    /// <c>PrusaConnectService.RegenerateProvisioningTokenAsync</c> demanded <c>ManagePrinter</c> on this
     /// printer's team.
     /// </para>
     /// <para>

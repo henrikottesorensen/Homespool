@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
@@ -39,6 +41,18 @@ public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
     public string? ServerDomain { get; set; }
 
     /// <summary>
+    /// The names people browse this deployment by, from <c>AllowedHosts</c>: a passkey origin must
+    /// name one of them exactly. Empty - <c>AllowedHosts</c> unset or a wildcard - admits the
+    /// relying-party id alone.
+    /// </summary>
+    /// <remarks>
+    /// Read from configuration, not from the host filter's options, which also carry every name on the
+    /// printer certificate. A <c>*.</c> pattern is a subdomain wildcard to the host filter and matches
+    /// no origin here, since nothing is matched but a whole name.
+    /// </remarks>
+    public IReadOnlyList<string> ServedHosts { get; set; } = [];
+
+    /// <summary>
     /// How long the browser has to answer a challenge. It is both the <c>timeout</c> hint the request
     /// options carry and the life of the <see cref="CeremonyCookie"/>, so a challenge that outlives it
     /// is refused by the server whatever the browser did.
@@ -74,7 +88,8 @@ public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
     /// <remarks>
     /// The check the browser itself makes, done here first so that the passkey affordance can be
     /// withheld with a reason instead of failing in the ceremony. An IP literal fails it, as it must,
-    /// and so does <c>localhost</c> against any real name.
+    /// and so does <c>localhost</c> against any real name. It is wider than what a ceremony accepts:
+    /// <see cref="AllowsOrigin"/> also wants an exact served name and the served port.
     /// </remarks>
     public bool Covers(HostString host)
     {
@@ -94,27 +109,48 @@ public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
 
     /// <summary>
     /// Whether an assertion or attestation claiming to come from <paramref name="origin"/> may be
-    /// accepted: a secure origin whose host <see cref="Covers"/> - or plain <c>http</c> on
-    /// <c>localhost</c>, which browsers treat as secure for a developer's sake.
+    /// accepted on a request that arrived for <paramref name="requestHost"/>: a secure origin on a name
+    /// this deployment serves people on, under the relying-party id, on the port the request came in on.
     /// </summary>
+    /// <param name="origin">The origin the client data claims.</param>
+    /// <param name="requestHost">The <c>Host</c> the assertion was posted to, which supplies the port.</param>
     /// <remarks>
-    /// The framework's own check compares the origin the client data claims with the request's
-    /// <c>Origin</c> header, two values the same client supplied. The relying-party id hash in the
-    /// authenticator data is what binds the credential in the end, but there is no reason to accept
-    /// a claimed origin the deployment does not serve, so this pins it to the one name that matters.
+    /// <para>
+    /// <b>The name is one of <see cref="ServedHosts"/>, exactly, and <see cref="Covers"/> accepts
+    /// it.</b> Covering is not enough on its own. A browser lets a page on any subdomain of the
+    /// relying-party id run a ceremony against it, so a page on a subdomain somebody else controls can
+    /// carry a challenge that person fetched in their own session, have a visitor's authenticator sign
+    /// it, and post the result with their own ceremony cookie. The only trace is the origin in the
+    /// client data, which is why the check is on the whole name. With no served names configured, the
+    /// relying-party id is the one name accepted.
+    /// </para>
+    /// <para>
+    /// <b>The scheme is <c>https</c></b>, or plain <c>http</c> on <c>localhost</c>, which browsers treat
+    /// as secure for a developer's sake.
+    /// </para>
+    /// <para>
+    /// <b>The port is the one in <paramref name="requestHost"/></b>, or the origin scheme's default
+    /// when it names none. It is only as trustworthy as that header. Behind the shipped proxy it is
+    /// the deployment's: the people-facing TLS listener writes the published port into <c>Host</c>
+    /// whatever the client asked for, and no other listener forwards a sign-in page. With nothing in
+    /// front of the application, <c>Host</c> is whatever the client sent, and so is the port it
+    /// checks against.
+    /// </para>
     /// </remarks>
-    public bool AllowsOrigin(string? origin)
+    public bool AllowsOrigin(string? origin, HostString requestHost)
     {
-        if (string.IsNullOrEmpty(origin) || !Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri))
+        if (string.IsNullOrEmpty(origin) || !requestHost.HasValue || !Uri.TryCreate(origin, UriKind.Absolute, out Uri? uri))
         {
             return false;
         }
 
-        bool secure = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+        bool https = string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+        bool secure = https ||
                       (string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
                        string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase));
+        int servedPort = requestHost.Port ?? (https ? 443 : 80);
 
-        return secure && Covers(new HostString(uri.Host));
+        return secure && Covers(new HostString(uri.Host)) && Serves(uri.Host) && uri.Port == servedPort;
     }
 
     /// <inheritdoc/>
@@ -131,5 +167,13 @@ public class PasskeyAuthenticationOptions : AuthenticationSchemeOptions
         {
             throw new InvalidOperationException($"{nameof(CeremonyCookie)} must have a name.");
         }
+    }
+
+    /// <summary>Whether <paramref name="name"/> is a served name, or the relying-party id when none is configured.</summary>
+    private bool Serves(string name)
+    {
+        return ServedHosts.Count == 0 ?
+            string.Equals(name, ServerDomain?.Trim(), StringComparison.OrdinalIgnoreCase) :
+            ServedHosts.Contains(name, StringComparer.OrdinalIgnoreCase);
     }
 }

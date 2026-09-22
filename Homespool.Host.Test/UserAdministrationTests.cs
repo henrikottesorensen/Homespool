@@ -29,8 +29,8 @@ namespace Homespool.Host.Test;
 /// <remarks>
 /// <b>The refusals are what this file is for.</b> A service that acted on everything would pass any
 /// test asserting that deactivation deactivates, so the guards - your own account, the last
-/// administrator standing - carry their own tests, and each was checked by removing the guard and
-/// watching exactly one of them fail.
+/// administrator standing, an administrator who is closed themselves - carry their own tests, and
+/// each was checked by removing the guard and watching exactly one of them fail.
 /// </remarks>
 public sealed class UserAdministrationTests : IDisposable
 {
@@ -118,6 +118,12 @@ public sealed class UserAdministrationTests : IDisposable
         admin.DeactivatedAt.Should().BeNull();
     }
 
+    /// <summary>
+    /// The second call is made by an ordinary account, because nobody who can reach the button is
+    /// left to make it once one administrator remains: that administrator is refused as themselves,
+    /// and a closed one is refused before it aims. The guard is a property of the act all the same,
+    /// for a caller that is not the page.
+    /// </summary>
     [Fact]
     public async Task TheLastActiveAdministratorCannotBeDeactivated()
     {
@@ -126,19 +132,98 @@ public sealed class UserAdministrationTests : IDisposable
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser admin = await AddUserAsync(users, "admin@example.com");
         HSUser deputy = await AddUserAsync(users, "deputy@example.com");
+        HSUser clerk = await AddUserAsync(users, "clerk@example.com");
         await MakeAdministratorAsync(provider, users, admin);
         await MakeAdministratorAsync(provider, users, deputy);
         UserAdministration administration = Administration(context, provider);
 
         // Act
-        UserAdminResult first = await administration.DeactivateAsync(deputy.Id, admin.Id, CancellationToken.None);
-        UserAdminResult second = await administration.DeactivateAsync(admin.Id, deputy.Id, CancellationToken.None);
+        UserAdminResult first = await administration.DeactivateAsync(admin.Id, deputy.Id, CancellationToken.None);
+        UserAdminResult second = await administration.DeactivateAsync(clerk.Id, admin.Id, CancellationToken.None);
 
         // Assert
         first.Succeeded.Should().BeTrue("two administrators were active, so closing one leaves one");
         second.Refusal.Should().Be(UserAdminRefusal.LastAdministrator,
                                    "the first deactivation left this account as the only administrator who can sign in");
-        deputy.DeactivatedAt.Should().BeNull();
+        admin.DeactivatedAt.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A closed administrator's session outlives the closure until its stamp is next re-checked, and
+    /// the cookie still carries the role for that window. The service reads the row, so every act it
+    /// offers refuses - reopening themselves, reopening anybody else, and the three that touch an
+    /// open account - and the accounts aimed at are exactly as they were.
+    /// </summary>
+    [Fact]
+    public async Task AClosedAdministratorIsRefusedEveryAct()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser deputy = await AddUserAsync(users, "deputy@example.com");
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        HSUser stranger = await AddUserAsync(users, "stranger@example.com");
+        await MakeAdministratorAsync(provider, users, admin);
+        await MakeAdministratorAsync(provider, users, deputy);
+        ApiTokenService tokens = new(context);
+        await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
+        UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
+        CapturingEmailSender mail = new();
+        UserAdministration administration = Administration(context, provider, mail: mail);
+
+        for (int attempt = 0; attempt < 9; attempt++)
+        {
+            await users.AccessFailedAsync(subject);
+        }
+
+        (await administration.DeactivateAsync(admin.Id, stranger.Id, CancellationToken.None)).Succeeded.Should().BeTrue();
+        (await administration.DeactivateAsync(admin.Id, deputy.Id, CancellationToken.None)).Succeeded.Should().BeTrue(
+            "two administrators were active, so closing one leaves one");
+
+        // Act
+        UserAdminResult reopenSelf = await administration.ReactivateAsync(deputy.Id, deputy.Id, CancellationToken.None);
+        UserAdminResult reopenOther = await administration.ReactivateAsync(deputy.Id, stranger.Id, CancellationToken.None);
+        UserAdminResult deactivate = await administration.DeactivateAsync(deputy.Id, subject.Id, CancellationToken.None);
+        UserAdminResult revoke = await administration.RevokeTokensAsync(deputy.Id, subject.Id, CancellationToken.None);
+        UserAdminResult passkey = await administration.RevokePasskeyAsync(deputy.Id, subject.Id, phone.CredentialId, CancellationToken.None);
+        UserAdminResult lockout = await administration.ClearLockoutAsync(deputy.Id, subject.Id, CancellationToken.None);
+
+        // Assert
+        reopenSelf.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        reopenOther.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        deactivate.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        revoke.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        passkey.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        lockout.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        deputy.DeactivatedAt.Should().NotBeNull("the closed administrator stays closed");
+        stranger.DeactivatedAt.Should().NotBeNull();
+        subject.DeactivatedAt.Should().BeNull();
+        (await tokens.ListAsync(subject.Id, CancellationToken.None)).Should().ContainSingle();
+        (await users.GetPasskeysAsync(subject)).Should().ContainSingle();
+        (await users.IsLockedOutAsync(subject)).Should().BeTrue();
+        mail.SentEmails.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// An administrator id that names no row is refused the way a closed one is, rather than being
+    /// taken on trust because nothing contradicts it.
+    /// </summary>
+    [Fact]
+    public async Task AnAdministratorIdThatNamesNoAccountIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+
+        // Act
+        UserAdminResult result = await Administration(context, provider)
+            .DeactivateAsync(9999, subject.Id, CancellationToken.None);
+
+        // Assert
+        result.Refusal.Should().Be(UserAdminRefusal.ClosedAdministrator);
+        subject.DeactivatedAt.Should().BeNull();
     }
 
     /// <summary>

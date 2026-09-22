@@ -29,4 +29,12 @@ public enum UserAdminRefusal
     /// database.
     /// </summary>
     LastAdministrator = 4,
+
+    /// <summary>
+    /// The administrator asking is closed themselves. A session outlives its account's closure until
+    /// the security stamp is next re-checked, and inside that window the cookie still carries the
+    /// role - so the service asks, rather than trusting that the page's authorisation already did.
+    /// The page answers this as a forbidden rather than a message.
+    /// </summary>
+    ClosedAdministrator = 5,
 }

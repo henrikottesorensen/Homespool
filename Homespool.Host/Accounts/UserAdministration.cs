@@ -373,19 +373,13 @@ public sealed class UserAdministration
     /// Whether <paramref name="userId"/> is an administrator and the only one still active.
     /// </summary>
     /// <remarks>
-    /// One query for both halves. It reads the role membership rather than asking
-    /// <c>UserManager</c>, so the count and the "is this one of them" test cannot answer from
-    /// different pictures of the same table.
+    /// One query for both halves, and it is <see cref="Administrators.Open"/> - the definition every
+    /// other administrator decision asks - so the count and the "is this one of them" test cannot
+    /// answer from different pictures of the same table, or from a different idea of who counts.
     /// </remarks>
     private async Task<bool> IsLastActiveAdministratorAsync(long userId, CancellationToken cancellationToken)
     {
-        long[] activeAdministrators = await (from membership in _dbContext.UserRoles
-                                             join role in _dbContext.Roles on membership.RoleId equals role.Id
-                                             join account in _dbContext.Users on membership.UserId equals account.Id
-                                             where role.Name == AdminBootstrap.AdminRole && account.DeactivatedAt == null
-                                             select account.Id)
-                                            .Distinct()
-                                            .ToArrayAsync(cancellationToken);
+        long[] activeAdministrators = await Administrators.Open(_dbContext).ToArrayAsync(cancellationToken);
 
         return activeAdministrators.Contains(userId) && activeAdministrators.Length == 1;
     }

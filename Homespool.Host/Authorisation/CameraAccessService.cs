@@ -124,11 +124,11 @@ public class CameraAccessService
     }
 
     /// <summary>
-    /// Whether this account is an administrator.
+    /// Whether this account is an open administrator, by <see cref="Accounts.Administrators.Open"/>.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Answered here, from the role tables by id, rather than by reading a
+    /// Answered here, from the database by id, rather than by reading a
     /// <c>ClaimsPrincipal</c> at the edge and passing a flag in. These services take a user id on
     /// purpose - see <see cref="PrinterAccessService"/> - and the argument that keeps the gate
     /// inside them applies with more force to a check a caller could simply forget to make.
@@ -141,16 +141,9 @@ public class CameraAccessService
     /// </remarks>
     public async Task<bool> IsAdministratorAsync(long userId, CancellationToken cancellationToken)
     {
-        return await _dbContext.UserRoles
-                               .Join(
-                                   _dbContext.Roles,
-                                   userRole => userRole.RoleId,
-                                   role => role.Id,
-                                   (userRole, role) => new { userRole.UserId, role.Name })
-                               .AnyAsync(
-                                   pair => pair.UserId == userId && pair.Name == Accounts.AdminBootstrap.AdminRole,
-                                   cancellationToken)
-                               .ConfigureAwait(false);
+        return await Accounts.Administrators.Open(_dbContext)
+                             .ContainsAsync(userId, cancellationToken)
+                             .ConfigureAwait(false);
     }
 
     /// <summary>

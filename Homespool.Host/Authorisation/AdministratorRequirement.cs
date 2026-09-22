@@ -26,6 +26,11 @@ namespace Homespool.Host.Authorisation;
 /// <b>The role is still read from the cookie first</b>, and a principal without it never reaches
 /// the database: the read is what a closed administrator costs, not what every visitor does.
 /// </para>
+/// <para>
+/// <b>One read per request, however many ask.</b> An administrator's page asks three times - the
+/// page, the menu and the health banner - and the handler is scoped, so the answer is kept for the
+/// request it was read in.
+/// </para>
 /// </remarks>
 public sealed class AdministratorRequirement : IAuthorizationRequirement
 {
@@ -36,6 +41,8 @@ public sealed class AdministratorHandler : AuthorizationHandler<AdministratorReq
 {
     private readonly HomespoolDbContext _dbContext;
     private readonly UserManager<HSUser> _users;
+
+    private (long id, bool open)? _answer;
 
     public AdministratorHandler(HomespoolDbContext dbContext, UserManager<HSUser> users)
     {
@@ -53,14 +60,20 @@ public sealed class AdministratorHandler : AuthorizationHandler<AdministratorReq
             return;
         }
 
-        if (await _dbContext.Users.AnyAsync(u => u.Id == id && u.DeactivatedAt == null))
+        if (_answer is not { } answer || answer.id != id)
+        {
+            answer = (id, await Administrators.Open(_dbContext).ContainsAsync(id));
+            _answer = answer;
+        }
+
+        if (answer.open)
         {
             context.Succeed(requirement);
         }
         else
         {
             // Fail rather than merely not succeed: no other handler may vouch for a closed account.
-            context.Fail(new AuthorizationFailureReason(this, "The administrator's account is closed."));
+            context.Fail(new AuthorizationFailureReason(this, "The account is not an open administrator."));
         }
     }
 }

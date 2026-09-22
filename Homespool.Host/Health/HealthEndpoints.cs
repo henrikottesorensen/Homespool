@@ -4,13 +4,14 @@ using System.Net.Mime;
 using System.Text.Json;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
-using Homespool.Host.Accounts;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Certificates;
 using Homespool.Host.Listeners;
@@ -149,7 +150,9 @@ public static class HealthEndpoints
         HealthReport? report = null;
         HealthStatus status;
 
-        if (context.User.IsInRole(AdminBootstrap.AdminRole))
+        IAuthorizationService authorization = context.RequestServices.GetRequiredService<IAuthorizationService>();
+
+        if ((await authorization.AuthorizeAsync(context.User, Policies.Administrator)).Succeeded)
         {
             report = await context.RequestServices.GetRequiredService<HealthCheckService>()
                                   .CheckHealthAsync(context.RequestAborted);

@@ -1,9 +1,11 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Health;
 
 namespace Homespool.Host.ViewComponents;
@@ -37,15 +39,17 @@ namespace Homespool.Host.ViewComponents;
 public sealed class HealthBannerViewComponent : ViewComponent
 {
     private readonly HealthCheckService _healthChecks;
+    private readonly IAuthorizationService _authorization;
 
-    public HealthBannerViewComponent(HealthCheckService healthChecks)
+    public HealthBannerViewComponent(HealthCheckService healthChecks, IAuthorizationService authorization)
     {
         _healthChecks = healthChecks;
+        _authorization = authorization;
     }
 
     public async Task<IViewComponentResult> InvokeAsync()
     {
-        if (!UserClaimsPrincipal.IsInRole(Accounts.AdminBootstrap.AdminRole))
+        if (!(await _authorization.AuthorizeAsync(UserClaimsPrincipal, Policies.Administrator)).Succeeded)
         {
             return View(new List<HealthBannerItem>());
         }

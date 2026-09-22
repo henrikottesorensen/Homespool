@@ -10,6 +10,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
@@ -48,6 +49,7 @@ namespace Homespool.Host.Pages.Account;
 public class ConfirmEmailChangeModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
+    private readonly HomespoolDbContext _dbContext;
     private readonly LocalSignIn _signIn;
     private readonly IOptions<SmtpOptions> _smtp;
     private readonly IEmailSender _emailSender;
@@ -55,6 +57,7 @@ public class ConfirmEmailChangeModel : PageModel
     private readonly ILogger<ConfirmEmailChangeModel> _logger;
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
+                                   HomespoolDbContext dbContext,
                                    LocalSignIn signIn,
                                    IOptions<SmtpOptions> smtp,
                                    IEmailSender emailSender,
@@ -62,6 +65,7 @@ public class ConfirmEmailChangeModel : PageModel
                                    ILogger<ConfirmEmailChangeModel> logger)
     {
         _userManager = userManager;
+        _dbContext = dbContext;
         _signIn = signIn;
         _smtp = smtp;
         _emailSender = emailSender;
@@ -182,12 +186,13 @@ public class ConfirmEmailChangeModel : PageModel
     }
 
     /// <summary>
-    /// Whether this user receives the service's health alerts, which only administrators do, and
-    /// only when there is a mail server to send them through.
+    /// Whether this user receives the service's health alerts, which only open administrators do, and
+    /// only when there is a mail server to send them through - the same definition the alert
+    /// service reads its recipients by.
     /// </summary>
     private async Task<bool> IsAlertRecipientAsync(HSUser user)
     {
         return _smtp.Value.IsConfigured &&
-               await _userManager.IsInRoleAsync(user, Accounts.AdminBootstrap.AdminRole);
+               await Administrators.Open(_dbContext).ContainsAsync(user.Id);
     }
 }

@@ -83,7 +83,7 @@
                 <button type="submit" class="btn btn-outline-danger" asp-page-handler="Deactivate" asp-route-uuid="@Model.Uuid">@Localiser["AdminUsers_Deactivate"]</button>
             }
         }
-        else
+        else if (!Model.IsSelf)
         {
             <button type="submit" class="btn btn-outline-primary" asp-page-handler="Reactivate" asp-route-uuid="@Model.Uuid">@Localiser["AdminUsers_Reactivate"]</button>
         }

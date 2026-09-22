@@ -328,13 +328,14 @@ public sealed class CameraListEndpointTests : IAsyncLifetime
     private sealed class ScriptedProbe : ICameraCodecProbe
     {
         private readonly Dictionary<Guid, IReadOnlySet<string>> _answers = [];
+        private readonly Lock _answersLock = new();
         private int _calls;
 
         public int Calls => Volatile.Read(ref _calls);
 
         public void Answer(Guid camera, params string[] codecs)
         {
-            lock (_answers)
+            lock (_answersLock)
             {
                 _answers[camera] = new HashSet<string>(codecs);
             }
@@ -344,7 +345,7 @@ public sealed class CameraListEndpointTests : IAsyncLifetime
         {
             Interlocked.Increment(ref _calls);
 
-            lock (_answers)
+            lock (_answersLock)
             {
                 return Task.FromResult(_answers.TryGetValue(streamName, out IReadOnlySet<string>? codecs) ? codecs : null);
             }

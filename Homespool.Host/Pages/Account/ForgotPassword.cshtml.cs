@@ -1,21 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Homespool.Host.Accounts;
-using Homespool.Host.Localisation;
-using Homespool.Host.Mail;
-using Homespool.Host.RateLimiting;
-using Homespool.Model;
-using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -25,12 +16,27 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
 
+using Homespool.Host.Accounts;
+using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
+using Homespool.Host.RateLimiting;
+using Homespool.Model;
+using Homespool.Model.Entities;
+
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous] // Nobody asking for a password reset can be signed in.
 [EnableRateLimiting(RateLimitPolicies.SignIn)]
 public class ForgotPasswordModel : PageModel
 {
+    /// <summary>How long an account waits after one reset mail before this form will send it another.</summary>
+    /// <remarks>
+    /// Far shorter than a reset link lives, and a later link does not cancel an earlier one - so
+    /// whenever a send is refused, a link that still works is already in the inbox. The confirmation
+    /// page names this figure, which is what lets it be true for every caller.
+    /// </remarks>
+    public static readonly TimeSpan SendCooldown = TimeSpan.FromMinutes(15);
+
     private readonly UserManager<HSUser> _userManager;
     private readonly IDeferredEmailSender _emailSender;
     private readonly AttemptLimiter _attemptLimiter;
@@ -51,33 +57,21 @@ public class ForgotPasswordModel : PageModel
         _localiser = localiser;
     }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public class InputModel
     {
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
         [Required]
         [EmailAddress]
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
         if (ModelState.IsValid)
         {
-            HSUser user = await _userManager.FindByEmailAsync(Input.Email);
+            HSUser? user = await _userManager.FindByEmailAsync(Input.Email);
 
             // The third test is what makes "an external account has no local password" a rule rather
             // than a preference. ResetPasswordAsync does not care whether a password already exists -
@@ -97,13 +91,17 @@ public class ForgotPasswordModel : PageModel
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
 
-            // Each send is counted against the account the mail is addressed to, and a backed-off
-            // account is answered with the same redirect and no mail. The address is the only handle
+            // Each send starts a fixed cooldown on the account the mail is addressed to, and an account
+            // inside it is answered with the same redirect and no mail. The address is the only handle
             // an anonymous caller offers, so the target account - not the caller - is the thing that
             // can be bounded; without this, anyone who knows an address can fill its inbox and drain
             // the deployment's SMTP quota at request rate. Silently, for the reason the arm above is
             // silent: a refusal that looked different here would say the address is registered.
-            // Completing the reset clears the count - see ResetPasswordModel.
+            //
+            // A cooldown rather than a counted backoff, because the caller is not the account: a wait
+            // that grew with use would be grown by whoever knows the address and served by the person
+            // who needs the mail. This one never grows and a refused request does not restart it, so
+            // the most a stranger can do is make the owner use a link under SendCooldown old.
             DateTimeOffset now = _timeProvider.GetUtcNow();
 
             if (await _attemptLimiter.RemainingLockoutAsync(
@@ -112,18 +110,14 @@ public class ForgotPasswordModel : PageModel
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
 
-            await _attemptLimiter.RecordFailedAttemptAsync(
-                user.Id, LimitedAction.SendPasswordResetEmail, now, cancellationToken);
+            await _attemptLimiter.StartCooldownAsync(
+                user.Id, LimitedAction.SendPasswordResetEmail, now, SendCooldown, cancellationToken);
 
             // For more information on how to enable account confirmation and password reset please
             // visit https://go.microsoft.com/fwlink/?LinkID=532713
             string code = await _userManager.GeneratePasswordResetTokenAsync(user);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-            string callbackUrl = Url.Page(
-                "/Account/ResetPassword",
-                pageHandler: null,
-                values: new { code },
-                protocol: Request.Scheme);
+            string callbackUrl = EmailedToken.Link(Url, "/Account/ResetPassword", new { code });
 
             // Written in the account's language rather than the request's. Nobody has to be signed in
             // to ask for a reset, so the browser here belongs to whoever typed the address - which may
@@ -146,7 +140,7 @@ public class ForgotPasswordModel : PageModel
             // which folds more than case: NFC maps the kelvin sign to K and the uppercasing maps a
             // long s to S, so a look-alike spelling finds this account - and mailing that spelling
             // would hand the reset token to whoever holds the look-alike mailbox.
-            _emailSender.Enqueue(user.Email, subject, body);
+            _emailSender.Enqueue(IdentityConfiguration.EmailOf(user), subject, body);
 
             return RedirectToPage("./ForgotPasswordConfirmation");
         }

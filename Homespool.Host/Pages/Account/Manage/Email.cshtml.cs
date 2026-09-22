@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Text;
@@ -10,19 +8,19 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Accounts;
-using Homespool.Host.Authentication;
-using Homespool.Host.Localisation;
-using Homespool.Host.Mail;
-using Homespool.Model;
-using Homespool.Model.Entities;
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
+
+using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
@@ -79,52 +77,28 @@ public class EmailModel : PageModel
     /// <summary>Whether the person has proved themselves recently, so the change button is worth showing.</summary>
     public bool Proved { get; private set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
-    public string Email { get; set; }
+    public string? Email { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public bool IsEmailConfirmed { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public class InputModel
     {
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
         [Required]
         [EmailAddress]
         [StorableEmailAddress]
         [Display(Name = "Manage_NewEmail")]
-        public string NewEmail { get; set; }
+        public string NewEmail { get; set; } = string.Empty;
     }
 
     private async Task LoadAsync(HSUser user)
     {
-        string email = await _userManager.GetEmailAsync(user);
+        string email = IdentityConfiguration.EmailOf(user);
         Email = email;
 
         Input = new InputModel
@@ -138,10 +112,10 @@ public class EmailModel : PageModel
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadAsync(user);
@@ -151,10 +125,10 @@ public class EmailModel : PageModel
     [RequireRecentProof]
     public async Task<IActionResult> OnPostChangeEmailAsync(CancellationToken cancellationToken)
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         if (!ModelState.IsValid)
@@ -163,7 +137,7 @@ public class EmailModel : PageModel
             return Page();
         }
 
-        string email = await _userManager.GetEmailAsync(user);
+        string? email = await _userManager.GetEmailAsync(user);
         if (Input.NewEmail != email)
         {
             if (!await TryStartCooldownAsync(user.Id, LimitedAction.ChangeEmail, cancellationToken))
@@ -174,11 +148,7 @@ public class EmailModel : PageModel
 
             string code = await _userManager.GenerateChangeEmailTokenAsync(user, Input.NewEmail);
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-            string callbackUrl = Url.Page(
-                "/Account/ConfirmEmailChange",
-                pageHandler: null,
-                values: new { userUuid = user.Uuid, email = Input.NewEmail, code = code },
-                protocol: Request.Scheme);
+            string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmailChange", new { userUuid = user.Uuid, email = Input.NewEmail, code = code });
 
             // The account's language, like every mail to an account. The culture provider usually
             // resolved the same one for this request, but only when a language is stored - and the
@@ -201,10 +171,10 @@ public class EmailModel : PageModel
 
     public async Task<IActionResult> OnPostSendVerificationEmailAsync(CancellationToken cancellationToken)
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         if (!ModelState.IsValid)
@@ -219,14 +189,10 @@ public class EmailModel : PageModel
             return RedirectToPage();
         }
 
-        string email = await _userManager.GetEmailAsync(user);
+        string email = IdentityConfiguration.EmailOf(user);
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
-        string callbackUrl = Url.Page(
-            "/Account/ConfirmEmail",
-            pageHandler: null,
-            values: new { userUuid = user.Uuid, code = code },
-            protocol: Request.Scheme);
+        string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmail", new { userUuid = user.Uuid, code = code });
 
         // The account's language, for the reason given on the change-address send above.
         (string subject, string body) = UserCultures.InCulture(user.Language, () => (

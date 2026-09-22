@@ -19,6 +19,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Controllers;
@@ -95,7 +96,7 @@ public class PrinterAppController : ControllerBase
 
             // Re-read rather than mapping the claimed entity directly, so the response carries the
             // caller's capabilities and describes the same resource the next GET will. Mapping it bare
-            // would report no capabilities at all to the person who just claimed it.
+            // would report an empty capability list to the person who just claimed it.
             PrinterWithState? claimed = await _printerQueryService.GetPrinterWithStateForUserAsync(
                 printer.Uuid, CallerResolver.For(user, User), cancellationToken);
 
@@ -139,11 +140,13 @@ public class PrinterAppController : ControllerBase
             return this.NoAccount();
         }
 
+        Caller caller = CallerResolver.For(user, User);
+
         IReadOnlyList<TeamMember> memberships = await _teamService.GetTeamsForUserAsync(user.Id, cancellationToken);
 
-        Printer? defaultPrinter = await _defaults.ResolvePrinterAsync(user, CallerResolver.For(user, User), cancellationToken);
+        Printer? defaultPrinter = await _defaults.ResolvePrinterAsync(user, caller, cancellationToken);
 
-        return TypedResults.Ok(UserReadDTO.FromEntity(user, memberships, defaultPrinter?.Uuid));
+        return TypedResults.Ok(UserReadDTO.FromEntity(user, memberships, defaultPrinter?.Uuid, caller));
     }
 
     [HttpGet]

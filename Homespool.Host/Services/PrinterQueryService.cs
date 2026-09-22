@@ -115,7 +115,7 @@ public class PrinterQueryService
                                            _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                                .ToListAsync(cancellationToken);
 
-        return await PairWithLiveStateAsync(rows, cancellationToken);
+        return await PairWithLiveStateAsync(rows, caller, cancellationToken);
     }
 
     /// <summary>
@@ -141,14 +141,14 @@ public class PrinterQueryService
             return null;
         }
 
-        IReadOnlyList<PrinterWithState> paired = await PairWithLiveStateAsync([row], cancellationToken);
+        IReadOnlyList<PrinterWithState> paired = await PairWithLiveStateAsync([row], caller, cancellationToken);
 
         return paired[0];
     }
 
     /// <summary>
     /// Attaches each printer's <see cref="PrinterLiveState"/> to the rows read from the application
-    /// database.
+    /// database, and reduces each row's membership to what <paramref name="caller"/> may do.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -169,6 +169,7 @@ public class PrinterQueryService
     /// </remarks>
     private async Task<IReadOnlyList<PrinterWithState>> PairWithLiveStateAsync(
         IReadOnlyList<PrinterRow> rows,
+        Caller caller,
         CancellationToken cancellationToken)
     {
         if (rows.Count == 0)
@@ -186,8 +187,22 @@ public class PrinterQueryService
 
         return [.. rows.Select(row => new PrinterWithState(row.Printer,
                                                            liveStates.GetValueOrDefault(row.Printer.Id),
-                                                           row.Membership,
+                                                           EffectiveCapabilities(row.Membership, caller),
                                                            row.Team))];
+    }
+
+    /// <summary>
+    /// What <paramref name="caller"/> may do on a printer of <paramref name="membership"/>'s team: the
+    /// membership's grant, narrowed by the credential's scope.
+    /// </summary>
+    /// <remarks>
+    /// An intersection, because a scope may only narrow what the membership allows and never widen
+    /// it. A cookie caller's scope is everything, so for the web session this is the membership as
+    /// stored.
+    /// </remarks>
+    private static CapabilitySet EffectiveCapabilities(TeamMember? membership, Caller caller)
+    {
+        return CapabilitySet.Parse(membership?.Capabilities).Intersect(caller.Scope);
     }
 
     /// <summary>
@@ -304,7 +319,7 @@ public class PrinterQueryService
                                                  .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == caller.UserId,
                                                                        cancellationToken);
 
-        return new PrinterWithState(printer, liveState, membership, team);
+        return new PrinterWithState(printer, liveState, EffectiveCapabilities(membership, caller), team);
     }
 
     /// <summary>
@@ -479,15 +494,16 @@ public class PrinterQueryService
 /// <summary>A printer paired with its last-known state, which may be absent if it has never
 /// connected. See <see cref="PrinterQueryService.ListPrintersWithStateForUserAsync"/>.</summary>
 /// <remarks>
-/// <see cref="Membership"/> is the <em>calling user's</em> row, not the printer's - it is what makes
-/// the DTO's <c>capabilities</c> list answerable, and it is why this record is
-/// per-request rather than per-printer. Null only where a caller mapped a printer without asking on
-/// whose behalf, which the queries here never do.
+/// <see cref="Capabilities"/> is what the <em>caller</em> may do to this printer, not what the
+/// printer allows - which is why this record is per-request rather than per-printer. It is the
+/// membership narrowed by the credential's scope, the same pair <see cref="PrinterAccessService"/>
+/// asks about one capability at a time, so a scoped token is never told it holds what the next
+/// request would refuse it.
 /// </remarks>
 public sealed record PrinterWithState(
     Printer Printer,
     PrinterLiveState? LiveState,
-    TeamMember? Membership = null,
+    CapabilitySet Capabilities,
     Team? Team = null);
 
 /// <summary>Result of <see cref="PrinterQueryService.GetPrinterStatisticsForUserAsync"/> - a

@@ -1,22 +1,20 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading.Tasks;
-
-using Homespool.Host.Authentication;
-using Homespool.Host.Accounts;
-using Homespool.Host.Localisation;
-using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
+
+using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
@@ -37,24 +35,12 @@ public class IndexModel : PageModel
         _localiser = localiser;
     }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public class InputModel
     {
         /// <summary>
@@ -63,23 +49,24 @@ public class IndexModel : PageModel
         [Required]
         [StringLength(HSUser.UsernameMaxLength)]
         [Display(Name = "Account_Username")]
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
     }
 
     private async Task LoadAsync(HSUser user)
     {
         Input = new InputModel
         {
-            Username = await _userManager.GetUserNameAsync(user),
+            // Never blank: the user validator refuses an account without a username.
+            Username = (await _userManager.GetUserNameAsync(user))!,
         };
     }
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadAsync(user);
@@ -88,10 +75,10 @@ public class IndexModel : PageModel
 
     public async Task<IActionResult> OnPostAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         if (!ModelState.IsValid)
@@ -100,7 +87,7 @@ public class IndexModel : PageModel
             return Page();
         }
 
-        string userName = await _userManager.GetUserNameAsync(user);
+        string? userName = await _userManager.GetUserNameAsync(user);
         string requested = Usernames.Prepare(Input.Username.Trim());
 
         // Ordinal rather than case-insensitive: 'henrik' to 'Henrik' normalises to the same name, so

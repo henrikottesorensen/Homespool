@@ -1,13 +1,7 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System.Threading.Tasks;
-
-using Homespool.Host.Authentication;
-using Homespool.Host.Localisation;
-using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -15,6 +9,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
@@ -41,44 +39,24 @@ public class TwoFactorAuthenticationModel : PageModel
         _logger = logger;
     }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public bool HasAuthenticator { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public int RecoveryCodesLeft { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [BindProperty]
     public bool Is2faEnabled { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public bool IsMachineRemembered { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         HasAuthenticator = await _userManager.GetAuthenticatorKeyAsync(user) != null;
@@ -91,10 +69,10 @@ public class TwoFactorAuthenticationModel : PageModel
 
     public async Task<IActionResult> OnPostAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await _signIn.ForgetClientAsync(HttpContext);

@@ -1,15 +1,7 @@
-#nullable disable
-
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.Threading;
 using System.Threading.Tasks;
-
-using Homespool.Host.Authentication;
-using Homespool.Host.Accounts;
-using Homespool.Host.Localisation;
-using Homespool.Host.Services;
-using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -19,6 +11,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Host.Services;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages;
 
@@ -69,7 +67,7 @@ public class SetupModel : PageModel
         [EmailAddress]
         [StorableEmailAddress]
         [Display(Name = "Account_Email")]
-        public string Email { get; set; }
+        public string Email { get; set; } = string.Empty;
 
         /// <summary>
         /// The sign-in name, and what the interface calls this person.
@@ -82,23 +80,23 @@ public class SetupModel : PageModel
         [Required]
         [StringLength(HSUser.UsernameMaxLength)]
         [Display(Name = "Account_Username")]
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
 
         [Required]
         [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [DataType(DataType.Password)]
         [Display(Name = "Account_Password")]
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
 
         [DataType(DataType.Password)]
         [Display(Name = "Account_ConfirmPassword")]
         [Compare(nameof(Password), ErrorMessage = "Validation_PasswordMismatch")]
-        public string ConfirmPassword { get; set; }
+        public string? ConfirmPassword { get; set; }
 
         [Required]
         [DataType(DataType.Password)]
         [Display(Name = "Setup_Token")]
-        public string Token { get; set; }
+        public string Token { get; set; } = string.Empty;
     }
 
     public IActionResult OnGet()

@@ -1,16 +1,14 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System.Threading.Tasks;
-
-using Homespool.Host.Authentication;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Authentication;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -26,7 +24,7 @@ public class LogoutModel : PageModel
         _logger = logger;
     }
 
-    public async Task<IActionResult> OnPost(string returnUrl = null)
+    public async Task<IActionResult> OnPost(string? returnUrl = null)
     {
         await _signIn.SignOutAsync(HttpContext);
         _logger.LogInformation("User logged out.");

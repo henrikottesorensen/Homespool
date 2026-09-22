@@ -1,13 +1,5 @@
-#nullable disable
-
 using System;
 using System.Threading.Tasks;
-
-using Homespool.Host.Authentication;
-using Homespool.Host.Accounts;
-using Homespool.Host.Localisation;
-using Homespool.Host.Mail;
-using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -17,6 +9,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -72,7 +70,7 @@ public class ConfirmEmailChangeModel : PageModel
     }
 
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
     /// <summary>
     /// Tells an administrator that health alerts keep going to the old address until a restart.
@@ -89,20 +87,20 @@ public class ConfirmEmailChangeModel : PageModel
         return isAlertRecipient ? " " + _localiser["Account_AlertRecipientNotice"].Value : string.Empty;
     }
 
-    public async Task<IActionResult> OnGetAsync(Guid? userUuid, string email, string code)
+    public async Task<IActionResult> OnGetAsync(Guid? userUuid, string? email, string? code)
     {
         if (userUuid == null || email == null || code == null)
         {
             return RedirectToPage("/Index");
         }
 
-        HSUser user = await _userManager.Users.SingleOrDefaultAsync(candidate => candidate.Uuid == userUuid);
+        HSUser? user = await _userManager.Users.SingleOrDefaultAsync(candidate => candidate.Uuid == userUuid);
         if (user == null)
         {
-            return NotFound($"Unable to load user with UUID '{userUuid}'.");
+            return NotFound();
         }
 
-        string token = EmailedToken.Decode(code);
+        string? token = EmailedToken.Decode(code);
 
         if (token is null)
         {
@@ -113,7 +111,7 @@ public class ConfirmEmailChangeModel : PageModel
         }
 
         // Read before the change, which overwrites it: the notice goes to the address being left.
-        string previous = user.Email;
+        string? previous = user.Email;
 
         // One round trip, so no transaction: SaveChangesAsync is already transactional.
         // It used to need one because the username was the email and had to
@@ -166,7 +164,7 @@ public class ConfirmEmailChangeModel : PageModel
     /// way: the reader here is whoever holds the new address, and the notice is not for them. A failure
     /// is logged, since it means the owner was not told.
     /// </remarks>
-    private async Task TellThePreviousAddressAsync(HSUser user, string previous, string confirmed)
+    private async Task TellThePreviousAddressAsync(HSUser user, string? previous, string confirmed)
     {
         if (string.IsNullOrEmpty(previous) || string.Equals(previous, confirmed, StringComparison.OrdinalIgnoreCase))
         {

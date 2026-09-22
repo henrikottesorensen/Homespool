@@ -62,8 +62,9 @@ docker compose up -d
 [Configuration](#configuration).
 
 `build.sh` builds the two container images with the git commit stamped in, so the admin pages can
-say what version is running. `docker compose build` works too, but the images then report an
-unknown commit. On Windows, use `docker compose build`.
+say what version is running, and pulls the current base images so a rebuild picks up their security
+updates. `docker compose build` works too, but the images then report an unknown commit and are
+built on whatever base images Docker already has. On Windows, use `docker compose build --pull`.
 
 **Set `PRINTER_HOST` before the first start if you can.** The printer-facing certificate is issued
 on the first run and covers the addresses the machine has at that moment plus whatever

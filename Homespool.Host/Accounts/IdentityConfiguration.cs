@@ -4,6 +4,8 @@ using Duende.IdentityModel;
 
 using Microsoft.AspNetCore.Identity;
 
+using Homespool.Model.Entities;
+
 namespace Homespool.Host.Accounts;
 
 /// <summary>
@@ -85,6 +87,26 @@ public static class IdentityConfiguration
         options.ClaimsIdentity.UserNameClaimType = JwtClaimTypes.Name;
         options.ClaimsIdentity.EmailClaimType = JwtClaimTypes.Email;
         options.ClaimsIdentity.RoleClaimType = JwtClaimTypes.Role;
+    }
+
+    /// <summary>
+    /// The address <paramref name="user"/> has on file, which a stored account always has.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IdentityUser{TKey}.Email"/> is nullable because Identity supports accounts without
+    /// one. This deployment does not: with <c>RequireUniqueEmail</c> set in <see cref="Configure"/>,
+    /// Identity's user validator refuses a blank address on every create and update, so a null here
+    /// is an account that was never saved through <see cref="UserManager{TUser}"/>, and that is a bug
+    /// worth an exception rather than a mail sent nowhere.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The account has no address.</exception>
+    public static string EmailOf(HSUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return string.IsNullOrWhiteSpace(user.Email) ?
+            throw new InvalidOperationException($"Account {user.Id} has no email address, which RequireUniqueEmail rules out.") :
+            user.Email;
     }
 
     /// <summary>

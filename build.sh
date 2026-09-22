@@ -12,8 +12,13 @@
 # when somebody thinks to ask. That is the whole reason this wrapper exists; it is two lines of work
 # that compose cannot do.
 #
-# Nothing else about the build changes, so `docker compose build` remains correct for a throwaway
-# image you are about to discard.
+# It also passes --pull, which is the other thing a bare `docker compose build` does not do. The
+# Dockerfiles name their base images by floating tag - aspnet:10.0, nginx-unprivileged:stable - so
+# that their publishers' security rebuilds arrive without an edit here. That only works if the build
+# asks the registry what the tag points at now. Without --pull the build reuses whatever copy this
+# machine pulled first, for as long as it keeps it, and a rebuild months later ships the base image
+# it had months ago. The cost is that this needs the registry: offline, `docker compose build` still
+# builds from the local copies, with the same "commit unknown" caveat as above.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,4 +34,4 @@ else
     echo "==> No commit available, so the images will report an unknown one"
 fi
 
-exec docker compose -f "$repo_root/compose.yaml" build "$@"
+exec docker compose -f "$repo_root/compose.yaml" build --pull "$@"

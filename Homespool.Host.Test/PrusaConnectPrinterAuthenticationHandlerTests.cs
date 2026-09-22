@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
@@ -41,6 +42,27 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     private const string Fingerprint = "SUDBAJQ78CTJBNA8";
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-auth-{Guid.NewGuid():N}.db");
+
+    /// <summary>
+    /// The clock the verification memo reads. One per test, as the memo is: it is shared by every
+    /// request a test makes, as the process-wide singleton is, so a test sees the second request of a
+    /// printer the way the server does.
+    /// </summary>
+    private readonly FakeTimeProvider _time = new(DateTimeOffset.UtcNow);
+
+    private readonly VerifiedPrinterTokens _verifiedTokens;
+
+    /// <summary>
+    /// The first-contact hash budget, on the same clock. Not readonly: the shuffle test swaps in a
+    /// budget small enough to run out part-way through the candidates.
+    /// </summary>
+    private ProvisioningHashBudget _hashBudget;
+
+    public PrusaConnectPrinterAuthenticationHandlerTests()
+    {
+        _verifiedTokens = new VerifiedPrinterTokens(_time);
+        _hashBudget = new ProvisioningHashBudget(_time);
+    }
 
     private static async Task<Printer> AddPrinterAsync(HomespoolDbContext context)
     {
@@ -183,6 +205,8 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
             context,
             new TokenService(),
             new UnitOfWork(context),
+            _verifiedTokens,
+            _hashBudget,
             new StaticOptionsMonitor(),
             NullLoggerFactory.Instance,
             UrlEncoder.Default);
@@ -270,6 +294,328 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         // Assert
         result.Succeeded.Should().BeFalse();
+    }
+
+    /// <summary>The stored hash of <paramref name="printer"/>'s enrolled credential, read fresh.</summary>
+    private async Task<string> EnrolledHashAsync(Printer printer)
+    {
+        await using HomespoolDbContext context = NewContext();
+
+        PrusaConnectAuthenticationData enrolled = await context.PrusaConnectAuthentication
+                                                               .SingleAsync(a => a.PrinterId == printer.Id,
+                                                                            TestContext.Current.CancellationToken);
+
+        return enrolled.HashedToken;
+    }
+
+    // ---------- the verification memo ----------
+    [Fact]
+    public async Task ASuccessfulVerificationIsRemembered()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        // Act
+        AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, token);
+
+        // Assert
+        result.Succeeded.Should().BeTrue();
+        _verifiedTokens.IsVerified(await EnrolledHashAsync(printer), token).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The memo is consulted before the hash is. Seeded with a token that does <em>not</em> verify
+    /// against the stored hash, the handler accepts it - which only a handler that skipped the PBKDF2
+    /// can do, so this is what shows the skip happens rather than merely being possible.
+    /// </summary>
+    [Fact]
+    public async Task ARememberedVerificationIsTrustedWithoutHashingAgain()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, _) = await AddEnrolledPrinterAsync(context, Fingerprint);
+        string planted = new TokenService().GenerateToken();
+
+        _verifiedTokens.Remember(await EnrolledHashAsync(printer), planted);
+
+        // Act
+        AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, planted);
+
+        // Assert
+        result.Succeeded.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A remembered token does not vouch for any other: a wrong token presented while the right one is
+    /// remembered falls through to the full verification and is refused.
+    /// </summary>
+    [Fact]
+    public async Task AWrongTokenIsRefusedWhileTheRightOneIsRemembered()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (_, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        (await AuthenticateAsync(context, Fingerprint, token)).Succeeded.Should().BeTrue();
+
+        // Act
+        await using HomespoolDbContext next = NewContext();
+        AuthenticateResult result = await AuthenticateAsync(next, Fingerprint, new TokenService().GenerateToken());
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A failure leaves no entry, so a caller without a valid token cannot grow the memo.
+    /// </summary>
+    [Fact]
+    public async Task AFailedVerificationRemembersNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        // Act
+        AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, new TokenService().GenerateToken());
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+        _verifiedTokens.Count.Should().Be(0);
+    }
+
+    /// <summary>
+    /// Removing a printer revokes it on the next request although its token is remembered: the
+    /// database is still asked first, and the row the memo would be asked about is gone.
+    /// </summary>
+    [Fact]
+    public async Task ARemovedPrinterIsRefusedAlthoughItsTokenIsRemembered()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        (await AuthenticateAsync(context, Fingerprint, token)).Succeeded.Should().BeTrue();
+
+        await using (HomespoolDbContext removal = NewContext())
+        {
+            await removal.PrusaConnectAuthentication
+                         .Where(a => a.PrinterId == printer.Id)
+                         .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Act
+        await using HomespoolDbContext next = NewContext();
+        AuthenticateResult result = await AuthenticateAsync(next, Fingerprint, token);
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+        _verifiedTokens.Count.Should().Be(1, "the entry is still held - it is the missing row that refuses");
+    }
+
+    /// <summary>
+    /// A rebind retires the old token on the next request although it is remembered. The memo is keyed
+    /// by the stored hash, and the rebind installed a different one; a memo keyed by printer or
+    /// fingerprint would keep the replaced credential working for its whole lifetime.
+    /// </summary>
+    [Fact]
+    public async Task ARebindRetiresTheRememberedOldToken()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string oldToken) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        (await AuthenticateAsync(context, Fingerprint, oldToken)).Succeeded.Should().BeTrue();
+
+        TokenService tokenService = new();
+        string reissuedToken = tokenService.GenerateToken();
+
+        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
+        {
+            PrinterId = printer.Id,
+            HashedToken = tokenService.HashToken(reissuedToken),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await using (HomespoolDbContext rebind = NewContext())
+        {
+            (await AuthenticateAsync(rebind, Fingerprint, reissuedToken)).Succeeded.Should().BeTrue();
+        }
+
+        // Act
+        await using HomespoolDbContext next = NewContext();
+        AuthenticateResult result = await AuthenticateAsync(next, Fingerprint, oldToken);
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Past its lifetime a remembered verification is not trusted, and the request pays for the full
+    /// verification again - which the planted token then fails.
+    /// </summary>
+    [Fact]
+    public async Task AnExpiredVerificationIsNotTrusted()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, _) = await AddEnrolledPrinterAsync(context, Fingerprint);
+        string planted = new TokenService().GenerateToken();
+
+        _verifiedTokens.Remember(await EnrolledHashAsync(printer), planted);
+        _time.Advance(VerifiedPrinterTokens.Lifetime);
+
+        // Act
+        AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, planted);
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+    }
+
+    // ---------- the provisioning hash budget ----------
+    [Fact]
+    public async Task EachLiveProvisioningTokenCheckedDrawsOneHash()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        for (int i = 0; i < 3; i++)
+        {
+            await AddProvisionedPrinterAsync(context);
+        }
+
+        // Act
+        AuthenticateResult result = await AuthenticateAsync(context, "no-such-fingerprint", new TokenService().GenerateToken());
+
+        // Assert
+        result.Succeeded.Should().BeFalse();
+        _hashBudget.Available.Should().Be(ProvisioningHashBudget.Burst - 3);
+    }
+
+    [Fact]
+    public async Task AnExpiredProvisioningTokenDrawsNoHash()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddProvisionedPrinterAsync(context, PrusaConnectService.ProvisioningTokenLifetime + TimeSpan.FromMinutes(1));
+
+        // Act
+        await AuthenticateAsync(context, "no-such-fingerprint", new TokenService().GenerateToken());
+
+        // Assert
+        _hashBudget.Available.Should().Be(ProvisioningHashBudget.Burst);
+    }
+
+    /// <summary>
+    /// A known fingerprint never draws from the budget - a right token, a wrong one, or a reissued one
+    /// being rebound - so a flood of strangers cannot reach a printer that is already enrolled.
+    /// </summary>
+    [Fact]
+    public async Task TheEnrolledPathNeverDrawsFromTheBudget()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        TokenService tokenService = new();
+        string reissuedToken = tokenService.GenerateToken();
+
+        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
+        {
+            PrinterId = printer.Id,
+            HashedToken = tokenService.HashToken(reissuedToken),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        AuthenticateResult right = await AuthenticateAsync(context, Fingerprint, token);
+
+        await using HomespoolDbContext second = NewContext();
+        AuthenticateResult wrong = await AuthenticateAsync(second, Fingerprint, tokenService.GenerateToken());
+
+        await using HomespoolDbContext third = NewContext();
+        AuthenticateResult rebound = await AuthenticateAsync(third, Fingerprint, reissuedToken);
+
+        // Assert
+        right.Succeeded.Should().BeTrue();
+        wrong.Succeeded.Should().BeFalse();
+        rebound.Succeeded.Should().BeTrue();
+        _hashBudget.Available.Should().Be(ProvisioningHashBudget.Burst);
+    }
+
+    /// <summary>
+    /// With the budget spent, even a valid provisioning token is refused and binds nothing - and the
+    /// same printer gets through once the bucket has refilled, which is its own retry.
+    /// </summary>
+    [Fact]
+    public async Task AnEmptyBudgetRefusesFirstContactUntilItRefills()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string token) = await AddProvisionedPrinterAsync(context);
+
+        while (_hashBudget.TryTake())
+        {
+        }
+
+        // Act
+        AuthenticateResult refused = await AuthenticateAsync(context, Fingerprint, token);
+
+        // Assert
+        refused.Succeeded.Should().BeFalse();
+
+        await using (HomespoolDbContext check = NewContext())
+        {
+            (await check.PrusaConnectAuthentication.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
+            (await check.PrusaConnectProvisionings.AnyAsync(p => p.PrinterId == printer.Id, TestContext.Current.CancellationToken))
+                .Should().BeTrue("a refusal for want of budget must leave the token usable");
+        }
+
+        _time.Advance(TimeSpan.FromSeconds(1));
+
+        await using HomespoolDbContext retry = NewContext();
+        (await AuthenticateAsync(retry, Fingerprint, token)).Succeeded.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// With a budget of one hash a request, a printer whose token is the last row written is reached
+    /// within a bounded number of retries. In the table's own order it would never be: the first row
+    /// would take the only hash every time. The chance of this failing with shuffling in place is
+    /// (5/6)^150, about 1 in 10^12.
+    /// </summary>
+    [Fact]
+    public async Task AShuffledScanReachesALateRowAcrossRetries()
+    {
+        // Arrange
+        _hashBudget = new ProvisioningHashBudget(_time, burst: 1, perSecond: 1);
+
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        for (int i = 0; i < 5; i++)
+        {
+            await AddProvisionedPrinterAsync(context);
+        }
+
+        (_, string token) = await AddProvisionedPrinterAsync(context);
+
+        // Act
+        bool enrolled = false;
+
+        for (int attempt = 0; attempt < 150 && !enrolled; attempt++)
+        {
+            _time.Advance(TimeSpan.FromSeconds(1));
+
+            await using HomespoolDbContext request = NewContext();
+            enrolled = (await AuthenticateAsync(request, Fingerprint, token)).Succeeded;
+        }
+
+        // Assert
+        enrolled.Should().BeTrue();
     }
 
     // ---------- USB-key first contact ----------

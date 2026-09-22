@@ -218,7 +218,10 @@ public sealed class ManageEmailCooldownTests : IDisposable
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Url = IdentityTestHarness.NewUrlHelper(httpContext),
-            Input = new EmailModel.InputModel { NewEmail = newEmail },
+
+            // Model binding sets an empty field to null whatever the annotation says, and null stands for
+            // that here.
+            Input = new EmailModel.InputModel { NewEmail = newEmail! },
         };
     }
 

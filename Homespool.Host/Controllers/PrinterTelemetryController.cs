@@ -136,6 +136,15 @@ public class PrinterTelemetryController : ControllerBase
 
         DateTimeOffset end = to ?? _timeProvider.GetUtcNow();
 
+        // The default window is laid before the end, which subtracts up to a day. An end within a day
+        // of the calendar's first instant leaves nothing to subtract from, and DateTimeOffset throws
+        // rather than saturating. The day's cut below cannot underflow - it only moves a start that is
+        // already before the end - so this is the one place a caller's value can.
+        if (end < DateTimeOffset.MinValue + TemperatureWindow.Maximum)
+        {
+            return this.BadRequestProblem("The window has to end at least a day after 0001-01-01.");
+        }
+
         // The page's window, moved to end where the caller asked: the running print's length, or an
         // hour when there is none.
         (DateTimeOffset pageFrom, DateTimeOffset pageTo) = TemperatureWindow.For(printer.LiveState, _timeProvider.GetUtcNow());

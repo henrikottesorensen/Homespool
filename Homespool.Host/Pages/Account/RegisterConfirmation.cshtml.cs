@@ -1,14 +1,12 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
-using Homespool.Host.Mail;
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Options;
+
+using Homespool.Host.Mail;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -33,7 +31,7 @@ public class RegisterConfirmationModel : PageModel
     /// </summary>
     public bool EmailFailed { get; set; }
 
-    public IActionResult OnGet(string email, bool emailFailed = false)
+    public IActionResult OnGet(string? email, bool emailFailed = false)
     {
         if (email == null)
         {

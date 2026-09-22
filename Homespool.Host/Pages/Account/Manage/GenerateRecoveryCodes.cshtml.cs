@@ -1,15 +1,10 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-
-using Homespool.Host.Authentication;
-using Homespool.Host.Localisation;
-using Homespool.Model.Entities;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -17,6 +12,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
@@ -58,24 +57,20 @@ public class GenerateRecoveryCodesModel : PageModel
     }
 
     /// <summary>The codes just minted, set only by a successful POST; null renders the form.</summary>
-    public string[] RecoveryCodes { get; private set; }
+    public string[]? RecoveryCodes { get; private set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
     /// <summary>The confirmation shown above freshly minted codes, in the same response.</summary>
-    public string IssuedMessage { get; private set; }
+    public string? IssuedMessage { get; private set; }
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         // Nothing links here with two-factor off, but a typed URL or a tab left open while it was
@@ -92,10 +87,10 @@ public class GenerateRecoveryCodesModel : PageModel
 
     public async Task<IActionResult> OnPostAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         bool isTwoFactorEnabled = await _userManager.GetTwoFactorEnabledAsync(user);
@@ -105,7 +100,9 @@ public class GenerateRecoveryCodesModel : PageModel
             return RedirectToPage("./TwoFactorAuthentication");
         }
 
-        IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+        // Null means the store refused the update, so no codes were saved to show.
+        IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10) ??
+            throw new InvalidOperationException("The new recovery codes could not be stored.");
         RecoveryCodes = recoveryCodes.ToArray();
 
         _logger.LogInformation("User with ID '{UserId}' has generated new 2FA recovery codes.", userId);

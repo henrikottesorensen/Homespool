@@ -27,6 +27,18 @@ namespace Homespool.Host.Accounts;
 /// the two come to disagree.
 /// </para>
 /// <para>
+/// <b>Every act first asks whether the administrator asking is still open.</b> The page's
+/// authorisation reads the role from the cookie, and a cookie outlives its account's closure until
+/// the security stamp is next re-checked - so for that window a closed administrator, the one an
+/// administrator closes for being compromised, still reaches these buttons. Left to the page, the
+/// closed one reopens themselves, or anybody else, before the check falls due. Asked here, the
+/// answer comes from the row rather than the ticket. It also makes a Self check on reopening
+/// unnecessary: an open administrator aiming at their own account finds nothing to reopen, and a
+/// closed one is refused before aiming. It also leaves the last-administrator refusal with no route
+/// from the page - the one administrator left is refused as themselves, and the closed one who used
+/// to reach it is refused sooner - so that guard now stands for a caller the page is not.
+/// </para>
+/// <para>
 /// <b>What is deliberately not here.</b> No hard delete: attribution is history, and deleting the
 /// subject of a record makes the record lie. No administrator-set password, which would be a second
 /// credential on an account its owner does not know about. No impersonation, which would make every
@@ -100,6 +112,11 @@ public sealed class UserAdministration
                                                        long userId,
                                                        CancellationToken cancellationToken)
     {
+        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        {
+            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+        }
+
         HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
         if (user is null)
@@ -159,6 +176,11 @@ public sealed class UserAdministration
                                                        long userId,
                                                        CancellationToken cancellationToken)
     {
+        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        {
+            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+        }
+
         HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
         if (user is null)
@@ -195,6 +217,11 @@ public sealed class UserAdministration
                                                          long userId,
                                                          CancellationToken cancellationToken)
     {
+        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        {
+            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+        }
+
         if (!await _dbContext.Users.AnyAsync(u => u.Id == userId, cancellationToken))
         {
             return UserAdminResult.Refused(UserAdminRefusal.NoSuchAccount);
@@ -238,6 +265,11 @@ public sealed class UserAdministration
                                                           CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(credentialId);
+
+        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        {
+            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+        }
 
         HSUser? user = await _dbContext.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
@@ -285,6 +317,11 @@ public sealed class UserAdministration
                                                          long userId,
                                                          CancellationToken cancellationToken)
     {
+        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+        {
+            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+        }
+
         HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
 
         if (user is null)
@@ -312,6 +349,19 @@ public sealed class UserAdministration
                            cleared);
 
         return UserAdminResult.Done(cleared);
+    }
+
+    /// <summary>
+    /// Whether the account asking, <paramref name="administratorId"/>, is closed - or is no account at
+    /// all, which is refused the same way rather than trusted.
+    /// </summary>
+    /// <remarks>
+    /// Read from the row on every act, not from the caller's claims: the claims are what a closed
+    /// administrator's cookie still carries until its stamp is next re-checked.
+    /// </remarks>
+    private async Task<bool> IsClosedAdministratorAsync(long administratorId, CancellationToken cancellationToken)
+    {
+        return !await _dbContext.Users.AnyAsync(u => u.Id == administratorId && u.DeactivatedAt == null, cancellationToken);
     }
 
     /// <summary>

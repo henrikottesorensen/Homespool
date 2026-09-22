@@ -69,6 +69,17 @@ if [ -z "$acme_hosts" ]; then
     exit 0
 fi
 
+# The current lego:v5, asked for once per run. compose.yaml floats the tag so that lego's releases
+# arrive, but `compose run` never re-pulls a tag it already has, so without this the copy fetched on
+# the first run would be the one used for the life of the machine.
+#
+# A failed pull is a warning, not a failure: the registry being unreachable today is no reason to let
+# a certificate expire, and the copy already here renewed it yesterday. The run that follows reaches
+# the certificate authority over the same network, so a real outage still fails the unit there.
+if ! compose pull --quiet certs; then
+    echo "WARNING: could not pull the current lego image - renewing with the one already here" >&2
+fi
+
 before="$(fingerprint)"
 
 failed=0

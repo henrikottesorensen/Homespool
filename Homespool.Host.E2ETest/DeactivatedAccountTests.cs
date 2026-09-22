@@ -139,7 +139,64 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         withToken.StatusCode.Should().Be(HttpStatusCode.Unauthorized, "its tokens were revoked, not suspended");
     }
 
+    /// <summary>
+    /// An administrator closed by another keeps a working session until the stamp is next re-checked,
+    /// five minutes on, and the cookie carries the role for all of it. Every button on this page is
+    /// refused to that session meanwhile: reopening themselves, reopening somebody else, and issuing a
+    /// recovery for an open account, which is the one act that does not go through the service.
+    /// </summary>
+    [Fact]
+    public async Task AClosedAdministratorsLiveSessionCanReopenNobody()
+    {
+        // Arrange
+        (HSUser subject, HttpClient subjectClient) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "subject@example.com");
+        subjectClient.Dispose();
+        (HSUser bystander, HttpClient bystanderClient) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "bystander@example.com");
+        bystanderClient.Dispose();
+
+        (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "admin@example.com", AdminBootstrap.AdminRole);
+        (HSUser deputy, HttpClient deputyClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "deputy@example.com", AdminBootstrap.AdminRole);
+
+        using (admin)
+        using (deputyClient)
+        {
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
+            await EnrolmentFlowHelper.ReauthenticateAsync(deputyClient);
+
+            await PostAsync(admin, $"/Admin/Users/Detail/{subject.Uuid}", "Deactivate");
+            await PostAsync(admin, $"/Admin/Users/Detail/{deputy.Uuid}", "Deactivate");
+
+            // Act
+            HttpResponseMessage reopenSelf = await PostForResponseAsync(deputyClient, $"/Admin/Users/Detail/{deputy.Uuid}", "Reactivate");
+            HttpResponseMessage reopenOther = await PostForResponseAsync(deputyClient, $"/Admin/Users/Detail/{subject.Uuid}", "Reactivate");
+            HttpResponseMessage recover = await PostForResponseAsync(deputyClient, $"/Admin/Users/Detail/{bystander.Uuid}", "Recover");
+
+            // Assert
+            foreach (HttpResponseMessage refused in new[] { reopenSelf, reopenOther, recover })
+            {
+                refused.StatusCode.Should().Be(HttpStatusCode.Redirect);
+                refused.Headers.Location!.ToString().Should().Contain("/Account/AccessDenied",
+                    "a closed administrator's session is forbidden the act, not told about it");
+            }
+        }
+
+        (await SignInAsync("deputy@example.com")).Should().NotBe(HttpStatusCode.Redirect, "the closed administrator stays closed");
+        (await SignInAsync("subject@example.com")).Should().NotBe(HttpStatusCode.Redirect, "and so does the account they aimed at");
+    }
+
     private async Task PostAsync(HttpClient client, string path, string handler)
+    {
+        HttpResponseMessage posted = await PostForResponseAsync(client, path, handler);
+
+        posted.StatusCode.Should().Be(HttpStatusCode.Redirect, "the act was accepted");
+        posted.Headers.Location!.ToString().Should().NotContain("/Account/AccessDenied", "the act was accepted");
+    }
+
+    private async Task<HttpResponseMessage> PostForResponseAsync(HttpClient client, string path, string handler)
     {
         HttpResponseMessage page = await client.GetAsync(path, TestContext.Current.CancellationToken);
         string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -149,9 +206,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
             ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
         });
 
-        HttpResponseMessage posted = await client.PostAsync($"{path}?handler={handler}", body, TestContext.Current.CancellationToken);
-
-        posted.StatusCode.Should().Be(HttpStatusCode.Redirect, "the act was accepted");
+        return await client.PostAsync($"{path}?handler={handler}", body, TestContext.Current.CancellationToken);
     }
 
     private async Task<string> MintTokenAsync(long userId)

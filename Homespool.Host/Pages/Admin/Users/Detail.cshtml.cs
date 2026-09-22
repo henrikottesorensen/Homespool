@@ -234,6 +234,14 @@ public class DetailModel : PageModel
             return NotFound();
         }
 
+        if (administrator.DeactivatedAt is not null)
+        {
+            // Checked here because this act does not go through UserAdministration, where the other
+            // four refuse a closed administrator: the cookie carries the role until the stamp is next
+            // re-checked, and a recovery link is a credential for somebody else's account.
+            return Forbid();
+        }
+
         if (IsSelf)
         {
             StatusMessage = _localiser["AdminUsers_RefusedSelfRecovery"].Value;
@@ -349,6 +357,14 @@ public class DetailModel : PageModel
         }
 
         UserAdminResult result = await act(administrator.Id, Id);
+
+        if (result.Refusal is UserAdminRefusal.ClosedAdministrator)
+        {
+            // The session's own account was closed since the cookie was issued. Nothing to tell it:
+            // the stamp check ends the session when it next falls due, and until then this page is
+            // not its to use.
+            return Forbid();
+        }
 
         StatusMessage = result.Refusal switch
         {

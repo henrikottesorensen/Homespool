@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -20,8 +18,8 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
-using Homespool.Host.Authentication;
 using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -115,13 +113,13 @@ public class ExternalLoginsModel : PageModel
     public bool Proved { get; private set; }
 
     /// <summary>The providers already attached to this account.</summary>
-    public IList<UserLoginInfo> CurrentLogins { get; set; }
+    public IList<UserLoginInfo> CurrentLogins { get; set; } = [];
 
     /// <summary>
     /// Registered providers this account has not linked yet — at most one today, since
     /// <c>OidcOptions</c> describes a single provider.
     /// </summary>
-    public IList<AuthenticationScheme> OtherLogins { get; set; }
+    public IList<AuthenticationScheme> OtherLogins { get; set; } = [];
 
     /// <summary>
     /// Whether the account has a local password, which decides what removing a login costs. With one,
@@ -136,10 +134,10 @@ public class ExternalLoginsModel : PageModel
     public bool RemovalNeedsAPassword => !HasPassword && CurrentLogins is { Count: <= 1 };
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
     /// <summary>The password an account must set to be allowed to remove its last external login.</summary>
     public class InputModel
@@ -147,20 +145,20 @@ public class ExternalLoginsModel : PageModel
         [DataType(DataType.Password)]
         [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [Display(Name = "Account_Password")]
-        public string NewPassword { get; set; }
+        public string? NewPassword { get; set; }
 
         [DataType(DataType.Password)]
         [Display(Name = "Account_ConfirmPassword")]
         [Compare(nameof(NewPassword), ErrorMessage = "Validation_PasswordMismatch")]
-        public string ConfirmPassword { get; set; }
+        public string? ConfirmPassword { get; set; }
     }
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadAsync(user);
@@ -194,18 +192,18 @@ public class ExternalLoginsModel : PageModel
     /// </para>
     /// </remarks>
     [RequireRecentProof]
-    public async Task<IActionResult> OnPostLinkLoginAsync(string provider)
+    public async Task<IActionResult> OnPostLinkLoginAsync(string? provider)
     {
         IReadOnlyList<AuthenticationScheme> external = await _externalSignIn.ProvidersAsync();
 
-        if (!external.Any(scheme => string.Equals(scheme.Name, provider, StringComparison.Ordinal)))
+        if (provider is null || !external.Any(scheme => string.Equals(scheme.Name, provider, StringComparison.Ordinal)))
         {
             return BadRequest();
         }
 
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
 
-        string redirectUrl = Url.Page("./ExternalLogins", pageHandler: "LinkLoginCallback");
+        string? redirectUrl = Url.Page("./ExternalLogins", pageHandler: "LinkLoginCallback");
         AuthenticationProperties properties =
             ExternalSignIn.ChallengeProperties(provider, redirectUrl, ExternalRoundTrip.Link, _userManager.GetUserId(User));
 
@@ -214,10 +212,10 @@ public class ExternalLoginsModel : PageModel
 
     public async Task<IActionResult> OnGetLinkLoginCallbackAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         // Keyed on the signed-in account, so a callback carrying somebody else's external cookie
@@ -226,7 +224,7 @@ public class ExternalLoginsModel : PageModel
         // [RequireRecentProof] of its own: it arrives by a cross-site redirect the proof cookie is
         // withheld from, and the proof was demanded when the link flow began, which only the flow
         // item can tell apart from any other round trip for this account.
-        ExternalLoginInfo info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.Link, user.Id.ToString(CultureInfo.InvariantCulture));
+        ExternalLoginInfo? info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.Link, user.Id.ToString(CultureInfo.InvariantCulture));
         if (info == null)
         {
             StatusMessage = _localiser["Manage_ExternalLoginLinkError"];
@@ -262,13 +260,18 @@ public class ExternalLoginsModel : PageModel
     }
 
     [RequireRecentProof]
-    public async Task<IActionResult> OnPostRemoveLoginAsync(string loginProvider, string providerKey,
+    public async Task<IActionResult> OnPostRemoveLoginAsync(string? loginProvider, string? providerKey,
                                                             CancellationToken cancellationToken)
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        if (loginProvider is null || providerKey is null)
+        {
+            return BadRequest();
+        }
+
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadAsync(user);

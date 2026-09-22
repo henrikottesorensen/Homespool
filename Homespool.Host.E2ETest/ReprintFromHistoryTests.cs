@@ -103,6 +103,35 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A file overwritten since the print is asked about rather than printed, and the page's second
+    /// button - the same post with <c>changed</c> set - prints the current version.
+    /// </summary>
+    [Fact]
+    public async Task AFileChangedSinceThePrintIsAskedAboutFirst()
+    {
+        (Guid uuid, Guid printUuid, HttpClient client) = await SeedAsync("reprint-changed@example.com", "benchy.bgcode",
+                                                                        digest: "the-bytes-that-printed");
+
+        using (client)
+        {
+            await UploadAsync(client, "benchy.bgcode");
+
+            string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
+
+            using HttpResponseMessage asked = await PostReprintAsync(client, uuid, page, printUuid);
+            asked.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            (await QueuedNamesAsync(uuid)).Should().BeEmpty("nothing is queued before the question is answered");
+
+            string question = await GetAsync(client, $"/Printers/Detail/{uuid}");
+            question.Should().Contain("name=\"changed\" value=\"true\"", "the page offers to print the current version");
+
+            using HttpResponseMessage answered = await PostReprintAsync(client, uuid, question, printUuid, changed: true);
+            answered.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            (await QueuedNamesAsync(uuid)).Should().ContainSingle().Which.Should().Be("benchy.bgcode");
+        }
+    }
+
+    /// <summary>
     /// A history row outlives the file it names, and then the answer is a sentence rather than a
     /// queued print of nothing.
     /// </summary>
@@ -201,13 +230,19 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     private static async Task<HttpResponseMessage> PostReprintAsync(HttpClient client,
                                                                     Guid uuid,
                                                                     string page,
-                                                                    Guid printUuid)
+                                                                    Guid printUuid,
+                                                                    bool changed = false)
     {
         Dictionary<string, string> fields = new()
         {
             ["printUuid"] = printUuid.ToString(),
             ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(page),
         };
+
+        if (changed)
+        {
+            fields["changed"] = "true";
+        }
 
         using FormUrlEncodedContent body = new(fields);
 
@@ -284,7 +319,8 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
     private async Task<(Guid uuid, Guid printUuid, HttpClient client)> SeedAsync(string email,
                                                                                 string printedFile,
                                                                                 string? capabilities = null,
-                                                                                bool queuedBySomebodyElse = false)
+                                                                                bool queuedBySomebodyElse = false,
+                                                                                string? digest = null)
     {
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, email);
 
@@ -326,6 +362,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
             // A user id nobody here holds, which is the whole of what makes a row somebody else's.
             QueuedByUserId = queuedBySomebodyElse ? user.Id + 1000 : user.Id,
             PrintUuid = printUuid,
+            Digest = digest,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

@@ -141,9 +141,13 @@ echo "==> Building the Homespool container images for arm64"
 # written to an SD card, posted, and run for months by somebody who never built it, and "which build
 # is this?" then has exactly one answer - `docker compose run --rm homespool --version`. Compose
 # cannot compute it (no command substitution), so it is computed here; see tools/gitref.sh.
+#
+# --pull for the reason ../build.sh gives: the base images float so that their security rebuilds
+# arrive, and without it this bakes whatever copy of aspnet:10.0 the build host happened to keep -
+# onto a card that will then run it for months.
 HOMESPOOL_GITREF="$("$repo_root/tools/gitref.sh")"
 export HOMESPOOL_GITREF
-docker --log-level warn compose -f "$repo_root/compose.yaml" build
+docker --log-level warn compose -f "$repo_root/compose.yaml" build --pull
 
 # ------------------------------------------------------------------------------------------------
 # 2. The payload: everything the card needs at /opt/homespool.

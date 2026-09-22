@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Pages.Account;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -195,6 +196,12 @@ public sealed class ExternalAccountPasswordTests : IAsyncLifetime
 
         (await ASendIsAttemptedForAsync("ordinary@example.com", SendDeadline)).Should()
             .BeTrue("the guard is about accounts with no password, not about reset in general");
+
+        // The page every caller lands on says how recent the last mail may be, which is what keeps it
+        // true for the one whose request fell inside the cooldown and sent nothing.
+        string confirmation = await client.GetStringAsync(response.Headers.Location, TestContext.Current.CancellationToken);
+
+        confirmation.Should().Contain($"{(int)ForgotPasswordModel.SendCooldown.TotalMinutes} minutes");
     }
 
     /// <summary>

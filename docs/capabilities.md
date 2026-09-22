@@ -7,7 +7,7 @@ work now gets a 403**.
 
 ## The vocabulary
 
-Eleven capabilities. Every permission decision in Homespool is one of them.
+Twelve capabilities. Every permission decision in Homespool is one of them.
 
 | capability | what it permits |
 |---|---|
@@ -22,6 +22,7 @@ Eleven capabilities. Every permission decision in Homespool is one of them.
 | `ViewOwnFiles` | List and download **your own** files |
 | `UploadOwnFiles` | Upload a file under a name you are not already using |
 | `ManipulateOwnFiles` | Rename, delete and overwrite **your own** files |
+| `ViewAccountDetails` | See **your own** email address in `GET /api/v1/user` |
 
 **Readying is `Print`, not `ControlPrinter`, and deliberately so.** Readiness is a person's assertion
 that the sheet is clear rather than an act on somebody else's print, and the queue starts nothing
@@ -43,7 +44,7 @@ see, and you cannot tell whether a camera is configured correctly without lookin
 | `Print`, `ControlPrinter` or `ManagePrinter` | `ViewPrinter` |
 | `ManageCamera` | `ViewCamera` |
 
-The file capabilities imply nothing: a file is addressed by the name you already know, so deleting one
+The file capabilities and `ViewAccountDetails` imply nothing: a file is addressed by the name you already know, so deleting one
 does not require being able to list them.
 
 ## Teams: what a person may do
@@ -51,9 +52,9 @@ does not require being able to list them.
 Printers and cameras belong to a **team**, not to a person. What you may do to a printer is what your
 membership of its team grants.
 
-**Teams govern printers and cameras only.** The three file capabilities are not part of a membership —
-your files are yours, and no team grants or withholds them. They exist to narrow a token, and that is
-all they do.
+**Teams govern printers and cameras only.** The three file capabilities and `ViewAccountDetails` are
+not part of a membership — your files and your account are yours, and no team grants or withholds
+them. They exist to narrow a token, and that is all they do.
 
 Every account gets its own team when it is created, and its creator holds every printer and camera
 capability on it. When somebody accepts an invitation into an existing team, they get everything
@@ -102,6 +103,12 @@ PrusaSlicer's print-host integration needs to upload a file and print it, and no
 That key can then send a model and queue it, and **cannot delete anything** — which matters, because
 it lives in a slicer's configuration file on a laptop. It cannot start a print on its own either: the
 queue waits for somebody to ready the printer.
+
+### Checking a token works
+
+`GET /api/v1/user` answers any valid token, whatever its scope, so a script can call it to confirm the
+token before doing anything else. Without `ViewAccountDetails` the response leaves out your email
+address (`email` is `null`); the username, teams and default printer are still there.
 
 ### Revoking
 

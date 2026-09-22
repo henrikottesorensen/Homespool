@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -12,16 +10,8 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Authentication;
-using Homespool.Host.Accounts;
-using Homespool.Host.Localisation;
-using Homespool.Host.Mail;
-using Homespool.Host.Services;
-using Homespool.Model;
-using Homespool.Model.Entities;
-
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -30,6 +20,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Host.Mail;
+using Homespool.Host.Services;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account;
 
@@ -95,18 +93,18 @@ public class RegisterModel : PageModel
 
     /// <summary>The Base64Url-encoded invite token from the accept link.</summary>
     [BindProperty(SupportsGet = true)]
-    public string Code { get; set; }
+    public string? Code { get; set; }
 
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    public string ReturnUrl { get; set; }
+    public string? ReturnUrl { get; set; }
 
     /// <summary>True when the invite validated; the view shows the password form only then.</summary>
     public bool InviteValid { get; private set; }
 
     /// <summary>The invite's bound email, shown read-only. The account is created as this address.</summary>
-    public string Email { get; private set; }
+    public string? Email { get; private set; }
 
     /// <summary>
     /// Registered external providers, so an invitee can accept with one <em>instead of</em> setting a
@@ -137,7 +135,7 @@ public class RegisterModel : PageModel
     /// The account's username when <see cref="Recovering"/>. Shown read-only and never re-chosen: it
     /// is already theirs, and letting an invite rename an account is not a thing this flow is for.
     /// </summary>
-    public string ExistingUsername { get; private set; }
+    public string? ExistingUsername { get; private set; }
 
     /// <summary>
     /// True when this invite is a <b>recovery</b> an administrator issued for an account whose owner
@@ -174,25 +172,25 @@ public class RegisterModel : PageModel
         [Required]
         [StringLength(HSUser.UsernameMaxLength)]
         [Display(Name = "Account_Username")]
-        public string Username { get; set; }
+        public string Username { get; set; } = string.Empty;
 
         [Required]
         [StringLength(100, ErrorMessage = "Validation_Length", MinimumLength = IdentityConfiguration.MinimumPasswordLength)]
         [DataType(DataType.Password)]
         [Display(Name = "Account_Password")]
-        public string Password { get; set; }
+        public string Password { get; set; } = string.Empty;
 
         [DataType(DataType.Password)]
         [Display(Name = "Account_ConfirmPassword")]
         [Compare(nameof(Password), ErrorMessage = "Validation_PasswordMismatch")]
-        public string ConfirmPassword { get; set; }
+        public string? ConfirmPassword { get; set; }
     }
 
-    public async Task OnGetAsync(string returnUrl, CancellationToken cancellationToken)
+    public async Task OnGetAsync(string? returnUrl, CancellationToken cancellationToken)
     {
         ReturnUrl = returnUrl;
 
-        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), RedeemableHere, cancellationToken);
+        Invitation? invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), RedeemableHere, cancellationToken);
 
         InviteValid = invitation is not null;
         Email = invitation?.Email;
@@ -220,7 +218,7 @@ public class RegisterModel : PageModel
     /// working provider account, and could bring a deactivated one back under the invite-holder's
     /// password.
     /// </remarks>
-    private async Task<HSUser> ResolveExistingAccountAsync(Invitation invitation)
+    private async Task<HSUser?> ResolveExistingAccountAsync(Invitation invitation)
     {
         if (invitation.Type == InvitationType.Recovery)
         {
@@ -233,7 +231,7 @@ public class RegisterModel : PageModel
             // Named, not looked up: the address on a recovery is where the link was sent, and the id
             // is who it is for. A miss means the account is gone, which is a recovery that can no
             // longer be redeemed rather than one to redirect at somebody else.
-            HSUser subject = await _userManager.FindByIdAsync(invitation.RecoversUserId!.Value.ToString(CultureInfo.InvariantCulture));
+            HSUser? subject = await _userManager.FindByIdAsync(invitation.RecoversUserId!.Value.ToString(CultureInfo.InvariantCulture));
 
             ExistingUsername = subject?.UserName;
 
@@ -243,14 +241,14 @@ public class RegisterModel : PageModel
         return await _userManager.FindByEmailAsync(invitation.Email);
     }
 
-    public async Task<IActionResult> OnPostAsync(string returnUrl, CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAsync(string? returnUrl, CancellationToken cancellationToken)
     {
         returnUrl ??= Url.Content("~/");
         ReturnUrl = returnUrl;
 
         // Re-validate on post: the token could be tampered with, and the invite could have expired or
         // been spent since the form was rendered.
-        Invitation invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), RedeemableHere, cancellationToken);
+        Invitation? invitation = await _invitationService.ValidateAsync(InviteUuid, DecodeToken(Code), RedeemableHere, cancellationToken);
 
         if (invitation is null)
         {
@@ -262,7 +260,7 @@ public class RegisterModel : PageModel
         InviteValid = true;
         Email = invitation.Email;
 
-        HSUser existing = await ResolveExistingAccountAsync(invitation);
+        HSUser? existing = await ResolveExistingAccountAsync(invitation);
 
         if (Recovering)
         {
@@ -492,7 +490,7 @@ public class RegisterModel : PageModel
             _localiser["Email_RecoveredSubject"].Value,
             _localiser["Email_RecoveredBody"].Value));
 
-        if (await _emailSender.SendEmailAsync(subject.Email, noticeSubject, noticeBody) == EmailSendResult.Failed)
+        if (await _emailSender.SendEmailAsync(IdentityConfiguration.EmailOf(subject), noticeSubject, noticeBody) == EmailSendResult.Failed)
         {
             _logger.LogWarning("User {UserId} was recovered, and the notice to the account's address could not be sent.", subject.Id);
         }
@@ -507,7 +505,7 @@ public class RegisterModel : PageModel
                 return RedirectToPage("./Lockout");
 
             case SignInRefusal.NotAllowed when !subject.EmailConfirmed:
-                return await HoldForConfirmationAsync(subject, subject.Email, subject.Language, returnUrl);
+                return await HoldForConfirmationAsync(subject, IdentityConfiguration.EmailOf(subject), subject.Language, returnUrl);
 
             case SignInRefusal.NotAllowed:
                 ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
@@ -541,15 +539,11 @@ public class RegisterModel : PageModel
     /// the account has none yet.
     /// </param>
     /// <param name="returnUrl">Where to go once confirmed.</param>
-    private async Task<IActionResult> HoldForConfirmationAsync(HSUser user, string email, string language, string returnUrl)
+    private async Task<IActionResult> HoldForConfirmationAsync(HSUser user, string email, string? language, string returnUrl)
     {
         string confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         confirmToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(confirmToken));
-        string callbackUrl = Url.Page(
-            "/Account/ConfirmEmail",
-            pageHandler: null,
-            values: new { userUuid = user.Uuid, code = confirmToken, returnUrl },
-            protocol: Request.Scheme);
+        string callbackUrl = EmailedToken.Link(Url, "/Account/ConfirmEmail", new { userUuid = user.Uuid, code = confirmToken, returnUrl });
 
         (string subject, string body) = UserCultures.InCulture(language, () => (
             _localiser["Email_ConfirmSubject"].Value,
@@ -563,7 +557,7 @@ public class RegisterModel : PageModel
     }
 
     /// <summary>Reverses the Base64Url encoding the accept link uses. Null/invalid input yields null.</summary>
-    private static string DecodeToken(string code)
+    private static string? DecodeToken(string? code)
     {
         return EmailedToken.Decode(code);
     }

@@ -1056,7 +1056,7 @@ public class PrinterConnectionActorTests
     private sealed class GatedTelemetrySink : ITelemetrySink, IDisposable
     {
         private readonly ManualResetEventSlim _gate = new(false);
-        private readonly object _sync = new();
+        private readonly Lock _sync = new();
         private int _telemetryCount;
 
         /// <summary>True while the loop is parked inside this sink.</summary>

@@ -1,8 +1,6 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-#nullable disable
-
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -13,11 +11,6 @@ using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
-using Homespool.Host.Authentication;
-using Homespool.Host.Localisation;
-using Homespool.Host.Services;
-using Homespool.Model.Entities;
-
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -26,6 +19,12 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
+
+using Homespool.Host.Accounts;
+using Homespool.Host.Authentication;
+using Homespool.Host.Localisation;
+using Homespool.Host.Services;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
 
@@ -66,17 +65,9 @@ public class EnableAuthenticatorModel : PageModel
         _localiser = localiser;
     }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
-    public string SharedKey { get; set; }
+    public string? SharedKey { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
-    public string AuthenticatorUri { get; set; }
+    public string? AuthenticatorUri { get; set; }
 
     /// <summary>
     /// The codes minted by a first enable, rendered by that POST's own response; null renders the
@@ -90,48 +81,32 @@ public class EnableAuthenticatorModel : PageModel
     /// A refresh re-submits the form, finds codes already issued and goes to
     /// <c>TwoFactorAuthentication</c> without showing them again.
     /// </remarks>
-    public string[] RecoveryCodes { get; private set; }
+    public string[]? RecoveryCodes { get; private set; }
 
     /// <summary>The confirmation shown above freshly minted codes, in the same response.</summary>
-    public string IssuedMessage { get; private set; }
+    public string? IssuedMessage { get; private set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [TempData]
-    public string StatusMessage { get; set; }
+    public string? StatusMessage { get; set; }
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     [BindProperty]
-    public InputModel Input { get; set; }
+    public InputModel Input { get; set; } = new();
 
-    /// <summary>
-    ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-    ///     directly from your code. This API may change or be removed in future releases.
-    /// </summary>
     public class InputModel
     {
-        /// <summary>
-        ///     This API supports the ASP.NET Core Identity default UI infrastructure and is not intended to be used
-        ///     directly from your code. This API may change or be removed in future releases.
-        /// </summary>
         [Required]
         [StringLength(7, ErrorMessage = "Validation_Length", MinimumLength = 6)]
         [DataType(DataType.Text)]
         [Display(Name = "Manage_VerificationCode")]
-        public string Code { get; set; }
+        public string Code { get; set; } = string.Empty;
     }
 
     public async Task<IActionResult> OnGetAsync()
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         await LoadSharedKeyAndQrCodeUriAsync(user);
@@ -141,10 +116,10 @@ public class EnableAuthenticatorModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
-        HSUser user = await _userManager.GetUserAsync(User);
+        HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
         {
-            return NotFound($"Unable to load user with ID '{_userManager.GetUserId(User)}'.");
+            return NotFound();
         }
 
         if (!ModelState.IsValid)
@@ -183,7 +158,9 @@ public class EnableAuthenticatorModel : PageModel
 
             if (issuedRecoveryCodes)
             {
-                IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+                // Null means the store refused the update, so no codes were saved to show.
+                IEnumerable<string> recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10) ??
+                    throw new InvalidOperationException("The new recovery codes could not be stored.");
                 RecoveryCodes = recoveryCodes.ToArray();
             }
 
@@ -208,16 +185,19 @@ public class EnableAuthenticatorModel : PageModel
     private async Task LoadSharedKeyAndQrCodeUriAsync(HSUser user)
     {
         // Load the authenticator key & QR code URI to display on the form
-        string unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
+        string? unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrEmpty(unformattedKey))
         {
             await _userManager.ResetAuthenticatorKeyAsync(user);
-            unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user);
+
+            // Null straight after a reset means the store refused to save the new key.
+            unformattedKey = await _userManager.GetAuthenticatorKeyAsync(user) ??
+                throw new InvalidOperationException("The new authenticator key could not be stored.");
         }
 
         SharedKey = FormatKey(unformattedKey);
 
-        string email = await _userManager.GetEmailAsync(user);
+        string email = IdentityConfiguration.EmailOf(user);
         AuthenticatorUri = GenerateQrCodeUri(email, unformattedKey);
     }
 

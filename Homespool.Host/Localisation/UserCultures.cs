@@ -15,10 +15,11 @@ namespace Homespool.Host.Localisation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This is the piece the whole of Phase A exists for.</b> Alerts and invitations are written by
-/// hosted services — <c>TelemetryAlertService</c> runs on a timer and owns no
+/// <b>This is the piece the whole of Phase A exists for.</b> Alerts and invitations are written
+/// without a request in flight — <c>TelemetryAlertService</c> runs on a timer and owns no
 /// <c>HttpContext</c> — so there is no <c>Accept-Language</c> to read and no ambient culture worth
-/// having. Without something like this, every email a deployment sends is in whatever language the
+/// having. The alert path reads the column in the same query as its recipients' addresses, so it
+/// never asks here while the database may be down; <see cref="InCulture"/> is what it uses. Without something like this, every email a deployment sends is in whatever language the
 /// server happens to be configured for, regardless of who receives it.
 /// </para>
 /// <para>
@@ -101,29 +102,6 @@ public sealed class UserCultures
     {
         string? stored = await _context.Users
                                        .Where(user => user.Id == userId)
-                                       .Select(user => user.Language)
-                                       .FirstOrDefaultAsync(cancellationToken)
-                                       .ConfigureAwait(false);
-
-        return SupportedLanguages.Resolve(stored);
-    }
-
-    /// <summary>
-    /// The culture to write to an address, or null when nobody there has chosen one.
-    /// </summary>
-    /// <remarks>
-    /// By address because that is what a sender has: <c>IEmailSender</c> takes a recipient, not a
-    /// user id, and the alert path does not look an account up to send to it. Matched on the
-    /// normalised address so casing cannot decide somebody's language.
-    /// </remarks>
-    public async Task<string?> ForEmailAsync(string emailAddress, CancellationToken cancellationToken)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(emailAddress);
-
-        string normalised = emailAddress.ToUpperInvariant();
-
-        string? stored = await _context.Users
-                                       .Where(user => user.NormalizedEmail == normalised)
                                        .Select(user => user.Language)
                                        .FirstOrDefaultAsync(cancellationToken)
                                        .ConfigureAwait(false);

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 using Duende.IdentityModel;
@@ -59,9 +61,10 @@ public static class AuthenticationBuilderExtensions
         builder.Services.AddSingleton<RecentProof>();
 
         builder.Services.AddOptions<PasskeyAuthenticationOptions>(Schemes.Passkey)
-               .Configure<IOptions<Middleware.SecurityOptions>>((options, security) =>
+               .Configure<IOptions<Middleware.SecurityOptions>, IConfiguration>((options, security, configuration) =>
                {
                    options.ServerDomain = security.Value.PasskeyServerDomain;
+                   options.ServedHosts = ServedHostsFrom(configuration["AllowedHosts"]);
                });
 
         builder.Services.AddOptions<IdentityPasskeyOptions>()
@@ -73,9 +76,11 @@ public static class AuthenticationBuilderExtensions
                    engine.AuthenticatorTimeout = scheme.CeremonyLifetime;
 
                    // The framework's default compares two client-supplied values with each other; this
-                   // compares the claimed origin with the one name the deployment binds credentials to.
+                   // compares the claimed origin with the names people are served on, the relying-party
+                   // id, and the port in the request's Host - AllowsOrigin says what each pins.
                    engine.ValidateOrigin = context =>
-                       ValueTask.FromResult(!context.CrossOrigin && scheme.AllowsOrigin(context.Origin));
+                       ValueTask.FromResult(!context.CrossOrigin &&
+                                            scheme.AllowsOrigin(context.Origin, context.HttpContext.Request.Host));
                });
 
         builder.AddScheme<PasskeyAuthenticationOptions, PasskeyAuthenticationHandler>(Schemes.Passkey,
@@ -300,5 +305,16 @@ public static class AuthenticationBuilderExtensions
         });
 
         return builder;
+    }
+
+    /// <summary>
+    /// The names in an <c>AllowedHosts</c> value, split as the host filter splits it; empty when it is
+    /// unset or holds <c>*</c>, which the host filter reads as every name.
+    /// </summary>
+    private static IReadOnlyList<string> ServedHostsFrom(string? allowedHosts)
+    {
+        string[] names = allowedHosts?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+
+        return names.Contains("*") ? [] : names;
     }
 }

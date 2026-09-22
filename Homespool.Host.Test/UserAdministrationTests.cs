@@ -197,8 +197,8 @@ public sealed class UserAdministrationTests : IDisposable
     }
 
     /// <summary>
-    /// A closed administrator's session outlives the closure until its stamp is next re-checked, and
-    /// the cookie still carries the role for that window. The service reads the row, so every act it
+    /// A closed administrator's session ends with the account, but the service does not rest on that:
+    /// a caller's claims are what it was issued with. The service reads the row, so every act it
     /// offers refuses - reopening themselves, reopening anybody else, and the three that touch an
     /// open account - and the accounts aimed at are exactly as they were.
     /// </summary>

@@ -117,10 +117,12 @@ public sealed class ConfirmEmailChangeTests : IDisposable
     private CapturingEmailSender Mail { get; } = new();
 
     private ConfirmEmailChangeModel NewModel(UserManager<HSUser> users,
+                                             HomespoolDbContext context,
                                              LocalSignIn signIn,
                                              DefaultHttpContext httpContext)
     {
         return new ConfirmEmailChangeModel(users,
+                                           context,
                                            signIn,
                                            Options.Create(new SmtpOptions()),
                                            Mail,
@@ -150,7 +152,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         HSUser user = await AddUserAsync(users, "henrik", "before@example.com");
         string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
 
-        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, context, signIn, httpContext);
 
         // Act
         await model.OnGetAsync(user.Uuid, "after@example.com", code);
@@ -186,7 +188,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
 
         string code = await ChangeEmailCodeAsync(users, mover, "taken@example.com");
 
-        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, context, signIn, httpContext);
 
         // Act
         IActionResult result = await model.OnGetAsync(mover.Uuid, "taken@example.com", code);
@@ -231,7 +233,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
 
         string code = await ChangeEmailCodeAsync(users, mover, "taken@example.com");
 
-        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, context, signIn, httpContext);
 
         // Act
         IActionResult result = await model.OnGetAsync(mover.Uuid, "taken@example.com", code);
@@ -264,7 +266,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         HSUser user = await AddUserAsync(users, "henrik", "before@example.com");
         string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
 
-        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, context, signIn, httpContext);
 
         // Act
         await model.OnGetAsync(user.Uuid, "after@example.com", code);
@@ -294,7 +296,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         (await users.UpdateAsync(user)).Succeeded.Should().BeTrue();
 
         string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
-        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, context, signIn, httpContext);
 
         // Act
         await model.OnGetAsync(user.Uuid, "after@example.com", code);
@@ -319,7 +321,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         string code = await ChangeEmailCodeAsync(users, user, "after@example.com");
         Mail.Result = EmailSendResult.Failed;
 
-        ConfirmEmailChangeModel model = NewModel(users, signIn, httpContext);
+        ConfirmEmailChangeModel model = NewModel(users, context, signIn, httpContext);
 
         // Act
         await model.OnGetAsync(user.Uuid, "after@example.com", code);

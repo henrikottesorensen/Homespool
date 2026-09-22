@@ -558,8 +558,9 @@ services:
     #
     # What the flag was buying here is smaller than it looks, and was measured rather than assumed:
     # under this user, with every capability dropped, the only path it takes away is /var/tmp.
-    # /tmp is a tmpfs either way (below), and /dev/shm stays writable under read_only regardless;
-    # nothing else in the image is writable by uid 65532, because the image's own files are root's.
+    # /tmp is a tmpfs either way (below), and /dev/shm is not a filesystem here at all (the /dev
+    # mount below says why); nothing else in the image is writable by uid 65532, because the
+    # image's own files are root's.
     #
     # /tmp stays a tmpfs so that scratch writes land in memory rather than on the card, which on a
     # Raspberry Pi is the difference this line was really making.
@@ -608,11 +609,50 @@ services:
       # IN PLACE, same inode, so mounting the single file holds. Were it to write a temporary file
       # and rename, a single-file mount would break and this would have to become a directory.
       - ./go2rtc.yaml:/config/go2rtc.yaml
+
+      # ------------------------------------------------------------------------------------------
+      # WARNING: `docker exec -it` DOES NOT WORK ON THIS CONTAINER, and neither does a plain
+      # `docker compose exec` from a terminal. Both fail with
+      #
+      #   OCI runtime exec failed: ... open /dev/pts/ptmx: no such file or directory
+      #
+      # and that is the price of `recursive: disabled` below, paid on purpose. What still works:
+      #
+      #   docker exec -i <container> sh             a shell without a terminal: no prompt, no line
+      #                                             editing, but every command runs
+      #   docker compose exec -T go2rtc <command>   one command at a time
+      #
+      # To debug with a real terminal, swap this block for `- /dev:/dev:ro` for the session and
+      # swap it back afterwards. Do not "fix" the error by leaving it swapped.
+      # ------------------------------------------------------------------------------------------
+      #
       # Visibility only - the cgroup rule above is what grants access, and READ-ONLY is not a typo
       # or a thing to repair. Opening a capture device is governed by the node's own permissions and
       # the cgroup rule, never by this mount's flag, so v4l2 capture is unaffected: measured, with
       # the mount confirmed ro and a write inside the container refused, while frames kept arriving.
-      - /dev:/dev:ro
+      #
+      # Over /dev, unlike the application's /hostdev, because the camera sources stored in
+      # go2rtc.yaml and in the database name /dev/v4l/by-id paths, and because go2rtc lists devices
+      # for /api/ffmpeg/devices by reading /dev and nowhere else - at /hostdev, the capture sizes
+      # the cameras page offers would come back empty.
+      #
+      # Not recursive, and that is where the warning comes from. A bind mount brings along every
+      # filesystem mounted beneath its source unless told otherwise, so the short form handed this
+      # container the host's /dev/shm, /dev/pts and /dev/mqueue - /dev/shm being where other
+      # processes on the host keep ordinary files. Without recursion those three are the empty
+      # directories they are mounted over, and what is left is the devtmpfs itself: device nodes,
+      # and udev's symlinks, which live on it. But a mount over /dev also makes Docker leave out
+      # the /dev/pts it would otherwise build, so there is no terminal left for `exec -t` to open.
+      # Measured on 1.9.14 with this service's user and flags: go2rtc started, an ffmpeg-backed
+      # stream served a frame, and /dev/null and /dev/urandom behaved, either way.
+      #
+      # The long form is the only spelling: the short one has no option for this.
+      - type: bind
+        source: /dev
+        target: /dev
+        read_only: true
+        bind:
+          recursive: disabled
 
     # Its own network, shared with the application and nothing else. The proxy and the certificate
     # renewer are not on it, so a sidecar that runs third-party code and fetches addresses people

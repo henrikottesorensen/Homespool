@@ -422,6 +422,61 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         result.Succeeded.Should().BeFalse("the origin check is against the relying-party id, not against a header the same client sent");
     }
 
+    /// <summary>
+    /// The relay a subdomain page can run: the challenge is fetched in the relayer's own session and
+    /// signed on their page, and the assertion is posted back with their own ceremony cookie. The
+    /// relying-party id covers that page, so only the name in the client data can refuse it.
+    /// </summary>
+    [Fact]
+    public async Task AnAssertionFromASubdomainThisDeploymentDoesNotServeFails()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        using FakeAuthenticator authenticator = new();
+        HSUser user = await rig.EnrolAsync(authenticator);
+
+        (PasskeyAuthenticationHandler challengeHandler, DefaultHttpContext challenge) = await rig.NewRequestAsync();
+        await challengeHandler.ChallengeAsync(new AuthenticationProperties());
+
+        authenticator.Origin = $"https://evil.{RelyingPartyId}";
+        string credential = authenticator.Assert(await rig.BodyOf(challenge), user.Id.ToString());
+        (PasskeyAuthenticationHandler handler, DefaultHttpContext request) = await rig.NewRequestAsync(credential: credential, cookie: Rig.CookieOf(challenge));
+        request.Request.Headers.Origin = authenticator.Origin;
+
+        // Act
+        AuthenticateResult result = await handler.AuthenticateAsync();
+
+        // Assert
+        result.Succeeded.Should().BeFalse("a covered name is not a served one");
+    }
+
+    /// <summary>
+    /// The origin's port is held to the one the request arrived on, which the engine's check reads
+    /// from the request it is handed rather than from anything the client data says.
+    /// </summary>
+    [Fact]
+    public async Task AnAssertionFromTheRightNameOnAnotherPortFails()
+    {
+        // Arrange
+        await using Rig rig = await Rig.CreateAsync(this);
+        using FakeAuthenticator authenticator = new();
+        HSUser user = await rig.EnrolAsync(authenticator);
+
+        (PasskeyAuthenticationHandler challengeHandler, DefaultHttpContext challenge) = await rig.NewRequestAsync();
+        await challengeHandler.ChallengeAsync(new AuthenticationProperties());
+
+        authenticator.Origin = $"https://{RelyingPartyId}:8443";
+        string credential = authenticator.Assert(await rig.BodyOf(challenge), user.Id.ToString());
+        (PasskeyAuthenticationHandler handler, DefaultHttpContext request) = await rig.NewRequestAsync(credential: credential, cookie: Rig.CookieOf(challenge));
+        request.Request.Headers.Origin = authenticator.Origin;
+
+        // Act
+        AuthenticateResult result = await handler.AuthenticateAsync();
+
+        // Assert
+        result.Succeeded.Should().BeFalse("the request came in on the default port, and the origin names another");
+    }
+
     [Fact]
     public async Task AnAssertionWithoutUserVerificationFails()
     {

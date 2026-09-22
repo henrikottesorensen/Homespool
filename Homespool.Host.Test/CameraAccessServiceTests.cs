@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
@@ -108,6 +109,38 @@ public sealed class CameraAccessServiceTests : IDisposable
         // Assert
         found.Should().NotBeNull();
         found!.Uuid.Should().Be(camera.Uuid);
+    }
+
+    /// <summary>
+    /// Claiming a camera plugged into this machine is an administrator's act, and the question is the
+    /// one every administrator decision asks: the role row <b>and</b> an open account. A closed
+    /// administrator still holds the role row, so the service asks for an open account rather than
+    /// resting on the session having ended with it.
+    /// </summary>
+    [Fact]
+    public async Task AClosedAdministratorIsNotAnAdministrator()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        HSUser alice = await AddUserAsync(context, Alice, "alice@example.com");
+        HSUser mallory = await AddUserAsync(context, Mallory, "mallory@example.com");
+        IdentityRole<long> role = new(Accounts.AdminBootstrap.AdminRole) { NormalizedName = "ADMIN" };
+        context.Roles.Add(role);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        context.UserRoles.Add(new IdentityUserRole<long> { UserId = alice.Id, RoleId = role.Id });
+        context.UserRoles.Add(new IdentityUserRole<long> { UserId = mallory.Id, RoleId = role.Id });
+        mallory.DeactivatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        CameraAccessService access = NewService(context);
+
+        // Act
+        bool open = await access.IsAdministratorAsync(Alice, TestContext.Current.CancellationToken);
+        bool closed = await access.IsAdministratorAsync(Mallory, TestContext.Current.CancellationToken);
+
+        // Assert
+        open.Should().BeTrue();
+        closed.Should().BeFalse("the role row outlives the closure, and holding it is not administering");
     }
 
     public void Dispose()

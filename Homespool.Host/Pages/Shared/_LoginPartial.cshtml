@@ -1,6 +1,8 @@
-@using Homespool.Host.Accounts
+@using Microsoft.AspNetCore.Authorization
 @using Homespool.Host.Authentication
+@using Homespool.Host.Authorisation
 @inject ExternalSignIn ExternalSignIn
+@inject IAuthorizationService AuthorizationService
 @inject UserManager<HSUser> UserManager
 
 <ul class="navbar-nav">
@@ -15,7 +17,9 @@
     <li class="nav-item">
         <a id="cameras" class="nav-link" asp-page="/Cameras/Index">@Localiser["Cameras_Title"]</a>
     </li>
-    @if (User.IsInRole(AdminBootstrap.AdminRole))
+    @* The pages' own policy rather than the role claim, which is what the cookie was issued with
+       rather than what the account is now: one definition of who administers, asked everywhere. *@
+    @if ((await AuthorizationService.AuthorizeAsync(User, Policies.Administrator)).Succeeded)
     {
 @*  One menu rather than three links: these are deployment-wide settings an administrator visits
     rarely, and spread across the bar they were three eighths of it that most accounts never see.

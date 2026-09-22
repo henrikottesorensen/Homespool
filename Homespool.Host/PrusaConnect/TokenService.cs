@@ -36,8 +36,15 @@ public class TokenService
     /// Deliberately low by password-hashing standards (OWASP suggests six figures). That is sound
     /// <i>only</i> because the input is a <see cref="TokenSize"/>-byte CSPRNG value from
     /// <see cref="GenerateToken()"/>: 120 bits of entropy is not brute-forceable at any work factor, so
-    /// iterations buy nothing here and cost latency on every authenticated request. PBKDF2 is used for
-    /// the salting and the constant-time envelope, not for key stretching.
+    /// iterations buy nothing here and only cost latency. PBKDF2 is used for the salting and the
+    /// constant-time envelope, not for key stretching.
+    /// <para>
+    /// <b>Where that latency lands on the printer port</b>, which is what makes the count worth
+    /// arguing about: one hash per live provisioning token when an unknown fingerprint makes first
+    /// contact, bounded by <c>ProvisioningHashBudget</c>, and one per enrolled printer when its last
+    /// verification has aged out of <c>VerifiedPrinterTokens</c>. A printer's ordinary traffic does not
+    /// pay it per request.
+    /// </para>
     /// <para>
     /// <b>Do not reuse <see cref="HashToken(string)"/> for user passwords.</b> Against a
     /// human-chosen secret this iteration count is far too low, and the guard rails below

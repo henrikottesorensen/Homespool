@@ -20,7 +20,7 @@ namespace Homespool.Model.Entities;
 /// <b>Homespool owns the stream server's configuration</b> (Henrik, 2026-08-08). A camera is
 /// described once, here, and registered with go2rtc from this row - rather than configured in
 /// go2rtc by hand and then described again in Homespool, which would be one camera in two places.
-/// go2rtc ingests RTSP, ONVIF and V4L2 and re-serves them all as an HTTP snapshot, so the
+/// go2rtc ingests RTSP and V4L2 and re-serves them all as an HTTP snapshot, so the
 /// application needs no protocol knowledge at all, including for the official Buddy Camera.
 /// </para>
 /// <para>

@@ -14,8 +14,8 @@ printers' data leaving your network.
 - **Files** — upload gcode in the browser, or send straight from PrusaSlicer, which sees Homespool
   as an OctoPrint print host.
 - **Cameras** — stills and live WebRTC view through a bundled [go2rtc](https://github.com/AlexxIT/go2rtc)
-  sidecar. Any camera go2rtc supports works: a network camera is added by its address (RTSP, HTTP,
-  ONVIF and the rest), and a USB camera plugged into the server is picked from a list.
+  sidecar. A network camera is added by its RTSP, HTTP or RTMP address — an ONVIF camera by the
+  RTSP address it serves — and a USB camera plugged into the server is picked from a list.
 - **Remote control** — preheat and cool down per filament type, unload filament, set a printer
   ready. Only the handful of gcode the UI can send is ever sent.
 - **Accounts, teams and tokens** — local accounts, optional sign-in through an external OpenID

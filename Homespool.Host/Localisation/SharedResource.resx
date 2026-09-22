@@ -1983,7 +1983,7 @@
     <comment>The two example addresses stay as they are - they are literals somebody copies.</comment>
   </data>
   <data name="Cameras_SourceScheme" xml:space="preserve">
-    <value>Homespool does not read cameras over {0}. Use rtsp, rtsps, http, https, rtmp or onvif.</value>
+    <value>Homespool does not read cameras over {0}. Use rtsp, rtsps, http, https or rtmp.</value>
     <comment>{0} is the URI scheme as typed. The list of accepted schemes is protocol vocabulary and is not translated.</comment>
   </data>
   <data name="Cameras_SourceIsThisServer" xml:space="preserve">

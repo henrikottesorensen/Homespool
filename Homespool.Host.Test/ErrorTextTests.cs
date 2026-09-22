@@ -184,9 +184,9 @@ public sealed class ErrorTextTests
         MessageKey chosen = MessageKey.For("Cameras_SourceScheme", "ftp");
 
         InCulture("en-GB", () => TestLocaliser.Errors().For(chosen))
-            .Should().Be("Homespool does not read cameras over ftp. Use rtsp, rtsps, http, https, rtmp or onvif.");
+            .Should().Be("Homespool does not read cameras over ftp. Use rtsp, rtsps, http, https or rtmp.");
         InCulture("da", () => TestLocaliser.Errors().For(chosen))
-            .Should().Be("Homespool kan ikke læse kameraer over ftp. Brug rtsp, rtsps, http, https, rtmp eller onvif.");
+            .Should().Be("Homespool kan ikke læse kameraer over ftp. Brug rtsp, rtsps, http, https eller rtmp.");
     }
 
     /// <summary>

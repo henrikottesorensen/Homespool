@@ -36,5 +36,12 @@ public static class Builder
                           policy => policy.RequireAuthenticatedUser()
                                           .AddAuthenticationSchemes(Authentication.Schemes.ApiToken,
                                                                     Authentication.Schemes.XApiKey));
+
+        // The role requirement is what the cookie answers; the handler's is what the row answers.
+        // Both, so a principal without the role is refused before any database read.
+        options.AddPolicy(Policies.Administrator,
+                          policy => policy.RequireAuthenticatedUser()
+                                          .RequireRole(Accounts.AdminBootstrap.AdminRole)
+                                          .AddRequirements(new AdministratorRequirement()));
     }
 }

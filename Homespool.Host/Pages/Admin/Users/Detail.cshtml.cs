@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
 using Homespool.Model.Entities;
@@ -48,7 +49,7 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// and no delete for the account at all.
 /// </para>
 /// </remarks>
-[Authorize(Roles = AdminBootstrap.AdminRole)]
+[Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
 public class DetailModel : PageModel
 {
@@ -234,14 +235,6 @@ public class DetailModel : PageModel
             return NotFound();
         }
 
-        if (administrator.DeactivatedAt is not null)
-        {
-            // Checked here because this act does not go through UserAdministration, where the other
-            // four refuse a closed administrator: the cookie carries the role until the stamp is next
-            // re-checked, and a recovery link is a credential for somebody else's account.
-            return Forbid();
-        }
-
         if (IsSelf)
         {
             StatusMessage = _localiser["AdminUsers_RefusedSelfRecovery"].Value;
@@ -360,9 +353,9 @@ public class DetailModel : PageModel
 
         if (result.Refusal is UserAdminRefusal.ClosedAdministrator)
         {
-            // The session's own account was closed since the cookie was issued. Nothing to tell it:
-            // the stamp check ends the session when it next falls due, and until then this page is
-            // not its to use.
+            // The page's policy already reads the row, so this is reached only when the account was
+            // closed between that read and the act. Same answer: nothing to tell the session, and
+            // the stamp check ends it when it next falls due.
             return Forbid();
         }
 

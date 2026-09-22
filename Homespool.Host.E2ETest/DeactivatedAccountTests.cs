@@ -143,7 +143,8 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
     /// An administrator closed by another keeps a working session until the stamp is next re-checked,
     /// five minutes on, and the cookie carries the role for all of it. Every button on this page is
     /// refused to that session meanwhile: reopening themselves, reopening somebody else, and issuing a
-    /// recovery for an open account, which is the one act that does not go through the service.
+    /// recovery for an open account. The page's policy is what answers over HTTP; the service's own
+    /// refusal behind it is proved by the unit tests.
     /// </summary>
     [Fact]
     public async Task AClosedAdministratorsLiveSessionCanReopenNobody()
@@ -167,13 +168,17 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
             await EnrolmentFlowHelper.ReauthenticateAsync(admin);
             await EnrolmentFlowHelper.ReauthenticateAsync(deputyClient);
 
+            // The token is taken while the deputy is still open: once closed, the page itself is
+            // refused, and what is being proved is that the act is too.
+            string token = await AntiforgeryTokenAsync(deputyClient, $"/Admin/Users/Detail/{deputy.Uuid}");
+
             await PostAsync(admin, $"/Admin/Users/Detail/{subject.Uuid}", "Deactivate");
             await PostAsync(admin, $"/Admin/Users/Detail/{deputy.Uuid}", "Deactivate");
 
             // Act
-            HttpResponseMessage reopenSelf = await PostForResponseAsync(deputyClient, $"/Admin/Users/Detail/{deputy.Uuid}", "Reactivate");
-            HttpResponseMessage reopenOther = await PostForResponseAsync(deputyClient, $"/Admin/Users/Detail/{subject.Uuid}", "Reactivate");
-            HttpResponseMessage recover = await PostForResponseAsync(deputyClient, $"/Admin/Users/Detail/{bystander.Uuid}", "Recover");
+            HttpResponseMessage reopenSelf = await PostWithTokenAsync(deputyClient, $"/Admin/Users/Detail/{deputy.Uuid}", "Reactivate", token);
+            HttpResponseMessage reopenOther = await PostWithTokenAsync(deputyClient, $"/Admin/Users/Detail/{subject.Uuid}", "Reactivate", token);
+            HttpResponseMessage recover = await PostWithTokenAsync(deputyClient, $"/Admin/Users/Detail/{bystander.Uuid}", "Recover", token);
 
             // Assert
             foreach (HttpResponseMessage refused in new[] { reopenSelf, reopenOther, recover })
@@ -188,6 +193,58 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         (await SignInAsync("subject@example.com")).Should().NotBe(HttpStatusCode.Redirect, "and so does the account they aimed at");
     }
 
+    /// <summary>
+    /// The same window, on every administration page rather than one button: a closed administrator's
+    /// live cookie still carries the role, and each page's policy reads the row instead of believing
+    /// it. The open administrator is the control, so a refusal is the closure and not the pages.
+    /// </summary>
+    [Fact]
+    public async Task AClosedAdministratorsLiveSessionLosesEveryAdministrationPage()
+    {
+        // Arrange
+        string[] pages =
+        [
+            "/Admin/Settings",
+            "/Admin/Certificate",
+            "/Admin/LiveView",
+            "/Admin/Invites",
+            "/Admin/Invites/Create",
+            "/Admin/Users",
+        ];
+
+        (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "admin@example.com", AdminBootstrap.AdminRole);
+        (HSUser deputy, HttpClient deputyClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "deputy@example.com", AdminBootstrap.AdminRole);
+
+        using (admin)
+        using (deputyClient)
+        {
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
+            await EnrolmentFlowHelper.ReauthenticateAsync(deputyClient);
+
+            foreach (string page in pages)
+            {
+                (await deputyClient.GetAsync(page, TestContext.Current.CancellationToken)).StatusCode
+                    .Should().Be(HttpStatusCode.OK, $"{page} is the open deputy's to read before the closure");
+            }
+
+            await PostAsync(admin, $"/Admin/Users/Detail/{deputy.Uuid}", "Deactivate");
+
+            // Act
+            foreach (string page in pages)
+            {
+                HttpResponseMessage closed = await deputyClient.GetAsync(page, TestContext.Current.CancellationToken);
+                HttpResponseMessage open = await admin.GetAsync(page, TestContext.Current.CancellationToken);
+
+                // Assert
+                closed.StatusCode.Should().Be(HttpStatusCode.Redirect, $"{page} must refuse the closed administrator's live cookie");
+                closed.Headers.Location!.ToString().Should().Contain("/Account/AccessDenied", $"{page} refuses, rather than asking for proof");
+                open.StatusCode.Should().Be(HttpStatusCode.OK, $"{page} still serves the administrator who is open");
+            }
+        }
+    }
+
     private async Task PostAsync(HttpClient client, string path, string handler)
     {
         HttpResponseMessage posted = await PostForResponseAsync(client, path, handler);
@@ -198,15 +255,25 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
 
     private async Task<HttpResponseMessage> PostForResponseAsync(HttpClient client, string path, string handler)
     {
-        HttpResponseMessage page = await client.GetAsync(path, TestContext.Current.CancellationToken);
-        string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        return await PostWithTokenAsync(client, path, handler, await AntiforgeryTokenAsync(client, path));
+    }
 
+    private static async Task<HttpResponseMessage> PostWithTokenAsync(HttpClient client, string path, string handler, string token)
+    {
         using FormUrlEncodedContent body = new(new Dictionary<string, string>
         {
-            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
+            ["__RequestVerificationToken"] = token,
         });
 
         return await client.PostAsync($"{path}?handler={handler}", body, TestContext.Current.CancellationToken);
+    }
+
+    private static async Task<string> AntiforgeryTokenAsync(HttpClient client, string path)
+    {
+        HttpResponseMessage page = await client.GetAsync(path, TestContext.Current.CancellationToken);
+        string html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        return AntiforgeryTestHelper.ExtractToken(html);
     }
 
     private async Task<string> MintTokenAsync(long userId)

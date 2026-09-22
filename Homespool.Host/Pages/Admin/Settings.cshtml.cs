@@ -10,8 +10,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
-using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Configuration;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
@@ -41,7 +41,7 @@ namespace Homespool.Host.Pages.Admin;
 /// control that breaks the deployment on the next restart with no clue why.
 /// </para>
 /// </remarks>
-[Authorize(Roles = AdminBootstrap.AdminRole)]
+[Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
 public class SettingsModel : PageModel
 {

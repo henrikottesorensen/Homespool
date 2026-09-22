@@ -228,6 +228,9 @@ public static class Program
             // Add services to the container.
             builder.Services.AddAuthorization(Authorisation.Builder.Build);
 
+            // Scoped, because it reads the administrator's row through the request's DbContext.
+            builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler, Authorisation.AdministratorHandler>();
+
             // Account/Manage requires a signed-in account. That rule lives on the pages themselves as
             // [Authorize], not here as an AuthorizeFolder convention: a reader auditing one page can
             // see whether it is protected by looking at it, which a path string in Program.cs does not

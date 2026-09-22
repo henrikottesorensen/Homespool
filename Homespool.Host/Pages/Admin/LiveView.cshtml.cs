@@ -3,8 +3,8 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 
-using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Localisation;
 
@@ -21,7 +21,7 @@ namespace Homespool.Host.Pages.Admin;
 /// are status rather than configuration, and the health banner sends an administrator here to read
 /// them.
 /// </remarks>
-[Authorize(Roles = AdminBootstrap.AdminRole)]
+[Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
 public class LiveViewModel : PageModel
 {

@@ -27,12 +27,12 @@ namespace Homespool.Host.Accounts;
 /// the two come to disagree.
 /// </para>
 /// <para>
-/// <b>Every act first asks whether the administrator asking is still open.</b> The page's
-/// authorisation reads the role from the cookie, and a cookie outlives its account's closure until
-/// the security stamp is next re-checked - so for that window a closed administrator, the one an
-/// administrator closes for being compromised, still reaches these buttons. Left to the page, the
-/// closed one reopens themselves, or anybody else, before the check falls due. Asked here, the
-/// answer comes from the row rather than the ticket. It also makes a Self check on reopening
+/// <b>Every act first asks whether the administrator asking is still open.</b> A cookie outlives
+/// its account's closure until the security stamp is next re-checked, so for that window a closed
+/// administrator, the one an administrator closes for being compromised, still carries the role.
+/// The administration pages' policy reads the row for the same reason; this class asks for itself
+/// because a refusal is a property of the act, and a caller that is not the page gets it too. It
+/// also makes a Self check on reopening
 /// unnecessary: an open administrator aiming at their own account finds nothing to reopen, and a
 /// closed one is refused before aiming. It also leaves the last-administrator refusal with no route
 /// from the page - the one administrator left is refused as themselves, and the closed one who used
@@ -88,9 +88,13 @@ public sealed class UserAdministration
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The three writes are one transaction</b>, because the half-done states are each worse than
-    /// either end: an account marked closed whose tokens still authenticate, or tokens destroyed on
-    /// an account that is still open.
+    /// <b>The checks and the three writes are one serializable transaction.</b> The writes, because
+    /// the half-done states are each worse than either end: an account marked closed whose tokens
+    /// still authenticate, or tokens destroyed on an account that is still open. The checks, because
+    /// the last-administrator answer is only true of the moment it is read: two administrators
+    /// closing each other at once would each count two, each pass, and leave none - a state that
+    /// keeps first-time setup closed and is repaired only by editing the database. Holding the write
+    /// lock from the first read makes the second of them read the first's committed row instead.
     /// </para>
     /// <para>
     /// <b>The tokens are deleted, not left to the sign-in check that would now refuse them.</b> The
@@ -112,39 +116,40 @@ public sealed class UserAdministration
                                                        long userId,
                                                        CancellationToken cancellationToken)
     {
-        if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
-        {
-            return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
-        }
-
-        HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
-
-        if (user is null)
-        {
-            return UserAdminResult.Refused(UserAdminRefusal.NoSuchAccount);
-        }
-
-        if (userId == administratorId)
-        {
-            return UserAdminResult.Refused(UserAdminRefusal.Self);
-        }
-
-        if (await IsLastActiveAdministratorAsync(userId, cancellationToken))
-        {
-            return UserAdminResult.Refused(UserAdminRefusal.LastAdministrator);
-        }
-
-        if (user.DeactivatedAt is not null)
-        {
-            // Already closed. Reporting this as done rather than as a refusal keeps a double
-            // submission from reading like a failure, and there is nothing left to do either way.
-            return UserAdminResult.Done();
-        }
-
         int revoked;
 
-        await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
+        // A refusal returns from inside the transaction; disposing it uncommitted writes nothing.
+        await using (IDbContextTransaction transaction = await _unitOfWork.BeginSerializableTransactionAsync(cancellationToken))
         {
+            if (await IsClosedAdministratorAsync(administratorId, cancellationToken))
+            {
+                return UserAdminResult.Refused(UserAdminRefusal.ClosedAdministrator);
+            }
+
+            HSUser? user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
+
+            if (user is null)
+            {
+                return UserAdminResult.Refused(UserAdminRefusal.NoSuchAccount);
+            }
+
+            if (userId == administratorId)
+            {
+                return UserAdminResult.Refused(UserAdminRefusal.Self);
+            }
+
+            if (await IsLastActiveAdministratorAsync(userId, cancellationToken))
+            {
+                return UserAdminResult.Refused(UserAdminRefusal.LastAdministrator);
+            }
+
+            if (user.DeactivatedAt is not null)
+            {
+                // Already closed. Reporting this as done rather than as a refusal keeps a double
+                // submission from reading like a failure, and there is nothing left to do either way.
+                return UserAdminResult.Done();
+            }
+
             user.DeactivatedAt = _time.GetUtcNow();
 
             // A fresh stamp is what invalidates the cookies already issued. Assigned rather than

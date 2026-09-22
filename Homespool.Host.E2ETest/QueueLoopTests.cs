@@ -794,7 +794,6 @@ public sealed class QueueLoopTests : IAsyncLifetime
     private Printing.PrinterConnectionRegistry Registry =>
         _factory.Services.GetRequiredService<Printing.PrinterConnectionRegistry>();
 
-    /// <summary>The fake's socket, over the test server's printer listener - where /p/ws lives.</summary>
     /// <summary>
     /// A stop made through Homespool is recorded as ours, with the account that asked.
     /// </summary>
@@ -889,6 +888,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
                           .SingleAsync(TestContext.Current.CancellationToken);
     }
 
+    /// <summary>The fake's socket, over the test server's printer listener - where /p/ws lives.</summary>
     private async Task<WebSocket> ConnectAsync(FakePrinterConnectRequest request,
                                                CancellationToken cancellationToken)
     {

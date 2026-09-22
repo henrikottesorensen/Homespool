@@ -345,10 +345,6 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// An account with its cookie already in a jar, optionally with an authenticator configured and
-    /// two-factor on.
-    /// </summary>
-    /// <summary>
     /// The reset is what <c>Disable2fa</c>'s code requirement would otherwise be worth nothing
     /// against: both end with two-factor off, so a session alone must not be able to take either. The
     /// whole page is gated, so even opening it sends an unproved session to prove first.
@@ -390,6 +386,10 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
             .Should().BeTrue("an unproved reset must not clear the second factor either");
     }
 
+    /// <summary>
+    /// An account with its cookie already in a jar, optionally with an authenticator configured and
+    /// two-factor on.
+    /// </summary>
     private async Task<(HSUser user, CookieJar jar)> SeedAsync(string email, bool withTwoFactor = false)
     {
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, email);

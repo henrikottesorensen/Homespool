@@ -487,42 +487,6 @@ public static class PrusaTelemetryMapping
     }
 
     /// <summary>
-    /// The event's <c>data</c> as it goes into the row - verbatim, except that a <c>FILE_INFO</c> is
-    /// reduced to <see cref="FirmwareRenderedFileInfoFields"/> and an <c>INFO</c> has its
-    /// <c>api_key</c> masked.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Everything else in a <c>FILE_INFO</c> is the uploaded gcode's own header</b>, relayed by
-    /// firmware rather than produced by it. Measured on a real transfer: of 407 keys, 7 were
-    /// firmware-rendered, <b>396 appeared verbatim in the gcode we already store</b>, and the
-    /// remaining 4 were base64 thumbnail fragments the firmware's <c>key = value</c> split mangled
-    /// out of that same file - because base64 padding is <c>=</c>. An event log should not carry a
-    /// second copy of a file we hold (Henrik, 2026-07-27).
-    /// </para>
-    /// <para>
-    /// <b>Why an allowlist rather than a blacklist</b>, which was weighed and rejected: the two sets
-    /// have different shapes. Firmware's is <i>closed</i> - render.cpp's FileInfo branch is six fixed
-    /// fields plus one variant chunk, with no other producer, so it can be enumerated exactly from
-    /// source. The gcode's is <i>unbounded and attacker-influenced</i>: a crafted file chooses its
-    /// own key names and count.
-    /// </para>
-    /// <para>
-    /// The residual risk is real and deliberately accepted: <b>a future firmware field would be
-    /// dropped silently</b>, because a new firmware field and a new gcode header arrive
-    /// indistinguishably. It is bounded - the wire contract is verified stable across 6.5.7 to 6.6.3 -
-    /// and recoverable, since a <c>SEND_FILE_INFO</c> re-requests the full object and the fix is one
-    /// string in the list above. <b>When the pinned firmware ref moves, re-read render.cpp's FileInfo
-    /// branch</b> - that check is the safeguard here, not anything in this code.
-    /// </para>
-    /// <para>
-    /// Size, for scale: 3 x <c>FILE_INFO</c> per transferred file at ~18 KB each, none of them pruned,
-    /// against ~493 bytes for all three under this rule - and the two large ones differed in exactly
-    /// one field, <c>read_only</c>, so 17 538 bytes were being stored twice to record a boolean
-    /// flipping.
-    /// </para>
-    /// </remarks>
-    /// <summary>
     /// The drive listing a <c>FILE_INFO</c> carried, or null when it was not one.
     /// </summary>
     /// <remarks>
@@ -597,6 +561,42 @@ public static class PrusaTelemetryMapping
         return $$"""{"_truncated":true,"_bytes":{{bytes}}}""";
     }
 
+    /// <summary>
+    /// The event's <c>data</c> as it goes into the row - verbatim, except that a <c>FILE_INFO</c> is
+    /// reduced to <see cref="FirmwareRenderedFileInfoFields"/> and an <c>INFO</c> has its
+    /// <c>api_key</c> masked.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Everything else in a <c>FILE_INFO</c> is the uploaded gcode's own header</b>, relayed by
+    /// firmware rather than produced by it. Measured on a real transfer: of 407 keys, 7 were
+    /// firmware-rendered, <b>396 appeared verbatim in the gcode we already store</b>, and the
+    /// remaining 4 were base64 thumbnail fragments the firmware's <c>key = value</c> split mangled
+    /// out of that same file - because base64 padding is <c>=</c>. An event log should not carry a
+    /// second copy of a file we hold.
+    /// </para>
+    /// <para>
+    /// <b>Why an allowlist rather than a blacklist</b>, which was weighed and rejected: the two sets
+    /// have different shapes. Firmware's is <i>closed</i> - render.cpp's FileInfo branch is six fixed
+    /// fields plus one variant chunk, with no other producer, so it can be enumerated exactly from
+    /// source. The gcode's is <i>unbounded and attacker-influenced</i>: a crafted file chooses its
+    /// own key names and count.
+    /// </para>
+    /// <para>
+    /// The residual risk is real and deliberately accepted: <b>a future firmware field would be
+    /// dropped silently</b>, because a new firmware field and a new gcode header arrive
+    /// indistinguishably. It is bounded - the wire contract is verified stable across 6.5.7 to 6.6.3 -
+    /// and recoverable, since a <c>SEND_FILE_INFO</c> re-requests the full object and the fix is one
+    /// string in the list above. <b>When the pinned firmware ref moves, re-read render.cpp's FileInfo
+    /// branch</b> - that check is the safeguard here, not anything in this code.
+    /// </para>
+    /// <para>
+    /// Size, for scale: 3 x <c>FILE_INFO</c> per transferred file at ~18 KB each, none of them pruned,
+    /// against ~493 bytes for all three under this rule - and the two large ones differed in exactly
+    /// one field, <c>read_only</c>, so 17 538 bytes were being stored twice to record a boolean
+    /// flipping.
+    /// </para>
+    /// </remarks>
     private static string? FormatPayload(EventDTO dto)
     {
         if (dto.Data is not { } element)

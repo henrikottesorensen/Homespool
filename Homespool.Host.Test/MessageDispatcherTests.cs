@@ -119,7 +119,6 @@ public class MessageDispatcherTests
         telemetry.Telemetry.Status.Should().Be("PRINTING");
     }
 
-    /// <summary>Minimal valid event - <c>event</c> and <c>state</c> are the only required fields.</summary>
     /// <summary>
     /// The status is a string on the wire, so the trace line carries it cleaned and cut to the length
     /// of a status - while the message itself keeps what was sent, for whatever reads it next.
@@ -145,6 +144,7 @@ public class MessageDispatcherTests
                           pair.Value.EndsWith("<108 characters in all>", StringComparison.Ordinal));
     }
 
+    /// <summary>Minimal valid event - <c>event</c> and <c>state</c> are the only required fields.</summary>
     private const string MinimalEvent = """{"event":"INFO","state":"IDLE"}""";
 
     [Fact]

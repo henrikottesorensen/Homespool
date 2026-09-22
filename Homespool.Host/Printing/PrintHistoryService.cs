@@ -33,11 +33,12 @@ namespace Homespool.Host.Printing;
 /// reason visible.
 /// </para>
 /// <para>
-/// <c>CanRead</c>, not <c>CanUse</c>: seeing what a printer has done is the same class of thing as
-/// seeing its temperature, and none of it makes the printer work.
+/// <see cref="Capability.ViewHistory"/> - and <see cref="Capability.ViewQueue"/> for the hold
+/// reason - not <see cref="Capability.Print"/>: seeing what a printer has done is the same class of
+/// thing as seeing its temperature, and none of it makes the printer work.
 /// </para>
 /// <para>
-/// <b>In <c>Services/</c> rather than <c>Queue/</c>, deliberately</b> (Henrik, 2026-08-03), even though
+/// <b>In <c>Printing/</c> rather than <c>Queue/</c>, deliberately</b>, even though
 /// two of its three reads are pure queue business and the queue's loop writes everything it returns.
 /// It is a read model rather than part of the loop, and it is expected to grow questions the queue has
 /// no opinion about - what a <i>person</i> has printed, across printers, over time. Moving it beside

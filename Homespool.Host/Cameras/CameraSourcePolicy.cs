@@ -276,9 +276,6 @@ public sealed class CameraSourcePolicy
     }
 
     /// <summary>
-    /// Checks a camera source: its shape, and where its host resolves to.
-    /// </summary>
-    /// <summary>
     /// Every name this deployment is known by, as far as this process can tell.
     /// </summary>
     private IReadOnlyList<string> DeploymentNames()
@@ -312,6 +309,9 @@ public sealed class CameraSourcePolicy
         return names;
     }
 
+    /// <summary>
+    /// Checks a camera source: its shape, and where its host resolves to.
+    /// </summary>
     public Task<CameraSourceCheck> CheckAsync(string? source, CancellationToken cancellationToken)
     {
         return CheckAsync(source, acceptUnresolvable: false, cancellationToken);

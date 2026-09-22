@@ -56,7 +56,7 @@ public class PrinterFilamentService
     /// Unloads whatever the printer says is loaded.
     /// </summary>
     /// <param name="printerId">The printer to unload.</param>
-    /// <param name="caller">Who is asking, checked for <c>CanUse</c> on the printer's team.</param>
+    /// <param name="caller">Who is asking, checked for <see cref="Capability.ControlPrinter"/> on the printer's team.</param>
     /// <param name="toolNumber">
     /// Which tool to unload, <b>1-based as the printer numbers it</b>. Optional only on a single-tool
     /// printer; a toolchanger without one is <see cref="ToolNotSpecifiedException"/>, because there is
@@ -72,7 +72,7 @@ public class PrinterFilamentService
     /// <exception cref="FilamentTypeUnknownException">The printer has not said what is loaded.</exception>
     /// <exception cref="PrinterHasQueuedWorkException">Ready, with work the loop could start.</exception>
     /// <exception cref="PrinterRefusedException">The printer declined the command.</exception>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c>.</exception>
+    /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.ControlPrinter"/>.</exception>
     public async Task<UnloadOutcome> UnloadAsync(int printerId,
                                                  Caller caller,
                                                  int? toolNumber,

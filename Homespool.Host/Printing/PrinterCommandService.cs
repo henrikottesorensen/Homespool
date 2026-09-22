@@ -17,11 +17,9 @@ namespace Homespool.Host.Printing;
 /// access: permission checks stay off the actor's loop.
 /// </summary>
 /// <remarks>
-/// <b>It asks <see cref="PrinterAccessService"/> rather than reading the membership itself</b>
-/// (2026-08-03). It used to be described as the first, and then the one, consumer of
-/// <c>TeamMember.CanUse</c> - which had stopped being true: five other places were resolving a
-/// printer and checking a flag on its team by then, in three different refusal shapes. The check is
-/// unchanged; only its address is.
+/// <b>It asks <see cref="PrinterAccessService"/> rather than reading the membership itself</b>, as
+/// does every other place that resolves a printer and checks a capability on its team, so there is
+/// one refusal shape rather than one per caller.
 /// </remarks>
 public class PrinterCommandService
 {
@@ -53,7 +51,9 @@ public class PrinterCommandService
     /// only ever a real answer from the hardware.
     /// </summary>
     /// <exception cref="PrinterNotFoundException">No printer has id <paramref name="printerId"/>.</exception>
-    /// <exception cref="TeamAccessDeniedException">Caller lacks <c>CanUse</c> on the printer's team.</exception>
+    /// <exception cref="TeamAccessDeniedException">
+    /// Caller lacks the command's own <see cref="ISendableCommand.RequiredCapability"/> on the printer's team.
+    /// </exception>
     /// <exception cref="PrinterNotConnectedException">
     /// The printer has no live WebSocket - either absent from the registry when the send was
     /// attempted, or its connection torn down while the command was in the actor's mailbox.

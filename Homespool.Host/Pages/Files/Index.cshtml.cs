@@ -373,21 +373,6 @@ public class IndexModel : PageModel
     }
 
     /// <summary>
-    /// Tells a printer to come and fetch one of the caller's files.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The same three steps the API endpoint takes, through the same
-    /// <see cref="PrintFileSender"/> - so the rule that a send which did not take leaves no offer
-    /// behind has one implementation rather than two that drift.
-    /// </para>
-    /// <para>
-    /// <b>Answers when the printer accepts the command, not when the transfer finishes.</b> A
-    /// full-size model takes minutes to move, so the message here says it has started; the page has
-    /// no way to show progress yet.
-    /// </para>
-    /// </remarks>
-    /// <summary>
     /// Adds a file to a printer's queue, which is the other thing to do with a printer and a file.
     /// </summary>
     /// <remarks>
@@ -447,6 +432,21 @@ public class IndexModel : PageModel
         return RedirectToSelf(sort, desc, printerUuid);
     }
 
+    /// <summary>
+    /// Tells a printer to come and fetch one of the caller's files.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same three steps the API endpoint takes, through the same
+    /// <see cref="PrintFileSender"/> - so the rule that a send which did not take leaves no offer
+    /// behind has one implementation rather than two that drift.
+    /// </para>
+    /// <para>
+    /// <b>Answers when the printer accepts the command, not when the transfer finishes.</b> A
+    /// full-size model takes minutes to move, so the message here says it has started; the page has
+    /// no way to show progress yet.
+    /// </para>
+    /// </remarks>
     public async Task<IActionResult> OnPostSendAsync(string name,
                                                      Guid printerUuid,
                                                      string? sort,
@@ -601,14 +601,6 @@ public class IndexModel : PageModel
     }
 
     /// <summary>
-    /// Back to the list, keeping the order the user chose.
-    /// </summary>
-    /// <remarks>
-    /// Carrying the sort through the redirect is the whole reason every handler takes it: without it
-    /// the table silently jumps back to its default after each delete, which feels broken and reads
-    /// as a bug nobody can quite describe.
-    /// </remarks>
-    /// <summary>
     /// What to call a printer in a message. The same fallback chain <c>Pages/Printers/Index</c>
     /// uses, and for the reason documented on <see cref="Printer.Name"/>: the uuid is the only part
     /// that cannot be missing.
@@ -618,6 +610,14 @@ public class IndexModel : PageModel
         return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
     }
 
+    /// <summary>
+    /// Back to the list, keeping the order the user chose.
+    /// </summary>
+    /// <remarks>
+    /// Carrying the sort through the redirect is the whole reason every handler takes it: without it
+    /// the table silently jumps back to its default after each delete, which feels broken and reads
+    /// as a bug nobody can quite describe.
+    /// </remarks>
     private IActionResult RedirectToSelf(string? sort, bool? desc, Guid? printerUuid)
     {
         return RedirectToPage(new { sort, desc, printerUuid });

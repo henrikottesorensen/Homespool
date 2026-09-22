@@ -443,18 +443,6 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// <inheritdoc />
     public bool IsDraining => ExecuteTask is null or { IsCompleted: false };
 
-    /// <summary>
-    /// Stops accepting work, then waits for the drain loop to finish what it already has.
-    /// </summary>
-    /// <remarks>
-    /// Closing the writer is the whole shutdown signal: <see cref="ExecuteAsync"/>'s loop ends when
-    /// the channel is completed <em>and</em> empty, so everything queued at this moment is processed
-    /// and flushed first. Ordered before <c>base.StopAsync</c> deliberately - that is what cancels
-    /// <c>stoppingToken</c> and then awaits the loop, so the channel has to be closed before the wait
-    /// begins or the loop would have no reason to end. <see cref="Enqueue(int,DateTimeOffset,TelemetryUpdate)"/>
-    /// silently no-ops after this point, which is correct: a socket handler mid-message during
-    /// shutdown has nowhere to put its data anyway.
-    /// </remarks>
     /// <summary>Set by <see cref="ExecuteAsync"/>'s first statement; awaited by
     /// <see cref="StartAsync"/> so that "started" means the loop is actually running.</summary>
     private readonly TaskCompletionSource _executeEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -487,6 +475,18 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         await Task.WhenAny(_executeEntered.Task, ExecuteTask ?? Task.CompletedTask);
     }
 
+    /// <summary>
+    /// Stops accepting work, then waits for the drain loop to finish what it already has.
+    /// </summary>
+    /// <remarks>
+    /// Closing the writer is the whole shutdown signal: <see cref="ExecuteAsync"/>'s loop ends when
+    /// the channel is completed <em>and</em> empty, so everything queued at this moment is processed
+    /// and flushed first. Ordered before <c>base.StopAsync</c> deliberately - that is what cancels
+    /// <c>stoppingToken</c> and then awaits the loop, so the channel has to be closed before the wait
+    /// begins or the loop would have no reason to end. <see cref="Enqueue(int,DateTimeOffset,TelemetryUpdate)"/>
+    /// silently no-ops after this point, which is correct: a socket handler mid-message during
+    /// shutdown has nowhere to put its data anyway.
+    /// </remarks>
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         // Set before the writer end closes, so the drain loop sees it for every item it still has.

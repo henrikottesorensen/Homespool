@@ -78,19 +78,16 @@ public static class ConnectIni
     /// <para>
     /// <b><c>#</c>, never <c>;</c>.</b> Buddy sets <c>INI_START_COMMENT_PREFIXES "#"</c>
     /// (<c>ini.h:88</c>) with <c>INI_ALLOW_NO_VALUE 0</c>, so a <c>;</c> line is not an ignored comment
-    /// — it is a parse error that fails the whole file as <i>"Failed to load config"</i>. That cost an
-    /// afternoon once, which is exactly why this file is generated rather than described.
+    /// — it is a parse error that fails the whole file as <i>"Failed to load config"</i>, which is
+    /// why this file is generated rather than described.
     /// </para>
-    /// </remarks>
-    /// <summary>
-    /// The whole file, comments and all, for the provisioning bundle.
-    /// </summary>
-    /// <remarks>
+    /// <para>
     /// <b>The comments are the only instructions that reach the stick.</b> Whoever opens this file is
     /// standing at a printer, and everything the download page said is behind them - so these are
     /// localised like any other sentence, while the keys, the section names and the printer's own menu
     /// path are not. Firmware parses the first two; the third names a menu in firmware's language
     /// rather than ours.
+    /// </para>
     /// </remarks>
     /// <param name="endpoint">The port to connect to and whether to verify anything on arrival.</param>
     /// <param name="hostname">The address this printer should use: one of the names in the certificate.</param>

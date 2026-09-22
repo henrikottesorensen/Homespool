@@ -193,6 +193,58 @@ public class FirmwareFaithfulPolicyTests
         Parse(resent[0]).RootElement.GetProperty("event").GetString().Should().Be("ACCEPTED");
     }
 
+    /// <summary>
+    /// <c>M702</c> unloads the tool its <c>T</c> names - 0-based, so <c>T1</c> is the wire's tool 2 -
+    /// reporting <c>BUSY</c> while it runs and returning to <c>IDLE</c> with the tool empty, as the
+    /// MK3.5 did. The other tool keeps its filament.
+    /// </summary>
+    [Fact]
+    public void UnloadEmptiesTheNamedToolAndIsBusyUntilItFinishes()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        ServerCommandFrame unload = new(ServerCommandKind.Gcode, 40, Encoding.UTF8.GetBytes("M702 T1 W0"));
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(unload, _device);
+
+        replies.Should().HaveCount(2);
+        Parse(replies[0]).RootElement.GetProperty("state").GetString().Should().Be("IDLE",
+                                                                                   "the ack renders the machine as it was");
+        _device.State.Should().Be(DeviceState.Busy, "the machine is busy for the whole unload");
+        _device.MaterialOf(2).Should().Be("PLA", "nothing is out until the command completes");
+
+        using JsonDocument finished = JsonDocument.Parse(replies[1].Complete!());
+
+        finished.RootElement.GetProperty("event").GetString().Should().Be("FINISHED");
+        finished.RootElement.GetProperty("state").GetString().Should().Be("IDLE");
+        _device.State.Should().Be(DeviceState.Idle);
+        _device.MaterialOf(2).Should().BeNull();
+        _device.MaterialOf(1).Should().Be("PLA", "only the named tool unloads");
+    }
+
+    /// <summary>
+    /// The unloads the fake does not model leave the machine alone: one naming no tool, whose target
+    /// firmware takes from the active tool the fake does not track, and one of a tool already empty,
+    /// which firmware answers with a dialog on the panel.
+    /// </summary>
+    [Theory]
+    [InlineData("M702 W0", false)]
+    [InlineData("M702 T0 W0", true)]
+    public void AnUnloadTheFakeDoesNotModelChangesNothing(string gcode, bool alreadyEmpty)
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+
+        if (alreadyEmpty)
+        {
+            _device.UnloadFilament(1);
+        }
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(new ServerCommandFrame(ServerCommandKind.Gcode, 41, Encoding.UTF8.GetBytes(gcode)), _device);
+
+        replies[1].Complete.Should().BeNull("no effect is scheduled");
+        _device.State.Should().Be(DeviceState.Idle);
+        _device.MaterialOf(1).Should().Be(alreadyEmpty ? null : "PLA");
+    }
+
     /// <summary>Debug frames are logged-and-dropped by the firmware; the fake answers nothing.</summary>
     [Fact]
     public void DebugFramesGetNoAnswer()

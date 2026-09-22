@@ -54,7 +54,7 @@ public static class TelemetryMessageBuilder
             writer.WriteNumber("target_bed", readings.TargetBed);
             writer.WriteNumber("speed", readings.Speed);
             writer.WriteNumber("flow", readings.Flow);
-            writer.WriteString("material", readings.Material);
+            writer.WriteString("material", device.WireMaterialOf(PreferredTool(readings)));
 
             if (!printing)
             {
@@ -73,7 +73,7 @@ public static class TelemetryMessageBuilder
                 writer.WriteNumber("filament", 2428288.0);
             }
 
-            WriteSlotBlock(writer, readings);
+            WriteSlotBlock(writer, device, readings);
 
             writer.WriteString("state", device.WireState);
             writer.WriteEndObject();
@@ -107,7 +107,7 @@ public static class TelemetryMessageBuilder
     /// per-tool state <see cref="FakeDevice"/> does not have.
     /// </para>
     /// </remarks>
-    private static void WriteSlotBlock(Utf8JsonWriter writer, TelemetryReadings readings)
+    private static void WriteSlotBlock(Utf8JsonWriter writer, FakeDevice device, TelemetryReadings readings)
     {
         if (readings.Tools <= 1)
         {
@@ -119,7 +119,7 @@ public static class TelemetryMessageBuilder
         for (int tool = 1; tool <= readings.Tools; tool++)
         {
             writer.WriteStartObject(tool.ToString(CultureInfo.InvariantCulture));
-            writer.WriteString("material", readings.Material);
+            writer.WriteString("material", device.WireMaterialOf(tool));
             writer.WriteNumber("temp", readings.NozzleTemperature + tool - 1);
             writer.WriteNumber("fan_hotend", (double)readings.FanExtruder);
             writer.WriteNumber("fan_print", (double)readings.FanPrint);
@@ -142,6 +142,23 @@ public static class TelemetryMessageBuilder
         // machines rest there and which merely pass through it.
         writer.WriteNumber("active", Math.Clamp(readings.ActiveTool, 0, readings.Tools));
         writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// The tool whose material the top-level field reports: the active one, or the first when none
+    /// is picked.
+    /// </summary>
+    /// <remarks>
+    /// Firmware's <c>Printer::Params::preferred_slot</c> (<c>printer.cpp:214</c>), which render.cpp
+    /// reads for the top-level <c>material</c> as well as the temperatures: with no tool picked it
+    /// falls back to the first enabled tool rather than sending nothing. Every tool the fake has is
+    /// enabled.
+    /// </remarks>
+    private static int PreferredTool(TelemetryReadings readings)
+    {
+        int active = Math.Clamp(readings.ActiveTool, 0, Math.Max(readings.Tools, 1));
+
+        return active == 0 ? 1 : active;
     }
 
     private static void WriteJobBlock(Utf8JsonWriter writer, FakeDevice device, TelemetryReadings readings)

@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
@@ -186,5 +187,83 @@ public class TelemetryMessageBuilderTests
             TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings { Tools = 2, ActiveTool = 9 }));
 
         document.RootElement.GetProperty("slot").GetProperty("active").GetInt32().Should().Be(2);
+    }
+
+    /// <summary>
+    /// An empty tool is reported as <c>---</c>, never omitted: firmware's <c>FilamentType::none</c>
+    /// has that name, and render.cpp sends any non-empty name.
+    /// </summary>
+    [Fact]
+    public void AnEmptyToolIsReportedAsThreeDashes()
+    {
+        FakeDevice device = new();
+        device.UnloadFilament(2);
+
+        using JsonDocument document = JsonDocument.Parse(
+            TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings { Tools = 2, ActiveTool = 2 }));
+
+        document.RootElement.GetProperty("material").GetString().Should().Be("---");
+        document.RootElement.GetProperty("slot").GetProperty("2").GetProperty("material").GetString().Should().Be("---");
+        document.RootElement.GetProperty("slot").GetProperty("1").GetProperty("material").GetString().Should().Be("PLA");
+    }
+
+    /// <summary>
+    /// The top-level <c>material</c> is the active tool's, or the first tool's when none is picked -
+    /// firmware's <c>preferred_slot</c>.
+    /// </summary>
+    [Theory]
+    [InlineData(2, "PETG")]
+    [InlineData(0, "ASA")]
+    public void TheTopLevelMaterialIsThePreferredTools(int activeTool, string expected)
+    {
+        FakeDevice device = new();
+        device.LoadFilament("ASA", tool: 1);
+        device.LoadFilament("PETG", tool: 2);
+
+        using JsonDocument document = JsonDocument.Parse(
+            TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings { Tools = 2, ActiveTool = activeTool }));
+
+        document.RootElement.GetProperty("material").GetString().Should().Be(expected);
+    }
+
+    /// <summary>
+    /// A change of material makes the next synthetic message the full shape even when a slim one
+    /// was due, as firmware's <c>want_full = changes</c> does - the slim shape has no material field.
+    /// </summary>
+    [Fact]
+    public void AChangeOfMaterialSendsTheFullShape()
+    {
+        FakeDevice device = new();
+        SyntheticTelemetrySource source = new() { FullShapeEvery = 0 };
+
+        source.NextMessage(device);
+        HasMaterial(source.NextMessage(device)!).Should().BeFalse("with nothing changed the second message is slim");
+
+        device.UnloadFilament();
+
+        HasMaterial(source.NextMessage(device)!).Should().BeTrue("the change is sent in full");
+        HasMaterial(source.NextMessage(device)!).Should().BeFalse("and only once");
+    }
+
+    /// <summary>A material change completes the device's change signal, which is what wakes the telemetry loop.</summary>
+    [Fact]
+    public void AChangeOfMaterialCompletesTheChangeSignal()
+    {
+        FakeDevice device = new();
+        Task changed = device.NextTelemetryChange;
+
+        changed.IsCompleted.Should().BeFalse();
+
+        device.LoadFilament("PETG");
+
+        changed.IsCompleted.Should().BeTrue();
+        device.NextTelemetryChange.IsCompleted.Should().BeFalse("each change hands out a fresh signal");
+    }
+
+    private static bool HasMaterial(byte[] message)
+    {
+        using JsonDocument document = JsonDocument.Parse(message);
+
+        return document.RootElement.TryGetProperty("material", out _);
     }
 }

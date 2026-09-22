@@ -271,7 +271,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         {
             PrintingInterval = TimeSpan.FromMilliseconds(50),
             IdleInterval = TimeSpan.FromMilliseconds(50),
-            Readings = new TelemetryReadings(Material: "PLA", Tools: 8, ActiveTool: 2),
+            Readings = new TelemetryReadings(Tools: 8, ActiveTool: 2),
         };
 
         (FakePrinterClient fake, Task run, int printerId, long userId) =
@@ -419,7 +419,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         {
             PrintingInterval = TimeSpan.FromMilliseconds(50),
             IdleInterval = TimeSpan.FromMilliseconds(50),
-            Readings = new TelemetryReadings(Material: "PLA", Tools: 5, ActiveTool: 0),
+            Readings = new TelemetryReadings(Tools: 5, ActiveTool: 0),
         };
 
         (FakePrinterClient fake, Task run, int printerId, long userId) =

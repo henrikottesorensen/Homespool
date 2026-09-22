@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Authorisation;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Admin.Users;
@@ -32,7 +33,7 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// needs paging or search.
 /// </para>
 /// </remarks>
-[Authorize(Roles = AdminBootstrap.AdminRole)]
+[Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
 public class IndexModel : PageModel
 {

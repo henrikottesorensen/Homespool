@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
 using Homespool.Model.Entities;
@@ -31,7 +32,7 @@ namespace Homespool.Host.Pages.Admin.Invites;
 /// either mints a new account with its own default team (no team selected) or adds the invitee to an
 /// existing team.
 /// </summary>
-[Authorize(Roles = AdminBootstrap.AdminRole)]
+[Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
 public class CreateModel : PageModel
 {

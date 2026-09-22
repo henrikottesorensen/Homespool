@@ -22,4 +22,11 @@ public static class Policies
     /// <see cref="Builder"/>, where the schemes are named.
     /// </summary>
     public const string Compat = nameof(Compat);
+
+    /// <summary>
+    /// The administration pages: the administrator role in the cookie <b>and</b> an account that is
+    /// still open, which <see cref="AdministratorHandler"/> reads from the row. The role alone is what
+    /// a closed administrator's cookie keeps until its stamp is next re-checked.
+    /// </summary>
+    public const string Administrator = nameof(Administrator);
 }

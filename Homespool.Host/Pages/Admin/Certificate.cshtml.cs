@@ -13,8 +13,8 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
@@ -41,7 +41,7 @@ namespace Homespool.Host.Pages.Admin;
 /// self-signed certificate.
 /// </para>
 /// </remarks>
-[Authorize(Roles = AdminBootstrap.AdminRole)]
+[Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
 public class CertificateModel : PageModel
 {

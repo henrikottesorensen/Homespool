@@ -149,6 +149,48 @@ public sealed class UserAdministrationTests : IDisposable
     }
 
     /// <summary>
+    /// Two administrators closing each other in the same moment, each on its own connection. The
+    /// last-administrator answer is true only of the instant it is read, so the act holds the write
+    /// lock from that read: the second request reads the first's committed row, one closure lands,
+    /// and one administrator is left open rather than none.
+    /// </summary>
+    [Fact]
+    public async Task TwoAdministratorsClosingEachOtherAtOnceLeaveOneOpen()
+    {
+        // Arrange
+        await using HomespoolDbContext seed = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(seed);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        HSUser deputy = await AddUserAsync(users, "deputy@example.com");
+        await MakeAdministratorAsync(provider, users, admin);
+        await MakeAdministratorAsync(provider, users, deputy);
+
+        await using HomespoolDbContext first = await MigratedContextAsync();
+        await using HomespoolDbContext second = await MigratedContextAsync();
+        (_, _, _, IServiceProvider firstProvider) = IdentityTestHarness.BuildIdentityServices(first);
+        (_, _, _, IServiceProvider secondProvider) = IdentityTestHarness.BuildIdentityServices(second);
+        using MeetingClock clock = new(parties: 2);
+        UserAdministration adminSide = Administration(first, firstProvider, time: clock);
+        UserAdministration deputySide = Administration(second, secondProvider, time: clock);
+
+        // Act - on the pool, because this provider completes its awaits synchronously and two calls
+        // awaited in turn would run one after the other, overlapping nothing.
+        Task<UserAdminResult> adminClosesDeputy = Task.Run(() => adminSide.DeactivateAsync(admin.Id, deputy.Id, CancellationToken.None));
+        Task<UserAdminResult> deputyClosesAdmin = Task.Run(() => deputySide.DeactivateAsync(deputy.Id, admin.Id, CancellationToken.None));
+        UserAdminResult[] results = await Task.WhenAll(adminClosesDeputy, deputyClosesAdmin);
+
+        // Assert
+        results.Count(r => r.Succeeded).Should().Be(1, "whichever commits first closes its subject");
+        results.Single(r => !r.Succeeded).Refusal.Should().BeOneOf(
+            [UserAdminRefusal.LastAdministrator, UserAdminRefusal.ClosedAdministrator],
+            "the other reads the committed closure: its subject is now the last administrator, or it is closed itself");
+
+        await using HomespoolDbContext check = await MigratedContextAsync();
+        (await check.Users.CountAsync(u => u.DeactivatedAt == null, TestContext.Current.CancellationToken))
+            .Should().Be(1, "one administrator must be left open, never none");
+    }
+
+    /// <summary>
     /// A closed administrator's session outlives the closure until its stamp is next re-checked, and
     /// the cookie still carries the role for that window. The service reads the row, so every act it
     /// offers refuses - reopening themselves, reopening anybody else, and the three that touch an
@@ -460,13 +502,14 @@ public sealed class UserAdministrationTests : IDisposable
     private static UserAdministration Administration(HomespoolDbContext context,
                                                      IServiceProvider provider,
                                                      ILogger<UserAdministration>? logger = null,
-                                                     CapturingEmailSender? mail = null)
+                                                     CapturingEmailSender? mail = null,
+                                                     TimeProvider? time = null)
     {
         return new UserAdministration(context,
                                       new ApiTokenService(context),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),
-                                      TimeProvider.System,
+                                      time ?? TimeProvider.System,
                                       (mail ?? new CapturingEmailSender()).Notices(),
                                       logger ?? NullLogger<UserAdministration>.Instance);
     }
@@ -521,6 +564,37 @@ public sealed class UserAdministrationTests : IDisposable
         }
 
         (await users.AddToRoleAsync(user, AdminBootstrap.AdminRole)).Succeeded.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A clock that every request reads only after its checks have passed, which makes it the one
+    /// place two requests can be held at the same point. Each read announces its arrival and waits
+    /// a second for the other party. Held by the write lock, the other never arrives inside that
+    /// second and the read times out - the transaction's own serialisation is what the wait shows.
+    /// Reads that happen to overlap, as they can without the lock, both arrive, both proceed, and
+    /// both close their subject.
+    /// </summary>
+    private sealed class MeetingClock : TimeProvider, IDisposable
+    {
+        private readonly CountdownEvent _arrivals;
+
+        public MeetingClock(int parties)
+        {
+            _arrivals = new CountdownEvent(parties);
+        }
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            _arrivals.Signal();
+            _arrivals.Wait(TimeSpan.FromSeconds(1));
+
+            return DateTimeOffset.UtcNow;
+        }
+
+        public void Dispose()
+        {
+            _arrivals.Dispose();
+        }
     }
 
     private async Task<HomespoolDbContext> MigratedContextAsync()

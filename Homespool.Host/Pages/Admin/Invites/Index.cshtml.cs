@@ -10,6 +10,7 @@ using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
@@ -19,7 +20,7 @@ namespace Homespool.Host.Pages.Admin.Invites;
 /// Admin-only list of invitations, with a revoke action. Revoke is a soft-expire (see
 /// <see cref="InvitationService.RevokeAsync"/>), so a revoked invite shows here as "Expired".
 /// </summary>
-[Authorize(Roles = AdminBootstrap.AdminRole)]
+[Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
 public class IndexModel : PageModel
 {

@@ -41,6 +41,10 @@ BASE="http://127.0.0.1:$PORT"
 # what it measures.
 PRINTER_PORT="${PRINTER_PORT:-15443}"
 PRINTER_BASE="http://127.0.0.1:$PRINTER_PORT"
+
+# The transfer listener binds whether or not anything is transferred, so it collides with any other
+# server on the machine just as the other two do. Named here so it can be moved like them.
+TRANSFER_PORT="${TRANSFER_PORT:-15080}"
 HOST_DLL="$ROOT/Homespool.Host/bin/Debug/net10.0/Homespool.Host.dll"
 CLI="$ROOT/Homespool.FakePrinter.Cli/bin/Debug/net10.0/Homespool.FakePrinter.Cli.dll"
 
@@ -160,6 +164,8 @@ cd "$ROOT/Homespool.Host"
 ASPNETCORE_ENVIRONMENT=Development \
 Listeners__UserPort="$PORT" \
 Listeners__PrinterPort="$PRINTER_PORT" \
+Listeners__TransferPort="$TRANSFER_PORT" \
+PrusaConnect__TransferPort="$TRANSFER_PORT" \
 PrusaConnect__PrinterTls=false \
 Serilog__MinimumLevel__Default=Information \
 Storage__WriteBatchSize="$WRITE_BATCH_SIZE" \
@@ -167,22 +173,56 @@ ConnectionStrings__HomespoolDb="Data Source=$DB" \
     dotnet "$HOST_DLL" > "$RUN/server.log" 2>&1 &
 SERVER_PID=$!
 
+LIVE=""
 for _ in $(seq 1 60); do
-    if curl -fsS -o /dev/null "$BASE/health/live" 2>/dev/null; then break; fi
+    if curl -fsS -o /dev/null "$BASE/health/live" 2>/dev/null; then LIVE="yes"; break; fi
+    # A server that died at startup - a port already bound, most often - will never answer, so stop
+    # waiting for it.
+    if ! kill -0 "$SERVER_PID" 2>/dev/null; then break; fi
     sleep 1
 done
+
+if [ -z "$LIVE" ]; then
+    echo "### the server never answered $BASE/health/live; its last fatal or error line:" >&2
+    python3 - "$RUN/server.log" >&2 <<'PY'
+import json, sys
+last = None
+with open(sys.argv[1], errors="replace") as f:
+    for line in f:
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        if e.get("@l") in ("Error", "Fatal"):
+            last = e
+if last is None:
+    print("  none logged")
+else:
+    print("  " + (last.get("@x") or last.get("@m") or last.get("@mt", "")).splitlines()[0])
+PY
+    echo "### ports: PORT=$PORT PRINTER_PORT=$PRINTER_PORT TRANSFER_PORT=$TRANSFER_PORT; full log in $RUN/server.log" >&2
+    exit 1
+fi
 
 # First-run setup: the bootstrap token is logged as a CLEF property, not as a bare line.
 TOKEN="$(grep -o '"SetupToken":"[^"]*"' "$RUN/server.log" | head -1 | sed 's/.*:"//; s/"$//')"
 AF="$(curl -fsS -c "$RUN/cookies" "$BASE/setup" \
     | grep -o 'name="__RequestVerificationToken"[^>]*value="[^"]*"' \
     | sed 's/.*value="//; s/"$//' | head -1)"
-curl -s -o /dev/null -b "$RUN/cookies" -c "$RUN/cookies" \
+# A refused setup answers 200 with the form re-rendered, not an error status, so only the redirect
+# says an administrator now exists.
+SETUP_STATUS="$(curl -s -o "$RUN/setup.html" -w '%{http_code}' -b "$RUN/cookies" -c "$RUN/cookies" \
     --data-urlencode "__RequestVerificationToken=$AF" \
     --data-urlencode "Input.Email=admin@example.com" \
+    --data-urlencode "Input.Username=admin" \
     --data-urlencode "Input.Password=Correct-Horse-Battery-Staple-1!" \
     --data-urlencode "Input.ConfirmPassword=Correct-Horse-Battery-Staple-1!" \
-    --data-urlencode "Input.Token=$TOKEN" "$BASE/setup"
+    --data-urlencode "Input.Token=$TOKEN" "$BASE/setup")"
+
+if [ "$SETUP_STATUS" != "302" ]; then
+    echo "### setup answered $SETUP_STATUS, not 302 - no administrator was created; the form is in $RUN/setup.html" >&2
+    exit 1
+fi
 
 dotnet "$CLI" enrol --server "$PRINTER_BASE" --identity "$RUN/fakeprinter.json" > "$RUN/enrol.log" 2>&1 &
 ENROL_PID=$!
@@ -193,9 +233,20 @@ for _ in $(seq 1 30); do
     if [ -n "$CODE" ]; then break; fi
     sleep 1
 done
-curl -s -o /dev/null -b "$RUN/cookies" -H 'Content-Type: application/json' \
+# Sec-Fetch-Site: a cookie-authenticated write is refused unless it says it came from the same
+# origin, which is what a browser would send from the claim page.
+CLAIM_STATUS="$(curl -s -o "$RUN/register.json" -w '%{http_code}' -b "$RUN/cookies" \
+    -H 'Content-Type: application/json' -H 'Sec-Fetch-Site: same-origin' \
     -d "{\"code\":\"$CODE\",\"name\":\"Stall rig\",\"location\":\"loopback\"}" \
-    "$BASE/api/v1/printers/register"
+    "$BASE/api/v1/printers/register")"
+
+# Without a claim the enrol CLI polls forever, so a failed one has to end the run here.
+if ! grep -q '"uuid"' "$RUN/register.json" 2>/dev/null; then
+    kill "$ENROL_PID" 2>/dev/null
+    echo "### claim of code '$CODE' failed with $CLAIM_STATUS: $(head -c 400 "$RUN/register.json" 2>/dev/null)" >&2
+    exit 1
+fi
+
 wait $ENROL_PID
 
 # Load is deliberately moderate, not a blast: the ceilings are reached by how long the outage lasts,
@@ -235,7 +286,9 @@ else
     # dd runs until ENOSPC, which is the point. SQLite may keep writing for a few seconds into space
     # it had already allocated - so anchor any timing to the first flush failure in the log, never
     # to this moment. Measuring from here understated the sample/event ordering by 3.5x once.
-    dd if=/dev/zero of="$VOLUME/filler" bs=1m >/dev/null 2>&1
+    # The block size is spelled in bytes because BSD dd wants "1m" and GNU dd refuses it, and the
+    # refusal is silenced along with the ENOSPC complaint.
+    dd if=/dev/zero of="$VOLUME/filler" bs=1048576 >/dev/null 2>&1
     echo "### volume filled: $(df -h "$VOLUME" | tail -1 | awk '{print $4}') free"
 fi
 

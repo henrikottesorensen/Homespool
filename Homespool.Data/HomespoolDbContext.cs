@@ -312,6 +312,13 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.HasIndex(e => e.FingerPrintKey)
                   .IsUnique();
 
+            // And one credential per printer. A second row would be a second token that authenticates
+            // as the printer, which nothing that replaces a credential would know to retire - so
+            // replacing one deletes the old row before the new one is written, and this makes a path
+            // that forgets to fail rather than add.
+            entity.HasIndex(e => e.PrinterId)
+                  .IsUnique();
+
             // The enrolled credential belongs to the printer: deleting the printer takes it with
             // it. PrinterId is required now (enrolled means a printer exists), so this is a required
             // relationship — cascade is the natural, and EF's default, behaviour for one.

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260922192750_InitialCreate")]
+    [Migration("20260923212907_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -757,7 +757,8 @@ namespace Homespool.Data.Migrations
                     b.HasIndex("FingerPrintKey")
                         .IsUnique();
 
-                    b.HasIndex("PrinterId");
+                    b.HasIndex("PrinterId")
+                        .IsUnique();
 
                     b.ToTable("PrusaConnectAuthentication");
                 });

@@ -86,7 +86,12 @@ public class ResendEmailConfirmationModel : PageModel
         // the population it exists for. Silently, and before anything is counted, for the reason the
         // null arm is silent: a refusal that looked different would say the address is registered,
         // and grinding at a confirmed address should cost nothing and produce nothing.
-        if (user == null || await _userManager.IsEmailConfirmedAsync(user))
+        //
+        // A closed account is answered the same way: the manager refuses its token when it is
+        // redeemed, so the link would confirm nothing. The sign-in gate is not asked, because it
+        // refuses an unconfirmed account where confirmation is required - which is every account
+        // this page exists for.
+        if (user == null || user.DeactivatedAt is not null || await _userManager.IsEmailConfirmedAsync(user))
         {
             ModelState.AddModelError(string.Empty, Answer());
             return Page();

@@ -83,11 +83,16 @@ public class ForgotPasswordModel : PageModel
             // address is registered, and a refusal that looked different here would answer the same
             // question the arm was written to refuse. No mail is sent, and the caller sees exactly
             // what an unknown address sees. See ChangePasswordModel.HasPassword for the other half.
+            //
+            // A closed account is answered the same way. The manager refuses its token when it is
+            // redeemed, so a link would change nothing; not sending one keeps a mail that cannot work
+            // out of the owner's inbox.
             if (user == null ||
+                user.DeactivatedAt is not null ||
                 !(await _userManager.IsEmailConfirmedAsync(user)) ||
                 !(await _userManager.HasPasswordAsync(user)))
             {
-                // Don't reveal that the user does not exist, is not confirmed, or signs in elsewhere
+                // Don't reveal that the user does not exist, is closed, is not confirmed, or signs in elsewhere
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
 

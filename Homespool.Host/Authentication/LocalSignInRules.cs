@@ -166,12 +166,20 @@ public sealed class LocalSignInRules
     /// <see cref="IdentityOptions.SignIn"/>.
     /// </summary>
     /// <remarks>
-    /// <b>The deactivation check is here rather than in each scheme, and that is the whole design.</b>
-    /// Every credential this application accepts - password, authenticator code, recovery code,
-    /// passkey, a provider's assertion, and both personal-access-token headers - reaches
-    /// <see cref="PreSignInCheckAsync"/> before it is believed, so one condition in this method
-    /// refuses all of them. A scheme added later gets the rule by calling what its siblings call,
-    /// rather than by remembering to.
+    /// <para>
+    /// <b>The deactivation check is here rather than in each scheme.</b> Every credential this
+    /// application accepts - password, authenticator code, recovery code, passkey, a provider's
+    /// assertion, and both personal-access-token headers - reaches <see cref="PreSignInCheckAsync"/>
+    /// before it is believed, so one condition in this method refuses all of them. A scheme added later
+    /// gets the rule by calling what its siblings call, rather than by remembering to.
+    /// </para>
+    /// <para>
+    /// <b>It covers a credential being presented, and nothing else.</b> A closed account can still be
+    /// reached by what presents none: a page redeeming an emailed token (refused in
+    /// <see cref="Accounts.HSUserManager.VerifyUserTokenAsync"/>), a role or membership read (asked of
+    /// <c>Administrators.Open</c> and <c>Memberships.Open</c>), work done later on a stored user id,
+    /// and anything authorised once that keeps running. Each needs its own answer; this method is not it.
+    /// </para>
     /// </remarks>
     public async Task<bool> CanSignInAsync(HSUser user)
     {

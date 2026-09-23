@@ -151,6 +151,16 @@ public sealed class HSUserManager : UserManager<HSUser>
         return await UpdateUserAsync(user);
     }
 
+    /// <summary>
+    /// The security stamps a change made through this manager has replaced on <paramref name="user"/>
+    /// - in the application, during this request, since the manager is scoped to one. Empty when it
+    /// changed none, and always empty over a store other than <see cref="HSUserStore"/>.
+    /// </summary>
+    public IReadOnlyList<string> StampsReplaced(HSUser user)
+    {
+        return Store is HSUserStore store ? store.StampsReplaced(user) : [];
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// <para>

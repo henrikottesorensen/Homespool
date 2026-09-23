@@ -146,15 +146,48 @@ public sealed class UserSessionTests : IDisposable
         string here = await rig.SessionCookieAsync(user);
         string elsewhere = await rig.SessionCookieAsync(user);
 
-        // As a page does it: the request is authenticated before the account changes, then refreshed.
+        // As a page does it: the request is authenticated before the account changes, changes it
+        // through its own manager, then refreshes.
         DefaultHttpContext change = rig.NewRequest(here);
         (await SignedInAsync(change)).Succeeded.Should().BeTrue();
-        (await rig.Users.UpdateSecurityStampAsync(user)).Succeeded.Should().BeTrue();
+        (await UsersOf(change).UpdateSecurityStampAsync(user)).Succeeded.Should().BeTrue();
         (await LocalSchemeRig.SignInOf(change).RefreshSignInAsync(change, user)).Should().BeTrue();
         string refreshed = rig.CookieOf(change, IdentityConstants.ApplicationScheme);
 
         (await rig.NewRequest(refreshed).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeTrue();
         (await rig.NewRequest(elsewhere).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The race a stolen session can run: its request is checked while the account is unchanged, the
+    /// owner changes the password from their own browser, and the stolen request then refreshes. The
+    /// change was not this request's, so its row is not carried onto the new stamp - the session ends,
+    /// as the owner meant it to.
+    /// </summary>
+    [Fact]
+    public async Task ARefreshCannotCarryASessionPastAChangeMadeElsewhere()
+    {
+        await using LocalSchemeRig rig = await RigAsync();
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        string stolen = await rig.SessionCookieAsync(user);
+        string owners = await rig.SessionCookieAsync(user);
+
+        DefaultHttpContext racing = rig.NewRequest(stolen);
+        (await SignedInAsync(racing)).Succeeded.Should().BeTrue("the request arrived before the change");
+
+        DefaultHttpContext change = rig.NewRequest(owners);
+        (await SignedInAsync(change)).Succeeded.Should().BeTrue();
+        (await UsersOf(change).UpdateSecurityStampAsync(user)).Succeeded.Should().BeTrue();
+        (await LocalSchemeRig.SignInOf(change).RefreshSignInAsync(change, user)).Should().BeTrue();
+
+        // Act
+        bool refreshed = await LocalSchemeRig.SignInOf(racing).RefreshSignInAsync(racing, user);
+
+        // Assert
+        refreshed.Should().BeFalse("the stamp moved in another browser's request, not this one");
+        racing.Response.Headers.SetCookie.Should().BeEmpty("a refused refresh writes no cookie");
+        (await rig.NewRequest(stolen).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded
+            .Should().BeFalse("the session the owner's change ended stays ended");
     }
 
     [Fact]
@@ -321,6 +354,11 @@ public sealed class UserSessionTests : IDisposable
         }
 
         return result;
+    }
+
+    private static UserManager<HSUser> UsersOf(DefaultHttpContext request)
+    {
+        return request.RequestServices.GetRequiredService<UserManager<HSUser>>();
     }
 
     private static UserSessionService SessionsOf(DefaultHttpContext request)

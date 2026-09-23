@@ -17,7 +17,8 @@
 #
 #   check    compares and reports. Changes nothing.
 #   upgrade  compares, and if every difference is additively safe, applies it and stamps the history
-#            in one transaction. Refuses anything else and says exactly what it found.
+#            in one transaction. Refuses anything else and says exactly what it found. The one change
+#            it applies that is not an addition is an index that only gains UNIQUE: see build_plan.
 #   adopt    lets the new database be created and set up by the current code, then moves the old
 #            printer and its credential into it. For the case no stamp can fix.
 #
@@ -210,11 +211,12 @@ objects() {
 # claim the comparison had never checked. `check` reports what this produces and `upgrade` applies
 # it; neither has an opinion of its own about what is safe.
 #
-# Writes four files into $3:
-#   add-tables    a table the reference has and the old database does not
-#   add-columns   "table|column" for a column that can be reached with ALTER TABLE ADD COLUMN
-#   add-objects   "type name" for an index, view or trigger only the reference has
-#   blocks        one sentence per difference that is not additively safe
+# Writes five files into $3:
+#   add-tables      a table the reference has and the old database does not
+#   add-columns     "table|column" for a column that can be reached with ALTER TABLE ADD COLUMN
+#   add-objects     "type name" for an index, view or trigger only the reference has
+#   unique-indexes  "index name" for an index the reference declares UNIQUE and is otherwise identical
+#   blocks          one sentence per difference that is not additively safe
 #
 # Everything not provably additive lands in blocks. That direction is deliberate: an unrecognised
 # difference is a reason to stop, not a reason to continue.
@@ -225,6 +227,7 @@ build_plan() {
     : > "$out/add-tables"
     : > "$out/add-columns"
     : > "$out/add-objects"
+    : > "$out/unique-indexes"
     : > "$out/blocks"
 
     tables "$old" > "$out/old-tables"
@@ -245,15 +248,43 @@ build_plan() {
     objects "$old" > "$out/old-objects"
     objects "$new" > "$out/new-objects"
 
-    # Compared by full definition, so a redefined index is neither silently kept nor silently
+    # The one redefinition that is applied rather than refused: an index whose reference definition is
+    # the old one with UNIQUE added, and nothing else - same name, same table, same columns, same
+    # filter. Dropping and recreating it loses nothing an index holds, and a new UNIQUE index is
+    # already applied as an addition, so this is that case with a drop in front. Rows that repeat a
+    # value fail the CREATE, and the whole upgrade rolls back with them, stamp included - the same
+    # answer a brand-new unique index over repeating rows gets. The pair is taken out of what the
+    # comparison below sees, so it is reported once, as this, rather than as an addition and a removal.
+    cp "$out/old-objects" "$out/old-compared"
+    cp "$out/new-objects" "$out/new-compared"
+
+    local line was
+    while read -r line; do
+        case "$line" in
+            "index "*" CREATE UNIQUE INDEX "*) ;;
+            *) continue ;;
+        esac
+
+        was=${line/ CREATE UNIQUE INDEX / CREATE INDEX }
+        grep -Fxq -- "$was" "$out/old-objects" || continue
+
+        echo "$line" | awk '{ print $1 " " $2 }' >> "$out/unique-indexes"
+
+        { grep -Fxv -- "$was" "$out/old-compared" || true; } > "$out/old-kept"
+        mv "$out/old-kept" "$out/old-compared"
+        { grep -Fxv -- "$line" "$out/new-compared" || true; } > "$out/new-kept"
+        mv "$out/new-kept" "$out/new-compared"
+    done < "$out/new-objects"
+
+    # Compared by full definition, so any other redefined index is neither silently kept nor silently
     # replaced: it appears as one addition and one removal, and the removal blocks.
-    comm -13 "$out/old-objects" "$out/new-objects" | awk '{ print $1 " " $2 }' > "$out/add-objects"
+    comm -13 "$out/old-compared" "$out/new-compared" | awk '{ print $1 " " $2 }' > "$out/add-objects"
 
     while read -r line; do
         [ -n "$line" ] || continue
         echo "the old database has $(echo "$line" | awk '{ print $1 " " $2 }') and the reference does not" \
             >> "$out/blocks"
-    done < <(comm -23 "$out/old-objects" "$out/new-objects")
+    done < <(comm -23 "$out/old-compared" "$out/new-compared")
 }
 
 compare_table() {
@@ -371,13 +402,15 @@ describe_column() {
 }
 
 plan_is_empty() {
-    [ ! -s "$1/add-tables" ] && [ ! -s "$1/add-columns" ] && [ ! -s "$1/add-objects" ] && [ ! -s "$1/blocks" ]
+    [ ! -s "$1/add-tables" ] && [ ! -s "$1/add-columns" ] && [ ! -s "$1/add-objects" ] &&
+        [ ! -s "$1/unique-indexes" ] && [ ! -s "$1/blocks" ]
 }
 
 report_plan() {
     local old=$1 new=$2 out=$3
 
-    if [ -s "$out/add-tables" ] || [ -s "$out/add-columns" ] || [ -s "$out/add-objects" ]; then
+    if [ -s "$out/add-tables" ] || [ -s "$out/add-columns" ] || [ -s "$out/add-objects" ] ||
+        [ -s "$out/unique-indexes" ]; then
         echo "  additive:"
 
         while read -r table; do
@@ -395,6 +428,10 @@ report_plan() {
         while read -r entry; do
             [ -n "$entry" ] && echo "    + $entry"
         done < "$out/add-objects"
+
+        while read -r entry; do
+            [ -n "$entry" ] && echo "    ~ $entry becomes unique: dropped and recreated, and rolled back if rows repeat a value"
+        done < "$out/unique-indexes"
 
         echo
     fi
@@ -558,6 +595,15 @@ write_upgrade_sql() {
         column=${entry#*|}
         echo "ALTER TABLE \"$table\" ADD COLUMN $(column_definition "$new" "$table" "$column");"
     done < "$out/add-columns"
+
+    while read -r entry; do
+        [ -n "$entry" ] || continue
+        local index
+        index=$(echo "$entry" | awk '{ print $2 }')
+        echo "DROP INDEX \"$index\";"
+        sqlite3 "$new" "SELECT sql FROM sqlite_master WHERE type='index' AND name='$index';"
+        echo ";"
+    done < "$out/unique-indexes"
 
     while read -r entry; do
         [ -n "$entry" ] || continue

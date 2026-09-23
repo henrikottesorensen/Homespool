@@ -357,6 +357,59 @@ if test_case "upgrade refuses a redefined index rather than silently keeping eit
     assert_eq "20260820162112_InitialCreate" "$(stamp_of "$scratch/old.sqlite")" "NOT stamped"
 fi
 
+if test_case "upgrade makes an index unique when that is all that changed"; then
+    # The one redefinition applied rather than refused. An index whose reference definition is the
+    # old one with UNIQUE added is dropped and recreated - which is what EF produces when a foreign
+    # key's index is made unique under its own name.
+    make_pair "" 'CREATE INDEX "IX_Printers_Name" ON "Printers" ("Name");' \
+              "" 'CREATE UNIQUE INDEX "IX_Printers_Name" ON "Printers" ("Name");'
+
+    out="$("$script" upgrade "$scratch/old.sqlite" "$scratch/new.sqlite" 2>&1)"
+    status=$?
+
+    assert_eq "0" "$status" "succeeds"
+    assert_says "$out" "~ index IX_Printers_Name becomes unique"
+    refute_says "$out" "the reference does not" "not reported as a removal"
+    assert_eq "1" \
+        "$(sqlite3 "$scratch/old.sqlite" "SELECT \"unique\" FROM pragma_index_list('Printers') WHERE name = 'IX_Printers_Name';")" \
+        "the index is unique now"
+    assert_eq "2" "$(sqlite3 "$scratch/old.sqlite" 'SELECT COUNT(*) FROM "Printers";')" "rows kept"
+    assert_eq "20260821010838_InitialCreate" "$(stamp_of "$scratch/old.sqlite")" "stamped"
+
+    out="$("$script" check "$scratch/old.sqlite" "$scratch/new.sqlite" 2>&1)"
+    assert_says "$out" "Identical schema, identical stamp. Nothing to do." "and the next run finds nothing"
+fi
+
+if test_case "an index made unique over rows that repeat a value rolls the upgrade back"; then
+    make_pair "" 'CREATE INDEX "IX_Printers_Name" ON "Printers" ("Name");' \
+              "" 'CREATE UNIQUE INDEX "IX_Printers_Name" ON "Printers" ("Name");'
+    sqlite3 "$scratch/old.sqlite" <<'SQL'
+UPDATE "Printers" SET "Name" = 'the same name twice';
+SQL
+    before="$(sqlite3 "$scratch/old.sqlite" .dump)"
+
+    out="$("$script" upgrade "$scratch/old.sqlite" "$scratch/new.sqlite" 2>&1)"
+    status=$?
+
+    assert_eq "1" "$status" "fails"
+    assert_says "$out" "the upgrade failed and was rolled back"
+    assert_eq "$before" "$(sqlite3 "$scratch/old.sqlite" .dump)" "database byte-identical, the old index included"
+    assert_eq "20260820162112_InitialCreate" "$(stamp_of "$scratch/old.sqlite")" "NOT stamped"
+fi
+
+if test_case "upgrade refuses an index that gains UNIQUE and changes anything else"; then
+    make_pair "" 'CREATE INDEX "IX_Printers_Both" ON "Printers" ("Uuid");' \
+              "" 'CREATE UNIQUE INDEX "IX_Printers_Both" ON "Printers" ("Name");'
+
+    out="$("$script" upgrade "$scratch/old.sqlite" "$scratch/new.sqlite" 2>&1)"
+    status=$?
+
+    assert_eq "1" "$status" "fails"
+    assert_says "$out" "the old database has index IX_Printers_Both and the reference does not"
+    refute_says "$out" "becomes unique" "a different column is not the unique case"
+    assert_eq "20260820162112_InitialCreate" "$(stamp_of "$scratch/old.sqlite")" "NOT stamped"
+fi
+
 if test_case "upgrade refuses a new table-level constraint, which ALTER TABLE cannot add"; then
     make_pair "" "" "" ""
     # A UNIQUE the reference's Printers has and the old one does not. Its columns are identical, so

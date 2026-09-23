@@ -41,6 +41,9 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     /// </summary>
     private const string Fingerprint = "SUDBAJQ78CTJBNA8";
 
+    /// <summary>A second board's fingerprint, in the same header form.</summary>
+    private const string OtherFingerprint = "SUDBAJQ78CTJBNA9";
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-auth-{Guid.NewGuid():N}.db");
 
     /// <summary>
@@ -825,6 +828,75 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
 
         existing.Succeeded.Should().BeTrue(
             "expiring a reissue that was never used must not disturb the credential the printer is actually running on");
+    }
+
+    /// <summary>
+    /// A reissued token presented under a fingerprint the printer was not enrolled with - a replaced
+    /// board - enrols the printer under the new one and retires the credential it had, rather than
+    /// giving the printer a second one that nothing would ever revoke.
+    /// </summary>
+    [Fact]
+    public async Task AReissuedTokenUnderANewFingerprintReplacesThePrintersCredential()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string enrolledToken) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        TokenService tokenService = new();
+        string reissuedToken = tokenService.GenerateToken();
+
+        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
+        {
+            PrinterId = printer.Id,
+            HashedToken = tokenService.HashToken(reissuedToken),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        AuthenticateResult newBoard = await AuthenticateAsync(context, OtherFingerprint, reissuedToken);
+
+        await using HomespoolDbContext replay = NewContext();
+        AuthenticateResult oldBoard = await AuthenticateAsync(replay, Fingerprint, enrolledToken);
+
+        // Assert
+        newBoard.Succeeded.Should().BeTrue("the reissued token is the printer's credential now");
+        newBoard.Principal!.FindFirst(HSClaimTypes.PrinterId)!.Value.Should().Be($"{printer.Id}");
+        oldBoard.Succeeded.Should().BeFalse("the reissue replaced the credential the printer had");
+
+        await using HomespoolDbContext verify = NewContext();
+
+        (await verify.PrusaConnectAuthentication.CountAsync(a => a.PrinterId == printer.Id, TestContext.Current.CancellationToken))
+            .Should().Be(1, "one printer, one credential");
+    }
+
+    /// <summary>
+    /// A printer holds at most one enrolled credential, enforced by the database, so a path that adds
+    /// a credential without retiring the old one fails rather than leaving a second token live.
+    /// </summary>
+    [Fact]
+    public async Task APrinterCannotHoldTwoEnrolledCredentials()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, _) = await AddEnrolledPrinterAsync(context, Fingerprint);
+
+        TokenService tokenService = new();
+
+        context.PrusaConnectAuthentication.Add(new PrusaConnectAuthenticationData
+        {
+            PrinterId = printer.Id,
+            FingerPrintKey = OtherFingerprint,
+            HashedToken = tokenService.HashToken(tokenService.GenerateToken()),
+            EnrolledAt = DateTimeOffset.UtcNow,
+        });
+
+        // Act
+        Func<Task> second = () => context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        await second.Should().ThrowAsync<DbUpdateException>();
     }
 
     /// <summary>

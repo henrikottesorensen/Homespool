@@ -30,25 +30,6 @@ public static class IdentityConfiguration
     /// </remarks>
     public const int MinimumPasswordLength = 8;
 
-    /// <summary>
-    /// How long a remembered browser goes before it is re-checked against the account's security stamp.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Nothing about a session waits for it.</b> A session is checked against its row on every
-    /// request, so a password change, a closed account, a revoked passkey or a revoked session ends it
-    /// at once, and its claims change only when the browser's own refresh re-issues the cookie. What
-    /// waits for this interval is a revoked remembered browser - which only ever spares a second factor
-    /// - being noticed.
-    /// </para>
-    /// <para>
-    /// <b>Five minutes rather than Identity's thirty</b>, because the whole deployment is a household
-    /// appliance and the cost is one account read per remembered browser per interval, on the sign-in
-    /// pages that consult it.
-    /// </para>
-    /// </remarks>
-    public static readonly TimeSpan StampValidationInterval = TimeSpan.FromMinutes(5);
-
     public static void Configure(IdentityOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -103,17 +84,6 @@ public static class IdentityConfiguration
         return string.IsNullOrWhiteSpace(user.Email) ?
             throw new InvalidOperationException($"Account {user.Id} has no email address, which RequireUniqueEmail rules out.") :
             user.Email;
-    }
-
-    /// <summary>
-    /// The one deviation from <see cref="SecurityStampValidatorOptions"/>' defaults:
-    /// <see cref="StampValidationInterval"/>, which that field explains.
-    /// </summary>
-    public static void ConfigureStampValidation(SecurityStampValidatorOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-
-        options.ValidationInterval = StampValidationInterval;
     }
 
     /// <summary>

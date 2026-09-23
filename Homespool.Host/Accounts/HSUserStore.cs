@@ -68,6 +68,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
 
     private readonly IDataProtector _authenticatorKeys;
     private readonly ILogger<HSUserStore> _logger;
+    private readonly Dictionary<long, List<string>> _replacedStamps = [];
 
     public HSUserStore(HomespoolDbContext context,
                        IDataProtectionProvider dataProtection,
@@ -87,6 +88,40 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
         ArgumentNullException.ThrowIfNull(key);
 
         return base.SetAuthenticatorKeyAsync(user, _authenticatorKeys.Protect(key), cancellationToken);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Remembers the stamp it replaces, for <see cref="StampsReplaced"/>. Every stamp the manager
+    /// rotates is set through here, so the list is exactly the changes this scope - one request - made.
+    /// </remarks>
+    public override Task SetSecurityStampAsync(HSUser user, string stamp, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (user.SecurityStamp is { } replaced && !string.Equals(replaced, stamp, StringComparison.Ordinal))
+        {
+            if (!_replacedStamps.TryGetValue(user.Id, out List<string>? stamps))
+            {
+                stamps = [];
+                _replacedStamps[user.Id] = stamps;
+            }
+
+            stamps.Add(replaced);
+        }
+
+        return base.SetSecurityStampAsync(user, stamp, cancellationToken);
+    }
+
+    /// <summary>
+    /// The security stamps this store has replaced on <paramref name="user"/>, oldest first: the
+    /// account's stamps before each change made through it. Empty when it made none.
+    /// </summary>
+    public IReadOnlyList<string> StampsReplaced(HSUser user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return _replacedStamps.TryGetValue(user.Id, out List<string>? stamps) ? stamps : [];
     }
 
     /// <summary>

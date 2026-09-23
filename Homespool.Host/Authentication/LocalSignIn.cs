@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Text;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -49,7 +51,8 @@ namespace Homespool.Host.Authentication;
 /// <b>Every sign-in starts a new <see cref="UserSession"/></b>, and the application cookie carries its
 /// secret as <see cref="HSClaimTypes.SessionSecret"/>. A session the browser already had is ended
 /// first, so a sign-in never continues a session somebody else could have planted in the browser. A
-/// refresh keeps the session and brings its row up to the account's stamp; signing out deletes it.
+/// refresh keeps the session and brings its row up to the account's stamp, when the change was this
+/// request's own; signing out deletes it.
 /// </para>
 /// </remarks>
 public sealed class LocalSignIn
@@ -155,10 +158,14 @@ public sealed class LocalSignIn
         string? secret = rebuilt.FindFirstValue(HSClaimTypes.SessionSecret);
 
         // The row moves to the stamp the rebuilt principal carries, which is what keeps this browser
-        // signed in across a change to the account that ends every other one.
-        if (secret is null || !await _sessions.RefreshAsync(secret, StampOf(rebuilt), context.RequestAborted))
+        // signed in across a change to the account that ends every other one - but only across a
+        // change this request made. One made elsewhere since this request was checked ends this
+        // session too, and the refresh is refused rather than carrying the row past it.
+        IReadOnlyList<string> replaced = _users is HSUserManager manager ? manager.StampsReplaced(user) : [];
+
+        if (secret is null || !await _sessions.RefreshAsync(secret, StampOf(rebuilt), replaced, context.RequestAborted))
         {
-            _logger.LogError("A sign-in refresh was refused because this browser's session has ended; sign in instead.");
+            _logger.LogError("A sign-in refresh was refused because this browser's session has ended, or the account was changed elsewhere; sign in instead.");
 
             return false;
         }

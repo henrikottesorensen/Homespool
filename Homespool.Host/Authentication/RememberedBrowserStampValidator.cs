@@ -24,12 +24,11 @@ namespace Homespool.Host.Authentication;
 /// </remarks>
 public sealed class RememberedBrowserStampValidator : StampValidator, ITwoFactorSecurityStampValidator
 {
-    public RememberedBrowserStampValidator(IOptions<SecurityStampValidatorOptions> options,
-                                           IOptions<IdentityOptions> identity,
+    public RememberedBrowserStampValidator(IOptions<IdentityOptions> identity,
                                            UserManager<HSUser> users,
                                            LocalSignIn signIn,
                                            ILogger<RememberedBrowserStampValidator> logger)
-        : base(options, identity, users, signIn, logger)
+        : base(identity, users, signIn, logger)
     {
     }
 

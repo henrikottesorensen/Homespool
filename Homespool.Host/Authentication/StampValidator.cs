@@ -13,9 +13,9 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Authentication;
 
 /// <summary>
-/// Re-checks a cookie's principal against the account's security stamp once the cookie is older than
-/// <see cref="SecurityStampValidatorOptions.ValidationInterval"/>: a changed stamp - a new password,
-/// a re-keyed authenticator, a removed login - is what forgets every remembered browser.
+/// Re-checks a cookie's principal against the account's security stamp every time the cookie is read:
+/// a changed stamp - a new password, a re-keyed authenticator, a removed login - is what forgets every
+/// remembered browser.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -23,7 +23,7 @@ namespace Homespool.Host.Authentication;
 /// took a <c>SignInManager</c> for three things: to find the account the principal names, to compare
 /// the stamp, and to sign out on a mismatch. Those are <see cref="UserManager{TUser}"/> and
 /// <see cref="LocalSignIn"/> here. The <c>OnRefreshingPrincipal</c> hook is not carried over; nothing
-/// in the application set it.
+/// in the application set it. Nor is the framework's validation interval, below.
 /// </para>
 /// <para>
 /// <b>A mismatch ends the whole session, not just the cookie being checked</b>: the session's row, the
@@ -33,29 +33,29 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>Only the remembered-browser cookie is checked this way now.</b> The application cookie is checked
 /// on every request against its session row by <see cref="SessionStampValidator"/>, which compares the
-/// stamp as part of that and rebuilds nothing; the remembered browser is no session, grants nothing by
-/// itself, and stays on the interval.
+/// stamp as part of that and rebuilds nothing.
+/// </para>
+/// <para>
+/// <b>Every read, not once an interval has passed.</b> A remembered browser is what spares a sign-in its
+/// second factor, so any interval is a window after an authenticator is reset or turned off in which a
+/// browser remembered before that still skips the code, and the password alone signs in. It is read
+/// only when a sign-in asks whether a second factor is owed and by the two-factor settings page, so
+/// checking it every time costs one account read on each.
 /// </para>
 /// </remarks>
 public abstract class StampValidator : ISecurityStampValidator
 {
-    private readonly SecurityStampValidatorOptions _options;
-
-    protected StampValidator(IOptions<SecurityStampValidatorOptions> options,
-                             IOptions<IdentityOptions> identity,
+    protected StampValidator(IOptions<IdentityOptions> identity,
                              UserManager<HSUser> users,
                              LocalSignIn signIn,
                              ILogger logger)
     {
-        ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(identity);
 
-        _options = options.Value;
         Identity = identity.Value;
         Users = users;
         SignIn = signIn;
         Logger = logger;
-        Time = _options.TimeProvider ?? TimeProvider.System;
     }
 
     protected IdentityOptions Identity { get; }
@@ -66,21 +66,10 @@ public abstract class StampValidator : ISecurityStampValidator
 
     protected ILogger Logger { get; }
 
-    protected TimeProvider Time { get; }
-
     /// <inheritdoc/>
     public async Task ValidateAsync(CookieValidatePrincipalContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-
-        // A cookie with no issue time is checked every time; one with an issue time, once the
-        // interval has passed since it was issued or last renewed.
-        DateTimeOffset? issued = context.Properties.IssuedUtc;
-
-        if (issued is not null && Time.GetUtcNow() - issued.Value <= _options.ValidationInterval)
-        {
-            return;
-        }
 
         HSUser? user = await VerifiedAccountAsync(context.Principal);
 

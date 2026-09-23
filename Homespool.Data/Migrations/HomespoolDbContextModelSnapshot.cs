@@ -754,7 +754,8 @@ namespace Homespool.Data.Migrations
                     b.HasIndex("FingerPrintKey")
                         .IsUnique();
 
-                    b.HasIndex("PrinterId");
+                    b.HasIndex("PrinterId")
+                        .IsUnique();
 
                     b.ToTable("PrusaConnectAuthentication");
                 });

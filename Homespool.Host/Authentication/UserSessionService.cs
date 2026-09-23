@@ -96,17 +96,31 @@ public sealed class UserSessionService
     /// <summary>
     /// Brings the session <paramref name="secret"/> names up to the account's
     /// <paramref name="securityStamp"/>, so that a change this browser made to the account leaves it
-    /// signed in while every other browser's row goes stale. False when there is no such row.
+    /// signed in while every other browser's row goes stale. Moved only from a stamp in
+    /// <paramref name="replacedStamps"/> - the ones this request's own changes replaced - or when it
+    /// already holds <paramref name="securityStamp"/>. False when there is no such row.
     /// </summary>
-    public async Task<bool> RefreshAsync(string secret, string securityStamp, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <b>The row's stamp is the condition, not just the secret.</b> A request is checked against its
+    /// session when it arrives, and the account it then loads may already carry a stamp another browser
+    /// set since - a password changed precisely to end this session. Moving the row by its secret alone
+    /// would carry it onto that stamp, and the change meant to end it would be the one it survived.
+    /// </remarks>
+    public async Task<bool> RefreshAsync(string secret,
+                                         string securityStamp,
+                                         IReadOnlyCollection<string> replacedStamps,
+                                         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(secret);
         ArgumentNullException.ThrowIfNull(securityStamp);
+        ArgumentNullException.ThrowIfNull(replacedStamps);
 
         string hash = ApiTokenService.HashSecret(secret);
 
         int updated = await _dbContext.UserSessions
-                                      .Where(session => session.SecretHash == hash)
+                                      .Where(session => session.SecretHash == hash &&
+                                                        (session.SecurityStamp == securityStamp ||
+                                                         replacedStamps.Contains(session.SecurityStamp)))
                                       .ExecuteUpdateAsync(setters => setters.SetProperty(session => session.SecurityStamp, securityStamp),
                                                           cancellationToken);
 

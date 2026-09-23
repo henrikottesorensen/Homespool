@@ -408,6 +408,16 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         {
             await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(Context.RequestAborted);
 
+            // A reissued token arriving under a fingerprint the printer was not enrolled with - a
+            // replaced board, most often - replaces the enrolment rather than joining it. The reissue
+            // is how a printer is given a new credential, so the one it had goes: left in place, the
+            // old token would keep authenticating as this printer for as long as anybody held it.
+            List<PrusaConnectAuthenticationData> superseded = await _dbContext.PrusaConnectAuthentication
+                                                                              .Where(a => a.PrinterId == provisioning.PrinterId)
+                                                                              .ToListAsync(Context.RequestAborted);
+
+            _dbContext.PrusaConnectAuthentication.RemoveRange(superseded);
+
             await _dbContext.PrusaConnectAuthentication.AddAsync(new PrusaConnectAuthenticationData
             {
                 PrinterId = provisioning.PrinterId,
@@ -428,7 +438,19 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             await _dbContext.SaveChangesAsync(Context.RequestAborted);
             await transaction.CommitAsync(Context.RequestAborted);
 
-            Logger.LogInformation("Printer {PrinterId} enrolled via USB-key provisioning.", provisioning.PrinterId);
+            if (superseded.Count > 0)
+            {
+                Logger.LogWarning(
+                    "Printer {PrinterId} enrolled under a new fingerprint {Fingerprint} with its reissued USB-key token; its " +
+                    "previous credential ({PreviousFingerprints}) no longer authenticates.",
+                    provisioning.PrinterId,
+                    LogText.Clean(fingerprint),
+                    string.Join(", ", superseded.Select(a => LogText.Clean(a.FingerPrintKey))));
+            }
+            else
+            {
+                Logger.LogInformation("Printer {PrinterId} enrolled via USB-key provisioning.", provisioning.PrinterId);
+            }
 
             return AuthenticateResult.Success(BuildTicket(provisioning.PrinterId, printer));
         }

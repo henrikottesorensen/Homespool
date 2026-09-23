@@ -982,7 +982,8 @@ namespace Homespool.Data.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectAuthentication_PrinterId",
                 table: "PrusaConnectAuthentication",
-                column: "PrinterId");
+                column: "PrinterId",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_PrusaConnectProvisionings_PrinterId",

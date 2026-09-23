@@ -102,6 +102,46 @@ public class PrusaConnectOptions
     [Range(1_024, 1_073_741_824)]
     public long MaxIncomingMessageBytes { get; set; } = 1024 * 1024;
 
+    /// <summary>
+    /// How many messages a second one printer's socket may carry, sustained. Default 5. Past it, and
+    /// past <see cref="MessageBurst"/>, the server reads that socket more slowly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This protects the other printers.</b> Every printer's telemetry and events share one bounded
+    /// queue into the database, which drops its oldest entry when full, so one connection sending as
+    /// fast as it can would otherwise crowd out every other printer's messages. Any account that can
+    /// add a printer holds a token that can do it. See <see cref="MessageBudget"/> for why a printer
+    /// over its budget is slowed rather than cut off.
+    /// </para>
+    /// <para>
+    /// <b>Five a second with a burst of sixty is sized from a real printer at its busiest</b>: a
+    /// Core One repeating an attention dialog sent a <c>STATE_CHANGED</c> and a telemetry message
+    /// every half second or so - 11 messages in one second, 52 in ten, 107 in a minute. Replayed
+    /// against this budget that stream is never slowed, and would not be until it ran four and a
+    /// half times as fast. Three a second with a burst of thirty is right at its edge. An ordinary
+    /// printer sends one message every two seconds.
+    /// </para>
+    /// <para>
+    /// Not offered on the settings page, for the reason <see cref="MaxIncomingMessageBytes"/> is not:
+    /// set too low it breaks working printers, and what it looks like - a printer whose state lags -
+    /// does not point here. The warning a printer over budget produces is what does.
+    /// </para>
+    /// <para>
+    /// The ceiling is high enough to take the budget out of play, which is what a comparison against
+    /// no budget needs: a blasting fake on loopback sends well over ten thousand messages a second.
+    /// </para>
+    /// </remarks>
+    [Range(1, 1_000_000)]
+    public int MessagesPerSecond { get; set; } = 5;
+
+    /// <summary>
+    /// How many messages one printer's socket may send back to back before
+    /// <see cref="MessagesPerSecond"/> applies. Default 60.
+    /// </summary>
+    [Range(1, 1_000_000)]
+    public int MessageBurst { get; set; } = 60;
+
     /// <summary><see cref="RegistrationCodeLifetimeMinutes"/> as a <see cref="TimeSpan"/>.</summary>
     public TimeSpan RegistrationCodeLifetime => TimeSpan.FromMinutes(RegistrationCodeLifetimeMinutes);
 

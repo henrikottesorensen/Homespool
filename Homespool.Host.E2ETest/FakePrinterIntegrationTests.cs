@@ -41,7 +41,9 @@ namespace Homespool.Host.E2ETest;
 /// </summary>
 /// <remarks>
 /// The command response timeout is dropped to 2 s via options so the timeout tests cost seconds,
-/// not the default 10 each. The library deliberately shares no code with the server (it builds its
+/// not the default 10 each. The per-socket message budget is lifted out of reach: these fakes send
+/// every 50 ms, and the capture replay every millisecond, so the default would slow the tests down
+/// to a printer's pace. The budget has its own tests, against a clock they control. The library deliberately shares no code with the server (it builds its
 /// JSON from firmware source, not our DTOs), so every green assertion here is a genuine
 /// cross-check of two independent readings of the protocol.
 /// </remarks>
@@ -57,12 +59,12 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
     {
         _root = new HomespoolFactory(_scratch, null, _logs);
         _factory = _root.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-                                                                                         services
-                                                                                             .PostConfigure<
-                                                                                                 PrusaConnectOptions>(options =>
-                                                                                                 options
-                                                                                                         .CommandResponseTimeoutSeconds =
-                                                                                                     2)));
+            services.PostConfigure<PrusaConnectOptions>(options =>
+            {
+                options.CommandResponseTimeoutSeconds = 2;
+                options.MessagesPerSecond = 10_000;
+                options.MessageBurst = 100_000;
+            })));
 
         _ = _factory.Server;
 

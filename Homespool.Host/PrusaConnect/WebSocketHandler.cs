@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
@@ -20,16 +21,19 @@ public class WebSocketHandler
     private readonly MessageDispatcher _dispatcher;
     private readonly PrusaConnectOptions _options;
     private readonly PrinterWireComplaints _complaints;
+    private readonly TimeProvider _timeProvider;
 
     public WebSocketHandler(ILogger<WebSocketHandler> logger,
                             MessageDispatcher dispatcher,
                             IOptionsMonitor<PrusaConnectOptions> options,
-                            PrinterWireComplaints complaints)
+                            PrinterWireComplaints complaints,
+                            TimeProvider timeProvider)
     {
         _logger = logger;
         _dispatcher = dispatcher;
         _options = options.CurrentValue;
         _complaints = complaints;
+        _timeProvider = timeProvider;
     }
 
     private static readonly JsonReaderOptions ReaderOptions = new()
@@ -63,6 +67,7 @@ public class WebSocketHandler
         // One per connection: it remembers how far into an unfinished document it has already looked,
         // so a document arriving in many reads is scanned once rather than re-parsed on every read.
         JsonDocumentScanner scanner = new();
+        MessageBudget budget = new(_options.MessagesPerSecond, _options.MessageBurst, _timeProvider);
 
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -94,6 +99,17 @@ public class WebSocketHandler
                         }
 
                         break;
+                    }
+
+                    // Before the parse, so that a message the dispatcher would discard costs the same
+                    // as one it keeps. Waiting here stops this loop reading the socket, which is the
+                    // point: the sender's own TCP window fills, and nothing queues on our side.
+                    TimeSpan wait = budget.Take();
+
+                    if (wait > TimeSpan.Zero)
+                    {
+                        _complaints.OverBudget(printerId, wait, _options.MessagesPerSecond, _options.MessageBurst);
+                        await Task.Delay(wait, _timeProvider, cancellationToken);
                     }
 
                     // The one parse this document gets, over exactly the bytes the scanner found.

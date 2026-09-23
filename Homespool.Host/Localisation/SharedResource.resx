@@ -2538,12 +2538,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_NotSaved" xml:space="preserve">
     <value>Nothing was saved. Correct the values marked below.</value>
   </data>
-  <data name="Settings_On" xml:space="preserve">
-    <value>On</value>
-  </data>
-  <data name="Settings_Off" xml:space="preserve">
-    <value>Off</value>
-  </data>
   <data name="Settings_AppliesImmediately" xml:space="preserve">
     <value>Applies immediately</value>
   </data>

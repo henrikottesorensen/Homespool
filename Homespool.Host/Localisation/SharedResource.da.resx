@@ -2433,12 +2433,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_NotSaved" xml:space="preserve">
     <value>Intet blev gemt. Ret de markerede værdier nedenfor.</value>
   </data>
-  <data name="Settings_On" xml:space="preserve">
-    <value>Til</value>
-  </data>
-  <data name="Settings_Off" xml:space="preserve">
-    <value>Fra</value>
-  </data>
   <data name="Settings_AppliesImmediately" xml:space="preserve">
     <value>Træder i kraft med det samme</value>
   </data>

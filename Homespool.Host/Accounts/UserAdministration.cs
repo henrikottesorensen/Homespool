@@ -158,6 +158,12 @@ public sealed class UserAdministration
             // class avoids; the value's shape is the entity's own, from its constructor.
             user.SecurityStamp = Guid.NewGuid().ToString();
 
+            // And a fresh concurrency stamp, because the framework's save writes every column of the
+            // row it loaded and checks only this one. Without it, a request that read the account
+            // before this commits - a reset, a sign-in clearing its failure count - saves after it and
+            // writes the account back open, with its old security stamp.
+            user.ConcurrencyStamp = Guid.NewGuid().ToString();
+
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             revoked = await _tokens.RevokeAllForUserAsync(userId, cancellationToken);
@@ -200,10 +206,12 @@ public sealed class UserAdministration
             return UserAdminResult.Done();
         }
 
-        // The stamp is left alone: it moved when the account was closed, which already ended every
-        // session it had. Moving it again would end nothing and would invalidate the pending
-        // email-confirmation and password-reset tokens the person may be holding.
+        // The security stamp is left alone because moving it again would end nothing. Closing moved
+        // it, which ended every session and every emailed link the account had, and a closed account
+        // can neither start a session nor redeem a link. The concurrency stamp moves for the reason
+        // closing moves it: a save of the row as it was loaded while closed must fail rather than land.
         user.DeactivatedAt = null;
+        user.ConcurrencyStamp = Guid.NewGuid().ToString();
 
         await _dbContext.SaveChangesAsync(cancellationToken);
 

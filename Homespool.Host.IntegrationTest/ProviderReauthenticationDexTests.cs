@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -10,8 +11,10 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.E2ETest;
@@ -119,6 +122,40 @@ public sealed class ProviderReauthenticationDexTests
             .Which.ProviderKey.Should().Be("some-other-subject", "the stranger dex vouched for was not linked");
     }
 
+    /// <summary>
+    /// A provider's answer for a closed account is not a proof, even when the answer is good and a
+    /// session is still there to receive it.
+    /// </summary>
+    /// <remarks>
+    /// Closing an account deletes its sessions, so the account is marked closed directly here, leaving
+    /// the session in place - the one state in which the page is reachable at all. The password,
+    /// authenticator and passkey proofs refuse it inside their schemes; a provider's answer is read by
+    /// the gate itself, which is what this pins.
+    /// </remarks>
+    [RequiresDexFact]
+    public async Task AClosedAccountEarnsNoProofFromItsProvider()
+    {
+        using Fixture fixture = new();
+        HSUser user = await fixture.CreateProviderUserAsync(MockSubject);
+        using HttpClient client = await fixture.SignInAsAsync(user);
+
+        using HttpResponseMessage signin = await fixture.DriveProviderRoundTripAsync(
+            client, "/Account/Reauthenticate", PasskeysPath, "Provider", TestContext.Current.CancellationToken);
+
+        await fixture.MarkClosedAsync(user);
+
+        // Act
+        using HttpResponseMessage returned = await client.GetAsync(signin.Headers.Location, TestContext.Current.CancellationToken);
+
+        // Assert
+        returned.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        returned.Headers.Location!.OriginalString.Should().Contain("/Account/Reauthenticate",
+            "the answer did not count, so the page asks again rather than going on to the passkeys");
+
+        string page = await client.GetStringAsync(PasskeysPath, TestContext.Current.CancellationToken);
+        page.Should().NotContain("passkey-register-form", "no proof was recorded");
+    }
+
     /// <summary>A host configured against dex with passkeys bound to localhost, and a dex client to walk its hops.</summary>
     private sealed class Fixture : IDisposable
     {
@@ -185,6 +222,20 @@ public sealed class ProviderReauthenticationDexTests
             client.DefaultRequestHeaders.Add("Origin", "https://localhost");
 
             return client;
+        }
+
+        /// <summary>
+        /// Sets the account's <see cref="HSUser.DeactivatedAt"/> and nothing else. An administrator's
+        /// closure also moves the stamp and deletes the sessions, and either would end this one.
+        /// </summary>
+        public async Task MarkClosedAsync(HSUser user)
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            await context.Users.Where(u => u.Id == user.Id)
+                         .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.DeactivatedAt, DateTimeOffset.UtcNow),
+                                             TestContext.Current.CancellationToken);
         }
 
         public async Task<int> PasskeyCountAsync(HSUser user)

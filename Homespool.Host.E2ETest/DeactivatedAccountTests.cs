@@ -1,13 +1,17 @@
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
@@ -28,6 +32,7 @@ namespace Homespool.Host.E2ETest;
 public sealed class DeactivatedAccountTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
+    private const string ResetPassword = "Different-Horse-Battery-Staple-2!"; // betterleaks:allow
 
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("deactivated");
 
@@ -249,6 +254,49 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// A reset link for a closed account is refused by the reset form, and reopening the account
+    /// brings back the password it had rather than one somebody set while it was closed.
+    /// </summary>
+    /// <remarks>
+    /// The link is minted directly because the form that mails one no longer sends it to a closed
+    /// account; this is the link a forgotten check anywhere else would have produced.
+    /// </remarks>
+    [Fact]
+    public async Task APasswordSetWhileClosedDoesNotSurviveReopening()
+    {
+        // Arrange
+        (HSUser subject, HttpClient subjectClient) =
+            await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "subject@example.com");
+        subjectClient.Dispose();
+
+        (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "admin@example.com", AdminBootstrap.AdminRole);
+
+        string detailPath = $"/Admin/Users/Detail/{subject.Uuid}";
+
+        using (admin)
+        {
+            await EnrolmentFlowHelper.ReauthenticateAsync(admin);
+            await PostAsync(admin, detailPath, "Deactivate");
+
+            string code = await ResetCodeAsync(subject.Id);
+
+            // Act
+            HttpResponseMessage reset = await PostResetAsync("subject@example.com", code);
+
+            await PostAsync(admin, detailPath, "Reactivate");
+
+            // Assert
+            reset.StatusCode.Should().Be(HttpStatusCode.OK, "the form re-renders with a refusal rather than confirming a reset");
+        }
+
+        (await SignInAsync("subject@example.com", ResetPassword)).Should().NotBe(
+            HttpStatusCode.Redirect, "the password set while closed must not open the reopened account");
+        (await SignInAsync("subject@example.com")).Should().Be(
+            HttpStatusCode.Redirect, "the account comes back with the password it had");
+    }
+
     private async Task PostAsync(HttpClient client, string path, string handler)
     {
         HttpResponseMessage posted = await PostForResponseAsync(client, path, handler);
@@ -290,8 +338,40 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         return plaintext;
     }
 
-    /// <summary>The status the login form answers with for this account and its own password.</summary>
-    private async Task<HttpStatusCode> SignInAsync(string email)
+    /// <summary>A password-reset token for the account, as the reset form's hidden field carries it.</summary>
+    private async Task<string> ResetCodeAsync(long userId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        HSUser user = (await users.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture)))!;
+
+        return await users.GeneratePasswordResetTokenAsync(user);
+    }
+
+    /// <summary>Posts the reset form for <paramref name="email"/>, as the emailed link's page would.</summary>
+    private async Task<HttpResponseMessage> PostResetAsync(string email, string code)
+    {
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        string link = $"/Account/ResetPassword?code={WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code))}";
+        HttpResponseMessage form = await client.GetAsync(link, TestContext.Current.CancellationToken);
+        string html = await form.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
+            ["Input.Email"] = email,
+            ["Input.Password"] = ResetPassword,
+            ["Input.ConfirmPassword"] = ResetPassword,
+            ["Input.Code"] = code,
+        });
+
+        return await client.PostAsync("/Account/ResetPassword", body, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>The status the login form answers with for this account and <paramref name="password"/>.</summary>
+    private async Task<HttpStatusCode> SignInAsync(string email, string password = Password)
     {
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
@@ -302,7 +382,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         {
             ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(html),
             ["Input.Login"] = email,
-            ["Input.Password"] = Password,
+            ["Input.Password"] = password,
         });
 
         HttpResponseMessage posted = await client.PostAsync("/Account/Login", body, TestContext.Current.CancellationToken);

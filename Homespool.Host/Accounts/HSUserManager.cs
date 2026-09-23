@@ -20,7 +20,8 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// The framework's user manager, except that a save runs the user validators only when the username or
-/// address changed, and removing a login or a passkey the account does not hold fails.
+/// address changed, removing a login or a passkey the account does not hold fails, and a closed
+/// account's emailed tokens do not verify.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -148,6 +149,35 @@ public sealed class HSUserManager : UserManager<HSUser>
         await passkeyStore.RemovePasskeyAsync(user, credentialId, CancellationToken);
 
         return await UpdateUserAsync(user);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// <b>False for a closed account, whatever the token.</b> Every emailed token is redeemed through
+    /// here - the password reset, the address confirmation and the address change - and each is
+    /// redeemed on a page nobody has to be signed in to reach, so the sign-in gate never sees them. A
+    /// closed account answering a reset link would take a password it keeps when it is reopened.
+    /// </para>
+    /// <para>
+    /// Here rather than on the pages because a new page redeeming a token gets the rule without
+    /// knowing it exists, and the caller's answer is the one a wrong token gets, so nothing says the
+    /// account is closed. The authenticator code does not come through here; the sign-in gate refuses
+    /// it before it is compared.
+    /// </para>
+    /// </remarks>
+    public override async Task<bool> VerifyUserTokenAsync(HSUser user, string tokenProvider, string purpose, string token)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (user.DeactivatedAt is not null)
+        {
+            Logger.LogInformation("An emailed token was refused because account {UserId} is closed.", user.Id);
+
+            return false;
+        }
+
+        return await base.VerifyUserTokenAsync(user, tokenProvider, purpose, token);
     }
 
     /// <inheritdoc/>

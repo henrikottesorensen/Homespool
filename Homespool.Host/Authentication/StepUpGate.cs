@@ -55,16 +55,19 @@ public sealed class StepUpGate
     public static readonly TimeSpan MaxProviderProofAge = TimeSpan.FromMinutes(2);
 
     private readonly UserManager<HSUser> _users;
+    private readonly LocalSignInRules _rules;
     private readonly ExternalSignIn _externalSignIn;
     private readonly TimeProvider _time;
     private readonly ILogger<StepUpGate> _logger;
 
     public StepUpGate(UserManager<HSUser> users,
+                      LocalSignInRules rules,
                       ExternalSignIn externalSignIn,
                       TimeProvider time,
                       ILogger<StepUpGate> logger)
     {
         _users = users;
+        _rules = rules;
         _externalSignIn = externalSignIn;
         _time = time;
         _logger = logger;
@@ -139,10 +142,16 @@ public sealed class StepUpGate
 
     /// <summary>
     /// Reads the provider's answer on the way back - consuming the external cookie either way - and
-    /// says whether it counts as <paramref name="user"/> re-authenticating: the subject must be one
-    /// the account signs in with, the answer must be read soon after it came back, and any sign-in time
-    /// the provider reports must be recent.
+    /// says whether it counts as <paramref name="user"/> re-authenticating: the account must be one
+    /// that may sign in, the subject must be one it signs in with, the answer must be read soon after
+    /// it came back, and any sign-in time the provider reports must be recent.
     /// </summary>
+    /// <remarks>
+    /// <b>The account's standing is asked here because no scheme asks it on this path.</b> The
+    /// password, authenticator and passkey step-ups each go through a scheme that refuses an account
+    /// that may not sign in before comparing anything; a provider's answer is read directly, so
+    /// without this a closed account holding a session could still earn a proof.
+    /// </remarks>
     public async Task<ProviderProofOutcome> VerifyProviderProofAsync(HttpContext context, HSUser user)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -161,6 +170,15 @@ public sealed class StepUpGate
         }
 
         string provider = info.ProviderDisplayName ?? info.LoginProvider;
+
+        if (await _rules.StandingCheckAsync(user) is not null)
+        {
+            _logger.LogWarning("Provider re-authentication refused for user {UserId} via {LoginProvider}: the account may not sign in.",
+                               user.Id,
+                               info.LoginProvider);
+
+            return new ProviderProofOutcome("failed", provider);
+        }
 
         if (ProviderProofRefusal(info, await _users.GetLoginsAsync(user), _time.GetUtcNow()) is { } refusal)
         {

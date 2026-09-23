@@ -19,4 +19,7 @@ public enum WireComplaint
 
     /// <summary>An inline transfer chunk was asked for over HTTP, where there is no socket to answer on.</summary>
     InlineTransferOverHttp = 5,
+
+    /// <summary>A socket carried more messages than its budget allows, and was read more slowly.</summary>
+    OverMessageBudget = 6,
 }

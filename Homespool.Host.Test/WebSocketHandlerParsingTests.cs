@@ -217,7 +217,8 @@ public class WebSocketHandlerParsingTests
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance,
                                        new RecordingMessageDispatcher(),
                                        TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }),
-                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance),
+                                       TimeProvider.System);
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
@@ -254,7 +255,8 @@ public class WebSocketHandlerParsingTests
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher,
                                        TestOptions.Monitor(new PrusaConnectOptions { MaxIncomingMessageBytes = 4096 }),
-                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance),
+                                       TimeProvider.System);
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 7,
@@ -293,7 +295,8 @@ public class WebSocketHandlerParsingTests
         Pipe wire = new();
 
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, new RecordingMessageDispatcher(), DefaultOptions,
-                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance),
+                                       TimeProvider.System);
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
@@ -325,7 +328,8 @@ public class WebSocketHandlerParsingTests
         FakeLogger<WebSocketHandler> handlerLog = new();
         FakeLogger<PrinterWireComplaints> complaintLog = new();
 
-        WebSocketHandler handler = new(handlerLog, new RecordingMessageDispatcher(), DefaultOptions, new PrinterWireComplaints(complaintLog));
+        WebSocketHandler handler = new(handlerLog, new RecordingMessageDispatcher(), DefaultOptions, new PrinterWireComplaints(complaintLog),
+                                       TimeProvider.System);
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 42, Substitute.For<IPrinterConnectionActor>(),
@@ -500,7 +504,8 @@ public class WebSocketHandlerParsingTests
 
         RecordingMessageDispatcher dispatcher = new();
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions,
-                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance),
+                                       TimeProvider.System);
 
         // Act
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
@@ -558,7 +563,8 @@ public class WebSocketHandlerParsingTests
 
         RecordingMessageDispatcher dispatcher = new();
         WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions,
-                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+                                       new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance),
+                                       TimeProvider.System);
 
         Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 1, Substitute.For<IPrinterConnectionActor>(),
                                                 CancellationToken.None);

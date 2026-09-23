@@ -365,7 +365,8 @@ public class PrinterConnectionSessionTests
                                                  PrinterTrafficLogTests.Off,
                                                  new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance)),
                            TestOptions.Monitor(new PrusaConnectOptions()),
-                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance))
+                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance),
+                           TimeProvider.System)
     {
         public override Task HandlePrusaWebsocket(PipeReader input,
                                                   int printerId,

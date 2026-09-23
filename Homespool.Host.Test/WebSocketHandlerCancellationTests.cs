@@ -47,7 +47,8 @@ public class WebSocketHandlerCancellationTests
     private static WebSocketHandler NewHandler(RecordingMessageDispatcher dispatcher)
     {
         return new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions,
-                   new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+                   new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance),
+                   TimeProvider.System);
     }
 
     /// <summary>

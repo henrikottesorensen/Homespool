@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 using Microsoft.Extensions.Logging;
@@ -17,11 +18,11 @@ namespace Homespool.Host.PrusaConnect;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Every site that goes through this can be driven by whoever holds a printer's token</b>, and
-/// on the socket at wire rate: nothing limits how many messages a connection may carry, and an
-/// unreadable <c>INFO</c> or a message carrying <c>nan</c> does not even cost the connection. Over
-/// HTTP the rate limiter bounds it, at three a second for as long as the sender likes. A line per
-/// occurrence is therefore a way to fill the disk. See <see cref="LogThrottle"/> for the numbers
+/// <b>Every site that goes through this can be driven by whoever holds a printer's token</b>, for
+/// as long as the sender likes: an unreadable <c>INFO</c> or a message carrying <c>nan</c> does not
+/// even cost the connection. On the socket <see cref="MessageBudget"/> bounds the rate, at five a
+/// second by default; over HTTP the rate limiter does, at three. A line per occurrence is therefore
+/// a way to fill the disk. See <see cref="LogThrottle"/> for the numbers
 /// that rule came from.
 /// </para>
 /// <para>
@@ -97,6 +98,23 @@ public sealed class PrinterWireComplaints
             $"{tokens.Count} in this message: {string.Join(' ', tokens.Select(token => token.Spelling).Distinct())}");
     }
 
+    /// <summary>
+    /// A socket spent its <see cref="MessageBudget"/>, and the read loop is waiting before the next
+    /// message. Said because the one thing it looks like from outside is a printer whose state lags.
+    /// </summary>
+    /// <param name="printerId">The printer the socket belongs to.</param>
+    /// <param name="wait">How long this message waits.</param>
+    /// <param name="perSecond">The budget's sustained rate, to say which setting governs it.</param>
+    /// <param name="burst">The budget's burst.</param>
+    public void OverBudget(int printerId, TimeSpan wait, int perSecond, int burst)
+    {
+        Say(printerId,
+            WireComplaint.OverMessageBudget,
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"waiting {wait.TotalMilliseconds:0.###} ms before the next one; the budget is {perSecond} a second after a burst of {burst} (PrusaConnect:MessagesPerSecond, PrusaConnect:MessageBurst)"));
+    }
+
     private void Say(int printerId, WireComplaint complaint, string detail)
     {
         LogThrottle throttle = _throttles.GetOrAdd((printerId, complaint), _ => new LogThrottle(Interval));
@@ -113,6 +131,7 @@ public sealed class PrinterWireComplaints
             WireComplaint.NonFiniteNumbers => "sent non-finite numbers that are not JSON",
             WireComplaint.BodyTooLarge => "posted a body over the size ceiling",
             WireComplaint.InlineTransferOverHttp => "requested an inline transfer chunk over HTTP, which cannot be served",
+            WireComplaint.OverMessageBudget => "sent messages faster than its budget, and is being read more slowly",
             _ => throw new ArgumentOutOfRangeException(nameof(complaint), complaint, null),
         };
 

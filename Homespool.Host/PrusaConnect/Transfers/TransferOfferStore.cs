@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -147,7 +148,8 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
             return false;
         }
 
-        PinnedOffer offer = new(content, _timeProvider, printerId);
+        // A stored file's name is its name on disk, so the path is all it takes to say which file this is.
+        PinnedOffer offer = new(content, _timeProvider, printerId, Path.GetFileName(path));
 
         // Re-offering a token replaces it. Tokens are random and minted per send, so this is the
         // theoretical case rather than the expected one - but leaking the old handle would be real.
@@ -263,6 +265,28 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         }
     }
 
+    /// <summary>
+    /// Every offer that has not ended: a file a printer is pulling, or one it has been told to fetch
+    /// and has not yet opened.
+    /// </summary>
+    /// <remarks>
+    /// This is what a restart would break. Offers live only in this process, so a printer coming back
+    /// for one afterwards is refused as an unknown token. An offer past its limit and not yet swept is
+    /// left out, since the next sweep ends it anyway. The same file offered twice to one printer - a
+    /// resend while the first offer still stands - is one transfer to a reader, and listed once.
+    /// </remarks>
+    /// <returns>The printer and the file's name, per standing transfer.</returns>
+    public IReadOnlyList<(int printerId, string fileName)> StandingOffers()
+    {
+        TimeSpan maxLifetime = _options.CurrentValue.TransferOfferMaxLifetime;
+
+        return _offers.Values
+                      .Where(offer => !offer.IsAbandoned(maxLifetime))
+                      .Select(offer => (offer.PrinterId, offer.FileName))
+                      .Distinct()
+                      .ToList();
+    }
+
     private void RetireAbandoned(string token, PinnedOffer offer)
     {
         if (_offers.TryRemove(new KeyValuePair<string, PinnedOffer>(token, offer)))
@@ -291,17 +315,24 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         private bool _opened;
         private bool _retired;
 
-        public PinnedOffer(ITransferContent content, TimeProvider timeProvider, int printerId)
+        public PinnedOffer(ITransferContent content, TimeProvider timeProvider, int printerId, string fileName)
         {
             _content = content;
             _timeProvider = timeProvider;
             _offeredAt = timeProvider.GetUtcNow();
             _idleSince = _offeredAt;
             PrinterId = printerId;
+            FileName = fileName;
         }
 
         /// <summary>The printer the offer was made to, and the only one it opens for.</summary>
         public int PrinterId { get; }
+
+        /// <summary>
+        /// The file's name when it was offered. The offer keeps serving those bytes if the name moves
+        /// on, so this is the name the transfer was started under.
+        /// </summary>
+        public string FileName { get; }
 
         /// <summary>Whether nothing is currently reading this, and so it can be closed.</summary>
         public bool IsIdle

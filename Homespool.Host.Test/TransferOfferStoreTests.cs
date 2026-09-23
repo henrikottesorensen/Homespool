@@ -380,11 +380,51 @@ public sealed class TransferOfferStoreTests : IDisposable
         retired.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The list a restart warning is built on names each standing transfer once, by printer and file,
+    /// and leaves out what has already ended: a released offer, and one past its limit that no sweep
+    /// has reached yet.
+    /// </summary>
+    [Fact]
+    public void StandingOffersNameEachTransferOnceAndOnlyWhileItStands()
+    {
+        // Arrange
+        string file = WriteFile();
+        string otherFile = WriteFile();
+        string resent = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+
+        Offer(Printer, file);
+        _store.Offer(resent, file, Printer).Should().BeTrue();
+        string other = Offer(OtherPrinter, otherFile);
+
+        // Act, Assert
+        _store.StandingOffers().Should().BeEquivalentTo(
+            [(Printer, Path.GetFileName(file)), (OtherPrinter, Path.GetFileName(otherFile))],
+            "a resend of the same file to the same printer is one transfer to whoever reads this");
+
+        // Act
+        _store.Release(OtherPrinter, other);
+
+        // Assert
+        _store.StandingOffers().Should().Equal([(Printer, Path.GetFileName(file))], "a released offer is a transfer that ended");
+
+        // Act
+        _clock.Advance(TransferOfferStore.CollectWithin);
+
+        // Assert
+        _store.StandingOffers().Should().BeEmpty("an offer nobody collected in time is over, swept or not");
+    }
+
     private string Offer(int printerId)
+    {
+        return Offer(printerId, WriteFile());
+    }
+
+    private string Offer(int printerId, string path)
     {
         string token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 
-        _store.Offer(token, WriteFile(), printerId).Should().BeTrue();
+        _store.Offer(token, path, printerId).Should().BeTrue();
 
         return token;
     }

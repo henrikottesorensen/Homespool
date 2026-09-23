@@ -75,6 +75,8 @@ public static class DataServiceCollectionExtensions
                                          StorageOptions storage,
                                          string applicationConnectionString)
     {
+        services.AddSingleton(new TelemetryStorageMode(storage.TelemetryInMemory));
+
         if (!storage.TelemetryInMemory)
         {
             services.AddDbContext<TelemetryDbContext>(ef =>

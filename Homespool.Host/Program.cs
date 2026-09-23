@@ -346,6 +346,7 @@ public static class Program
             // the plain property and none of them knows protection exists.
             builder.Services.AddSingleton<SettingsSecretProtector>();
             builder.Services.AddScoped<SettingsStore>();
+            builder.Services.AddSingleton<Services.ApplicationRestarter>();
             builder.Services.AddSingleton<IPostConfigureOptions<Mail.SmtpOptions>, Mail.SmtpPasswordUnprotector>();
 
             builder.Services.AddOptions<Accounts.InvitationOptions>()

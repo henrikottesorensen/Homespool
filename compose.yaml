@@ -349,6 +349,11 @@ services:
     # and the report of what was lost is lost with it.
     stop_grace_period: 15s
 
+    # What brings the app back after it stops, whether it crashed or an administrator pressed
+    # Restart - that button only stops the process and relies on this to start it again. Without it
+    # a crash leaves the proxy serving its holding page until somebody notices.
+    restart: unless-stopped
+
     # No healthcheck block is needed: the image declares one against /health/live, which answers
     # only for faults a restart would fix - it deliberately stays healthy while the database is
     # rejecting writes, because restarting would not fix that and would discard everything still

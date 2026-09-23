@@ -2535,14 +2535,47 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Saved" xml:space="preserve">
     <value>Settings saved.</value>
   </data>
+  <data name="Settings_SavedNeedsRestart" xml:space="preserve">
+    <value>Some of these changes apply after a restart.</value>
+  </data>
+  <data name="Nav_Restart" xml:space="preserve">
+    <value>Restart</value>
+  </data>
+  <data name="Nav_RestartTitle" xml:space="preserve">
+    <value>Restart the service, so settings that wait for a restart take effect</value>
+  </data>
+  <data name="Restart_Title" xml:space="preserve">
+    <value>Restart Homespool</value>
+  </data>
+  <data name="Restart_Intro" xml:space="preserve">
+    <value>Homespool restarts. The service is unavailable for up to a minute.</value>
+  </data>
+  <data name="Restart_Transfers" xml:space="preserve">
+    <value>A restart breaks these file transfers:</value>
+  </data>
+  <data name="Restart_TransferTo" xml:space="preserve">
+    <value>{0} to {1}</value>
+  </data>
+  <data name="Restart_TransferToRemoved" xml:space="preserve">
+    <value>{0}, to a printer since removed</value>
+  </data>
+  <data name="Restart_TelemetryInMemory" xml:space="preserve">
+    <value>Telemetry is held in memory, so a restart discards the recorded samples and events. Each printer’s last-known state is kept.</value>
+  </data>
+  <data name="Restart_Printing" xml:space="preserve">
+    <value>These printers have a print on them. The prints will carry on, but no data is recorded about them until Homespool has finished restarting:</value>
+  </data>
+  <data name="Restart_NothingInterrupted" xml:space="preserve">
+    <value>Nothing is in progress that a restart would interrupt.</value>
+  </data>
+  <data name="Restart_Button" xml:space="preserve">
+    <value>Restart now</value>
+  </data>
+  <data name="Restart_InProgress" xml:space="preserve">
+    <value>Restarting. This page moves on to the settings when Homespool answers again; if it has not after a few minutes, reload it.</value>
+  </data>
   <data name="Settings_NotSaved" xml:space="preserve">
     <value>Nothing was saved. Correct the values marked below.</value>
-  </data>
-  <data name="Settings_On" xml:space="preserve">
-    <value>On</value>
-  </data>
-  <data name="Settings_Off" xml:space="preserve">
-    <value>Off</value>
   </data>
   <data name="Settings_AppliesImmediately" xml:space="preserve">
     <value>Applies immediately</value>

@@ -4,6 +4,7 @@
 @inject ExternalSignIn ExternalSignIn
 @inject IAuthorizationService AuthorizationService
 @inject UserManager<HSUser> UserManager
+@inject Homespool.Host.Services.ApplicationRestarter Restarter
 
 <ul class="navbar-nav">
 @if (LocalSignInRules.IsSignedIn(User))
@@ -49,6 +50,13 @@
                 <li>
                     <a id="settings" class="dropdown-item" asp-page="/Admin/Settings" title="@Localiser["Nav_SettingsTitle"]">@Localiser["Settings_Title"]</a>
                 </li>
+                @* Only where something will start the service again; elsewhere the page is absent too. *@
+                @if (Restarter.IsAvailable)
+                {
+                    <li>
+                        <a id="restart" class="dropdown-item" asp-page="/Admin/Restart" title="@Localiser["Nav_RestartTitle"]">@Localiser["Nav_Restart"]</a>
+                    </li>
+                }
             </ul>
         </li>
     }

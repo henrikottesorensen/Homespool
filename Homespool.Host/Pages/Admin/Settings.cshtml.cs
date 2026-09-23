@@ -120,6 +120,9 @@ public class SettingsModel : PageModel
     /// <summary>Whether <see cref="StatusMessage"/> reports success.</summary>
     public bool StatusSuccess { get; private set; }
 
+    /// <summary>Whether the last save changed a setting that is only obeyed after a restart.</summary>
+    public bool RestartNeeded { get; private set; }
+
     /// <summary>Shows the current settings.</summary>
     public void OnGet()
     {
@@ -167,12 +170,15 @@ public class SettingsModel : PageModel
             return Page();
         }
 
+        IReadOnlyDictionary<string, string> before = _store.Current();
+
         SettingsSaveResult result = _store.Save(Values);
 
         if (result.Saved)
         {
             StatusMessage = _localiser["Settings_Saved"];
             StatusSuccess = true;
+            RestartNeeded = ChangedAwaitingRestart(before);
 
             Load();
 
@@ -339,6 +345,39 @@ public class SettingsModel : PageModel
                            !IsOn(current.GetValueOrDefault(setting.Path)) &&
                            !Confirmed.Contains(setting.Path, System.StringComparer.Ordinal)),
         ];
+    }
+
+    /// <summary>
+    /// Whether the save just made changed a setting that is only obeyed after a restart.
+    /// </summary>
+    /// <remarks>
+    /// <b>A secret is judged by what was typed</b>, because <see cref="SettingsStore.Current"/> answers
+    /// the placeholder for a stored one before and after alike. Anything but the placeholder replaced
+    /// it - except an empty box where nothing was stored, which changed nothing.
+    /// </remarks>
+    /// <param name="before">The values in force before the save.</param>
+    private bool ChangedAwaitingRestart(IReadOnlyDictionary<string, string> before)
+    {
+        IReadOnlyDictionary<string, string> after = _store.Current();
+
+        return EditableSettings.All.Any(setting =>
+        {
+            if (setting.Grade != SettingGrade.Restart)
+            {
+                return false;
+            }
+
+            if (!setting.IsSecret)
+            {
+                return !string.Equals(before.GetValueOrDefault(setting.Path),
+                                      after.GetValueOrDefault(setting.Path),
+                                      System.StringComparison.Ordinal);
+            }
+
+            return Values.TryGetValue(setting.Path, out string? typed) &&
+                   typed != SettingsStore.SecretPlaceholder &&
+                   !(string.IsNullOrEmpty(typed) && string.IsNullOrEmpty(before.GetValueOrDefault(setting.Path)));
+        });
     }
 
     /// <summary>

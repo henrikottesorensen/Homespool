@@ -1,6 +1,7 @@
 @page
 @using Homespool.Host.Configuration
 @model SettingsModel
+@inject Homespool.Host.Services.ApplicationRestarter Restarter
 @{
     ViewData["Title"] = Localiser["Settings_Title"].Value;
 }
@@ -13,7 +14,19 @@
 
 @if (!string.IsNullOrEmpty(Model.StatusMessage))
 {
-    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">@Model.StatusMessage</div>
+    <div class="alert @(Model.StatusSuccess ? "alert-success" : "alert-warning")" role="alert">
+        @Model.StatusMessage
+
+        @if (Model.RestartNeeded)
+        {
+            @Localiser["Settings_SavedNeedsRestart"]
+
+            @if (Restarter.IsAvailable)
+            {
+                <a id="restart-now" class="alert-link" asp-page="/Admin/Restart">@Localiser["Restart_Button"]</a>
+            }
+        }
+    </div>
 }
 
 @if (Model.AwaitingConfirmation.Count > 0)
@@ -88,20 +101,28 @@
                         var isNumber = type is not null && type != typeof(bool) && type != typeof(string);
 
                         <div class="mb-3">
-                            <label class="form-label" for="@id">@Localiser["Settings_Label_" + id.Replace('-', '_')]</label>
-
                             @if (isFlag)
                             {
-                                <select class="form-select @(error is null ? "" : "is-invalid")"
-                                        style="max-width: 12rem"
-                                        id="@id"
-                                        name="Values[@path]">
-                                    <option value="false" selected="@(!string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_Off"]</option>
-                                    <option value="true" selected="@(string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase))">@Localiser["Settings_On"]</option>
-                                </select>
+                                @* An unchecked box posts nothing, and a missing key leaves the stored
+                                   value alone, so the hidden false is what makes switching off save.
+                                   It has to come after the box: a checked switch posts "true,false"
+                                   and the binder keeps the first. *@
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input @(error is null ? "" : "is-invalid")"
+                                           type="checkbox"
+                                           role="switch"
+                                           id="@id"
+                                           name="Values[@path]"
+                                           value="true"
+                                           @(string.Equals(Model.Values.GetValueOrDefault(path), "true", StringComparison.OrdinalIgnoreCase) ? "checked" : null) />
+                                    <input type="hidden" name="Values[@path]" value="false" />
+                                    <label class="form-check-label" for="@id">@Localiser["Settings_Label_" + id.Replace('-', '_')]</label>
+                                </div>
                             }
                             else
                             {
+                                <label class="form-label" for="@id">@Localiser["Settings_Label_" + id.Replace('-', '_')]</label>
+
                                 @* Numbers get a field the size of the answer. A full-width box for "2"
                                    reads as though a paragraph were expected. *@
                                 <input class="form-control @(error is null ? "" : "is-invalid")"

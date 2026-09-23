@@ -302,6 +302,50 @@ public sealed class SettingsPageTests : IAsyncLifetime
         admin.Dispose();
     }
 
+    /// <summary>
+    /// An unchecked switch posts nothing, and a missing key leaves a setting as it was, so switching
+    /// one off saves only because the page carries a false of its own.
+    /// </summary>
+    /// <remarks>
+    /// The form is submitted as a browser would submit the rendered page, not written out by hand:
+    /// the order of the switch and its hidden false is what decides the answer, and that order lives
+    /// in the markup.
+    /// </remarks>
+    [Fact]
+    public async Task SwitchingAFlagOffSavesItAsOff()
+    {
+        HttpClient admin = await AdminAsync("settings-switch-off@example.com");
+
+        using HttpResponseMessage response = await SubmitSwitchAsync(admin, "Smtp:ProbeOnStartup", on: false);
+
+        response.IsSuccessStatusCode.Should().BeTrue();
+
+        ProbeOnStartup().Should().BeFalse("the switch was off when the form was saved");
+
+        admin.Dispose();
+    }
+
+    [Fact]
+    public async Task SwitchingAFlagBackOnSavesItAsOn()
+    {
+        HttpClient admin = await AdminAsync("settings-switch-on@example.com");
+
+        using (HttpResponseMessage off = await SubmitSwitchAsync(admin, "Smtp:ProbeOnStartup", on: false))
+        {
+            off.IsSuccessStatusCode.Should().BeTrue();
+        }
+
+        ProbeOnStartup().Should().BeFalse();
+
+        using HttpResponseMessage on = await SubmitSwitchAsync(admin, "Smtp:ProbeOnStartup", on: true);
+
+        on.IsSuccessStatusCode.Should().BeTrue();
+
+        ProbeOnStartup().Should().BeTrue("a checked switch posts its own value ahead of the hidden false");
+
+        admin.Dispose();
+    }
+
     // Being asked, agreeing, and turning it back off are covered in SettingsModelTests rather than
     // here. An administrator created by the enrolment helper has no authenticator, so this page can
     // only ever reach the refusal above - and once the requirement is on, the account that turned it
@@ -333,5 +377,51 @@ public sealed class SettingsPageTests : IAsyncLifetime
         using FormUrlEncodedContent content = new(form);
 
         return await client.PostAsync("/Admin/Settings", content, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Posts the page's own inputs for one switch, in document order, the way a browser would: the
+    /// checkbox only when it is on, a hidden input always.
+    /// </summary>
+    private static async Task<HttpResponseMessage> SubmitSwitchAsync(HttpClient client, string path, bool on)
+    {
+        string page = await client.GetStringAsync("/Admin/Settings", TestContext.Current.CancellationToken);
+        string name = $"name=\"Values[{path}]\"";
+
+        List<KeyValuePair<string, string>> form = [];
+
+        foreach (Match input in Regex.Matches(page, "<input\\b[^>]*>"))
+        {
+            string tag = input.Value;
+
+            if (!tag.Contains(name, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (tag.Contains("type=\"checkbox\"", StringComparison.Ordinal) && !on)
+            {
+                continue;
+            }
+
+            string value = Regex.Match(tag, "value=\"([^\"]*)\"").Groups[1].Value;
+
+            form.Add(new KeyValuePair<string, string>($"Values[{path}]", value));
+        }
+
+        form.Should().NotBeEmpty("the page renders a switch for {0}", path);
+
+        form.Add(new KeyValuePair<string, string>("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)));
+
+        using FormUrlEncodedContent content = new(form);
+
+        return await client.PostAsync("/Admin/Settings", content, TestContext.Current.CancellationToken);
+    }
+
+    private bool ProbeOnStartup()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue.ProbeOnStartup;
     }
 }

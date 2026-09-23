@@ -1,0 +1,77 @@
+@page
+@using Homespool.Host.Health
+@model RestartModel
+@{
+    ViewData["Title"] = Localiser["Restart_Title"].Value;
+}
+
+@* Up here because the view returns early once the restart is asked for, and a section defined after
+   that return is never defined at all. *@
+@section Scripts {
+    @if (Model.Restarting)
+    {
+        <script src="~/js/await-restart.js" asp-append-version="true"></script>
+    }
+}
+
+<h1>@ViewData["Title"]</h1>
+
+@if (Model.Restarting)
+{
+    @* The liveness probe rather than /health: it answers only for faults a restart would fix, so a
+       deployment whose database is refusing writes still counts as back. *@
+    <div class="alert alert-info" role="status"
+         data-await-restart="@(HealthEndpoints.HealthEndpointPath)/live"
+         data-await-restart-then="@Url.Page("/Admin/Settings")">
+        @Localiser["Restart_InProgress"]
+    </div>
+
+    return;
+}
+
+<p>@Localiser["Restart_Intro"]</p>
+
+@if (Model.Transfers.Count > 0)
+{
+    <div class="alert alert-warning" role="alert">
+        <p class="mb-2">@Localiser["Restart_Transfers"]</p>
+        <ul class="mb-0">
+            @foreach (var transfer in Model.Transfers)
+            {
+                <li>
+                    @(transfer.printerName is null ?
+                          Localiser["Restart_TransferToRemoved", transfer.fileName] :
+                          Localiser["Restart_TransferTo", transfer.fileName, transfer.printerName])
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@if (Model.Printing.Count > 0)
+{
+    <div class="alert alert-info" role="status">
+        <p class="mb-2">@Localiser["Restart_Printing"]</p>
+        <ul class="mb-0">
+            @foreach (var name in Model.Printing)
+            {
+                <li>@name</li>
+            }
+        </ul>
+    </div>
+}
+
+@if (Model.Transfers.Count == 0 && Model.Printing.Count == 0)
+{
+    <p class="text-body-secondary">@Localiser["Restart_NothingInterrupted"]</p>
+}
+
+@if (Model.TelemetryInMemory)
+{
+    <div class="alert alert-warning" role="alert">@Localiser["Restart_TelemetryInMemory"]</div>
+}
+
+<form method="post">
+    <button type="submit" class="btn btn-warning">@Localiser["Restart_Button"]</button>
+    <a class="btn btn-outline-secondary" asp-page="/Admin/Settings">@Localiser["Common_Cancel"]</a>
+</form>

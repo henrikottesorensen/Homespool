@@ -2430,6 +2430,45 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Saved" xml:space="preserve">
     <value>Indstillinger gemt.</value>
   </data>
+  <data name="Settings_SavedNeedsRestart" xml:space="preserve">
+    <value>Nogle af ændringerne træder først i kraft efter en genstart.</value>
+  </data>
+  <data name="Nav_Restart" xml:space="preserve">
+    <value>Genstart</value>
+  </data>
+  <data name="Nav_RestartTitle" xml:space="preserve">
+    <value>Genstart tjenesten, så indstillinger der venter på en genstart, træder i kraft</value>
+  </data>
+  <data name="Restart_Title" xml:space="preserve">
+    <value>Genstart Homespool</value>
+  </data>
+  <data name="Restart_Intro" xml:space="preserve">
+    <value>Homespool genstartes. Tjenesten er utilgængelig i op til et minut.</value>
+  </data>
+  <data name="Restart_Transfers" xml:space="preserve">
+    <value>En genstart vil afbryde disse filoverførsler:</value>
+  </data>
+  <data name="Restart_TransferTo" xml:space="preserve">
+    <value>{0} til {1}</value>
+  </data>
+  <data name="Restart_TransferToRemoved" xml:space="preserve">
+    <value>{0}, til en printer der siden er fjernet</value>
+  </data>
+  <data name="Restart_TelemetryInMemory" xml:space="preserve">
+    <value>Printertelemetri holdes i hukommelsen, så en genstart vil kassere de gemte målinger og hændelser. Hver printers senest kendte tilstand bevares.</value>
+  </data>
+  <data name="Restart_Printing" xml:space="preserve">
+    <value>Disse printere har et print i gang. Printene vil fortsætte, men ingen data bliver registreret om dem, før Homespool er færdig genstartet:</value>
+  </data>
+  <data name="Restart_NothingInterrupted" xml:space="preserve">
+    <value>Intet er i gang, som en genstart vil afbryde.</value>
+  </data>
+  <data name="Restart_Button" xml:space="preserve">
+    <value>Genstart nu</value>
+  </data>
+  <data name="Restart_InProgress" xml:space="preserve">
+    <value>Genstarter. Siden går videre til indstillingerne, når Homespool svarer igen; er det ikke sket efter et par minutter, så genindlæs den.</value>
+  </data>
   <data name="Settings_NotSaved" xml:space="preserve">
     <value>Intet blev gemt. Ret de markerede værdier nedenfor.</value>
   </data>

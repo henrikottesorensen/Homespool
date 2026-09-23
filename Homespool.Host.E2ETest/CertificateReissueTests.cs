@@ -1,3 +1,4 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
@@ -222,6 +223,39 @@ public sealed class CertificateReissueTests : IAsyncLifetime
 
         PrinterCertificateAuthority.NamesOf(reissued!).Should().NotContain("connect.prusa3d.com",
                                                                            "the tick list may only preserve names the previous certificate already vouched for");
+    }
+
+    /// <summary>
+    /// Viewing the page reads the authority's certificate and never mints one in its place.
+    /// </summary>
+    /// <remarks>
+    /// Start-up mints the authority, so the page normally finds one. But if its files go missing while
+    /// the server runs, a page view that minted a replacement would do it silently, and every printer
+    /// already provisioned would stop trusting this server until each had a USB visit. The page only
+    /// wants the expiry date, which is public, so an absent authority shows no date.
+    /// </remarks>
+    [Fact]
+    public async Task ViewingThePageNeverMintsAnAuthority()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = _factory.Services.GetRequiredService<PrinterCertificateAuthority>();
+        File.Delete(authority.AuthorityKeyPemPath);
+        File.Delete(authority.AuthorityCertificatePemPath);
+        File.Delete(authority.AuthorityDerPath);
+
+        using HttpClient client = await AdministratorClientAsync();
+
+        // Act
+        using HttpResponseMessage response = await client.GetAsync("/Admin/Certificate", TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        File.Exists(authority.AuthorityKeyPemPath).Should().BeFalse("a GET must not be a path that can mint key material");
+
+        using X509Certificate2? after = authority.LoadAuthorityCertificate();
+
+        after.Should().BeNull("a fresh authority would strand every printer already provisioned");
     }
 
     /// <summary>

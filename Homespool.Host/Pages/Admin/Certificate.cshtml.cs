@@ -305,8 +305,10 @@ public class CertificateModel : PageModel
 
         await ClassifyDroppingAsync(cancellationToken);
 
-        using X509Certificate2 authority = _authority.EnsureAuthority();
-        AuthorityExpires = authority.NotAfter.ToUniversalTime();
+        // The certificate alone, never EnsureAuthority: the expiry date is public, and a page view must
+        // not be a path that can mint an authority, which would strand every provisioned printer.
+        using X509Certificate2? authority = _authority.LoadAuthorityCertificate();
+        AuthorityExpires = authority?.NotAfter.ToUniversalTime();
     }
 
     /// <summary>

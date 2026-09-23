@@ -4,13 +4,11 @@
 // parameters resolved to this application's types. Copyright (c) .NET Foundation, MIT licence.
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
@@ -35,11 +33,10 @@ namespace Homespool.Host.Accounts;
 /// what the unit-test harness has to replicate.
 /// </para>
 /// <para>
-/// <b>Same registrations, same order, same lifetimes, with four marked departures</b>:
-/// <see cref="UsernameValidator"/> runs beside the framework's user validator,
-/// <see cref="SecurityStampValidatorOptions.ValidationInterval"/> is shortened from the framework's
-/// default, the user store is <see cref="HSUserStore"/>, and the user manager is
-/// <see cref="HSUserManager"/> - each commented where it is added, and
+/// <b>Same registrations, same order, same lifetimes, with three marked departures</b>:
+/// <see cref="UsernameValidator"/> runs beside the framework's user validator, the user store is
+/// <see cref="HSUserStore"/>, and the user manager is <see cref="HSUserManager"/> - each commented
+/// where it is added, and
 /// all here rather than in <c>Program</c> because the test harness must apply the same rules. The one thing the framework does that this cannot is walk the
 /// type hierarchy to pick a store: <c>AddEntityFrameworkStores</c> reflects over the context to find
 /// the six framework entity types, where <see cref="AddHomespoolStores"/> simply names the ones
@@ -71,9 +68,9 @@ public static class IdentityServices
     /// <para>
     /// <b>The security stamp validators are this application's own</b> - <see cref="SessionStampValidator"/>
     /// and <see cref="RememberedBrowserStampValidator"/>, registered for the framework's two interfaces
-    /// because the cookie schemes resolve them through those. They take their clock from the
-    /// container: the post-configure step below hands <see cref="SecurityStampValidatorOptions"/>
-    /// whatever <see cref="TimeProvider"/> the container holds, which is what lets a test move time.
+    /// because the cookie schemes resolve them through those. Neither reads
+    /// <see cref="SecurityStampValidatorOptions"/>, so the framework's post-configure step for it, which
+    /// only hands it a clock, is not carried over.
     /// </para>
     /// </remarks>
     public static IdentityBuilder AddHomespoolIdentity(this IServiceCollection services, Action<IdentityOptions> configure)
@@ -98,7 +95,6 @@ public static class IdentityServices
         services.TryAddScoped<IdentityErrorDescriber>();
 
         services.TryAddScoped<ISecurityStampValidator, SessionStampValidator>();
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<SecurityStampValidatorOptions>, PostConfigureSecurityStampValidatorOptions>());
         services.TryAddScoped<ITwoFactorSecurityStampValidator, RememberedBrowserStampValidator>();
         services.TryAddScoped<IUserClaimsPrincipalFactory<HSUser>, UserClaimsPrincipalFactory<HSUser, IdentityRole<long>>>();
         services.TryAddScoped<IUserConfirmation<HSUser>, DefaultUserConfirmation<HSUser>>();
@@ -106,20 +102,14 @@ public static class IdentityServices
         // The WebAuthn engine behind the Passkey scheme, which drives it directly.
         services.TryAddScoped<IPasskeyHandler<HSUser>, PasskeyHandler<HSUser>>();
 
-        // The fourth departure: the failed count and the lockout it starts are saved without the user
+        // The third departure: the failed count and the lockout it starts are saved without the user
         // validators, so an account whose name stopped validating still locks out.
         services.TryAddScoped<UserManager<HSUser>, HSUserManager>();
         services.TryAddScoped<RoleManager<IdentityRole<long>>>();
 
         services.Configure(configure);
 
-        // A second departure, and here rather than in Program for the same reason as the first: how
-        // often a remembered browser is re-checked against its account decides how long a revoked one
-        // takes to be noticed, and a test asserting that must be measuring the interval the deployment
-        // runs.
-        services.Configure<SecurityStampValidatorOptions>(IdentityConfiguration.ConfigureStampValidation);
-
-        // The other departure: a validator of this application's own, run after Identity's. It is
+        // The first departure: a validator of this application's own, run after Identity's. It is
         // registered here rather than in Program because it decides what a username may BE, which
         // the test harness must agree with - the same reason IdentityConfiguration is shared.
         IdentityBuilder builder = new(typeof(HSUser), typeof(IdentityRole<long>), services);
@@ -144,7 +134,7 @@ public static class IdentityServices
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        // The third departure: the framework's store, with the authenticator key encrypted and the
+        // The second departure: the framework's store, with the authenticator key encrypted and the
         // recovery codes hashed rather than kept as given.
         builder.Services.TryAddScoped<IUserStore<HSUser>, HSUserStore>();
 
@@ -174,26 +164,5 @@ public static class IdentityServices
                       .AddTokenProvider(TokenOptions.DefaultEmailProvider, typeof(EmailTokenProvider<HSUser>))
                       .AddTokenProvider(TokenOptions.DefaultPhoneProvider, typeof(PhoneNumberTokenProvider<HSUser>))
                       .AddTokenProvider(TokenOptions.DefaultAuthenticatorProvider, typeof(AuthenticatorTokenProvider<HSUser>));
-    }
-
-    /// <summary>
-    /// Hands <see cref="SecurityStampValidatorOptions"/> the container's <see cref="TimeProvider"/>
-    /// unless something set one already. The framework's own copy is private to its assembly.
-    /// </summary>
-    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
-                     Justification = "Instantiated by the container, through the enumerable registration above.")]
-    private sealed class PostConfigureSecurityStampValidatorOptions(TimeProvider? timeProvider = null)
-        : IPostConfigureOptions<SecurityStampValidatorOptions>
-    {
-        // Left null rather than defaulted to TimeProvider.System: StampValidator already falls back to
-        // the system clock itself.
-        private readonly TimeProvider? _timeProvider = timeProvider;
-
-        public void PostConfigure(string? name, SecurityStampValidatorOptions options)
-        {
-            ArgumentNullException.ThrowIfNull(options);
-
-            options.TimeProvider ??= _timeProvider;
-        }
     }
 }

@@ -22,13 +22,13 @@ namespace Homespool.Host.Test;
 
 /// <summary>
 /// The two validators, driven through the cookie schemes they are wired to: a session is checked
-/// against its row on every request and nothing more, and a remembered browser older than the interval
-/// is re-checked against the account's security stamp.
+/// against its row on every request and nothing more, and a remembered browser is re-checked against
+/// the account's security stamp every time it is read.
 /// </summary>
 /// <remarks>
 /// <b>One clock for the cookies and the validators.</b> The container's <see cref="TimeProvider"/>
-/// reaches both, so a cookie is issued at the fake now and the validators measure from the same
-/// clock; advancing it past the interval before the next request is what makes a cookie "aged".
+/// reaches both, so a cookie is issued at the fake now; advancing it is what makes a cookie "aged",
+/// which is what the framework's thirty-minute interval would have turned on.
 /// </remarks>
 public sealed class StampValidatorTests : IDisposable
 {
@@ -149,17 +149,16 @@ public sealed class StampValidatorTests : IDisposable
     }
 
     /// <summary>
-    /// The remembered cookie carries the stamp, so an aged one is still honoured while the account is
-    /// unchanged. Without the stamp claim the check would fail on the first aged read and, as the
-    /// framework's validator does, end the session with it.
+    /// The remembered cookie carries the stamp, so it is still honoured while the account is unchanged.
+    /// Without the stamp claim the check would fail on the first read and, as the framework's validator
+    /// does, end the session with it.
     /// </summary>
     [Fact]
-    public async Task AnAgedRememberedBrowserWithTheSameStampIsStillRemembered()
+    public async Task ARememberedBrowserWithTheSameStampIsStillRemembered()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
         string remembered = await rig.RememberedMachineCookieAsync(user);
-        _clock.Advance(PastTheInterval);
 
         DefaultHttpContext later = rig.NewRequest(remembered);
 
@@ -167,15 +166,20 @@ public sealed class StampValidatorTests : IDisposable
         rig.Cleared(later, IdentityConstants.TwoFactorRememberMeScheme).Should().BeFalse();
     }
 
+    /// <summary>
+    /// A remembered browser is what spares a sign-in its second factor, so a stamp change - an
+    /// authenticator reset or turned off - forgets it on the very next read, not once an interval has
+    /// passed. The clock does not move here: a browser remembered a minute ago is the case that matters.
+    /// </summary>
     [Fact]
-    public async Task AnAgedRememberedBrowserWithAChangedStampIsForgottenAndTheSessionEnded()
+    public async Task ARememberedBrowserWithAChangedStampIsForgottenAtOnceAndTheSessionEnded()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
         string remembered = await rig.RememberedMachineCookieAsync(user);
 
+        _clock.Advance(TimeSpan.FromMinutes(1));
         (await rig.Users.UpdateSecurityStampAsync(user)).Succeeded.Should().BeTrue();
-        _clock.Advance(PastTheInterval);
 
         DefaultHttpContext later = rig.NewRequest(remembered);
 

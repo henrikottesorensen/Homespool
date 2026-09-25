@@ -66,6 +66,14 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
 
     private const string Base32Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
+    /// <summary>
+    /// How many times <see cref="CountAccessFailureAsync"/> goes round when both of its updates miss.
+    /// Both miss only when the count falls between them, which takes a reset or a give-back - a right
+    /// answer - landing in that gap every time; giving up answers "locked out" to an account that is
+    /// not, so the ceiling is set where no run of right answers reaches it, as the limiter's is.
+    /// </summary>
+    private const int MaxCountPasses = 64;
+
     private readonly IDataProtector _authenticatorKeys;
     private readonly ILogger<HSUserStore> _logger;
     private readonly Dictionary<long, List<string>> _replacedStamps = [];
@@ -187,7 +195,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
         DateTimeOffset end = DateTimeOffset.FromUnixTimeMilliseconds(lockoutEnd.ToUnixTimeMilliseconds());
         (string? loaded, string fresh, string other) = NextStamps(user);
 
-        for (int pass = 0; pass < 3; pass++)
+        for (int pass = 0; pass < MaxCountPasses; pass++)
         {
             IQueryable<HSUser> open = Row(user);
 

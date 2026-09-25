@@ -348,10 +348,20 @@ public sealed class UserAdministration
 
         await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
         {
-            user.LockoutEnd = null;
-            user.AccessFailedCount = 0;
+            // An update of the row, not a save of the copy loaded above. A failed sign-in counted in
+            // between moves the concurrency stamp, and the save would then be refused on it - or, when
+            // the copy already read zero, write nothing and report a clear over a standing count.
+            // The stamp still moves, so a copy loaded before this cannot save the lockout back.
+            string stamp = Guid.NewGuid().ToString();
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.Users.Where(u => u.Id == userId)
+                            .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.LockoutEnd, (DateTimeOffset?)null)
+                                                                  .SetProperty(u => u.AccessFailedCount, 0)
+                                                                  .SetProperty(u => u.ConcurrencyStamp, stamp),
+                                                cancellationToken);
+
+            // Nothing on the copy is pending; reloading keeps it saying what is stored.
+            await _dbContext.Entry(user).ReloadAsync(cancellationToken);
 
             cleared = await _limiter.ResetAllAsync(userId, cancellationToken);
 

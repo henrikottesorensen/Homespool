@@ -37,6 +37,8 @@ public sealed class ExternalRoundTripTests : IDisposable
 {
     private const string Provider = "oidc";
 
+    private const string Issuer = "https://provider.example.net";
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-roundtrip-{Guid.NewGuid():N}.db");
 
     public void Dispose()
@@ -64,7 +66,7 @@ public sealed class ExternalRoundTripTests : IDisposable
         await page.OnGetLinkLoginCallbackAsync();
 
         // Assert
-        (await rig.Users.FindByLoginAsync(Provider, "attacker-subject")).Should().BeNull("a re-authentication's answer is not a link");
+        (await rig.Users.FindByLoginAsync(Provider, ExternalSignIn.ProviderKey(Issuer, "attacker-subject"))).Should().BeNull("a re-authentication's answer is not a link");
         (await rig.Users.GetLoginsAsync(victim)).Should().ContainSingle("the account keeps only the login it had");
     }
 
@@ -80,7 +82,7 @@ public sealed class ExternalRoundTripTests : IDisposable
 
         await page.OnGetLinkLoginCallbackAsync();
 
-        (await rig.Users.FindByLoginAsync(Provider, "second-subject"))!.Id.Should().Be(owner.Id);
+        (await rig.Users.FindByLoginAsync(Provider, ExternalSignIn.ProviderKey(Issuer, "second-subject")))!.Id.Should().Be(owner.Id);
     }
 
     [Theory]
@@ -126,7 +128,7 @@ public sealed class ExternalRoundTripTests : IDisposable
         ExternalLoginInfo? info = await ReadAsync(rig, answer, roundTrip, expected);
 
         info.Should().NotBeNull();
-        info!.ProviderKey.Should().Be("some-subject");
+        info!.ProviderKey.Should().Be(ExternalSignIn.ProviderKey(Issuer, "some-subject"));
     }
 
     /// <summary>An answer that names no flow - a round trip started before flows were named - is nobody's.</summary>
@@ -185,7 +187,7 @@ public sealed class ExternalRoundTripTests : IDisposable
     {
         HSUser user = await rig.AddUserAsync(email);
         (await rig.Users.RemovePasswordAsync(user)).Succeeded.Should().BeTrue();
-        (await rig.Users.AddLoginAsync(user, new UserLoginInfo(Provider, subject, "Dex"))).Succeeded.Should().BeTrue();
+        (await rig.Users.AddLoginAsync(user, new UserLoginInfo(Provider, ExternalSignIn.ProviderKey(Issuer, subject), "Dex"))).Succeeded.Should().BeTrue();
 
         return user;
     }
@@ -203,7 +205,7 @@ public sealed class ExternalRoundTripTests : IDisposable
     private static async Task<string> AnswerAsync(LocalSchemeRig rig, string subject, AuthenticationProperties properties)
     {
         DefaultHttpContext request = rig.NewRequest();
-        ClaimsPrincipal principal = new(new ClaimsIdentity([new Claim(JwtClaimTypes.Subject, subject)], Provider));
+        ClaimsPrincipal principal = new(new ClaimsIdentity([new Claim(JwtClaimTypes.Subject, subject, ClaimValueTypes.String, Issuer)], Provider));
 
         await request.SignInAsync(IdentityConstants.ExternalScheme, principal, properties);
 

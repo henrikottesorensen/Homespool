@@ -116,6 +116,25 @@ public sealed class ExternalOidcDexTests
     }
 
     /// <summary>
+    /// The same subject, linked under another issuer, is somebody else: a deployment moved to a new
+    /// provider does not sign the new provider's user in as whoever held that subject at the old one.
+    /// </summary>
+    [RequiresDexFact]
+    public async Task ASubjectLinkedUnderAnotherIssuerDoesNotSignIn()
+    {
+        using Fixture fixture = new(allowInviteMatchByEmail: false);
+        await fixture.CreateProviderUserAsync("https://previous-provider.example.net");
+
+        using HttpResponseMessage callback = await fixture.DriveProviderSignInAsync(TestContext.Current.CancellationToken);
+
+        callback.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        callback.Headers.Location!.OriginalString.Should().Contain("/Account/Login", "no account holds this issuer's subject");
+        callback.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies);
+        (cookies ?? []).Should().NotContain(cookie => cookie.StartsWith(".AspNetCore.Identity.Application", StringComparison.Ordinal),
+                                            "nobody was signed in");
+    }
+
+    /// <summary>
     /// With the option on and the provider asserting it verified the address, an outstanding invite for
     /// that address is claimable — and is spent exactly once.
     /// </summary>
@@ -138,6 +157,9 @@ public sealed class ExternalOidcDexTests
 
         created.Should().NotBeNull("the invite authorised exactly this account");
         created!.Email.Should().Be(DexFixture.MockEmail);
+        (await fixture.LoginsAsync(created)).Should().ContainSingle()
+            .Which.ProviderKey.Should().Be(ExternalSignIn.ProviderKey(DexFixture.Issuer, DexFixture.MockSubject),
+                                           "the subject is stored under the issuer dex's id token names");
 
         (await fixture.ReloadInviteAsync(invitation.Id, TestContext.Current.CancellationToken))!
             .UsedAt.Should().NotBeNull("accepting through a provider spends the invite like any other accept");
@@ -358,13 +380,38 @@ public sealed class ExternalOidcDexTests
             using IServiceScope scope = _factory.Services.CreateScope();
             UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
 
-            HSUser user = new("kilgore") { Email = DexFixture.MockEmail, EmailConfirmed = true };
+            HSUser created = await CreateProviderUserAsync(DexFixture.Issuer);
+            HSUser user = (await users.FindByIdAsync(created.Id.ToString()))!;
 
-            (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
-            (await users.AddLoginAsync(user, new UserLoginInfo(Schemes.ExternalOidc, DexFixture.MockSubject, "Dex"))).Succeeded.Should().BeTrue();
             (await users.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5))).Succeeded.Should().BeTrue();
 
             return user;
+        }
+
+        /// <summary>
+        /// An account with no password and dex's mock subject as its one login, linked as issued by
+        /// <paramref name="issuer"/>.
+        /// </summary>
+        public async Task<HSUser> CreateProviderUserAsync(string issuer)
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+
+            HSUser user = new("kilgore") { Email = DexFixture.MockEmail, EmailConfirmed = true };
+            UserLoginInfo login = new(Schemes.ExternalOidc, ExternalSignIn.ProviderKey(issuer, DexFixture.MockSubject), "Dex");
+
+            (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
+            (await users.AddLoginAsync(user, login)).Succeeded.Should().BeTrue();
+
+            return user;
+        }
+
+        public async Task<IList<UserLoginInfo>> LoginsAsync(HSUser user)
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+
+            return await users.GetLoginsAsync((await users.FindByIdAsync(user.Id.ToString()))!);
         }
 
         /// <summary>

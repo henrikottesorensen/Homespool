@@ -36,6 +36,8 @@ public sealed class ExternalLoginsNoticeTests : IDisposable
 {
     private const string Provider = "oidc";
 
+    private const string Issuer = "https://provider.example.net";
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-loginnotice-{Guid.NewGuid():N}.db");
     private readonly CapturingEmailSender _mail = new();
 
@@ -63,7 +65,7 @@ public sealed class ExternalLoginsNoticeTests : IDisposable
         await page.OnGetLinkLoginCallbackAsync();
 
         // Assert
-        (await rig.Users.FindByLoginAsync(Provider, "new-subject"))!.Id.Should().Be(owner.Id);
+        (await rig.Users.FindByLoginAsync(Provider, ExternalSignIn.ProviderKey(Issuer, "new-subject")))!.Id.Should().Be(owner.Id);
         (string email, string subject, string body) sent = _mail.SentEmails.Should().ContainSingle().Subject;
         sent.email.Should().Be("owner@example.com");
         sent.subject.Should().Be("A sign-in provider was linked to your Homespool account");
@@ -274,7 +276,7 @@ public sealed class ExternalLoginsNoticeTests : IDisposable
     private static async Task<string> AnswerAsync(LocalSchemeRig rig, string subject, ExternalRoundTrip roundTrip, HSUser expectedAccount)
     {
         DefaultHttpContext request = rig.NewRequest();
-        ClaimsPrincipal principal = new(new ClaimsIdentity([new Claim(JwtClaimTypes.Subject, subject)], Provider));
+        ClaimsPrincipal principal = new(new ClaimsIdentity([new Claim(JwtClaimTypes.Subject, subject, ClaimValueTypes.String, Issuer)], Provider));
         AuthenticationProperties properties = ExternalSignIn.ChallengeProperties(Provider, "/back", roundTrip, expectedAccount.Id.ToString());
 
         await request.SignInAsync(IdentityConstants.ExternalScheme, principal, properties);

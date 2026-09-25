@@ -119,7 +119,7 @@ public sealed class ProviderReauthenticationDexTests
         // Assert
         linked.StatusCode.Should().Be(HttpStatusCode.Redirect);
         (await fixture.LoginsAsync(victim)).Should().ContainSingle()
-            .Which.ProviderKey.Should().Be("some-other-subject", "the stranger dex vouched for was not linked");
+            .Which.ProviderKey.Should().Be(ExternalSignIn.ProviderKey(DexFixture.Issuer, "some-other-subject"), "the stranger dex vouched for was not linked");
     }
 
     /// <summary>
@@ -195,7 +195,7 @@ public sealed class ProviderReauthenticationDexTests
             HSUser user = new("kilgore") { Email = DexFixture.MockEmail, EmailConfirmed = true };
 
             (await users.CreateAsync(user)).Succeeded.Should().BeTrue();
-            (await users.AddLoginAsync(user, new UserLoginInfo(Schemes.ExternalOidc, subject, "Dex"))).Succeeded.Should().BeTrue();
+            (await users.AddLoginAsync(user, new UserLoginInfo(Schemes.ExternalOidc, ExternalSignIn.ProviderKey(DexFixture.Issuer, subject), "Dex"))).Succeeded.Should().BeTrue();
 
             return user;
         }

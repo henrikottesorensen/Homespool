@@ -35,10 +35,12 @@ namespace Homespool.Host.Authentication;
 /// to <see cref="LocalSignIn"/> the way the password page does.
 /// </para>
 /// <para>
-/// <b>The provider key is the ticket's <see cref="JwtClaimTypes.Subject"/></b>, and nothing else. The
-/// framework tried <c>ClaimTypes.NameIdentifier</c> first, for handlers that map inbound claims to the
-/// SOAP-era names; this application's handlers do not, and a principal that carried both would be
-/// one that a reader gets wrong.
+/// <b>The provider key is the ticket's <see cref="JwtClaimTypes.Subject"/> qualified by its
+/// issuer</b> - see <see cref="ProviderKey"/>. A subject is unique only within the issuer that
+/// assigned it, and the login provider is the scheme name, which stays the same when the scheme is
+/// pointed at another provider. The framework read <c>ClaimTypes.NameIdentifier</c> first, for
+/// handlers that map inbound claims to the SOAP-era names; this application's handlers do not, and a
+/// principal that carried both would be one that a reader gets wrong.
 /// </para>
 /// <para>
 /// <b>Three items ride the challenge round trip</b>: which provider was challenged, since the callback
@@ -145,13 +147,46 @@ public sealed class ExternalSignIn
     public const int MaxClaimLength = 256;
 
     /// <summary>
+    /// The key a provider identity is stored and matched under: <paramref name="issuer"/>, a space, and
+    /// <paramref name="subject"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The issuer is part of the key because a subject alone names nobody.</b> OpenID Connect
+    /// promises only that a <c>sub</c> is never reassigned <i>within its issuer</i>, and small
+    /// providers number their users from one. Keyed on the subject alone, pointing
+    /// <c>Oidc:Authority</c> at a different provider would sign that provider's user 1 in as the
+    /// previous provider's user 1.
+    /// </para>
+    /// <para>
+    /// <b>The space cannot be ambiguous</b>: an issuer is an absolute URL, which holds none, so the
+    /// first space in a key is always the separator, whatever the subject holds.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="issuer"/> is not an absolute http or https URL without whitespace, or
+    /// <paramref name="subject"/> is empty.
+    /// </exception>
+    public static string ProviderKey(string issuer, string subject)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(subject);
+
+        if (!IsIssuer(issuer))
+        {
+            throw new ArgumentException("A provider key's issuer is an absolute http or https URL without whitespace.", nameof(issuer));
+        }
+
+        return issuer + " " + subject;
+    }
+
+    /// <summary>
     /// Makes a provider's answer printable as it arrives, or reports which claim makes that
     /// impossible: every value is the provider's to write, and a good many of them are the person's
     /// own to choose at the provider.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>An identifier is refused, never rewritten.</b> <c>sub</c> becomes the provider key, stored
+    /// <b>An identifier is refused, never rewritten.</b> <c>sub</c> is the provider key's subject, stored
     /// and compared ordinally on every sign-in, and <c>email</c> is what an invitation is matched
     /// on. Replacing a character in either would make two of the provider's identities one here - so
     /// one holding an unprintable character, or longer than its specification allows, fails the
@@ -277,8 +312,8 @@ public sealed class ExternalSignIn
 
     /// <summary>
     /// The provider's answer, read from the external cookie, or <see langword="null"/> when there is
-    /// none, it names no provider or subject, it was started by a flow other than
-    /// <paramref name="roundTrip"/>, or it was meant for an account other than
+    /// none, it names no provider or subject, its subject names no issuer URL, it was started by a flow
+    /// other than <paramref name="roundTrip"/>, or it was meant for an account other than
     /// <paramref name="expectedAccountId"/>.
     /// </summary>
     /// <remarks>
@@ -315,13 +350,24 @@ public sealed class ExternalSignIn
             return null;
         }
 
-        string? providerKey = external.Principal.FindFirstValue(JwtClaimTypes.Subject);
+        // The issuer is read off the subject claim itself. The OpenID Connect handler deletes the iss
+        // claim by default, but the token handler stamps every id-token claim with the issuer it
+        // validated against the provider's discovery document, and the external cookie keeps it.
+        Claim? subject = external.Principal.FindFirst(JwtClaimTypes.Subject);
 
-        if (providerKey is null)
+        if (subject is null)
         {
             return null;
         }
 
+        if (!IsIssuer(subject.Issuer))
+        {
+            _logger.LogWarning("An external answer from {LoginProvider} was refused: its subject names no issuer URL.", provider);
+
+            return null;
+        }
+
+        string providerKey = ProviderKey(subject.Issuer, subject.Value);
         string displayName = (await ProvidersAsync()).FirstOrDefault(scheme => scheme.Name == provider)?.DisplayName ?? provider;
 
         return new ExternalLoginInfo(external.Principal, provider, providerKey, displayName)
@@ -367,5 +413,18 @@ public sealed class ExternalSignIn
         await _signIn.SignInAsync(context, user, isPersistent, info.LoginProvider);
 
         return ExternalSignInResult.Succeeded;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="issuer"/> can qualify a subject: an absolute http or https URL, which a
+    /// claim made anywhere but a validated token - issued by <see cref="ClaimsIdentity.DefaultIssuer"/>
+    /// or by a scheme name - is not.
+    /// </summary>
+    private static bool IsIssuer([NotNullWhen(true)] string? issuer)
+    {
+        return !string.IsNullOrEmpty(issuer) &&
+               !issuer.Any(char.IsWhiteSpace) &&
+               Uri.TryCreate(issuer, UriKind.Absolute, out Uri? uri) &&
+               (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp);
     }
 }

@@ -112,6 +112,31 @@ public sealed class CameraAccessServiceTests : IDisposable
     }
 
     /// <summary>
+    /// <b>A closed account's membership grants nothing here either.</b> The row stays, because history
+    /// names the people in it, so the check has to ask for an open account rather than for the row -
+    /// the same question every other membership decision asks.
+    /// </summary>
+    [Fact]
+    public async Task AClosedAccountsMembershipFindsNoCamera()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        HSUser alice = await AddUserAsync(context, Alice, "alice@example.com");
+        Camera camera = await AddTeamWithCameraAsync(context, Alice, CapabilityPresets.Manager);
+        alice.DeactivatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        CameraAccessService access = NewService(context);
+
+        // Act
+        Camera? found = await access.FindAsync(camera.Uuid, Caller.Unscoped(Alice), Capability.ViewCamera,
+                                               TestContext.Current.CancellationToken);
+
+        // Assert
+        found.Should().BeNull("a closed account keeps its membership row and can do nothing with it");
+    }
+
+    /// <summary>
     /// Claiming a camera plugged into this machine is an administrator's act, and the question is the
     /// one every administrator decision asks: the role row <b>and</b> an open account. A closed
     /// administrator still holds the role row, so the service asks for an open account rather than

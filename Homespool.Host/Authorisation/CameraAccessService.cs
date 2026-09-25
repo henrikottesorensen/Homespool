@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -109,7 +110,7 @@ public class CameraAccessService
             return null;
         }
 
-        TeamMember? membership = await _dbContext.TeamMembers
+        TeamMember? membership = await Memberships.Open(_dbContext)
                                                  .FirstOrDefaultAsync(
                                                      member => member.TeamId == camera.TeamId && member.UserId == caller.UserId,
                                                      cancellationToken)

@@ -76,9 +76,18 @@ public class TeamService
         return true;
     }
 
+    /// <summary>
+    /// <paramref name="userId"/>'s membership of <paramref name="teamId"/>, or null - including when
+    /// the account is closed.
+    /// </summary>
+    /// <remarks>
+    /// Through <see cref="Memberships.Open"/>, like the other two lookups below, because what callers
+    /// ask of the answer is whether the member may act: a closed account keeps its row and can do
+    /// nothing with it.
+    /// </remarks>
     public Task<TeamMember?> GetMemberAsync(int teamId, long userId, CancellationToken cancellationToken)
     {
-        return _dbContext.TeamMembers.SingleOrDefaultAsync(m => m.TeamId == teamId && m.UserId == userId, cancellationToken);
+        return Memberships.Open(_dbContext).SingleOrDefaultAsync(m => m.TeamId == teamId && m.UserId == userId, cancellationToken);
     }
 
     /// <summary>
@@ -87,21 +96,22 @@ public class TeamService
     /// </summary>
     /// <remarks>
     /// Null answers a team that does not exist and a team the account is not in alike, so a caller
-    /// refusing on null cannot be used to learn which uuids name somebody else's team.
+    /// refusing on null cannot be used to learn which uuids name somebody else's team. A closed
+    /// account's membership is null too.
     /// </remarks>
     public Task<TeamMember?> GetMemberAsync(Guid teamUuid, long userId, CancellationToken cancellationToken)
     {
-        return _dbContext.TeamMembers.SingleOrDefaultAsync(m => m.Team!.Uuid == teamUuid && m.UserId == userId, cancellationToken);
+        return Memberships.Open(_dbContext).SingleOrDefaultAsync(m => m.Team!.Uuid == teamUuid && m.UserId == userId, cancellationToken);
     }
 
     /// <summary>
     /// The caller's default team membership - where a printer claim lands when it doesn't name a
     /// team. Every account has exactly one, enforced by the filtered unique
-    /// index on <c>(UserId) WHERE IsDefault</c>.
+    /// index on <c>(UserId) WHERE IsDefault</c> - and a closed account's answers null.
     /// </summary>
     public Task<TeamMember?> GetDefaultTeamMembershipAsync(long userId, CancellationToken cancellationToken)
     {
-        return _dbContext.TeamMembers.SingleOrDefaultAsync(m => m.UserId == userId && m.IsDefault, cancellationToken);
+        return Memberships.Open(_dbContext).SingleOrDefaultAsync(m => m.UserId == userId && m.IsDefault, cancellationToken);
     }
 
     public Task<List<TeamMember>> GetMembersAsync(int teamId, CancellationToken cancellationToken)

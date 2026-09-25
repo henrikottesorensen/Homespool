@@ -96,6 +96,32 @@ public sealed class CameraServiceTests : IDisposable
               .ThrowAsync<CredentialScopeDeniedException>();
     }
 
+    /// <summary>
+    /// <b>A closed account's membership cannot save a camera.</b> The create path reads the membership
+    /// itself, so it has to ask for an open account on its own account - the row outlives the closure.
+    /// </summary>
+    [Fact]
+    public async Task AClosedAccountsMembershipCannotSaveACamera()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        HSUser alice = await AddUserAsync(context);
+        Team team = await AddTeamAsync(context);
+        alice.DeactivatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        CameraService cameras = NewService(context);
+
+        // Act
+        CameraSaveOutcome outcome = await cameras.CreateAsync(Caller.Unscoped(Alice), team.Uuid, "bed",
+                                                              "rtsp://cam.lan/stream", printerUuid: null,
+                                                              resolution: null, TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome.Saved.Should().BeFalse();
+        outcome.Error!.Key.Should().Be("Cameras_NotYourTeam", "the answer a team the caller is not in gets");
+    }
+
     public void Dispose()
     {
         foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })

@@ -45,9 +45,11 @@ namespace Homespool.Host.PrusaConnect;
 /// side effects.
 /// </para>
 /// <para>
-/// <b>What this does not fix.</b> A caller rotating fingerprints still spends the ceiling, so it can
-/// still crowd out real printers on that route; what it can no longer do is exhaust the window from
-/// one identity, and a printer that has its own window keeps it. Telling an enrolled printer from an
+/// <b>What this does not fix.</b> The ceiling is acquired before any partition, so a caller rotating
+/// fingerprints who fills it refuses every printer on that route, enrolled or not - a printer's own
+/// window is never reached. What the partition stops is one identity filling the ceiling alone. Nor
+/// is a printer's window its own against anyone who knows its fingerprint, which is an identifier
+/// rather than a secret: they spend that window as the printer. Telling an enrolled printer from an
 /// invented one needs identity this middleware does not have - it runs before authentication,
 /// deliberately, so a rejected request costs no database work.
 /// </para>

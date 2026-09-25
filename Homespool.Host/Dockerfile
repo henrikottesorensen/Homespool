@@ -159,12 +159,12 @@ COPY --from=publish /app/publish .
 # Deliberately no --location: the app excludes /health from HTTPS redirection, because curl --fail
 # treats a 307 as success and would otherwise report healthy without ever reaching the endpoint.
 #
-# --start-interval is what makes the proxy appear promptly. compose gates it on service_healthy, so
-# nothing answers port 80 until this check passes - and with only --interval, a container that became
-# ready one second after a poll waited another 30 s to be noticed. On a Raspberry Pi, where the first
-# migration already takes minutes, that trailing half-minute of refused connections reads as a broken
-# deployment; it was reported as one. Polling every 5 s until the first success costs nothing
-# afterwards, because the fast interval applies only during the start period.
+# --start-interval is what gets the container reported healthy promptly. Nothing in compose waits on
+# it - the proxy depends on service_started and serves a holding page while this starts - but
+# `docker compose ps`, and any monitor reading the status, does: with only --interval, a container
+# that became ready one second after a poll would show as starting for another 30 s. Polling every
+# 5 s until the first success costs nothing afterwards, because the fast interval applies only
+# during the start period.
 #
 # --start-period is 120 s rather than 30 s for the same class of machine. It is not a delay: a check
 # that succeeds during the start period ends it immediately, so this is free on hardware that boots

@@ -478,6 +478,48 @@ public sealed class UserAdministrationTests : IDisposable
             .Should().BeNull();
     }
 
+    /// <summary>
+    /// A wrong password counted after the administrator's copy of the account was loaded, which the
+    /// clear must still clear. Saving that copy loses it one of two ways: a copy that already read
+    /// zero has nothing to save and the clear reports success over a standing count; a copy that read
+    /// a count is saved under a stamp the counted failure has moved, and is refused with an exception.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    public async Task ClearingTheLockoutClearsAFailureCountedSinceTheAccountWasLoaded(int failuresTheCopyHasSeen)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+
+        for (int failure = 0; failure < failuresTheCopyHasSeen; failure++)
+        {
+            (await users.AccessFailedAsync(subject)).Succeeded.Should().BeTrue();
+        }
+
+        // Counted through another context, as a parallel request would, under this context's copy.
+        await using HomespoolDbContext elsewhere = await MigratedContextAsync();
+        (UserManager<HSUser> elsewhereUsers, _, _, _) = IdentityTestHarness.BuildIdentityServices(elsewhere);
+        HSUser counted = await elsewhereUsers.FindByIdAsync(subject.Id.ToString(CultureInfo.InvariantCulture)) ??
+                         throw new InvalidOperationException("added above");
+        (await elsewhereUsers.AccessFailedAsync(counted)).Succeeded.Should().BeTrue();
+
+        // Act
+        UserAdminResult result = await Administration(context, provider)
+            .ClearLockoutAsync(admin.Id, subject.Id, CancellationToken.None);
+
+        // Assert
+        result.Succeeded.Should().BeTrue();
+        (await context.Users.AsNoTracking().Where(u => u.Id == subject.Id).Select(u => u.AccessFailedCount)
+                      .SingleAsync(TestContext.Current.CancellationToken))
+            .Should().Be(0);
+        subject.AccessFailedCount.Should().Be(0, "the copy this context holds says what was stored");
+    }
+
     [Fact]
     public async Task ActingOnAnAccountThatIsNotThereRefusesRatherThanThrows()
     {

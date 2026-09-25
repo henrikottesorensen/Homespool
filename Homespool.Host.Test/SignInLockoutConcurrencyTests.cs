@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -8,9 +9,12 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+
+using OtpNet;
 
 using Homespool.Host.Authentication;
 using Homespool.Model.Entities;
@@ -49,6 +53,30 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
                 File.Delete(path);
             }
         }
+
+        if (Directory.Exists(KeysPath))
+        {
+            Directory.Delete(KeysPath, recursive: true);
+        }
+    }
+
+    /// <summary>One key ring for every rig of a test, so a cookie or an authenticator key one wrote, another reads.</summary>
+    private string KeysPath => _databasePath + "-keys";
+
+    /// <summary>
+    /// The rigs' data protection pointed at one key ring, then <paramref name="also"/>. Each rig is its
+    /// own container, and by default its own keys: the pending sign-in cookie and the stored
+    /// authenticator key would then be unreadable to every rig but the one that wrote them.
+    /// </summary>
+    private Action<IServiceCollection> SharedKeys(Action<IServiceCollection>? also = null)
+    {
+        return services =>
+        {
+            services.AddDataProtection()
+                    .PersistKeysToFileSystem(new DirectoryInfo(KeysPath))
+                    .SetApplicationName("hs-lockrace");
+            also?.Invoke(services);
+        };
     }
 
     private static UserPasswordCredential Credential(string password)
@@ -60,13 +88,26 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
     /// Presents one password per worker, each through a rig of its own, all released together, and
     /// returns the results in the order of <paramref name="passwords"/>.
     /// </summary>
-    private async Task<AuthenticateResult[]> InParallelAsync(IReadOnlyList<string> passwords, Action<IServiceCollection>? configure = null)
+    private Task<AuthenticateResult[]> InParallelAsync(IReadOnlyList<string> passwords, Action<IServiceCollection>? configure = null)
+    {
+        return InParallelAsync(passwords.Count,
+                               (rig, i) => LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential(passwords[i])),
+                               configure);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="present"/> once per worker, each through a rig of its own, all released
+    /// together, and returns the results in worker order.
+    /// </summary>
+    private async Task<AuthenticateResult[]> InParallelAsync(int workers,
+                                                             Func<LocalSchemeRig, int, Task<AuthenticateResult>> present,
+                                                             Action<IServiceCollection>? configure = null)
     {
         List<LocalSchemeRig> rigs = [];
 
         try
         {
-            for (int i = 0; i < passwords.Count; i++)
+            for (int i = 0; i < workers; i++)
             {
                 LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath, configure);
                 rigs.Add(rig);
@@ -78,7 +119,7 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
                                                                                   {
                                                                                       await gate.Task;
 
-                                                                                      return await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential(passwords[i]));
+                                                                                      return await present(rig, i);
                                                                                   },
                                                                                   TestContext.Current.CancellationToken))
                                                      .ToArray();
@@ -95,9 +136,9 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
         }
     }
 
-    private async Task<LocalSchemeRig> SeededRigAsync()
+    private async Task<LocalSchemeRig> SeededRigAsync(Action<IServiceCollection>? configure = null)
     {
-        LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath, configure);
         await rig.Context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode = WAL;", TestContext.Current.CancellationToken);
         await rig.AddUserAsync("owner@example.com");
 
@@ -136,6 +177,32 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
         (int count, DateTimeOffset? lockoutEnd) = await StoredLockoutAsync(rig);
         lockoutEnd.Should().BeAfter(DateTimeOffset.UtcNow, "the burst must end in a lockout");
         count.Should().Be(0, "reaching the threshold starts the lockout and clears the count, as the framework does");
+    }
+
+    [Fact]
+    public async Task ABurstOfWrongCodesIsComparedOnlyUpToTheLockoutAndThenLocksItOut()
+    {
+        CodeCountingAuthenticator authenticator = new();
+        Action<IServiceCollection> configure = SharedKeys(services => services.Configure<IdentityOptions>(options =>
+            options.Tokens.ProviderMap[TokenOptions.DefaultAuthenticatorProvider] = new TokenProviderDescriptor(typeof(CodeCountingAuthenticator))
+            {
+                ProviderInstance = authenticator,
+            }));
+
+        await using LocalSchemeRig rig = await SeededRigAsync(configure);
+        HSUser user = await rig.Users.FindByNameAsync("owner") ?? throw new InvalidOperationException("seeded above");
+        string wrong = WrongCodeFor(await rig.EnableAuthenticatorAsync(user));
+        string pending = await rig.PendingTwoFactorCookieAsync(user);
+        int maxFailed = rig.Users.Options.Lockout.MaxFailedAccessAttempts;
+
+        AuthenticateResult[] results = await InParallelAsync(39,
+                                                             (worker, _) => LocalSchemeRig.AuthenticateAsync(worker.NewRequest(pending), Schemes.Totp, new TotpCredential(wrong)),
+                                                             configure);
+
+        authenticator.Comparisons.Should().Be(maxFailed, "the allowance, and the attempt that reached the threshold; the rest are refused before their code is compared");
+        results.Count(result => result.Refusal() == SignInRefusal.Invalid).Should().Be(maxFailed - 1);
+        results.Count(result => result.Refusal() == SignInRefusal.LockedOut).Should().Be(39 - (maxFailed - 1));
+        (await StoredLockoutAsync(rig)).lockoutEnd.Should().BeAfter(DateTimeOffset.UtcNow, "the burst must end in a lockout");
     }
 
     [Fact]
@@ -245,6 +312,37 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
         saved.Succeeded.Should().BeTrue("nothing else wrote the row, so the copy that counted is current: {0}",
                                         string.Join("; ", saved.Errors.Select(error => error.Code)));
         (await StoredLockoutAsync(rig)).count.Should().Be(1);
+    }
+
+    /// <summary>
+    /// A code the authenticator provider refuses for <paramref name="secret"/>: none of the codes for the
+    /// steps it accepts, which are two either side of now, with a step to spare on each side for a
+    /// burst that crosses a boundary.
+    /// </summary>
+    private static string WrongCodeFor(byte[] secret)
+    {
+        Totp totp = new(secret);
+        DateTime now = DateTime.UtcNow;
+        HashSet<string> accepted = [.. Enumerable.Range(-3, 7).Select(step => totp.ComputeTotp(now.AddSeconds(30 * step)))];
+
+        return Enumerable.Range(0, 1_000_000)
+                         .Select(candidate => candidate.ToString("D6", CultureInfo.InvariantCulture))
+                         .First(candidate => !accepted.Contains(candidate));
+    }
+
+    /// <summary>The framework's authenticator provider, counting the codes it is asked to compare.</summary>
+    private sealed class CodeCountingAuthenticator : AuthenticatorTokenProvider<HSUser>
+    {
+        private int _comparisons;
+
+        public int Comparisons => Volatile.Read(ref _comparisons);
+
+        public override Task<bool> ValidateAsync(string purpose, string token, UserManager<HSUser> manager, HSUser user)
+        {
+            Interlocked.Increment(ref _comparisons);
+
+            return base.ValidateAsync(purpose, token, manager, user);
+        }
     }
 
     /// <summary>

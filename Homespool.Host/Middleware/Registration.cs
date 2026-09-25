@@ -60,10 +60,24 @@ public static class Registration
         builder.Services.Configure<ForwardedHeadersOptions>(
             options => ForwardedHeadersConfigurator.Apply(forwarded, options, Log.Warning));
 
+        builder.Services.AddSingleton<ProxyHostAddresses>();
+
         if (forwarded.TrustsAnything)
         {
             Log.Information("Trusting {Header} from {ProxyCount} proxy address(es) and {NetworkCount} network(s).",
                             forwarded.ClientAddressHeader, forwarded.KnownProxies.Length, forwarded.KnownNetworks.Length);
+
+            if (!string.IsNullOrWhiteSpace(forwarded.ProxyHost))
+            {
+                Log.Information("Within those, only from whatever {ProxyHost} resolves to.", forwarded.ProxyHost);
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(forwarded.ProxyHost))
+        {
+            Log.Warning("XForwarded:ProxyHost is {ProxyHost}, but XForwarded:KnownProxies and :KnownNetworks are both " +
+                        "empty, so no proxy is trusted at all: the name only narrows those. Set " +
+                        "XForwarded:KnownNetworks to the proxy's network.",
+                        forwarded.ProxyHost);
         }
         else
         {
@@ -76,5 +90,26 @@ public static class Registration
         }
 
         return builder;
+    }
+
+    /// <summary>
+    /// The forwarded-headers middleware, behind <see cref="ProxyPeerMiddleware"/> when
+    /// <see cref="XForwardedOptions.ProxyHost"/> names the proxy.
+    /// </summary>
+    /// <remarks>
+    /// Only for a pipeline that trusts something - see <see cref="AddForwardedHeaders"/> for why the
+    /// caller decides that, not this.
+    /// </remarks>
+    public static IApplicationBuilder UseTrustedForwardedHeaders(this IApplicationBuilder app, XForwardedOptions forwarded)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        ArgumentNullException.ThrowIfNull(forwarded);
+
+        if (!string.IsNullOrWhiteSpace(forwarded.ProxyHost))
+        {
+            app.UseMiddleware<ProxyPeerMiddleware>();
+        }
+
+        return app.UseForwardedHeaders();
     }
 }

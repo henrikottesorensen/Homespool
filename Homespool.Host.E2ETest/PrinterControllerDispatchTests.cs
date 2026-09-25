@@ -131,6 +131,79 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Without <c>Print</c>, a name that exists and one that does not get the same refusal - so the
+    /// endpoint cannot be used to find out which files somebody has.
+    /// </summary>
+    /// <remarks>
+    /// The token does not name <c>ViewOwnFiles</c> either, so the file list is closed to it; if the
+    /// send looked the file up before asking <c>Print</c>, "no such file" would answer what listing
+    /// may not.
+    /// </remarks>
+    [Fact]
+    public async Task ATokenWithoutPrintCannotTellWhichFilesExist()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        await UploadAsOwnerAsync(userId, "benchy.gcode");
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ViewPrinter]);
+
+        using HttpResponseMessage existing = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                          new { name = "benchy.gcode" },
+                                                                          TestContext.Current.CancellationToken);
+        using HttpResponseMessage absent = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                        new { name = "nothing-here.gcode" },
+                                                                        TestContext.Current.CancellationToken);
+
+        absent.StatusCode.Should().Be(existing.StatusCode);
+        absent.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await DetailOfAsync(absent)).Should().Be(await DetailOfAsync(existing),
+                                                  "the refusal must not depend on whether the name exists");
+
+        fake.ReceivedCommands.Should().BeEmpty();
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// Sending refuses a file the caller does not have, with the same answer it gives for one that
+    /// does not exist - and the printer hears nothing. This is the ownership check on the send path,
+    /// which the store cannot make on its own because it never sees who is asking.
+    /// </summary>
+    /// <remarks>
+    /// Against a printer the caller may print to, so the 404 can only be the file's: an unknown
+    /// printer is refused first, and would pass this for the wrong reason.
+    /// </remarks>
+    [Fact]
+    public async Task SendingAFileYouDoNotOwnIsNotFound()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        (HSUser _, HttpClient other) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "controller-send-other@example.com");
+
+        using (other)
+        {
+            await UploadAsync(other, "theirs.gcode");
+        }
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+
+        using HttpResponseMessage theirs = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                        new { name = "theirs.gcode" },
+                                                                        TestContext.Current.CancellationToken);
+        using HttpResponseMessage nobodys = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                         new { name = "nobodys.gcode" },
+                                                                         TestContext.Current.CancellationToken);
+
+        theirs.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        nobodys.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        fake.ReceivedCommands.Should().BeEmpty("a file the caller does not own must not reach the printer");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// A member whose team grants only viewing gets the other kind of 403 - and nothing reaches the
     /// printer either.
     /// </summary>

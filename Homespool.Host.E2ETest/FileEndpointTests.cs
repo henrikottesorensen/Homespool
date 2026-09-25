@@ -1,4 +1,3 @@
-using System;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -271,38 +270,6 @@ public sealed class FileEndpointTests : IAsyncLifetime
         {
             stillThere.StatusCode.Should().Be(HttpStatusCode.OK, "and none of that touched the file");
         }
-
-        alice.Dispose();
-        bob.Dispose();
-    }
-
-    /// <summary>
-    /// Sending refuses a file the caller does not have, with the same answer it gives for one that
-    /// does not exist. This is the ownership check on the send path, which the store cannot make on
-    /// its own because it never sees who is asking.
-    /// </summary>
-    [Fact]
-    public async Task SendingAFileYouDoNotOwnIsNotFound()
-    {
-        // Arrange
-        (HSUser _, HttpClient alice) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
-            _factory, "sender@example.com");
-        (HSUser _, HttpClient bob) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
-            _factory, "notsender@example.com");
-
-        using (StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28\n"))))
-        {
-            (await alice.PutAsync("/api/v1/files/mine.gcode", body, TestContext.Current.CancellationToken)).Dispose();
-        }
-
-        // Act
-        using HttpResponseMessage response = await bob.PostAsJsonAsync(
-            $"/api/v1/printers/{Guid.NewGuid()}/files", new { name = "mine.gcode" }, TestContext.Current.CancellationToken);
-
-        // Assert
-        // The file is resolved before the printer is, so this is the file's answer - and it is the
-        // same one an unknown name gets.
-        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
 
         alice.Dispose();
         bob.Dispose();

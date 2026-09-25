@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -9,6 +10,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Authentication;
 using Homespool.Model.Entities;
@@ -58,7 +60,7 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
     /// Presents one password per worker, each through a rig of its own, all released together, and
     /// returns the results in the order of <paramref name="passwords"/>.
     /// </summary>
-    private async Task<AuthenticateResult[]> InParallelAsync(IReadOnlyList<string> passwords)
+    private async Task<AuthenticateResult[]> InParallelAsync(IReadOnlyList<string> passwords, Action<IServiceCollection>? configure = null)
     {
         List<LocalSchemeRig> rigs = [];
 
@@ -66,7 +68,7 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
         {
             for (int i = 0; i < passwords.Count; i++)
             {
-                LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+                LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath, configure);
                 rigs.Add(rig);
                 await rig.Context.Database.OpenConnectionAsync(TestContext.Current.CancellationToken);
             }
@@ -118,8 +120,14 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
         await using LocalSchemeRig rig = await SeededRigAsync();
         int maxFailed = rig.Users.Options.Lockout.MaxFailedAccessAttempts;
 
-        AuthenticateResult[] results = await InParallelAsync(Enumerable.Repeat(Wrong, 39).ToArray());
+        ComparisonCountingHasher hasher = new();
 
+        AuthenticateResult[] results = await InParallelAsync(Enumerable.Repeat(Wrong, 39).ToArray(),
+                                                             services => services.AddSingleton<IPasswordHasher<HSUser>>(hasher));
+
+        // What is bounded is comparisons, and only the hasher sees those: the refusals below would come
+        // out the same if every password were compared first and counted after.
+        hasher.Comparisons.Should().Be(maxFailed, "the allowance, and the attempt that reached the threshold; the rest are refused before their password is compared");
         results.Should().AllSatisfy(result => result.Succeeded.Should().BeFalse());
         results.Count(result => result.Refusal() == SignInRefusal.Invalid)
                .Should().Be(maxFailed - 1, "the attempts before the one that locks the account are the only ones answered as plain wrong");
@@ -237,5 +245,26 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
         saved.Succeeded.Should().BeTrue("nothing else wrote the row, so the copy that counted is current: {0}",
                                         string.Join("; ", saved.Errors.Select(error => error.Code)));
         (await StoredLockoutAsync(rig)).count.Should().Be(1);
+    }
+
+    /// <summary>
+    /// Identity's own hasher, counting the comparisons against a real account's hash - not the decoy a
+    /// refused attempt pays, which verifies against an account that was never saved and has no id.
+    /// </summary>
+    private sealed class ComparisonCountingHasher : PasswordHasher<HSUser>
+    {
+        private int _comparisons;
+
+        public int Comparisons => Volatile.Read(ref _comparisons);
+
+        public override PasswordVerificationResult VerifyHashedPassword(HSUser user, string hashedPassword, string providedPassword)
+        {
+            if (user.Id != 0)
+            {
+                Interlocked.Increment(ref _comparisons);
+            }
+
+            return base.VerifyHashedPassword(user, hashedPassword, providedPassword);
+        }
     }
 }

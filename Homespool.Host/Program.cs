@@ -651,10 +651,14 @@ public static class Program
             // Applied to the printer listener too, which reverses what decision 3a said, because the
             // fact it rested on has changed: printers used to reach Kestrel directly, so a forwarded
             // header on that listener was attacker-supplied by definition. nginx now terminates
-            // printer TLS as well, the port is not published, and the proxy is the only thing that can
-            // reach it - so X-Real-IP there is the proxy's word, exactly as it is for users. Without
-            // this a printer's real address disappears from the logs and becomes the proxy's, which is
-            // the diagnostic that finds a misbehaving printer on a LAN.
+            // printer TLS as well and the port is not published, so X-Real-IP there is the proxy's
+            // word, exactly as it is for users. Without this a printer's real address disappears from
+            // the logs and becomes the proxy's, which is the diagnostic that finds a misbehaving
+            // printer on a LAN.
+            //
+            // "The proxy's word" needs the name as well as the network: the proxy's network also holds
+            // its bridge gateway, which is the Docker host, and a process there can reach every
+            // listener. XForwarded:ProxyHost narrows trust to the address the proxy's name resolves to.
             //
             // Keyed on the port the connection arrived on rather than on the path, for the reason
             // ListenerSegregationMiddleware gives at greater length: the port is a property of the
@@ -671,8 +675,10 @@ public static class Program
             // entirely when both lists are empty, which means "trust anybody". Proven by probe:
             // unconfigured, a loopback client's X-Forwarded-Proto was honoured; trusting 10.0.0.0/8
             // instead, the same request was ignored. Leaving the middleware out is unambiguous.
-            if (app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Middleware.XForwardedOptions>>().Value
-                   .TrustsAnything)
+            Middleware.XForwardedOptions forwarded =
+                app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<Middleware.XForwardedOptions>>().Value;
+
+            if (forwarded.TrustsAnything)
             {
                 Listeners.ListenerOptions listeners = Listeners.ListenerOptions.ReadFrom(builder.Configuration);
                 bool printerListenersAreProxied = PrinterCertificateStartup.PrinterTransportIsSecure(app.Services);
@@ -681,7 +687,7 @@ public static class Program
                     Listeners.ForwardedHeaderScope.Predicate(listeners.PrinterPort,
                                                              listeners.LegacyPrinterPort,
                                                              printerListenersAreProxied),
-                    branch => branch.UseForwardedHeaders());
+                    branch => branch.UseTrustedForwardedHeaders(forwarded));
             }
 
             // As early as anything that answers, which is the point: the headers are set on the way in,

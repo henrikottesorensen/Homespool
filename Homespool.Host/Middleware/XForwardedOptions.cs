@@ -88,6 +88,30 @@ public class XForwardedOptions
     public string[] KnownNetworks { get; set; } = [];
 
     /// <summary>
+    /// The proxy's name, e.g. <c>proxy</c>: when set, forwarded headers are believed only from an
+    /// address this name resolves to right now. Empty by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>It narrows <see cref="KnownNetworks"/>, it never widens it.</b> A peer has to pass both, and
+    /// with neither list set nothing is trusted however this is set.
+    /// </para>
+    /// <para>
+    /// <b>Why a network is not narrow enough on its own:</b> a Docker bridge's gateway address is the
+    /// host, and it lies inside the network's range. Any process on the host can connect to this
+    /// container from it and write <c>X-Real-IP</c>, which would let a local account on the host
+    /// choose its own address for the per-address sign-in limit. The gateway is reserved and never
+    /// handed to a container, so the proxy's name never resolves to it.
+    /// </para>
+    /// <para>
+    /// <b>Asked, not predicted.</b> The address is looked up at request time and cached briefly, so a
+    /// proxy recreated on a new address is believed again within a second, and start order does not
+    /// matter. A name that does not resolve trusts nobody.
+    /// </para>
+    /// </remarks>
+    public string ProxyHost { get; set; } = string.Empty;
+
+    /// <summary>
     /// How many proxy hops to walk back through. Default 1, matching one nginx in front.
     /// </summary>
     /// <remarks>

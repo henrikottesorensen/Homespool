@@ -15,10 +15,18 @@ namespace Homespool.Host.Cameras;
 /// visible to anyone holding <c>ViewCamera</c>, while setting a source needs <c>ManageCamera</c>.
 /// </para>
 /// <para>
-/// <b>Two maskings, because the two surfaces have different readers.</b> The list drops the whole
-/// credential - a viewer needs the address and nothing else, and a user name is half a credential.
-/// The edit form keeps the user name and hides only the password, because whoever is editing needs
-/// to know which account this camera uses, and that form is behind <c>ManageCamera</c> anyway.
+/// <b>Two maskings, because the two surfaces have different readers.</b> The list shows the scheme,
+/// host and port and nothing else - a viewer needs to know which device this is, and a user name is
+/// half a credential. The edit form keeps the user name and hides only the password, because whoever
+/// is editing needs to know which account this camera uses, and that form is behind
+/// <c>ManageCamera</c> anyway.
+/// </para>
+/// <para>
+/// <b>The list keeps what is safe rather than removing what is secret.</b> A credential is not only
+/// ever userinfo: Foscam takes <c>?usr=…&amp;pwd=…</c>, Reolink <c>?user=…&amp;password=…</c>,
+/// the older Foscam clones <c>?loginuse=…&amp;loginpas=…</c>, and Xiongmai firmware puts
+/// <c>user=…&amp;password=…</c> in the path itself. No list of parameter names is ever complete, and
+/// one that misses a camera looks exactly like one that works, so everything after the authority goes.
 /// </para>
 /// <para>
 /// <b>The password survives an edit without being sent to the browser.</b> The form posts the mask
@@ -58,17 +66,31 @@ public static class CameraSourceDisplay
     /// </summary>
     public const string HiddenPassword = "****";
 
-    /// <summary>The source with any credential removed entirely - user name as well as password.</summary>
+    /// <summary>
+    /// The scheme, host and port of a source, and nothing else: no user name, password, path, query or
+    /// fragment.
+    /// </summary>
+    /// <remarks>
+    /// Two cameras behind one recorder, told apart only by their paths, look the same here. Their
+    /// names tell them apart, and the edit form shows the whole source to whoever may change it.
+    /// </remarks>
     /// <param name="source">The stored source.</param>
-    public static string WithoutCredential(string source)
+    /// <returns>
+    /// The source unchanged when it is not a URL at all - an attached camera's <c>ffmpeg:device</c>
+    /// source, which carries no credential.
+    /// </returns>
+    public static string AddressOnly(string source)
     {
-        if (!TryFindUserInfo(source, out int start, out int length))
+        if (!TryFindAuthority(source, out int start, out int end))
         {
             return source;
         }
 
-        // The '@' goes with it, or what is left does not parse.
-        return source.Remove(start, length + 1);
+        // The last '@' for the same reason TryFindUserInfo gives.
+        int at = end > start ? source.LastIndexOf('@', end - 1, end - start) : -1;
+        int hostStart = at < 0 ? start : at + 1;
+
+        return string.Concat(source.AsSpan(0, start), source.AsSpan(hostStart, end - hostStart));
     }
 
     /// <summary>The source with its password replaced by <see cref="HiddenPassword"/>.</summary>
@@ -265,32 +287,8 @@ public static class CameraSourceDisplay
         start = 0;
         length = 0;
 
-        if (string.IsNullOrEmpty(source))
-        {
-            return false;
-        }
-
-        int scheme = source.IndexOf("://", StringComparison.Ordinal);
-        if (scheme < 0)
-        {
-            return false;
-        }
-
-        int authorityStart = scheme + 3;
-        int authorityEnd = source.Length;
-
-        for (int index = authorityStart; index < source.Length; index++)
-        {
-            char character = source[index];
-
-            if (character == '/' || character == '?' || character == '#')
-            {
-                authorityEnd = index;
-                break;
-            }
-        }
-
-        if (authorityEnd <= authorityStart)
+        if (!TryFindAuthority(source, out int authorityStart, out int authorityEnd) ||
+            authorityEnd <= authorityStart)
         {
             return false;
         }
@@ -305,6 +303,44 @@ public static class CameraSourceDisplay
 
         start = authorityStart;
         length = at - authorityStart;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Locates the authority - everything between <c>://</c> and the first <c>/</c>, <c>?</c> or
+    /// <c>#</c> after it, which may be nothing at all.
+    /// </summary>
+    /// <returns>False when the source is not a URL.</returns>
+    private static bool TryFindAuthority(string source, out int start, out int end)
+    {
+        start = 0;
+        end = 0;
+
+        if (string.IsNullOrEmpty(source))
+        {
+            return false;
+        }
+
+        int scheme = source.IndexOf("://", StringComparison.Ordinal);
+        if (scheme < 0)
+        {
+            return false;
+        }
+
+        start = scheme + 3;
+        end = source.Length;
+
+        for (int index = start; index < source.Length; index++)
+        {
+            char character = source[index];
+
+            if (character == '/' || character == '?' || character == '#')
+            {
+                end = index;
+                break;
+            }
+        }
 
         return true;
     }

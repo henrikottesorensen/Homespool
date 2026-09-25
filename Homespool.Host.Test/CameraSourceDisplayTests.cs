@@ -24,14 +24,40 @@ namespace Homespool.Host.Test;
 public sealed class CameraSourceDisplayTests
 {
     [Theory]
-    [InlineData("rtsp://admin:hunter2@192.168.1.50/Streaming/Channels/101",
-                "rtsp://192.168.1.50/Streaming/Channels/101")]
+    [InlineData("rtsp://admin:hunter2@192.168.1.50/Streaming/Channels/101", "rtsp://192.168.1.50")]
     [InlineData("onvif://user:pass@192.168.1.123:80", "onvif://192.168.1.123:80")]
-    [InlineData("http://someone:secret@camera.local/snapshot.jpg", "http://camera.local/snapshot.jpg")]
+    [InlineData("http://someone:secret@camera.local/snapshot.jpg", "http://camera.local")] // betterleaks:allow - a test fixture for a camera that does not exist
+    [InlineData("rtsp://admin@192.168.1.50/live", "rtsp://192.168.1.50")]
+    [InlineData("rtsp://admin:p@ss@192.168.1.50/live", "rtsp://192.168.1.50")]
     public void TheListDropsTheWholeCredential(string source, string expected)
     {
         // A user name is half a credential, and a viewer needs the address rather than the account.
-        CameraSourceDisplay.WithoutCredential(source).Should().Be(expected);
+        CameraSourceDisplay.AddressOnly(source).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("http://192.168.1.60:88/cgi-bin/CGIProxy.fcgi?cmd=snapPicture2&usr=admin&pwd=hunter2",
+                "http://192.168.1.60:88")]
+    [InlineData("http://192.168.1.61/flv?port=1935&app=bcs&stream=channel0_main.bcs&user=admin&password=hunter2",
+                "http://192.168.1.61")]
+    [InlineData("http://192.168.1.62:81/videostream.cgi?loginuse=admin&loginpas=hunter2", "http://192.168.1.62:81")]
+    [InlineData("rtsp://192.168.1.63:554/user=admin&password=hunter2&channel=1&stream=0.sdp", "rtsp://192.168.1.63:554")]
+    [InlineData("rtsp://192.168.1.64/live#transport=tcp://admin:hunter2@192.168.1.65", "rtsp://192.168.1.64")]
+    [InlineData("rtsp://192.168.1.66?password=hunter2", "rtsp://192.168.1.66")]
+    public void TheListDropsACredentialCarriedAnywhereElse(string source, string expected)
+    {
+        // Foscam, Reolink, the Foscam clones and Xiongmai, then go2rtc's own options after '#': the
+        // credential is wherever the camera's firmware decided, so the list shows none of it.
+        CameraSourceDisplay.AddressOnly(source).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("rtsp://admin:hunter2@[fe80::1]:554/live", "rtsp://[fe80::1]:554")]
+    [InlineData("rtsps://Camera.Local:322/Stream", "rtsps://Camera.Local:322")]
+    public void TheListKeepsTheHostAndPortAsTyped(string source, string expected)
+    {
+        // Which device this is is the one thing a viewer needs, and it is not normalised on the way.
+        CameraSourceDisplay.AddressOnly(source).Should().Be(expected);
     }
 
     [Theory]
@@ -47,10 +73,18 @@ public sealed class CameraSourceDisplayTests
     [InlineData("rtsp://192.168.1.50/live")]
     [InlineData("ffmpeg:device?video=/dev/v4l/by-id/usb-046d_0821-video-index0&input_format=mjpeg")]
     [InlineData("http://camera.local/snapshot.jpg")]
-    public void ASourceCarryingNoCredentialIsUntouched(string source)
+    public void TheEditFormLeavesASourceCarryingNoCredentialUntouched(string source)
     {
-        CameraSourceDisplay.WithoutCredential(source).Should().Be(source);
         CameraSourceDisplay.WithHiddenPassword(source).Should().Be(source);
+    }
+
+    [Fact]
+    public void TheListShowsAnAttachedCameraAsItIs()
+    {
+        // Not a URL, and nothing in it is a credential - it names a device on this server.
+        const string source = "ffmpeg:device?video=/dev/v4l/by-id/usb-046d_0821-video-index0&input_format=mjpeg";
+
+        CameraSourceDisplay.AddressOnly(source).Should().Be(source);
     }
 
     [Fact]

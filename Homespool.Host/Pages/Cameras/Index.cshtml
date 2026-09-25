@@ -52,7 +52,7 @@ else
                                 <span class="badge border border-secondary text-body-secondary ms-1">@Localiser["Cameras_Attached"]</span>
                             }
                         </td>
-                        <td><code class="small">@CameraSourceDisplay.WithoutCredential(camera.Source)</code></td>
+                        <td><code class="small">@CameraSourceDisplay.AddressOnly(camera.Source)</code></td>
                         <td class="typed-name">@(camera.Printer?.Name ?? camera.Printer?.Model ?? "—")</td>
                         <td>
                             @if (age is null)

@@ -13,12 +13,14 @@ using Microsoft.Extensions.DependencyInjection;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Cameras;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// What happens to a camera's password when the camera is edited, through the real Cameras page.
+/// What happens to a camera's password when the camera is edited, through the real Cameras page -
+/// and that the page's list shows none of it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -142,8 +144,52 @@ public sealed class CameraPasswordEditTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// A password the camera takes in its query string is nowhere on the list a view-only member reads.
+    /// </summary>
+    /// <remarks>
+    /// Not split out and protected the way a userinfo password is - it stays in the stored address -
+    /// so the list is the only thing between it and every member holding <c>ViewCamera</c>.
+    /// </remarks>
+    [Fact]
+    public async Task AViewerIsNotShownAPasswordFromTheQueryString()
+    {
+        const string querySource = "http://192.0.2.1:88/cgi-bin/CGIProxy.fcgi?cmd=snapPicture2&usr=cam&pwd=query-secret"; // betterleaks:allow - a test fixture for a camera that does not exist
+
+        (HSUser owner, HttpClient ownerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-query-owner@example.com");
+        (HSUser viewer, HttpClient viewerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-query-viewer@example.com");
+
+        using (ownerClient)
+        using (viewerClient)
+        {
+            Camera camera = await AddCameraThroughPageAsync(ownerClient, owner, querySource);
+            camera.Source.Should().Contain("query-secret", "the password is still in the stored address, which is why the list matters");
+
+            (int teamId, _) = await TeamOfAsync(owner);
+            await JoinAsViewerAsync(viewer, teamId);
+
+            string list = await GetPageAsync(viewerClient, "/Cameras");
+
+            list.Should().Contain("with password", "the viewer must be shown the camera, or its password being absent proves nothing");
+            list.Should().Contain("http://192.0.2.1:88", "the viewer is still told which device this is");
+            list.Should().NotContain("query-secret");
+            list.Should().NotContain("usr=cam", "a user name is half a credential");
+        }
+    }
+
     /// <summary>Adds a camera with a password through the page, and returns its uuid.</summary>
     private async Task<Guid> AddCameraAsync(HttpClient client, HSUser user)
+    {
+        Camera camera = await AddCameraThroughPageAsync(client, user, OriginalSource);
+        camera.CredentialSecret.Should().NotBeNull("the page's own path splits the password out and protects it");
+
+        return camera.Uuid;
+    }
+
+    /// <summary>Adds a camera to the account's default team through the page, and returns it as stored.</summary>
+    private async Task<Camera> AddCameraThroughPageAsync(HttpClient client, HSUser user, string source)
     {
         string page = await GetPageAsync(client, "/Cameras");
         (int teamId, Guid teamUuid) = await TeamOfAsync(user);
@@ -152,7 +198,7 @@ public sealed class CameraPasswordEditTests : IAsyncLifetime
         [
             new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
             new("name", "with password"),
-            new("source", OriginalSource),
+            new("source", source),
             new("teamUuid", teamUuid.ToString()),
             new("printerUuid", string.Empty),
         ]);
@@ -163,10 +209,26 @@ public sealed class CameraPasswordEditTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        Camera camera = await context.Cameras.SingleAsync(c => c.TeamId == teamId, TestContext.Current.CancellationToken);
-        camera.CredentialSecret.Should().NotBeNull("the page's own path splits the password out and protects it");
+        return await context.Cameras
+                            .AsNoTracking()
+                            .SingleAsync(c => c.TeamId == teamId, TestContext.Current.CancellationToken);
+    }
 
-        return camera.Uuid;
+    /// <summary>Makes an account a view-only member of a team it was not in.</summary>
+    private async Task JoinAsViewerAsync(HSUser user, int teamId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        context.TeamMembers.Add(new TeamMember
+        {
+            TeamId = teamId,
+            UserId = user.Id,
+            Capabilities = CapabilitySet.Format(CapabilityPresets.Viewer),
+            IsDefault = false,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private static async Task<HttpResponseMessage> PostEditAsync(HttpClient client, Guid uuid, string name, string source)

@@ -84,6 +84,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 
     private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, IReadOnlyList<Capability> capabilities, bool isDefault)
     {
+        TestAccounts.Add(context, userId);
+
         Team team = new()
         {
             CreatedBy = userId,

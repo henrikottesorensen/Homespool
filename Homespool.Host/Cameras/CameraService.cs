@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -423,7 +424,7 @@ public class CameraService
                 CameraSaveOutcome.Refused("Cameras_AttachedNeedsAdministrator");
         }
 
-        TeamMember? membership = await _dbContext.TeamMembers
+        TeamMember? membership = await Memberships.Open(_dbContext)
                                                  .FirstOrDefaultAsync(
                                                      member => member.TeamId == teamId && member.UserId == caller.UserId,
                                                      cancellationToken)

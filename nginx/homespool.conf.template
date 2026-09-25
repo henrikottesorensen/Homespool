@@ -127,7 +127,10 @@ server {
     # Not redirected, and this is the same reasoning Program.cs applies to its own redirection: a
     # monitoring probe follows nothing, and `curl --fail` treats a 301 as success - so a redirected
     # /health would report a healthy service that was never actually reached.
-    location /health {
+    #
+    # Case-insensitive, as on the TLS listener and for the same reason: a prefix would redirect
+    # /HEALTH there, where the application answers it whatever the case.
+    location ~* ^/health {
         include /etc/nginx/homespool-health-access.conf;
 
         set $homespool_upstream http://homespool:8080;

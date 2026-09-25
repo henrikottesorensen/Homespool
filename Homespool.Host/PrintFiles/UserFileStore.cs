@@ -610,8 +610,8 @@ public sealed class UserFileStore
     }
 
     /// <summary>
-    /// A user's directory, found by its <c>{userId}-</c> prefix - so a username that has changed
-    /// since the directory was made still resolves.
+    /// A user's directory, found by its <c>{userId}-</c> prefix or as the bare id - so a username
+    /// that has changed since the directory was made still resolves.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -620,10 +620,18 @@ public sealed class UserFileStore
     /// read has nothing to create and no reason to care what the folder would have been called.
     /// </para>
     /// <para>
-    /// <b>Ordered before taking the first.</b> Two matching directories are only reachable through a
-    /// crash mid-create or somebody meddling by hand, but <c>Directory.EnumerateDirectories</c>
-    /// promises no order at all - so an unordered "first" would make a user's files appear and
-    /// disappear between calls on an unchanged disk.
+    /// <b>The bare id is looked for separately</b>, because the glob's hyphen is what keeps
+    /// <c>12-*</c> off <c>120-bob</c>, and it also keeps it off <c>12</c>. A username that sanitises
+    /// to nothing - <c>con</c>, <c>...</c> - is given the bare id, and without this a rename would
+    /// start a second directory beside it and leave the first half of that user's files unlisted.
+    /// </para>
+    /// <para>
+    /// <b>Ordered before taking the first, with the bare id last.</b> Two matching directories are
+    /// only reachable through a crash mid-create, somebody meddling by hand, or a user renamed before
+    /// the bare id was looked for - but <c>Directory.EnumerateDirectories</c> promises no order at
+    /// all, so an unordered "first" would make a user's files appear and disappear between calls on
+    /// an unchanged disk. The bare id goes last because a user split that way has been reading the
+    /// suffixed directory since, and resolving the other one would swap which half they see.
     /// </para>
     /// </remarks>
     private string DirectoryFor(long userId, string? userName = null)
@@ -633,6 +641,14 @@ public sealed class UserFileStore
             List<string> matches = Directory.EnumerateDirectories(_root, UserDirectoryName.PatternFor(userId))
                                             .Order(StringComparer.Ordinal)
                                             .ToList();
+
+            // For with no name is the bare id.
+            string bare = Path.Combine(_root, UserDirectoryName.For(userId, null));
+
+            if (Directory.Exists(bare))
+            {
+                matches.Add(bare);
+            }
 
             if (matches.Count > 1)
             {

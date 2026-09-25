@@ -128,4 +128,67 @@ public sealed class TeamServiceTests : IDisposable
         // Assert
         memberships.Should().BeEmpty();
     }
+
+    /// <summary>
+    /// <b>A closed account's membership answers null from the three lookups a permission is decided
+    /// on</b> - by team id, by team uuid, and the default team. The row stays, because history names
+    /// the people in it, so what the lookups have to leave out is the closed account, not the row.
+    /// </summary>
+    [Fact]
+    public async Task TheMembershipLookupsDoNotAnswerForAClosedAccount()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        HSUser open = await AddUserAsync(context, 1, "open@example.com");
+        HSUser closed = await AddUserAsync(context, 2, "closed@example.com");
+        closed.DeactivatedAt = DateTimeOffset.UtcNow;
+
+        Team team = new() { Name = "Workshop", CreatedBy = open.Id, CreatedAt = DateTimeOffset.UtcNow };
+        context.Teams.Add(team);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        foreach (long userId in new[] { open.Id, closed.Id })
+        {
+            context.TeamMembers.Add(new TeamMember
+            {
+                TeamId = team.Id,
+                UserId = userId,
+                Capabilities = CapabilitySet.Format(CapabilityPresets.Manager),
+                IsDefault = true,
+            });
+        }
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        TeamService teams = new(context);
+
+        // Act & Assert
+        (await teams.GetMemberAsync(team.Id, open.Id, CancellationToken.None)).Should().NotBeNull();
+        (await teams.GetMemberAsync(team.Uuid, open.Id, CancellationToken.None)).Should().NotBeNull();
+        (await teams.GetDefaultTeamMembershipAsync(open.Id, CancellationToken.None)).Should().NotBeNull();
+
+        (await teams.GetMemberAsync(team.Id, closed.Id, CancellationToken.None)).Should().BeNull("by team id");
+        (await teams.GetMemberAsync(team.Uuid, closed.Id, CancellationToken.None)).Should().BeNull("by team uuid");
+        (await teams.GetDefaultTeamMembershipAsync(closed.Id, CancellationToken.None)).Should().BeNull("the default team");
+
+        (await teams.GetMembersAsync(team.Id, CancellationToken.None))
+            .Should().HaveCount(2, "the roster still lists the closed account");
+    }
+
+    private static async Task<HSUser> AddUserAsync(HomespoolDbContext context, long id, string email)
+    {
+        HSUser user = new(email)
+        {
+            Id = id,
+            Email = email,
+            NormalizedEmail = email.ToUpperInvariant(),
+            NormalizedUserName = email.ToUpperInvariant(),
+        };
+
+        context.Users.Add(user);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return user;
+    }
 }

@@ -127,7 +127,7 @@ public class UserDirectoryNameTests
     }
 
     /// <summary>
-    /// The glob has to be unambiguous across ids, since it is the only thing resolution uses.
+    /// The glob has to be unambiguous across ids, since resolution trusts whatever it matches.
     /// </summary>
     [Fact]
     public void ThePatternMatchesOnlyItsOwnId()

@@ -71,6 +71,8 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
 
     private static async Task<TeamMember> AddTeamAsync(HomespoolDbContext context, long userId, IReadOnlyList<Capability> capabilities, bool isDefault)
     {
+        TestAccounts.Add(context, userId);
+
         Team team = new()
         {
             CreatedBy = userId,
@@ -395,6 +397,7 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
         (Printer printer, string _) = await service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // a genuine member of the printer's own team, but without ManagePrinter
+        TestAccounts.Add(context, 2);
         context.TeamMembers.Add(new TeamMember
         {
             TeamId = printer.TeamId,

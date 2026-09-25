@@ -130,6 +130,26 @@ public class PrinterController : ControllerBase
             return this.NoAccount();
         }
 
+        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
+
+        if (printer is null)
+        {
+            return this.NotFoundProblem();
+        }
+
+        // Print is asked before the file is looked up. The lookup is not gated on viewing files, and
+        // "you have no file named" is a different answer from whatever comes after it - so asked any
+        // later, a caller who may not print could still tell which names exist. A scope refusal names
+        // the capability through the exception filter; the team's refusal is answered here.
+        try
+        {
+            await _access.RequireAsync(printer.Id, CallerResolver.For(user, User), Capability.Print, cancellationToken);
+        }
+        catch (TeamAccessDeniedException e)
+        {
+            return this.ForbiddenProblem(e.Message);
+        }
+
         // Scoped to the caller, so "someone else's file" and "no such file" are the same answer and
         // neither confirms the other's existence. This is the ownership check, and it is structural.
         StoredFile? file = _files.FindForPrinting(user.Id, body.Name);
@@ -143,13 +163,6 @@ public class PrinterController : ControllerBase
         {
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
             return this.BadRequestProblem("Files must be under 4 GiB - a printer cannot be sent anything larger.");
-        }
-
-        Printer? printer = await _printers.GetPrinterForUserAsync(uuid, CallerResolver.For(user, User), cancellationToken);
-
-        if (printer is null)
-        {
-            return this.NotFoundProblem();
         }
 
         // Minting the token, offering the bytes and cleaning up after a send that did not take all

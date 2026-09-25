@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -36,9 +37,11 @@ namespace Homespool.Host.Authentication;
 /// <c>SignInManager.TwoFactorAuthenticatorSignInAsync</c> at v10.0.11 is the transcription source:
 /// the pre-sign-in check, the code through the authenticator token provider, a wrong one counted
 /// against the lockout, a right one resetting it. What is left behind is the sign-in itself, the
-/// remembered-machine cookie and the clearing of the pending cookie - the page composes those.
-/// <b>A step-up counts differently</b>: a wrong code backs off the account's step-ups through
-/// <see cref="LocalSignInRules.StepUpBackoffAsync"/> and never touches the account lockout, since a
+/// remembered-machine cookie and the clearing of the pending cookie - the page composes those. What
+/// changes is the order: the code is counted before it is compared and a right one gives the count
+/// back, so parallel codes cannot all be compared on a count none of them has written.
+/// <b>A step-up counts differently</b>: a code backs off the account's step-ups through
+/// <see cref="LocalSignInRules.TakeStepUpAsync"/> and never touches the account lockout, since a
 /// session holder guessing at a step-up must not be able to lock the owner out of signing in.
 /// </para>
 /// </remarks>
@@ -106,27 +109,38 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
             return SignInRefusals.Fail(refusal, "The account may not sign in.", await _rules.RemainingLockoutAsync(user));
         }
 
-        // A step-up has its own backoff, checked before the code is compared and counted instead of
-        // the account lockout: a session holder guessing here must not lock the owner out.
-        if (stepUp is not null && await _rules.StepUpBackoffAsync(user, Context.RequestAborted) is { } backedOff)
-        {
-            Logger.LogInformation("Authenticator code refused for user {UserId}: step-ups backed off for {Remaining}.", user.Id, backedOff);
+        // Counted before the code is compared, and given back when it is right. A step-up has its own
+        // backoff, counted instead of the account lockout: a session holder guessing here must not
+        // lock the owner out.
+        AttemptTicket attempt = stepUp is not null ?
+            await _rules.TakeStepUpAsync(user, Context.RequestAborted) :
+            await _rules.TakeAttemptAsync(user);
 
-            return SignInRefusals.Fail(SignInRefusal.LockedOut, "Too many wrong step-ups.", backedOff);
+        if (attempt.BackedOff is { } backedOff)
+        {
+            if (stepUp is not null)
+            {
+                Logger.LogInformation("Authenticator code refused for user {UserId}: step-ups backed off for {Remaining}.", user.Id, backedOff);
+
+                return SignInRefusals.Fail(SignInRefusal.LockedOut, "Too many wrong step-ups.", backedOff);
+            }
+
+            // Locked out by an attempt counted since the pre-sign-in check - a parallel one.
+            Logger.LogInformation("Authenticator code refused for user {UserId}: {Refusal}.", user.Id, SignInRefusal.LockedOut);
+
+            return SignInRefusals.Fail(SignInRefusal.LockedOut, "The account may not sign in.", backedOff);
         }
 
         if (!await _users.VerifyTwoFactorTokenAsync(user, _users.Options.Tokens.AuthenticatorTokenProvider, code))
         {
             if (stepUp is not null)
             {
-                await _rules.RecordStepUpFailureAsync(user, Context.RequestAborted);
-
                 Logger.LogInformation("Authenticator code refused for user {UserId}: wrong step-up code.", user.Id);
 
                 return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid authenticator code.");
             }
 
-            bool lockedOut = await _rules.RecordFailureAsync(user);
+            bool lockedOut = attempt.LockoutImposed is not null;
 
             Logger.LogInformation("Authenticator code refused for user {UserId}: wrong code{LockedOut}.",
                                   user.Id,
@@ -141,14 +155,7 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
         }
         else
         {
-            IdentityResult reset = await _users.ResetAccessFailedCountAsync(user);
-
-            if (!reset.Succeeded)
-            {
-                Logger.LogWarning("Authenticator code refused for user {UserId}: the failed count could not be reset.", user.Id);
-
-                return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid authenticator code.");
-            }
+            await _rules.AttemptPassedAsync(user, attempt, resetCount: true);
         }
 
         ClaimsPrincipal principal = await _claimsFactory.CreateAsync(user);

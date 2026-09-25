@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -109,6 +110,15 @@ public sealed class ClaimModelTests : IDisposable
         return (model, user);
     }
 
+    /// <summary>The claim attempts counted against <paramref name="user"/>, or 0 when there is no row.</summary>
+    private static async Task<int> ClaimAttemptsAsync(HomespoolDbContext context, HSUser user)
+    {
+        return await context.UserActionAttempts.AsNoTracking()
+                            .Where(a => a.UserId == user.Id && a.Action == LimitedAction.ClaimPrinter)
+                            .Select(a => a.FailedCount)
+                            .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+    }
+
     /// <summary>Issues a fresh claimable code via the real registration path, matching
     /// <c>PrusaConnectServiceClaimTests</c>'s setup - a hand-hashed code would not prove the page
     /// actually drives the same lookup a real printer's poll relies on.</summary>
@@ -207,13 +217,13 @@ public sealed class ClaimModelTests : IDisposable
         (await context.Printers.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
-    /// <summary>An unknown code is rejected without creating a printer.</summary>
+    /// <summary>An unknown code is rejected without creating a printer, and counted as a guess.</summary>
     [Fact]
     public async Task OnPostAsyncWithAnUnknownCodeShowsAnError()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (ClaimModel model, _) = await NewModelAsync(context);
+        (ClaimModel model, HSUser user) = await NewModelAsync(context);
         model.Input.Code = "NEVER-ISSUED-CODE";
 
         // Act
@@ -223,9 +233,13 @@ public sealed class ClaimModelTests : IDisposable
         result.Should().BeOfType<PageResult>();
         model.ModelState.IsValid.Should().BeFalse();
         (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
+        (await ClaimAttemptsAsync(context, user)).Should().Be(1, "a code nobody issued is the one outcome that is a guess");
     }
 
-    /// <summary>A code already claimed by someone else is rejected, and no competing printer is created.</summary>
+    /// <summary>
+    /// A code already claimed by someone else is rejected, and no competing printer is created. The code
+    /// was right, so the attempt it was counted as before the lookup is given back.
+    /// </summary>
     [Fact]
     public async Task OnPostAsyncWithAnAlreadyClaimedCodeShowsAnError()
     {
@@ -236,7 +250,7 @@ public sealed class ClaimModelTests : IDisposable
         first.Input.Code = code;
         await first.OnPostAsync(CancellationToken.None);
 
-        (ClaimModel second, _) = await NewModelAsync(context, "second@example.com");
+        (ClaimModel second, HSUser secondUser) = await NewModelAsync(context, "second@example.com");
         second.Input.Code = code;
 
         // Act
@@ -249,15 +263,16 @@ public sealed class ClaimModelTests : IDisposable
                                                                                   .Be(
                                                                                       1,
                                                                                       "the second claim must not create a competing printer");
+        (await ClaimAttemptsAsync(context, secondUser)).Should().Be(0, "a right code is not a guess, whatever else refused it");
     }
 
-    /// <summary>A team the caller cannot manage is rejected, and nothing is created.</summary>
+    /// <summary>A team the caller cannot manage is rejected, nothing is created, and the right code costs no attempt.</summary>
     [Fact]
     public async Task OnPostAsyncRejectsATeamTheCallerCannotManage()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (ClaimModel model, _) = await NewModelAsync(context);
+        (ClaimModel model, HSUser user) = await NewModelAsync(context);
 
         Team someoneElses = new() { CreatedBy = 999, CreatedAt = DateTimeOffset.UtcNow };
         context.Teams.Add(someoneElses);
@@ -274,6 +289,7 @@ public sealed class ClaimModelTests : IDisposable
         result.Should().BeOfType<PageResult>();
         model.ModelState.IsValid.Should().BeFalse();
         (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
+        (await ClaimAttemptsAsync(context, user)).Should().Be(0, "claiming into the wrong team with the right code is not a guess");
     }
 
     /// <summary>An empty code fails validation before the service (and the database) are ever touched.</summary>

@@ -107,16 +107,11 @@ public class ForgotPasswordModel : PageModel
             // that grew with use would be grown by whoever knows the address and served by the person
             // who needs the mail. This one never grows and a refused request does not restart it, so
             // the most a stranger can do is make the owner use a link under SendCooldown old.
-            DateTimeOffset now = _timeProvider.GetUtcNow();
-
-            if (await _attemptLimiter.RemainingLockoutAsync(
-                    user.Id, LimitedAction.SendPasswordResetEmail, now, cancellationToken) is not null)
+            if (await _attemptLimiter.TryStartCooldownAsync(
+                    user.Id, LimitedAction.SendPasswordResetEmail, _timeProvider.GetUtcNow(), SendCooldown, cancellationToken) is not null)
             {
                 return RedirectToPage("./ForgotPasswordConfirmation");
             }
-
-            await _attemptLimiter.StartCooldownAsync(
-                user.Id, LimitedAction.SendPasswordResetEmail, now, SendCooldown, cancellationToken);
 
             // For more information on how to enable account confirmation and password reset please
             // visit https://go.microsoft.com/fwlink/?LinkID=532713

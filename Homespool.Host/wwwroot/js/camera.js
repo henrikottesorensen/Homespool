@@ -22,6 +22,12 @@
     // (an RTSP camera takes 2-3s) so a single slow answer does not blank a working view.
     const UNAVAILABLE_AFTER_MS = 15000;
 
+    // A pause between polls longer than this means the page stopped asking - a background tab the
+    // browser has throttled, or live video holding the panel - rather than the camera failing to
+    // answer. The server captures only while asked, so the camera gets its full allowance again,
+    // counted from when the asking resumed.
+    const ASKING_GAP_MS = 3 * INTERVAL_MS;
+
     function ready(fn) {
         if (document.readyState !== "loading") {
             fn();
@@ -48,7 +54,13 @@
 
         let objectUrl = null;
         let lastFrameAt = 0;
-        let stopped = false;
+
+        // When the current unbroken run of polling began, and when the last poll finished. Silence
+        // is judged from whichever is later of this and the last frame, so a camera is only called
+        // unavailable after it has actually been asked for that long.
+        let askingSince = 0;
+        let lastPollDoneAt = 0;
+        let inFlight = false;
 
         // Set while camera-live.js is showing live video from the same camera. Both paths ask the
         // stream server for the same source and a poll is what schedules another capture, so polling
@@ -57,18 +69,30 @@
 
         // The pending poll, so that resuming can cancel it first. Without this, resuming while one
         // is still queued leaves two chains running against the same camera for the life of the
-        // page - each scheduling its own successor, so it never settles back to one. The hidden-tab
-        // path could already do it; live view makes it easy, because stopping usually happens within
-        // one interval of starting.
+        // page - each scheduling its own successor, so it never settles back to one. Live view makes
+        // it easy, because stopping usually happens within one interval of starting.
         let timer = null;
 
+        // Poll now rather than at the next tick. A poll already in flight is left to finish instead,
+        // for the same reason as the timer above: it schedules its own successor, and a second
+        // request started beside it would too.
         function resume() {
             if (timer) {
                 window.clearTimeout(timer);
                 timer = null;
             }
 
-            poll();
+            if (!inFlight) {
+                poll();
+            }
+        }
+
+        // Only beside a picture: once the camera has been called unavailable its frame is gone, and
+        // an age would be describing nothing.
+        function showAge() {
+            if (lastFrameAt && !yielded && !image.classList.contains("d-none")) {
+                age.textContent = describeAge(lastFrameAt);
+            }
         }
 
         // d-none rather than the hidden attribute, and this is not a style preference: the element
@@ -86,9 +110,16 @@
         }
 
         function poll() {
-            if (stopped || yielded) {
+            if (yielded) {
                 return;
             }
+
+            const startedAt = Date.now();
+            if (!lastPollDoneAt || startedAt - lastPollDoneAt > ASKING_GAP_MS) {
+                askingSince = startedAt;
+            }
+
+            inFlight = true;
 
             fetch(url, { cache: "no-store", credentials: "same-origin" })
                 .then(function (response) {
@@ -108,7 +139,7 @@
                     return response.blob();
                 })
                 .then(function (blob) {
-                    if (!blob || stopped) {
+                    if (!blob || yielded) {
                         return;
                     }
 
@@ -135,16 +166,20 @@
                     // blanking immediately - one failed poll is not an unavailable camera.
                 })
                 .then(function () {
-                    // yielded as well as stopped: a poll already in flight when the live view took
-                    // over would otherwise finish here and write its own caption over the live one -
-                    // and its stale branch removes the img's src, which is the live stream's source.
-                    // That is how a picture came to sit under "Camera not answering" beside "live".
-                    if (stopped || yielded) {
+                    inFlight = false;
+                    lastPollDoneAt = Date.now();
+
+                    // A poll already in flight when the live view took over would otherwise finish
+                    // here and write its own caption over the live one - and its stale branch removes
+                    // the img's src, which is the live stream's source. That is how a picture came to
+                    // sit under "Camera not answering" beside "live".
+                    if (yielded) {
                         return;
                     }
 
                     if (lastFrameAt) {
-                        const stale = Date.now() - lastFrameAt > UNAVAILABLE_AFTER_MS;
+                        const silentSince = Math.max(lastFrameAt, askingSince);
+                        const stale = Date.now() - silentSince > UNAVAILABLE_AFTER_MS;
 
                         if (stale) {
                             // Take the picture down. Leaving it up is the failure this whole design
@@ -162,13 +197,13 @@
                 });
         }
 
-        // Stop while the tab is hidden. The server captures only when asked, so a background tab
-        // would otherwise keep a camera awake for nobody.
+        // Polling carries on while the tab is hidden, so a page left open has a picture the moment
+        // anybody looks at it. The browser throttles a background tab's timers, though, so the frame
+        // on screen can be well over a minute old by then: its age is corrected at once rather than
+        // at the end of the next poll - it last said "live" - and a fresh one is asked for now.
         document.addEventListener("visibilitychange", function () {
-            if (document.hidden) {
-                stopped = true;
-            } else if (stopped) {
-                stopped = false;
+            if (!document.hidden) {
+                showAge();
                 resume();
             }
         });

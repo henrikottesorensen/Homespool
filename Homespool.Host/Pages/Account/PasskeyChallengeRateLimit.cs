@@ -1,9 +1,11 @@
 using System;
+using System.Globalization;
 using System.Threading.RateLimiting;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
 
@@ -82,13 +84,35 @@ public static class PasskeyChallengeRateLimit
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        if (!HttpMethods.IsPost(context.Request.Method) || !context.Request.Query.TryGetValue(HandlerQuery, out StringValues handler))
+        if (!HttpMethods.IsPost(context.Request.Method) || HandlerName(context) is not { } handler)
         {
             return false;
         }
 
         return string.Equals(handler, LoginModel.PasskeyOptionsHandler, StringComparison.OrdinalIgnoreCase) ||
                string.Equals(handler, PasskeysModel.BeginRegistrationHandler, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The handler Razor Pages will run for <paramref name="context"/>, named the way it names it: the
+    /// <c>handler</c> route value when there is one, otherwise the <b>first</b> <c>handler</c> query value.
+    /// </summary>
+    /// <remarks>
+    /// The framework's <c>DefaultPageHandlerMethodSelector.GetHandlerName</c>, and it has to be exactly
+    /// that. Read as one string, a repeated parameter comes back joined with commas, which names no
+    /// handler here while the page still runs the first - so <c>?handler=PasskeyOptions&amp;handler=x</c>
+    /// got a challenge with no limiter at all.
+    /// </remarks>
+    private static string? HandlerName(HttpContext context)
+    {
+        string? routed = Convert.ToString(context.GetRouteValue(HandlerQuery), CultureInfo.InvariantCulture);
+
+        if (!string.IsNullOrEmpty(routed))
+        {
+            return routed;
+        }
+
+        return context.Request.Query.TryGetValue(HandlerQuery, out StringValues queried) ? queried[0] : null;
     }
 
     private static string AddressOf(HttpContext context)

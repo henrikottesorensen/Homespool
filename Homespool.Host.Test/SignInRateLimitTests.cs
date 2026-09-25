@@ -82,6 +82,20 @@ public sealed class SignInRateLimitTests
     }
 
     /// <summary>
+    /// A repeated handler parameter runs the handler its first value names, so a challenge named first
+    /// keeps the challenge's window with no proxy trusted, rather than falling to the credential branch,
+    /// which declines to limit.
+    /// </summary>
+    [Fact]
+    public void AChallengeNamedFirstOfTwoHandlerValuesIsStillLimitedWithNoProxyTrusted()
+    {
+        HttpContext context = Request(HttpMethods.Post, trustsProxy: false);
+        context.Request.QueryString = new QueryString($"?handler={LoginModel.PasskeyOptionsHandler}&handler=Other");
+
+        SignInRateLimit.Partition(context).PartitionKey.Should().Be("203.0.113.7");
+    }
+
+    /// <summary>
     /// An address the connection cannot name still partitions rather than throwing - one shared
     /// window, which is what a test host and a unix socket both look like.
     /// </summary>

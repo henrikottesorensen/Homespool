@@ -26,8 +26,14 @@ namespace Homespool.Host.PrusaConnect;
 /// <b>Why this owns the transaction rather than living in
 /// <see cref="PrusaConnectService.ClaimPrinterAsync"/>.</b> The service always runs inside its caller's
 /// transaction, and a failure recorded there would enlist in it and be rolled back with the claim -
-/// every wrong guess counting as zero. The count has to be written after the transaction is gone,
-/// which only the code that opened it can arrange.
+/// every wrong guess counting as zero. The attempt has to be counted before the transaction opens,
+/// which only the code that opens it can arrange.
+/// </para>
+/// <para>
+/// <b>Counted before the code is looked up, and given back when it was right.</b> Checking the
+/// backoff, looking the code up and then counting let a burst of parallel claims all pass the check
+/// before any was counted. <see cref="AttemptLimiter.TakeAttemptAsync"/> checks and counts in one
+/// statement, so the claim that crosses the allowance backs off the rest of the burst.
 /// </para>
 /// </remarks>
 public class RegistrationCodeClaim
@@ -70,16 +76,6 @@ public class RegistrationCodeClaim
                                           Caller caller,
                                           CancellationToken cancellationToken)
     {
-        DateTimeOffset now = _timeProvider.GetUtcNow();
-
-        // Before the code is compared, so a backed-off account cannot learn whether a guess was right
-        // from which refusal comes back.
-        if (await _attemptLimiter.RemainingLockoutAsync(userId, LimitedAction.ClaimPrinter, now, cancellationToken) is
-                { } remaining)
-        {
-            throw new ClaimLockedOutException(remaining);
-        }
-
         // Codes are generated in Crockford base32 uppercase (CodeGenerator) and the TemporaryCode
         // lookup has no case-insensitive collation, so a code typed off a printer's screen with
         // different casing, stray whitespace or grouping hyphens would otherwise silently read as
@@ -88,13 +84,19 @@ public class RegistrationCodeClaim
         // low-resolution LCD still resolve.
         string code = ClaimCode.Normalise(typedCode);
 
+        // Before the code is compared, so a backed-off account cannot learn whether a guess was right
+        // from which refusal comes back - and counted as a wrong guess until it proves otherwise.
+        AttemptTicket attempt = await _attemptLimiter.TakeAttemptAsync(userId, LimitedAction.ClaimPrinter, _timeProvider.GetUtcNow(), cancellationToken);
+
+        if (attempt.BackedOff is { } remaining)
+        {
+            throw new ClaimLockedOutException(remaining);
+        }
+
         try
         {
-            // Scoped INSIDE the try, and that placement is the whole point. Declared at method scope
-            // it outlives the catch below, so the limiter's save enlisted in a transaction that was
-            // then disposed uncommitted - and every failed claim counted as zero. Here the
-            // transaction is disposed as the exception leaves this block, before the handler runs,
-            // so RecordFailedAttemptAsync writes on its own.
+            // Scoped INSIDE the try, so the transaction is disposed as an exception leaves this block
+            // and the attempt is given back below on its own rather than inside a rollback.
             await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
             Printer printer = await _prusaConnectService.ClaimPrinterAsync(code, name, location, teamUuid, caller);
@@ -106,12 +108,14 @@ public class RegistrationCodeClaim
 
             return printer;
         }
-        catch (PrinterNotFoundException)
+        catch (Exception exception) when (exception is not PrinterNotFoundException)
         {
-            // The one outcome that is a guess. An already-claimed code and a forbidden team both
-            // mean the code was *right*, so neither counts - otherwise a user claiming into the
-            // wrong team would lock themselves out for getting the code perfectly correct.
-            await _attemptLimiter.RecordFailedAttemptAsync(userId, LimitedAction.ClaimPrinter, now, cancellationToken);
+            // Not a guess. PrinterNotFoundException is the one outcome that is, and it stays counted;
+            // an already-claimed code and a forbidden team both mean the code was *right*, so neither
+            // counts - otherwise a user claiming into the wrong team would lock themselves out for
+            // getting the code perfectly correct. Not cancellable: an abandoned request must not keep
+            // an attempt its code did not earn.
+            await _attemptLimiter.ReturnAttemptAsync(userId, LimitedAction.ClaimPrinter, attempt, CancellationToken.None);
 
             throw;
         }

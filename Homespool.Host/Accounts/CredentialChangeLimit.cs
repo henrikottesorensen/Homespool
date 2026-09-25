@@ -74,16 +74,12 @@ public sealed class CredentialChangeLimit
     /// </remarks>
     public async Task<bool> TryStartAsync(long userId, CancellationToken cancellationToken)
     {
-        DateTimeOffset now = _time.GetUtcNow();
-
-        if (await _attempts.RemainingLockoutAsync(userId, LimitedAction.ChangeSignIn, now, cancellationToken) is { } remaining)
+        if (await _attempts.TryStartCooldownAsync(userId, LimitedAction.ChangeSignIn, _time.GetUtcNow(), Cooldown, cancellationToken) is { } remaining)
         {
             LogRefusal(userId, remaining);
 
             return false;
         }
-
-        await _attempts.StartCooldownAsync(userId, LimitedAction.ChangeSignIn, now, Cooldown, cancellationToken);
 
         return true;
     }

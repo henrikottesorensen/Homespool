@@ -148,6 +148,237 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
                !string.Equals(entry.Property(u => u.Email).OriginalValue, user.Email, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Counts one failed sign-in on <paramref name="user"/>'s row, locking the account out until
+    /// <paramref name="lockoutEnd"/> when that reaches <paramref name="maxFailedAttempts"/> - or, with
+    /// <paramref name="onlyIfNotLockedOut"/>, refuses to count one while it is locked out at
+    /// <paramref name="now"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Written as an update of the row, not a save of the entity, because the framework's save
+    /// loses counts.</b> It adds one to the count in memory and saves the whole row under the
+    /// concurrency stamp, so of N requests that loaded the row together one save lands and the rest
+    /// fail on the stamp - and a failed save of a failed count is a guess that cost nothing.
+    /// Thirty-nine parallel wrong passwords were measured leaving a count of four and no lockout.
+    /// </para>
+    /// <para>
+    /// <b>Two updates, each conditional on what it changes</b>: one adds to a count still below the
+    /// threshold, the other starts the lockout and returns the count to zero - the framework's
+    /// arithmetic - on a count that reaches it. Which of them changed a row is what says whether this
+    /// attempt was counted, imposed the lockout, or was refused. A reset between the two can leave
+    /// both missing, so a miss on an account that is not locked out goes round again.
+    /// </para>
+    /// <para>
+    /// <b>Refused inside a transaction</b>: a rollback would uncount the attempt.
+    /// </para>
+    /// </remarks>
+    public async Task<AttemptTicket> CountAccessFailureAsync(HSUser user,
+                                                             int maxFailedAttempts,
+                                                             DateTimeOffset now,
+                                                             DateTimeOffset lockoutEnd,
+                                                             bool onlyIfNotLockedOut,
+                                                             CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        OutsideTransaction.Require(Context);
+
+        // As the column will hold it, so the ticket compares equal to what is stored.
+        DateTimeOffset end = DateTimeOffset.FromUnixTimeMilliseconds(lockoutEnd.ToUnixTimeMilliseconds());
+        (string? loaded, string fresh, string other) = NextStamps(user);
+
+        for (int pass = 0; pass < 3; pass++)
+        {
+            IQueryable<HSUser> open = Row(user);
+
+            if (onlyIfNotLockedOut)
+            {
+                open = open.Where(u => !u.LockoutEnabled || u.LockoutEnd == null || u.LockoutEnd <= now);
+            }
+
+            int counted = await open.Where(u => u.AccessFailedCount + 1 < maxFailedAttempts)
+                                    .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, u => u.AccessFailedCount + 1)
+                                                                          .SetProperty(u => u.ConcurrencyStamp, u => u.ConcurrencyStamp == loaded ? fresh : other),
+                                                        cancellationToken);
+
+            if (counted > 0)
+            {
+                await SettleAsync(user, fresh, cancellationToken);
+
+                return AttemptTicket.Counted(lockoutImposed: null);
+            }
+
+            int lockedOut = await open.Where(u => u.AccessFailedCount + 1 >= maxFailedAttempts)
+                                      .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, 0)
+                                                                            .SetProperty(u => u.LockoutEnd, end)
+                                                                            .SetProperty(u => u.ConcurrencyStamp, u => u.ConcurrencyStamp == loaded ? fresh : other),
+                                                          cancellationToken);
+
+            if (lockedOut > 0)
+            {
+                await SettleAsync(user, fresh, cancellationToken);
+
+                return AttemptTicket.Counted(end);
+            }
+
+            if (await LockedUntilAsync(user, cancellationToken) is { } until && until > now && onlyIfNotLockedOut)
+            {
+                return AttemptTicket.Refused(until - now);
+            }
+        }
+
+        // The row kept changing under both updates, or is gone. Refusing is the answer that fails safe.
+        return AttemptTicket.Refused(TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// Gives back an attempt <see cref="CountAccessFailureAsync"/> counted, when the credential turned
+    /// out right but the count is to stand: the attempt comes off it, and a lockout the attempt imposed
+    /// - <paramref name="imposed"/> - is lifted with the count put back one short of
+    /// <paramref name="maxFailedAttempts"/>, where the attempt found it.
+    /// </summary>
+    public async Task ReturnAccessAttemptAsync(HSUser user,
+                                               int maxFailedAttempts,
+                                               DateTimeOffset? imposed,
+                                               CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        (string? loaded, string fresh, string other) = NextStamps(user);
+
+        if (imposed is { } ours &&
+            await Row(user).Where(u => u.LockoutEnd == ours)
+                           .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, maxFailedAttempts - 1)
+                                                                 .SetProperty(u => u.LockoutEnd, (DateTimeOffset?)null)
+                                                                 .SetProperty(u => u.ConcurrencyStamp, u => u.ConcurrencyStamp == loaded ? fresh : other),
+                                               cancellationToken) > 0)
+        {
+            await SettleAsync(user, fresh, cancellationToken);
+
+            return;
+        }
+
+        if (await Row(user).Where(u => u.AccessFailedCount > 0)
+                           .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, u => u.AccessFailedCount - 1)
+                                                                 .SetProperty(u => u.ConcurrencyStamp, u => u.ConcurrencyStamp == loaded ? fresh : other),
+                                               cancellationToken) > 0)
+        {
+            await SettleAsync(user, fresh, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// Clears <paramref name="user"/>'s failed count, and lifts the lockout <paramref name="imposed"/>
+    /// names when it is still the one in force. Writes nothing when there is nothing to clear.
+    /// </summary>
+    /// <remarks>
+    /// A lockout is otherwise left alone, as the framework's reset leaves it: a right credential proves
+    /// this attempt, not that the guesses that locked the account were the owner's.
+    /// </remarks>
+    public async Task ClearAccessFailedCountAsync(HSUser user, DateTimeOffset? imposed, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        (string? loaded, string fresh, string other) = NextStamps(user);
+
+        int cleared = imposed is { } ours ?
+            await Row(user).Where(u => u.AccessFailedCount != 0 || u.LockoutEnd == ours)
+                           .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, 0)
+                                                                 .SetProperty(u => u.LockoutEnd, u => u.LockoutEnd == ours ? null : u.LockoutEnd)
+                                                                 .SetProperty(u => u.ConcurrencyStamp, u => u.ConcurrencyStamp == loaded ? fresh : other),
+                                               cancellationToken) :
+            await Row(user).Where(u => u.AccessFailedCount != 0)
+                           .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, 0)
+                                                                 .SetProperty(u => u.ConcurrencyStamp, u => u.ConcurrencyStamp == loaded ? fresh : other),
+                                               cancellationToken);
+
+        if (cleared > 0)
+        {
+            await SettleAsync(user, fresh, cancellationToken);
+        }
+    }
+
+    private IQueryable<HSUser> Row(HSUser user)
+    {
+        return Context.Users.Where(u => u.Id == user.Id);
+    }
+
+    private async Task<DateTimeOffset?> LockedUntilAsync(HSUser user, CancellationToken cancellationToken)
+    {
+        return await Row(user).AsNoTracking().Select(u => u.LockoutEnd).SingleOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The stamps a lockout write chooses between: <c>fresh</c> when the row still carries the stamp
+    /// this context loaded, <c>other</c> when something else wrote it since.
+    /// </summary>
+    /// <remarks>
+    /// The stamp moves on as any save moves it, so a save of a copy loaded before this write is refused
+    /// rather than writing the old count back. Which value it takes says whether the tracked entity may
+    /// adopt it.
+    /// </remarks>
+    private (string? loaded, string fresh, string other) NextStamps(HSUser user)
+    {
+        EntityEntry<HSUser> entry = Context.Entry(user);
+        string? loaded = entry.State is EntityState.Detached ? user.ConcurrencyStamp : entry.Property(u => u.ConcurrencyStamp).OriginalValue;
+
+        return (loaded, Guid.NewGuid().ToString(), Guid.NewGuid().ToString());
+    }
+
+    /// <summary>
+    /// Settles <paramref name="user"/> to the lockout columns as stored after a lockout write.
+    /// </summary>
+    /// <remarks>
+    /// The count and the lockout end are adopted as stored, whatever else wrote them since, since those
+    /// are the values the caller reads next. The stamp is adopted only when it is still
+    /// <paramref name="fresh"/>: the row was as this context loaded it and nothing has written it after.
+    /// Otherwise the entity is stale in columns this did not read, and a later save of it has to be
+    /// refused as the framework would refuse it.
+    /// </remarks>
+    private async Task SettleAsync(HSUser user, string fresh, CancellationToken cancellationToken)
+    {
+        var stored = await Row(user).AsNoTracking()
+                                    .Select(u => new { u.AccessFailedCount, u.LockoutEnd, u.ConcurrencyStamp })
+                                    .SingleOrDefaultAsync(cancellationToken);
+
+        if (stored is null)
+        {
+            return;
+        }
+
+        bool current = string.Equals(stored.ConcurrencyStamp, fresh, StringComparison.Ordinal);
+        EntityEntry<HSUser> entry = Context.Entry(user);
+
+        if (entry.State is EntityState.Detached)
+        {
+            user.AccessFailedCount = stored.AccessFailedCount;
+            user.LockoutEnd = stored.LockoutEnd;
+
+            if (current)
+            {
+                user.ConcurrencyStamp = stored.ConcurrencyStamp;
+            }
+
+            return;
+        }
+
+        Settle(entry.Property(u => u.AccessFailedCount), stored.AccessFailedCount);
+        Settle(entry.Property(u => u.LockoutEnd), stored.LockoutEnd);
+
+        if (current)
+        {
+            Settle(entry.Property(u => u.ConcurrencyStamp), stored.ConcurrencyStamp);
+        }
+    }
+
+    /// <summary>Sets a tracked property to what the database holds, as though it had been loaded so.</summary>
+    private static void Settle<T>(PropertyEntry<HSUser, T> property, T value)
+    {
+        property.CurrentValue = value;
+        property.OriginalValue = value;
+        property.IsModified = false;
+    }
+
     /// <inheritdoc/>
     /// <remarks>
     /// The framework mints a key as base32 in upper case, and Data Protection's output always carries

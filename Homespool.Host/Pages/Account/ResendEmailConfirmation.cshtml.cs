@@ -102,17 +102,12 @@ public class ResendEmailConfirmationModel : PageModel
         // mail lands on is the only thing that can be bounded, and a wait that grew would be grown by
         // a stranger. An account inside its cooldown gets the same sentence and no mail, so the refusal
         // does not become the existence answer the null arm above withholds.
-        DateTimeOffset now = _timeProvider.GetUtcNow();
-
-        if (await _attemptLimiter.RemainingLockoutAsync(
-                user.Id, LimitedAction.SendConfirmationEmail, now, cancellationToken) is not null)
+        if (await _attemptLimiter.TryStartCooldownAsync(
+                user.Id, LimitedAction.SendConfirmationEmail, _timeProvider.GetUtcNow(), SendCooldown, cancellationToken) is not null)
         {
             ModelState.AddModelError(string.Empty, Answer());
             return Page();
         }
-
-        await _attemptLimiter.StartCooldownAsync(
-            user.Id, LimitedAction.SendConfirmationEmail, now, SendCooldown, cancellationToken);
 
         string code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));

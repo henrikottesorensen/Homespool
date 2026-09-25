@@ -30,6 +30,13 @@ namespace Homespool.Host.Authentication;
 /// scheme resets it when the code is right.
 /// </para>
 /// <para>
+/// <b>One change to the framework's order: the attempt is counted before the password is
+/// compared</b> (<see cref="LocalSignInRules.TakeAttemptAsync"/>), and a right password gives it back.
+/// Checking the lockout, comparing and then counting let a burst of parallel posts all pass the check
+/// before any had counted, and every one was compared. Counted first, the post that reaches the
+/// threshold locks the account out while it is still being compared, and the rest are refused unread.
+/// </para>
+/// <para>
 /// <b>The one scheme that names its own account - at login.</b> A <see cref="UserPasswordCredential"/>
 /// resolves by username and then by address, in one field, which is safe because a username may not
 /// contain <c>@</c>. An identifier nobody holds is refused after a decoy verification, so a miss costs
@@ -52,7 +59,7 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>On a step-up the account is the session's.</b> A <see cref="PasswordCredential"/> carries only
 /// the password, and it is checked against the signed-in account; with nobody signed in it is refused
-/// unread. A wrong one backs off the account's step-ups (<see cref="LocalSignInRules.StepUpBackoffAsync"/>)
+/// unread. A wrong one backs off the account's step-ups (<see cref="LocalSignInRules.TakeStepUpAsync"/>)
 /// and never touches the account lockout, which is the login page's: a session holder guessing here
 /// must not be able to lock the owner out of signing in. A page that wants to confirm an act asks for
 /// this and never for a login.
@@ -143,6 +150,19 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
             return SignInRefusals.Fail(refusal, "The account may not sign in.");
         }
 
+        AttemptTicket attempt = await _rules.TakeAttemptAsync(user);
+
+        if (!attempt.Taken)
+        {
+            // Locked out by an attempt counted since the check above - a parallel one. The same decoy,
+            // for the same reason.
+            PasswordVerificationDecoy.Verify(_hasher, password);
+
+            Logger.LogInformation("Password sign-in refused for user {UserId}: {Refusal}.", user.Id, SignInRefusal.LockedOut);
+
+            return SignInRefusals.Fail(SignInRefusal.LockedOut, "The account may not sign in.");
+        }
+
         // An account that signs in with a provider stores no hash, and the comparison below answers
         // false without running one - so without a decoy it is the cheap answer among expensive ones,
         // and cheap here says more than the branches above give away: the account exists *and* the
@@ -158,7 +178,9 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
 
         if (!hasPassword || !await _users.CheckPasswordAsync(user, password))
         {
-            bool lockedOut = await _rules.RecordFailureAsync(user);
+            // Already counted; whether this was the attempt that locked the account out is all that
+            // is left to say.
+            bool lockedOut = attempt.LockoutImposed is not null;
 
             // The reason is a property rather than two message texts because the refusal is one: an
             // operator asked why somebody cannot sign in is owed "this account signs in with a
@@ -177,18 +199,11 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
         }
 
         // The framework's quirk, kept: while a second factor is still owed, the failed count stands
-        // until the code is right, unless this browser was remembered after one.
-        if (!await _users.GetTwoFactorEnabledAsync(user) || await _rules.IsTwoFactorClientRememberedAsync(Context, user))
-        {
-            IdentityResult reset = await _users.ResetAccessFailedCountAsync(user);
+        // until the code is right, unless this browser was remembered after one - so only this
+        // attempt is given back.
+        bool resetCount = !await _users.GetTwoFactorEnabledAsync(user) || await _rules.IsTwoFactorClientRememberedAsync(Context, user);
 
-            if (!reset.Succeeded)
-            {
-                Logger.LogWarning("Password sign-in refused for user {UserId}: the failed count could not be reset.", user.Id);
-
-                return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid login attempt.");
-            }
-        }
+        await _rules.AttemptPassedAsync(user, attempt, resetCount);
 
         ClaimsPrincipal principal = await _claimsFactory.CreateAsync(user);
 
@@ -226,9 +241,9 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
             return SignInRefusals.Fail(refusal, "The account may not sign in.", await _rules.RemainingLockoutAsync(user));
         }
 
-        // The step-up's own backoff, checked before the password is compared and counted instead
-        // of the account lockout: a session holder guessing here must not lock the owner out.
-        if (await _rules.StepUpBackoffAsync(user, Context.RequestAborted) is { } backedOff)
+        // The step-up's own backoff, counted before the password is compared and instead of the
+        // account lockout: a session holder guessing here must not lock the owner out.
+        if ((await _rules.TakeStepUpAsync(user, Context.RequestAborted)).BackedOff is { } backedOff)
         {
             Logger.LogInformation("Password step-up refused for user {UserId}: backed off for {Remaining}.", user.Id, backedOff);
 
@@ -237,8 +252,6 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
 
         if (!await _users.CheckPasswordAsync(user, password))
         {
-            await _rules.RecordStepUpFailureAsync(user, Context.RequestAborted);
-
             Logger.LogInformation("Password step-up refused for user {UserId}: wrong password.", user.Id);
 
             return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid password.");

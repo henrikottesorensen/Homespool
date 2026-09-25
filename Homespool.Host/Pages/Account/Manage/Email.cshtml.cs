@@ -217,15 +217,6 @@ public class EmailModel : PageModel
     /// </remarks>
     private async Task<bool> TryStartCooldownAsync(long userId, LimitedAction action, CancellationToken cancellationToken)
     {
-        DateTimeOffset now = _timeProvider.GetUtcNow();
-
-        if (await _attemptLimiter.RemainingLockoutAsync(userId, action, now, cancellationToken) is not null)
-        {
-            return false;
-        }
-
-        await _attemptLimiter.StartCooldownAsync(userId, action, now, SendCooldown, cancellationToken);
-
-        return true;
+        return await _attemptLimiter.TryStartCooldownAsync(userId, action, _timeProvider.GetUtcNow(), SendCooldown, cancellationToken) is null;
     }
 }

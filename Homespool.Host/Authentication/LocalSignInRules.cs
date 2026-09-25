@@ -68,23 +68,17 @@ public sealed class LocalSignInRules
     }
 
     /// <summary>
-    /// How much longer the account's step-ups are backed off, or <see langword="null"/> when they are
-    /// not: the <see cref="LimitedAction.StepUp"/> counter, checked before a step-up's credential is
-    /// compared so a backed-off session cannot learn whether its guesses were close.
+    /// Counts a step-up against the account's step-up backoff before its credential is compared - and
+    /// nothing else - or refuses it, uncounted, while step-ups are backed off. A backed-off session
+    /// cannot learn whether its guesses were close, and parallel step-ups cannot all be compared on a
+    /// count none of them has written. A wrong credential then needs nothing further; a right one
+    /// clears the backoff with <see cref="ResetStepUpAsync"/>.
     /// </summary>
-    public Task<TimeSpan?> StepUpBackoffAsync(HSUser user, CancellationToken cancellationToken)
+    public Task<AttemptTicket> TakeStepUpAsync(HSUser user, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        return _stepUps.RemainingLockoutAsync(user.Id, LimitedAction.StepUp, _time.GetUtcNow(), cancellationToken);
-    }
-
-    /// <summary>Counts a wrong step-up credential against the account's step-up backoff - and nothing else.</summary>
-    public Task RecordStepUpFailureAsync(HSUser user, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(user);
-
-        return _stepUps.RecordFailedAttemptAsync(user.Id, LimitedAction.StepUp, _time.GetUtcNow(), cancellationToken);
+        return _stepUps.TakeAttemptAsync(user.Id, LimitedAction.StepUp, _time.GetUtcNow(), cancellationToken);
     }
 
     /// <summary>A right step-up credential clears the step-up backoff.</summary>
@@ -209,22 +203,56 @@ public sealed class LocalSignInRules
     }
 
     /// <summary>
-    /// Records a failed attempt against the account's lockout, and says whether that locked it out.
+    /// Counts an attempt at the password or a sign-in code against the account's lockout before it is
+    /// compared, or refuses it, uncounted, while the account is locked out.
     /// </summary>
-    public async Task<bool> RecordFailureAsync(HSUser user)
+    /// <remarks>
+    /// <para>
+    /// <b>Counted first so the lockout check is also a reservation.</b> Checking, comparing and then
+    /// counting let every request of a parallel burst pass the check before any had counted, and each
+    /// was compared: the account locked out, but only after the whole burst had been tried. Here the
+    /// attempt that reaches the threshold locks the account out while it is still being compared.
+    /// </para>
+    /// <para>
+    /// A wrong credential needs nothing further - <see cref="AttemptTicket.LockoutImposed"/> says
+    /// whether it was the one that locked the account out. A right one calls
+    /// <see cref="AttemptPassedAsync"/>. After <see cref="PreSignInCheckAsync"/>, which still says why
+    /// an account may not sign in at all.
+    /// </para>
+    /// </remarks>
+    public async Task<AttemptTicket> TakeAttemptAsync(HSUser user)
     {
+        ArgumentNullException.ThrowIfNull(user);
+
+        return _users.SupportsUserLockout ?
+            await Manager().TakeAccessAttemptAsync(user) :
+            AttemptTicket.Counted(lockoutImposed: null);
+    }
+
+    /// <summary>
+    /// Settles an attempt <see cref="TakeAttemptAsync"/> counted whose credential was right: the failed
+    /// count cleared, or - with <paramref name="resetCount"/> false, while a second factor is still
+    /// owed - only this attempt given back. Either way a lockout this attempt imposed is lifted.
+    /// </summary>
+    public Task AttemptPassedAsync(HSUser user, AttemptTicket attempt, bool resetCount)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(attempt);
+
         if (!_users.SupportsUserLockout)
         {
-            return false;
+            return Task.CompletedTask;
         }
 
-        // A failed increment is a wrong credential and nothing more, as the framework has it: a
-        // concurrency failure here could be an attacker trying to slip past the count, so the
-        // attempt is refused, but it is not a lockout and must not send the person to the lockout
-        // page - it costs a legitimate person one retry.
-        IdentityResult incremented = await _users.AccessFailedAsync(user);
+        return resetCount ?
+            Manager().ResetAccessFailedCountAsync(user, attempt) :
+            Manager().ReturnAccessAttemptAsync(user, attempt);
+    }
 
-        return incremented.Succeeded && await _users.IsLockedOutAsync(user);
+    private HSUserManager Manager()
+    {
+        return _users as HSUserManager ??
+               throw new NotSupportedException("Counting a sign-in attempt before it is compared needs HSUserManager.");
     }
 
     /// <summary>

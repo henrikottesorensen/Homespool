@@ -20,8 +20,9 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// The framework's user manager, except that a save runs the user validators only when the username or
-/// address changed, removing a login or a passkey the account does not hold fails, and a closed
-/// account's emailed tokens do not verify.
+/// address changed, removing a login or a passkey the account does not hold fails, a closed account's
+/// emailed tokens do not verify, and a failed sign-in is counted by an update of the row that parallel
+/// requests cannot lose.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -46,9 +47,19 @@ namespace Homespool.Host.Accounts;
 /// person making it sees.
 /// </para>
 /// <para>
-/// The framework's user-update metric is not recorded for the two removals: its meter is private to
-/// <see cref="UserManager{TUser}"/>. The framework's own callers of <see cref="UpdateUserAsync"/> still
-/// record it.
+/// <b>The failed count is written as an update of the row, not a save of the entity.</b> The framework
+/// adds one in memory and saves the whole row under the concurrency stamp, so of parallel wrong
+/// passwords one save lands and the rest are refused on the stamp and counted as nothing - and a right
+/// password that loaded a count above zero saves its reset the same way, and can lose the same race.
+/// <see cref="AccessFailedAsync"/> and <see cref="ResetAccessFailedCountAsync(HSUser)"/> write through
+/// <see cref="HSUserStore"/>'s conditional updates instead, and
+/// <see cref="TakeAccessAttemptAsync"/> counts an attempt before its credential is compared, so a burst
+/// cannot all be compared on a count none of it has written.
+/// </para>
+/// <para>
+/// The framework's user-update metric is not recorded for the two removals or the failed count: its
+/// meter is private to <see cref="UserManager{TUser}"/>. The framework's own callers of
+/// <see cref="UpdateUserAsync"/> still record it.
 /// </para>
 /// </remarks>
 public sealed class HSUserManager : UserManager<HSUser>
@@ -151,6 +162,135 @@ public sealed class HSUserManager : UserManager<HSUser>
         return await UpdateUserAsync(user);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The framework's arithmetic - at the threshold the lockout starts and the count returns to zero -
+    /// as an update of the row rather than an increment in memory saved under the concurrency stamp,
+    /// which parallel failures lose. Counts whether or not the account is locked out already, as the
+    /// framework does; a caller about to compare a credential wants <see cref="TakeAccessAttemptAsync"/>.
+    /// Fails with the framework's concurrency failure only when parallel writes kept the count from
+    /// landing at all.
+    /// </remarks>
+    public override async Task<IdentityResult> AccessFailedAsync(HSUser user)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (Store is not HSUserStore store)
+        {
+            return await base.AccessFailedAsync(user);
+        }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        AttemptTicket counted = await store.CountAccessFailureAsync(user,
+                                                                    Options.Lockout.MaxFailedAccessAttempts,
+                                                                    now,
+                                                                    now.Add(Options.Lockout.DefaultLockoutTimeSpan),
+                                                                    onlyIfNotLockedOut: false,
+                                                                    CancellationToken);
+
+        if (!counted.Taken)
+        {
+            return IdentityResult.Failed(ErrorDescriber.ConcurrencyFailure());
+        }
+
+        LogIfLockedOut(counted);
+
+        return IdentityResult.Success;
+    }
+
+    /// <summary>
+    /// Counts an attempt at a guessable credential as a failure before it is compared - unless the
+    /// account is locked out, when nothing is counted and the ticket says for how long.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The lockout check and the count are one act</b> - the count lands only on an account that is
+    /// not locked out when it is written - so the attempt that reaches the
+    /// threshold locks the account out while it is still being compared, and the rest of a burst is
+    /// refused unread: a burst is compared as many times as a patient guesser would be, not as many
+    /// times as it has requests. A right credential then gives the attempt back, through
+    /// <see cref="ResetAccessFailedCountAsync(HSUser, AttemptTicket)"/> or
+    /// <see cref="ReturnAccessAttemptAsync"/>.
+    /// </para>
+    /// <para>
+    /// The lockout end is read from <see cref="DateTimeOffset.UtcNow"/>, the clock
+    /// <see cref="UserManager{TUser}.IsLockedOutAsync"/> reads. An account with lockout disabled is
+    /// counted and never refused, as the framework has it.
+    /// </para>
+    /// </remarks>
+    public async Task<AttemptTicket> TakeAccessAttemptAsync(HSUser user)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        AttemptTicket attempt = await LockoutStore().CountAccessFailureAsync(user,
+                                                                             Options.Lockout.MaxFailedAccessAttempts,
+                                                                             now,
+                                                                             now.Add(Options.Lockout.DefaultLockoutTimeSpan),
+                                                                             onlyIfNotLockedOut: true,
+                                                                             CancellationToken);
+
+        LogIfLockedOut(attempt);
+
+        return attempt;
+    }
+
+    /// <summary>
+    /// Gives back an attempt <see cref="TakeAccessAttemptAsync"/> counted whose credential was right,
+    /// leaving the rest of the count standing - for a password right while the account still owes a
+    /// second factor, whose count the framework keeps until the code is right.
+    /// </summary>
+    public Task ReturnAccessAttemptAsync(HSUser user, AttemptTicket attempt)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(attempt);
+
+        if (!attempt.Taken)
+        {
+            return Task.CompletedTask;
+        }
+
+        return LockoutStore().ReturnAccessAttemptAsync(user, Options.Lockout.MaxFailedAccessAttempts, attempt.LockoutImposed, CancellationToken);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// One update, which writes nothing when the count is already zero - the framework's early
+    /// return, read from the row rather than from the loaded entity. Never fails: without a stamp
+    /// check there is nothing for a parallel write to refuse it on, which is what stops a right
+    /// password being refused because a burst of wrong ones saved first.
+    /// </remarks>
+    public override async Task<IdentityResult> ResetAccessFailedCountAsync(HSUser user)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (Store is not HSUserStore store)
+        {
+            return await base.ResetAccessFailedCountAsync(user);
+        }
+
+        await store.ClearAccessFailedCountAsync(user, imposed: null, CancellationToken);
+
+        return IdentityResult.Success;
+    }
+
+    /// <summary>
+    /// Clears the failed count after a right credential taken with <see cref="TakeAccessAttemptAsync"/>,
+    /// and lifts the lockout that attempt imposed by reaching the threshold, since it was not a guess.
+    /// </summary>
+    public Task ResetAccessFailedCountAsync(HSUser user, AttemptTicket attempt)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+        ArgumentNullException.ThrowIfNull(attempt);
+
+        return LockoutStore().ClearAccessFailedCountAsync(user, attempt.LockoutImposed, CancellationToken);
+    }
+
     /// <summary>
     /// The security stamps a change made through this manager has replaced on <paramref name="user"/>
     /// - in the application, during this request, since the manager is scoped to one. Empty when it
@@ -234,6 +374,20 @@ public sealed class HSUserManager : UserManager<HSUser>
     {
         return Store as IUserPasskeyStore<HSUser> ??
                throw new NotSupportedException("The user store does not implement IUserPasskeyStore<HSUser>.");
+    }
+
+    private void LogIfLockedOut(AttemptTicket attempt)
+    {
+        if (attempt.LockoutImposed is not null)
+        {
+            Logger.LogDebug("User is locked out.");
+        }
+    }
+
+    private HSUserStore LockoutStore()
+    {
+        return Store as HSUserStore ??
+               throw new NotSupportedException("Counting a sign-in attempt before it is compared needs HSUserStore.");
     }
 
     private IUserLoginStore<HSUser> LoginStore()

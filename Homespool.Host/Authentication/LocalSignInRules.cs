@@ -257,16 +257,24 @@ public sealed class LocalSignInRules
 
     /// <summary>
     /// The principal the pending two-factor cookie carries: the account that passed its first factor
-    /// and owes its second, and the provider that factor came through when it was not a password.
+    /// and owes its second, the provider that factor came through when it was not a password, and the
+    /// account's security stamp as it stood, which the cookie is checked against on every read.
     /// </summary>
-    public static ClaimsPrincipal PendingTwoFactor(HSUser user, string? loginProvider = null)
+    public static ClaimsPrincipal PendingTwoFactor(HSUser user, string? loginProvider = null, Claim? securityStamp = null)
     {
+        ArgumentNullException.ThrowIfNull(user);
+
         ClaimsIdentity identity = new(IdentityConstants.TwoFactorUserIdScheme);
         identity.AddClaim(new Claim(JwtClaimTypes.Subject, user.Id.ToString(CultureInfo.InvariantCulture)));
 
         if (loginProvider is not null)
         {
             identity.AddClaim(new Claim(JwtClaimTypes.IdentityProvider, loginProvider));
+        }
+
+        if (securityStamp is not null)
+        {
+            identity.AddClaim(securityStamp);
         }
 
         return new ClaimsPrincipal(identity);

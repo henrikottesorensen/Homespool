@@ -221,13 +221,19 @@ public sealed class LocalSignIn
 
     /// <summary>
     /// Records that <paramref name="user"/> passed its first factor and owes its second: the pending
-    /// cookie, carrying the provider the first factor came through when it was not a password.
+    /// cookie, carrying the provider the first factor came through when it was not a password, and the
+    /// account's security stamp, so a change to the account forgets the pending sign-in.
     /// </summary>
-    public Task BeginSecondFactorAsync(HttpContext context, HSUser user, string? loginProvider = null)
+    public async Task BeginSecondFactorAsync(HttpContext context, HSUser user, string? loginProvider = null)
     {
         ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(user);
 
-        return context.SignInAsync(IdentityConstants.TwoFactorUserIdScheme, LocalSignInRules.PendingTwoFactor(user, loginProvider));
+        Claim? stamp = _users.SupportsUserSecurityStamp ?
+            new Claim(_options.ClaimsIdentity.SecurityStampClaimType, await _users.GetSecurityStampAsync(user)) :
+            null;
+
+        await context.SignInAsync(IdentityConstants.TwoFactorUserIdScheme, LocalSignInRules.PendingTwoFactor(user, loginProvider, stamp));
     }
 
     /// <summary>

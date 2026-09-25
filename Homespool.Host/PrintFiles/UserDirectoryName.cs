@@ -12,8 +12,9 @@ namespace Homespool.Host.PrintFiles;
 /// <remarks>
 /// <para>
 /// <b>The id is the identity and the name is decoration.</b> Lookup matches on the
-/// <c>{userId}-</c> prefix alone and never reads what follows, which is what lets the suffix go stale
-/// when somebody changes their username, and what lets it be whatever it likes. The whole point is
+/// <c>{userId}-</c> prefix, or on the bare id a name that sanitises to nothing leaves, and never
+/// reads what follows - which is what lets the suffix go stale when somebody changes their username,
+/// and what lets it be whatever it likes. The whole point is
 /// that a person poking around in the data directory can see whose files are whose.
 /// </para>
 /// <para>
@@ -82,7 +83,8 @@ public static class UserDirectoryName
     /// <remarks>
     /// Unambiguous across ids because the hyphen is required: <c>12-*</c> does not match
     /// <c>120-bob</c>. Only the <i>first</i> hyphen is significant, so a sanitised name containing
-    /// one of its own is harmless.
+    /// one of its own is harmless. The same hyphen means it does not match the bare <c>12</c> either,
+    /// so a lookup asks for that one by name.
     /// </remarks>
     public static string PatternFor(long userId)
     {

@@ -677,12 +677,62 @@ public sealed class UserFileStoreTests : IDisposable
     }
 
     /// <summary>
+    /// <b>A user whose name sanitised to nothing keeps one directory through a rename.</b> Both names
+    /// are ones the validator accepts; the first leaves the bare id, which the glob's hyphen cannot
+    /// match.
+    /// </summary>
+    [Theory]
+    [InlineData("con")]
+    [InlineData("...")]
+    public async Task ARenameFromANameThatLeftTheBareIdKeepsOneDirectory(string emptiedName)
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        await store.SaveAsync(Alice, "first.gcode", new MemoryStream([1]), overwrite: false,
+                              CancellationToken.None, emptiedName);
+
+        // Act
+        await store.SaveAsync(Alice, "second.gcode", new MemoryStream([2]), overwrite: false,
+                              CancellationToken.None, "henrik");
+
+        // Assert
+        Directory.EnumerateDirectories(_root).Where(d => Path.GetFileName(d) != ".incoming")
+                 .Select(Path.GetFileName)
+                 .Should().Equal(["1"], "the bare id is this user's directory, whatever they are called now");
+
+        store.List(Alice).Select(file => file.FileName)
+             .Should().BeEquivalentTo(["first.gcode", "second.gcode"]);
+    }
+
+    /// <summary>
+    /// A user already split between the bare id and a suffixed directory keeps reading the suffixed
+    /// one - which is where a rename sent their saves before the bare id was looked for, so choosing
+    /// the other would swap which half of their files they see.
+    /// </summary>
+    [Fact]
+    public async Task ASplitUserKeepsReadingTheSuffixedDirectory()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        Directory.CreateDirectory(Path.Combine(_root, "1"));
+        await File.WriteAllBytesAsync(Path.Combine(_root, "1", "before.gcode"), [1], TestContext.Current.CancellationToken);
+        Directory.CreateDirectory(Path.Combine(_root, "1-henrik"));
+        await File.WriteAllBytesAsync(Path.Combine(_root, "1-henrik", "after.gcode"), [2], TestContext.Current.CancellationToken);
+
+        // Act & Assert
+        store.List(Alice).Select(file => file.FileName).Should().Equal(["after.gcode"]);
+    }
+
+    /// <summary>
     /// A directory whose name is stale, or has no name at all, still resolves - lookup reads the id
-    /// prefix and nothing else.
+    /// prefix, or the bare id, and nothing else.
     /// </summary>
     [Theory]
     [InlineData("1-whoever-they-used-to-be")]
     [InlineData("1-Ægir")]
+    [InlineData("1")]
     public async Task ADirectoryResolvesByItsIdPrefixWhateverTheNameSays(string existingDirectory)
     {
         // Arrange - a directory already on disk, as an earlier save would have left it.

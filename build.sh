@@ -26,6 +26,10 @@
 # than something unique per build, so rebuilding twice in a day stays cached. Online by the same token
 # as --pull: that layer runs apt-get update, and on a machine without the cached layer and without
 # the network the build fails there rather than shipping unpatched packages quietly.
+#
+# And it resolves each image's base tag to a digest first and builds on exactly that, so the image
+# can record which base it was built on - see tools/base-digest.sh. --pull stays for the one floating
+# tag left, the SDK the application is compiled in, which never reaches the image that ships.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,5 +47,10 @@ fi
 
 HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
 export HOMESPOOL_APT_REFRESH
+
+HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/Homespool.Host/Dockerfile")"
+HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
+export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST
+echo "==> Building on ${HOMESPOOL_ASPNET_DIGEST} (application) and ${HOMESPOOL_NGINX_DIGEST} (proxy)"
 
 exec docker compose -f "$repo_root/compose.yaml" build --pull "$@"

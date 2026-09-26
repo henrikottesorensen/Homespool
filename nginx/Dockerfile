@@ -12,7 +12,15 @@
 # directly. It listens on 8080/8443/15443 inside the container and Compose publishes the low ports
 # onto them. Debian-based rather than Alpine, deliberately: musl's differences are subtle enough to
 # be discovered at the wrong moment.
-FROM nginxinc/nginx-unprivileged:stable
+#
+# By floating tag, so the weekly rebuilds arrive without an edit here, and by digest as well when the
+# build supplies one: ./build.sh resolves the tag to whatever the registry serves at that moment
+# (tools/base-digest.sh, which reads the tag from this ARG line) and the image is built on exactly
+# that, and records it in the labels at the end. Without a digest, as a bare `docker compose build`
+# leaves it, this builds on the tag and the label names the tag alone.
+ARG HOMESPOOL_BASE_IMAGE=nginxinc/nginx-unprivileged:stable
+ARG HOMESPOOL_BASE_DIGEST=
+FROM ${HOMESPOOL_BASE_IMAGE}${HOMESPOOL_BASE_DIGEST:+@${HOMESPOOL_BASE_DIGEST}}
 
 # The dynamic modules the base image installs - geoip, image-filter, njs, xslt - and curl go, because
 # nothing here uses them: no configuration has a load_module, and neither the base image's entrypoint
@@ -132,3 +140,27 @@ COPY --chmod=644 homespool-printer.conf homespool-legacy-printer.conf /etc/nginx
 EXPOSE 8080
 EXPOSE 8443
 EXPOSE 15443
+
+# Every label the base image sets, set again, because an image inherits its base's labels and these
+# otherwise describe nginx's image as if it were this one: its repository as the source, its commit as
+# the revision, its release as the version. A registry, a scanner report or an update check reading
+# them would be told about somebody else's image. Blank rather than left out where there is nothing
+# true to say yet - no release version; created, because Docker's own image metadata already carries
+# the build time; maintainer, which is nginx's. licenses is the project's licence; nginx inside it
+# keeps its own.
+#
+# HOMESPOOL_GITREF is empty on a build that is not given one, like the application's --version.
+ARG HOMESPOOL_GITREF=
+ARG HOMESPOOL_BASE_IMAGE
+ARG HOMESPOOL_BASE_DIGEST
+LABEL org.opencontainers.image.title="Homespool proxy" \
+      org.opencontainers.image.description="The reverse proxy in front of Homespool, a self-hosted alternative to Prusa Connect." \
+      org.opencontainers.image.source="https://github.com/henrikottesorensen/Homespool" \
+      org.opencontainers.image.url="https://github.com/henrikottesorensen/Homespool" \
+      org.opencontainers.image.revision="${HOMESPOOL_GITREF}" \
+      org.opencontainers.image.version="" \
+      org.opencontainers.image.created="" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.base.name="${HOMESPOOL_BASE_IMAGE}" \
+      org.opencontainers.image.base.digest="${HOMESPOOL_BASE_DIGEST}" \
+      maintainer=""

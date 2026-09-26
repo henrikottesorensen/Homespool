@@ -36,6 +36,9 @@ services:
         # The day, so the image's apt upgrade reruns once a day instead of being cached forever on an
         # unchanged base. Also only ./build.sh fills it in; empty leaves that layer cached.
         HOMESPOOL_APT_REFRESH: "${HOMESPOOL_APT_REFRESH:-}"
+        # The digest of the base image's tag at build time, so the image is built on and records
+        # exactly that base. Also only ./build.sh fills it in; empty builds on the floating tag.
+        HOMESPOOL_BASE_DIGEST: "${HOMESPOOL_ASPNET_DIGEST:-}"
 
     # Pinned, because Docker otherwise derives it from the container id - a new name on every
     # recreation. The printer certificate carries this name and is issued once, so an unpinned name
@@ -693,6 +696,11 @@ services:
     image: ${REGISTRY:+${REGISTRY}/}homespool-proxy
     build:
       context: ./nginx
+      args:
+        # The same two stamps the application image takes, for the proxy's own labels - see the
+        # homespool service above. Both empty unless ./build.sh fills them in.
+        HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
+        HOMESPOOL_BASE_DIGEST: "${HOMESPOOL_NGINX_DIGEST:-}"
 
     # IPv4 ONLY, on every port here, and the 0.0.0.0 is what says so. Published without an address,
     # Docker also listens on [::] - but this network has no IPv6, so a v6 connection is relayed by

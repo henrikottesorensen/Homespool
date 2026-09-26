@@ -238,6 +238,11 @@ services:
       # the network-facing container. See the volumes block at the bottom.
       - homespool-printer-leaf:/app/data/proxy-certificates
 
+      # The host's image update check writes its report here, and the app shows it in the health
+      # report and the administrators' banner. Read-only: the app never writes it and never checks
+      # for updates itself. See the volumes block at the bottom.
+      - homespool-update-report:/var/lib/homespool:ro
+
       # Camera *names*, deliberately not camera access: udev's stable symlinks are listable in
       # here, but opening any of them is refused, because this service is granted no
       # `device_cgroup_rules` - the camera service below is. Measured 2026-08-29: with /dev mounted
@@ -1079,3 +1084,11 @@ volumes:
   # revocation to stop it. This volume holds only what is safe to hand the network-facing
   # container.
   homespool-printer-leaf:
+
+  # The report of update-check/homespool-update-check.sh, which runs on the host and copies it in
+  # here: whether their registry publishes newer images than the ones running, and what they would
+  # bring. A volume rather than a host path, so it exists wherever this file runs - Docker creates
+  # it - and is simply empty where no check is installed, which the app reads as nothing to say. A
+  # bind mount of a host path would have Docker invent the directory when it is missing, and
+  # /var/lib is not shared into Docker Desktop at all.
+  homespool-update-report:

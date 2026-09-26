@@ -141,6 +141,7 @@ case "$1" in
         service="${4#container-}"
         case "$3" in
             *Config.Image*) eval "printf '%s\n' \"\${STUB_REF_$service}\"" ;;
+            *Mounts*) printf '%s\n' "${STUB_REPORT_VOLUME:-}" ;;
             *) echo "image-$service" ;;
         esac
         ;;
@@ -191,7 +192,8 @@ STUB
     export STUB_LOG="$scratch/log"
     export STUB_FIXTURES="$scratch/fixtures"
     export STATE_DIRECTORY="$scratch/state"
-    unset STUB_PROJECT STUB_REGISTRY_FAILS STUB_CURL_FAILS STUB_DIGEST_homespool STUB_DIGEST_proxy HOMESPOOL_PROJECT
+    unset STUB_PROJECT STUB_REGISTRY_FAILS STUB_CURL_FAILS STUB_DIGEST_homespool STUB_DIGEST_proxy HOMESPOOL_PROJECT \
+        STUB_REPORT_VOLUME
     : > "$STUB_LOG"
     return 0
 }
@@ -339,6 +341,41 @@ fi
 if test_case "the report is replaced whole, with nothing left beside it"; then
     check
     assert_equals "$(ls -A "$scratch/state" | tr '\n' ' ')" "update-check.json " "only the report is in the directory"
+fi
+
+if test_case "the report is copied into the application's volume, whole and readable by it"; then
+    mkdir -p "$scratch/volume"
+    export STUB_REPORT_VOLUME="$scratch/volume"
+    newer_app
+    published homespool "$running_rev" "$source_url" sha256:base-b 10.0.12
+    check
+    assert_status "$status" 0 "checks cleanly"
+    if cmp -s "$scratch/state/update-check.json" "$scratch/volume/update-check.json"; then
+        passed=$((passed + 1))
+    else
+        fail "the application's copy is the same report" "state: $report" \
+            "volume: $(cat "$scratch/volume/update-check.json" 2>/dev/null)"
+    fi
+    assert_equals "$(ls -l "$scratch/volume/update-check.json" | cut -c1-10)" "-rw-r--r--" \
+        "world-readable, because the application does not run as root"
+    assert_equals "$(ls -A "$scratch/volume" | tr '\n' ' ')" "update-check.json " "and nothing is left beside it"
+    assert_contains "$log" "inspect --format {{range .Mounts}}" "found through the container's own mounts"
+fi
+
+if test_case "a compose.yaml from before the volume is no fault: the host's copy is still written"; then
+    export STUB_REPORT_VOLUME=""
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(field .schema)" "1" "the host's report is written"
+fi
+
+if test_case "no application container, no copy for it"; then
+    mkdir -p "$scratch/volume"
+    export STUB_REPORT_VOLUME="$scratch/volume" STUB_REF_homespool=""
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(ls -A "$scratch/volume" | tr '\n' ' ')" "" "the volume is left alone"
+    assert_not_contains "$log" "Mounts" "and not even looked for"
 fi
 
 echo

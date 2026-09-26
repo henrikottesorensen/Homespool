@@ -73,8 +73,13 @@ public static class HealthEndpoints
                 // Untagged again, and the quietest failure of the three: with no address to send
                 // video to, the live-view button simply never appears, which is indistinguishable
                 // from a feature that was never built.
-                .AddCheck<WebRtcCandidateHealthCheck>("camera-live-view");
+                .AddCheck<WebRtcCandidateHealthCheck>("camera-live-view")
 
+                // Untagged: an image worth pulling is not a fault, and a restart pulls nothing. The
+                // check keeps the last report it read, so it is the one singleton among them.
+                .AddCheck<UpdateReportHealthCheck>("update-check");
+
+        services.AddSingleton<UpdateReportHealthCheck>();
         services.AddSingleton<HealthStatusCache>();
 
         return services;
@@ -88,11 +93,12 @@ public static class HealthEndpoints
     /// <b>Anonymous, but only the status is.</b> A monitoring system holds no credentials, so both
     /// endpoints are mapped outside authentication - and a monitor alerts on the status code, which is
     /// all it needs. The report behind it is for the people who run the deployment: a check describes
-    /// what an operator would need in order to act, which across the six here means the configured
+    /// what an operator would need in order to act, which across the seven here means the configured
     /// printer host and the addresses it resolves to, the names the printer certificate covers against
-    /// the names this machine now answers to, the WebRTC candidate browsers are handed, and sentences
-    /// saying which part of the deployment is exposed and how. That is a map of the network and a list
-    /// of its weak points, and anybody on the same network can ask. So <see cref="HealthEndpointPath"/>
+    /// the names this machine now answers to, the WebRTC candidate browsers are handed, sentences
+    /// saying which part of the deployment is exposed and how, and whether it is running behind a
+    /// published fix. That is a map of the network and a list of its weak points, and anybody on the
+    /// same network can ask. So <see cref="HealthEndpointPath"/>
     /// answers an administrator's cookie with the whole report and everybody else with the overall
     /// status alone - not even each check's own status, since which check is failing is itself a
     /// description. The administrator test is the banner's, which already shows the same descriptions

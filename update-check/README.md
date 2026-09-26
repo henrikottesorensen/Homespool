@@ -44,6 +44,13 @@ It lands in the journal, a line per container, and as JSON in `/var/lib/homespoo
 journalctl -u homespool-update-check.service
 ```
 
+**The application shows it too.** The check copies the report into the `homespool-update-report`
+volume, which `compose.yaml` mounts read-only into the application, and its health report says what
+the check found. A newer image with a reason to take it — a Homespool fix, a .NET security release,
+a rebuild — puts it in the administrators' banner, with the command to pull it. So does a report
+older than three days, because then the check has stopped. The application never checks for updates
+itself; with no check installed it says nothing at all.
+
 If the registry, GitHub or Microsoft's release metadata cannot be reached, the run fails and the
 previous report stays where it was. A report built from part of the evidence would say "nothing new"
 about the part it could not see.
@@ -72,4 +79,11 @@ sudo systemctl start homespool-update-check.service
 sudo systemctl disable --now homespool-update-check.timer
 sudo rm /etc/systemd/system/homespool-update-check.{service,timer} /usr/local/sbin/homespool-update-check
 sudo systemctl daemon-reload
+```
+
+And the application's copy, or three days later its banner reports the check as stopped — which, by
+then, it is. With the stack in `/opt/homespool`:
+
+```bash
+sudo rm "$(docker volume inspect --format '{{.Mountpoint}}' homespool_homespool-update-report)/update-check.json"
 ```

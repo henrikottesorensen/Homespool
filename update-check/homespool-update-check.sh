@@ -3,8 +3,8 @@
 # them would bring. Reports only: it never pulls, never restarts, never changes the deployment.
 #
 # Run daily from homespool-update-check.timer. The answer goes to the journal, a line per container,
-# and as JSON to $STATE_DIRECTORY/update-check.json (/var/lib/homespool when run by hand), replaced
-# atomically, so a reader never sees half of one.
+# and as JSON to $STATE_DIRECTORY/update-check.json (/var/lib/homespool when run by hand) - and into
+# the application's report volume, which is how its administrators see it. Both replaced atomically.
 #
 # WHAT IT COMPARES. The running app and proxy containers are found by their compose labels - no
 # compose file is read, so nothing an operator can edit decides what this root timer runs. Each one
@@ -62,6 +62,7 @@ trap 'rm -rf "$work"' EXIT INT TERM
 
 platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
 checked="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+app_container=""
 
 for service in homespool proxy; do
     entry="$work/$service.json"
@@ -73,6 +74,8 @@ for service in homespool proxy; do
         echo "$service: not running"
         continue
     fi
+
+    [ "$service" = homespool ] && app_container="$container"
 
     reference="$(docker inspect --format '{{.Config.Image}}' "$container")"
     image_id="$(docker inspect --format '{{.Image}}' "$container")"
@@ -230,6 +233,25 @@ jq -s --arg checked "$checked" \
     '{schema: 1, checked: $checked, update_available: any(.[]; .status == "newer"), services: .}' \
     "$work/homespool.json" "$work/proxy.json" > "$work/update-check.json"
 
-mkdir -p "$state_dir"
-cp "$work/update-check.json" "$state_dir/.update-check.json.new"
-mv -f "$state_dir/.update-check.json.new" "$state_file"
+# Replaced whole, never rewritten in place, so a reader never sees half of one.
+publish_report() {
+    mkdir -p "$1"
+    cp "$work/update-check.json" "$1/.update-check.json.new"
+    chmod 0644 "$1/.update-check.json.new"
+    mv -f "$1/.update-check.json.new" "$1/update-check.json"
+}
+
+publish_report "$state_dir"
+
+# The copy the application shows: the volume compose.yaml mounts read-only into its container at
+# /var/lib/homespool, found through that container's own mounts rather than by a volume name rebuilt
+# here from the project. None - a compose.yaml from before the volume, or no application running -
+# and there is nobody to hand it to. World-readable, because the application does not run as root.
+if [ -n "$app_container" ]; then
+    report_volume="$(docker inspect \
+        --format '{{range .Mounts}}{{if eq .Destination "/var/lib/homespool"}}{{.Source}}{{end}}{{end}}' \
+        "$app_container")"
+    if [ -n "$report_volume" ] && [ -d "$report_volume" ]; then
+        publish_report "$report_volume"
+    fi
+fi

@@ -148,12 +148,12 @@ public sealed class DetailModelTests : IDisposable
 
                                 // Constructed rather than substituted: these tests are about the page, and a real one
                                 // that never gets a connected printer simply refuses, which is the honest default here.
-                                new PrinterPreheatService(commands: null!, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
+                                new PrinterPreheatService(commands: null!, access, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
 
                                 // Same reasoning as the preheat service above: real, with a null
                                 // command service, so a guard that stops firing fails at the send
                                 // rather than quietly pulling filament out of something.
-                                new PrinterFilamentService(commands: null!, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
+                                new PrinterFilamentService(commands: null!, access, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
                                 new ToolTargetReader(context, TestTelemetryContext.For(context)),
                                 history,
                                 new UserNameLookup(context),
@@ -300,6 +300,49 @@ public sealed class DetailModelTests : IDisposable
         // Assert
         model.StatusSuccess.Should().BeFalse("retracting filament mid-print ruins the print");
         model.StatusMessage.Should().Contain("Printing", "the answer names the state that refused it");
+    }
+
+    /// <summary>
+    /// <b>A member who may not control the printer is refused before its state is read.</b> The
+    /// printer is printing with filament loaded, so each of these would otherwise be answered with
+    /// the busy sentence naming that state - a description of the printer given in place of "not
+    /// allowed".
+    /// </summary>
+    [Theory]
+    [InlineData("preheat")]
+    [InlineData("cooldown")]
+    [InlineData("unload")]
+    public async Task APhysicalChangeWithoutControlPrinterIsForbiddenBeforeTheStateIsRead(string handler)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _, _) = await NewModelWithUsersAsync(context);
+        await SetCapabilitiesAsync(context, user.Id, CapabilityPresets.Contributor);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Printing,
+            Material = "PLA",
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IActionResult result = handler switch
+        {
+            "preheat" => await model.OnPostPreheatAsync(printer.Uuid, "PETG", CancellationToken.None),
+            "cooldown" => await model.OnPostCooldownAsync(printer.Uuid, CancellationToken.None),
+            _ => await model.OnPostUnloadAsync(printer.Uuid, tool: null, CancellationToken.None),
+        };
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+        model.StatusMessage.Should().BeNull("nothing about the printer is said to a caller who may not act on it");
     }
 
     /// <summary>

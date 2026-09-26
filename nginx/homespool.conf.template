@@ -1,6 +1,6 @@
 # The user-facing half of the deployment: pages and /api, in front of Kestrel's plain-HTTP user
-# listener. Mounted read-only from ./nginx, so editing it is editing a file in the repository -
-# no rebuild, just `docker compose restart proxy`.
+# listener. Built into the proxy image like every file beside it, so a change here is
+# `docker compose up -d --build proxy`.
 #
 # What is HERE: the two default servers that refuse an unrecognised Host, and the plain-HTTP block
 # that redirects to TLS. What is NOT here: the TLS block that actually serves the site. There is one
@@ -8,10 +8,10 @@
 # homespool-user-tls.conf - the comment at the foot of this file says why. Looking for
 # `client_max_body_size` or a proxy timeout means looking in that file.
 #
-# A TEMPLATE, and named one since 2026-08-05. It is mounted to /etc/nginx/templates and rendered into
-# conf.d at start by the base image's 20-envsubst-on-templates.sh, which substitutes
+# A TEMPLATE, and named as one. The Dockerfile puts it in /etc/nginx/templates, and the base image's
+# 20-envsubst-on-templates.sh renders it into conf.d at start, substituting
 # ${REDIRECT_PORT_SUFFIX} into the redirect below. That is not optional decoration: dropped straight
-# into conf.d as it used to be, nginx starts perfectly happily and redirects every plain-HTTP visitor
+# into conf.d, nginx starts perfectly happily and redirects every plain-HTTP visitor
 # to a literal "https://$host${REDIRECT_PORT_SUFFIX}/..." - a URL no browser can resolve, from a
 # proxy that reports itself healthy. The extension is the warning.
 #

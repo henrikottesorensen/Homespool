@@ -181,7 +181,7 @@ mmdebstrap:
     - earlyoom
 
   customize-hooks:
-    # The stack itself: compose file, the nginx configuration it bind-mounts, and the saved images.
+    # The stack itself: compose file, the proxy's build context, and the saved images.
     # /opt rather than /home, because this is not the device user's to lose.
     - mkdir -p $1/opt/homespool
     - cp -a ${IGconf_homespool_payload}/. $1/opt/homespool/
@@ -197,8 +197,7 @@ mmdebstrap:
     # The camera sidecar's configuration, shipped empty so the card has it before anything runs.
     # compose.yaml bind-mounts this ONE FILE, and Docker invents a DIRECTORY at a bind-mount path
     # that is missing - which go2rtc then fails on, reporting a directory where it wanted its
-    # configuration. That is the same failure the payload comment in build.sh describes for the
-    # nginx mounts, and it is why this is not left to first boot alone: setup-env.sh creates the
+    # configuration. That is why this is not left to first boot alone: setup-env.sh creates the
     # file too and the unit runs it before `docker compose up`, so this is the belt to that braces.
     # Neither is trusted on its own with a fault that presents as "the sidecar will not start".
     #

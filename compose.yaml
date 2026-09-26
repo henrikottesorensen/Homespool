@@ -781,50 +781,10 @@ services:
       HSTS: "${HSTS:-}"
 
     volumes:
-      # From the repository rather than baked into the image: this is the file an operator is most
-      # likely to want to change (HSTS, a hostname, an extra header), and a mount makes that an
-      # edit and a restart instead of a rebuild. A template rather than straight into conf.d - the
-      # entrypoint renders it there, substituting the HTTPS port into the redirect.
-      - ./nginx/homespool.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./nginx/homespool-proxy.conf:/etc/nginx/homespool-proxy.conf:ro
-
-      # Which Host each listener passes on, which is what the application builds its absolute URLs
-      # from. A template like the one above, and for the same reason: it names the port a browser
-      # should ask for, and that is REDIRECT_PORT_SUFFIX - already in the envsubst filter below.
-      - ./nginx/homespool-public-host.conf.template:/etc/nginx/templates/00-public-host.conf.template:ro
-
-      # The access log format every server block names, which leaves query strings out - emailed
-      # links carry their codes there. Straight into conf.d, and named to sort first: a format has
-      # to be defined before the first access_log that uses it is parsed.
-      - ./nginx/homespool-access-log.conf:/etc/nginx/conf.d/00-access-log.conf:ro
-
-      # The body of the user-facing TLS listener, included once per name by the blocks
-      # 26-user-tls-servers.sh generates into conf.d at start. NOT into conf.d itself: it is a
-      # fragment of a server block, and nginx would refuse to start on a `location` at top level.
+      # State only. The configuration is built into the image - every file under ./nginx, named in
+      # nginx/Dockerfile - so changing one is `docker compose up -d --build proxy`, and an image
+      # pulled from a registry carries the configuration it was built with.
       #
-      # Mounted rather than baked for the same reason as the template above - this is where the
-      # upload limit, the proxy timeouts and the HSTS header live, so it is the other file an
-      # operator is likely to want to edit.
-      - ./nginx/homespool-user-tls.conf:/etc/nginx/homespool-user-tls.conf:ro
-
-      # NOT into conf.d, deliberately: the entrypoint hook copies it there only when this
-      # deployment has a printer leaf to serve. Dropped straight into conf.d it would be
-      # unconditional, and nginx would refuse to start at all on a stack with printer TLS turned
-      # off, taking the pages down with it over a certificate the operator deliberately does not
-      # have.
-      - ./nginx/homespool-printer.conf:/etc/nginx/homespool-printer.conf:ro
-      - ./nginx/homespool-health-access.conf:/etc/nginx/homespool-health-access.conf:ro
-
-      # Straight into conf.d, unlike the printer block: there is no certificate to wait for. Plain
-      # HTTP, /f/* only.
-      - ./nginx/homespool-transfer.conf:/etc/nginx/conf.d/homespool-transfer.conf:ro
-
-      # NOT into conf.d, for a different reason than the printer block: there is no certificate to
-      # wait for here either, but this listener must not exist unless LEGACY_PRINTER_PORT asked for it.
-      # The hook copies it across on that one condition, which is the same variable that opens the
-      # application's listener - so the block and the socket behind it cannot disagree.
-      - ./nginx/homespool-legacy-printer.conf:/etc/nginx/homespool-legacy-printer.conf:ro
-
       # The user-facing certificate. Named rather than a bind mount so the directory keeps the
       # ownership the image gave it - an unprivileged nginx has to be able to write the self-signed
       # one it generates, and a host directory would arrive owned by whoever created it.

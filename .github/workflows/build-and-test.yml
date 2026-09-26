@@ -130,6 +130,12 @@ jobs:
       - name: Test the certificate installer's ownership check
         run: ./tests/acme-install.test.sh
 
+      # What the publishing script refuses - a modified tree, no registry, a version no image tag can
+      # carry - and that latest moves only after the commit's own tag, and never on a failed push.
+      # build.sh and docker are stubs over a scratch git repository, so no registry is involved.
+      - name: Test the image publishing script
+        run: ./tests/publish-images.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

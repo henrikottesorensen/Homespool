@@ -145,12 +145,14 @@ EXPOSE 15443
 # otherwise describe nginx's image as if it were this one: its repository as the source, its commit as
 # the revision, its release as the version. A registry, a scanner report or an update check reading
 # them would be told about somebody else's image. Blank rather than left out where there is nothing
-# true to say yet - no release version; created, because Docker's own image metadata already carries
-# the build time; maintainer, which is nginx's. licenses is the project's licence; nginx inside it
-# keeps its own.
+# true to say - version on any build that is not a release; created, because Docker's own image
+# metadata already carries the build time; maintainer, which is nginx's. licenses is the project's
+# licence; nginx inside it keeps its own.
 #
-# HOMESPOOL_GITREF is empty on a build that is not given one, like the application's --version.
+# HOMESPOOL_GITREF is empty on a build that is not given one, like the application's --version, and
+# HOMESPOOL_VERSION on one that is not of a v-tagged commit - see tools/release-version.sh.
 ARG HOMESPOOL_GITREF=
+ARG HOMESPOOL_VERSION=
 ARG HOMESPOOL_BASE_IMAGE
 ARG HOMESPOOL_BASE_DIGEST
 LABEL org.opencontainers.image.title="Homespool proxy" \
@@ -158,7 +160,7 @@ LABEL org.opencontainers.image.title="Homespool proxy" \
       org.opencontainers.image.source="https://github.com/henrikottesorensen/Homespool" \
       org.opencontainers.image.url="https://github.com/henrikottesorensen/Homespool" \
       org.opencontainers.image.revision="${HOMESPOOL_GITREF}" \
-      org.opencontainers.image.version="" \
+      org.opencontainers.image.version="${HOMESPOOL_VERSION}" \
       org.opencontainers.image.created="" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.base.name="${HOMESPOOL_BASE_IMAGE}" \

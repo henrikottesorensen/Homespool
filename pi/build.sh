@@ -151,6 +151,7 @@ echo "==> Building the Homespool container images for arm64"
 #
 # The base digests for the same reason ../build.sh resolves them: so a card's images can say which
 # base they were built on, which on a card that runs for months is the question that will be asked.
+# And the release version, so a card built from a release says which.
 HOMESPOOL_GITREF="$("$repo_root/tools/gitref.sh")"
 export HOMESPOOL_GITREF
 HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
@@ -158,6 +159,11 @@ export HOMESPOOL_APT_REFRESH
 HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/Homespool.Host/Dockerfile")"
 HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
 export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST
+HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"
+export HOMESPOOL_VERSION
+# latest whatever the shell or .env says: the card's compose.yaml asks for latest when nothing pins
+# it, and the docker save below names exactly that. The environment wins over .env for compose.
+export HOMESPOOL_TAG=latest
 docker --log-level warn compose -f "$repo_root/compose.yaml" build --pull
 
 # ------------------------------------------------------------------------------------------------

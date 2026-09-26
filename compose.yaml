@@ -23,7 +23,9 @@ services:
     logging: *logging
     # REGISTRY prefixes both image names, for a deployment that pulls rather than builds - set it in
     # .env and nothing here changes. Unset, which is the ordinary case, this is plain `homespool`.
-    image: ${REGISTRY:+${REGISTRY}/}homespool
+    # HOMESPOOL_TAG picks the tag, for pinning a deployment to one commit or release rather than
+    # following latest; tools/publish-images.sh sets it to the commit it publishes.
+    image: ${REGISTRY:+${REGISTRY}/}homespool:${HOMESPOOL_TAG:-latest}
     build:
       context: .
       dockerfile: Homespool.Host/Dockerfile
@@ -39,6 +41,9 @@ services:
         # The digest of the base image's tag at build time, so the image is built on and records
         # exactly that base. Also only ./build.sh fills it in; empty builds on the floating tag.
         HOMESPOOL_BASE_DIGEST: "${HOMESPOOL_ASPNET_DIGEST:-}"
+        # The release version for the image's label, when the commit carries a v-tag. Also only
+        # ./build.sh fills it in; empty for every build that is not a release.
+        HOMESPOOL_VERSION: "${HOMESPOOL_VERSION:-}"
 
     # Pinned, because Docker otherwise derives it from the container id - a new name on every
     # recreation. The printer certificate carries this name and is issued once, so an unpinned name
@@ -693,14 +698,15 @@ services:
   # nginx/homespool-printer.conf before substituting anything for that half.
   proxy:
     logging: *logging
-    image: ${REGISTRY:+${REGISTRY}/}homespool-proxy
+    image: ${REGISTRY:+${REGISTRY}/}homespool-proxy:${HOMESPOOL_TAG:-latest}
     build:
       context: ./nginx
       args:
-        # The same two stamps the application image takes, for the proxy's own labels - see the
-        # homespool service above. Both empty unless ./build.sh fills them in.
+        # The same stamps the application image takes, for the proxy's own labels - see the
+        # homespool service above. All empty unless ./build.sh fills them in.
         HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
         HOMESPOOL_BASE_DIGEST: "${HOMESPOOL_NGINX_DIGEST:-}"
+        HOMESPOOL_VERSION: "${HOMESPOOL_VERSION:-}"
 
     # IPv4 ONLY, on every port here, and the 0.0.0.0 is what says so. Published without an address,
     # Docker also listens on [::] - but this network has no IPv6, so a v6 connection is relayed by

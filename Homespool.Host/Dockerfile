@@ -176,13 +176,15 @@ COPY --from=publish /app/publish .
 # Every label the base image sets, set again, because an image inherits its base's labels: without
 # these org.opencontainers.image.version says 24.04, which is Ubuntu's, and anything reading it - a
 # registry, a scanner report, an update check - is told about somebody else's image. Blank rather
-# than left out where there is nothing true to say yet: no release version; created, because Docker's
-# own image metadata carries the build time.
+# than left out where there is nothing true to say: version on any build that is not of a v-tagged
+# commit (tools/release-version.sh); created, because Docker's own image metadata carries the build
+# time.
 #
 # HOMESPOOL_IMAGE_BASE is the same fact for the process inside, which cannot read its own labels:
 # the tag and, when the build pinned one, the digest it was built on. Here, after the last RUN, so
 # neither the ARGs nor the ENV reach a cache key.
 ARG HOMESPOOL_GITREF=
+ARG HOMESPOOL_VERSION=
 ARG HOMESPOOL_BASE_IMAGE
 ARG HOMESPOOL_BASE_DIGEST
 ENV HOMESPOOL_IMAGE_BASE=${HOMESPOOL_BASE_IMAGE}${HOMESPOOL_BASE_DIGEST:+@${HOMESPOOL_BASE_DIGEST}}
@@ -191,7 +193,7 @@ LABEL org.opencontainers.image.title="Homespool" \
       org.opencontainers.image.source="https://github.com/henrikottesorensen/Homespool" \
       org.opencontainers.image.url="https://github.com/henrikottesorensen/Homespool" \
       org.opencontainers.image.revision="${HOMESPOOL_GITREF}" \
-      org.opencontainers.image.version="" \
+      org.opencontainers.image.version="${HOMESPOOL_VERSION}" \
       org.opencontainers.image.created="" \
       org.opencontainers.image.licenses="AGPL-3.0-only" \
       org.opencontainers.image.base.name="${HOMESPOOL_BASE_IMAGE}" \

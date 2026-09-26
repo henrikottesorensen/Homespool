@@ -30,6 +30,9 @@
 # And it resolves each image's base tag to a digest first and builds on exactly that, so the image
 # can record which base it was built on - see tools/base-digest.sh. --pull stays for the one floating
 # tag left, the SDK the application is compiled in, which never reaches the image that ships.
+#
+# And the release version, for the images' version label, when HEAD carries a v-tag and nothing
+# differs from it - tools/release-version.sh. Empty, and the label blank, for every other build.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,6 +54,13 @@ export HOMESPOOL_APT_REFRESH
 HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/Homespool.Host/Dockerfile")"
 HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
 export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST
+
+HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"
+export HOMESPOOL_VERSION
+if [ -n "$HOMESPOOL_VERSION" ]; then
+    echo "==> Labelling the images as release ${HOMESPOOL_VERSION}"
+fi
+
 echo "==> Building on ${HOMESPOOL_ASPNET_DIGEST} (application) and ${HOMESPOOL_NGINX_DIGEST} (proxy)"
 
 exec docker compose -f "$repo_root/compose.yaml" build --pull "$@"

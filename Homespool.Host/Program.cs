@@ -35,15 +35,13 @@ namespace Homespool.Host;
 
 public static class Program
 {
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
         // Answered before anything else starts, because none of them is a server run at all - see
         // StartupApplets for why they precede even the logger, and for the older-image trap they share.
         if (StartupApplets.TryRun(args, out int appletExitCode))
         {
-            Environment.ExitCode = appletExitCode;
-
-            return;
+            return appletExitCode;
         }
 
         Log.Logger = new LoggerConfiguration()
@@ -817,15 +815,26 @@ public static class Program
             });
 
             app.Run();
+
+            return 0;
         }
         catch (HostAbortedException)
         {
             // Thrown by design-time tooling (dotnet-ef) after it has built the service provider.
             // Not a failure, and logging it as Fatal makes every migration command look broken.
+            return 0;
         }
         catch (Exception ex)
         {
+            // Every refusal to start lands here - the listener boundary, the CA passphrase, the
+            // stamped schema - and so does a crash after startup. A non-zero code is what tells an
+            // orchestrator or a script that it failed; a stop the host asked for, such as the Admin
+            // restart, returns from Run above and stays 0. Returned rather than assigned to
+            // Environment.ExitCode because the test factory runs Main inside the test process,
+            // where that setting would become the test runner's exit code.
             Log.Fatal(ex, "Application terminated unexpectedly");
+
+            return 1;
         }
         finally
         {

@@ -114,6 +114,20 @@ public sealed class UserAdministration
     /// as it is refused on its next request, as a token is. The stamp is what also forgets its
     /// remembered browsers.
     /// </para>
+    /// <para>
+    /// <b>The invitations it issued and nobody has used yet expire at the moment of closure.</b> An
+    /// invite's link is shown to the administrator who issued it, and redeeming one asks nothing about
+    /// that administrator - so without this, one closed as compromised would keep, for the invite's
+    /// lifetime, a new account on a team of their choosing and a recovery link for any account they
+    /// had aimed one at. Expired rather than deleted, as a revoke from the invites page is, so the list
+    /// still shows what was issued; and reopening the account does not bring them back.
+    /// </para>
+    /// <para>
+    /// <b>So do the recovery invitations aimed at it</b>, on the reasoning that deletes its tokens.
+    /// Redeeming one is refused while the account is closed, but that refusal ends when it reopens,
+    /// and a recovery link minted before the closure - possibly the very thing that prompted it -
+    /// would then hand the account to whoever holds the link.
+    /// </para>
     /// </remarks>
     /// <param name="administratorId">Who is doing this, for the log and for the self check.</param>
     /// <param name="userId">The account to close.</param>
@@ -123,6 +137,7 @@ public sealed class UserAdministration
                                                        CancellationToken cancellationToken)
     {
         int revoked;
+        int expired;
 
         // A refusal returns from inside the transaction; disposing it uncommitted writes nothing.
         await using (IDbContextTransaction transaction = await _unitOfWork.BeginSerializableTransactionAsync(cancellationToken))
@@ -151,7 +166,8 @@ public sealed class UserAdministration
                 return UserAdminResult.Done();
             }
 
-            user.DeactivatedAt = _time.GetUtcNow();
+            DateTimeOffset closedAt = _time.GetUtcNow();
+            user.DeactivatedAt = closedAt;
 
             // A fresh stamp is what invalidates the cookies already issued. Assigned rather than
             // taken from UserManager.UpdateSecurityStampAsync, which would run the validators this
@@ -169,14 +185,25 @@ public sealed class UserAdministration
             revoked = await _tokens.RevokeAllForUserAsync(userId, cancellationToken);
             await _sessions.RevokeAllAsync(userId, cancellationToken);
 
+            // Only the outstanding ones: a used invite has done its work, and one already expired
+            // keeps the expiry it had.
+            expired = await _dbContext.Invitations
+                                      .Where(invitation => (invitation.InvitedBy == userId ||
+                                                            invitation.RecoversUserId == userId) &&
+                                                           invitation.UsedAt == null &&
+                                                           invitation.ExpiresAt > closedAt)
+                                      .ExecuteUpdateAsync(set => set.SetProperty(invitation => invitation.ExpiresAt, closedAt),
+                                                          cancellationToken);
+
             await transaction.CommitAsync(cancellationToken);
         }
 
         _logger.LogWarning(
-            "Administrator {AdministratorId} deactivated user {UserId}; {RevokedTokenCount} API tokens revoked.",
+            "Administrator {AdministratorId} deactivated user {UserId}; {RevokedTokenCount} API tokens revoked, {ExpiredInvitationCount} invitations expired.",
             administratorId,
             userId,
-            revoked);
+            revoked,
+            expired);
 
         return UserAdminResult.Done(revoked);
     }

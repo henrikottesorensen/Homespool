@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging.Testing;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -80,6 +81,101 @@ public sealed class UserAdministrationTests : IDisposable
         (await tokens.ListAsync(subject.Id, CancellationToken.None)).Should().BeEmpty();
         (await context.UserSessions.AsNoTracking().Select(session => session.UserId).ToListAsync(CancellationToken.None))
             .Should().Equal([admin.Id], "the account's sessions are deleted, not merely left stale, and nobody else's");
+    }
+
+    /// <summary>
+    /// <b>Closing an account expires the invitations it issued that are still outstanding</b>, both
+    /// kinds. Their links were shown to it, and redeeming one asks nothing about who issued it. A used
+    /// or already-lapsed invite keeps what it records, and another administrator's are untouched.
+    /// </summary>
+    [Fact]
+    public async Task DeactivatingExpiresTheOutstandingInvitationsTheAccountIssued()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, subject);
+        HSUser bystander = await AddUserAsync(users, "bystander@example.com");
+
+        InvitationService invitations = new(context,
+                                            new TokenService(),
+                                            TestOptions.Snapshot(new InvitationOptions { LifetimeHours = 48 }));
+        DateTimeOffset lapsedAt = DateTimeOffset.UtcNow.AddHours(-1);
+
+        (Invitation signup, string signupToken) = await invitations.CreateAsync(
+            "new@example.com", teamId: null, invitedBy: subject.Id, expiresAt: null, CancellationToken.None);
+        (Invitation recovery, string recoveryToken) = await invitations.CreateRecoveryAsync(
+            bystander.Id, bystander.Email!, clearsTwoFactor: false, invitedBy: subject.Id, expiresAt: null, CancellationToken.None);
+        (Invitation used, _) = await invitations.CreateAsync(
+            "used@example.com", teamId: null, invitedBy: subject.Id, expiresAt: null, CancellationToken.None);
+        await invitations.MarkUsedAsync(used, CancellationToken.None);
+        (Invitation lapsed, _) = await invitations.CreateAsync(
+            "lapsed@example.com", teamId: null, invitedBy: subject.Id, expiresAt: lapsedAt, CancellationToken.None);
+        (Invitation others, string othersToken) = await invitations.CreateAsync(
+            "other@example.com", teamId: null, invitedBy: admin.Id, expiresAt: null, CancellationToken.None);
+        DateTimeOffset usedExpiry = await ExpiryAsync(context, used);
+        DateTimeOffset lapsedExpiry = await ExpiryAsync(context, lapsed);
+
+        // Act
+        UserAdminResult result = await Administration(context, provider)
+            .DeactivateAsync(admin.Id, subject.Id, CancellationToken.None);
+
+        // Assert
+        result.Succeeded.Should().BeTrue();
+        context.ChangeTracker.Clear();
+
+        (await invitations.ValidateAsync(signup.Uuid, signupToken, [InvitationType.Signup], CancellationToken.None))
+            .Should().BeNull("a signup link the closed administrator was shown");
+        (await invitations.ValidateAsync(recovery.Uuid, recoveryToken, [InvitationType.Recovery], CancellationToken.None))
+            .Should().BeNull("a recovery link for somebody else's account, which the closed administrator was shown");
+        (await invitations.ValidateAsync(others.Uuid, othersToken, [InvitationType.Signup], CancellationToken.None))
+            .Should().NotBeNull("another administrator's invitation is theirs to keep");
+
+        (await ExpiryAsync(context, used)).Should().Be(usedExpiry, "a used invite has done its work, and its record stays as it was");
+        (await ExpiryAsync(context, lapsed)).Should().Be(lapsedExpiry, "one that had already lapsed keeps the expiry it had");
+    }
+
+    /// <summary>
+    /// <b>A recovery link aimed at a closed account does not come back to life when it reopens.</b>
+    /// Redemption refuses it only while the account is closed, so closing expires it; a recovery for
+    /// somebody else, from the same administrator, is not the closed account's and stays.
+    /// </summary>
+    [Fact]
+    public async Task ARecoveryForTheClosedAccountStaysDeadWhenItReopens()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        HSUser bystander = await AddUserAsync(users, "bystander@example.com");
+
+        InvitationService invitations = new(context,
+                                            new TokenService(),
+                                            TestOptions.Snapshot(new InvitationOptions { LifetimeHours = 48 }));
+
+        (Invitation forSubject, string forSubjectToken) = await invitations.CreateRecoveryAsync(
+            subject.Id, subject.Email!, clearsTwoFactor: false, invitedBy: admin.Id, expiresAt: null, CancellationToken.None);
+        (Invitation forBystander, string forBystanderToken) = await invitations.CreateRecoveryAsync(
+            bystander.Id, bystander.Email!, clearsTwoFactor: false, invitedBy: admin.Id, expiresAt: null, CancellationToken.None);
+
+        UserAdministration administration = Administration(context, provider);
+
+        // Act
+        (await administration.DeactivateAsync(admin.Id, subject.Id, CancellationToken.None)).Succeeded.Should().BeTrue();
+        (await administration.ReactivateAsync(admin.Id, subject.Id, CancellationToken.None)).Succeeded.Should().BeTrue();
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        (await invitations.ValidateAsync(forSubject.Uuid, forSubjectToken, [InvitationType.Recovery], CancellationToken.None))
+            .Should().BeNull("a link minted before the closure must not hand the reopened account to its holder");
+        (await invitations.ValidateAsync(forBystander.Uuid, forBystanderToken, [InvitationType.Recovery], CancellationToken.None))
+            .Should().NotBeNull("a recovery for another account is not the closed account's");
     }
 
     /// <summary>
@@ -557,6 +653,15 @@ public sealed class UserAdministrationTests : IDisposable
                                       time ?? TimeProvider.System,
                                       (mail ?? new CapturingEmailSender()).Notices(),
                                       logger ?? NullLogger<UserAdministration>.Instance);
+    }
+
+    private static Task<DateTimeOffset> ExpiryAsync(HomespoolDbContext context, Invitation invitation)
+    {
+        return context.Invitations
+                      .AsNoTracking()
+                      .Where(stored => stored.Id == invitation.Id)
+                      .Select(stored => stored.ExpiresAt)
+                      .SingleAsync(TestContext.Current.CancellationToken);
     }
 
     private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string email)

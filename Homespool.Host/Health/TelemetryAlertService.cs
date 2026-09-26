@@ -46,7 +46,8 @@ public sealed class TelemetryAlertService : BackgroundService
 
     private readonly AlertRecipients _recipients;
 
-    private bool _alerted;
+    /// <summary>The checks of the incident already reported; empty when there is none.</summary>
+    private IReadOnlySet<string> _incident = new HashSet<string>();
 
     public TelemetryAlertService(HealthCheckService healthChecks,
                                  IServiceScopeFactory scopeFactory,
@@ -110,13 +111,22 @@ public sealed class TelemetryAlertService : BackgroundService
             // below is still sent.
             await _recipients.RefreshAsync(cancellationToken);
 
-            switch (AlertTransition.Decide(report.Status, _alerted))
+            AlertDecision decision = AlertTransition.Decide(
+                report.Entries.ToDictionary(entry => entry.Key, entry => entry.Value.Status),
+                _incident);
+
+            switch (decision.Action)
             {
                 case AlertAction.Alert:
-                    _alerted = await SendAsync(
-                        "Alert_UnhealthySubject",
-                        localiser => Describe(report, localiser),
-                        cancellationToken);
+                    // Only once it has gone out: an incident nobody was told about is not reported.
+                    if (await SendAsync(
+                            "Alert_UnhealthySubject",
+                            localiser => Describe(report, localiser),
+                            cancellationToken))
+                    {
+                        _incident = decision.Incident;
+                    }
+
                     break;
 
                 case AlertAction.Recovered:
@@ -124,7 +134,12 @@ public sealed class TelemetryAlertService : BackgroundService
                         "Alert_RecoveredSubject",
                         localiser => $"<p>{localiser["Alert_RecoveredBody"].Value}</p>",
                         cancellationToken);
-                    _alerted = false;
+                    _incident = decision.Incident;
+                    break;
+
+                default:
+                    // An open incident grows by any check that has turned Unhealthy since.
+                    _incident = decision.Incident;
                     break;
             }
         }

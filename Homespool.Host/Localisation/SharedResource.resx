@@ -182,7 +182,7 @@
     <value>Homespool has recovered</value>
   </data>
   <data name="Alert_RecoveredBody" xml:space="preserve">
-    <value>The problems reported earlier have cleared. All health checks are passing again.</value>
+    <value>The problems reported earlier have cleared.</value>
   </data>
   <data name="Email_ConfirmSubject" xml:space="preserve">
     <value>Confirm your email</value>

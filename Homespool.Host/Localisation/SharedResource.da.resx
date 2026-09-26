@@ -175,7 +175,7 @@
     <value>Homespool er tilbage i normal drift</value>
   </data>
   <data name="Alert_RecoveredBody" xml:space="preserve">
-    <value>De problemer, der blev rapporteret tidligere, er væk. Alle helbredstjek består igen.</value>
+    <value>De problemer, der blev rapporteret tidligere, er væk.</value>
   </data>
   <data name="Email_ConfirmSubject" xml:space="preserve">
     <value>Bekræft din e-mailadresse</value>

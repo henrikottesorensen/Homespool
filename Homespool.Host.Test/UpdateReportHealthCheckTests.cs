@@ -210,15 +210,15 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
 
         result.Status.Should().Be(HealthStatus.Healthy, "nothing can be acted on until images are published");
         result.Description.Should().NotContain("registry publishes")
-              .And.Contain("homespool was built on this machine on 2026-08-14")
-              .And.Contain("proxy was built on this machine on 2026-08-14")
+              .And.Contain("homespool was built from source rather than pulled on 2026-08-14")
+              .And.Contain("proxy was built from source rather than pulled on 2026-08-14")
               .And.Contain("no check can say whether fixes have come out since");
     }
 
     [Theory]
     [InlineData("pinned", "\"built\": \"2026-08-14T00:00:00Z\"", "homespool is pinned to a digest on 2026-08-14, so there is no tag to follow")]
     [InlineData("not-running", "\"built\": null", "homespool was not running")]
-    [InlineData("local", "\"built\": \"\"", "homespool was built on this machine, so nothing is published")]
+    [InlineData("local", "\"built\": \"\"", "homespool was built from source rather than pulled, so nothing is published")]
     [InlineData("from-the-future", "\"built\": null", "homespool is 'from-the-future', which this version does not know")]
     public async Task Every_other_status_says_what_it_means(string status, string built, string expected)
     {

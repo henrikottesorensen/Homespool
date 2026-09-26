@@ -25,7 +25,7 @@ For the application and the proxy, one of:
 |---|---|
 | `current` | The running image is the one the registry serves under that tag. |
 | `newer` | The registry serves a different one. The report says what it would bring. |
-| `local` | Built on this machine, so nothing is published to compare with. Reported with the date it was built. |
+| `local` | Built from source rather than pulled — where the stack runs, or on the machine that made the card — so nothing is published to compare with. Reported with the date it was built. |
 | `pinned` | Started from a digest, not a tag, so there is nothing to follow. |
 | `not-running` | No such container in this compose project. |
 

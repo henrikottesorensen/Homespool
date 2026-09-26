@@ -42,9 +42,9 @@
 # nginx's commit is not a place in Homespool's history.
 #
 # NEEDS NO CREDENTIALS, and must not. The registry has to allow anonymous reads of these images -
-# GHCR's public packages do. An image with no registry in its name was built on this machine, has
-# nothing published to compare with, and is reported as such, with the date it was built, without
-# any request leaving the machine.
+# GHCR's public packages do. An image with no registry in its name was built from source rather than
+# pulled - where the stack runs, or on the machine that made a card - so it has nothing published to
+# compare with, and is reported as such, with the date it was built, without any request leaving.
 #
 # A SOURCE THAT CANNOT BE REACHED FAILS THE RUN, and the previous report stays: a report written from
 # part of the evidence would say "nothing to take" for the part it could not see.
@@ -143,7 +143,7 @@ compare() {
         esac
 
         # Docker's own rule: the first component names a registry only if it has a dot or a port, or
-        # is localhost. Anything else was built here, or would be Docker Hub's library, which is not us.
+        # is localhost. Anything else was built from source, or would be Docker Hub's library, not us.
         case "$reference" in
             */*) first="${reference%%/*}" ;;
             *) first="" ;;
@@ -153,7 +153,7 @@ compare() {
             *)
                 jq -n --arg s "$service" --arg r "$reference" --arg b "$built" \
                     '{service: $s, reference: $r, status: "local", built: $b}' > "$entry"
-                echo "$service: built on this machine ($reference, $built), so nothing is published to compare with"
+                echo "$service: built from source rather than pulled ($reference, $built), so nothing is published to compare with"
                 continue
                 ;;
         esac

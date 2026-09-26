@@ -310,7 +310,7 @@ if test_case "a running revision the fetched history does not reach is said to b
         "and the count is not passed off as complete"
 fi
 
-if test_case "an image built on this machine has nothing to compare with, and nothing is asked"; then
+if test_case "an image built from source has nothing to compare with, and nothing is asked"; then
     export STUB_REF_homespool="homespool" STUB_REF_proxy="homespool-proxy:latest"
     check
     assert_status "$status" 0 "checks cleanly"
@@ -420,7 +420,7 @@ if test_case "compare without collect refuses rather than report nothing running
     assert_contains "$(cat "$scratch/stderr")" "collect runs first" "and says why"
 fi
 
-if test_case "an image built on this machine is reported with the date it was built"; then
+if test_case "an image built from source is reported with the date it was built"; then
     export STUB_REF_homespool="homespool"
     check
     assert_equals "$(app .status)" "local" "local"

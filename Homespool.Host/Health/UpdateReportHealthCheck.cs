@@ -135,7 +135,8 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
     /// <summary>One container's line, for every status but a newer image worth pulling.</summary>
     /// <remarks>
     /// Each status says what it means, because the one the host check cannot compare is the one a
-    /// catch-all would misreport: a card's images are built on the card, so they are <c>local</c>, and
+    /// catch-all would misreport: a card's images are built on the machine that makes the card and baked
+    /// into it, never pulled, so they are <c>local</c>, and
     /// "current" would claim the very thing nobody can know. Healthy all the same: nothing here can be
     /// acted on until images are published for the deployment to pull, and a banner nobody can clear
     /// teaches people to stop reading banners.
@@ -148,8 +149,8 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
         {
             "current" => $"{service.Service} is the image its registry publishes",
             "newer" => $"{service.Service} has a newer image published, with nothing in it the check counts as a reason to update",
-            "local" => $"{service.Service} was built on this machine{Built(service)}, so nothing is published to compare " +
-                       "it with, and no check can say whether fixes have come out since",
+            "local" => $"{service.Service} was built from source rather than pulled{Built(service)}, so nothing is " +
+                       "published to compare it with, and no check can say whether fixes have come out since",
             "pinned" => $"{service.Service} is pinned to a digest{Built(service)}, so there is no tag to follow",
             "not-running" => $"{service.Service} was not running",
             _ => $"{service.Service} is '{service.Status}', which this version does not know",

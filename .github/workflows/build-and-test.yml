@@ -136,6 +136,12 @@ jobs:
       - name: Test the image publishing script
         run: ./tests/publish-images.test.sh
 
+      # What the scan counts as relevant - a fixable CRITICAL or HIGH, a newer .NET security release,
+      # a Homespool fix - what it records without counting, and that it pushes no verdict when a
+      # source failed. docker, curl and oras are stubs; jq is real, because the verdict is jq.
+      - name: Test the image scanning script
+        run: ./tests/scan-images.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

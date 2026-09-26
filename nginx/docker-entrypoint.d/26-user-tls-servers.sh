@@ -39,7 +39,7 @@ HSTS_HEADER='add_header Strict-Transport-Security "max-age=63072000" always;'
 NAMES="${USER_TLS_NAMES:-localhost}"
 
 # A prefix of our own so the cleanup below cannot reach anything else in conf.d - the rendered
-# template is default.conf, the transfer listener is bind-mounted in, and the printer listener is
+# template is default.conf, the image carries the transfer listener, and the printer listener is
 # copied in by 20-printer-listener.sh.
 PREFIX=homespool-user-
 
@@ -50,7 +50,7 @@ PREFIX=homespool-user-
 rm -f "$CONF_DIR/$PREFIX"*.conf
 
 if [ ! -f "$BODY" ]; then
-    echo "$0: $BODY is missing - it is bind-mounted from ./nginx in compose.yaml." >&2
+    echo "$0: $BODY is missing - the proxy Dockerfile copies it into the image, so this image was not built from it." >&2
     echo "$0: no user-facing TLS listener will be configured." >&2
     exit 0
 fi

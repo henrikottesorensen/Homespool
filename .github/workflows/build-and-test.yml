@@ -113,6 +113,11 @@ jobs:
       - name: Test the proxy access log coverage
         run: ./tests/access-log.test.sh
 
+      # The proxy image carries every file under nginx/ and compose.yaml mounts none of them. A file
+      # no COPY names is a listener or a setting absent from the image, and nginx starts without it.
+      - name: Test the proxy image carries its configuration
+        run: ./tests/proxy-image.test.sh
+
       # Which names the renewal will act on, and which it refuses before they reach a shell. It
       # talks to the world only through `docker`, and a stub of that is the whole harness, so this
       # needs neither a daemon nor a certificate authority.

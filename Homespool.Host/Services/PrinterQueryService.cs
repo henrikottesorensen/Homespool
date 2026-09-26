@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Telemetry;
@@ -104,6 +105,7 @@ public class PrinterQueryService
         CancellationToken cancellationToken)
     {
         IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
+        IQueryable<TeamMember> members = Memberships.Open(_dbContext);
 
         List<PrinterRow> rows = await _dbContext.Printers
                                .AsNoTracking()
@@ -111,7 +113,7 @@ public class PrinterQueryService
                                .OrderBy(p => p.Id)
                                .Select(p => new PrinterRow(
                                            p,
-                                           _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
+                                           members.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
                                            _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                                .ToListAsync(cancellationToken);
 
@@ -126,13 +128,14 @@ public class PrinterQueryService
     public async Task<PrinterWithState?> GetPrinterWithStateForUserAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
     {
         IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
+        IQueryable<TeamMember> members = Memberships.Open(_dbContext);
 
         PrinterRow? row = await _dbContext.Printers
                          .AsNoTracking()
                          .Where(p => p.Uuid == uuid && teams.Contains(p.TeamId))
                          .Select(p => new PrinterRow(
                                      p,
-                                     _dbContext.TeamMembers.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
+                                     members.SingleOrDefault(m => m.TeamId == p.TeamId && m.UserId == caller.UserId),
                                      _dbContext.Teams.SingleOrDefault(t => t.Id == p.TeamId)))
                          .SingleOrDefaultAsync(cancellationToken);
 
@@ -313,8 +316,9 @@ public class PrinterQueryService
                                      .SingleOrDefaultAsync(t => t.Id == printer.TeamId, cancellationToken);
 
         // The DTO carries the caller's own permissions, so the membership is data here rather than a
-        // check - the checks above have already run.
-        TeamMember? membership = await _dbContext.TeamMembers
+        // check - the checks above have already run. Still the open-account read, so what the DTO
+        // reports cannot differ from what those checks would answer.
+        TeamMember? membership = await Memberships.Open(_dbContext)
                                                  .AsNoTracking()
                                                  .SingleOrDefaultAsync(m => m.TeamId == printer.TeamId && m.UserId == caller.UserId,
                                                                        cancellationToken);

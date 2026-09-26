@@ -12,8 +12,8 @@ WORKDIR /app
 # It is a separate volume rather than a subdirectory of the one above because the proxy mounts it and
 # must never see /app/data/certificates, which holds the authority's private key. See
 # CertificateOptions.ProxyDirectory.
-RUN mkdir -p /app/data /app/data/proxy-certificates \
- && chown $APP_UID /app/data /app/data/proxy-certificates
+RUN mkdir -p /app/data /app/data/proxy-certificates && \
+    chown $APP_UID /app/data /app/data/proxy-certificates
 # The aspnet base image ships no HTTP client, and HEALTHCHECK needs something to make the request
 # with. Installed before the USER switch because apt needs root. If you would rather not carry curl,
 # drop this and the HEALTHCHECK below and declare the probe in compose or your orchestrator instead -
@@ -55,11 +55,11 @@ RUN mkdir -p /app/data /app/data/proxy-certificates \
 # are wanted too, and selecting a pocket with apt is fiddly. confold keeps any configuration file the
 # image already has, and noninteractive stops a changed one waiting on a prompt nobody can answer.
 ARG HOMESPOOL_APT_REFRESH=
-RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
-        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
- && apt-get install -y --no-install-recommends curl hwdata sqlite3 \
- && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold && \
+    apt-get install -y --no-install-recommends curl hwdata sqlite3 && \
+    rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 EXPOSE 8080
 EXPOSE 8081

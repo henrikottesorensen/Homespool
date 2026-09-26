@@ -14,23 +14,6 @@
 # be discovered at the wrong moment.
 FROM nginxinc/nginx-unprivileged:stable
 
-# Create the certificate directory *before* the volume is mounted over it, owned by the app user. A
-# named volume inherits the ownership of the image directory it covers; if the path did not exist,
-# Docker would create it owned by root and an unprivileged nginx could not write the self-signed
-# certificate it generates on first run. Exactly the trap Homespool.Host/Dockerfile documents for
-# /app/data, in a container that has even less recourse.
-#
-# /etc/nginx/printer-certs is the other half of that story and needs the opposite treatment: it holds
-# the application's leaf, is mounted read-only from the application's own volume, and nothing in here
-# ever writes to it.
-#
-# /etc/nginx/templates is made here for a different reason: the base image has none, and a directory a
-# COPY creates takes that COPY's --chmod. At 644 it cannot be entered, and the entrypoint exits on
-# "Permission denied" reading the first template, before nginx ever starts.
-USER root
-RUN mkdir -p /etc/nginx/certs /etc/nginx/templates \
-    && chown 101:101 /etc/nginx/certs && chmod 700 /etc/nginx/certs
-
 # The dynamic modules the base image installs - geoip, image-filter, njs, xslt - and curl go, because
 # nothing here uses them: no configuration has a load_module, and neither the base image's entrypoint
 # nor any hook below calls curl. They are not inert on disk. Their libraries - libheif, aom, gd,
@@ -48,11 +31,30 @@ RUN mkdir -p /etc/nginx/certs /etc/nginx/templates \
 # build instead of shipping a proxy that breaks at start-up. The list is what the entrypoint and the
 # hooks call. A loop rather than one `command -v` with every name: dash answers 0 for such a list even
 # when some of the names are missing.
-RUN apt-get purge -y $(dpkg-query -W -f='${Package}\n' 'nginx-module-*') curl \
- && apt-get autoremove -y --purge \
- && for tool in nginx openssl hostname envsubst awk sed find getconf dpkg-query; do \
+USER root
+
+RUN apt-get purge -y $(dpkg-query -W -f='${Package}\n' 'nginx-module-*') curl && \
+    apt-get autoremove -y --purge && \
+    for tool in nginx openssl hostname envsubst awk sed find getconf dpkg-query; do \
         command -v "$tool" >/dev/null || { echo "The package purge removed $tool" >&2; exit 1; }; \
     done
+
+# Create the certificate directory *before* the volume is mounted over it, owned by the app user. A
+# named volume inherits the ownership of the image directory it covers; if the path did not exist,
+# Docker would create it owned by root and an unprivileged nginx could not write the self-signed
+# certificate it generates on first run. Exactly the trap Homespool.Host/Dockerfile documents for
+# /app/data, in a container that has even less recourse.
+#
+# /etc/nginx/printer-certs is the other half of that story and needs the opposite treatment: it holds
+# the application's leaf, is mounted read-only from the application's own volume, and nothing in here
+# ever writes to it.
+#
+# /etc/nginx/templates is made here for a different reason: the base image has none, and a directory a
+# COPY creates takes that COPY's --chmod. At 644 it cannot be entered, and the entrypoint exits on
+# "Permission denied" reading the first template, before nginx ever starts.
+RUN mkdir -p /etc/nginx/certs /etc/nginx/templates && \
+    chown 101:101 /etc/nginx/certs && chmod 700 /etc/nginx/certs
+
 USER 101
 
 # Runs before nginx starts, from the entrypoint's own hook directory. openssl is already in this

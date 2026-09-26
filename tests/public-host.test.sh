@@ -29,6 +29,7 @@ repo_root="$(cd "$tests_dir/.." && pwd)"
 template="$repo_root/nginx/homespool-public-host.conf.template"
 derive="$repo_root/nginx/docker-entrypoint.d/15-redirect-port-suffix.envsh"
 compose="$repo_root/compose.yaml"
+dockerfile="$repo_root/nginx/Dockerfile"
 filter="${1:-}"
 
 # The variable list compose.yaml passes as NGINX_ENVSUBST_FILTER, in the form the base image's
@@ -147,10 +148,10 @@ if test_case "compose.yaml still names the variable the template needs"; then
     assert_contains "$(grep NGINX_ENVSUBST_FILTER "$compose")" "REDIRECT_PORT_SUFFIX"
 fi
 
-if test_case "compose.yaml mounts the template where the entrypoint renders it"; then
-    # Inert without the mount: no file in the templates directory, no map in conf.d, and
+if test_case "the proxy image puts the template where the entrypoint renders it"; then
+    # Inert anywhere else: no file in the templates directory, no map in conf.d, and
     # homespool-proxy.conf then names a variable that does not exist.
-    assert_contains "$(grep homespool-public-host "$compose")" \
+    assert_contains "$(grep '^COPY.*homespool-public-host' "$dockerfile")" \
         "/etc/nginx/templates/00-public-host.conf.template"
 fi
 

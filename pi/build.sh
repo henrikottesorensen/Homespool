@@ -165,12 +165,9 @@ cp "$repo_root/.env.example"  "$payload_dir/"
 # SMTP or repoint PRINTER_HOST later. Mode carried explicitly: systemd ExecStart needs it executable,
 # and cp -a into the image preserves whatever arrives here.
 install -m 0755 "$repo_root/setup-env.sh" "$payload_dir/setup-env.sh"
-# The whole directory, deliberately. A hand-list of just the files compose bind-mounts drifted when
-# two mounts were added without it noticing - and a missing bind source is not a merely absent
-# config: Docker on the card invents the path as an empty directory, nginx hits it through an
-# include, and the proxy never starts. The directory is also compose.yaml's build context for the
-# proxy, so shipping it whole
-# keeps the card's compose project self-consistent. It is 64 KB against ~550 MB of images.
+# The whole directory: compose.yaml's build context for the proxy. Nothing in it is mounted - the
+# configuration is inside the saved image - so it is here only to keep the card's compose project
+# self-consistent, and so a card can rebuild its own proxy. It is 64 KB against ~550 MB of images.
 cp -R "$repo_root/nginx/." "$payload_dir/nginx/"
 
 # Automatic certificates, which the card does NOT use unless somebody asks for it: nothing here runs
@@ -179,7 +176,7 @@ cp -R "$repo_root/nginx/." "$payload_dir/nginx/"
 # ends by telling the operator to run exactly that path - which is a dead end on a card that does not
 # carry it, and a card owner is the least likely person to have a checkout to fall back on.
 #
-# The whole directory, for the reason the nginx copy above gives: a hand-list drifts.
+# The whole directory, so a file added to it cannot be left out by a hand-list.
 mkdir -p "$payload_dir/acme"
 cp -R "$repo_root/acme/." "$payload_dir/acme/"
 

@@ -23,8 +23,13 @@ FROM nginxinc/nginx-unprivileged:stable
 # /etc/nginx/printer-certs is the other half of that story and needs the opposite treatment: it holds
 # the application's leaf, is mounted read-only from the application's own volume, and nothing in here
 # ever writes to it.
+#
+# /etc/nginx/templates is made here for a different reason: the base image has none, and a directory a
+# COPY creates takes that COPY's --chmod. At 644 it cannot be entered, and the entrypoint exits on
+# "Permission denied" reading the first template, before nginx ever starts.
 USER root
-RUN mkdir -p /etc/nginx/certs && chown 101:101 /etc/nginx/certs && chmod 700 /etc/nginx/certs
+RUN mkdir -p /etc/nginx/certs /etc/nginx/templates \
+    && chown 101:101 /etc/nginx/certs && chmod 700 /etc/nginx/certs
 USER 101
 
 # Runs before nginx starts, from the entrypoint's own hook directory. openssl is already in this
@@ -54,20 +59,50 @@ COPY --chown=101:101 --chmod=755 docker-entrypoint.d/26-user-tls-servers.sh /doc
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/15-redirect-port-suffix.envsh /docker-entrypoint.d/
 COPY --chown=101:101 --chmod=755 docker-entrypoint.d/16-user-server-names.envsh /docker-entrypoint.d/
 
-# Baked in rather than mounted from ./nginx like the configuration files, because this one is served
-# precisely when things are going wrong. A bind mount is one more thing that can be absent, and its
-# absence would turn "the application is still starting" into a bare 404 from the proxy.
+# The page served while the application is starting, which is precisely when things are going
+# wrong - so it has nothing to depend on but the image.
 COPY --chown=101:101 --chmod=644 starting.html /usr/share/nginx/html/homespool-starting.html
 
 # The same page in Danish, picked by $hs_starting_suffix in homespool.conf.template. Absent, the
-# try_files there falls back to the English one, which is what makes adding a language to the
-# configuration safe before the image carrying it has been rebuilt.
+# try_files there falls back to the English one.
 COPY --chown=101:101 --chmod=644 starting.da.html /usr/share/nginx/html/homespool-starting.da.html
 
-# http-level settings for every listener: no version in the Server header, and the shared session
-# cache that makes nginx rotate its TLS session ticket key. Baked in rather than mounted like the
-# configuration files, so no deployment can run this image without them.
+# THE CONFIGURATION, ALL OF IT. Nothing under ./nginx is mounted into the container, so the image is
+# the whole proxy: one pulled from a registry runs as it was built, no file can be missing from a
+# deployment (Docker invents a missing bind-mount source as an empty directory, and nginx then dies
+# reading a directory where it wanted a file), and no line can run ahead of the nginx and OpenSSL it
+# was written for. What an operator chooses lives in .env; changing a file here is
+# `docker compose up -d --build proxy`.
+#
+# Every file by name, like the hooks above and for the same reason: tests/proxy-image.test.sh fails
+# on a file in this directory that no COPY names, which would otherwise be a listener or a setting
+# that silently never ships.
+#
+# Owned by root and not writable by uid 101. conf.d itself stays writable - the entrypoint renders
+# the templates into it and the hooks install listeners there.
+#
+# Templates go to /etc/nginx/templates, which the base image's 20-envsubst-on-templates.sh renders
+# into conf.d at start, substituting only what NGINX_ENVSUBST_FILTER in compose.yaml names. The public
+# Host map sorts first, so it exists before any server block reads it.
+COPY --chmod=644 homespool.conf.template /etc/nginx/templates/default.conf.template
+COPY --chmod=644 homespool-public-host.conf.template /etc/nginx/templates/00-public-host.conf.template
+
+# Straight into conf.d, served unconditionally. The access log format sorts first: a format is looked
+# up when an access_log naming it is parsed, and conf.d is included in sorted order. The transfer
+# listener has no certificate to wait for, so nothing decides whether it is served.
+COPY --chmod=644 homespool-access-log.conf /etc/nginx/conf.d/00-access-log.conf
 COPY --chmod=644 homespool-http.conf /etc/nginx/conf.d/homespool-http.conf
+COPY --chmod=644 homespool-transfer.conf /etc/nginx/conf.d/homespool-transfer.conf
+
+# Beside conf.d, NOT in it. The first three are fragments that server blocks include, and nginx
+# refuses a `location` at the top level. The printer blocks are installed by their hooks, and only on
+# a condition: 20-printer-listener.sh once there is a printer leaf to serve - unconditional, nginx
+# would refuse to start on a stack with printer TLS off - and 21-legacy-printer-listener.sh only when
+# LEGACY_PRINTER_PORT asks for a plaintext listener nobody should get by default. That is the same
+# variable that opens the application's listener, so the block and the socket behind it cannot
+# disagree.
+COPY --chmod=644 homespool-proxy.conf homespool-user-tls.conf homespool-health-access.conf /etc/nginx/
+COPY --chmod=644 homespool-printer.conf homespool-legacy-printer.conf /etc/nginx/
 
 EXPOSE 8080
 EXPOSE 8443

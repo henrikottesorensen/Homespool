@@ -4,7 +4,7 @@
 # format that leaves query strings out.
 #
 #   tests/access-log.test.sh              # run them all
-#   tests/access-log.test.sh compose      # run only tests whose name contains "compose"
+#   tests/access-log.test.sh image        # run only tests whose name contains "image"
 #
 # No test framework, for the reason tests/setup-env.test.sh gives at length.
 #
@@ -12,7 +12,7 @@
 # the base image's nginx.conf logs every request in full at the http level, and a block without its
 # own access_log inherits that - silently, since nginx starts and logs as happily either way. So the
 # failure this file exists to catch is a server block added later, or a file renamed out of the
-# mount that sorts the format first, and both look fine until somebody reads the log.
+# COPY that sorts the format first, and both look fine until somebody reads the log.
 #
 # What the format does to a request was checked against the real image rather than here: it needs
 # nginx, and every other test in this directory runs without a daemon.
@@ -21,7 +21,7 @@ set -uo pipefail
 tests_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$tests_dir/.." && pwd)"
 nginx_dir="$repo_root/nginx"
-compose="$repo_root/compose.yaml"
+dockerfile="$nginx_dir/Dockerfile"
 filter="${1:-}"
 
 directive='access_log /var/log/nginx/access.log homespool;'
@@ -101,13 +101,13 @@ if test_case "the format leaves the query out of the request and the referrer"; 
     fi
 fi
 
-if test_case "compose.yaml mounts the format into conf.d, sorting first"; then
+if test_case "the proxy image installs the format into conf.d, sorting first"; then
     # A format is looked up when an access_log naming it is parsed, and conf.d is included in sorted
-    # order - so the mount point is part of the fix, not a detail of it.
-    mount="$(grep "homespool-access-log.conf" "$compose" | grep -v '^[[:space:]]*#' || true)"
-    case "$mount" in
-        *":/etc/nginx/conf.d/00-"*) pass ;;
-        *) fail "expected a mount to /etc/nginx/conf.d/00-*, found: ${mount:-nothing}" ;;
+    # order - so the destination is part of the fix, not a detail of it.
+    copy="$(grep "homespool-access-log.conf" "$dockerfile" | grep '^COPY' || true)"
+    case "$copy" in
+        *" /etc/nginx/conf.d/00-"*) pass ;;
+        *) fail "expected a COPY to /etc/nginx/conf.d/00-*, found: ${copy:-nothing}" ;;
     esac
 fi
 

@@ -402,9 +402,11 @@ public sealed class PrinterFilamentServiceTests : IDisposable
     {
         PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
 
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
         return new PrinterFilamentService(commands: null!,
-                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System,
-                                                                  new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance)),
+                                          access,
+                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System, access),
                                           new ToolTargetReader(context, TestTelemetryContext.For(context)));
     }
 
@@ -435,6 +437,10 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // The caller every test here uses, allowed to unload, so each reaches the guard it is about.
+        TestAccounts.Add(context, 1);
+        context.TeamMembers.Add(TestMemberships.Operator(team.Id, 1));
 
         context.Printers.Add(new Printer
         {
@@ -479,15 +485,6 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
     private static async Task QueueAPrintAsync(HomespoolDbContext context)
     {
-        context.Users.Add(new HSUser
-        {
-            Id = 1,
-            UserName = "queuer",
-            NormalizedUserName = "QUEUER",
-            Email = "queuer@example.com",
-            NormalizedEmail = "QUEUER@EXAMPLE.COM",
-        });
-
         PrintFile file = new()
         {
             UserId = 1,

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
@@ -36,18 +37,27 @@ namespace Homespool.Host.PrusaConnect;
 /// persists after the holder stops paying attention, so it stays off the API rather than behind a
 /// token scope. A signed-in session is the authority of standing at the machine; a token is not.
 /// </para>
+/// <para>
+/// <b><see cref="Capability.ControlPrinter"/> is asked first</b>, before the state, queue and tool
+/// guards read anything, for the reason <see cref="PrinterPreheatService"/> gives: otherwise a caller
+/// the send would refuse is first told what the printer is doing and holding, rather than that they
+/// may not.
+/// </para>
 /// </remarks>
 public class PrinterFilamentService
 {
     private readonly PrinterCommandService _commands;
+    private readonly PrinterAccessService _access;
     private readonly QueueSnapshotReader _snapshots;
     private readonly ToolTargetReader _tools;
 
     public PrinterFilamentService(PrinterCommandService commands,
+                                  PrinterAccessService access,
                                   QueueSnapshotReader snapshots,
                                   ToolTargetReader tools)
     {
         _commands = commands;
+        _access = access;
         _snapshots = snapshots;
         _tools = tools;
     }
@@ -78,6 +88,9 @@ public class PrinterFilamentService
                                                  int? toolNumber,
                                                  CancellationToken cancellationToken)
     {
+        // The capability UnloadFilament declares, by inheriting the command default.
+        await _access.RequireAsync(printerId, caller, Capability.ControlPrinter, cancellationToken);
+
         QueueSnapshot snapshot = await _snapshots.ReadAsync(printerId, cancellationToken);
 
         if (!PhysicalChangeRules.IsAllowed(snapshot.Status))

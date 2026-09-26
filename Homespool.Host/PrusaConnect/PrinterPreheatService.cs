@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.Queue;
@@ -47,18 +48,28 @@ namespace Homespool.Host.PrusaConnect;
 /// <see cref="Printing.PhysicalChangeRules"/> - shared with unloading filament, which needs the same
 /// rule for the same reason. Nothing downstream will second-guess what it decides.
 /// </para>
+/// <para>
+/// <b><see cref="Capability.ControlPrinter"/> is asked before anything about the printer is read.</b>
+/// The send asks it again, as it asks of every command, but only after the state and tool guards,
+/// so a caller it would refuse was first answered "busy" or "no tool picked" instead of "not
+/// allowed" - the wrong refusal, and an answer about the printer to any caller that arrives here
+/// without having resolved it through a gate of its own.
+/// </para>
 /// </remarks>
 public class PrinterPreheatService
 {
     private readonly PrinterCommandService _commands;
+    private readonly PrinterAccessService _access;
     private readonly QueueSnapshotReader _snapshots;
     private readonly ToolTargetReader _tools;
 
     public PrinterPreheatService(PrinterCommandService commands,
+                                 PrinterAccessService access,
                                  QueueSnapshotReader snapshots,
                                  ToolTargetReader tools)
     {
         _commands = commands;
+        _access = access;
         _snapshots = snapshots;
         _tools = tools;
     }
@@ -99,6 +110,9 @@ public class PrinterPreheatService
                                                   int nozzleTemperature,
                                                   CancellationToken cancellationToken)
     {
+        // The capability SetTemperatures declares, by inheriting the command default.
+        await _access.RequireAsync(printerId, caller, Capability.ControlPrinter, cancellationToken);
+
         QueueSnapshot snapshot = await _snapshots.ReadAsync(printerId, cancellationToken);
 
         if (!PhysicalChangeRules.IsAllowed(snapshot.Status))

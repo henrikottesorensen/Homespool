@@ -42,7 +42,22 @@ RUN mkdir -p /app/data /app/data/proxy-certificates \
 # The SCRIPT is deliberately NOT copied in. It is a maintenance tool rather than part of the
 # application, it is bind-mounted in the one command that needs it, and keeping it out means a fixed
 # script can be run against an image that predates the fix.
+#
+# The upgrade takes the distribution's fixes that Microsoft has not yet rebuilt this base image with.
+# It is only worth anything if it runs: Docker caches this layer on the one beneath it, so a later
+# build on an unchanged base would reuse the first build's result - the upgrade, and the three
+# packages above with it, frozen at whatever day that was. HOMESPOOL_APT_REFRESH breaks that cache:
+# any ARG in scope becomes part of the key of every RUN after it, used or not. ./build.sh sets it to
+# the date, so this reruns at most once a day. Empty, as a bare `docker compose build` leaves it, the
+# layer caches as it always did.
+#
+# The whole upgrade, not only the security pocket: the stable release's updates are bug fixes, which
+# are wanted too, and selecting a pocket with apt is fiddly. confold keeps any configuration file the
+# image already has, and noninteractive stops a changed one waiting on a prompt nobody can answer.
+ARG HOMESPOOL_APT_REFRESH=
 RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y \
+        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
  && apt-get install -y --no-install-recommends curl hwdata sqlite3 \
  && rm -rf /var/lib/apt/lists/*
 USER $APP_UID

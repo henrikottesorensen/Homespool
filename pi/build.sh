@@ -145,8 +145,13 @@ echo "==> Building the Homespool container images for arm64"
 # --pull for the reason ../build.sh gives: the base images float so that their security rebuilds
 # arrive, and without it this bakes whatever copy of aspnet:10.0 the build host happened to keep -
 # onto a card that will then run it for months.
+#
+# HOMESPOOL_APT_REFRESH for the same reason ../build.sh passes it: without a value that changes, the
+# application image's apt upgrade stays cached at whatever day it first ran on this base.
 HOMESPOOL_GITREF="$("$repo_root/tools/gitref.sh")"
 export HOMESPOOL_GITREF
+HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
+export HOMESPOOL_APT_REFRESH
 docker --log-level warn compose -f "$repo_root/compose.yaml" build --pull
 
 # ------------------------------------------------------------------------------------------------

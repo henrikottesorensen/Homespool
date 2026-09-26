@@ -33,6 +33,9 @@ services:
         # ./build.sh is the wrapper that computes it and calls compose; use that if the image is going
         # anywhere. Empty is supported and means --version reports an unknown commit.
         HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
+        # The day, so the image's apt upgrade reruns once a day instead of being cached forever on an
+        # unchanged base. Also only ./build.sh fills it in; empty leaves that layer cached.
+        HOMESPOOL_APT_REFRESH: "${HOMESPOOL_APT_REFRESH:-}"
 
     # Pinned, because Docker otherwise derives it from the container id - a new name on every
     # recreation. The printer certificate carries this name and is issued once, so an unpinned name

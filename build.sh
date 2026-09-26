@@ -9,7 +9,7 @@
 # USE THIS RATHER THAN `docker compose build` if you intend to run, ship or keep the image. Compose
 # has no way to compute the commit itself - it does no command substitution - so a bare
 # `docker compose build` produces an image whose --version says "commit unknown", and says it only
-# when somebody thinks to ask. That is the whole reason this wrapper exists; it is two lines of work
+# when somebody thinks to ask. That is the whole reason this wrapper exists; it is a few lines of work
 # that compose cannot do.
 #
 # It also passes --pull, which is the other thing a bare `docker compose build` does not do. The
@@ -19,6 +19,13 @@
 # machine pulled first, for as long as it keeps it, and a rebuild months later ships the base image
 # it had months ago. The cost is that this needs the registry: offline, `docker compose build` still
 # builds from the local copies, with the same "commit unknown" caveat as above.
+#
+# And it passes the date as HOMESPOOL_APT_REFRESH, so the application image's apt upgrade reruns once
+# a day. --pull alone does not do that: an unchanged base leaves the upgrade's layer cached, frozen at
+# the day it first ran, which is exactly the staleness the upgrade is there to remove. The date rather
+# than something unique per build, so rebuilding twice in a day stays cached. Online by the same token
+# as --pull: that layer runs apt-get update, and on a machine without the cached layer and without
+# the network the build fails there rather than shipping unpatched packages quietly.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33,5 +40,8 @@ if [ -n "$HOMESPOOL_GITREF" ]; then
 else
     echo "==> No commit available, so the images will report an unknown one"
 fi
+
+HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
+export HOMESPOOL_APT_REFRESH
 
 exec docker compose -f "$repo_root/compose.yaml" build --pull "$@"

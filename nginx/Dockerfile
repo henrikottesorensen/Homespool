@@ -25,6 +25,29 @@ FROM nginxinc/nginx-unprivileged:stable
 # ever writes to it.
 USER root
 RUN mkdir -p /etc/nginx/certs && chown 101:101 /etc/nginx/certs && chmod 700 /etc/nginx/certs
+
+# The dynamic modules the base image installs - geoip, image-filter, njs, xslt - and curl go, because
+# nothing here uses them: no configuration has a load_module, and neither the base image's entrypoint
+# nor any hook below calls curl. They are not inert on disk. Their libraries - libheif, aom, gd,
+# libxml2, libssh2, gnutls, krb5 - account for more than half of the fixable vulnerabilities a scanner
+# reports against this image, and every one of those findings costs somebody the time to establish that nginx
+# never runs it.
+#
+# The modules are found rather than named, so one the base image adds later goes too. The image does
+# not get smaller - the files stay in the base layer underneath - but they are absent from the running
+# container, which is what an attacker and a scanner both see. No apt-get update: removing needs no
+# package lists, so this still builds offline.
+#
+# The loop is the guard. apt-get purge also removes whatever depends on what it removes, without
+# asking, so a base image that one day makes a tool the entrypoint needs depend on curl fails this
+# build instead of shipping a proxy that breaks at start-up. The list is what the entrypoint and the
+# hooks call. A loop rather than one `command -v` with every name: dash answers 0 for such a list even
+# when some of the names are missing.
+RUN apt-get purge -y $(dpkg-query -W -f='${Package}\n' 'nginx-module-*') curl \
+ && apt-get autoremove -y --purge \
+ && for tool in nginx openssl hostname envsubst awk sed find getconf dpkg-query; do \
+        command -v "$tool" >/dev/null || { echo "The package purge removed $tool" >&2; exit 1; }; \
+    done
 USER 101
 
 # Runs before nginx starts, from the entrypoint's own hook directory. openssl is already in this

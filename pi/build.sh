@@ -202,6 +202,12 @@ cp -R "$repo_root/acme/." "$payload_dir/acme/"
 # "permission denied" against a script the operator was just told to type.
 chmod 0755 "$payload_dir/acme"/*.sh
 
+# The daily image check, for the same two reasons: the card's layer installs it from here, and a
+# machine that is not a card installs it with update-check/install.sh from the same files.
+mkdir -p "$payload_dir/update-check"
+cp -R "$repo_root/update-check/." "$payload_dir/update-check/"
+chmod 0755 "$payload_dir/update-check"/*.sh
+
 # Deliberately NOT into the payload. This tarball never reaches the card: it is loaded into the
 # card's Docker store during the build (step 4), so the Pi boots with the images already unpacked.
 # Shipping it as well would put ~200 MB on the card that exists only to be expanded and deleted.

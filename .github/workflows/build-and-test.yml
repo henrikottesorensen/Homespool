@@ -142,6 +142,13 @@ jobs:
       - name: Test the image scanning script
         run: ./tests/scan-images.test.sh
 
+      # What the host's daily check calls newer and what it says a pull would bring - fixes counted
+      # along the ancestry rather than the list's date order, a runtime security release, a rebuild -
+      # and that an unreachable source leaves the previous report rather than half of a new one. Run
+      # under dash, as systemd runs it; docker and curl are stubs.
+      - name: Test the host's image check
+        run: ./tests/update-check.test.sh
+
       # Both images: the application and the proxy that terminates TLS in front of it.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job

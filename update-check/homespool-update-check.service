@@ -1,0 +1,17 @@
+# Runs homespool-update-check once: compares the running Homespool images with what their registry
+# publishes, and writes the answer to the journal and /var/lib/homespool/update-check.json. Reports
+# only - nothing is pulled or restarted. Installed by update-check/install.sh, which fills in the
+# compose project, or by the Raspberry Pi card's build.
+
+[Unit]
+Description=Check whether newer Homespool images are published, and what they would bring
+Documentation=file:/usr/local/sbin/homespool-update-check
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOMESPOOL_PROJECT=@PROJECT@
+StateDirectory=homespool
+ExecStart=/usr/local/sbin/homespool-update-check

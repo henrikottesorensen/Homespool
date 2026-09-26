@@ -55,6 +55,10 @@ mmdebstrap:
     # localhost` from the operator's own shell reports command not found.
     - curl
 
+    # For homespool-update-check, which reads the registry's and GitHub's JSON with it. Small, and
+    # the daily check fails every day without it.
+    - jq
+
     # Debian security updates, applied by the board itself.
     #
     # Without it this card runs whatever openssl, openssh and glibc shipped the day it was written,
@@ -232,6 +236,13 @@ mmdebstrap:
     - install -m 0755 ${IGconf_homespool_assetdir}/homespool-login.sh $1/usr/local/sbin/homespool-login
     - install -m 0644 ${IGconf_homespool_assetdir}/homespool-login.service $1/etc/systemd/system/homespool-login.service
     - install -m 0644 ${IGconf_homespool_assetdir}/homespool-login.txt $1/boot/firmware/homespool-login.txt
+
+    # The daily check for newer images, which reports and never pulls. From the payload rather than
+    # pi/files, because the same files install on a machine that is not a card, through
+    # update-check/install.sh; the sed is that script's, with the project a card's stack gets.
+    - install -m 0755 $1/opt/homespool/update-check/homespool-update-check.sh $1/usr/local/sbin/homespool-update-check
+    - sed 's/@PROJECT@/homespool/' $1/opt/homespool/update-check/homespool-update-check.service > $1/etc/systemd/system/homespool-update-check.service
+    - install -m 0644 $1/opt/homespool/update-check/homespool-update-check.timer $1/etc/systemd/system/homespool-update-check.timer
 
     - |-
       #
@@ -758,6 +769,7 @@ mmdebstrap:
     - chroot $1 systemctl enable homespool-firstboot.service
     - chroot $1 systemctl enable homespool-wifi.service
     - chroot $1 systemctl enable homespool-login.service
+    - chroot $1 systemctl enable homespool-update-check.timer
 
     # The package's own postinst should already have done this - earlyoom.service carries an
     # [Install] section and dh_installsystemd enables it. Repeated anyway because it is idempotent

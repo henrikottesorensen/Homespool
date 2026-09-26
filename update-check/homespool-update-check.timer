@@ -1,0 +1,14 @@
+# Daily, at a random moment within six hours of midnight, so a registry and GitHub are not asked by
+# every deployment at once. Persistent, so a machine that was off at the time checks when it is next
+# up rather than a day later.
+
+[Unit]
+Description=Daily check for newer Homespool images
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=6h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

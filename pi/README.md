@@ -234,7 +234,7 @@ Done with the Raspberry Pi package rather than a `growpart` unit of our own for 
 repeating: it resizes **offline, in the initramfs**. A hand-rolled version would be rewriting the
 partition table of a mounted root filesystem on someone else's SD card.
 
-## It updates itself
+## The operating system updates itself
 
 **Debian security updates install themselves**, through `unattended-upgrades` on the stock
 `apt-daily` timers. An appliance in a cupboard is never logged into, so left to a person this card
@@ -311,6 +311,24 @@ did. There is no MTA on the card, so nothing is mailed anywhere.
 **This does not update Homespool itself.** The application's container images are baked into the
 card's Docker store, and `unattended-upgrades` only ever touches Debian packages. Moving the stack
 to a new version is a separate job and, until there is a tagged release to pull, means a new card.
+
+## Checking for newer images
+
+The card runs [`update-check`](../update-check/README.md) once a day. It compares the images the
+stack is running with the ones their registry publishes, and says what pulling a newer one would
+bring — Homespool fixes, .NET security releases, a rebuild on newer packages — in the journal and on
+the administrators' banner. **It only reports: nothing is ever pulled or restarted by itself.**
+
+On a card built from this repository, that report is short. The images were built on the machine
+that made the card and are named after no registry, so there is nothing published to compare them
+with; the check says so, with the date they were built, and cannot tell whether fixes have come out
+since. It becomes useful once the card runs published images — a card built with `REGISTRY` set, or
+one whose `.env` points at a registry and has pulled from it. Then, when the banner says a newer
+image is worth taking:
+
+```bash
+cd /opt/homespool && docker compose pull && docker compose up -d
+```
 
 ## Getting a shell on the board
 

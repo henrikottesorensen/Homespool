@@ -39,6 +39,11 @@ public static class HealthEndpoints
     /// would actually fix.</summary>
     private const string LivenessTag = "live";
 
+    /// <summary>Marks a check whose status alone would tell an anonymous caller something about the
+    /// deployment: it is left out of the status <see cref="HealthStatusCache"/> computes for them, and
+    /// reported in full to administrators like every other.</summary>
+    public const string AdministratorsOnlyTag = "administrators-only";
+
     /// <summary>
     /// Adds every health check, tagging the ones a restart would actually fix.
     /// </summary>
@@ -75,9 +80,11 @@ public static class HealthEndpoints
                 // from a feature that was never built.
                 .AddCheck<WebRtcCandidateHealthCheck>("camera-live-view")
 
-                // Untagged: an image worth pulling is not a fault, and a restart pulls nothing. The
-                // check keeps the last report it read, so it is the one singleton among them.
-                .AddCheck<UpdateReportHealthCheck>("update-check");
+                // Not live: an image worth pulling is not a fault, and a restart pulls nothing. And
+                // administrators only: Degraded here means "this deployment is behind a published fix",
+                // which the anonymous status would otherwise tell anybody who asks. The check keeps the
+                // last report it read, so it is the one singleton among them.
+                .AddCheck<UpdateReportHealthCheck>("update-check", tags: [AdministratorsOnlyTag]);
 
         services.AddSingleton<UpdateReportHealthCheck>();
         services.AddSingleton<HealthStatusCache>();

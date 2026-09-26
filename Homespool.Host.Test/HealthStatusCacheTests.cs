@@ -40,6 +40,32 @@ public class HealthStatusCacheTests
         return new HealthReport(new Dictionary<string, HealthReportEntry>(), status, TimeSpan.Zero);
     }
 
+    /// <summary>
+    /// A check tagged for administrators only - the image update check, whose Degraded says this
+    /// deployment is behind a published fix - is left out of what an anonymous caller is told.
+    /// </summary>
+    [Fact]
+    public async Task ChecksForAdministratorsOnlyAreLeftOutOfTheAnonymousStatus()
+    {
+        // Arrange
+        Func<HealthCheckRegistration, bool>? predicate = null;
+        _checks.When(c => c.CheckHealthAsync(Arg.Any<Func<HealthCheckRegistration, bool>?>(), Arg.Any<CancellationToken>()))
+               .Do(call => predicate = call.Arg<Func<HealthCheckRegistration, bool>?>());
+        HealthStatusCache cache = new(_checks, _time);
+        _reports.Enqueue(Task.FromResult(Report(HealthStatus.Healthy)));
+        IHealthCheck check = Substitute.For<IHealthCheck>();
+
+        // Act
+        await cache.GetStatusAsync(CancellationToken.None);
+
+        // Assert
+        predicate.Should().NotBeNull("the anonymous status is computed over a chosen set of checks");
+        predicate!(new HealthCheckRegistration("update-check", check, null, [HealthEndpoints.AdministratorsOnlyTag]))
+            .Should().BeFalse();
+        predicate(new HealthCheckRegistration("telemetry-persistence", check, null, null))
+            .Should().BeTrue();
+    }
+
     [Fact]
     public async Task AStatusIsServedAgainWithinItsLifetime()
     {

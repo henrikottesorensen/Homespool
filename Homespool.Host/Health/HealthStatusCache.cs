@@ -83,7 +83,11 @@ public sealed class HealthStatusCache
 
     private async Task<HealthStatus> ComputeAsync()
     {
-        HealthReport report = await _checks.CheckHealthAsync(CancellationToken.None);
+        // Without the checks whose status is itself for administrators - see
+        // HealthEndpoints.AdministratorsOnlyTag. They still count in the report administrators get.
+        HealthReport report = await _checks.CheckHealthAsync(
+            registration => !registration.Tags.Contains(HealthEndpoints.AdministratorsOnlyTag),
+            CancellationToken.None);
 
         lock (_gate)
         {

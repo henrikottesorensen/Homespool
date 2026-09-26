@@ -1,10 +1,12 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -120,6 +122,23 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
             """;
     }
 
+    /// <summary>
+    /// Registered for administrators only, so its Degraded - this deployment is behind a published
+    /// fix - never reaches the anonymous status; and not for liveness, since a restart pulls nothing.
+    /// </summary>
+    [Fact]
+    public void The_check_is_for_administrators_only_and_never_decides_liveness()
+    {
+        ServiceCollection services = new();
+        services.AddHomespoolHealthChecks();
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        HealthCheckRegistration registration = provider.GetRequiredService<IOptions<HealthCheckServiceOptions>>()
+                                                       .Value.Registrations.Single(r => r.Name == "update-check");
+
+        registration.Tags.Should().BeEquivalentTo([HealthEndpoints.AdministratorsOnlyTag]);
+    }
+
     [Fact]
     public async Task No_report_is_healthy_and_says_where_the_check_comes_from()
     {
@@ -165,8 +184,61 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         HealthCheckResult result = await RunAsync(NewCheck());
 
         result.Status.Should().Be(HealthStatus.Healthy);
-        result.Description.Should().Contain("A newer image is published for homespool")
-              .And.Contain("nothing in it the update check counts as a reason");
+        result.Description.Should().Contain("homespool has a newer image published")
+              .And.Contain("nothing in it the check counts as a reason");
+    }
+
+    /// <summary>
+    /// The case the review found: a card builds its images itself, so both are local, and the check
+    /// used to fall through to saying they were the ones their registry publishes.
+    /// </summary>
+    [Fact]
+    public async Task Images_built_on_this_machine_are_never_called_current()
+    {
+        await WriteAsync($$"""
+            {
+              "schema": 1,
+              "checked": "2026-09-26T18:00:00Z",
+              "services": [
+                { "service": "homespool", "reference": "homespool", "status": "local", "built": "2026-08-14T02:34:59.915970875Z" },
+                { "service": "proxy", "reference": "homespool-proxy", "status": "local", "built": "2026-08-14T02:27:14Z" }
+              ]
+            }
+            """);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Status.Should().Be(HealthStatus.Healthy, "nothing can be acted on until images are published");
+        result.Description.Should().NotContain("registry publishes")
+              .And.Contain("homespool was built on this machine on 2026-08-14")
+              .And.Contain("proxy was built on this machine on 2026-08-14")
+              .And.Contain("no check can say whether fixes have come out since");
+    }
+
+    [Theory]
+    [InlineData("pinned", "\"built\": \"2026-08-14T00:00:00Z\"", "homespool is pinned to a digest on 2026-08-14, so there is no tag to follow")]
+    [InlineData("not-running", "\"built\": null", "homespool was not running")]
+    [InlineData("local", "\"built\": \"\"", "homespool was built on this machine, so nothing is published")]
+    [InlineData("from-the-future", "\"built\": null", "homespool is 'from-the-future', which this version does not know")]
+    public async Task Every_other_status_says_what_it_means(string status, string built, string expected)
+    {
+        await WriteAsync($$"""
+            {
+              "schema": 1,
+              "checked": "2026-09-26T18:00:00Z",
+              "services": [
+                { "service": "homespool", "status": "{{status}}", {{built}} },
+                { "service": "proxy", "status": "current" }
+              ]
+            }
+            """);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Status.Should().Be(HealthStatus.Healthy);
+        result.Description.Should().Contain(expected)
+              .And.Contain("proxy is the image its registry publishes")
+              .And.NotContain("The images are the ones their registry publishes");
     }
 
     [Fact]

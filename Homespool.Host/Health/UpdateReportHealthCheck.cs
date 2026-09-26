@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -107,8 +108,8 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
                 "whether it is still enabled.");
         }
 
-        List<ReportService> newer = [.. report.Services.Where(s => s.Status == "newer")];
-        List<ReportService> worthPulling = [.. newer.Where(s => s.Reasons is { Count: > 0 })];
+        List<ReportService> worthPulling =
+            [.. report.Services.Where(s => s.Status == "newer" && s.Reasons is { Count: > 0 })];
 
         if (worthPulling.Count > 0)
         {
@@ -119,15 +120,52 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
                 $"Pull it where the stack runs with `{PullCommand}`.");
         }
 
-        if (newer.Count > 0)
+        string checkedAt = $"{report.Checked:yyyy-MM-dd HH:mm} UTC";
+
+        if (report.Services.All(s => s.Status == "current"))
         {
             return HealthCheckResult.Healthy(
-                $"A newer image is published for {string.Join(" and ", newer.Select(s => s.Service))}, with " +
-                $"nothing in it the update check counts as a reason to update (checked {report.Checked:yyyy-MM-dd HH:mm} UTC).");
+                $"The images are the ones their registry publishes, as of the update check at {checkedAt}.");
         }
 
         return HealthCheckResult.Healthy(
-            $"The images are the ones their registry publishes, as of the update check at {report.Checked:yyyy-MM-dd HH:mm} UTC.");
+            $"Image update check at {checkedAt}: {string.Join("; ", report.Services.Select(Describe))}.");
+    }
+
+    /// <summary>One container's line, for every status but a newer image worth pulling.</summary>
+    /// <remarks>
+    /// Each status says what it means, because the one the host check cannot compare is the one a
+    /// catch-all would misreport: a card's images are built on the card, so they are <c>local</c>, and
+    /// "current" would claim the very thing nobody can know. Healthy all the same: nothing here can be
+    /// acted on until images are published for the deployment to pull, and a banner nobody can clear
+    /// teaches people to stop reading banners.
+    /// </remarks>
+    /// <param name="service">The container.</param>
+    /// <returns>A clause naming it.</returns>
+    private static string Describe(ReportService service)
+    {
+        return service.Status switch
+        {
+            "current" => $"{service.Service} is the image its registry publishes",
+            "newer" => $"{service.Service} has a newer image published, with nothing in it the check counts as a reason to update",
+            "local" => $"{service.Service} was built on this machine{Built(service)}, so nothing is published to compare " +
+                       "it with, and no check can say whether fixes have come out since",
+            "pinned" => $"{service.Service} is pinned to a digest{Built(service)}, so there is no tag to follow",
+            "not-running" => $"{service.Service} was not running",
+            _ => $"{service.Service} is '{service.Status}', which this version does not know",
+        };
+    }
+
+    /// <summary>
+    /// The build date, when the report carries one that reads as a date. Text in the report rather
+    /// than a date, so a value Docker left odd costs the date and not the whole report.
+    /// </summary>
+    private static string Built(ReportService service)
+    {
+        return DateTimeOffset.TryParse(service.Built, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal,
+                                       out DateTimeOffset built) ?
+            $" on {built:yyyy-MM-dd}" :
+            string.Empty;
     }
 
     /// <summary>The report, from the last read unless the file has changed since.</summary>
@@ -207,5 +245,6 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
     private sealed record ReportService(
         [property: JsonPropertyName("service")] string Service,
         [property: JsonPropertyName("status")] string Status,
-        [property: JsonPropertyName("reasons")] IReadOnlyList<string>? Reasons);
+        [property: JsonPropertyName("reasons")] IReadOnlyList<string>? Reasons,
+        [property: JsonPropertyName("built")] string? Built);
 }

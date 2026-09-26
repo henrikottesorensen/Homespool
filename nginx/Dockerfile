@@ -64,6 +64,11 @@ COPY --chown=101:101 --chmod=644 starting.html /usr/share/nginx/html/homespool-s
 # configuration safe before the image carrying it has been rebuilt.
 COPY --chown=101:101 --chmod=644 starting.da.html /usr/share/nginx/html/homespool-starting.da.html
 
+# http-level settings for every listener: no version in the Server header, and the shared session
+# cache that makes nginx rotate its TLS session ticket key. Baked in rather than mounted like the
+# configuration files, so no deployment can run this image without them.
+COPY --chmod=644 homespool-http.conf /etc/nginx/conf.d/homespool-http.conf
+
 EXPOSE 8080
 EXPOSE 8443
 EXPOSE 15443

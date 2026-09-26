@@ -1,7 +1,14 @@
-# Runs homespool-update-check once: compares the running Homespool images with what their registry
-# publishes, and writes the answer to the journal and /var/lib/homespool/update-check.json. Reports
-# only - nothing is pulled or restarted. Installed by update-check/install.sh, which fills in the
-# compose project, or by the Raspberry Pi card's build.
+# Runs homespool-update-check's three steps once: what is running, what is published, and the report
+# into the application's volume. Reports only - nothing is pulled or restarted. Installed by
+# update-check/install.sh, which fills in the compose project, or by the Raspberry Pi card's build.
+#
+# Only collect and publish run as root, and only for what needs it: the Docker socket, and the
+# application's volume. The `+` runs just those two with full privileges, outside everything the
+# [Service] section restricts. compare - every request that leaves the machine and all the JSON that
+# comes back - runs as homespool-update, inside all of it: no capabilities, no Docker socket, the
+# filesystem read-only but for its own state and runtime directories, and no network but the
+# internet's two families and local sockets for name resolution. ExecStartPost runs only when compare
+# succeeded, so a failed comparison publishes nothing.
 
 [Unit]
 Description=Check whether newer Homespool images are published, and what they would bring
@@ -12,6 +19,36 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=homespool-update
+Group=homespool-update
 Environment=HOMESPOOL_PROJECT=@PROJECT@
 StateDirectory=homespool
-ExecStart=/usr/local/sbin/homespool-update-check
+RuntimeDirectory=homespool-update-check
+ExecStartPre=+/usr/local/sbin/homespool-update-check collect
+ExecStart=/usr/local/sbin/homespool-update-check compare
+ExecStartPost=+/usr/local/sbin/homespool-update-check publish
+TimeoutStartSec=10min
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+InaccessiblePaths=-/run/docker.sock -/var/run/docker.sock -/run/containerd
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0022

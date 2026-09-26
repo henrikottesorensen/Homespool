@@ -82,6 +82,7 @@ assert_status() {
 running() {
     jq -n --arg r "$2" --arg s "$3" --arg b "$4" --arg a "$5" --arg d "$6" '{
         RepoDigests: (if $d == "" then [] else [$d] end),
+        Created: "2026-08-14T02:34:59.915970875Z",
         Config: {
             Labels: {"org.opencontainers.image.revision": $r, "org.opencontainers.image.source": $s,
                      "org.opencontainers.image.base.digest": $b},
@@ -174,7 +175,14 @@ case "$url" in
     *) exit 22 ;;
 esac
 STUB
-    chmod 755 "$scratch/bin/docker" "$scratch/bin/curl"
+    # setpriv is Linux's; here it records how it was asked to drop privileges, and runs the command.
+    cat > "$scratch/bin/setpriv" <<'STUB'
+#!/bin/sh
+printf 'setpriv %s\n' "$*" >> "$STUB_LOG"
+while [ $# -gt 0 ]; do case "$1" in --*) shift ;; *) break ;; esac; done
+exec "$@"
+STUB
+    chmod 755 "$scratch/bin/docker" "$scratch/bin/curl" "$scratch/bin/setpriv"
 
     # The ordinary starting point: both containers following latest on a registry, both current.
     export STUB_REF_homespool="registry.example.net/homespool"
@@ -192,6 +200,7 @@ STUB
     export STUB_LOG="$scratch/log"
     export STUB_FIXTURES="$scratch/fixtures"
     export STATE_DIRECTORY="$scratch/state"
+    export RUNTIME_DIRECTORY="$scratch/run"
     unset STUB_PROJECT STUB_REGISTRY_FAILS STUB_CURL_FAILS STUB_DIGEST_homespool STUB_DIGEST_proxy HOMESPOOL_PROJECT \
         STUB_REPORT_VOLUME
     : > "$STUB_LOG"
@@ -203,8 +212,15 @@ newer_app() {
     export STUB_DIGEST_homespool="sha256:newer-homespool"
 }
 
+# The three steps in the unit's order, each marked in the log, stopping at the first that fails - as
+# systemd does, which runs ExecStartPost only when ExecStart succeeded.
 check() {
-    output="$("$posix_sh" "$script" 2> "$scratch/stderr")"
+    : > "$scratch/stderr"
+    output="$(
+        { echo "== collect" >> "$STUB_LOG"; "$posix_sh" "$script" collect; } 2>> "$scratch/stderr" &&
+        { echo "== compare" >> "$STUB_LOG"; "$posix_sh" "$script" compare; } 2>> "$scratch/stderr" &&
+        { echo "== publish" >> "$STUB_LOG"; "$posix_sh" "$script" publish; } 2>> "$scratch/stderr"
+    )"
     status=$?
     log="$(cat "$STUB_LOG")"
     report="$(cat "$scratch/state/update-check.json" 2>/dev/null)"
@@ -376,6 +392,112 @@ if test_case "no application container, no copy for it"; then
     assert_status "$status" 0 "checks cleanly"
     assert_equals "$(ls -A "$scratch/volume" | tr '\n' ' ')" "" "the volume is left alone"
     assert_not_contains "$log" "Mounts" "and not even looked for"
+fi
+
+# One step alone, for the cases about what that step refuses.
+step() {
+    output="$("$posix_sh" "$script" "$1" 2> "$scratch/stderr")"
+    status=$?
+    log="$(cat "$STUB_LOG")"
+}
+
+if test_case "compare never touches the Docker daemon, only the registry and the web"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    history "$published_rev $running_rev fix(A): one" "$running_rev old feat(B): two"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    compare_calls="$(sed -n '/^== compare$/,/^== publish$/p' "$STUB_LOG" | grep -v '^==' |
+        grep -v '^buildx imagetools inspect ' | grep -v '^curl ' || true)"
+    assert_equals "$compare_calls" "" "nothing in compare but imagetools and curl"
+    collect_calls="$(sed -n '/^== collect$/,/^== compare$/p' "$STUB_LOG" | grep -c -E '^(curl|buildx) ' || true)"
+    assert_equals "$collect_calls" "0" "and nothing in collect reaches the network"
+fi
+
+if test_case "compare without collect refuses rather than report nothing running"; then
+    step compare
+    assert_status "$status" 1 "compare alone fails"
+    assert_contains "$(cat "$scratch/stderr")" "collect runs first" "and says why"
+fi
+
+if test_case "an image built on this machine is reported with the date it was built"; then
+    export STUB_REF_homespool="homespool"
+    check
+    assert_equals "$(app .status)" "local" "local"
+    assert_equals "$(app .built)" "2026-08-14T02:34:59.915970875Z" "with the image's own build date"
+fi
+
+if test_case "publish checks the report as the state directory's owner, never as root"; then
+    mkdir -p "$scratch/volume"
+    export STUB_REPORT_VOLUME="$scratch/volume"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_contains "$log" "setpriv --reuid=$(stat -c %u "$scratch/state") --regid=$(stat -c %g "$scratch/state") --clear-groups --no-new-privs jq -e" \
+        "jq runs as the owner, with no groups and no way back"
+fi
+
+# The refusals: a full run first, so the volume holds a good report, then the state directory's copy
+# is replaced with something else and publish is run alone. The good report must survive each.
+refused() {
+    mkdir -p "$scratch/volume"
+    export STUB_REPORT_VOLUME="$scratch/volume"
+    check
+    cp "$scratch/volume/update-check.json" "$scratch/good.json"
+    rm -f "$scratch/state/update-check.json"
+}
+
+assert_volume_untouched() {
+    if cmp -s "$scratch/volume/update-check.json" "$scratch/good.json"; then
+        passed=$((passed + 1))
+    else
+        fail "$1" "the volume's report changed: $(head -c 120 "$scratch/volume/update-check.json")"
+    fi
+}
+
+if test_case "publish refuses a symlink in the report's place"; then
+    refused
+    printf 'SECRET\n' > "$scratch/secret"
+    ln -s "$scratch/secret" "$scratch/state/update-check.json"
+    step publish
+    assert_status "$status" 1 "a symlink is refused"
+    assert_contains "$(cat "$scratch/stderr")" "not a plain file" "and says why"
+    assert_volume_untouched "and what it points at never reaches the application"
+    assert_not_contains "$(cat "$scratch/volume/update-check.json")" "SECRET" "not a byte of it"
+fi
+
+if test_case "publish refuses a report at or over the limit"; then
+    refused
+    head -c 1048576 /dev/zero | tr '\0' ' ' > "$scratch/state/update-check.json"
+    step publish
+    assert_status "$status" 1 "an oversized report is refused"
+    assert_contains "$(cat "$scratch/stderr")" "bytes or more" "and says why"
+    assert_volume_untouched "the previous report stands"
+fi
+
+if test_case "publish refuses an empty report, one that is not JSON, and JSON that is not a report"; then
+    refused
+    : > "$scratch/state/update-check.json"
+    step publish
+    assert_status "$status" 1 "empty is refused"
+    assert_contains "$(cat "$scratch/stderr")" "is empty" "as empty"
+    printf 'not json at all\n' > "$scratch/state/update-check.json"
+    step publish
+    assert_status "$status" 1 "not JSON is refused"
+    printf '{"schema":2,"services":[]}\n' > "$scratch/state/update-check.json"
+    step publish
+    assert_status "$status" 1 "another schema is refused"
+    printf '{"schema":1,"services":"nope"}\n' > "$scratch/state/update-check.json"
+    step publish
+    assert_status "$status" 1 "services that are not a list are refused"
+    assert_contains "$(cat "$scratch/stderr")" "is not a report" "as not a report"
+    assert_volume_untouched "the previous report stands through all of them"
+fi
+
+if test_case "without a subcommand it says how to run it and does nothing"; then
+    step ""
+    assert_status "$status" 2 "usage"
+    assert_contains "$(cat "$scratch/stderr")" "start homespool-update-check.service" "and points at the service"
+    assert_equals "$log" "" "nothing is asked of Docker"
 fi
 
 echo

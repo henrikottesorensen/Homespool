@@ -9,9 +9,12 @@
 #
 # The check reports only. It reads the running containers and the registry and writes a report; it
 # never pulls, restarts or reads a compose file. That is also why this, unlike acme/install.sh, needs
-# no check of who can write the deployment directory: nothing there decides what the root timer
-# runs. The script is copied out of the checkout into /usr/local/sbin, root's, so the checkout's
-# ownership stops mattering once this has run.
+# no check of who can write the deployment directory: nothing there decides what the root steps run.
+# The script is copied out of the checkout into /usr/local/sbin, root's, so the checkout's ownership
+# stops mattering once this has run.
+#
+# It also creates homespool-update, the account the unit runs the network half of the check as, from
+# homespool-update-check.sysusers - see the unit for which step runs as whom.
 #
 # The images' registry must allow anonymous reads, as GHCR's public packages do: the timer runs as
 # root with no login, deliberately. See homespool-update-check.sh.
@@ -36,7 +39,7 @@ case "$PROJECT" in
 esac
 
 missing=''
-for tool in docker curl jq; do
+for tool in docker curl jq setpriv systemd-sysusers; do
     command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
 done
 if [ -z "$missing" ] && ! docker buildx version >/dev/null 2>&1; then
@@ -46,6 +49,9 @@ if [ -n "$missing" ]; then
     echo "The check needs:$missing - install that first, or it would fail every day." >&2
     exit 1
 fi
+
+install -m 0644 "$here/homespool-update-check.sysusers" /usr/lib/sysusers.d/homespool-update-check.conf
+systemd-sysusers /usr/lib/sysusers.d/homespool-update-check.conf
 
 install -m 0755 "$here/homespool-update-check.sh" "$SBIN/homespool-update-check"
 sed "s/@PROJECT@/$PROJECT/" "$here/homespool-update-check.service" > "$UNITS/homespool-update-check.service"

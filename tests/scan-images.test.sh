@@ -186,7 +186,7 @@ STUB
     export STUB_FIXTURES="$scratch/fixtures"
     export STUB_REGISTRY="registry.example.net"
     export HOMESPOOL_TRIVY_CACHE="$scratch/cache"
-    unset STUB_REVISION STUB_ASPNET_NOW STUB_CURL_FAILS GITHUB_TOKEN
+    unset STUB_REVISION STUB_ASPNET_NOW STUB_CURL_FAILS
     : > "$STUB_LOG"
     return 0
 }

@@ -240,6 +240,7 @@ mmdebstrap:
     # The daily check for newer images, which reports and never pulls. From the payload rather than
     # pi/files, because the same files install on a machine that is not a card, through
     # update-check/install.sh; the sed is that script's, with the project a card's stack gets.
+    - install -m 0644 $1/opt/homespool/update-check/homespool-update-check.sysusers $1/usr/lib/sysusers.d/homespool-update-check.conf
     - install -m 0755 $1/opt/homespool/update-check/homespool-update-check.sh $1/usr/local/sbin/homespool-update-check
     - sed 's/@PROJECT@/homespool/' $1/opt/homespool/update-check/homespool-update-check.service > $1/etc/systemd/system/homespool-update-check.service
     - install -m 0644 $1/opt/homespool/update-check/homespool-update-check.timer $1/etc/systemd/system/homespool-update-check.timer
@@ -769,6 +770,9 @@ mmdebstrap:
     - chroot $1 systemctl enable homespool-firstboot.service
     - chroot $1 systemctl enable homespool-wifi.service
     - chroot $1 systemctl enable homespool-login.service
+    # The account its network half runs as, created now rather than left to systemd-sysusers at first
+    # boot, so the card is complete before it has ever started.
+    - chroot $1 systemd-sysusers /usr/lib/sysusers.d/homespool-update-check.conf
     - chroot $1 systemctl enable homespool-update-check.timer
 
     # The package's own postinst should already have done this - earlyoom.service carries an

@@ -33,8 +33,8 @@
 # commit GitHub knows: publish it with tools/publish-images.sh first.
 #
 # REGISTRY is asked of compose, as tools/publish-images.sh does, so .env counts. Needs docker, jq,
-# curl and oras, and the registry's login in Docker. GITHUB_TOKEN, when set, is sent to GitHub, which
-# otherwise allows sixty anonymous requests an hour.
+# curl and oras, and the registry's login in Docker. GitHub is asked anonymously, which allows sixty
+# requests an hour from one address; a run makes two.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -67,12 +67,7 @@ for tool in docker jq curl oras; do
 done
 
 fetch() {
-    local url="$1"
-    if [ -n "${GITHUB_TOKEN:-}" ] && [ "${url#https://api.github.com/}" != "$url" ]; then
-        curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" "$url" || die "could not fetch $url"
-    else
-        curl -fsSL "$url" || die "could not fetch $url"
-    fi
+    curl -fsSL "$1" || die "could not fetch $1"
 }
 
 work="$(mktemp -d "${TMPDIR:-/tmp}/scan-images.XXXXXX")"

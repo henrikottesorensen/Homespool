@@ -1,0 +1,4 @@
+# The unprivileged account homespool-update-check's compare step runs as: no home, no shell, no login,
+# and in no group but its own - above all not docker, which would hand it the socket the unit keeps it
+# away from. Installed into /usr/lib/sysusers.d, where systemd-sysusers creates it.
+u homespool-update - "Homespool image update check" /nonexistent /usr/sbin/nologin

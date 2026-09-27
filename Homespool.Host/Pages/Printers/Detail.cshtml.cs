@@ -17,6 +17,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
+using Homespool.Host.PrintFiles.GCode;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
@@ -982,7 +983,8 @@ public class DetailModel : PageModel
             await _plates.ReadAsync(Statistics.Printer.Id, jobId, caller, wait, cancellationToken) :
             new PlateReading(null, Settled: false);
 
-        Plate = PlateDrawing.For(count, CancelledObjects.Parse(live.CancelledObjectIds), reading.Layout);
+        Plate = PlateDrawing.For(count, CancelledObjects.Parse(live.CancelledObjectIds), reading.Layout,
+                                 PrusaBedShapes.For(Statistics.Printer.Model));
         PlatePending = !reading.Settled;
     }
 

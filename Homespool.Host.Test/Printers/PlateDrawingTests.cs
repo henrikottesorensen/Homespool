@@ -96,7 +96,7 @@ public class PlateDrawingTests
     {
         PlateDrawing drawing = PlateDrawing.For(2, NoneCancelled, TwoSquares with { Bed = null });
 
-        drawing.BedStated.Should().BeFalse();
+        drawing.Bed.Should().BeNull();
         drawing.Frame.Should().NotBeNull();
 
         // The squares span x 45..55 and y 15..195; the margin is the larger of 5 mm and 8% of 180.
@@ -105,6 +105,45 @@ public class PlateDrawingTests
         frame.MinY.Should().BeApproximately(15 - 14.4, 1e-9);
         frame.MaxX.Should().BeApproximately(55 + 14.4, 1e-9);
         frame.MaxY.Should().BeApproximately(195 + 14.4, 1e-9);
+    }
+
+    /// <summary>
+    /// <b>A <c>.bgcode</c> is drawn on its printer's bed.</b> It relays no bed of its own, so the
+    /// model's stands in - the same bed a <c>.gcode</c> of the same print would have stated.
+    /// </summary>
+    [Fact]
+    public void WithoutTheFilesBedTheModelsIsDrawn()
+    {
+        PlateBounds coreOne = new(0, 0, 250, 220);
+
+        PlateDrawing drawing = PlateDrawing.For(2, NoneCancelled, TwoSquares with { Bed = null }, coreOne);
+
+        drawing.Bed.Should().Be(coreOne);
+        drawing.ViewBox.Should().Be("0 0 250 220");
+    }
+
+    /// <summary>The file's own bed wins over the model's: it describes this print, the table describes a product.</summary>
+    [Fact]
+    public void TheFilesBedWinsOverTheModels()
+    {
+        PlateDrawing drawing = PlateDrawing.For(2, NoneCancelled, TwoSquares, new PlateBounds(0, 0, 180, 180));
+
+        drawing.Bed.Should().Be(new PlateBounds(0, 0, 250, 210));
+    }
+
+    /// <summary>
+    /// An object off the bed - a file sliced for a bigger model - widens the drawing rather than being
+    /// clipped out of it, and the bed is still drawn where it is.
+    /// </summary>
+    [Fact]
+    public void AnObjectOffTheBedWidensTheDrawing()
+    {
+        PlateLayout offTheBed = new([Square(0, "far", 300, 100)], Bed: null);
+
+        PlateDrawing drawing = PlateDrawing.For(1, NoneCancelled, offTheBed, new PlateBounds(0, 0, 180, 180));
+
+        drawing.Bed.Should().Be(new PlateBounds(0, 0, 180, 180));
+        drawing.Frame.Should().Be(new PlateBounds(0, 0, 305, 180));
     }
 
     /// <summary>Coordinates are written with a full stop whatever the culture, since SVG reads nothing else.</summary>

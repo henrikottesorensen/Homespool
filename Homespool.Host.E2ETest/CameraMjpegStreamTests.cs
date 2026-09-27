@@ -19,8 +19,8 @@ namespace Homespool.Host.E2ETest;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The sidecar's frames omit their Huffman tables, as a USB camera's do</b>, so what arrives
-/// here shows whether the relay put them back - the repair without which Safari shows nothing.
+/// <b>Frames arrive as the sidecar sent them.</b> Putting back the Huffman tables a USB camera leaves
+/// out is the sidecar image's job, so Homespool must not change a byte of the frames it relays.
 /// </para>
 /// <para>
 /// <b>A viewer leaving has to reach the sidecar</b>: the stream holds the camera open for as long as
@@ -34,8 +34,6 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
 
     private static readonly byte[] StartOfImage = [0xFF, 0xD8];
     private static readonly byte[] EndOfImage = [0xFF, 0xD9];
-    private static readonly byte[] HuffmanTable = [0xFF, 0xC4];
-    private static readonly byte[] StartOfScan = [0xFF, 0xDA];
 
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("camera-mjpeg");
     private FakeGo2Rtc _sidecar = null!;
@@ -64,11 +62,11 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// The stream is answered as a stream nothing may hold back, and its frames arrive with the
-    /// Huffman tables in place before the scan.
+    /// The stream is answered as a stream nothing may hold back, and its frames arrive exactly as the
+    /// sidecar sent them.
     /// </summary>
     [Fact]
-    public async Task AStreamIsRelayedWithItsHuffmanTablesRestored()
+    public async Task AStreamIsRelayedAsTheSidecarSendsIt()
     {
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "mjpeg-viewer@example.com");
@@ -87,9 +85,7 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
 
             byte[] frame = await FirstFrameAsync(response);
 
-            int tables = frame.AsSpan().IndexOf(HuffmanTable);
-            tables.Should().BePositive("the sidecar sent none, so the relay must have put them in");
-            tables.Should().BeLessThan(frame.AsSpan().IndexOf(StartOfScan), "the tables belong before the scan they decode");
+            frame.Should().Equal(FakeCamera.Frame.ToArray(), "relaying a frame is not a licence to change it");
         }
     }
 

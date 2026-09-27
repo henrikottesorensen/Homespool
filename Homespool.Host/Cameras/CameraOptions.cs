@@ -204,9 +204,10 @@ public class CameraOptions
     /// <remarks>
     /// <para>
     /// <b>Each open stream costs the board for as long as it stays open, and opening one costs the
-    /// caller nothing.</b> A relayed stream holds a connection to the sidecar and a buffer that grows
-    /// to 8 MiB to hold a frame at the part limit (<see cref="MjpegDhtRelay"/>). A tab left open, or a
-    /// script looping on the URL, would otherwise hold as many as it liked.
+    /// caller nothing.</b> A relayed stream holds a connection to the sidecar for as long as it is
+    /// open, and a buffer that can grow to 8 MiB while it waits for the first frame
+    /// (<see cref="MjpegFirstPartBuffer"/>). A tab left open, or a script looping on the URL, would
+    /// otherwise hold as many as it liked.
     /// </para>
     /// <para>
     /// <b>Per account rather than for the whole deployment</b>, because the account is what a runaway

@@ -414,12 +414,15 @@ services:
     build:
       context: ./go2rtc
       args:
-        # The same stamps the other two images take - see the homespool service above. All empty
-        # unless ./build.sh fills them in. The day refreshes the Alpine packages and the two Go
-        # modules the Dockerfile takes at their latest.
+        # The same stamps the other two images take - see the homespool service above - and two of
+        # its own: the Go toolchain's digest and the exact versions of the Go modules it takes newer
+        # than go2rtc's release, both recorded in the image's labels. All empty unless ./build.sh
+        # fills them in. The day refreshes the Alpine packages.
         HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
         HOMESPOOL_PACKAGE_REFRESH: "${HOMESPOOL_APT_REFRESH:-}"
         HOMESPOOL_BASE_DIGEST: "${HOMESPOOL_ALPINE_DIGEST:-}"
+        HOMESPOOL_BUILDER_DIGEST: "${HOMESPOOL_GOLANG_DIGEST:-}"
+        GO2RTC_MODULE_VERSIONS: "${HOMESPOOL_GO_MODULES:-}"
         HOMESPOOL_VERSION: "${HOMESPOOL_VERSION:-}"
 
     # The credential is not in go2rtc.yaml, because Homespool rewrites that file when it registers a

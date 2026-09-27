@@ -130,6 +130,12 @@ jobs:
       - name: Test the camera sidecar image carries its patches
         run: ./tests/go2rtc-image.test.sh
 
+      # The Go modules the sidecar takes newer than go2rtc's release are resolved to exact versions
+      # before the build, or the build fails: part of the list would leave one module at whatever
+      # @latest meant that minute while the image's label claimed a full list. curl is a stub.
+      - name: Test the camera sidecar's module resolution
+        run: ./tests/go-module-versions.test.sh
+
       # Which names the renewal will act on, and which it refuses before they reach a shell. It
       # talks to the world only through `docker`, and a stub of that is the whole harness, so this
       # needs neither a daemon nor a certificate authority.

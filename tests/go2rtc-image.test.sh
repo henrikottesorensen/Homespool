@@ -92,6 +92,29 @@ if test_case "the release is pinned by a full commit as well as its tag"; then
     fi
 fi
 
+if test_case "the toolchain and the Go modules are built on as resolved, and recorded"; then
+    # Both are compiled into the binary, so a floating choice made at build time has to be one the
+    # image can name afterwards: ./build.sh resolves them, and these lines are what carry the answer
+    # from there into the build and into the labels.
+    compose="$repo_root/compose.yaml"
+    checks=(
+        '^ARG HOMESPOOL_BUILDER_IMAGE=[^[:space:]]+$|the builder is named where tools/base-digest.sh reads it'
+        '^ARG HOMESPOOL_BUILDER_DIGEST=$|with a digest beside it'
+        '^FROM --platform=\$BUILDPLATFORM \$\{HOMESPOOL_BUILDER_IMAGE\}\$\{HOMESPOOL_BUILDER_DIGEST:\+@\$\{HOMESPOOL_BUILDER_DIGEST\}\} AS build$|and the build stage runs on exactly that'
+        '^ARG GO2RTC_UPDATED_MODULES="[^"]+"$|the modules are listed where tools/go-module-versions.sh reads them'
+        '^RUN go get \$\{GO2RTC_MODULE_VERSIONS:-|and go get takes the resolved versions'
+        'io\.github\.henrikottesorensen\.homespool\.builder\.digest="\$\{HOMESPOOL_BUILDER_DIGEST\}"|the builder digest is recorded'
+        'io\.github\.henrikottesorensen\.homespool\.go\.modules="\$\{GO2RTC_MODULE_VERSIONS\}"|and the module versions'
+    )
+    for check in "${checks[@]}"; do
+        if grep -qE "${check%%|*}" "$dockerfile"; then pass; else fail "go2rtc/Dockerfile: ${check#*|}"; fi
+    done
+
+    for arg in 'HOMESPOOL_BUILDER_DIGEST: "${HOMESPOOL_GOLANG_DIGEST:-}"' 'GO2RTC_MODULE_VERSIONS: "${HOMESPOOL_GO_MODULES:-}"'; do
+        if grep -qF "$arg" "$compose"; then pass; else fail "compose.yaml does not pass $arg to the build"; fi
+    done
+fi
+
 echo
 echo "passed: $passed  failed: $failed"
 [ "$failed" -eq 0 ]

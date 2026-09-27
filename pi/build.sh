@@ -151,7 +151,8 @@ echo "==> Building the Homespool container images for arm64"
 #
 # The base digests for the same reason ../build.sh resolves them: so a card's images can say which
 # base they were built on, which on a card that runs for months is the question that will be asked.
-# And the release version, so a card built from a release says which.
+# The camera sidecar's Go toolchain and the Go modules it takes newer than go2rtc's release too, for
+# the same reason. And the release version, so a card built from a release says which.
 HOMESPOOL_GITREF="$("$repo_root/tools/gitref.sh")"
 export HOMESPOOL_GITREF
 HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
@@ -159,7 +160,12 @@ export HOMESPOOL_APT_REFRESH
 HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/Homespool.Host/Dockerfile")"
 HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
 HOMESPOOL_ALPINE_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/go2rtc/Dockerfile")"
+sidecar_dockerfile="$repo_root/go2rtc/Dockerfile"
+HOMESPOOL_GOLANG_DIGEST="$("$repo_root/tools/base-digest.sh" "$sidecar_dockerfile" \
+    HOMESPOOL_BUILDER_IMAGE)"
+HOMESPOOL_GO_MODULES="$("$repo_root/tools/go-module-versions.sh" "$sidecar_dockerfile")"
 export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST HOMESPOOL_ALPINE_DIGEST
+export HOMESPOOL_GOLANG_DIGEST HOMESPOOL_GO_MODULES
 HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"
 export HOMESPOOL_VERSION
 # latest whatever the shell or .env says: the card's compose.yaml asks for latest when nothing pins

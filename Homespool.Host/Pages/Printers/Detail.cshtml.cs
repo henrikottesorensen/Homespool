@@ -305,8 +305,8 @@ public class DetailModel : PageModel
     public bool ActivePrintIsReaders => ActivePrint is { } print && print.QueuedByUserId == _readerId;
 
     /// <summary>
-    /// The running print's objects, or null when it has none that can be cancelled one at a time -
-    /// which is also the answer outside a print.
+    /// The running print's objects, or null when it has fewer than two that can be cancelled one at a
+    /// time - which is also the answer outside a print.
     /// </summary>
     public PlateDrawing? Plate { get; private set; }
 
@@ -970,7 +970,12 @@ public class DetailModel : PageModel
 
         // Only inside a print. The printer sends an empty set when one ends, but a count stored before a
         // restart would otherwise outlive a print that ended while nobody was listening.
-        if (live is not { CancellableObjectCount: > 0 and int count } ||
+        //
+        // And only with two objects or more. The slicer labels a lone object too, but cancelling it does
+        // not stop the print: firmware skips that object's moves and still runs everything outside it -
+        // purge, wipe tower, end gcode - so the job goes on printing nothing and ends as finished. Stop
+        // is the control for one object, and the card would only offer a worse one beside it.
+        if (live is not { CancellableObjectCount: > 1 and int count } ||
             live.Status is not (PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention))
         {
             Plate = null;

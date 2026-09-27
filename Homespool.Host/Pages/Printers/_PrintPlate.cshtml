@@ -9,7 +9,8 @@
     string Px(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 }
 
-@* Rendered only while the running print has objects that can be cancelled one at a time. The region
+@* Rendered only while the running print has two or more objects that can be cancelled one at a time -
+   see LoadPlateAsync for why one is not enough. The region
    around it stays on the page regardless, so the poll can bring this in when a print starts.
 
    Everything here is loaded by OnGetPlateAsync as well as the full page, because this partial is what

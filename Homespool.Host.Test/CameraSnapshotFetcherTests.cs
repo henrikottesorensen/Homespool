@@ -57,6 +57,53 @@ public class CameraSnapshotFetcherTests
         (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
     }
 
+    /// <summary>
+    /// An image that is not a JPEG is refused too. SVG is the reason the type is pinned rather than
+    /// checked for <c>image/</c>: it is a document that runs script, and would do so in our origin.
+    /// </summary>
+    [Theory]
+    [InlineData(MediaTypeNames.Image.Svg)]
+    [InlineData(MediaTypeNames.Image.Png)]
+    public async Task AnImageThatIsNotAJpegIsRefused(string contentType)
+    {
+        using RecordingHandler handler = Respond(HttpStatusCode.OK, contentType, [0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02]);
+        CameraSnapshotFetcher fetcher = Build(handler);
+
+        (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
+    }
+
+    /// <summary>
+    /// The header is only the sidecar's word for it. A body that does not open with a start-of-image
+    /// marker is not stored, whatever it was labelled.
+    /// </summary>
+    [Fact]
+    public async Task ABodyLabelledJpegThatIsNotOneIsRefused()
+    {
+        using RecordingHandler handler =
+            Respond(HttpStatusCode.OK, "image/jpeg", Encoding.UTF8.GetBytes("<svg xmlns=\"http://www.w3.org/2000/svg\"/>"));
+        CameraSnapshotFetcher fetcher = Build(handler);
+
+        (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
+    }
+
+    /// <summary>
+    /// Nothing past the marker is required. The sidecar passes a camera's own frames through, and a
+    /// frame that opens straight into its quantisation tables, with no JFIF or Exif segment, is as
+    /// much a JPEG as one that has them.
+    /// </summary>
+    [Fact]
+    public async Task AJpegWithNoApplicationSegmentIsAccepted()
+    {
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x43];
+        using RecordingHandler handler = Respond(HttpStatusCode.OK, "image/jpeg", jpeg);
+        CameraSnapshotFetcher fetcher = Build(handler);
+
+        CameraFrame? frame = await fetcher.FetchAsync(Frame, CancellationToken.None);
+
+        frame.Should().NotBeNull();
+        frame!.Bytes.Should().Equal(jpeg);
+    }
+
     [Fact]
     public async Task AFailureStatusIsRefused()
     {

@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -68,14 +69,13 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
 
             string? contentType = response.Content.Headers.ContentType?.MediaType;
 
-            // An image, or nothing. A camera answering with HTML is usually a login page or an
-            // error, and storing those bytes as "the frame" would show a person a rendered web page
-            // where they expected their printer.
-            if (contentType is null ||
-                !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            // A JPEG, or nothing. The sidecar's frame endpoint only ever produces one, so anything
+            // else is a fault - and "any image" is not narrow enough to pass on: image/svg+xml is a
+            // document that runs script, in our origin, when somebody opens the frame URL directly.
+            if (!string.Equals(contentType, MediaTypeNames.Image.Jpeg, StringComparison.OrdinalIgnoreCase))
             {
                 _logger.LogWarning(
-                    "Camera at {Host} answered {ContentType}, which is not an image.",
+                    "Camera at {Host} answered {ContentType}, which is not a JPEG.",
                     uri.Host,
                     contentType ?? "no content type");
                 return null;
@@ -105,7 +105,18 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
                 return null;
             }
 
-            return new CameraFrame(bytes, contentType, _timeProvider.GetUtcNow());
+            // The header is the sidecar's claim; the start-of-image marker is ours to check. Only
+            // the first three bytes, as file(1) does: what follows is an APP segment tagged JFIF,
+            // Exif or AVI1, or no APP segment at all, and the sidecar passes a camera's own frames
+            // through in every one of those shapes.
+            if (!IsJpeg(bytes))
+            {
+                _logger.LogWarning(
+                    "Camera at {Host} answered {ContentType} with a body that is not a JPEG.", uri.Host, contentType);
+                return null;
+            }
+
+            return new CameraFrame(bytes, MediaTypeNames.Image.Jpeg, _timeProvider.GetUtcNow());
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -125,6 +136,14 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
                 "Camera at {Host} could not be reached: {Message}", uri.Host, exception.Message);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Whether the bytes open with a JPEG start-of-image marker followed by the start of another marker.
+    /// </summary>
+    private static bool IsJpeg(ReadOnlySpan<byte> bytes)
+    {
+        return bytes.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xD8, 0xFF]);
     }
 
     /// <summary>

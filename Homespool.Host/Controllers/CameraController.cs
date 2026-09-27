@@ -352,6 +352,16 @@ public class CameraController : ControllerBase
             // started and there is nobody to tell.
         }
 
+        // The viewer is still here, so the stream ended at the sidecar's end - a restart, or the
+        // camera going away. Ending the response cleanly would leave the browser showing the last
+        // frame with nothing to say it stopped: no error event, and the picture's size unchanged,
+        // measured in Chromium and WebKit. A connection that breaks instead drops the picture's size
+        // to zero, which is what the page watches for, and which a Homespool restart does anyway.
+        if (!cancellationToken.IsCancellationRequested)
+        {
+            HttpContext.Abort();
+        }
+
         return TypedResults.Empty;
     }
 

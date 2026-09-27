@@ -97,6 +97,66 @@ public sealed class CameraLiveTests(Browsers browsers)
     }
 
     /// <summary>
+    /// A view that keeps playing stays live: watching the picture for loss must not take down a stream
+    /// that is still arriving.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task AViewThatKeepsPlayingStaysLive(string engine)
+    {
+        await using CameraScenario scenario = await OpenJpegAsync(engine, "live-stays");
+        await scenario.WatchLiveAsync();
+
+        // Real time, past the two readings a lost stream needs.
+        await Task.Delay(4_000, TestContext.Current.CancellationToken);
+
+        await Expect(scenario.Caption).ToHaveTextAsync(await scenario.LabelAsync("live"));
+        await Expect(scenario.LiveNote).ToBeEmptyAsync();
+        scenario.Host.Sidecar.OpenMjpegStreams.Should().Be(1);
+    }
+
+    /// <summary>
+    /// A stream the sidecar drops mid-view - its restart, or the camera going away - sends the panel
+    /// back to the still and says the picture stopped, instead of leaving the last frame under "Live".
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task AViewCutAtTheSidecarFallsBackToTheStill(string engine)
+    {
+        await using CameraScenario scenario = await OpenJpegAsync(engine, "live-cut");
+        await scenario.WatchLiveAsync();
+
+        await scenario.Host.Sidecar.CutMjpegStreamsAsync();
+
+        await Expect(scenario.LiveNote).ToHaveTextAsync(await scenario.LabelAsync("stalled"), new() { Timeout = 10_000 });
+        await Expect(scenario.Caption).Not.ToHaveTextAsync(await scenario.LabelAsync("live"));
+        await Expect(scenario.LiveToggle).ToHaveAttributeAsync("aria-label", await scenario.LabelAsync("watch"));
+        await Expect(scenario.Image).ToHaveAttributeAsync("src", new System.Text.RegularExpressions.Regex("^blob:"),
+                                                          new() { Timeout = 10_000 });
+    }
+
+    /// <summary>
+    /// A view whose connection to Homespool breaks - a restart or a redeploy - says the picture
+    /// stopped, instead of leaving "Live" over a broken picture.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task AViewCutByAHomespoolRestartSaysSo(string engine)
+    {
+        await using CameraScenario scenario = await OpenJpegAsync(engine, "live-restart");
+        await scenario.WatchLiveAsync();
+
+        await scenario.Host.Factory.DisposeAsync();
+
+        await Expect(scenario.LiveNote).ToHaveTextAsync(await scenario.LabelAsync("stalled"), new() { Timeout = 10_000 });
+        await Expect(scenario.Caption).Not.ToHaveTextAsync(await scenario.LabelAsync("live"));
+        await Expect(scenario.LiveToggle).ToHaveAttributeAsync("aria-label", await scenario.LabelAsync("watch"));
+    }
+
+    /// <summary>
     /// Stopping live view closes the stream all the way back to the sidecar, and the still returns.
     /// </summary>
     [Theory]

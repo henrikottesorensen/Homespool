@@ -117,6 +117,31 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A stream the sidecar drops mid-view breaks the viewer's connection rather than ending the
+    /// response: a clean end leaves a browser showing the last frame with nothing to say it stopped,
+    /// and a broken one is what the page can see.
+    /// </summary>
+    [Fact]
+    public async Task ACutAtTheSidecarBreaksTheViewersConnection()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "mjpeg-cut@example.com");
+
+        using (client)
+        {
+            Camera camera = await CameraPage.AddNetworkCameraAsync(_factory, client, user, "cut", Source);
+
+            using HttpResponseMessage response = await OpenAsync(client, camera.Uuid);
+            _ = await FirstFrameAsync(response);
+
+            await _sidecar.CutMjpegStreamsAsync();
+
+            (await ReadToTheEndAsync(response)).Should().BeFalse(
+                "the response must break, not finish - a finished one looks, to a browser, like a picture that stopped changing");
+        }
+    }
+
+    /// <summary>
     /// A sidecar that answers 200 and then sends no picture is not a stream: the viewer is told the
     /// camera produced nothing, rather than handed an empty one.
     /// </summary>
@@ -145,6 +170,31 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
         using HttpRequestMessage request = new(HttpMethod.Get, $"/api/v1/cameras/{uuid}/stream.mjpeg");
 
         return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the rest of the stream: true if it ended cleanly, false if the connection broke.
+    /// </summary>
+    private static async Task<bool> ReadToTheEndAsync(HttpResponseMessage response)
+    {
+        using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        deadline.CancelAfter(TimeSpan.FromSeconds(10));
+
+        Stream body = await response.Content.ReadAsStreamAsync(deadline.Token);
+        byte[] buffer = new byte[4096];
+
+        try
+        {
+            while (await body.ReadAsync(buffer, deadline.Token) > 0)
+            {
+            }
+
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or HttpRequestException)
+        {
+            return false;
+        }
     }
 
     /// <summary>The first JPEG in the stream, from its start marker to its end marker.</summary>

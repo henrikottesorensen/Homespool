@@ -47,6 +47,12 @@
     // between the picture appearing and the page admitting it has.
     const MJPEG_POLL_MS = 200;
 
+    // Once it plays, how often to ask whether the picture is still there, and how many answers of
+    // "no size" in a row end the view. Two, so that one unlucky reading between parts cannot take
+    // down a working stream; about two seconds, so a view that has gone does not linger.
+    const MJPEG_PLAYING_POLL_MS = 1000;
+    const MJPEG_GONE_AFTER_CHECKS = 2;
+
     function ready(fn) {
         if (document.readyState !== "loading") {
             fn();
@@ -351,13 +357,19 @@
         // 2026-08-19, where it was long believed not to work).
         //
         // "Live" here means the picture has a non-zero size, which is as much as an <img> will say:
-        // there is no byte counter to watch the way the WebRTC path does, so a stream that stops
-        // sending shows a frozen frame rather than being taken down. The server refusing to answer
-        // until a frame has actually arrived covers the case that matters - see the Stream action -
-        // and the rest is left to the viewer noticing. A stall detector was considered and
-        // deliberately not built: the only way to see frames change on an <img> is sampling it
-        // through a canvas, which is unverified on the one engine this path exists for, and a wrong
-        // detector tears down a working stream - the exact failure this file already had once.
+        // there is no byte counter to watch the way the WebRTC path does. The server refusing to
+        // answer until a frame has actually arrived covers the start - see the Stream action.
+        //
+        // A stream that goes away is caught by the same reading, and by nothing else: a broken
+        // multipart connection fires no error event in Chromium or WebKit, it only drops the
+        // picture's size to zero - measured, and that is why the server breaks the connection
+        // rather than ending the response when the sidecar's stream ends. So the size is kept
+        // under watch for as long as the view plays.
+        //
+        // A stream that is still connected but sends the same frame, or none, is not caught, and
+        // that is deliberate: the only way to see frames change on an <img> is sampling it through a
+        // canvas, which is unverified on the one engine this path exists for, and a wrong detector
+        // tears down a working stream - the exact failure this file already had once.
         function startMjpeg() {
             button.disabled = true;
             label(button.dataset.labelStop, true);
@@ -377,7 +389,17 @@
             image.classList.add("d-none");
             status.classList.remove("d-none");
 
+            // Once per view: Chrome and Firefox fire load for every part, and each would otherwise
+            // start the watch below over again.
+            let playing = false;
+
             function watchingMjpeg() {
+                if (playing) {
+                    return;
+                }
+
+                playing = true;
+
                 if (deadline) {
                     window.clearTimeout(deadline);
                     deadline = null;
@@ -395,6 +417,26 @@
                 age.textContent = button.dataset.labelLive;
                 age.classList.add("text-success", "fw-semibold");
                 say("");
+
+                watchForLoss();
+            }
+
+            // Back to the still once the picture has lost its size, which is what a broken stream
+            // does to it - a Homespool or sidecar restart, or the camera going away mid-view.
+            function watchForLoss() {
+                let gone = 0;
+
+                framePoll = window.setInterval(function () {
+                    if (!streaming) {
+                        return;
+                    }
+
+                    gone = image.naturalWidth > 0 ? 0 : gone + 1;
+
+                    if (gone >= MJPEG_GONE_AFTER_CHECKS) {
+                        stop(button.dataset.labelStalled);
+                    }
+                }, MJPEG_PLAYING_POLL_MS);
             }
 
             deadline = window.setTimeout(function () {

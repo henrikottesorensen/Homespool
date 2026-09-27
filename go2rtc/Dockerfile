@@ -61,6 +61,13 @@ ENV GOTOOLCHAIN=local CGO_ENABLED=0
 ARG HOMESPOOL_PACKAGE_REFRESH=
 RUN go get golang.org/x/crypto@latest golang.org/x/net@latest
 
+# Each patch carries a test of its own, run here against the modules the image ships and on the
+# machine doing the build, so a go2rtc release the patches still apply to but no longer work on fails
+# the build rather than a viewer. 0001's matters most: nothing else anywhere notices its absence - a
+# test pattern arrives with its tables whether it is there or not - and without it Safari paints
+# nothing.
+RUN go test ./pkg/mjpeg/ ./pkg/yaml/
+
 # Upstream's own flags. The version it reports is written into main.go, so it still says 1.9.14.
 RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags "-s -w" -o /out/go2rtc .
 

@@ -65,7 +65,7 @@ board. `build.sh` splits the image build in two (`-f`, then `-i`) and, in betwee
 `dockerd` at the half-built root filesystem's `/var/lib/docker` to load them there.
 
 That split is worth the trouble. Doing it with `docker load` on first boot would make every install
-repeat ~550 MB of layer unpacking and minutes of Pi 3 CPU — on an SD card — to arrive at a state
+repeat ~700 MB of layer unpacking and minutes of Pi 3 CPU — on an SD card — to arrive at a state
 byte-identical on every card. Doing it here costs one sequential write at flash time instead. It
 also has to be a real daemon: `/var/lib/docker` is not a directory you can assemble by copying,
 because overlay2's layer tree and the content store are daemon-managed.

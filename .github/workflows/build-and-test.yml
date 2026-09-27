@@ -154,7 +154,8 @@ jobs:
       - name: Test the host's image check
         run: ./tests/update-check.test.sh
 
-      # Both images: the application and the proxy that terminates TLS in front of it.
+      # All three images: the application, the proxy that terminates TLS in front of it, and the
+      # camera sidecar, compiled from go2rtc's released source.
       #
       # Through ./build.sh rather than `docker compose build` directly, for the same reason this job
       # builds the images at all: the wrapper is what a person is told to run, so it is the thing that

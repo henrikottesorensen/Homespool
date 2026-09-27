@@ -107,7 +107,15 @@ case "$1" in
         [ "$1" = -f ] && shift 2
         case "$1" in
             config)
-                for name in homespool homespool-proxy; do
+                # config --images <service>...: each service's image, named as compose.yaml names it
+                shift 2
+                for service in "$@"; do
+                    case "$service" in
+                        homespool) name=homespool ;;
+                        proxy) name=homespool-proxy ;;
+                        go2rtc) name=homespool-go2rtc ;;
+                        *) echo "no such service: $service" >&2; exit 1 ;;
+                    esac
                     printf '%s\n' "${STUB_REGISTRY:+$STUB_REGISTRY/}$name:${HOMESPOOL_TAG:-latest}"
                 done
                 ;;
@@ -152,12 +160,15 @@ if test_case "publishes the commit's own tag, then latest, and reads both back";
     reg="registry.example.net"
     assert_status "$status" 0 "an ordinary commit publishes"
     assert_contains "$log" "build.sh HOMESPOOL_TAG=$STUB_COMMIT" "it builds under the full commit"
-    assert_before "compose -f $scratch/repo/compose.yaml push homespool proxy" \
+    assert_before "compose -f $scratch/repo/compose.yaml push homespool proxy go2rtc" \
         "push $reg/homespool:latest" "the commit's tag goes out before latest moves"
     assert_contains "$log" "tag $reg/homespool-proxy:$STUB_COMMIT $reg/homespool-proxy:latest" \
         "latest is the image just built, not whatever the name held"
     assert_contains "$log" "pull --quiet $reg/homespool:$STUB_COMMIT" "the commit's tag is read back"
     assert_contains "$log" "pull --quiet $reg/homespool-proxy:latest" "latest is read back"
+    assert_contains "$log" "tag $reg/homespool-go2rtc:$STUB_COMMIT $reg/homespool-go2rtc:latest" \
+        "the camera sidecar is published with the other two"
+    assert_contains "$log" "pull --quiet $reg/homespool-go2rtc:latest" "the camera sidecar is read back"
     assert_contains "$output" "==> $reg/homespool:$STUB_COMMIT  sha256:feedface" "it prints each digest"
     assert_not_contains "$output" "release" "no v-tag, no release"
 fi

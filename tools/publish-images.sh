@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# Builds both images for the commit checked out and pushes them to the registry named by REGISTRY,
-# then reads back what the registry now holds and checks it is that commit:
+# Builds the three images for the commit checked out and pushes them to the registry named by
+# REGISTRY, then reads back what the registry now holds and checks it is that commit:
 #
 #   tools/publish-images.sh
 #
@@ -28,7 +28,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose=(docker compose -f "$repo_root/compose.yaml")
-services=(homespool proxy)
+services=(homespool proxy go2rtc)
 
 die() {
     echo "$0: $*" >&2

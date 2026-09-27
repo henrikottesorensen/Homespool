@@ -158,7 +158,8 @@ HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
 export HOMESPOOL_APT_REFRESH
 HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/Homespool.Host/Dockerfile")"
 HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
-export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST
+HOMESPOOL_ALPINE_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/go2rtc/Dockerfile")"
+export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST HOMESPOOL_ALPINE_DIGEST
 HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"
 export HOMESPOOL_VERSION
 # latest whatever the shell or .env says: the card's compose.yaml asks for latest when nothing pins
@@ -174,7 +175,7 @@ docker --log-level warn compose -f "$repo_root/compose.yaml" build --pull
 # ------------------------------------------------------------------------------------------------
 echo "==> Staging the payload"
 rm -rf "$payload_dir"
-mkdir -p "$payload_dir/nginx"
+mkdir -p "$payload_dir/nginx" "$payload_dir/go2rtc"
 
 cp "$repo_root/compose.yaml" "$payload_dir/"
 cp "$repo_root/.env.example"  "$payload_dir/"
@@ -184,8 +185,12 @@ cp "$repo_root/.env.example"  "$payload_dir/"
 install -m 0755 "$repo_root/setup-env.sh" "$payload_dir/setup-env.sh"
 # The whole directory: compose.yaml's build context for the proxy. Nothing in it is mounted - the
 # configuration is inside the saved image - so it is here only to keep the card's compose project
-# self-consistent, and so a card can rebuild its own proxy. It is 64 KB against ~550 MB of images.
+# self-consistent, and so a card can rebuild its own proxy. It is 64 KB against ~700 MB of images.
 cp -R "$repo_root/nginx/." "$payload_dir/nginx/"
+
+# The camera sidecar's build context, for the same reason. A card never builds it - compiling Go on a
+# Pi 3 is what baking the image below avoids - but compose.yaml names the directory.
+cp -R "$repo_root/go2rtc/." "$payload_dir/go2rtc/"
 
 # Automatic certificates, which the card does NOT use unless somebody asks for it: nothing here runs
 # until `sudo ./acme/install.sh` is typed, and a card with no domain never has cause to. It ships
@@ -211,7 +216,7 @@ chmod 0755 "$payload_dir/update-check"/*.sh
 # Deliberately NOT into the payload. This tarball never reaches the card: it is loaded into the
 # card's Docker store during the build (step 4), so the Pi boots with the images already unpacked.
 # Shipping it as well would put ~200 MB on the card that exists only to be expanded and deleted.
-echo "==> Saving the container images (the slow part, ~550 MB uncompressed)"
+echo "==> Saving the container images (the slow part, ~700 MB uncompressed)"
 mkdir -p "$images_dir"
 
 # The same REGISTRY prefix compose.yaml applies, read from .env the way compose reads it - otherwise
@@ -223,6 +228,7 @@ registry="${REGISTRY:-$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" 2>/dev/null |
 image_prefix="${registry:+${registry}/}"
 
 docker save "${image_prefix}homespool:latest" "${image_prefix}homespool-proxy:latest" \
+    "${image_prefix}homespool-go2rtc:latest" \
     | gzip -1 > "$images_dir/homespool-images.tar.gz"
 echo "    $(du -h "$images_dir/homespool-images.tar.gz" | cut -f1) saved"
 
@@ -318,7 +324,7 @@ run_imagegen() {
 # 4. Filesystem, then the container store, then the image.
 #
 # The split is the whole point. `docker load` on the board would cost every single install the same
-# ~550 MB of unpacking and minutes of Pi 3 CPU, on an SD card, to reach a state identical on every
+# ~700 MB of unpacking and minutes of Pi 3 CPU, on an SD card, to reach a state identical on every
 # card - so it is done once, here. -f stops after the root filesystem; -i resumes at image
 # generation; in between, a real Docker daemon populates the store the board will boot with.
 #

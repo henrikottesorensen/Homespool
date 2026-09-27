@@ -2,7 +2,7 @@
 #
 # Builds the container images with the commit stamped into them.
 #
-#   ./build.sh                  # both images, as `docker compose build` would
+#   ./build.sh                  # all three images, as `docker compose build` would
 #   ./build.sh homespool        # one service
 #   ./build.sh --no-cache       # anything else is passed straight to compose
 #
@@ -13,23 +13,25 @@
 # that compose cannot do.
 #
 # It also passes --pull, which is the other thing a bare `docker compose build` does not do. The
-# Dockerfiles name their base images by floating tag - aspnet:10.0, nginx-unprivileged:stable - so
-# that their publishers' security rebuilds arrive without an edit here. That only works if the build
-# asks the registry what the tag points at now. Without --pull the build reuses whatever copy this
-# machine pulled first, for as long as it keeps it, and a rebuild months later ships the base image
-# it had months ago. The cost is that this needs the registry: offline, `docker compose build` still
-# builds from the local copies, with the same "commit unknown" caveat as above.
+# Dockerfiles name their base images by floating tag - aspnet:10.0, nginx-unprivileged:stable,
+# alpine:3 - so that their publishers' security rebuilds arrive without an edit here. That only
+# works if the build asks the registry what the tag points at now. Without --pull the build reuses
+# whatever copy this machine pulled first, for as long as it keeps it, and a rebuild months later
+# ships the base image it had months ago. The cost is that this needs the registry: offline, `docker
+# compose build` still builds from the local copies, with the same "commit unknown" caveat as above.
 #
-# And it passes the date as HOMESPOOL_APT_REFRESH, so the application image's apt upgrade reruns once
-# a day. --pull alone does not do that: an unchanged base leaves the upgrade's layer cached, frozen at
-# the day it first ran, which is exactly the staleness the upgrade is there to remove. The date rather
-# than something unique per build, so rebuilding twice in a day stays cached. Online by the same token
-# as --pull: that layer runs apt-get update, and on a machine without the cached layer and without
-# the network the build fails there rather than shipping unpatched packages quietly.
+# And it passes the date as HOMESPOOL_APT_REFRESH, so the application image's apt upgrade reruns
+# once a day, and the camera sidecar's apk upgrade and its two Go modules taken at their latest with
+# it. --pull alone does not do that: an unchanged base leaves the upgrade's layer cached, frozen at
+# the day it first ran, which is exactly the staleness the upgrade is there to remove. The date
+# rather than something unique per build, so rebuilding twice in a day stays cached. Online by the
+# same token as --pull: that layer runs apt-get update, and on a machine without the cached layer
+# and without the network the build fails there rather than shipping unpatched packages quietly.
 #
 # And it resolves each image's base tag to a digest first and builds on exactly that, so the image
-# can record which base it was built on - see tools/base-digest.sh. --pull stays for the one floating
-# tag left, the SDK the application is compiled in, which never reaches the image that ships.
+# can record which base it was built on - see tools/base-digest.sh. --pull stays for the floating
+# tags left, the SDK the application is compiled in and the Go toolchain the sidecar is, neither of
+# which reaches an image that ships.
 #
 # And the release version, for the images' version label, when HEAD carries a v-tag and nothing
 # differs from it - tools/release-version.sh. Empty, and the label blank, for every other build.
@@ -53,7 +55,8 @@ export HOMESPOOL_APT_REFRESH
 
 HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/Homespool.Host/Dockerfile")"
 HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
-export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST
+HOMESPOOL_ALPINE_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/go2rtc/Dockerfile")"
+export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST HOMESPOOL_ALPINE_DIGEST
 
 HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"
 export HOMESPOOL_VERSION
@@ -61,6 +64,7 @@ if [ -n "$HOMESPOOL_VERSION" ]; then
     echo "==> Labelling the images as release ${HOMESPOOL_VERSION}"
 fi
 
-echo "==> Building on ${HOMESPOOL_ASPNET_DIGEST} (application) and ${HOMESPOOL_NGINX_DIGEST} (proxy)"
+echo "==> Building on ${HOMESPOOL_ASPNET_DIGEST} (application), ${HOMESPOOL_NGINX_DIGEST} (proxy)"
+echo "    and ${HOMESPOOL_ALPINE_DIGEST} (camera sidecar)"
 
 exec docker compose -f "$repo_root/compose.yaml" build --pull "$@"

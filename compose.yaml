@@ -21,8 +21,9 @@ x-logging: &logging
 services:
   homespool:
     logging: *logging
-    # REGISTRY prefixes both image names, for a deployment that pulls rather than builds - set it in
-    # .env and nothing here changes. Unset, which is the ordinary case, this is plain `homespool`.
+    # REGISTRY prefixes all three image names, for a deployment that pulls rather than builds - set
+    # it in .env and nothing here changes. Unset, which is the ordinary case, this is plain
+    # `homespool`.
     # HOMESPOOL_TAG picks the tag, for pinning a deployment to one commit or release rather than
     # following latest; tools/publish-images.sh sets it to the commit it publishes.
     image: ${REGISTRY:+${REGISTRY}/}homespool:${HOMESPOOL_TAG:-latest}
@@ -401,13 +402,25 @@ services:
   # printer page keeps working.
   go2rtc:
     logging: *logging
-    # Pinned by digest: this is 1.9.14, the same digest pi/decode-bench.sh pins, so the sidecar
-    # that runs is the sidecar that was measured. Upstream publishes no floating 1.9 or 1 tag, so
-    # an exact pin is the only option that does not drift; bumping is manual and rare, and the
-    # bench script's pin moves with this one.
+    # go2rtc's released source, built by this project rather than pulled from upstream, whose image
+    # is rebuilt only when a release is cut: go2rtc/Dockerfile says what it carries and why. Named
+    # like the other two images, so REGISTRY and HOMESPOOL_TAG choose between pulling a published
+    # one and building it here, and ./build.sh stamps it.
     #
-    # Plain, not -hardware: that variant is linux/amd64 ONLY and would not pull on a Pi at all.
-    image: alexxit/go2rtc@sha256:675c318b23c06fd862a61d262240c9a63436b4050d177ffc68a32710d9e05bae  # 1.9.14
+    # pi/decode-bench.sh still pins upstream's 1.9.14 image, because the decode figures it
+    # reproduces were measured with that image's ffmpeg. This one's ffmpeg is newer, and its decode
+    # has not been measured.
+    image: ${REGISTRY:+${REGISTRY}/}homespool-go2rtc:${HOMESPOOL_TAG:-latest}
+    build:
+      context: ./go2rtc
+      args:
+        # The same stamps the other two images take - see the homespool service above. All empty
+        # unless ./build.sh fills them in. The day refreshes the Alpine packages and the two Go
+        # modules the Dockerfile takes at their latest.
+        HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
+        HOMESPOOL_PACKAGE_REFRESH: "${HOMESPOOL_APT_REFRESH:-}"
+        HOMESPOOL_BASE_DIGEST: "${HOMESPOOL_ALPINE_DIGEST:-}"
+        HOMESPOOL_VERSION: "${HOMESPOOL_VERSION:-}"
 
     # The credential is not in go2rtc.yaml, because Homespool rewrites that file when it registers a
     # camera, and it is not on the command line either, where every account on the host could read

@@ -6,7 +6,7 @@
 set -euo pipefail
 
 container_name="homespool-go2rtc-contract"
-state_dir="${TMPDIR:-/tmp}/homespool-go2rtc-contract"
+run_record="${TMPDIR:-/tmp}/homespool-go2rtc-contract.dir"
 
 if docker ps -a --format '{{.Names}}' | grep -qx "$container_name"; then
     docker rm -f "$container_name" >/dev/null
@@ -15,4 +15,7 @@ else
     echo "No '$container_name' container to remove."
 fi
 
-rm -rf "$state_dir"
+if [ -f "$run_record" ]; then
+    rm -rf "$(cat "$run_record")"
+    rm -f "$run_record"
+fi

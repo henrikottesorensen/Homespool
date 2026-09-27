@@ -78,7 +78,7 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
             using HttpResponseMessage response = await OpenAsync(client, camera.Uuid);
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
-            response.Content.Headers.ContentType?.MediaType.Should().Be("multipart/x-mixed-replace");
+            response.Content.Headers.ContentType?.ToString().Should().Be("multipart/x-mixed-replace; boundary=frame");
             response.Headers.CacheControl?.NoStore.Should().BeTrue("a frame cached anywhere is a picture of the past");
             response.Headers.GetValues("X-Accel-Buffering").Should().Equal(["no"],
                                                                          "the front proxy would otherwise hold every frame back");

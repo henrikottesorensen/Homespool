@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -192,7 +193,9 @@ public class CameraController : ControllerBase
         Response.Headers["X-Frame-Captured-At"] =
             frame.CapturedAt.ToString("O", CultureInfo.InvariantCulture);
 
-        return TypedResults.File(frame.Bytes, frame.ContentType);
+        // Said here rather than repeated from the frame: what this origin serves is decided by this
+        // origin, whatever was stored.
+        return TypedResults.File(frame.Bytes, MediaTypeNames.Image.Jpeg);
     }
 
     /// <summary>

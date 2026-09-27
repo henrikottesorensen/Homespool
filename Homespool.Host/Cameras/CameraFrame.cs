@@ -6,7 +6,7 @@ namespace Homespool.Host.Cameras;
 /// One image from a camera, and when it was taken.
 /// </summary>
 /// <param name="Bytes">The encoded image, exactly as the camera served it.</param>
-/// <param name="ContentType">The media type the camera reported, e.g. <c>image/jpeg</c>.</param>
+/// <param name="ContentType">The media type of <paramref name="Bytes"/>; always <c>image/jpeg</c>, the only type accepted.</param>
 /// <param name="CapturedAt">
 /// When the fetch completed. This is the closest honest answer available: the camera does not tell
 /// us when it exposed the frame, and with a live source the difference is one frame interval. It is

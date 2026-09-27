@@ -535,6 +535,11 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
                            .. frame.Span,
                            .. "\r\n"u8];
 
+            if (camera.FirstPartDelay > TimeSpan.Zero)
+            {
+                await Task.Delay(camera.FirstPartDelay, watching.Token);
+            }
+
             while (!watching.IsCancellationRequested)
             {
                 await context.Response.Body.WriteAsync(part, watching.Token);
@@ -792,7 +797,16 @@ public enum FakeOfferAnswer
 /// Whether its MJPEG stream carries parts no browser can decode - zeros where the picture should be.
 /// A stream is then open and busy and shows nothing, which is the case a page must not call live.
 /// </param>
-public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, FakeOfferAnswer Offer, bool TablesInStream = true, bool Garbled = false)
+/// <param name="FirstPartDelay">
+/// How long its MJPEG stream holds back the first part, in real time - the stretch in which a viewer
+/// has asked and has nothing yet, which a page's own clock can then be run through.
+/// </param>
+public sealed record FakeCamera(IReadOnlySet<string> Codecs,
+                                bool Producing,
+                                FakeOfferAnswer Offer,
+                                bool TablesInStream = true,
+                                bool Garbled = false,
+                                TimeSpan FirstPartDelay = default)
 {
     /// <summary>
     /// A USB camera's usual shape: Motion-JPEG, producing - and never watchable over WebRTC, which

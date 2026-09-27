@@ -19,8 +19,7 @@ namespace Homespool.Host.Cameras;
 /// <see cref="FirstFrameTimeout"/> is reported as exactly that.
 /// </para>
 /// <para>
-/// The stream handed back repairs frames as they pass — see <see cref="MjpegDhtRelay"/> for why a
-/// USB camera's frames need it.
+/// After that first part the stream is passed on as it comes - see <see cref="MjpegFirstPartBuffer"/>.
 /// </para>
 /// </remarks>
 public sealed class CameraStreamRelay
@@ -64,14 +63,14 @@ public sealed class CameraStreamRelay
             }
 
             Stream body = await upstream.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            MjpegDhtRelay relay = new(body);
+            MjpegFirstPartBuffer firstPart = new(body);
 
             using CancellationTokenSource firstFrame =
                 CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             firstFrame.CancelAfter(FirstFrameTimeout);
 
-            if (!await relay.TryBufferFirstPartAsync(firstFrame.Token).ConfigureAwait(false))
+            if (!await firstPart.TryBufferFirstPartAsync(firstFrame.Token).ConfigureAwait(false))
             {
                 upstream.Dispose();
                 return null;
@@ -80,7 +79,7 @@ public sealed class CameraStreamRelay
             string contentType = upstream.Content.Headers.ContentType?.ToString() ??
                                  "multipart/x-mixed-replace";
 
-            return new LiveMjpegStream(upstream, relay, contentType);
+            return new LiveMjpegStream(upstream, firstPart, contentType);
         }
         catch (Exception exception) when (exception is OperationCanceledException or
                                                        IOException or
@@ -98,12 +97,12 @@ public sealed class CameraStreamRelay
 public sealed class LiveMjpegStream : IDisposable
 {
     private readonly HttpResponseMessage _upstream;
-    private readonly MjpegDhtRelay _relay;
+    private readonly MjpegFirstPartBuffer _firstPart;
 
-    internal LiveMjpegStream(HttpResponseMessage upstream, MjpegDhtRelay relay, string contentType)
+    internal LiveMjpegStream(HttpResponseMessage upstream, MjpegFirstPartBuffer firstPart, string contentType)
     {
         _upstream = upstream;
-        _relay = relay;
+        _firstPart = firstPart;
         ContentType = contentType;
     }
 
@@ -111,13 +110,13 @@ public sealed class LiveMjpegStream : IDisposable
     public string ContentType { get; }
 
     /// <summary>
-    /// Relays the stream — buffered first frame, then everything after it, frames repaired as they
-    /// pass. Returns when the upstream ends; cancelling is how a viewer leaving ends the copy, and
+    /// Relays the stream — buffered first frame, then everything after it as it comes. Returns when
+    /// the upstream ends; cancelling is how a viewer leaving ends the copy, and
     /// what lets the stream server release the camera.
     /// </summary>
     public Task CopyToAsync(Stream destination, CancellationToken cancellationToken)
     {
-        return _relay.CopyToAsync(destination, cancellationToken);
+        return _firstPart.CopyToAsync(destination, cancellationToken);
     }
 
     public void Dispose()

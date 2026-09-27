@@ -339,8 +339,6 @@ public class CameraController : ControllerBase
 
         try
         {
-            // The relay also puts back each frame's missing Huffman tables - the reason Safari
-            // showed nothing while every other browser played. See MjpegDhtRelay.
             await live.CopyToAsync(Response.Body, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is OperationCanceledException or

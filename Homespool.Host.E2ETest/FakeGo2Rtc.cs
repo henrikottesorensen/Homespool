@@ -713,7 +713,7 @@ public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, Fak
 
     /// <summary>
     /// One frame in the AVI1 shape a USB camera sends: SOI, APP0, SOF, SOS, data, EOI, and no Huffman
-    /// tables - so a relayed stream shows whether the relay put them back.
+    /// tables - so a relayed stream shows whether anything between the sidecar and the viewer changed it.
     /// </summary>
     public static ReadOnlyMemory<byte> Frame { get; } = new byte[]
     {

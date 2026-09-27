@@ -360,6 +360,195 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The whole cancel-object path: the printer declares its objects, the plate names them from the
+    /// file's own header, and the owner's cancel reaches the printer and comes back as the new state.
+    /// </summary>
+    /// <remarks>
+    /// Named objects rather than numbers, so the fragment containing them proves the header was
+    /// asked of the printer and read - the list by number would render without it.
+    /// </remarks>
+    [Fact]
+    public async Task TheOwnerCancellingAnObjectReachesThePrinterAndComesBack()
+    {
+        (Guid uuid, long ownerId, HttpClient client, FakePrinterClient fake, Task run) = await PrintingPlateAsync();
+
+        using (client)
+        {
+            await SeedOpenPrintAsync(uuid, ownerId);
+
+            string plate = await GetPlateAsync(client, uuid, until: html => html.Contains("Hinge", StringComparison.Ordinal));
+
+            plate.Should().Contain("Hinge", "the names come from the file's objects_info, asked of the printer");
+            plate.Should().Contain("handler=CancelObject\"", "the print is the reader's own");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, uuid, "CancelObject", [new("objectId", "1")]);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            posted.Headers.Location!.OriginalString.Should().NotContain("AccessDenied");
+
+            fake.Device.CancelledObjects.Should().Equal([1], "id 1 is the second object, Hinge - the id posted, not the number shown");
+
+            fake.ReceivedCommands.Select(frame => Encoding.UTF8.GetString(frame.Payload.Span))
+                .Should().Contain("""{"command":"CANCEL_OBJECT","args":[],"kwargs":{"id":1}}""");
+
+            (await WaitForLiveStateAsync(uuid, live => live.CancelledObjectIds == "1")).Should().BeTrue(
+                "the printer's answer carries the new set, and it is what the page reads");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// <b>Running the machine does not extend to editing somebody's print.</b> An Operator may stop
+    /// anybody's print, and is still refused a cancel on one they did not queue - offered no button,
+    /// and refused the post made without one. Nothing reaches the printer.
+    /// </summary>
+    [Fact]
+    public async Task AnOperatorCannotCancelAnObjectOfSomebodyElsesPrint()
+    {
+        (Guid uuid, long ownerId, HttpClient ownerClient, FakePrinterClient fake, Task run) = await PrintingPlateAsync();
+        (HSUser @operator, HttpClient operatorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "detail-cancel-object-operator@example.com");
+
+        using (ownerClient)
+        using (operatorClient)
+        {
+            await JoinAsync(@operator.Id, await TeamOfAsync(uuid), CapabilityPresets.Operator);
+            await SeedOpenPrintAsync(uuid, ownerId);
+
+            string plate = await GetPlateAsync(operatorClient, uuid, until: html => html.Contains("Hinge", StringComparison.Ordinal));
+
+            plate.Should().Contain("Hinge", "an Operator still sees the plate");
+            plate.Should().NotContain("handler=CancelObject", "the print is not theirs");
+            (await GetPageAsync(operatorClient, uuid)).Should().Contain("handler=Stop\"", "stopping it is still theirs to do");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(operatorClient, uuid, "CancelObject", [new("objectId", "1")]);
+
+            AssertAccessDenied(posted);
+
+            fake.Device.CancelledObjects.Should().BeEmpty();
+            fake.ReceivedCommands.Select(frame => frame.TryGetJsonCommandName()).Should().NotContain("CANCEL_OBJECT");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// A connected printer running a four-object plate from a file whose header names them, with the
+    /// server having heard the objects declared.
+    /// </summary>
+    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> PrintingPlateAsync()
+    {
+        const string ObjectsInfo =
+            """{"objects":[{"name":"Lid","polygon":[[20,20],[60,20],[60,60],[20,60]]},{"name":"Hinge","polygon":[[80,20],[120,20],[120,60],[80,60]]},{"name":"Base","polygon":[[20,120],[60,120],[60,160],[20,160]]},{"name":"Clip","polygon":[[80,120],[120,120],[120,160],[80,160]]}]}""";
+
+        SyntheticTelemetrySource source = new()
+        {
+            IdleInterval = TimeSpan.FromMilliseconds(200),
+            PrintingInterval = TimeSpan.FromMilliseconds(200),
+        };
+
+        (Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run) connected =
+            await ConnectedPrinterAsync(new FakePrinterOptions { TelemetrySource = source });
+
+        connected.fake.Device.Storage.AddFile("/usb/PLATE.GCO", size: 1000, modified: 0,
+                                              objectsInfo: ObjectsInfo, bedShape: "0x0,250x0,250x210,0x210");
+        connected.fake.Device.StartPrint(jobId: 7, path: "/usb/PLATE.GCO");
+        connected.fake.Device.DeclareObjects(4);
+
+        (await WaitForLiveStateAsync(connected.uuid, live => live.CancellableObjectCount == 4 && live.JobId == 7))
+            .Should().BeTrue("the fake reports its objects unasked, ahead of its next telemetry");
+
+        return connected;
+    }
+
+    /// <summary>
+    /// The open print row the queue would have written had it started this print - which is what
+    /// makes it somebody's.
+    /// </summary>
+    private async Task SeedOpenPrintAsync(Guid uuid, long queuedBy)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = await context.Printers
+                                     .Where(printer => printer.Uuid == uuid)
+                                     .Select(printer => printer.Id)
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrintUuid = Guid.NewGuid(),
+            PrinterId = printerId,
+            FileName = "plate.gcode",
+            QueuedByUserId = queuedBy,
+            PrinterPath = "/usb/PLATE.GCO",
+            FirmwareJobId = 7,
+            State = PrintState.Printing,
+            StartedAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// The plate fragment, polled until <paramref name="until"/> holds or ten seconds pass - the
+    /// first read of a print's names is asked of the printer, which the fragment waits on only
+    /// briefly.
+    /// </summary>
+    private static async Task<string> GetPlateAsync(HttpClient client, Guid uuid, Func<string, bool> until)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        string html = string.Empty;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            using HttpResponseMessage fragment = await client.GetAsync($"/Printers/Detail/{uuid}?handler=Plate",
+                                                                       TestContext.Current.CancellationToken);
+
+            fragment.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            html = await fragment.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            if (until(html))
+            {
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(200), TestContext.Current.CancellationToken);
+        }
+
+        return html;
+    }
+
+    /// <summary>Waits for the server's live state for this printer to satisfy <paramref name="condition"/>.</summary>
+    private async Task<bool> WaitForLiveStateAsync(Guid uuid, Func<PrinterLiveState, bool> condition)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            PrinterLiveState? live = await context.PrinterLiveStates
+                                                  .AsNoTracking()
+                                                  .Where(state => context.Printers.Any(printer => printer.Uuid == uuid &&
+                                                                                                  printer.Id == state.PrinterId))
+                                                  .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+            if (live is not null && condition(live))
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// <see cref="ConnectedPrinterAsync"/> with telemetry, returning once the server has heard the
     /// fake's loaded PLA - the page offers Unload only for a material the printer has named.
     /// </summary>

@@ -235,6 +235,8 @@ public static class EventMessageBuilder
     /// <param name="size">Bytes on disk.</param>
     /// <param name="modified">The file's mtime as a Unix timestamp.</param>
     /// <param name="commandId">Set when this answers a <c>SEND_FILE_INFO</c>.</param>
+    /// <param name="objectsInfo">The file's <c>objects_info</c> header, relayed verbatim; null for none.</param>
+    /// <param name="bedShape">The file's <c>bed_shape</c> header, relayed verbatim; null for none.</param>
     /// <remarks>
     /// <para>
     /// <b>Not <c>FILE_CHANGED</c>.</b> One ternary picks between them (planner.cpp:503) and a created
@@ -246,11 +248,13 @@ public static class EventMessageBuilder
     /// puts on the wire, both because closing them means inventing data rather than reporting it:
     /// </para>
     /// <para>
-    /// <b>1. No <c>preview</c> or gcode-metadata block.</b> Producing one means parsing a gcode for a
-    /// thumbnail. Firmware genuinely omits the preview when a file has none (render.cpp:791-795), so
-    /// an absent one is a real shape - but note that on hardware this is the field that makes
-    /// <c>FILE_INFO</c> the largest message a printer sends: 92 831 bytes across 184 continuation
-    /// frames, measured in the captures. Nothing here exercises that.
+    /// <b>1. No <c>preview</c> or gcode-metadata block</b>, beyond the two plate headers a test may
+    /// seed on a file - <c>objects_info</c> and <c>bed_shape</c>, written here exactly as firmware
+    /// relays any header, a string beside firmware's own fields. Producing the rest means parsing a
+    /// gcode for a thumbnail. Firmware genuinely omits the preview when a file has none
+    /// (render.cpp:791-795), so an absent one is a real shape - but note that on hardware this is the
+    /// field that makes <c>FILE_INFO</c> the largest message a printer sends: 92 831 bytes across 184
+    /// continuation frames, measured in the captures. Nothing here exercises that.
     /// </para>
     /// <para>
     /// <b>2. No 8.3 aliasing.</b> On real hardware <c>path</c> is the <b>short</b> name and
@@ -264,7 +268,13 @@ public static class EventMessageBuilder
     /// this fake as evidence that short names are handled.</b>
     /// </para>
     /// </remarks>
-    public static byte[] BuildFileInfo(string state, string path, long size, long modified, uint? commandId = null)
+    public static byte[] BuildFileInfo(string state,
+                                       string path,
+                                       long size,
+                                       long modified,
+                                       uint? commandId = null,
+                                       string? objectsInfo = null,
+                                       string? bedShape = null)
     {
         ArrayBufferWriter<byte> buffer = new();
 
@@ -273,6 +283,18 @@ public static class EventMessageBuilder
             writer.WriteStartObject();
 
             writer.WriteStartObject("data");
+
+            // The gcode's own headers come first on hardware, ahead of the renderer's fields.
+            if (objectsInfo is not null)
+            {
+                writer.WriteString("objects_info", objectsInfo);
+            }
+
+            if (bedShape is not null)
+            {
+                writer.WriteString("bed_shape", bedShape);
+            }
+
             writer.WriteNumber("size", size);
             writer.WriteNumber("m_timestamp", modified);
             writer.WriteBoolean("read_only", false);
@@ -289,6 +311,66 @@ public static class EventMessageBuilder
             }
 
             writer.WriteString("event", "FILE_INFO");
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// <c>CANCELABLE_CHANGED</c>: every object the running print declares, each with whether it is
+    /// cancelled - the whole set, never a difference (render.cpp:570-590 at <c>v6.10.1</c>).
+    /// </summary>
+    /// <param name="state">The wire device state.</param>
+    /// <param name="objectCount">How many objects there are; ids run from zero to one below.</param>
+    /// <param name="cancelled">Which ids are cancelled.</param>
+    /// <param name="commandId">The cancel-object command this answers, or null when unsolicited.</param>
+    /// <param name="jobId">The running job, when there is one.</param>
+    /// <remarks>
+    /// Empty outside a print, which is what firmware sends when a print ends - observed at
+    /// <c>READY</c> and <c>ATTENTION</c> in the captures.
+    /// </remarks>
+    public static byte[] BuildCancelableChanged(string state,
+                                                int objectCount,
+                                                IReadOnlySet<int> cancelled,
+                                                uint? commandId = null,
+                                                int? jobId = null)
+    {
+        ArgumentNullException.ThrowIfNull(cancelled);
+
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            if (jobId.HasValue)
+            {
+                writer.WriteNumber("job_id", jobId.Value);
+            }
+
+            writer.WriteStartObject("data");
+            writer.WriteStartArray("objects");
+
+            for (int id = 0; id < objectCount; id++)
+            {
+                writer.WriteStartObject();
+                writer.WriteBoolean("canceled", cancelled.Contains(id));
+                writer.WriteNumber("id", id);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+
+            writer.WriteString("state", state);
+
+            if (commandId.HasValue)
+            {
+                writer.WriteNumber("command_id", commandId.Value);
+            }
+
+            writer.WriteString("event", "CANCELABLE_CHANGED");
             writer.WriteEndObject();
         }
 

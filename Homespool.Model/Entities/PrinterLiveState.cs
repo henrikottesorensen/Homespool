@@ -71,6 +71,33 @@ public class PrinterLiveState
     /// </remarks>
     public string? AttentionText { get; set; }
 
+    /// <summary>
+    /// How many objects the running print declares that can be cancelled one at a time - zero
+    /// outside a print, null when the printer has never said.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Lifted from <c>CANCELABLE_CHANGED</c>, and kept here rather than read back from the event
+    /// log</b>, because it is a snapshot the next report wholly replaces - this table's shape, not the
+    /// log's. There is a second reason peculiar to this field: firmware sends it only when the set
+    /// changes and does not repeat it on reconnect, so after a restart mid-print the stored row is
+    /// the only account there is until an object is cancelled.
+    /// </para>
+    /// <para>
+    /// Object ids run from zero to one below this. They are the slicer's own indices, in the order it
+    /// wrote the plate's objects into the file, and correlate with nothing a person can see - not the
+    /// name, not the position on the bed, not the order they print in.
+    /// </para>
+    /// </remarks>
+    public int? CancellableObjectCount { get; set; }
+
+    /// <summary>
+    /// Which of the <see cref="CancellableObjectCount"/> objects are cancelled, as ascending ids
+    /// joined by commas - <c>"2,4"</c> - and empty when none are. Read and written through
+    /// <see cref="CancelledObjects"/>, which owns the format.
+    /// </summary>
+    public string? CancelledObjectIds { get; set; }
+
     public int? JobId { get; set; }
 
     /// <summary>Percent complete, 0-100.</summary>

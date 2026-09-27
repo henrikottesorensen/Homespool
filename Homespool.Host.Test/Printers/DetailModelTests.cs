@@ -172,6 +172,11 @@ public sealed class DetailModelTests : IDisposable
                                 // it would need a connected printer to do anything.
                                 commands: null!,
                                 stops: null!,
+
+                                // Null likewise: no printer here reports objects that can be cancelled,
+                                // so the page never reaches for the plate or a cancel.
+                                objects: null!,
+                                plates: null!,
                                 new PrinterStatusText(localiser),
                                 new PrinterIntentText(localiser),
                                 new RelativeTimeText(localiser),

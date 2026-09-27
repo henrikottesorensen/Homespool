@@ -92,8 +92,9 @@ public interface ISendableCommand : ICommand
 /// the service, which is one hop and one reader.
 /// </para>
 /// <para>
-/// Commands answered by their event type alone - <c>Finished</c> or <c>Rejected</c>, which is all
-/// twelve sendable ones today - implement plain <see cref="ISendableCommand"/> and go through
+/// Commands whose answer is a verdict alone - <c>Finished</c> or <c>Rejected</c>, or for the two
+/// cancel-object commands a <c>CANCELABLE_CHANGED</c> the telemetry path stores rather than the caller
+/// reads - implement plain <see cref="ISendableCommand"/> and go through
 /// <see cref="Printing.PrinterCommandService.SendCommandAsync(int, ISendableCommand, Homespool.Model.Caller, System.Threading.CancellationToken)"/> unchanged.
 /// </para>
 /// </remarks>

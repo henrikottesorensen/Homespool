@@ -25,6 +25,8 @@ public sealed class PrusaIntentTranslatorTests
         { new Printing.CancelPrinterReady(), "CANCEL_PRINTER_READY" },
         { new Printing.SetPrinterIdle(), "SET_IDLE" },
         { new Printing.SetTemperatures(215, 60), "GCODE" },
+        { new Printing.CancelObject(4), "CANCEL_OBJECT" },
+        { new Printing.UncancelObject(4), "UNCANCEL_OBJECT" },
     };
 
     [Theory]
@@ -59,6 +61,39 @@ public sealed class PrusaIntentTranslatorTests
 
         gcode.NozzleTemperature.Should().Be(215);
         gcode.BedTemperature.Should().Be(60);
+    }
+
+    /// <summary>
+    /// The id crosses unchanged - 0-based on both sides - and as the <see cref="ushort"/> firmware
+    /// parses it into. A translation that added one to match the printer's menu would cancel the
+    /// neighbouring object.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    [InlineData(1023)]
+    public void CancelObjectCarriesItsIdUnchanged(int objectId)
+    {
+        PrusaConnect.Commands.ISendableCommand cancel = PrusaIntentTranslator.ToCommand(new Printing.CancelObject(objectId));
+        PrusaConnect.Commands.ISendableCommand uncancel = PrusaIntentTranslator.ToCommand(new Printing.UncancelObject(objectId));
+
+        cancel.Arguments!["id"].Should().Be((ushort)objectId);
+        uncancel.Arguments!["id"].Should().Be((ushort)objectId);
+    }
+
+    /// <summary>
+    /// An id outside firmware's range is refused rather than wrapped into it: a <c>ushort</c> cast of
+    /// 65 540 is object 4, which is somebody's real part.
+    /// </summary>
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(1024)]
+    [InlineData(65540)]
+    public void AnObjectIdOutsideFirmwaresRangeThrows(int objectId)
+    {
+        Action act = () => PrusaIntentTranslator.ToCommand(new Printing.CancelObject(objectId));
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]

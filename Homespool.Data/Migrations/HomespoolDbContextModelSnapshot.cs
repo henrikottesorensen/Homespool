@@ -593,6 +593,12 @@ namespace Homespool.Data.Migrations
                     b.Property<float?>("BedTemperature")
                         .HasColumnType("REAL");
 
+                    b.Property<int?>("CancellableObjectCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CancelledObjectIds")
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("ChamberFan1Rpm")
                         .HasColumnType("INTEGER");
 

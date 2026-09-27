@@ -335,6 +335,7 @@ public sealed class FakeDevice
         // The id survives - the finished screen still names the job - but the path does not, because
         // firmware's answer for a job it merely remembers renders a FIN_OK state and nothing else.
         JobPath = null;
+        ClearObjects();
 
         return true;
     }
@@ -417,6 +418,75 @@ public sealed class FakeDevice
     /// <summary>The dialog identifier reported alongside an attention; increments per dialog.</summary>
     public uint DialogId { get; private set; }
 
+    /// <summary>How many objects the running print declares cancellable; zero outside one.</summary>
+    public int ObjectCount { get; private set; }
+
+    /// <summary>The ids of the objects cancelled so far in the running print.</summary>
+    public IReadOnlySet<int> CancelledObjects => _cancelledObjects;
+
+    private readonly HashSet<int> _cancelledObjects = [];
+
+    /// <summary>
+    /// Whether this build has the cancel-object feature. Firmware without it refuses both commands
+    /// with <c>"Not supported on this printer type"</c> - <c>M486.cpp</c> says that is the iX.
+    /// </summary>
+    public bool CancelObjectSupported { get; set; } = true;
+
+    /// <summary>
+    /// Declares the running print's cancellable objects, as the <c>M486</c> labels in a gcode do once
+    /// it starts - test/scenario setup - and reports them the way firmware does, unasked.
+    /// </summary>
+    /// <param name="count">How many objects the print declares.</param>
+    public void DeclareObjects(int count)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+
+        ObjectCount = count;
+        _cancelledObjects.Clear();
+
+        PendingEvents.Enqueue(EventMessageBuilder.BuildCancelableChanged(WireState, ObjectCount, _cancelledObjects,
+                                                                         jobId: JobId));
+    }
+
+    /// <summary>
+    /// The state half of <c>CANCEL_OBJECT</c>/<c>UNCANCEL_OBJECT</c>: sets the flag, and does not
+    /// refuse.
+    /// </summary>
+    /// <remarks>
+    /// <b>No refusal arm, because firmware has none</b> beyond the feature being absent:
+    /// <c>handle_cancel_object_command</c> sets the flag and answers with the whole set, even when
+    /// nothing changed (planner.cpp:826-847). An id past the declared objects changes nothing anybody
+    /// is told about, since the answer lists only the declared ones.
+    /// </remarks>
+    public void SetObjectCancelled(int id, bool cancelled)
+    {
+        if (cancelled)
+        {
+            _cancelledObjects.Add(id);
+        }
+        else
+        {
+            _cancelledObjects.Remove(id);
+        }
+    }
+
+    /// <summary>
+    /// The end of a print's objects, reported as firmware reports it: an empty set, unasked. Nothing
+    /// is sent when there were none.
+    /// </summary>
+    private void ClearObjects()
+    {
+        if (ObjectCount == 0 && _cancelledObjects.Count == 0)
+        {
+            return;
+        }
+
+        ObjectCount = 0;
+        _cancelledObjects.Clear();
+
+        PendingEvents.Enqueue(EventMessageBuilder.BuildCancelableChanged(WireState, 0, _cancelledObjects));
+    }
+
     /// <summary>Pause: legal only while <see cref="DeviceState.Printing"/> (job_control, Pause arm).</summary>
     public bool TryPause()
     {
@@ -457,6 +527,7 @@ public sealed class FakeDevice
         State = DeviceState.Stopped;
         JobId = null;
         JobPath = null;
+        ClearObjects();
 
         return true;
     }

@@ -60,4 +60,10 @@ public sealed record PrinterEventRecord
     /// explain a dialog that has gone.
     /// </summary>
     public PrinterAttentionUpdate? Attention { get; init; }
+
+    /// <summary>
+    /// The plate's cancellable objects, when this event reported them. <b>Null means the event said
+    /// nothing about them</b> - not that there are none, which is an update with a zero count.
+    /// </summary>
+    public PrinterCancellableUpdate? Cancellable { get; init; }
 }

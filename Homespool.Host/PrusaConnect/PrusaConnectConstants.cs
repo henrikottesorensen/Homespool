@@ -154,4 +154,14 @@ public static class PrusaConnectConstants
     /// report costs to write rather than anything that accumulates.
     /// </remarks>
     public const int DriveListingMaxBytes = 256 * 1024;
+
+    /// <summary>
+    /// The most objects a print can declare cancellable. A <c>CANCELABLE_CHANGED</c> listing more is
+    /// not read, and no cancel-object command names an id at or above it.
+    /// </summary>
+    /// <remarks>
+    /// Firmware's own ceiling: <c>CancelObject::max_object_count</c> (<c>cancel_object.hpp:17</c>, read
+    /// at <c>v6.10.1</c>). The stored form of a full plate is about 5 KB, one row per printer.
+    /// </remarks>
+    public const int MaxCancellableObjects = 1024;
 }

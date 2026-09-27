@@ -35,8 +35,26 @@ public static class PrusaIntentTranslator
             Printing.CancelPrinterReady => new Commands.CancelPrinterReady(),
             Printing.SetPrinterIdle => new Commands.SetPrinterIdle(),
             Printing.SetTemperatures t => new Commands.SetTemperatures(t.NozzleTemperature, t.BedTemperature),
+            Printing.CancelObject c => new Commands.CancelObject { Id = ObjectId(c.ObjectId) },
+            Printing.UncancelObject u => new Commands.UncancelObject { Id = ObjectId(u.ObjectId) },
             _ => throw new ArgumentOutOfRangeException(nameof(intent), intent.Name,
                                                        "No Prusa Connect command exists for this intent."),
         };
+    }
+
+    /// <summary>
+    /// An object id as the wire types it, checked against firmware's ceiling on the way.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Negative, or at or above <see cref="PrusaConnectConstants.MaxCancellableObjects"/>. Thrown
+    /// rather than clamped: an id this application did not read off the printer is a defect, and
+    /// cancelling some other object instead would hide it.
+    /// </exception>
+    private static ushort ObjectId(int objectId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(objectId);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(objectId, PrusaConnectConstants.MaxCancellableObjects);
+
+        return (ushort)objectId;
     }
 }

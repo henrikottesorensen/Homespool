@@ -38,11 +38,15 @@ public sealed class FakeStorage
     /// and then listing the drive agree with each other - which is the property that makes an
     /// end-to-end test of the listing worth anything.
     /// </remarks>
-    public void AddFile(string path, long size, long modified)
+    public void AddFile(string path, long size, long modified, string? objectsInfo = null, string? bedShape = null)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
 
-        _entries[path] = new FakeStorageEntry(path, size, modified, IsFolder: false);
+        _entries[path] = new FakeStorageEntry(path, size, modified, IsFolder: false)
+        {
+            ObjectsInfo = objectsInfo,
+            BedShape = bedShape,
+        };
     }
 
     /// <summary>Puts a directory on the drive.</summary>

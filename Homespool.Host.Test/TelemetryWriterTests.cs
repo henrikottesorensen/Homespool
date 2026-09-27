@@ -768,6 +768,121 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// A <c>CANCELABLE_CHANGED</c> lands on the printer's live state as its object count and the ids
+    /// cancelled - the current state of the plate, which the page reads, rather than only a row in
+    /// the event log.
+    /// </summary>
+    [Fact]
+    public async Task ACancellableReportIsStoredAsTheLiveState()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        // Act - the report from plate 1 of the six-cube capture, after A, D and E were cancelled.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, CancellableEvent(6, 2, 4, 5));
+
+        // Assert
+        PrinterLiveState? state = await WaitForLiveStateAsync(s => s.CancellableObjectCount is not null);
+
+        state.Should().NotBeNull();
+        state!.CancellableObjectCount.Should().Be(6);
+        state.CancelledObjectIds.Should().Be("2,4,5");
+    }
+
+    /// <summary>
+    /// <b>Only a cancellable report changes the stored plate.</b> Firmware does not repeat it - not
+    /// on a schedule, and not on reconnect - so a telemetry message or any other event clearing it
+    /// would leave the page with nothing to show until an object next changed.
+    /// </summary>
+    [Fact]
+    public async Task TheStoredPlateOutlivesEverythingButTheNextReport()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, CancellableEvent(6, 4));
+        await WaitForLiveStateAsync(s => s.CancellableObjectCount == 6);
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = 40 });
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { EventType = PrinterEventType.StateChanged, Status = "PRINTING" });
+
+        PrinterLiveState? afterOthers = await WaitForLiveStateAsync(s => s.Progress == 40);
+
+        // Assert
+        afterOthers!.CancellableObjectCount.Should().Be(6);
+        afterOthers.CancelledObjectIds.Should().Be("4");
+
+        // And the empty report firmware sends when the print ends is what clears it.
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, CancellableEvent(0));
+
+        PrinterLiveState? afterEnd = await WaitForLiveStateAsync(s => s.CancellableObjectCount == 0);
+
+        afterEnd!.CancelledObjectIds.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// <b>A full plate is stored whole</b>, though the event row keeps only a marker: 1 024 objects is
+    /// about 30 KB of report, far past the stored payload's cap. The state is read from the event as
+    /// it arrived, not from what the log kept of it.
+    /// </summary>
+    [Fact]
+    public async Task AFullPlateIsStoredWholeThoughItsEventIsTruncated()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, CancellableEvent(1024, 0, 1023));
+
+        // Assert
+        PrinterLiveState? state = await WaitForLiveStateAsync(s => s.CancellableObjectCount is not null);
+
+        state!.CancellableObjectCount.Should().Be(1024);
+        state.CancelledObjectIds.Should().Be("0,1023");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
+
+        stored.Payload.Should().Contain("_truncated", "the premise of this test is that the log could not have served it");
+    }
+
+    /// <summary>A <c>CANCELABLE_CHANGED</c> as firmware renders it: every object, ids from zero.</summary>
+    private static EventDTO CancellableEvent(int objectCount, params int[] cancelled)
+    {
+        string objects = string.Join(',', Enumerable.Range(0, objectCount)
+                                                    .Select(id => $$"""{"canceled":{{(cancelled.Contains(id) ? "true" : "false")}},"id":{{id}}}"""));
+
+        using JsonDocument data = JsonDocument.Parse($$"""{"objects":[{{objects}}]}""");
+
+        return new EventDTO
+        {
+            EventType = PrinterEventType.CancelableChanged,
+            Status = "PRINTING",
+            Data = data.RootElement.Clone(),
+        };
+    }
+
+    /// <summary>The printer's live state once <paramref name="condition"/> holds, or null after five seconds.</summary>
+    private async Task<PrinterLiveState?> WaitForLiveStateAsync(Func<PrinterLiveState, bool> condition)
+    {
+        PrinterLiveState? found = null;
+
+        await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            found = await context.PrinterLiveStates.AsNoTracking().SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+            return found is not null && condition(found);
+        }, TimeSpan.FromSeconds(5));
+
+        return found;
+    }
+
+    /// <summary>
     /// <c>INFO</c> carries <c>api_key</c> - <b>the printer's PrusaLink password</b>, which grants full
     /// authenticated access to its HTTP API, including reading any file off the drive. Firmware
     /// volunteers it on every connection, and this table is append-only with no retention sweep, so

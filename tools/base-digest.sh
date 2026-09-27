@@ -11,7 +11,11 @@
 # and records it, which is what lets anything later ask whether the base has been republished since.
 #
 # The tag is read from the Dockerfile's own `ARG HOMESPOOL_BASE_IMAGE=` line rather than written
-# here as well, so the Dockerfile stays the one place a base image is named.
+# here as well, so the Dockerfile stays the one place a base image is named. A second argument names
+# another ARG instead, for an image a build stage runs on that is not the base - the camera sidecar's
+# Go toolchain, whose standard library is compiled into what ships:
+#
+#   tools/base-digest.sh go2rtc/Dockerfile HOMESPOOL_BUILDER_IMAGE
 #
 # The digest is the tag's index - the multi-platform list - rather than one platform's manifest,
 # because that is what a registry answers for the tag, and so what a later comparison will see.
@@ -21,12 +25,13 @@
 # registry, as the --pull beside it already does.
 set -euo pipefail
 
-dockerfile="${1:?usage: $0 <Dockerfile>}"
+dockerfile="${1:?usage: $0 <Dockerfile> [ARG name]}"
+arg="${2:-HOMESPOOL_BASE_IMAGE}"
 
-image="$(sed -n 's/^ARG HOMESPOOL_BASE_IMAGE=//p' "$dockerfile")"
+image="$(sed -n "s/^ARG ${arg}=//p" "$dockerfile")"
 
 if [ -z "$image" ]; then
-    echo "$0: no 'ARG HOMESPOOL_BASE_IMAGE=' line in $dockerfile" >&2
+    echo "$0: no 'ARG ${arg}=' line in $dockerfile" >&2
     exit 1
 fi
 

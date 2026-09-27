@@ -13,13 +13,13 @@ do.
 | You pull published images (`REGISTRY` set in `.env`) | Use this. |
 | A Raspberry Pi card | **Already installed**, and it runs from the first day. |
 
-The registry has to allow **anonymous reads** of the two images. GHCR's public packages do. The
-check runs as root with no login on purpose: it should need nobody's credentials to find out whether
+The registry has to allow **anonymous reads** of the three images. GHCR's public packages do. The
+check asks with no login on purpose: it should need nobody's credentials to find out whether
 something newer exists.
 
 ## What it reports
 
-For the application and the proxy, one of:
+For the application, the proxy and the camera sidecar, one of:
 
 | status | meaning |
 |---|---|

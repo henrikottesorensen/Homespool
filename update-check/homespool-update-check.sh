@@ -21,10 +21,10 @@
 #     and trusts nothing the unprivileged step could have written except the report itself, which it
 #     checks: see publish below.
 #
-# WHAT IT COMPARES. The running app and proxy containers are found by their compose labels - no
-# compose file is read, so nothing an operator can edit decides what the root steps run. Each one
-# names the image it was started from, say registry.example.net/homespool, which is the tag the
-# deployment follows (latest when none is written). The registry's current digest for that tag
+# WHAT IT COMPARES. The running app, proxy and camera sidecar containers are found by their compose
+# labels - no compose file is read, so nothing an operator can edit decides what the root steps run.
+# Each one names the image it was started from, say registry.example.net/homespool, which is the tag
+# the deployment follows (latest when none is written). The registry's current digest for that tag
 # against the running image's is the whole of "is there something newer". When there is:
 #
 #   - Homespool's commits between the running revision and the published one, counted by type,
@@ -54,6 +54,8 @@
 set -eu
 
 project="${HOMESPOOL_PROJECT:-homespool}"
+# The compose services whose images are Homespool's, in the order the report lists them.
+services="homespool proxy go2rtc"
 state_dir="${STATE_DIRECTORY:-/var/lib/homespool}"
 run_dir="${RUNTIME_DIRECTORY:-/run/homespool-update-check}"
 dotnet_index="https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json"
@@ -90,7 +92,7 @@ collect() {
     mkdir -p "$run_dir"
     docker version --format '{{.Server.Os}}/{{.Server.Arch}}' > "$run_dir/platform"
 
-    for service in homespool proxy; do
+    for service in $services; do
         rm -f "$run_dir/$service.reference" "$run_dir/$service.image.json"
         container="$(running_container "$service")"
         [ -n "$container" ] || continue
@@ -120,7 +122,7 @@ compare() {
     platform="$(cat "$run_dir/platform")"
     checked="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-    for service in homespool proxy; do
+    for service in $services; do
         entry="$work/$service.json"
 
         if [ ! -s "$run_dir/$service.reference" ]; then
@@ -283,7 +285,7 @@ compare() {
 
     jq -s --arg checked "$checked" \
         '{schema: 1, checked: $checked, update_available: any(.[]; .status == "newer"), services: .}' \
-        "$work/homespool.json" "$work/proxy.json" > "$work/update-check.json"
+        $(for service in $services; do printf '%s ' "$work/$service.json"; done) > "$work/update-check.json"
 
     # Replaced whole, never rewritten in place, so a reader never sees half of one.
     mkdir -p "$state_dir"

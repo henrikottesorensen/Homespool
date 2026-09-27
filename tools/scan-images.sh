@@ -39,7 +39,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose=(docker compose -f "$repo_root/compose.yaml")
-services=(homespool proxy)
+services=(homespool proxy go2rtc)
 
 # Checked against https://github.com/aquasecurity/trivy/releases/tag/v0.74.0 (2026-08-14), after the
 # versions GHSA-69fq-xp46-6x23 lists as compromised. Move tag and digest together.

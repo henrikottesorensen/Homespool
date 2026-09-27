@@ -127,7 +127,7 @@ test_case() {
     cat > "$scratch/bin/docker" <<'STUB'
 #!/bin/sh
 printf '%s\n' "$*" >> "$STUB_LOG"
-service_of() { case "$1" in *homespool-proxy*|*proxy*) echo proxy ;; *) echo homespool ;; esac; }
+service_of() { case "$1" in *go2rtc*) echo go2rtc ;; *proxy*) echo proxy ;; *) echo homespool ;; esac; }
 case "$1" in
     version) echo "linux/arm64" ;;
     ps)
@@ -184,15 +184,19 @@ exec "$@"
 STUB
     chmod 755 "$scratch/bin/docker" "$scratch/bin/curl" "$scratch/bin/setpriv"
 
-    # The ordinary starting point: both containers following latest on a registry, both current.
+    # The ordinary starting point: all three containers following latest on a registry, all current.
     export STUB_REF_homespool="registry.example.net/homespool"
     export STUB_REF_proxy="registry.example.net/homespool-proxy"
+    export STUB_REF_go2rtc="registry.example.net/homespool-go2rtc"
     running homespool "$running_rev" "$source_url" sha256:base-a 10.0.12 \
         "registry.example.net/homespool@sha256:published-homespool"
     running proxy "$running_rev" "$source_url" sha256:base-n "" \
         "registry.example.net/homespool-proxy@sha256:published-proxy"
     published homespool "$running_rev" "$source_url" sha256:base-a 10.0.12
+    running go2rtc "$running_rev" "$source_url" sha256:base-g "" \
+        "registry.example.net/homespool-go2rtc@sha256:published-go2rtc"
     published proxy "$running_rev" "$source_url" sha256:base-n ""
+    published go2rtc "$running_rev" "$source_url" sha256:base-g ""
     history
     printf '{"releases":[]}\n' > "$scratch/fixtures/releases.json"
 
@@ -233,7 +237,7 @@ if test_case "running what the registry serves: current, and nothing is asked of
     check
     assert_status "$status" 0 "a current deployment checks cleanly"
     assert_equals "$(field .update_available)" "false" "nothing to take"
-    assert_equals "$(field '[.services[].status] | join(",")')" "current,current" "both are current"
+    assert_equals "$(field '[.services[].status] | join(",")')" "current,current,current" "all three are current"
     assert_equals "$(field .schema)" "1" "the report says which schema it is"
     assert_not_contains "$log" "curl" "no request leaves for a current image"
     assert_contains "$output" "homespool: current" "the journal says so"
@@ -312,9 +316,10 @@ fi
 
 if test_case "an image built from source has nothing to compare with, and nothing is asked"; then
     export STUB_REF_homespool="homespool" STUB_REF_proxy="homespool-proxy:latest"
+    export STUB_REF_go2rtc="homespool-go2rtc:latest"
     check
     assert_status "$status" 0 "checks cleanly"
-    assert_equals "$(field '[.services[].status] | join(",")')" "local,local" "both are local builds"
+    assert_equals "$(field '[.services[].status] | join(",")')" "local,local,local" "all three are local builds"
     assert_not_contains "$log" "imagetools" "no registry is asked"
     assert_not_contains "$log" "curl" "and nothing else either"
 fi
@@ -325,13 +330,34 @@ if test_case "an image pinned to a digest has no tag to follow"; then
     assert_equals "$(field '.services[] | select(.service == "proxy") | .status')" "pinned" "pinned is reported"
 fi
 
+if test_case "a camera sidecar still on upstream's digest pin is reported as pinned"; then
+    # What a deployment whose compose.yaml predates Homespool's own go2rtc image runs.
+    export STUB_REF_go2rtc="alexxit/go2rtc@sha256:675c318b23c06fd862a61d262240c9a63436b4050d177ffc68a32710d9e05bae"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .status')" "pinned" "pinned is reported"
+fi
+
+if test_case "a newer camera sidecar image is compared like the other two"; then
+    export STUB_DIGEST_go2rtc="sha256:newer-go2rtc"
+    published go2rtc "$running_rev" "$source_url" sha256:base-h ""
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(field .update_available)" "true" "the sidecar alone makes an update available"
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .status')" "newer" "newer is reported"
+    assert_contains "$(field '.services[] | select(.service == "go2rtc") | .reasons | join(";")')" \
+        "rebuilt from the same revision" "a rebuild is named"
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .runtime')" "null" \
+        "no .NET runtime is looked for in an image that has none"
+fi
+
 if test_case "a container that is not running is reported, and a project name that matches nothing too"; then
     export STUB_REF_proxy=""
     check
     assert_equals "$(field '.services[] | select(.service == "proxy") | .status')" "not-running" "missing proxy"
     export HOMESPOOL_PROJECT="other"
     check
-    assert_equals "$(field '[.services[].status] | join(",")')" "not-running,not-running" \
+    assert_equals "$(field '[.services[].status] | join(",")')" "not-running,not-running,not-running" \
         "the compose project decides which containers count"
 fi
 

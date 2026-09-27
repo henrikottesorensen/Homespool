@@ -110,26 +110,43 @@ test_case() {
 printf '%s\n' "$*" >> "$STUB_LOG"
 case "$1" in
     compose)
+        # compose -f <file> config --images <service>...: each service's image, as compose.yaml names it
         [ -n "${STUB_REGISTRY:-}" ] && prefix="$STUB_REGISTRY/" || prefix=""
-        printf '%shomespool:latest\n%shomespool-proxy:latest\n' "$prefix" "$prefix"
+        shift 5
+        for service in "$@"; do
+            case "$service" in
+                homespool) echo "${prefix}homespool:latest" ;;
+                proxy) echo "${prefix}homespool-proxy:latest" ;;
+                go2rtc) echo "${prefix}homespool-go2rtc:latest" ;;
+                *) echo "no such service: $service" >&2; exit 1 ;;
+            esac
+        done
         ;;
     buildx)
         # buildx imagetools inspect --format <format> <reference>
         case "$6" in
             mcr.microsoft.com/*) echo "sha256:${STUB_ASPNET_NOW:-aspnet-built}" ;;
             nginxinc/*) echo "sha256:nginx-built" ;;
+            alpine:*) echo "sha256:alpine-built" ;;
             *homespool-proxy:*) echo "sha256:image-proxy" ;;
+            *homespool-go2rtc:*) echo "sha256:image-go2rtc" ;;
             *) echo "sha256:image-app" ;;
         esac
         ;;
     image)
         # image inspect --format <format> <reference>
-        case "$5" in *homespool-proxy@*) name=proxy ;; *) name=app ;; esac
+        case "$5" in *homespool-proxy@*) name=proxy ;; *homespool-go2rtc@*) name=go2rtc ;; *) name=app ;; esac
         case "$4" in
             *revision*) echo "${STUB_REVISION:-0123456789abcdef0123456789abcdef01234567}" ;;
             *source*) echo "https://github.com/example/homespool" ;;
-            *base.name*) [ $name = app ] && echo "mcr.microsoft.com/dotnet/aspnet:10.0" || echo "nginxinc/nginx-unprivileged:stable" ;;
-            *base.digest*) [ $name = app ] && echo "sha256:aspnet-built" || echo "sha256:nginx-built" ;;
+            *base.name*)
+                case $name in
+                    app) echo "mcr.microsoft.com/dotnet/aspnet:10.0" ;;
+                    proxy) echo "nginxinc/nginx-unprivileged:stable" ;;
+                    go2rtc) echo "alpine:3" ;;
+                esac
+                ;;
+            *base.digest*) echo "sha256:$(case $name in app) echo aspnet ;; proxy) echo nginx ;; go2rtc) echo alpine ;; esac)-built" ;;
             *Env*) [ $name = app ] && printf 'PATH=/usr/bin\nASPNET_VERSION=10.0.12\n' || printf 'PATH=/usr/bin\n' ;;
         esac
         ;;
@@ -178,6 +195,7 @@ STUB
 
     trivy_report > "$scratch/fixtures/trivy-homespool.json"
     trivy_report > "$scratch/fixtures/trivy-homespool-proxy.json"
+    trivy_report > "$scratch/fixtures/trivy-homespool-go2rtc.json"
     releases > "$scratch/fixtures/releases.json"
     compare > "$scratch/fixtures/compare.json"
 
@@ -203,7 +221,7 @@ if test_case "nothing to take: not relevant, and the verdict is pushed"; then
     scan
     assert_status "$status" 0 "a clean scan succeeds"
     assert_equals "$(field .relevant)" "false" "nothing to take is not relevant"
-    assert_equals "$(field '.images | length')" "2" "both images are judged"
+    assert_equals "$(field '.images | length')" "3" "all three images are judged"
     assert_equals "$(field .schema)" "1" "the verdict says which schema it is"
     assert_contains "$(field .scanner)" "aquasec/trivy:0.74.0@sha256:" "and which scanner, pinned"
     assert_contains "$log" "oras push --artifact-type application/vnd.homespool.verdict.v1+json" \
@@ -221,6 +239,15 @@ if test_case "a fixable high vulnerability is relevant"; then
     assert_contains "$(field '.reasons[]')" "homespool-proxy: 1 critical or high" "and says where"
     assert_equals "$(field '.images[] | select(.name == "homespool-proxy") | .vulnerabilities[0].fixed')" \
         "1.1" "the fixed version is recorded"
+fi
+
+if test_case "a fixable vulnerability in the camera sidecar alone is relevant, and it has no runtime"; then
+    trivy_report CVE-2026-0002 CRITICAL stdlib > "$scratch/fixtures/trivy-homespool-go2rtc.json"
+    scan
+    assert_equals "$(field .relevant)" "true" "the sidecar's finding makes the verdict relevant"
+    assert_contains "$(field '.reasons[]')" "homespool-go2rtc: 1 critical or high" "and says where"
+    assert_equals "$(field '.images[] | select(.name == "homespool-go2rtc") | .runtime')" "null" \
+        "no .NET runtime is looked for in an image that has none"
 fi
 
 if test_case "a newer runtime that is a security release is relevant"; then

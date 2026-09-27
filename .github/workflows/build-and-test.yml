@@ -118,6 +118,11 @@ jobs:
       - name: Test the proxy image carries its configuration
         run: ./tests/proxy-image.test.sh
 
+      # The camera sidecar's image applies every patch under go2rtc/patches. A patch no COPY and no
+      # git apply names is a fix absent from the image, and go2rtc builds and starts without it.
+      - name: Test the camera sidecar image carries its patches
+        run: ./tests/go2rtc-image.test.sh
+
       # Which names the renewal will act on, and which it refuses before they reach a shell. It
       # talks to the world only through `docker`, and a stub of that is the whole harness, so this
       # needs neither a daemon nor a certificate authority.

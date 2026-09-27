@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Henrik=20O=2E=20S=C3=B8rensen?= <henrik.sorensen@gmail.com>
+Date: Sun, 27 Sep 2026 12:31:30 +0200
+Subject: [PATCH] Add missing Huffman tables to stream.mjpeg frames
+
+api/frame.jpeg repairs AVI1 frames via FixJPEG, adding the standard DHT
+tables that MJPEG cameras omit. api/stream.mjpeg writes frames through
+unrepaired, and Apple's JPEG decoder fails outright on most such frames
+where libjpeg-turbo and ffmpeg supply the standard tables - so in Safari
+the stream downloads fine and paints nothing, with no error, while Chrome
+and Firefox render it normally.
+
+The stream uses InjectDHT rather than FixJPEG. FixJPEG also decodes and
+re-encodes any frame whose header is neither JFIF, Exif nor AVI1, which
+is cheap for one snapshot and not for every frame of a stream: measured
+on a Raspberry Pi 3 at 640x480 and 24 fps, such a camera took a full core
+per viewer and fell to 10.5 fps. InjectDHT adds the tables only to a
+frame that has none and never re-encodes; a Logitech C910 costs about
+1.5% of a core more per viewer with it.
+
+Frames that already carry tables pass through untouched, Content-Length
+is written after the repair so part framing stays correct, and Write
+still reports the length it was given.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ pkg/mjpeg/writer.go | 12 ++++++++++--
+ 1 file changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/pkg/mjpeg/writer.go b/pkg/mjpeg/writer.go
+index 8845bf2..50a5ba2 100644
+--- a/pkg/mjpeg/writer.go
++++ b/pkg/mjpeg/writer.go
+@@ -20,10 +20,18 @@ type writer struct {
+ }
+ 
+ func (w *writer) Write(p []byte) (n int, err error) {
++	// Safari can't decode JPEG without DHT (AVI1 MJPEG from USB cams).
++	// InjectDHT rather than FixJPEG, which api/frame.jpeg uses: it adds the
++	// standard tables only to a frame that has none and never re-encodes,
++	// where FixJPEG re-encodes every frame whose header it does not know -
++	// cheap once per snapshot, a full CPU core per viewer on a stream.
++	// - https://github.com/pion/mediadevices/pull/493
++	frame := InjectDHT(p)
++
+ 	w.buf = w.buf[:len(header)]
+-	w.buf = append(w.buf, strconv.Itoa(len(p))...)
++	w.buf = append(w.buf, strconv.Itoa(len(frame))...)
+ 	w.buf = append(w.buf, "\r\n\r\n"...)
+-	w.buf = append(w.buf, p...)
++	w.buf = append(w.buf, frame...)
+ 	w.buf = append(w.buf, "\r\n"...)
+ 
+ 	// Chrome bug: mjpeg image always shows the second to last image

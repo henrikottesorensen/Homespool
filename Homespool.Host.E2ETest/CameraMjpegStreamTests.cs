@@ -42,7 +42,10 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         _sidecar = await FakeGo2Rtc.StartAsync();
-        _sidecar.AddCamera(Source, FakeCamera.Jpeg);
+
+        // Frames without their Huffman tables, as a USB camera sends them: a Homespool that put the
+        // tables back itself would change the bytes, and the byte-for-byte check below would say so.
+        _sidecar.AddCamera(Source, FakeCamera.Jpeg with { TablesInStream = false });
 
         _factory = new HomespoolFactory(_scratch);
         _sidecar.ApplyTo(_factory);
@@ -129,7 +132,7 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
 
             // Switched off after it was saved, so its codecs are already known and the endpoint gets
             // as far as asking the sidecar for pictures.
-            _sidecar.AddCamera(Source, FakeCamera.Jpeg with { Producing = false });
+            _sidecar.AddCamera(Source, FakeCamera.Jpeg with { Producing = false, TablesInStream = false });
 
             using HttpResponseMessage response = await OpenAsync(client, camera.Uuid);
 

@@ -38,15 +38,19 @@ namespace Homespool.Host.E2ETest;
 /// says so. The facts it does reproduce: every path off <c>allow_paths</c> is a bare 404 - read
 /// from <c>compose.yaml</c> rather than copied, so an endpoint added to <c>Go2RtcClient</c> without
 /// being allowed fails here the way it would on a deployment; <c>DELETE /api/streams?name=</c>
-/// answers 200 and removes nothing, only <c>?src=</c> removes; a configuration write replaces the
-/// document and takes every registered stream with it; a WebRTC offer the camera's codecs cannot
-/// meet is refused by a body saying <c>codecs not matched</c>, not by its status; and
-/// <c>stream.mjpeg</c> answers 200 before it knows whether the camera will produce anything.
+/// answers 200 and removes nothing, only <c>?src=</c> removes; a configuration write merges into
+/// the document, and every registered stream survives it and the restart after it; a WebRTC offer
+/// the camera's codecs cannot meet is refused by a body saying <c>codecs not matched</c>, not by
+/// its status; a camera that is not there is answered by <c>frame.jpeg</c> and <c>stream.mjpeg</c>
+/// alike with a 200 and nothing in it; and <c>stream.mjpeg</c>'s frames carry their Huffman tables,
+/// because Homespool's image adds them to the frames a USB camera sends without.
 /// </para>
 /// <para>
 /// <b>A fake encodes a belief about go2rtc, and a belief can be wrong</b> - an empty
-/// <c>streams: {}</c> refusing every stream was one. That is what a test against the pinned image
-/// is for; this is what lets the code on Homespool's side of the API be exercised at all.
+/// <c>streams: {}</c> refusing every stream was one, and a configuration write taking the streams
+/// with it was another. The contract tests run the same assertions against this and against the
+/// real image, so the two cannot drift apart unnoticed; this is what lets the code on Homespool's
+/// side of the API be exercised where no real sidecar runs.
 /// </para>
 /// <para>
 /// <b>Cameras are keyed by the source the sidecar is handed</b>, password included, because that is
@@ -456,8 +460,9 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
                 break;
 
             case { Producing: false }:
-                // Homespool reads only whether this succeeded; the status is this fake's.
-                await AnswerAsync(context, StatusCodes.Status500InternalServerError, "streams: timeout");
+                // A 200 with nothing in it and no content type, which go2rtc gives after about five
+                // seconds of trying the camera. The wait is left out.
+                context.Response.ContentLength = 0;
                 break;
 
             default:
@@ -477,23 +482,26 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
             return;
         }
 
-        // 200 before anything is known about the camera, as go2rtc does - which is why the relay
-        // waits for a whole first part before committing its own answer.
+        // As frame.jpeg: a 200 with nothing in it, so a success status is not a picture - which is
+        // why the relay waits for a whole first part before committing its own answer.
+        if (!camera.Producing)
+        {
+            context.Response.ContentLength = 0;
+            return;
+        }
+
         context.Response.ContentType = $"multipart/x-mixed-replace; boundary={MjpegBoundary}";
         await context.Response.StartAsync();
 
-        if (!camera.Producing)
-        {
-            return;
-        }
+        ReadOnlyMemory<byte> frame = camera.TablesInStream ? FakeCamera.FrameWithTables : FakeCamera.Frame;
 
         Interlocked.Increment(ref _openMjpegStreams);
 
         try
         {
             byte[] part = [.. Encoding.ASCII.GetBytes(
-                               $"--{MjpegBoundary}\r\nContent-Type: image/jpeg\r\nContent-Length: {FakeCamera.Frame.Length}\r\n\r\n"),
-                           .. FakeCamera.Frame.Span,
+                               $"--{MjpegBoundary}\r\nContent-Type: image/jpeg\r\nContent-Length: {frame.Length}\r\n\r\n"),
+                           .. frame.Span,
                            .. "\r\n"u8];
 
             while (!context.RequestAborted.IsCancellationRequested)
@@ -562,14 +570,13 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
             using StreamReader reader = new(context.Request.Body, Encoding.UTF8);
             string document = await reader.ReadToEndAsync(context.RequestAborted);
 
-            // Replaces rather than merges, and the streams go with it. On the real sidecar they
-            // linger in memory until the next restart; here they go at once, which is the state
-            // that restart leaves.
+            // Merged into the document, and the streams survive it. The fake keeps the written
+            // document as its text rather than merging, because the one thing Homespool asks of the
+            // configuration is whether a candidate is in it.
             lock (_gate)
             {
                 _config = document;
                 _configWrites.Add(document);
-                _streams.Clear();
             }
 
             return;
@@ -716,12 +723,24 @@ public enum FakeOfferAnswer
 
 /// <summary>
 /// A camera behind the <see cref="FakeGo2Rtc"/>: what it is encoded as, whether it is producing
-/// pictures, and what the sidecar does with a WebRTC offer for it.
+/// pictures, what the sidecar does with a WebRTC offer for it, and whether its MJPEG stream reaches
+/// Homespool with Huffman tables in every frame.
 /// </summary>
-public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, FakeOfferAnswer Offer)
+/// <param name="Codecs">The video codecs an RTSP <c>DESCRIBE</c> names.</param>
+/// <param name="Producing">Whether it sends pictures at all.</param>
+/// <param name="Offer">What the sidecar does with a WebRTC offer for it.</param>
+/// <param name="TablesInStream">
+/// True for Homespool's own sidecar image, which adds the tables a USB camera's frames leave out.
+/// False for a sidecar that passes such frames on as they came - upstream go2rtc, or ours without
+/// its patch - which Homespool relays untouched too, so Safari shows nothing.
+/// </param>
+public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, FakeOfferAnswer Offer, bool TablesInStream = true)
 {
-    /// <summary>A USB camera's usual shape: Motion-JPEG, producing.</summary>
-    public static readonly FakeCamera Jpeg = new(new HashSet<string>(StringComparer.Ordinal) { "JPEG" }, true, FakeOfferAnswer.Answer);
+    /// <summary>
+    /// A USB camera's usual shape: Motion-JPEG, producing - and never watchable over WebRTC, which
+    /// carries no JPEG, so an offer for it is refused on codecs.
+    /// </summary>
+    public static readonly FakeCamera Jpeg = new(new HashSet<string>(StringComparer.Ordinal) { "JPEG" }, true, FakeOfferAnswer.CodecsNotMatched);
 
     /// <summary>A network camera's usual shape: H.264, producing, and watchable over WebRTC.</summary>
     public static readonly FakeCamera H264 = new(new HashSet<string>(StringComparer.Ordinal) { "H264" }, true, FakeOfferAnswer.Answer);
@@ -741,6 +760,22 @@ public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, Fak
         0xFF, 0xD8,
         0xFF, 0xE0, 0x00, 0x08, (byte)'A', (byte)'V', (byte)'I', (byte)'1', 0x00, 0x00,
         0xFF, 0xC0, 0x00, 0x05, 0x08, 0x00, 0x01,
+        0xFF, 0xDA, 0x00, 0x04, 0x01, 0x02,
+        0x11, 0x22, 0x33,
+        0xFF, 0xD9,
+    };
+
+    /// <summary>
+    /// <see cref="Frame"/> with a Huffman table segment before its scan, as a sidecar that adds them
+    /// sends it. A stand-in segment rather than the standard tables: what is under test is whether one
+    /// is there.
+    /// </summary>
+    public static ReadOnlyMemory<byte> FrameWithTables { get; } = new byte[]
+    {
+        0xFF, 0xD8,
+        0xFF, 0xE0, 0x00, 0x08, (byte)'A', (byte)'V', (byte)'I', (byte)'1', 0x00, 0x00,
+        0xFF, 0xC0, 0x00, 0x05, 0x08, 0x00, 0x01,
+        0xFF, 0xC4, 0x00, 0x05, 0x00, 0x01, 0x02,
         0xFF, 0xDA, 0x00, 0x04, 0x01, 0x02,
         0x11, 0x22, 0x33,
         0xFF, 0xD9,

@@ -1,0 +1,136 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Henrik=20O=2E=20S=C3=B8rensen?= <henrik.sorensen@gmail.com>
+Date: Sun, 27 Sep 2026 14:17:51 +0200
+Subject: [PATCH] Patch into an empty or flow-style parent without breaking the
+ config
+
+Patch inserts a new key by splicing text below its parent, which assumes the
+parent is a block mapping. A parent written as `streams: {}` or `streams: null`
+has no block: the text lands after it and the result no longer parses, so
+PUT /api/streams answers 400 "did not find expected key" or "mapping values
+are not allowed in this context" and the stream is never saved.
+
+Both forms are what re-encoding the config writes for an empty map - PATCH
+/api/config does exactly that - so deleting the last stream and then patching
+the config leaves `streams: null`, and the next stream cannot be added.
+
+Such a parent is now rewritten whole as a block mapping, holding what it held
+plus the new key, or minus a removed one. A bare `streams:` keeps the existing
+path, which already handled it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ pkg/yaml/yaml.go      | 39 +++++++++++++++++++++++++++++++++++++++
+ pkg/yaml/yaml_test.go | 42 ++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 81 insertions(+)
+
+diff --git a/pkg/yaml/yaml.go b/pkg/yaml/yaml.go
+index 4672cb4..20c0459 100644
+--- a/pkg/yaml/yaml.go
++++ b/pkg/yaml/yaml.go
+@@ -66,6 +66,14 @@ func patch(in []byte, path []string, value any) ([]byte, error) {
+ 		return addToEnd(in, path, value)
+ 	}
+ 
++	// A parent written in flow style (`streams: {}`) or as an explicit null (`streams: null`)
++	// has no block to insert a line into: the text below would land after it and the file
++	// would no longer parse. Both are what re-encoding the config writes for an empty map, so
++	// rewrite the parent entry whole instead.
++	if pVal.Style&yaml.FlowStyle != 0 || (pVal.Tag == "!!null" && pVal.Value != "") {
++		return replaceParent(in, pKey, pVal, path[n], value)
++	}
++
+ 	var paste []byte
+ 
+ 	if value != nil {
+@@ -98,6 +106,37 @@ func patch(in []byte, path []string, value any) ([]byte, error) {
+ 	return join(in[:i1], paste, in[i1:]), nil
+ }
+ 
++// replaceParent writes the parent key again as a block mapping, holding what it held with
++// key set to value, or removed when value is nil.
++func replaceParent(in []byte, pKey, pVal *yaml.Node, key string, value any) ([]byte, error) {
++	items := map[string]any{}
++	if pVal.Kind == yaml.MappingNode {
++		if err := pVal.Decode(&items); err != nil {
++			return nil, err
++		}
++	}
++
++	if value != nil {
++		items[key] = value
++	} else {
++		delete(items, key)
++	}
++
++	var paste []byte
++	if len(items) == 0 {
++		paste = []byte(pKey.Value + ":\n")
++	} else {
++		var err error
++		if paste, err = Encode(map[string]any{pKey.Value: items}, 2); err != nil {
++			return nil, err
++		}
++	}
++	paste = addIndent(paste, pKey.Column-1)
++
++	i0, i1 := nodeBounds(in, pKey)
++	return join(in[:i0], paste, in[i1:]), nil
++}
++
+ func findNode(nodes []*yaml.Node, keys []string) (key, value *yaml.Node) {
+ 	for i, name := range keys {
+ 		for j := 0; j < len(nodes); j += 2 {
+diff --git a/pkg/yaml/yaml_test.go b/pkg/yaml/yaml_test.go
+index 264546a..7abc450 100644
+--- a/pkg/yaml/yaml_test.go
++++ b/pkg/yaml/yaml_test.go
+@@ -98,6 +98,48 @@ func TestPatch(t *testing.T) {
+ 			value:  []string{"val1"},
+ 			expect: "streams:\n  camera1: url1\nhomekit:\n  camera1:\n    name: dummy\n    pairings:\n      - val1\n",
+ 		},
++		{
++			name:   "empty flow map",
++			src:    "streams: {}\nwebrtc:\n  candidates: []\n",
++			path:   []string{"streams", "camera1"},
++			value:  []string{"url1"},
++			expect: "streams:\n  camera1:\n    - url1\nwebrtc:\n  candidates: []\n",
++		},
++		{
++			name:   "explicit null",
++			src:    "streams: null\nwebrtc:\n  candidates: []\n",
++			path:   []string{"streams", "camera1"},
++			value:  []string{"url1"},
++			expect: "streams:\n  camera1:\n    - url1\nwebrtc:\n  candidates: []\n",
++		},
++		{
++			name:   "flow map with items",
++			src:    "streams: {camera2: url2}\n",
++			path:   []string{"streams", "camera1"},
++			value:  "url1",
++			expect: "streams:\n  camera1: url1\n  camera2: url2\n",
++		},
++		{
++			name:   "remove from flow map",
++			src:    "streams: {camera1: url1, camera2: url2}\n",
++			path:   []string{"streams", "camera1"},
++			value:  nil,
++			expect: "streams:\n  camera2: url2\n",
++		},
++		{
++			name:   "remove from empty flow map",
++			src:    "streams: {}\n",
++			path:   []string{"streams", "camera1"},
++			value:  nil,
++			expect: "streams:\n",
++		},
++		{
++			name:   "nested empty flow map",
++			src:    "homekit:\n  camera1: {}\nstreams:\n  camera1: url1\n",
++			path:   []string{"homekit", "camera1", "pairings"},
++			value:  []string{"val1"},
++			expect: "homekit:\n  camera1:\n    pairings:\n      - val1\nstreams:\n  camera1: url1\n",
++		},
+ 	}
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {

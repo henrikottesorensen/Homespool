@@ -32,17 +32,25 @@ RUN actual="$(git rev-parse HEAD)" && \
         echo "go2rtc $GO2RTC_VERSION is $actual, not $GO2RTC_COMMIT" >&2; exit 1; \
     fi
 
-# Fixes not in the release, applied after the check so they are applied to exactly that commit. One
-# today: stream.mjpeg passes a USB camera's frames on without the Huffman tables the camera leaves
+# Fixes not in the release, applied after the check so they are applied to exactly that commit, in
+# order - each patch is made on top of the one before it. Each one's message says why in full.
+#
+# 0001: stream.mjpeg passes a USB camera's frames on without the Huffman tables the camera leaves
 # out, which Safari cannot decode - the stream arrives and nothing is painted. frame.jpeg already
 # adds them; the patch makes stream.mjpeg add them too, but only them: frame.jpeg's repair also
 # re-encodes a frame whose header it does not know, which on a stream costs a Raspberry Pi 3 a full
-# core per viewer. The patch's own message has the measurements.
+# core per viewer.
+#
+# 0002: adding a camera to a go2rtc.yaml whose streams entry reads `{}` or `null` wrote a file that
+# no longer parsed, so the camera was refused. That is the seed setup-env.sh writes, and what the
+# config becomes after the last camera is deleted and Homespool next writes its WebRTC settings.
 #
 # Every patch by name, so one added to the directory cannot be skipped by accident; git apply fails
 # the build on a patch that no longer fits.
 COPY patches/0001-Add-missing-Huffman-tables-to-stream.mjpeg-frames.patch /patches/
 RUN git apply --verbose /patches/0001-Add-missing-Huffman-tables-to-stream.mjpeg-frames.patch
+COPY patches/0002-Patch-into-an-empty-or-flow-style-parent.patch /patches/
+RUN git apply --verbose /patches/0002-Patch-into-an-empty-or-flow-style-parent.patch
 
 # The two modules a scanner found fixes for, at their latest - and only those two, because they are
 # the Go team's own and keep their API; the rest stay at what the release was tested with. GOTOOLCHAIN

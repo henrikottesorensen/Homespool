@@ -1,9 +1,13 @@
 // Blows a camera panel up to fill the window, and back.
 //
-// The one rule this turns on: the picture is never moved. A live MJPEG stream lives in that <img>,
-// and reparenting an element restarts its load - which drops the stream, releases the relay's
-// connection, and makes the stream server open the camera again. So this only ever toggles a class
-// on the panel the picture is already in; nothing is appended anywhere.
+// The one rule this turns on: the picture is never moved. It does not need to be: a class on the
+// panel it already sits in fills the window the same way for a polled still, a relayed MJPEG stream
+// and a WebRTC <video>, with nothing to find and put back afterwards. So this only ever toggles a
+// class; nothing is appended anywhere.
+//
+// Not because moving it would restart a live stream: measured in Chromium and WebKit (Playwright's
+// builds), moving the <img> elsewhere in the document keeps its stream playing, with no second
+// request. Safari itself is unmeasured.
 //
 // Not the Fullscreen API either, deliberately. iOS Safari grants fullscreen to <video> alone, and
 // the still and the MJPEG live view are both an <img> - so requestFullscreen would work on a desktop

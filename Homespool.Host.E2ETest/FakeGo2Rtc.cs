@@ -91,6 +91,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     private int _describes;
     private int _openMjpegStreams;
     private bool _configurationUnwritable;
+    private CancellationTokenSource _cut = new();
 
     private FakeGo2Rtc(IReadOnlySet<string> allowedPaths)
     {
@@ -184,6 +185,24 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     /// <summary>MJPEG streams currently held open by a client.</summary>
     public int OpenMjpegStreams => Volatile.Read(ref _openMjpegStreams);
 
+    /// <summary>
+    /// Drops every open MJPEG stream mid-frame, the way a restart of the sidecar or of Homespool
+    /// does: the connection goes, with no closing boundary and no error in the stream.
+    /// </summary>
+    public async Task CutMjpegStreamsAsync()
+    {
+        CancellationTokenSource cut;
+
+        lock (_gate)
+        {
+            cut = _cut;
+            _cut = new CancellationTokenSource();
+        }
+
+        // Not disposed: a stream opening in this same moment may still be linking to its token.
+        await cut.CancelAsync();
+    }
+
     /// <summary>Starts both listeners on loopback ports of their own.</summary>
     public static async Task<FakeGo2Rtc> StartAsync()
     {
@@ -260,6 +279,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await _stopping.CancelAsync();
+        _cut.Dispose();
         _rtsp.Dispose();
 
         try
@@ -466,8 +486,9 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
                 break;
 
             default:
+                // With tables: go2rtc's still endpoint repairs a frame that has none.
                 context.Response.ContentType = "image/jpeg";
-                await context.Response.Body.WriteAsync(FakeCamera.Frame);
+                await context.Response.Body.WriteAsync(FakeCamera.FrameWithTables);
                 break;
         }
     }
@@ -493,9 +514,19 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         context.Response.ContentType = $"multipart/x-mixed-replace; boundary={MjpegBoundary}";
         await context.Response.StartAsync();
 
-        ReadOnlyMemory<byte> frame = camera.TablesInStream ? FakeCamera.FrameWithTables : FakeCamera.Frame;
+        ReadOnlyMemory<byte> frame = camera.Garbled ? new byte[FakeCamera.Frame.Length] :
+                                     camera.TablesInStream ? FakeCamera.FrameWithTables : FakeCamera.Frame;
 
         Interlocked.Increment(ref _openMjpegStreams);
+
+        CancellationToken cut;
+
+        lock (_gate)
+        {
+            cut = _cut.Token;
+        }
+
+        using CancellationTokenSource watching = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, cut);
 
         try
         {
@@ -504,16 +535,21 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
                            .. frame.Span,
                            .. "\r\n"u8];
 
-            while (!context.RequestAborted.IsCancellationRequested)
+            while (!watching.IsCancellationRequested)
             {
-                await context.Response.Body.WriteAsync(part, context.RequestAborted);
-                await context.Response.Body.FlushAsync(context.RequestAborted);
-                await Task.Delay(MjpegFrameInterval, context.RequestAborted);
+                await context.Response.Body.WriteAsync(part, watching.Token);
+                await context.Response.Body.FlushAsync(watching.Token);
+                await Task.Delay(MjpegFrameInterval, watching.Token);
             }
         }
         catch (Exception exception) when (exception is OperationCanceledException or IOException)
         {
-            // The viewer left.
+            // The viewer left, or the stream was cut - in which case the connection goes with it,
+            // as it does when the process at the other end restarts.
+            if (cut.IsCancellationRequested)
+            {
+                context.Abort();
+            }
         }
         finally
         {
@@ -542,6 +578,18 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         {
             case FakeOfferAnswer.Answer:
                 await context.Response.WriteAsJsonAsync(new { type = "answer", sdp = FakeCamera.AnswerSdp });
+                break;
+
+            case FakeOfferAnswer.Hang:
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, context.RequestAborted);
+                }
+                catch (OperationCanceledException)
+                {
+                    // The asker gave up.
+                }
+
                 break;
 
             case FakeOfferAnswer.CodecsNotMatched:
@@ -719,6 +767,12 @@ public enum FakeOfferAnswer
 
     /// <summary>Fails for some other reason.</summary>
     Fail = 3,
+
+    /// <summary>
+    /// Never answers, until the asker gives up - a sidecar wedged on the camera, which is the case a
+    /// viewer's own deadline exists for.
+    /// </summary>
+    Hang = 4,
 }
 
 /// <summary>
@@ -734,7 +788,11 @@ public enum FakeOfferAnswer
 /// False for a sidecar that passes such frames on as they came - upstream go2rtc, or ours without
 /// its patch - which Homespool relays untouched too, so Safari shows nothing.
 /// </param>
-public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, FakeOfferAnswer Offer, bool TablesInStream = true)
+/// <param name="Garbled">
+/// Whether its MJPEG stream carries parts no browser can decode - zeros where the picture should be.
+/// A stream is then open and busy and shows nothing, which is the case a page must not call live.
+/// </param>
+public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, FakeOfferAnswer Offer, bool TablesInStream = true, bool Garbled = false)
 {
     /// <summary>
     /// A USB camera's usual shape: Motion-JPEG, producing - and never watchable over WebRTC, which
@@ -752,34 +810,39 @@ public sealed record FakeCamera(IReadOnlySet<string> Codecs, bool Producing, Fak
     public const string AnswerSdp = "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=fake-go2rtc\r\nt=0 0\r\n";
 
     /// <summary>
-    /// One frame in the AVI1 shape a USB camera sends: SOI, APP0, SOF, SOS, data, EOI, and no Huffman
-    /// tables - so a relayed stream shows whether anything between the sidecar and the viewer changed it.
+    /// One frame as a USB camera sends it over MJPEG: a real 32x24 picture with its Huffman tables
+    /// left out, the AVI1 convention - so a relayed stream shows whether anything between the sidecar
+    /// and the viewer changed it, and a browser shows whether what it was given decodes.
     /// </summary>
-    public static ReadOnlyMemory<byte> Frame { get; } = new byte[]
-    {
-        0xFF, 0xD8,
-        0xFF, 0xE0, 0x00, 0x08, (byte)'A', (byte)'V', (byte)'I', (byte)'1', 0x00, 0x00,
-        0xFF, 0xC0, 0x00, 0x05, 0x08, 0x00, 0x01,
-        0xFF, 0xDA, 0x00, 0x04, 0x01, 0x02,
-        0x11, 0x22, 0x33,
-        0xFF, 0xD9,
-    };
+    /// <remarks>
+    /// <see cref="FrameWithTables"/> with its four DHT segments removed and nothing else changed. The
+    /// encoder's tables are the standard ones of JPEG Annex K, byte for byte the block go2rtc puts back
+    /// into a still, so a repaired frame is the original picture again.
+    /// </remarks>
+    public static ReadOnlyMemory<byte> Frame { get; } = Convert.FromBase64String(
+        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEEx" +
+        "NDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7" +
+        "Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAYACADASIAAhEBAxEB/9oADAMBAAIRAxEAPwDzOGw9q2IbD2rWhsPap4bD2rapi/qnnf5b" +
+        "GGCx3NbUyYbD2rXhsPateGw9qnhsPavNqYv6p53+Wx9pgsdzW1K8Nh7Vrw2HtRRXm4WpL3vl+p+PYStPQnhsPateGw9qKK87" +
+        "C1Je98v1Ps8JWnof/9k=");
 
     /// <summary>
-    /// <see cref="Frame"/> with a Huffman table segment before its scan, as a sidecar that adds them
-    /// sends it. A stand-in segment rather than the standard tables: what is under test is whether one
-    /// is there.
+    /// The same picture with its Huffman tables in place, as <c>frame.jpeg</c> serves it and as
+    /// Homespool's own sidecar image sends it on <c>stream.mjpeg</c>. Encoded by libjpeg with its
+    /// defaults, which are the standard tables.
     /// </summary>
-    public static ReadOnlyMemory<byte> FrameWithTables { get; } = new byte[]
-    {
-        0xFF, 0xD8,
-        0xFF, 0xE0, 0x00, 0x08, (byte)'A', (byte)'V', (byte)'I', (byte)'1', 0x00, 0x00,
-        0xFF, 0xC0, 0x00, 0x05, 0x08, 0x00, 0x01,
-        0xFF, 0xC4, 0x00, 0x05, 0x00, 0x01, 0x02,
-        0xFF, 0xDA, 0x00, 0x04, 0x01, 0x02,
-        0x11, 0x22, 0x33,
-        0xFF, 0xD9,
-    };
+    public static ReadOnlyMemory<byte> FrameWithTables { get; } = Convert.FromBase64String(
+        "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEEx" +
+        "NDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7" +
+        "Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAYACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAA" +
+        "AgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6" +
+        "Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXG" +
+        "x8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREA" +
+        "AgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5" +
+        "OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPE" +
+        "xcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDzOGw9q2IbD2rWhsPap4bD2rapi/qnnf5b" +
+        "GGCx3NbUyYbD2rXhsPateGw9qnhsPavNqYv6p53+Wx9pgsdzW1K8Nh7Vrw2HtRRXm4WpL3vl+p+PYStPQnhsPateGw9qKK87" +
+        "C1Je98v1Ps8JWnof/9k=");
 
     /// <summary>An SDP naming this camera's codecs in one video section, as a DESCRIBE answer carries.</summary>
     public string Sdp()

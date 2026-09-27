@@ -9,7 +9,8 @@
     string Px(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 }
 
-@* Rendered only while the running print has objects that can be cancelled one at a time. The region
+@* Rendered only while the running print has two or more objects that can be cancelled one at a time -
+   see LoadPlateAsync for why one is not enough. The region
    around it stays on the page regardless, so the poll can bring this in when a print starts.
 
    Everything here is loaded by OnGetPlateAsync as well as the full page, because this partial is what
@@ -37,10 +38,11 @@
                         </pattern>
                     </defs>
 
-                    @if (plate.BedStated)
+                    @if (plate.Bed is { } bed)
                     {
-                        <rect class="print-plate-bed" x="@Px(frame.MinX)" y="@Px(frame.MinY)"
-                              width="@Px(frame.MaxX - frame.MinX)" height="@Px(frame.MaxY - frame.MinY)" />
+                        @* Turned over like everything else: the bed's front edge is at the bottom. *@
+                        <rect class="print-plate-bed" x="@Px(bed.MinX)" y="@Px(frame.MaxY + frame.MinY - bed.MaxY)"
+                              width="@Px(bed.MaxX - bed.MinX)" height="@Px(bed.MaxY - bed.MinY)" />
                     }
 
                     @foreach (var item in plate.Objects)

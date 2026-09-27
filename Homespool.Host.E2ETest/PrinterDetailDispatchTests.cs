@@ -434,10 +434,38 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A connected printer running a four-object plate from a file whose header names them, with the
-    /// server having heard the objects declared.
+    /// <b>A print of one object gets no plate at all.</b> Cancelling the only object does not stop
+    /// the print - firmware skips its moves and runs the rest - so the card would offer a worse Stop
+    /// beside the real one. The printer still reports the object; the page declines to show it.
     /// </summary>
-    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> PrintingPlateAsync()
+    [Fact]
+    public async Task ASingleObjectPrintShowsNoPlate()
+    {
+        (Guid uuid, long ownerId, HttpClient client, FakePrinterClient fake, Task run) = await PrintingPlateAsync(objectCount: 1);
+
+        using (client)
+        {
+            await SeedOpenPrintAsync(uuid, ownerId);
+
+            using HttpResponseMessage fragment = await client.GetAsync($"/Printers/Detail/{uuid}?handler=Plate",
+                                                                       TestContext.Current.CancellationToken);
+            string plate = await fragment.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+            plate.Should().NotContain("handler=CancelObject");
+            plate.Should().NotContain("print-plate", "no card is rendered for one object");
+            fake.ReceivedCommands.Select(frame => frame.TryGetJsonCommandName())
+                .Should().NotContain("SEND_FILE_INFO", "a plate that is not shown is not asked for");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// A connected printer running a plate - four objects unless asked for another count - from a
+    /// file whose header names them, with the server having heard the objects declared.
+    /// </summary>
+    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> PrintingPlateAsync(
+        int objectCount = 4)
     {
         const string ObjectsInfo =
             """{"objects":[{"name":"Lid","polygon":[[20,20],[60,20],[60,60],[20,60]]},{"name":"Hinge","polygon":[[80,20],[120,20],[120,60],[80,60]]},{"name":"Base","polygon":[[20,120],[60,120],[60,160],[20,160]]},{"name":"Clip","polygon":[[80,120],[120,120],[120,160],[80,160]]}]}""";
@@ -454,9 +482,9 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
         connected.fake.Device.Storage.AddFile("/usb/PLATE.GCO", size: 1000, modified: 0,
                                               objectsInfo: ObjectsInfo, bedShape: "0x0,250x0,250x210,0x210");
         connected.fake.Device.StartPrint(jobId: 7, path: "/usb/PLATE.GCO");
-        connected.fake.Device.DeclareObjects(4);
+        connected.fake.Device.DeclareObjects(objectCount);
 
-        (await WaitForLiveStateAsync(connected.uuid, live => live.CancellableObjectCount == 4 && live.JobId == 7))
+        (await WaitForLiveStateAsync(connected.uuid, live => live.CancellableObjectCount == objectCount && live.JobId == 7))
             .Should().BeTrue("the fake reports its objects unasked, ahead of its next telemetry");
 
         return connected;

@@ -21,8 +21,8 @@ namespace Homespool.Host.Pages.Printers;
 /// name after the gap on its neighbour's button.
 /// </para>
 /// <para>
-/// <b>Drawn in millimetres, with y turned over.</b> The viewBox is the bed itself, so no scale is
-/// worked out here; the printer's y runs from the front of the bed to the back, and SVG's from the
+/// <b>Drawn in millimetres, with y turned over.</b> The viewBox is the bed - the file's own, else its
+/// model's - widened to any object off it, so no scale is worked out here; the printer's y runs from the front of the bed to the back, and SVG's from the
 /// top of the drawing down, so the back of the bed is drawn at the top - which is how the bed looks
 /// from the front of the machine, and how the slicer shows it.
 /// </para>
@@ -42,11 +42,11 @@ public sealed class PlateDrawing
     /// <summary>The smallest margin, in millimetres, so one small object is not drawn edge to edge.</summary>
     private const double MinimumMargin = 5;
 
-    private PlateDrawing(IReadOnlyList<PlateItem> objects, PlateBounds? frame, bool bedStated)
+    private PlateDrawing(IReadOnlyList<PlateItem> objects, PlateBounds? frame, PlateBounds? bed)
     {
         Objects = objects;
         Frame = frame;
-        BedStated = bedStated;
+        Bed = bed;
     }
 
     /// <summary>Every cancellable object, in id order.</summary>
@@ -59,10 +59,10 @@ public sealed class PlateDrawing
     public PlateBounds? Frame { get; }
 
     /// <summary>
-    /// Whether <see cref="Frame"/> is the bed as the file states it, and so worth drawing as a bed,
-    /// rather than a box fitted around the objects.
+    /// The bed to draw, or null when neither the file nor the printer's model says what it is - the
+    /// drawing is then a box fitted around the objects, with no bed in it.
     /// </summary>
-    public bool BedStated { get; }
+    public PlateBounds? Bed { get; }
 
     /// <summary>The SVG viewBox for <see cref="Frame"/>, invariant-formatted. Empty without one.</summary>
     public string ViewBox => Frame is { } frame ?
@@ -85,7 +85,14 @@ public sealed class PlateDrawing
     /// <param name="objectCount">The printer's own count.</param>
     /// <param name="cancelled">The ids the printer reports cancelled.</param>
     /// <param name="layout">The slicer's description of the plate, or null when none has been read.</param>
-    public static PlateDrawing For(int objectCount, IReadOnlySet<int> cancelled, PlateLayout? layout)
+    /// <param name="modelBed">
+    /// The bed of the printer's model, for a file that does not state its own - every
+    /// <c>.bgcode</c>. The file's own statement wins where there is one, since it describes this print.
+    /// </param>
+    public static PlateDrawing For(int objectCount,
+                                   IReadOnlySet<int> cancelled,
+                                   PlateLayout? layout,
+                                   PlateBounds? modelBed = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(objectCount);
         ArgumentNullException.ThrowIfNull(cancelled);
@@ -103,29 +110,43 @@ public sealed class PlateDrawing
             items.Add(new PlateItem(id, described?.Name, cancelled.Contains(id), outline));
         }
 
-        PlateBounds? frame = matched?.Bed ?? Fit(items);
+        if (!items.Any(item => item.Outline.Count > 0))
+        {
+            // Nothing to draw, so no drawing - a bed with nothing on it says nothing the list does not.
+            return new PlateDrawing(items, frame: null, bed: null);
+        }
 
-        return new PlateDrawing(items, items.Any(item => item.Outline.Count > 0) ? frame : null, matched?.Bed is not null);
+        PlateBounds? bed = matched?.Bed ?? modelBed;
+
+        // The bed and every object, so an object off the bed - a file sliced for another model - is
+        // drawn where it is rather than clipped away.
+        return new PlateDrawing(items, bed is null ? Fit(items) : Union(bed, Extent(items)), bed);
     }
 
-    /// <summary>A box around every outline with a margin, or null when there are none.</summary>
-    private static PlateBounds? Fit(IReadOnlyList<PlateItem> items)
+    /// <summary>The smallest rectangle holding both.</summary>
+    private static PlateBounds Union(PlateBounds a, PlateBounds b)
+    {
+        return new PlateBounds(Math.Min(a.MinX, b.MinX), Math.Min(a.MinY, b.MinY),
+                               Math.Max(a.MaxX, b.MaxX), Math.Max(a.MaxY, b.MaxY));
+    }
+
+    /// <summary>The rectangle holding every outline. Only called with at least one.</summary>
+    private static PlateBounds Extent(IReadOnlyList<PlateItem> items)
     {
         List<PlatePoint> points = items.SelectMany(item => item.Outline).ToList();
 
-        if (points.Count == 0)
-        {
-            return null;
-        }
+        return new PlateBounds(points.Min(p => p.X), points.Min(p => p.Y), points.Max(p => p.X), points.Max(p => p.Y));
+    }
 
-        double minX = points.Min(p => p.X);
-        double maxX = points.Max(p => p.X);
-        double minY = points.Min(p => p.Y);
-        double maxY = points.Max(p => p.Y);
+    /// <summary>A box around every outline with a margin. Only called with at least one.</summary>
+    private static PlateBounds Fit(IReadOnlyList<PlateItem> items)
+    {
+        PlateBounds extent = Extent(items);
 
-        double margin = Math.Max(MinimumMargin, Math.Max(maxX - minX, maxY - minY) * FitMargin);
+        double margin = Math.Max(MinimumMargin,
+                                 Math.Max(extent.MaxX - extent.MinX, extent.MaxY - extent.MinY) * FitMargin);
 
-        return new PlateBounds(minX - margin, minY - margin, maxX + margin, maxY + margin);
+        return new PlateBounds(extent.MinX - margin, extent.MinY - margin, extent.MaxX + margin, extent.MaxY + margin);
     }
 
     /// <summary>The path data for <paramref name="item"/>'s outline, y turned over. Empty without one.</summary>

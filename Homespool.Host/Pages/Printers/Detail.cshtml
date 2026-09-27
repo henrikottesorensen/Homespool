@@ -13,9 +13,10 @@
 }
 
 @* The page answers one question first - what is this printer doing - and everything that is a
-   record rather than a state sits behind a disclosure underneath. The order is deliberate: status,
-   the controls that change it, the temperatures it has been holding, what it can see, what it will
-   do next. *@
+   record rather than a state sits behind a disclosure underneath. The order is deliberate: what it
+   can see, status, the controls that change it, the temperatures it has been holding, what it will
+   do next. The picture leads because it is the one thing here that shows the bed rather than
+   describing it - a status can say "printing" over a print that has come loose. *@
 
 <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2">
     <h1 class="typed-name mb-0">@ViewData["Title"]</h1>
@@ -71,6 +72,98 @@
            about itself in an INFO event. Markup.Code takes it as text, so it is encoded inside the
            <code> rather than read as markup. *@
         @HtmlLocaliser["Printer_PlaintextBody", Markup.Code(Model.Firmware)]
+    </div>
+}
+
+@if (Model.Cameras.Count > 0)
+{
+    @* One figure per camera, first on the page and deliberately the largest thing here: this is
+       what somebody looks at to decide whether a bed is clear, and a status line saying "camera
+       fine" is not the same claim. Below the alerts, which answer something just done. *@
+    <div class="row g-3 mb-3">
+        @for (int index = 0; index < Model.Cameras.Count; index++)
+        {
+            var camera = Model.Cameras[index];
+            <div class="col-md-6">
+                <figure class="mb-0">
+                    @* ratio-16x9 reserves the space before anything loads, so the panel is a box from
+                       the first paint rather than collapsing to nothing and shoving the page down when
+                       a frame arrives. The border makes that reserved space legible as "a picture goes
+                       here" rather than as an empty gap. Both cameras here are 16:9; a camera that is
+                       not will letterbox rather than distort, which object-fit-contain is for. *@
+                    <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden"
+                         data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })"
+                         data-camera-live="@Url.Action("Live", "Camera", new { uuid = camera.Uuid })"
+                         data-camera-webrtc="@Url.Action("WebRtc", "Camera", new { uuid = camera.Uuid })"
+                         data-camera-stream="@Url.Action("Stream", "Camera", new { uuid = camera.Uuid })">
+                        @* Empty until a frame arrives. An img with no src draws nothing, which is
+                           what "no picture yet" should look like - not a broken-image icon. *@
+                        <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
+                        @* The same box as the still, so switching between them moves nothing on the
+                           page. muted and playsinline are what let it start without a gesture and
+                           without iOS taking it fullscreen; there is no audio track to lose. *@
+                        <video class="camera-live-video w-100 h-100 object-fit-contain d-none"
+                               autoplay muted playsinline></video>
+                        <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
+                            @Localiser["Cameras_Capturing"]
+                        </div>
+                        @* In the picture, bottom left, mirroring maximise on the right - which is
+                           where a video player puts a play control. Icon-only, so each state's label
+                           is its accessible name, and the words for the states (connecting, failed,
+                           stalled) go to the note below the frame.
+
+                           Hidden until the server says this camera may be offered. Nothing can report
+                           a camera's codec before something watches it, so the button is offered
+                           optimistically and taken away by the first refusal - a JPEG camera loses it
+                           after one press, saying why. *@
+                        <button type="button" class="camera-overlay-btn camera-live-toggle btn btn-sm d-none"
+                                data-label-watch="@Localiser["Cameras_WatchLive"]"
+                                data-label-stop="@Localiser["Cameras_StopLive"]"
+                                data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
+                                data-label-failed="@Localiser["Cameras_LiveFailed"]"
+                                data-label-live="@Localiser["Cameras_LiveNow"]"
+                                data-label-stalled="@Localiser["Cameras_LiveStalled"]"
+                                aria-label="@Localiser["Cameras_WatchLive"]" title="@Localiser["Cameras_WatchLive"]">
+                            <svg class="camera-live-icon" width="18" height="18" viewBox="0 0 16 16"
+                                 fill="currentColor" aria-hidden="true">
+                                <path class="camera-live-play" d="M4.5 2.5v11l9-5.5z" />
+                                <path class="camera-live-stop d-none" d="M3.5 3.5h9v9h-9z" />
+                            </svg>
+                        </button>
+
+                        @* On the picture rather than in the controls row, which is where a video
+                           player puts it. Hidden until the script binds it: without JavaScript it
+                           would do nothing, and a control that cannot act explains nothing. *@
+                        <button type="button" class="camera-overlay-btn camera-maximise btn btn-sm d-none" hidden
+                                data-label-maximise="@Localiser["Cameras_Maximise"]"
+                                data-label-restore="@Localiser["Cameras_Restore"]"
+                                aria-label="@Localiser["Cameras_Maximise"]" title="@Localiser["Cameras_Maximise"]">
+                            <svg class="camera-maximise-icon" width="18" height="18" viewBox="0 0 16 16"
+                                 fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+                                <path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" />
+                            </svg>
+                        </button>
+                    </div>
+                    <figcaption class="d-flex justify-content-between small text-body-secondary mt-1">
+                        <span>@Model.CameraName(camera, index)</span>
+                        <span class="camera-age"></span>
+                    </figcaption>
+
+                    @* Hidden until the server says this camera may be offered - per camera, and asked
+                       rather than rendered, because the answer can change while the page is open.
+                       Nothing can report a camera's codec before something watches it (measured on
+                       the board: the stream server names none for a stream nobody is consuming), so
+                       the button is offered optimistically and taken away by the first refusal. A
+                       camera that sends JPEG loses it after one press, saying why. *@
+                    @* Only the note now. The button moved into the picture, beside maximise - see
+                       the .camera-view block above. This stays outside because it is prose: a
+                       failure reason, or why a JPEG camera just lost its button. *@
+                    <div class="camera-live-controls d-none mt-1">
+                        <span class="camera-live-note small text-body-secondary" role="status"></span>
+                    </div>
+                </figure>
+            </div>
+        }
     </div>
 }
 
@@ -258,98 +351,6 @@
      data-live-interval="30000">
     <partial name="_TemperatureGraph" model="Model" />
 </div>
-
-@if (Model.Cameras.Count > 0)
-{
-    @* One figure per camera. The picture is deliberately the largest thing here: this is what
-       somebody looks at to decide whether a bed is clear, and a status line saying "camera fine" is
-       not the same claim. *@
-    <div class="row g-3 mb-4">
-        @for (int index = 0; index < Model.Cameras.Count; index++)
-        {
-            var camera = Model.Cameras[index];
-            <div class="col-md-6">
-                <figure class="mb-0">
-                    @* ratio-16x9 reserves the space before anything loads, so the panel is a box from
-                       the first paint rather than collapsing to nothing and shoving the page down when
-                       a frame arrives. The border makes that reserved space legible as "a picture goes
-                       here" rather than as an empty gap. Both cameras here are 16:9; a camera that is
-                       not will letterbox rather than distort, which object-fit-contain is for. *@
-                    <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden"
-                         data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })"
-                         data-camera-live="@Url.Action("Live", "Camera", new { uuid = camera.Uuid })"
-                         data-camera-webrtc="@Url.Action("WebRtc", "Camera", new { uuid = camera.Uuid })"
-                         data-camera-stream="@Url.Action("Stream", "Camera", new { uuid = camera.Uuid })">
-                        @* Empty until a frame arrives. An img with no src draws nothing, which is
-                           what "no picture yet" should look like - not a broken-image icon. *@
-                        <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
-                        @* The same box as the still, so switching between them moves nothing on the
-                           page. muted and playsinline are what let it start without a gesture and
-                           without iOS taking it fullscreen; there is no audio track to lose. *@
-                        <video class="camera-live-video w-100 h-100 object-fit-contain d-none"
-                               autoplay muted playsinline></video>
-                        <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
-                            @Localiser["Cameras_Capturing"]
-                        </div>
-                        @* In the picture, bottom left, mirroring maximise on the right - which is
-                           where a video player puts a play control. Icon-only, so each state's label
-                           is its accessible name, and the words for the states (connecting, failed,
-                           stalled) go to the note below the frame.
-
-                           Hidden until the server says this camera may be offered. Nothing can report
-                           a camera's codec before something watches it, so the button is offered
-                           optimistically and taken away by the first refusal - a JPEG camera loses it
-                           after one press, saying why. *@
-                        <button type="button" class="camera-overlay-btn camera-live-toggle btn btn-sm d-none"
-                                data-label-watch="@Localiser["Cameras_WatchLive"]"
-                                data-label-stop="@Localiser["Cameras_StopLive"]"
-                                data-label-connecting="@Localiser["Cameras_LiveConnecting"]"
-                                data-label-failed="@Localiser["Cameras_LiveFailed"]"
-                                data-label-live="@Localiser["Cameras_LiveNow"]"
-                                data-label-stalled="@Localiser["Cameras_LiveStalled"]"
-                                aria-label="@Localiser["Cameras_WatchLive"]" title="@Localiser["Cameras_WatchLive"]">
-                            <svg class="camera-live-icon" width="18" height="18" viewBox="0 0 16 16"
-                                 fill="currentColor" aria-hidden="true">
-                                <path class="camera-live-play" d="M4.5 2.5v11l9-5.5z" />
-                                <path class="camera-live-stop d-none" d="M3.5 3.5h9v9h-9z" />
-                            </svg>
-                        </button>
-
-                        @* On the picture rather than in the controls row, which is where a video
-                           player puts it. Hidden until the script binds it: without JavaScript it
-                           would do nothing, and a control that cannot act explains nothing. *@
-                        <button type="button" class="camera-overlay-btn camera-maximise btn btn-sm d-none" hidden
-                                data-label-maximise="@Localiser["Cameras_Maximise"]"
-                                data-label-restore="@Localiser["Cameras_Restore"]"
-                                aria-label="@Localiser["Cameras_Maximise"]" title="@Localiser["Cameras_Maximise"]">
-                            <svg class="camera-maximise-icon" width="18" height="18" viewBox="0 0 16 16"
-                                 fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
-                                <path d="M6 2H2v4M10 2h4v4M6 14H2v-4M10 14h4v-4" />
-                            </svg>
-                        </button>
-                    </div>
-                    <figcaption class="d-flex justify-content-between small text-body-secondary mt-1">
-                        <span>@Model.CameraName(camera, index)</span>
-                        <span class="camera-age"></span>
-                    </figcaption>
-
-                    @* Hidden until the server says this camera may be offered - per camera, and asked
-                       rather than rendered, because the answer can change while the page is open.
-                       Nothing can report a camera's codec before something watches it (measured on
-                       the board: the stream server names none for a stream nobody is consuming), so
-                       the button is offered optimistically and taken away by the first refusal. A
-                       camera that sends JPEG loses it after one press, saying why. *@
-                    @* Only the note now. The button moved into the picture, beside maximise - see
-                       the .camera-view block above. This stays outside because it is prose: a
-                       failure reason, or why a JPEG camera just lost its button. *@
-                    <div class="camera-live-controls d-none mt-1">
-                        <span class="camera-live-note small text-body-secondary" role="status"></span>
-                    </div>
-                </figure>
-            </div>
-        }
-    </div>
-}
 
 <h2 class="h5">@Localiser["Common_Queue"]</h2>
 

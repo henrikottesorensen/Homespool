@@ -21,7 +21,8 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 compose="$script_dir/../compose.yaml"
 container_name="homespool-go2rtc-contract"
-state_dir="${TMPDIR:-/tmp}/homespool-go2rtc-contract"
+# Where the last run's files are, so this run and stop-go2rtc.sh can remove them.
+run_record="${TMPDIR:-/tmp}/homespool-go2rtc-contract.dir"
 
 # Must match Go2RtcFixture.cs.
 username="homespool"
@@ -55,13 +56,22 @@ if docker ps -a --format '{{.Names}}' | grep -qx "$container_name"; then
     docker rm -f "$container_name" >/dev/null
 fi
 
-rm -rf "$state_dir"
+# A fresh directory each run, never the last one recreated, and never beneath one that is removed:
+# Docker Desktop's file sharing on a Mac goes on serving a container the directory that was deleted
+# from under a path - the sidecar then finds no configuration file where the host shows one - and
+# refuses to mount anything new beneath a parent it saw deleted.
+if [ -f "$run_record" ]; then
+    rm -rf "$(cat "$run_record")"
+fi
+
+state_dir="$(mktemp -d "${TMPDIR:-/tmp}/homespool-go2rtc-contract.XXXXXX")"
+printf '%s' "$state_dir" > "$run_record"
 mkdir -p "$state_dir/config" "$state_dir/secrets"
 
-# Not the `streams: {}` setup-env.sh seeds: go2rtc refuses every stream PUT into a file reading that,
-# and this suite is about the API, not that seed. A non-empty block mapping with no streams key is
-# accepted by both the startup PATCH and a PUT.
-printf 'webrtc:\n  candidates: []\n' > "$state_dir/config/go2rtc.yaml"
+# Exactly what setup-env.sh seeds a new deployment with, so the contract starts where a deployment
+# does. Upstream go2rtc refuses every stream PUT into a file reading `streams: {}`; the image's own
+# patch fixes that, and an image without it fails the registration tests here, as it should.
+printf 'streams: {}\n' > "$state_dir/config/go2rtc.yaml"
 
 printf '%s' "$password" > "$state_dir/secrets/GO2RTC_PASSWORD"
 

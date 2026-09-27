@@ -135,6 +135,27 @@ public sealed class CameraRegistrationTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A sidecar that takes the source but cannot save it to go2rtc.yaml is not the address's fault,
+    /// and the page must not send anybody to check the address - it says where the fault is instead.
+    /// </summary>
+    [Fact]
+    public async Task AnUnsavedSidecarConfigurationIsNotBlamedOnTheAddress()
+    {
+        _sidecar.FailConfigurationWrites();
+
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-unsaved@example.com");
+
+        using (client)
+        {
+            await CameraPage.AddNetworkCameraAsync(_factory, client, user, "unsaved", Source);
+
+            (await CameraPage.AlertAsync(client, "warning")).Should().Be(
+                CameraPage.Localised(_factory, "Cameras_StreamServerConfigurationNotSaved"));
+        }
+    }
+
+    /// <summary>
     /// Removing a camera removes its stream from the sidecar - by <c>src</c>, the one form of the
     /// delete that actually deletes.
     /// </summary>

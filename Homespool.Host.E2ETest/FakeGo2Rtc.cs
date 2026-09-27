@@ -86,6 +86,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     private int _restarts;
     private int _describes;
     private int _openMjpegStreams;
+    private bool _configurationUnwritable;
 
     private FakeGo2Rtc(IReadOnlySet<string> allowedPaths)
     {
@@ -240,6 +241,18 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Makes <c>PUT /api/streams</c> fail to save, as go2rtc does when it cannot patch or write
+    /// go2rtc.yaml: the stream exists until a restart, and the answer is a 400 about the file.
+    /// </summary>
+    public void FailConfigurationWrites()
+    {
+        lock (_gate)
+        {
+            _configurationUnwritable = true;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _stopping.CancelAsync();
@@ -388,10 +401,12 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         if (HttpMethods.IsPut(request.Method) && name is not null && source is not null)
         {
             bool refused;
+            bool unsaved;
 
             lock (_gate)
             {
                 refused = _refusedSources.Contains(source);
+                unsaved = _configurationUnwritable;
 
                 if (!refused)
                 {
@@ -399,9 +414,15 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
                 }
             }
 
+            // go2rtc's own texts, newline and all: an error of its streams package for a source it
+            // will not serve, and the YAML error of patching go2rtc.yaml for a file it cannot save.
             if (refused)
             {
-                await AnswerAsync(context, StatusCodes.Status400BadRequest, "source not allowed");
+                await AnswerAsync(context, StatusCodes.Status400BadRequest, "streams: source from insecure producer\n");
+            }
+            else if (unsaved)
+            {
+                await AnswerAsync(context, StatusCodes.Status400BadRequest, "yaml: line 1: did not find expected key\n");
             }
 
             return;

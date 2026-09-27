@@ -161,7 +161,8 @@ public sealed class CameraStreamReconciler : BackgroundService
                     }
                 }
 
-                if (await _streamServer.PutStreamAsync(camera.Uuid, source, stoppingToken).ConfigureAwait(false))
+                if (await _streamServer.PutStreamAsync(camera.Uuid, source, stoppingToken).ConfigureAwait(false) ==
+                    StreamRegistration.Registered)
                 {
                     restored++;
                 }

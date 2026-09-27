@@ -522,13 +522,22 @@ public class CameraService
     /// </remarks>
     private async Task<CameraSaveOutcome> RegisterAndProveAsync(Camera camera, CancellationToken cancellationToken)
     {
-        bool registered = await _streamServer
-                                .PutStreamAsync(camera.Uuid, _credentials.Reveal(camera), cancellationToken)
-                                .ConfigureAwait(false);
+        StreamRegistration registration = await _streamServer
+                                                .PutStreamAsync(camera.Uuid, _credentials.Reveal(camera), cancellationToken)
+                                                .ConfigureAwait(false);
 
-        if (!registered)
+        // Each has its own words because each sends somebody to a different place: the address, the
+        // sidecar's configuration file, or whether the sidecar is running at all.
+        switch (registration)
         {
-            return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerRefused");
+            case StreamRegistration.Registered:
+                break;
+            case StreamRegistration.SourceRefused:
+                return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerRefused");
+            case StreamRegistration.ConfigurationNotSaved:
+                return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerConfigurationNotSaved");
+            default:
+                return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerUnavailable");
         }
 
         // Null only when the sidecar has no credential, which PutStreamAsync above has already

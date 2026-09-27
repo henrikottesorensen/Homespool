@@ -1957,7 +1957,13 @@
     <value>Kameraer er utilgængelige, indtil go2rtc-tjenesten har fået tildelt et brugernavn og en adgangskode. Sæt GO2RTC_USERNAME og GO2RTC_PASSWORD i .env, eller kør setup-env.sh, og genstart. Uden dem er tjenesten åben for alt, der kan nå den, så Homespool bruger den ikke.</value>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
-    <value>Gemt, men go2rtc-tjenesten ville ikke tage imod denne kilde. Tjek adressen, og om den stadig kører.</value>
+    <value>Gemt, men go2rtc-tjenesten ville ikke tage imod denne kilde. Tjek adressen.</value>
+  </data>
+  <data name="Cameras_StreamServerConfigurationNotSaved" xml:space="preserve">
+    <value>Gemt, men go2rtc-tjenesten kunne ikke tilføje kameraet til sin konfigurationsfil. Det er ikke adressen, der er noget galt med: en administrator kan finde årsagen i Homespools log.</value>
+  </data>
+  <data name="Cameras_StreamServerUnavailable" xml:space="preserve">
+    <value>Gemt, men go2rtc-tjenesten kunne ikke nås. Tjek, om den kører.</value>
   </data>
   <data name="Cameras_NoPictureLocal" xml:space="preserve">
     <value>Gemt, men der kom intet billede tilbage. Tjek, at go2rtc-tjenesten i compose.yaml kan nå videoenheder, og at intet andet på denne maskine allerede bruger det.</value>

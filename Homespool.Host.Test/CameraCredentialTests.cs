@@ -80,10 +80,10 @@ public sealed class CameraCredentialTests : IDisposable
     {
         (Go2RtcClient client, IHttpClientFactory factory) = Build(credentialed: false);
 
-        bool registered = await client.PutStreamAsync(
+        StreamRegistration registration = await client.PutStreamAsync(
             Guid.NewGuid(), "http://go2rtc:1984/api/stream.mjpeg?src=exec:whoami", CancellationToken.None);
 
-        registered.Should().BeFalse();
+        registration.Should().Be(StreamRegistration.Unavailable);
 
         factory.DidNotReceive().CreateClient(Arg.Any<string>());
     }

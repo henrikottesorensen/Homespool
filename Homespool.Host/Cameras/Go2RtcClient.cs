@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.Mime;
@@ -58,6 +59,12 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// they arrive in has no limit, and can repeat what a camera or a viewer's offer said.
     /// </summary>
     private const int MaxLoggedAnswerLength = 256;
+
+    /// <summary>
+    /// How every error of go2rtc's streams package begins, and so how a 400 from registering a
+    /// stream says the source was refused rather than the sidecar's configuration file unwritable.
+    /// </summary>
+    private const string RefusedSourcePrefix = "streams:";
 
     /// <summary>
     /// How often to say that the sidecar has no credential. Once a minute, because the frame endpoint
@@ -196,13 +203,26 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     }
 
     /// <summary>
-    /// Registers or replaces a stream. Returns false if the sidecar refused or could not be reached.
+    /// Registers or replaces a stream, and says what became of it.
     /// </summary>
-    public async Task<bool> PutStreamAsync(Guid streamName, string source, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <b>A 400 means one of two things, and the body says which.</b> go2rtc refuses a source it will
+    /// not serve with an error of its streams package - <c>streams: source not supported</c>,
+    /// <c>streams: source from insecure producer</c> - and answers the same status when it took the
+    /// source but could not save it: a YAML error from patching its configuration file, or the error
+    /// of writing it. Read in go2rtc 1.9.14's PUT handler, which returns the error of streams.New
+    /// and then of app.PatchConfig, each as its own text; measured for both.
+    /// <para>
+    /// <b>The body is logged, never shown.</b> None of go2rtc's texts for this repeats the source,
+    /// but the source here carries the camera's password, so it is taken out of the text anyway
+    /// before it reaches the log.
+    /// </para>
+    /// </remarks>
+    public async Task<StreamRegistration> PutStreamAsync(Guid streamName, string source, CancellationToken cancellationToken)
     {
         if (!IsUsable())
         {
-            return false;
+            return StreamRegistration.Unavailable;
         }
 
         Uri request = new(
@@ -219,17 +239,40 @@ public sealed class Go2RtcClient : ICameraCodecProbe
 
             if (response.IsSuccessStatusCode)
             {
-                return true;
+                return StreamRegistration.Registered;
+            }
+
+            string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            string reason = LogText.Clean(body.Replace(source, "<source>", StringComparison.Ordinal).Trim(),
+                                          MaxLoggedAnswerLength);
+
+            if (response.StatusCode != HttpStatusCode.BadRequest)
+            {
+                _logger.LogWarning(
+                    "The stream server answered {StatusCode} registering camera {Stream}: {Reason}",
+                    (int)response.StatusCode,
+                    streamName,
+                    reason);
+
+                return StreamRegistration.Unavailable;
             }
 
             // The sidecar refuses sources it will not serve - exec: and echo: both answer 400,
-            // measured 2026-08-08 - so a rejection here is information rather than a fault.
-            _logger.LogWarning(
-                "The stream server refused camera {Stream}: {StatusCode}.",
-                streamName,
-                (int)response.StatusCode);
+            // measured 2026-08-08 - so a refused source is information rather than a fault. A 400
+            // that is not about the source is the sidecar's own file, and is a fault.
+            if (body.StartsWith(RefusedSourcePrefix, StringComparison.Ordinal))
+            {
+                _logger.LogWarning("The stream server refused camera {Stream}'s source: {Reason}", streamName, reason);
+                return StreamRegistration.SourceRefused;
+            }
 
-            return false;
+            _logger.LogError(
+                "The stream server took camera {Stream} but could not save it to its configuration file, " +
+                "so it is lost when the stream server restarts: {Reason}",
+                streamName,
+                reason);
+
+            return StreamRegistration.ConfigurationNotSaved;
         }
         catch (HttpRequestException exception)
         {
@@ -238,12 +281,12 @@ public sealed class Go2RtcClient : ICameraCodecProbe
                 streamName,
                 exception.Message);
 
-            return false;
+            return StreamRegistration.Unavailable;
         }
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning("The stream server timed out registering camera {Stream}.", streamName);
-            return false;
+            return StreamRegistration.Unavailable;
         }
     }
 

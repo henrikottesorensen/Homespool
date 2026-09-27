@@ -2028,7 +2028,15 @@
     <comment>go2rtc is the service's own name and stays as it is. GO2RTC_USERNAME, GO2RTC_PASSWORD, .env and setup-env.sh are file and variable names and are not translated.</comment>
   </data>
   <data name="Cameras_StreamServerRefused" xml:space="preserve">
-    <value>Saved, but the go2rtc service would not accept this source. Check the address, and that it is still running.</value>
+    <value>Saved, but the go2rtc service would not accept this source. Check the address.</value>
+    <comment>go2rtc is the service&apos;s own name and stays as it is.</comment>
+  </data>
+  <data name="Cameras_StreamServerConfigurationNotSaved" xml:space="preserve">
+    <value>Saved, but the go2rtc service could not write this camera into its configuration file. The address is not the problem: an administrator will find the reason in Homespool&apos;s log.</value>
+    <comment>go2rtc is the service&apos;s own name and stays as it is. The fault is in the service, not in what the user typed.</comment>
+  </data>
+  <data name="Cameras_StreamServerUnavailable" xml:space="preserve">
+    <value>Saved, but the go2rtc service could not be reached. Check that it is running.</value>
     <comment>go2rtc is the service&apos;s own name and stays as it is.</comment>
   </data>
   <data name="Cameras_NoPictureLocal" xml:space="preserve">

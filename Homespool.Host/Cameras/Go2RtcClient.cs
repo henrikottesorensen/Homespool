@@ -54,12 +54,6 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     private const string CodecsNotMatched = "codecs not matched";
 
     /// <summary>
-    /// The port the sidecar's RTSP side listens on. go2rtc's default, and Homespool owns the
-    /// sidecar's configuration, so nothing moves it.
-    /// </summary>
-    private const int RtspPort = 8554;
-
-    /// <summary>
     /// How much of the sidecar's own words is worth a log line. Its refusals are a sentence; the body
     /// they arrive in has no limit, and can repeat what a camera or a viewer's offer said.
     /// </summary>
@@ -783,6 +777,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         }
 
         Uri baseAddress = new(BaseAddress());
+        int rtspPort = _options.CurrentValue.StreamServerRtspPort;
         string name = streamName.ToString("D", CultureInfo.InvariantCulture);
 
         using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -791,12 +786,12 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         try
         {
             using System.Net.Sockets.TcpClient tcp = new();
-            await tcp.ConnectAsync(baseAddress.Host, RtspPort, deadline.Token).ConfigureAwait(false);
+            await tcp.ConnectAsync(baseAddress.Host, rtspPort, deadline.Token).ConfigureAwait(false);
 
             System.IO.Stream wire = tcp.GetStream();
 
             byte[] request = Encoding.ASCII.GetBytes(
-                $"DESCRIBE rtsp://{baseAddress.Host}:{RtspPort}/{name} RTSP/1.0\r\n" +
+                $"DESCRIBE rtsp://{baseAddress.Host}:{rtspPort}/{name} RTSP/1.0\r\n" +
                 "CSeq: 1\r\n" +
                 "Accept: application/sdp\r\n" +
                 "User-Agent: Homespool\r\n\r\n");

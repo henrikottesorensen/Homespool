@@ -32,6 +32,19 @@ public class CameraOptions
     public string StreamServerBaseUrl { get; set; } = "http://go2rtc:1984";
 
     /// <summary>
+    /// Port the sidecar's RTSP side listens on, on the host <see cref="StreamServerBaseUrl"/> names.
+    /// Default 8554, go2rtc's own.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not in <c>.env</c> or <c>compose.yaml</c>, and nothing in a deployment should set it</b>:
+    /// Homespool owns the sidecar's configuration, so the port never moves there. It is bindable so
+    /// that a stand-in sidecar can listen on a port of its own - every test host on one machine
+    /// shares the one loopback address, and a fixed port would let only one of them run at a time.
+    /// </remarks>
+    [Range(1, 65_535)]
+    public int StreamServerRtspPort { get; set; } = 8554;
+
+    /// <summary>
     /// Username for the stream server's API, or empty for none. Default empty.
     /// </summary>
     /// <remarks>

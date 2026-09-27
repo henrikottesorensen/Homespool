@@ -10,4 +10,17 @@ namespace Homespool.FakePrinter;
 /// does not model, because nothing on a fake drive is a non-printable file unless a test puts one
 /// there.
 /// </param>
-public sealed record FakeStorageEntry(string Path, long Size, long Modified, bool IsFolder);
+public sealed record FakeStorageEntry(string Path, long Size, long Modified, bool IsFolder)
+{
+    /// <summary>
+    /// The file's <c>objects_info</c> header, verbatim - the slicer's JSON inside a string - or null
+    /// for a file sliced without cancel-object labels. Rendered into its <c>FILE_INFO</c> the way
+    /// firmware relays any header it does not read.
+    /// </summary>
+    public string? ObjectsInfo { get; init; }
+
+    /// <summary>
+    /// The file's <c>bed_shape</c> header, or null. Only a plain-gcode file carries one on hardware.
+    /// </summary>
+    public string? BedShape { get; init; }
+}

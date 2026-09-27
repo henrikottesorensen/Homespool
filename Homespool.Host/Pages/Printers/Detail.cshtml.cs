@@ -74,6 +74,8 @@ public class DetailModel : PageModel
     private readonly PrinterConnectionRegistry _connectionRegistry;
     private readonly PrinterCommandService _commands;
     private readonly PrintStopService _stops;
+    private readonly PrintObjectService _objects;
+    private readonly PrinterPlateReader _plates;
     private readonly PrinterStatusText _statusText;
     private readonly PrinterIntentText _intents;
     private readonly RelativeTimeText _ages;
@@ -99,6 +101,8 @@ public class DetailModel : PageModel
                        PrinterConnectionRegistry connectionRegistry,
                        PrinterCommandService commands,
                        PrintStopService stops,
+                       PrintObjectService objects,
+                       PrinterPlateReader plates,
                        PrinterStatusText statusText,
                        PrinterIntentText intents,
                        RelativeTimeText ages,
@@ -124,6 +128,8 @@ public class DetailModel : PageModel
         _connectionRegistry = connectionRegistry;
         _commands = commands;
         _stops = stops;
+        _objects = objects;
+        _plates = plates;
         _statusText = statusText;
         _intents = intents;
         _ages = ages;
@@ -281,6 +287,33 @@ public class DetailModel : PageModel
     /// <see cref="ActivePrint"/>, which is as old as the page; the service decides again on the post.
     /// </remarks>
     public bool CanStop => CanControlPrinter || (CanPrint && ActivePrint?.QueuedByUserId == _readerId);
+
+    /// <summary>
+    /// Whether the reader may cancel objects of the running print: it is theirs, and they hold
+    /// <see cref="Capability.Print"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The rule <see cref="PrintObjectService"/> enforces</b>, and narrower than
+    /// <see cref="CanStop"/>: <see cref="Capability.ControlPrinter"/> does not extend it to somebody
+    /// else's print, and a print with no open row - started at the panel - is nobody's here. Read from
+    /// <see cref="ActivePrint"/>; the service decides again on the post.
+    /// </remarks>
+    public bool CanCancelObjects => Connected && CanPrint && ActivePrintIsReaders;
+
+    /// <summary>Whether the reader queued the print this printer has open.</summary>
+    public bool ActivePrintIsReaders => ActivePrint is { } print && print.QueuedByUserId == _readerId;
+
+    /// <summary>
+    /// The running print's objects, or null when it has none that can be cancelled one at a time -
+    /// which is also the answer outside a print.
+    /// </summary>
+    public PlateDrawing? Plate { get; private set; }
+
+    /// <summary>
+    /// Whether the plate's names and outlines are still being asked for, rather than absent from the
+    /// file. The list is shown by number meanwhile.
+    /// </summary>
+    public bool PlatePending { get; private set; }
 
     /// <summary>The nozzle, and whether it is climbing towards a setpoint or sitting on one.</summary>
     public HeaterReading Nozzle { get; private set; } = new(null, null, HeaterState.Unknown);
@@ -697,6 +730,10 @@ public class DetailModel : PageModel
 
         await LoadChartAsync(uuid, caller, cancellationToken);
 
+        // Without waiting on the printer: a plate not yet read renders by number, and the plate's own
+        // poll fills in the names within seconds rather than the whole page stalling for them.
+        await LoadPlateAsync(caller, TimeSpan.Zero, cancellationToken);
+
         return Page();
     }
 
@@ -827,6 +864,43 @@ public class DetailModel : PageModel
         return Partial("_TemperatureGraph", this);
     }
 
+    /// <summary>
+    /// The plate on its own, for the poll that keeps it current.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its own region rather than part of the status card</b>, because its rows carry buttons: the
+    /// card is replaced every two seconds, and a button replaced under a finger is the mis-press
+    /// <c>live-region.js</c>'s unchanged-skip exists to prevent. This region's markup changes only when
+    /// an object is cancelled or the print changes, so almost every poll is skipped.
+    /// </para>
+    /// <para>
+    /// <b>It may wait a few seconds for the printer</b>, the first time a print is looked at: the names
+    /// and outlines are asked of the printer once per print, and this is where that is paid. Every
+    /// later poll is answered from what was read.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnGetPlateAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        if (!await LoadStatusAsync(uuid, caller, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        await LoadPlateAsync(caller, PrinterPlateReader.RenderWait, cancellationToken);
+
+        return Partial("_PrintPlate", this);
+    }
+
     /// <summary>Everything the status card shows. Shared by the page and its poll.</summary>
     /// <returns>False when there is no such printer, or none this caller may read.</returns>
     private async Task<bool> LoadStatusAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
@@ -880,6 +954,36 @@ public class DetailModel : PageModel
         WaitingOn = waiting is null ? null : _errors.For(waiting);
 
         return true;
+    }
+
+    /// <summary>
+    /// Works out the plate from the live state <see cref="LoadStatusAsync"/> read, and the slicer's
+    /// description of it where the printer has given one.
+    /// </summary>
+    /// <param name="caller">Who is looking; a first read of the plate is asked under their permission.</param>
+    /// <param name="wait">How long to wait for a read still in flight.</param>
+    /// <param name="cancellationToken">The request's own.</param>
+    private async Task LoadPlateAsync(Caller caller, TimeSpan wait, CancellationToken cancellationToken)
+    {
+        PrinterLiveState? live = Statistics.LiveState;
+
+        // Only inside a print. The printer sends an empty set when one ends, but a count stored before a
+        // restart would otherwise outlive a print that ended while nobody was listening.
+        if (live is not { CancellableObjectCount: > 0 and int count } ||
+            live.Status is not (PrinterStatus.Printing or PrinterStatus.Paused or PrinterStatus.Attention))
+        {
+            Plate = null;
+            PlatePending = false;
+
+            return;
+        }
+
+        PlateReading reading = live.JobId is { } jobId && Connected ?
+            await _plates.ReadAsync(Statistics.Printer.Id, jobId, caller, wait, cancellationToken) :
+            new PlateReading(null, Settled: false);
+
+        Plate = PlateDrawing.For(count, CancelledObjects.Parse(live.CancelledObjectIds), reading.Layout);
+        PlatePending = !reading.Settled;
     }
 
     /// <summary>Reads the temperature window and works out its drawing.</summary>
@@ -1021,6 +1125,52 @@ public class DetailModel : PageModel
     public Task<IActionResult> OnPostStopAsync(Guid uuid, CancellationToken cancellationToken)
     {
         return SendIntentAsync(uuid, new StopPrint(), cancellationToken, _stops.StopAsync);
+    }
+
+    /// <summary>Stops printing one object of the running print.</summary>
+    /// <param name="uuid">The printer.</param>
+    /// <param name="objectId">The object, <b>0-based</b> as the printer reports it - what the form posts, never the number shown beside it.</param>
+    /// <param name="cancellationToken">The request's own.</param>
+    public Task<IActionResult> OnPostCancelObjectAsync(Guid uuid, int objectId, CancellationToken cancellationToken)
+    {
+        return SendObjectAsync(uuid, objectId, new CancelObject(objectId), _objects.CancelAsync, "Printers_ObjectCancelled", cancellationToken);
+    }
+
+    /// <summary>Takes back a cancel, so the object prints again from the current layer.</summary>
+    /// <param name="uuid">The printer.</param>
+    /// <param name="objectId">The object, 0-based, as <see cref="OnPostCancelObjectAsync"/>.</param>
+    /// <param name="cancellationToken">The request's own.</param>
+    public Task<IActionResult> OnPostUncancelObjectAsync(Guid uuid, int objectId, CancellationToken cancellationToken)
+    {
+        return SendObjectAsync(uuid, objectId, new UncancelObject(objectId), _objects.UncancelAsync, "Printers_ObjectUncancelled", cancellationToken);
+    }
+
+    /// <summary>
+    /// The half the two object handlers share: send through <see cref="PrintObjectService"/>, which
+    /// decides whether the print is the caller's, and report the printer's answer.
+    /// </summary>
+    /// <remarks>
+    /// The success sentence names the object by the number the page shows beside it, 1-based, so it
+    /// can be matched to the drawing; the refusal is the shared one, with the printer's own words.
+    /// </remarks>
+    private Task<IActionResult> SendObjectAsync(Guid uuid,
+                                                int objectId,
+                                                IPrinterIntent intent,
+                                                Func<int, int, Caller, CancellationToken, Task<CommandOutcome?>> send,
+                                                string successKey,
+                                                CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (caller, printer) =>
+        {
+            CommandOutcome? outcome = await send(printer.Id, objectId, caller, cancellationToken);
+
+            return outcome?.EventType switch
+            {
+                PrinterEventType.Rejected or PrinterEventType.Failed =>
+                    (_localiser["Printers_CommandRejected", _intents.For(intent), outcome!.Reason ?? string.Empty].Value, false),
+                _ => (_localiser[successKey, (objectId + 1).ToString(CultureInfo.CurrentCulture)].Value, true),
+            };
+        }, cancellationToken);
     }
 
     /// <summary>
@@ -1376,7 +1526,7 @@ public class DetailModel : PageModel
                                       CommandResponseTimedOutException or CommandSendTimedOutException or
                                       NoToolPickedException or FilamentTypeUnknownException or
                                       PrinterHasQueuedWorkException or NoSuchToolException or
-                                      ToolNotSpecifiedException)
+                                      ToolNotSpecifiedException or NoSuchObjectException)
         {
             // These are refusals about what the printer is holding rather than what it is doing, and
             // every one is reachable from a rendered control: the queued-work case

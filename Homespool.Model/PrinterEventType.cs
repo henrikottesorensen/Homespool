@@ -104,7 +104,13 @@ public enum PrinterEventType
     SlotEvent = 17,
 
     /// <summary>
-    /// Whether the current action/dialog can be cancelled has changed.
+    /// The objects on the plate, and which of them are cancelled, as the printer now reports them -
+    /// the whole set every time, never a difference.
     /// </summary>
+    /// <remarks>
+    /// About cancelling individual objects mid-print, not about a dialog: the wire word
+    /// <c>CANCELABLE_CHANGED</c> reads as if it were. It is also the answer to a cancel-object
+    /// command, carrying that command's id.
+    /// </remarks>
     CancelableChanged = 18,
 }

@@ -351,6 +351,12 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 // outside /usb is refused rather than answered.
                 return SendFileInfo(frame, device);
 
+            case "CANCEL_OBJECT":
+                return CancelObject(frame, device, cancelled: true);
+
+            case "UNCANCEL_OBJECT":
+                return CancelObject(frame, device, cancelled: false);
+
             case "START_CONNECT_DOWNLOAD":
             case "START_INLINE_DOWNLOAD":
                 // Both spellings, one handler, because Connect sends whichever and the printer
@@ -488,6 +494,38 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     }
 
     /// <summary>
+    /// Answers a <c>CANCEL_OBJECT</c> or <c>UNCANCEL_OBJECT</c> with the whole cancelled set, under the
+    /// command's own id.
+    /// </summary>
+    /// <remarks>
+    /// <b>Never <c>FINISHED</c></b>: <c>handle_cancel_object_command</c> confirms by rendering
+    /// <c>CANCELABLE_CHANGED</c>, even when the flag was already where it was asked to be
+    /// (planner.cpp:826-847), and the handler is synchronous, so the answer carries the new state.
+    /// The one refusal is a build without the feature.
+    /// </remarks>
+    private IReadOnlyList<PlannedReply> CancelObject(ServerCommandFrame frame, FakeDevice device, bool cancelled)
+    {
+        if (ObjectIdArgument.TryParse(frame.Payload) is not { } id)
+        {
+            return [Reject(frame.CommandId, device, "Missing or broken parameters")];
+        }
+
+        if (!device.CancelObjectSupported)
+        {
+            return [Reject(frame.CommandId, device, "Not supported on this printer type")];
+        }
+
+        device.SetObjectCancelled(id, cancelled);
+
+        return
+        [
+            Reply(EventMessageBuilder.BuildCancelableChanged(device.WireState, device.ObjectCount,
+                                                             device.CancelledObjects, frame.CommandId,
+                                                             device.JobId)),
+        ];
+    }
+
+    /// <summary>
     /// Answers a <c>SEND_FILE_INFO</c>: a directory enumerates, a file describes itself, and a path
     /// outside <c>/usb</c> is refused before anything is rendered.
     /// </summary>
@@ -528,7 +566,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
             ] :
             [
                 Reply(EventMessageBuilder.BuildFileInfo(device.WireState, path, entry.Size, entry.Modified,
-                                                        frame.CommandId))
+                                                        frame.CommandId, entry.ObjectsInfo, entry.BedShape))
             ];
     }
 

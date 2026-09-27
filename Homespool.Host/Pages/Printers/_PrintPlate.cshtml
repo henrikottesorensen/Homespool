@@ -1,0 +1,150 @@
+@using System.Globalization
+@using System.Linq
+@model DetailModel
+@{
+    var uuid = Model.Statistics.Printer.Uuid;
+    var plate = Model.Plate;
+
+    @* SVG parses only a full stop, whatever the reader's culture. *@
+    string Px(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+}
+
+@* Rendered only while the running print has objects that can be cancelled one at a time. The region
+   around it stays on the page regardless, so the poll can bring this in when a print starts.
+
+   Everything here is loaded by OnGetPlateAsync as well as the full page, because this partial is what
+   that poll renders - a value only the full page set would blank on the first refresh. *@
+@if (plate is not null)
+{
+    <h2 class="h5">@Localiser["Printers_Plate"]</h2>
+
+    <div class="row g-3 mb-4 align-items-start">
+        @if (plate.Frame is { } frame)
+        {
+            @* The drawing is the bed as seen from the front of the machine, numbered as the printer's
+               own menu numbers the objects. It carries no controls - those are the list beside it,
+               which works with a keyboard and a screen reader, and which a tap on a small outline
+               would be a worse way to reach. *@
+            <div class="col-md-6">
+                <svg class="print-plate-svg" role="img"
+                     aria-label="@Localiser["Printers_PlateLabel", plate.CancelledCount, plate.Objects.Count]"
+                     viewBox="@plate.ViewBox" preserveAspectRatio="xMinYMin meet">
+                    <defs>
+                        <pattern id="print-plate-hatch" patternUnits="userSpaceOnUse"
+                                 width="@Px(plate.LabelSize / 2)" height="@Px(plate.LabelSize / 2)"
+                                 patternTransform="rotate(45)">
+                            <line class="print-plate-hatch-line" x1="0" y1="0" x2="0" y2="@Px(plate.LabelSize / 2)" />
+                        </pattern>
+                    </defs>
+
+                    @if (plate.BedStated)
+                    {
+                        <rect class="print-plate-bed" x="@Px(frame.MinX)" y="@Px(frame.MinY)"
+                              width="@Px(frame.MaxX - frame.MinX)" height="@Px(frame.MaxY - frame.MinY)" />
+                    }
+
+                    @foreach (var item in plate.Objects)
+                    {
+                        var path = plate.PathFor(item);
+
+                        if (path.Length == 0)
+                        {
+                            continue;
+                        }
+
+                        var (labelX, labelY) = plate.LabelFor(item);
+
+                        @* The <text> sits inside a <g> because Razor owns a bare <text> tag - see
+                           _TemperatureGraph. *@
+                        <g class="print-plate-object @(item.Cancelled ? "print-plate-cancelled" : string.Empty)">
+                            <title>@(item.Name is null ? item.Number.ToString(CultureInfo.CurrentCulture) : Localiser["Printers_ObjectNamed", item.Number, item.Name].Value)</title>
+                            <path class="print-plate-outline" d="@path" />
+                            <g>
+                                <text class="print-plate-number" x="@labelX" y="@labelY"
+                                      font-size="@Px(plate.LabelSize)"
+                                      text-anchor="middle" dominant-baseline="central">@item.Number</text>
+                            </g>
+                        </g>
+                    }
+                </svg>
+            </div>
+        }
+
+        <div class="@(plate.Frame is null ? "col-12" : "col-md-6")">
+            @if (Model.PlatePending)
+            {
+                <p class="text-body-secondary small">@Localiser["Printers_PlatePending"]</p>
+            }
+            else if (plate.Frame is null && plate.Objects.All(item => item.Name is null))
+            {
+                <p class="text-body-secondary small">@Localiser["Printers_PlateUndescribed"]</p>
+            }
+
+            <table class="table table-sm w-auto align-middle mb-2">
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">@Localiser["Common_Name"]</th>
+                        <th scope="col">@Localiser["Common_Status"]</th>
+                        @if (Model.CanCancelObjects)
+                        {
+                            <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in plate.Objects)
+                    {
+                        @* The number a person sees counts from one, as the printer's menu does. The
+                           id the form posts is the printer's own, from zero - never the number. *@
+                        var described = item.Name is null ?
+                            item.Number.ToString(CultureInfo.CurrentCulture) :
+                            Localiser["Printers_ObjectNamed", item.Number, item.Name].Value;
+
+                        <tr class="@(item.Cancelled ? "text-body-secondary" : string.Empty)">
+                            <td>@item.Number</td>
+                            <td class="typed-name">@(item.Name ?? "—")</td>
+                            <td>@(item.Cancelled ? Localiser["Printers_ObjectCancelledState"] : Localiser["Printers_ObjectPrinting"])</td>
+                            @if (Model.CanCancelObjects)
+                            {
+                                <td>
+                                    @if (item.Cancelled)
+                                    {
+                                        <form method="post" asp-page-handler="UncancelObject" asp-route-uuid="@uuid" class="d-inline">
+                                            <input type="hidden" name="objectId" value="@item.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                                    aria-label="@Localiser["Printers_UncancelObjectLabel", described]">
+                                                @Localiser["Printers_UncancelObject"]
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        @* Asks first: anything skipped while an object is cancelled
+                                           is gone, and undoing only brings back what is still to
+                                           come. The question is read from data-confirm by site.js
+                                           rather than written into an onsubmit, because the name in
+                                           it came from somebody's file. *@
+                                        <form method="post" asp-page-handler="CancelObject" asp-route-uuid="@uuid" class="d-inline"
+                                              data-confirm="@Localiser["Printers_CancelObjectConfirm", described]">
+                                            <input type="hidden" name="objectId" value="@item.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                    aria-label="@Localiser["Printers_CancelObjectLabel", described]">
+                                                @Localiser["Common_Cancel"]
+                                            </button>
+                                        </form>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (Model.CanPrint && !Model.ActivePrintIsReaders)
+            {
+                <p class="text-body-secondary small mb-0">@Localiser["Printers_PlateNotYours"]</p>
+            }
+        </div>
+    </div>
+}

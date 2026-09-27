@@ -482,6 +482,8 @@ namespace Homespool.Data.Migrations
                     Status = table.Column<string>(type: "TEXT", nullable: false),
                     AttentionCode = table.Column<int>(type: "INTEGER", nullable: true),
                     AttentionText = table.Column<string>(type: "TEXT", nullable: true),
+                    CancellableObjectCount = table.Column<int>(type: "INTEGER", nullable: true),
+                    CancelledObjectIds = table.Column<string>(type: "TEXT", nullable: true),
                     JobId = table.Column<int>(type: "INTEGER", nullable: true),
                     Progress = table.Column<int>(type: "INTEGER", nullable: true),
                     TimePrinting = table.Column<int>(type: "INTEGER", nullable: true),

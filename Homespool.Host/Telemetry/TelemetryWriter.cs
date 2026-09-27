@@ -1275,6 +1275,22 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             dirtyPrinterIds.Add(item.PrinterId);
         }
 
+        if (record.Cancellable is { } cancellable)
+        {
+            // Replaced whole rather than merged: every report is the entire plate. A null record
+            // said nothing about the plate and leaves the stored one standing, which matters because
+            // the printer does not repeat it on reconnect.
+            if (!cache.TryGetValue(item.PrinterId, out LiveStateCacheEntry? entry))
+            {
+                entry = await HydrateAsync(item.PrinterId, cancellationToken);
+                cache[item.PrinterId] = entry;
+            }
+
+            entry.State.CancellableObjectCount = cancellable.ObjectCount;
+            entry.State.CancelledObjectIds = Model.CancelledObjects.Format(cancellable.CancelledIds);
+            dirtyPrinterIds.Add(item.PrinterId);
+        }
+
         pendingEvents.Add(new PrinterEvent
         {
             PrinterId = item.PrinterId,

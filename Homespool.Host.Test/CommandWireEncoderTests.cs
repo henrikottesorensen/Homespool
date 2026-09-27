@@ -225,6 +225,35 @@ public class CommandWireEncoderTests
         kwargs.EnumerateObject().Should().ContainSingle();
     }
 
+    /// <summary>
+    /// <c>CANCEL_OBJECT</c> is exactly the frame firmware's command table reads - one kwarg, <c>id</c>,
+    /// a number (<c>command.cpp:184</c>, <c>:408</c>) - byte for byte, since the kwarg's type is what
+    /// firmware rejects a command over.
+    /// </summary>
+    [Fact]
+    public void EncodeWritesCancelObjectsIdAsItsOnlyKwarg()
+    {
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(7, new CancelObject { Id = 4 });
+
+        // Assert
+        Encoding.UTF8.GetString(frame.AsSpan(9)).Should().Be("""{"command":"CANCEL_OBJECT","args":[],"kwargs":{"id":4}}""");
+    }
+
+    /// <summary>
+    /// <c>UNCANCEL_OBJECT</c> is the same frame under its own word - one handler in firmware with the
+    /// flag the other way round.
+    /// </summary>
+    [Fact]
+    public void EncodeWritesUncancelObjectsIdAsItsOnlyKwarg()
+    {
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(7, new UncancelObject { Id = 0 });
+
+        // Assert
+        Encoding.UTF8.GetString(frame.AsSpan(9)).Should().Be("""{"command":"UNCANCEL_OBJECT","args":[],"kwargs":{"id":0}}""");
+    }
+
     // ---------- escaping, which firmware only half decodes ----------
 
     /// <summary>

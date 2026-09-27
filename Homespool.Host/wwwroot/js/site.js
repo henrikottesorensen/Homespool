@@ -163,21 +163,25 @@
 // Withholding the submit until the script has run would break Delete outright for anyone it never
 // reached - a worse outcome than losing a confirmation for an action the page's own button asked
 // for, and one they cannot diagnose.
+//
+// Listened for on the document rather than on each form, because some of these forms arrive after
+// the page has loaded: live-region.js replaces a polled region's markup, and a listener attached to
+// the form it replaced goes with it - the printer page's cancel-object buttons would have posted
+// without asking from the first refresh on. A submit bubbles, so one listener here sees every form
+// that is on the page when it is pressed.
 (function () {
     "use strict";
 
-    const forms = document.querySelectorAll("[data-confirm]");
+    document.addEventListener("submit", function (event) {
+        const form = event.target;
 
-    if (!forms.length) {
-        return;
-    }
+        if (!(form instanceof HTMLFormElement) || form.dataset.confirm === undefined) {
+            return;
+        }
 
-    Array.prototype.forEach.call(forms, function (form) {
-        form.addEventListener("submit", function (event) {
-            if (!window.confirm(form.dataset.confirm)) {
-                event.preventDefault();
-            }
-        });
+        if (!window.confirm(form.dataset.confirm)) {
+            event.preventDefault();
+        }
     });
 })();
 

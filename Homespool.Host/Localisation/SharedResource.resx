@@ -3048,4 +3048,55 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Error_BackToStart" xml:space="preserve">
     <value>Back to the front page</value>
   </data>
+  <data name="Printers_Plate" xml:space="preserve">
+    <value>Objects in this print</value>
+  </data>
+  <data name="Printers_PlateLabel" xml:space="preserve">
+    <value>Where each object sits on the bed. {0} of {1} cancelled.</value>
+  </data>
+  <data name="Printers_PlatePending" xml:space="preserve">
+    <value>Fetching the objects’ names from the printer…</value>
+  </data>
+  <data name="Printers_PlateUndescribed" xml:space="preserve">
+    <value>The file does not describe its objects, so they are numbered as the printer’s own menu numbers them.</value>
+  </data>
+  <data name="Printers_PlateNotYours" xml:space="preserve">
+    <value>Only whoever queued this print from Homespool can cancel its objects.</value>
+  </data>
+  <data name="Printers_ObjectPrinting" xml:space="preserve">
+    <value>Printing</value>
+  </data>
+  <data name="Printers_ObjectCancelledState" xml:space="preserve">
+    <value>Cancelled</value>
+  </data>
+  <data name="Printers_ObjectNamed" xml:space="preserve">
+    <value>{0} ({1})</value>
+  </data>
+  <data name="Printers_UncancelObject" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="Printers_CancelObjectLabel" xml:space="preserve">
+    <value>Cancel object {0}</value>
+  </data>
+  <data name="Printers_UncancelObjectLabel" xml:space="preserve">
+    <value>Undo cancelling object {0}</value>
+  </data>
+  <data name="Printers_CancelObjectConfirm" xml:space="preserve">
+    <value>Cancel object {0}? The rest of the print carries on, and anything skipped while it is cancelled is not printed later.</value>
+  </data>
+  <data name="Printers_ObjectCancelled" xml:space="preserve">
+    <value>Object {0} cancelled. The rest of the print carries on.</value>
+  </data>
+  <data name="Printers_ObjectUncancelled" xml:space="preserve">
+    <value>Object {0} will print again from the current layer.</value>
+  </data>
+  <data name="Error_NoSuchObject" xml:space="preserve">
+    <value>This print has no object {0} that can be cancelled.</value>
+  </data>
+  <data name="Intent_CancelObject" xml:space="preserve">
+    <value>Cancel object</value>
+  </data>
+  <data name="Intent_UncancelObject" xml:space="preserve">
+    <value>Undo cancelling an object</value>
+  </data>
 </root>

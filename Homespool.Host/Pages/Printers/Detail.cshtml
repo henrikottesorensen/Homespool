@@ -240,6 +240,15 @@
     </form>
 }
 
+@* The running print's objects, one at a time. Its own region and its own poll, because its rows carry
+   buttons: inside the status card they would be replaced under a finger every two seconds. Empty
+   outside a print, and still on the page then, so the poll brings it in when one starts. *@
+<div data-live-region
+     data-live-url="@Url.Page("Detail", "Plate", new { uuid })"
+     data-live-interval="5000">
+    <partial name="_PrintPlate" model="Model" />
+</div>
+
 <h2 class="h5">@Localiser["Printers_Temperature"]</h2>
 
 @* A slower poll than the status card above it: the window can be a whole print, and redrawing that

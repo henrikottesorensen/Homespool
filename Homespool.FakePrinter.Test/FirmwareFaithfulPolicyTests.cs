@@ -492,6 +492,93 @@ public class FirmwareFaithfulPolicyTests
         data.TryGetProperty("display_name", out _).Should().BeFalse();
     }
 
+    // ---------- CANCEL_OBJECT / UNCANCEL_OBJECT (planner.cpp:826-847) ----------
+
+    /// <summary>
+    /// A cancel is answered with the whole set, under the command's own id and never as
+    /// <c>FINISHED</c> - the one shape the server can read the new state from.
+    /// </summary>
+    [Fact]
+    public void CancelObjectAnswersWithTheWholeSet()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.StartPrint(jobId: 3, path: "/usb/PLATE.GCO");
+        _device.DeclareObjects(3);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(ObjectCommand(60, "CANCEL_OBJECT", 1), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("CANCELABLE_CHANGED");
+        reply.RootElement.GetProperty("command_id").GetUInt32().Should().Be(60);
+
+        JsonElement objects = reply.RootElement.GetProperty("data").GetProperty("objects");
+        objects.GetArrayLength().Should().Be(3, "every declared object, not only the one that changed");
+        objects[1].GetProperty("canceled").GetBoolean().Should().BeTrue();
+        objects[0].GetProperty("canceled").GetBoolean().Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Un-cancelling takes the flag back, and repeating either is answered rather than refused -
+    /// firmware confirms with the current state even when nothing changed.
+    /// </summary>
+    [Fact]
+    public void CancellingIsIdempotentAndUndone()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.StartPrint(jobId: 3);
+        _device.DeclareObjects(3);
+
+        policy.Answer(ObjectCommand(61, "CANCEL_OBJECT", 2), _device);
+        policy.Answer(ObjectCommand(62, "CANCEL_OBJECT", 2), _device);
+        _device.CancelledObjects.Should().Equal([2]);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(ObjectCommand(63, "UNCANCEL_OBJECT", 2), _device);
+
+        _device.CancelledObjects.Should().BeEmpty();
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("CANCELABLE_CHANGED");
+    }
+
+    /// <summary>A build without the feature refuses in firmware's words - the iX, per <c>M486.cpp</c>.</summary>
+    [Fact]
+    public void ABuildWithoutTheFeatureRefuses()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.CancelObjectSupported = false;
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(ObjectCommand(64, "CANCEL_OBJECT", 0), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        reply.RootElement.GetProperty("reason").GetString().Should().Be("Not supported on this printer type");
+    }
+
+    /// <summary>
+    /// The objects are reported unasked when a print declares them and again, empty, when it ends -
+    /// the only two reports a server gets without sending anything.
+    /// </summary>
+    [Fact]
+    public void ObjectsAreReportedWhenDeclaredAndClearedWhenThePrintEnds()
+    {
+        _device.StartPrint(jobId: 3);
+        _device.DeclareObjects(2);
+        _device.TryStop().Should().BeTrue();
+
+        _device.PendingEvents.Should().HaveCount(2);
+
+        using JsonDocument declared = JsonDocument.Parse(_device.PendingEvents.Dequeue());
+        using JsonDocument cleared = JsonDocument.Parse(_device.PendingEvents.Dequeue());
+
+        declared.RootElement.GetProperty("data").GetProperty("objects").GetArrayLength().Should().Be(2);
+        cleared.RootElement.GetProperty("data").GetProperty("objects").GetArrayLength().Should().Be(0);
+        cleared.RootElement.TryGetProperty("command_id", out _).Should().BeFalse("nobody asked");
+    }
+
+    private static ServerCommandFrame ObjectCommand(uint id, string name, int objectId)
+    {
+        return RawJsonFrame(id, $$$"""{"command": "{{{name}}}", "args": [], "kwargs": {"id": {{{objectId}}} }}""");
+    }
+
     private static ServerCommandFrame SendJobInfoCommand(uint id, int jobId)
     {
         return RawJsonFrame(id,

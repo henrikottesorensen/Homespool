@@ -531,6 +531,62 @@ body.camera-maximised-open {
   }
 }
 
+/* The plate: the running print's objects on the bed, drawn in millimetres. Like the graph it fills
+   its column and takes its proportions from the viewBox - here the bed's own. Capped so a large bed
+   does not push the object list off a laptop screen. */
+.print-plate-svg {
+  width: 100%;
+  max-height: 22rem;
+  height: auto;
+}
+
+/* Strokes in real pixels rather than millimetres: the drawing is scaled to its column, and a
+   one-millimetre line would be a hairline on a phone and a crayon on a wide screen. */
+.print-plate-bed,
+.print-plate-outline {
+  vector-effect: non-scaling-stroke;
+}
+
+.print-plate-bed {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: .35;
+}
+
+/* An object still printing, in the brand blue the graph spends on the bed. */
+.print-plate-outline {
+  fill: var(--homespool-blue);
+  fill-opacity: .25;
+  stroke: var(--homespool-blue);
+  stroke-width: 1.5;
+}
+
+/* A cancelled one keeps its outline, so the plate still reads as the plate, and is hatched in grey
+   rather than coloured: it is not an error, it is something that will not be made. */
+.print-plate-cancelled .print-plate-outline {
+  fill: url(#print-plate-hatch);
+  fill-opacity: 1;
+  stroke: currentColor;
+  stroke-dasharray: 4 3;
+  opacity: .55;
+}
+
+.print-plate-hatch-line {
+  stroke: currentColor;
+  stroke-width: .6;
+  opacity: .6;
+}
+
+.print-plate-number {
+  fill: currentColor;
+  font-weight: 600;
+}
+
+.print-plate-cancelled .print-plate-number {
+  opacity: .55;
+}
+
 /* History and setup, closed by default. The summary is styled as a heading because that is what it
    replaced - three <h2>s and seventy rows of table underneath them. */
 .printer-archive {

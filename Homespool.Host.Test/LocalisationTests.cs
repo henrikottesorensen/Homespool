@@ -457,6 +457,11 @@ public sealed class LocalisationTests
             // AdminUsers_StateLockedOut is a state word in a column about somebody else. The first
             // can reasonably become "You are locked out" and the second cannot.
             "Locked out",
+
+            // PrinterStatus_Printing is what a printer is doing; Printers_ObjectPrinting is what is
+            // happening to one object of its print. Danish already tells them apart - the printer
+            // "Printer", the object "Printes" - so one key could not serve both.
+            "Printing",
         ];
 
         IReadOnlyDictionary<string, string> english = ReadResources("SharedResource.resx");

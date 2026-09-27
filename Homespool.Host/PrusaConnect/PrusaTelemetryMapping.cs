@@ -215,7 +215,66 @@ public static class PrusaTelemetryMapping
             Identity = identity,
             DriveListing = ToDriveListing(eventDto),
             Attention = ToAttention(eventDto),
+            Cancellable = ToCancellable(eventDto),
         };
+    }
+
+    /// <summary>
+    /// The plate's cancellable objects a <c>CANCELABLE_CHANGED</c> reports, or null when the event is
+    /// another kind or its <c>data</c> cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Firmware renders one entry per object, ids ascending from zero</b>
+    /// (<c>render.cpp:580-590</c> at <c>v6.10.1</c>), so the entry count is the object count and an id
+    /// outside it is not something firmware sends.
+    /// </para>
+    /// <para>
+    /// <b>All or nothing</b>, unlike <c>ToAttention</c>'s per-field leniency. The update replaces the
+    /// stored set, so reading the parts that parse would store a set the printer never reported -
+    /// and it could read an object as not cancelled when it is. A null keeps whatever was stored,
+    /// which is at worst out of date rather than invented.
+    /// </para>
+    /// </remarks>
+    private static PrinterCancellableUpdate? ToCancellable(EventDTO dto)
+    {
+        if (dto.EventType != Model.PrinterEventType.CancelableChanged ||
+            dto.Data is not { ValueKind: JsonValueKind.Object } element ||
+            !element.TryGetProperty("objects", out JsonElement objects) ||
+            objects.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        int count = objects.GetArrayLength();
+
+        if (count > PrusaConnectConstants.MaxCancellableObjects)
+        {
+            return null;
+        }
+
+        List<int> cancelled = [];
+
+        foreach (JsonElement entry in objects.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Object ||
+                !entry.TryGetProperty("id", out JsonElement idElement) ||
+                idElement.ValueKind != JsonValueKind.Number ||
+                !idElement.TryGetInt32(out int id) ||
+                id < 0 || id >= count ||
+                !entry.TryGetProperty("canceled", out JsonElement cancelledElement) ||
+                cancelledElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                return null;
+            }
+
+            if (cancelledElement.GetBoolean())
+            {
+                cancelled.Add(id);
+            }
+        }
+
+        return new PrinterCancellableUpdate(count, cancelled);
     }
 
     /// <summary>

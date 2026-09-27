@@ -189,7 +189,10 @@
                             show("Camera not answering");
                             age.textContent = "";
                         } else {
-                            age.textContent = describeAge(lastFrameAt);
+                            // Through the guard, not around it: a live view that has just ended
+                            // takes its picture down, and until a still replaces it the last frame's
+                            // age would describe something nobody can see.
+                            showAge();
                         }
                     }
 

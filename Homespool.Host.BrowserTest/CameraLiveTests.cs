@@ -138,6 +138,50 @@ public sealed class CameraLiveTests(Browsers browsers)
     }
 
     /// <summary>
+    /// A view that has ended shows no age until a still is back: the last still before the view began
+    /// is not on screen, and its age would describe nothing anybody can see.
+    /// </summary>
+    /// <remarks>
+    /// The gap a Homespool restart leaves, reproduced: the server's cached still outlives nothing - its
+    /// maximum age is four seconds here, and the view plays past it - and the sidecar has no still to
+    /// give when the stream is cut. Then the sidecar recovers, and the still and its age come back.
+    /// </remarks>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task AnEndedViewShowsNoAgeUntilAStillIsBack(string engine)
+    {
+        await using CameraScenario scenario = await CameraScenario.OpenAsync(
+            browsers, engine, "live-gap", FakeCamera.Jpeg,
+            configure: factory => factory.ConfigurationOverrides["Cameras:MaxAgeSeconds"] = "4");
+
+        // A still first, as a person watching the page would have had: without one there is no
+        // earlier frame to put an age to, and nothing here would be tested.
+        await Expect(scenario.Image).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await scenario.WatchLiveAsync();
+
+        // Past the cached still's maximum age, with the poller yielded to the live view.
+        await Task.Delay(5_000, TestContext.Current.CancellationToken);
+
+        scenario.Host.Sidecar.AddCamera(scenario.Source, FakeCamera.Jpeg with { Producing = false });
+        await scenario.Host.Sidecar.CutMjpegStreamsAsync();
+
+        await Expect(scenario.LiveNote).ToHaveTextAsync(await scenario.LabelAsync("stalled"), new() { Timeout = 10_000 });
+
+        // Real time, long enough for the resumed poller to have asked, been told nothing is current,
+        // and written its caption.
+        await Task.Delay(3_000, TestContext.Current.CancellationToken);
+
+        await Expect(scenario.Image).ToBeHiddenAsync();
+        await Expect(scenario.Caption).ToBeEmptyAsync();
+
+        scenario.Host.Sidecar.AddCamera(scenario.Source, FakeCamera.Jpeg);
+
+        await Expect(scenario.Image).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await Expect(scenario.Caption).Not.ToBeEmptyAsync();
+    }
+
+    /// <summary>
     /// A view whose connection to Homespool breaks - a restart or a redeploy - says the picture
     /// stopped, instead of leaving "Live" over a broken picture.
     /// </summary>

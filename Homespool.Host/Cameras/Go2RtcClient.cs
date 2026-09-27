@@ -689,15 +689,19 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>This REPLACES the document rather than merging into it</b>, measured 2026-08-09 — a PATCH
-    /// carrying only a <c>webrtc</c> block wiped every registered stream, which survived in memory
-    /// until the next restart and then vanished. So the caller must expect to lose the streams and
-    /// have a plan for them; <see cref="WebRtcConfigurer"/> runs before
-    /// <see cref="CameraStreamReconciler"/> for exactly that reason, which turns the replacement
-    /// from a hazard into the ordinary path.
+    /// <b>Merged into the document, not written over it</b> - measured 2026-09-27 on 1.9.14, and what
+    /// go2rtc's PATCH handler does: maps are merged key by key and a list replaces the list it lands
+    /// on, so a write carrying only a <c>webrtc</c> block leaves every registered stream where it
+    /// was. The write reaches the file only, and takes effect at the next <see cref="RestartAsync"/>.
     /// </para>
     /// <para>
-    /// What is <i>not</i> lost is the credential and the path allowlist: both are passed on the
+    /// <b>It is a read-modify-write of the sidecar's file that does not take the lock registering a
+    /// stream takes.</b> A stream registered while it runs can be dropped from the file, and is then
+    /// gone at the restart that follows the write - which is why <see cref="WebRtcConfigurer"/>
+    /// runs before <see cref="CameraStreamReconciler"/>.
+    /// </para>
+    /// <para>
+    /// The credential and the path allowlist are not in this document at all: both are passed on the
     /// sidecar's command line and were deliberately never written to this file.
     /// </para>
     /// </remarks>

@@ -87,10 +87,13 @@ public static class Registration
         services.AddScoped<CameraService>();
 
         // Ordered, and the order is the design rather than the sequence they were written in.
-        // Writing the WebRTC address replaces the sidecar's configuration rather than merging into
-        // it, so every registered stream goes with it - and the reconciler putting them back is what
-        // makes that acceptable. IHostedService.StartAsync is awaited in registration order, which is
-        // why the configurer is one; two BackgroundServices would start together on .NET 10 and race.
+        // Writing the WebRTC address is a read-modify-write of the sidecar's configuration file that
+        // does not take the lock a stream registration takes, so a stream the reconciler registered
+        // during it could be dropped from the file and lost at the restart that follows. The
+        // configurer does not wait for that restart to finish, so the reconciler can still find the
+        // sidecar restarting, and then registers nothing until a camera is next saved.
+        // IHostedService.StartAsync is awaited in registration order, which is why the configurer is
+        // one; two BackgroundServices would start together on .NET 10 and race.
         services.AddHostedService<WebRtcConfigurer>();
 
         // Runs once at startup, after MigrateHomespoolData has made the tables exist.

@@ -16,9 +16,10 @@ namespace Homespool.Host.Cameras;
 /// <remarks>
 /// <para>
 /// <b>Two callers, one writer.</b> <see cref="WebRtcConfigurer"/> calls this at startup and the
-/// live-view settings page calls it when somebody changes the STUN choice. Both halves have to be
-/// written together because the write replaces the document rather than merging into it, so a caller
-/// that knew only its own half would silently clear the other.
+/// live-view settings page calls it when somebody changes the STUN choice. Both halves are written
+/// every time, whichever one changed: the sidecar merges a written document key by key but replaces a
+/// list outright, so <c>candidates</c> and <c>ice_servers</c> each have to arrive whole - and an
+/// empty <c>ice_servers</c> is what switches go2rtc's own public STUN default off.
 /// </para>
 /// <para>
 /// <b>It writes only when the sidecar does not already agree</b>, and that is not an optimisation:
@@ -53,13 +54,12 @@ public sealed class WebRtcSidecarWriter
     /// Returns whether the sidecar now reflects that.
     /// </summary>
     /// <remarks>
-    /// <b>Every registered stream is lost by this and put back by
-    /// <see cref="CameraStreamReconciler"/>.</b> Writing replaces the document, measured 2026-08-09
-    /// when a write carrying only a <c>webrtc</c> block wiped them — they survived in memory until
-    /// the next restart and then vanished. Merging instead would mean reading and rewriting a
-    /// document in a format this application does not own; leaning on the reconciler, whose whole
-    /// purpose is putting streams back that the sidecar has lost, costs one re-registration each.
-    /// The ordering that makes that safe is in <see cref="WebRtcConfigurer"/>.
+    /// <b>The registered streams are left alone.</b> The write merges into the sidecar's
+    /// configuration file and the restart after it reloads the streams from that same file, measured
+    /// 2026-09-27. What the write can lose is a stream being registered at the same moment - see
+    /// <see cref="Go2RtcClient.WriteConfigAsync"/> - which the startup caller avoids by running before
+    /// <see cref="CameraStreamReconciler"/>. The settings page's call has no such ordering: a camera
+    /// saved in the same moment can be dropped from the file and lost at the restart.
     /// </remarks>
     public async Task<bool> EnsureAsync(string candidate, bool stunEnabled, CancellationToken cancellationToken)
     {

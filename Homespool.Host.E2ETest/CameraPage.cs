@@ -24,14 +24,15 @@ namespace Homespool.Host.E2ETest;
 public static class CameraPage
 {
     /// <summary>
-    /// Adds a network camera to the account's default team through the page, and returns it as
-    /// stored.
+    /// Adds a network camera to the account's default team through the page, bound to a printer when
+    /// one is given, and returns it as stored.
     /// </summary>
     public static async Task<Camera> AddNetworkCameraAsync(WebApplicationFactory<PrinterAppController> factory,
                                                            HttpClient client,
                                                            HSUser user,
                                                            string name,
-                                                           string source)
+                                                           string source,
+                                                           Guid? printerUuid = null)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(user);
@@ -45,7 +46,7 @@ public static class CameraPage
             new("name", name),
             new("source", source),
             new("teamUuid", teamUuid.ToString()),
-            new("printerUuid", string.Empty),
+            new("printerUuid", printerUuid?.ToString() ?? string.Empty),
         ]);
 
         using HttpResponseMessage response =

@@ -69,6 +69,13 @@ jobs:
       - name: Start dex
         run: ./Homespool.Host.IntegrationTest/start-dex.sh
 
+      # Chromium and WebKit for the browser tests, which skip themselves without them - the same
+      # argument as the two above. They are the only tests that run the camera page's scripts, and
+      # WebKit is the nearest thing to Safari a Linux runner has, where the camera view's worst bugs
+      # have lived. --with-deps installs the system libraries a fresh runner lacks.
+      - name: Install browsers for the browser tests
+        run: ./Homespool.Host.BrowserTest/install-browsers.sh --with-deps
+
       - name: Test
         run: dotnet test Homespool.slnx --nologo
 

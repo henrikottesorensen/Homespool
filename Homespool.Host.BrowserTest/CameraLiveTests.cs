@@ -70,9 +70,12 @@ public sealed class CameraLiveTests(Browsers browsers)
             browsers, engine, "live-garbled", FakeCamera.Jpeg,
             beforePage: context => context.Clock.InstallAsync());
 
-        // Garbled only now, so the save saw a camera sending pictures and live view is offered.
+        // Garbled only now, so the save saw a camera sending pictures and live view is offered. Its first
+        // part is held back, in real time, so the page is certainly waiting on the stream while its own
+        // clock is run below - the stretch in which calling it live too early would show.
         await Expect(scenario.LiveToggle).ToBeVisibleAsync(new() { Timeout = 15_000 });
-        scenario.Host.Sidecar.AddCamera(scenario.Source, FakeCamera.Jpeg with { Garbled = true });
+        scenario.Host.Sidecar.AddCamera(
+            scenario.Source, FakeCamera.Jpeg with { Garbled = true, FirstPartDelay = System.TimeSpan.FromSeconds(3) });
 
         // Recorded as it happens rather than read at the end, because the engines part ways here:
         // Chromium reports the undecodable part as an error and falls back at once, WebKit keeps the
@@ -86,14 +89,19 @@ public sealed class CameraLiveTests(Browsers browsers)
             """, await scenario.LabelAsync("live"));
 
         await scenario.LiveToggle.ClickAsync();
+
+        // In real time, before the page's clock is touched: running it past the deadline first can end
+        // the view while its request is still on the way, and a stream never asked for proves nothing.
+        (await CameraScenario.EventuallyAsync(() => scenario.Host.Sidecar.Requests.Any(
+             request => request.StartsWith("GET /api/stream.mjpeg", System.StringComparison.Ordinal)))).Should().BeTrue(
+            "the stream must have been asked for, or not calling it live proves nothing");
+
         await scenario.Page.Clock.RunForAsync(1_000);
         await scenario.Page.Clock.FastForwardAsync("00:11");
 
         await Expect(scenario.LiveNote).ToHaveTextAsync(await scenario.LabelAsync("failed"), new() { Timeout = 10_000 });
         (await scenario.Page.EvaluateAsync<bool>("() => window.calledLive === true")).Should().BeFalse(
             "a stream nothing could be decoded from was never a picture");
-        scenario.Host.Sidecar.Requests.Should().Contain(request => request.StartsWith("GET /api/stream.mjpeg", System.StringComparison.Ordinal),
-                                                        "the stream must have been asked for, or not calling it live proves nothing");
     }
 
     /// <summary>

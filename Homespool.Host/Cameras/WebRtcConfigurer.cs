@@ -36,10 +36,11 @@ namespace Homespool.Host.Cameras;
 /// </para>
 /// <para>
 /// <b>An <see cref="IHostedService"/> rather than a <see cref="BackgroundService"/>, and that is
-/// load-bearing.</b> Writing the configuration replaces it rather than merging — see
-/// <see cref="Go2RtcClient.WriteConfigAsync"/> — so every registered stream is lost, and
-/// <see cref="CameraStreamReconciler"/> putting them back is what makes that acceptable. That
-/// requires this to finish first, and on .NET 10 registration order does not give it: every
+/// load-bearing.</b> Writing the configuration is a read-modify-write of the sidecar's file that
+/// does not take the lock registering a stream takes - see <see cref="Go2RtcClient.WriteConfigAsync"/>
+/// - so a stream <see cref="CameraStreamReconciler"/> registered during it could be dropped from the
+/// file and lost at the restart that follows. That requires this to finish first, and on .NET 10
+/// registration order does not give it: every
 /// <c>BackgroundService.ExecuteAsync</c> is scheduled onto the thread pool, so two of them start
 /// together on .NET 10. Hosted services started from
 /// <c>StartAsync</c> are awaited in order, which does.

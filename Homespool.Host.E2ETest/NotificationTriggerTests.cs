@@ -170,6 +170,79 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
         push.Header("Topic").Should().Be($"printer-{_printer.Id}");
     }
 
+    /// <summary>
+    /// A printer taking turns between two dialogs is a new wait each time by the watch's rules; the
+    /// dispatcher's floor is what keeps it to one notification.
+    /// </summary>
+    [Fact]
+    public async Task APrinterAlternatingDialogsNotifiesOnce()
+    {
+        AttentionWatch watch = _factory.Services.GetRequiredService<AttentionWatch>();
+        NotificationWatcher watcher = _factory.Services.GetRequiredService<NotificationWatcher>();
+        DateTimeOffset settled = DateTimeOffset.UtcNow - AttentionWatch.Settle;
+
+        LiveStateSnapshot printing = new(PrinterStatus.Printing, null, null, 42);
+        LiveStateSnapshot runout = new(PrinterStatus.Attention, 23829, null, 42);
+        LiveStateSnapshot other = new(PrinterStatus.Attention, 23830, null, 43);
+
+        for (int turn = 0; turn < 4; turn++)
+        {
+            watch.Observed(_printer.Id, printing, turn % 2 == 0 ? runout : other, settled);
+            await watcher.LookAsync(TestContext.Current.CancellationToken);
+            watch.Observed(_printer.Id, turn % 2 == 0 ? runout : other, printing, settled);
+        }
+
+        Dictionary<string, JsonElement> heard = await HeardAsync(expected: 2);
+
+        heard.Keys.Should().BeEquivalentTo(["owner", "viewer"]);
+        _pushService.Received.Should().HaveCount(2, "one notification each, however often the printer changes its mind");
+    }
+
+    [Fact]
+    public async Task AFlappingHoldNotifiesOnce()
+    {
+        NotificationWatcher watcher = _factory.Services.GetRequiredService<NotificationWatcher>();
+
+        await WithDbAsync(async db =>
+        {
+            db.QueuedPrints.Add(new QueuedPrint
+            {
+                PrintUuid = Guid.NewGuid(),
+                PrinterId = _printer.Id,
+                PrintFileId = _fileId,
+                Position = 1,
+                QueuedByUserId = _owner,
+                QueuedByScope = CapabilitySet.Format([Capability.Print]),
+            });
+
+            db.PrintFilesOnPrinters.Add(new PrintFileOnPrinter { PrinterId = _printer.Id, PrintFileId = _fileId });
+
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        });
+
+        for (int turn = 0; turn < 4; turn++)
+        {
+            PrintHoldReason? reason = turn % 2 == 0 ? PrintHoldReason.FileExistsUnknownSize : null;
+
+            await WithDbAsync(db => db.PrintFilesOnPrinters
+                                      .Where(row => row.PrinterId == _printer.Id)
+                                      .ExecuteUpdateAsync(set => set.SetProperty(row => row.HoldReason, reason),
+                                                          TestContext.Current.CancellationToken));
+
+            await watcher.LookAsync(TestContext.Current.CancellationToken);
+        }
+
+        await WithDbAsync(db => db.PrintFilesOnPrinters
+                                  .Where(row => row.PrinterId == _printer.Id)
+                                  .ExecuteUpdateAsync(set => set.SetProperty(row => row.HoldReason, PrintHoldReason.FileExistsUnknownSize),
+                                                      TestContext.Current.CancellationToken));
+
+        Dictionary<string, JsonElement> heard = await HeardAsync(expected: 1);
+
+        heard.Keys.Should().BeEquivalentTo(["owner"]);
+        _pushService.Received.Should().ContainSingle("the hold came back three times and was news once");
+    }
+
     [Fact]
     public async Task AFinishedPrintReachesWhoeverQueuedItAndNobodyElse()
     {

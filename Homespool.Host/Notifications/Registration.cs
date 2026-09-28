@@ -68,6 +68,9 @@ public static class Registration
         services.AddSingleton<NotificationWatcher>();
         services.AddHostedService(provider => provider.GetRequiredService<NotificationWatcher>());
 
+        // Singleton because it is the memory of what was sent, per printer, across every happening.
+        services.AddSingleton<NotificationThrottle>();
+
         // Scoped, like the destinations it delivers through; the dispatcher makes one per happening.
         services.AddScoped<NotificationRouter>();
         services.AddHostedService<NotificationDispatcher>();

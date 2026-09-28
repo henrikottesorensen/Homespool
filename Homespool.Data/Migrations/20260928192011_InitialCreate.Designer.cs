@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260927181833_InitialCreate")]
+    [Migration("20260928192011_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -247,6 +247,53 @@ namespace Homespool.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Invitations");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.NotificationDestination", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("LastDeliveredAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("LastFailedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("Uuid")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Uuid")
+                        .IsUnique();
+
+                    b.ToTable("NotificationDestinations");
+
+                    b.HasDiscriminator<string>("Kind");
+
+                    b.UseTphMappingStrategy();
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>
@@ -1149,6 +1196,29 @@ namespace Homespool.Data.Migrations
                     b.ToTable("UserSessions");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.VapidKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CreatedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrivateKeySecret")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PublicKey")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("VapidKeys");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
                 {
                     b.Property<int>("Id")
@@ -1308,6 +1378,31 @@ namespace Homespool.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.WebPushDestination", b =>
+                {
+                    b.HasBaseType("Homespool.Model.Entities.NotificationDestination");
+
+                    b.Property<string>("Auth")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Endpoint")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("P256dh")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.HasIndex("Endpoint")
+                        .IsUnique();
+
+                    b.HasDiscriminator().HasValue("WebPush");
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.ApiToken", b =>
                 {
                     b.HasOne("Homespool.Model.Entities.HSUser", null)
@@ -1343,6 +1438,15 @@ namespace Homespool.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.NotificationDestination", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.HSUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>

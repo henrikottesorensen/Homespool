@@ -108,6 +108,9 @@
             <li>
                 <a id="language" class="dropdown-item" asp-page="/Account/Manage/Language">@Localiser["Language_Heading"]</a>
             </li>
+            <li>
+                <a id="notifications-settings" class="dropdown-item" asp-page="/Account/Manage/Notifications">@Localiser["Notifications_Heading"]</a>
+            </li>
             <li><hr class="dropdown-divider" /></li>
             <li>
                 <form id="logoutForm" asp-page="/Account/Logout" asp-route-returnUrl="@Url.Action("Index", "Home", new { area = "" })">

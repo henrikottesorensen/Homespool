@@ -3027,4 +3027,97 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Intent_UncancelObject" xml:space="preserve">
     <value>Fortryd annullering af objekt</value>
   </data>
+  <data name="Notifications_Heading" xml:space="preserve">
+    <value>Notifikationer</value>
+  </data>
+  <data name="Notifications_Description" xml:space="preserve">
+    <value>Slå notifikationer til i hver browser eller telefon, du vil have, at Homespool kan nå – også når ingen Homespool-side er åben.</value>
+  </data>
+  <data name="Notifications_NeedsScript" xml:space="preserve">
+    <value>Det kræver JavaScript at slå notifikationer til.</value>
+  </data>
+  <data name="Notifications_NeedsSecureConnection" xml:space="preserve">
+    <value>Notifikationer kræver en sikker forbindelse. Åbn Homespool over https for at slå dem til.</value>
+  </data>
+  <data name="Notifications_Unsupported" xml:space="preserve">
+    <value>Denne browser kan ikke modtage notifikationer fra websteder. På en iPhone eller iPad skal du først føje Homespool til hjemmeskærmen og åbne det derfra.</value>
+  </data>
+  <data name="Notifications_Blocked" xml:space="preserve">
+    <value>Notifikationer er blokeret for dette websted. Tillad dem i browserens indstillinger for webstedet, og genindlæs siden.</value>
+  </data>
+  <data name="Notifications_EnableFailed" xml:space="preserve">
+    <value>Denne browser kunne ikke tilmeldes. Prøv igen, eller prøv en anden browser.</value>
+  </data>
+  <data name="Notifications_EnabledHere" xml:space="preserve">
+    <value>Denne browser modtager notifikationer.</value>
+  </data>
+  <data name="Notifications_Enable" xml:space="preserve">
+    <value>Slå til i denne browser</value>
+  </data>
+  <data name="Notifications_Yours" xml:space="preserve">
+    <value>Dine browsere</value>
+  </data>
+  <data name="Notifications_None" xml:space="preserve">
+    <value>Ingen browser modtager notifikationer endnu.</value>
+  </data>
+  <data name="Notifications_EnabledColumn" xml:space="preserve">
+    <value>Slået til</value>
+  </data>
+  <data name="Notifications_LastColumn" xml:space="preserve">
+    <value>Seneste notifikation</value>
+  </data>
+  <data name="Notifications_ThisBrowser" xml:space="preserve">
+    <value>Denne browser</value>
+  </data>
+  <data name="Notifications_Failing_One" xml:space="preserve">
+    <value>Den seneste levering mislykkedes</value>
+  </data>
+  <data name="Notifications_Failing_Other" xml:space="preserve">
+    <value>De seneste {0:N0} leveringer mislykkedes</value>
+  </data>
+  <data name="Notifications_NothingYet" xml:space="preserve">
+    <value>Intet endnu</value>
+  </data>
+  <data name="Notifications_SendTest" xml:space="preserve">
+    <value>Send en test</value>
+  </data>
+  <data name="Notifications_Remove" xml:space="preserve">
+    <value>Fjern</value>
+  </data>
+  <data name="Notifications_UnknownBrowser" xml:space="preserve">
+    <value>Ukendt browser</value>
+  </data>
+  <data name="Notifications_Enabled" xml:space="preserve">
+    <value>Notifikationer er slået til i denne browser.</value>
+  </data>
+  <data name="Notifications_EndpointRefused" xml:space="preserve">
+    <value>Denne browsers push-tjeneste er ikke en, Homespool sender til, så notifikationer kunne ikke slås til.</value>
+  </data>
+  <data name="Notifications_SubscriptionInvalid" xml:space="preserve">
+    <value>Browserens tilmelding kunne ikke bruges. Prøv at slå notifikationer til igen.</value>
+  </data>
+  <data name="Notifications_TestSent" xml:space="preserve">
+    <value>En testnotifikation er på vej.</value>
+  </data>
+  <data name="Notifications_TestGone" xml:space="preserve">
+    <value>Den browser tager ikke længere imod notifikationer, så den er fjernet.</value>
+  </data>
+  <data name="Notifications_TestTransient" xml:space="preserve">
+    <value>Browserens push-tjeneste kunne ikke nås. Prøv igen om lidt.</value>
+  </data>
+  <data name="Notifications_TestRefused" xml:space="preserve">
+    <value>Browserens push-tjeneste afviste notifikationen.</value>
+  </data>
+  <data name="Notifications_NoSuchBrowser" xml:space="preserve">
+    <value>Den browser er ikke på din liste.</value>
+  </data>
+  <data name="Notifications_Removed" xml:space="preserve">
+    <value>Browseren modtager ikke længere notifikationer.</value>
+  </data>
+  <data name="Notifications_TestTitle" xml:space="preserve">
+    <value>Homespool-test</value>
+  </data>
+  <data name="Notifications_TestBody" xml:space="preserve">
+    <value>Notifikationer når frem til denne browser.</value>
+  </data>
 </root>

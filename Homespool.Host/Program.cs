@@ -26,6 +26,7 @@ using Homespool.Host.Health;
 using Homespool.Host.Listeners;
 using Homespool.Host.Localisation;
 using Homespool.Host.Middleware;
+using Homespool.Host.Notifications;
 using Homespool.Host.Pages.Account;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
@@ -481,6 +482,11 @@ public static class Program
             // handler carries the address policy, which reads as networking plumbing here and lives
             // in Cameras/Registration.cs instead.
             builder.Services.AddCameras(builder.Configuration);
+
+            // Notification destinations and the channels that deliver to them. The Web Push client is
+            // the one outbound connection to an address a browser chose, and its guard lives with it
+            // in Notifications/Registration.cs.
+            builder.Services.AddNotifications(builder.Configuration);
 
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.

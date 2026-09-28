@@ -3134,4 +3134,97 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Intent_UncancelObject" xml:space="preserve">
     <value>Undo cancelling an object</value>
   </data>
+  <data name="Notifications_Heading" xml:space="preserve">
+    <value>Notifications</value>
+  </data>
+  <data name="Notifications_Description" xml:space="preserve">
+    <value>Enable notifications on each browser or phone you want Homespool to reach, even while no Homespool page is open.</value>
+  </data>
+  <data name="Notifications_NeedsScript" xml:space="preserve">
+    <value>Enabling notifications needs JavaScript.</value>
+  </data>
+  <data name="Notifications_NeedsSecureConnection" xml:space="preserve">
+    <value>Notifications need a secure connection. Open Homespool over https to enable them.</value>
+  </data>
+  <data name="Notifications_Unsupported" xml:space="preserve">
+    <value>This browser can’t receive notifications from websites. On an iPhone or iPad, add Homespool to your Home Screen first and open it from there.</value>
+  </data>
+  <data name="Notifications_Blocked" xml:space="preserve">
+    <value>Notifications are blocked for this site. Allow them in your browser’s site settings, then reload this page.</value>
+  </data>
+  <data name="Notifications_EnableFailed" xml:space="preserve">
+    <value>This browser could not be subscribed. Try again, or try another browser.</value>
+  </data>
+  <data name="Notifications_EnabledHere" xml:space="preserve">
+    <value>This browser receives notifications.</value>
+  </data>
+  <data name="Notifications_Enable" xml:space="preserve">
+    <value>Enable on this browser</value>
+  </data>
+  <data name="Notifications_Yours" xml:space="preserve">
+    <value>Your browsers</value>
+  </data>
+  <data name="Notifications_None" xml:space="preserve">
+    <value>No browser receives notifications yet.</value>
+  </data>
+  <data name="Notifications_EnabledColumn" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="Notifications_LastColumn" xml:space="preserve">
+    <value>Last notification</value>
+  </data>
+  <data name="Notifications_ThisBrowser" xml:space="preserve">
+    <value>This browser</value>
+  </data>
+  <data name="Notifications_Failing_One" xml:space="preserve">
+    <value>The last delivery failed</value>
+  </data>
+  <data name="Notifications_Failing_Other" xml:space="preserve">
+    <value>The last {0:N0} deliveries failed</value>
+  </data>
+  <data name="Notifications_NothingYet" xml:space="preserve">
+    <value>Nothing yet</value>
+  </data>
+  <data name="Notifications_SendTest" xml:space="preserve">
+    <value>Send a test</value>
+  </data>
+  <data name="Notifications_Remove" xml:space="preserve">
+    <value>Remove</value>
+  </data>
+  <data name="Notifications_UnknownBrowser" xml:space="preserve">
+    <value>Unknown browser</value>
+  </data>
+  <data name="Notifications_Enabled" xml:space="preserve">
+    <value>Notifications are enabled on this browser.</value>
+  </data>
+  <data name="Notifications_EndpointRefused" xml:space="preserve">
+    <value>This browser’s push service isn’t one Homespool sends to, so notifications could not be enabled.</value>
+  </data>
+  <data name="Notifications_SubscriptionInvalid" xml:space="preserve">
+    <value>The browser’s subscription could not be used. Try enabling notifications again.</value>
+  </data>
+  <data name="Notifications_TestSent" xml:space="preserve">
+    <value>A test notification is on its way.</value>
+  </data>
+  <data name="Notifications_TestGone" xml:space="preserve">
+    <value>That browser no longer accepts notifications, so it has been removed.</value>
+  </data>
+  <data name="Notifications_TestTransient" xml:space="preserve">
+    <value>The browser’s push service could not be reached. Try again in a moment.</value>
+  </data>
+  <data name="Notifications_TestRefused" xml:space="preserve">
+    <value>The browser’s push service refused the notification.</value>
+  </data>
+  <data name="Notifications_NoSuchBrowser" xml:space="preserve">
+    <value>That browser is not on your list.</value>
+  </data>
+  <data name="Notifications_Removed" xml:space="preserve">
+    <value>The browser no longer receives notifications.</value>
+  </data>
+  <data name="Notifications_TestTitle" xml:space="preserve">
+    <value>Homespool test</value>
+  </data>
+  <data name="Notifications_TestBody" xml:space="preserve">
+    <value>Notifications reach this browser.</value>
+  </data>
 </root>

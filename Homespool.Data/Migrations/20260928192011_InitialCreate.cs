@@ -85,6 +85,20 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "VapidKeys",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false),
+                    PublicKey = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
+                    PrivateKeySecret = table.Column<string>(type: "TEXT", maxLength: 1024, nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_VapidKeys", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "AspNetRoleClaims",
                 columns: table => new
                 {
@@ -227,6 +241,35 @@ namespace Homespool.Data.Migrations
                     table.PrimaryKey("PK_AspNetUserTokens", x => new { x.UserId, x.LoginProvider, x.Name });
                     table.ForeignKey(
                         name: "FK_AspNetUserTokens_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "NotificationDestinations",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
+                    UserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    Kind = table.Column<string>(type: "TEXT", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    LastDeliveredAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    LastFailedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    ConsecutiveFailures = table.Column<int>(type: "INTEGER", nullable: false),
+                    Endpoint = table.Column<string>(type: "TEXT", maxLength: 1024, nullable: true),
+                    P256dh = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
+                    Auth = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_NotificationDestinations", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_NotificationDestinations_AspNetUsers_UserId",
                         column: x => x.UserId,
                         principalTable: "AspNetUsers",
                         principalColumn: "Id",
@@ -921,6 +964,23 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_NotificationDestinations_Endpoint",
+                table: "NotificationDestinations",
+                column: "Endpoint",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_NotificationDestinations_UserId",
+                table: "NotificationDestinations",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_NotificationDestinations_Uuid",
+                table: "NotificationDestinations",
+                column: "Uuid",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_PrinterEvents_PrinterId_JobId",
                 table: "PrinterEvents",
                 columns: new[] { "PrinterId", "JobId" });
@@ -1106,6 +1166,9 @@ namespace Homespool.Data.Migrations
                 name: "Invitations");
 
             migrationBuilder.DropTable(
+                name: "NotificationDestinations");
+
+            migrationBuilder.DropTable(
                 name: "PrinterDriveListings");
 
             migrationBuilder.DropTable(
@@ -1146,6 +1209,9 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "UserSessions");
+
+            migrationBuilder.DropTable(
+                name: "VapidKeys");
 
             migrationBuilder.DropTable(
                 name: "AspNetRoles");

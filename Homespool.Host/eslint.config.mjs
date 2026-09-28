@@ -80,4 +80,14 @@ export default [
             '@stylistic/operator-linebreak': ['error', 'after'],
         },
     },
+    {
+        // The one script that runs in a service worker rather than a page: self, clients and
+        // registration are its globals, and document is not.
+        files: ['wwwroot/js/push-worker.js'],
+        languageOptions: {
+            globals: {
+                ...globals.serviceworker,
+            },
+        },
+    },
 ];

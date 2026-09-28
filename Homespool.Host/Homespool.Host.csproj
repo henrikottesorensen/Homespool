@@ -9,6 +9,10 @@
         <!-- Exact, not a floor: the reader runs on whatever anybody uploads, and the bounds it
              promises are vouched for by the library's own tests at this version only. -->
         <PackageReference Include="libbgcode.NET" Version="[0.2.0]" />
+        <!-- The Web Push encryption and signature. On net6.0 and later it uses the framework's own
+             cryptography, with no BouncyCastle. Three of its defaults are unsafe and are overridden in
+             WebPushChannel; read that class before upgrading. -->
+        <PackageReference Include="Lib.Net.Http.WebPush" Version="3.3.1" />
         <PackageReference Include="MailKit" Version="4.17.0" />
         <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.12" />
         <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.12" />

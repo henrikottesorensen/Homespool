@@ -84,7 +84,7 @@ public sealed class PrinterCertificateHealthCheck : IHealthCheck
 
         IReadOnlyList<string> covered = leaf is null ? [] : PrinterCertificateAuthority.NamesOf(leaf);
         IReadOnlyList<string> current = await PrinterCertificateNames.ForThisMachineAsync(
-            _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
+            _connect, _certificates.ParsedContainerNetworks, _resolver, covered, cancellationToken);
 
         PrinterCertificateVerdict verdict = PrinterCertificateDrift.Evaluate(
             tlsEnabled: true,

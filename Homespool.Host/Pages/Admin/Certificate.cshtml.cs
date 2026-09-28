@@ -133,11 +133,12 @@ public class CertificateModel : PageModel
     /// </summary>
     /// <remarks>
     /// <b>Split by evidence, because detection here cannot say "no longer answers".</b> Inside a
-    /// container the only interface is the bridge, so a name is either found through the configured
-    /// host or not found at all; "not found" and "gone" look identical from here, and the page used to
-    /// call both gone. A name that still resolves to a usable address is most likely this machine's
-    /// under a name detection did not try - the bare address of a machine whose configured name is
-    /// what detection walks from - and is what an operator will most often want to keep.
+    /// container the only interface is the bridge, so an address is either found through the configured
+    /// host or not found at all. A covered name that resolves to one of the found addresses is already
+    /// confirmed and never reaches this list. What is left resolves to a usable address detection did
+    /// not find - most often the bare address of a machine whose configured name did not resolve from
+    /// in here - and "not found" and "gone" look identical from here, so these are what an operator
+    /// will most often want to keep.
     /// </remarks>
     public IReadOnlyList<string> DroppingUnconfirmed { get; private set; } = [];
 
@@ -194,9 +195,6 @@ public class CertificateModel : PageModel
             return RedirectToPage();
         }
 
-        IReadOnlyList<string> detected = await PrinterCertificateNames.ForThisMachineAsync(
-            _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
-
         // Read from the leaf on disk rather than from the Dropping property, which is only populated
         // by LoadAsync on the GET. Taken before IssueLeaf overwrites it, because a narrowing is
         // invisible afterwards: the old certificate is gone and the only evidence left is a printer
@@ -210,6 +208,9 @@ public class CertificateModel : PageModel
                 previouslyCovered = PrinterCertificateAuthority.NamesOf(existing);
             }
         }
+
+        IReadOnlyList<string> detected = await PrinterCertificateNames.ForThisMachineAsync(
+            _connect, _certificates.ParsedContainerNetworks, _resolver, previouslyCovered, cancellationToken);
 
         // WHAT THE OPERATOR ASKED TO CARRY OVER, INTERSECTED WITH WHAT THE OLD LEAF ACTUALLY COVERED.
         // The intersection is the security control, not a tidiness one: this is a request body, and
@@ -284,8 +285,18 @@ public class CertificateModel : PageModel
 
     private async Task LoadAsync(CancellationToken cancellationToken)
     {
+        // The leaf first: what it covers is part of what detection is asked, since a name already on
+        // it is confirmed by resolving to an address detection found.
+        using X509Certificate2? leaf = TlsEnabled ? _authority.LoadLeafIfIssued() : null;
+
+        if (leaf is not null)
+        {
+            Covered = PrinterCertificateAuthority.NamesOf(leaf);
+            LeafExpires = leaf.NotAfter.ToUniversalTime();
+        }
+
         Current = await PrinterCertificateNames.ForThisMachineAsync(
-            _connect, _certificates.ParsedContainerNetworks, _resolver, cancellationToken);
+            _connect, _certificates.ParsedContainerNetworks, _resolver, Covered, cancellationToken);
 
         ConfiguredHostResolvesOnlyToLoopback =
             await PrinterCertificateNames.ConfiguredHostResolvesOnlyToLoopbackAsync(_connect, _resolver, cancellationToken);
@@ -293,14 +304,6 @@ public class CertificateModel : PageModel
         if (!TlsEnabled)
         {
             return;
-        }
-
-        using X509Certificate2? leaf = _authority.LoadLeafIfIssued();
-
-        if (leaf is not null)
-        {
-            Covered = PrinterCertificateAuthority.NamesOf(leaf);
-            LeafExpires = leaf.NotAfter.ToUniversalTime();
         }
 
         await ClassifyDroppingAsync(cancellationToken);

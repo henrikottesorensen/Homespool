@@ -56,7 +56,7 @@ public class PrinterCertificateNamesTests
 
         // Act
         IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
-            connect, [IPNetwork.Parse("172.16.0.0/12")], new Resolver([]), CancellationToken.None);
+            connect, [IPNetwork.Parse("172.16.0.0/12")], new Resolver([]), [], CancellationToken.None);
 
         // Assert
         names.Should().Contain("homespool.lan",
@@ -74,7 +74,7 @@ public class PrinterCertificateNamesTests
         PrusaConnectOptions connect = new() { PrinterHost = "172.28.0.2" };
 
         IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
-            connect, [IPNetwork.Parse("172.16.0.0/12")], new Resolver([]), CancellationToken.None);
+            connect, [IPNetwork.Parse("172.16.0.0/12")], new Resolver([]), [], CancellationToken.None);
 
         names.Should().Contain("172.28.0.2");
     }
@@ -98,7 +98,7 @@ public class PrinterCertificateNamesTests
 
         // Act
         IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
-            connect, [IPNetwork.Parse("172.16.0.0/12")], resolver, CancellationToken.None);
+            connect, [IPNetwork.Parse("172.16.0.0/12")], resolver, [], CancellationToken.None);
 
         // Assert
         names.Should().Contain("198.51.100.7",
@@ -129,13 +129,101 @@ public class PrinterCertificateNamesTests
 
         // Act
         IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
-            connect, [IPNetwork.Parse("172.16.0.0/12")], resolver, CancellationToken.None);
+            connect, [IPNetwork.Parse("172.16.0.0/12")], resolver, [], CancellationToken.None);
 
         // Assert
         names.Should().Contain("homespool.lan", "the configured host is kept whatever it resolves to");
         names.Should().NotContain("172.31.9.9").And.NotContain("127.0.0.1")
              .And.NotContain("169.254.4.9").And.NotContain("fdc2:74d8:1010::cd4",
                                                            "covering an address no printer can reach hedges nothing and advertises the internal network");
+    }
+
+    /// <summary>
+    /// A name already on the certificate that resolves to an address detection found is this machine's,
+    /// and stays - where a reissue would otherwise drop it and strand every printer provisioned with it.
+    /// </summary>
+    /// <remarks>
+    /// The shape of an appliance whose hostname is its public name: the configured host is the bare
+    /// address, and the host's resolver answers the name with that address plus its Docker bridges -
+    /// one of them outside every configured range.
+    /// </remarks>
+    [Fact]
+    public async Task ACoveredNameResolvingToADetectedAddressIsKeptAsync()
+    {
+        // Arrange
+        PrusaConnectOptions connect = new() { PrinterHost = "198.51.100.7" };
+        Resolver resolver = new(new()
+        {
+            ["homespool.example.net"] = [IPAddress.Parse("198.51.100.7"), IPAddress.Parse("172.18.0.1")],
+        });
+
+        // Act
+        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+            connect, [IPNetwork.Parse("172.28.0.0/16")], resolver, ["homespool.example.net", "198.51.100.7"],
+            CancellationToken.None);
+
+        // Assert
+        names.Should().Contain("homespool.example.net", "it resolves to the address this machine was found on");
+        names[0].Should().Be("198.51.100.7", "the configured host stays the subject");
+        names.Should().NotContain("172.18.0.1", "confirming a name carries the name over, never what it resolves to");
+    }
+
+    /// <summary>
+    /// A covered name confirmed by nothing is left for the operator: resolving elsewhere or not at all
+    /// is not evidence it is this machine's.
+    /// </summary>
+    [Fact]
+    public async Task ACoveredNameNotResolvingToADetectedAddressIsNotKeptAsync()
+    {
+        // Arrange
+        PrusaConnectOptions connect = new() { PrinterHost = "198.51.100.7" };
+        Resolver resolver = new(new() { ["elsewhere.example.net"] = [IPAddress.Parse("198.51.100.99")] });
+
+        // Act
+        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+            connect, [IPNetwork.Parse("172.28.0.0/16")], resolver, ["elsewhere.example.net", "gone.example.net"],
+            CancellationToken.None);
+
+        // Assert
+        names.Should().NotContain("elsewhere.example.net").And.NotContain("gone.example.net");
+    }
+
+    /// <summary>
+    /// Only names the certificate already vouches for are asked, so confirmation can carry a name over
+    /// but never introduce one.
+    /// </summary>
+    [Fact]
+    public async Task ANameTheCertificateDoesNotCoverIsNeverAddedAsync()
+    {
+        // Arrange - a name that would be confirmed, had the certificate covered it.
+        PrusaConnectOptions connect = new() { PrinterHost = "198.51.100.7" };
+        Resolver resolver = new(new() { ["stranger.example.net"] = [IPAddress.Parse("198.51.100.7")] });
+
+        // Act
+        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+            connect, [IPNetwork.Parse("172.28.0.0/16")], resolver, [], CancellationToken.None);
+
+        // Assert
+        names.Should().NotContain("stranger.example.net");
+    }
+
+    /// <summary>
+    /// A configured host inside a container range is kept as given, but it confirms nothing: a name
+    /// resolving to it resolves to an address no printer can reach.
+    /// </summary>
+    [Fact]
+    public async Task AnUnreachableDetectedAddressConfirmsNothingAsync()
+    {
+        // Arrange
+        PrusaConnectOptions connect = new() { PrinterHost = "172.28.0.2" };
+        Resolver resolver = new(new() { ["inside.example.net"] = [IPAddress.Parse("172.28.0.2")] });
+
+        // Act
+        IReadOnlyList<string> names = await PrinterCertificateNames.ForThisMachineAsync(
+            connect, [IPNetwork.Parse("172.28.0.0/16")], resolver, ["inside.example.net"], CancellationToken.None);
+
+        // Assert
+        names.Should().NotContain("inside.example.net");
     }
 
     /// <summary>

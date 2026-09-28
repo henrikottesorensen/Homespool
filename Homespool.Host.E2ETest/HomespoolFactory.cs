@@ -236,6 +236,7 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
                                      host.Services.GetRequiredService<IOptions<CertificateOptions>>()
                                          .Value.ParsedContainerNetworks,
                                      host.Services.GetRequiredService<IHostAddressResolver>(),
+                                     [],
                                      CancellationToken.None).GetAwaiter().GetResult())
                      .Dispose();
 

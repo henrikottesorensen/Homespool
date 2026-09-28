@@ -74,8 +74,9 @@ public class PrintJob
     /// were of the same bytes even after the file has been replaced.
     /// </summary>
     /// <remarks>
-    /// Null for a file that predates the digest column, which is the same ordinary null
-    /// <see cref="PrintFile.Digest"/> carries and for the same reason.
+    /// Null when the file had no digest yet as the print opened - <see cref="PrintFile.Digest"/> says
+    /// when that is. <b>Never filled in afterwards</b>: a digest computed later describes whatever is on
+    /// disk by then, not what was printed.
     /// </remarks>
     public string? Digest { get; set; }
 

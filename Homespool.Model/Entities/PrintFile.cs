@@ -83,12 +83,15 @@ public class PrintFile
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Nullable, and a null is ordinary.</b> It is computed during the upload's existing streaming
-    /// pass, so a file that arrived after this column existed has one; a file already on disk when it
-    /// was added does not, and the startup reconcile deliberately does not go and hash the whole store
-    /// to fill them in - that would put a full read of every file between the process starting and it
-    /// serving, on hardware where that is minutes. Nothing reads this yet, so nothing is blocked by a
-    /// null.
+    /// <b>Nullable, and a null is ordinary but temporary.</b> An upload computes it on the pass that
+    /// writes the bytes. Anything else - a file copied in by hand, a row indexed on the way to a print,
+    /// a file whose bytes moved while the service was stopped - starts with a null, which a background
+    /// pass after the startup reconcile fills by reading the file.
+    /// </para>
+    /// <para>
+    /// <b>What reads it:</b> reprinting warns when the file has changed since that print ran, by
+    /// comparing this with the digest <c>PrintJob</c> copied from it when the print opened. With
+    /// either side null the check says nothing, so a null costs exactly that warning.
     /// </para>
     /// <para>
     /// <b>SHA-384 rather than SHA-256.</b> Interop was the only argument for 256 and it did not

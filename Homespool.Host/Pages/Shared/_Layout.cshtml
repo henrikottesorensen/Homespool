@@ -31,6 +31,11 @@
     <link rel="icon" href="~/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="~/img/apple-touch-icon.png" />
 
+    @* What lets iOS add Homespool to the Home Screen as an app of its own, which is the only way an
+       iPhone or iPad will offer it notifications. Standalone, so it opens without Safari's bars around
+       it - on iOS that is part of what makes it an app rather than a bookmark. *@
+    <link rel="manifest" href="~/site.webmanifest" />
+
     <script nonce="@Nonce.Value">
         // Follow the browser/OS colour-scheme preference using Bootstrap 5.3 colour modes. Inline and
         // early so the theme is set before first paint (no flash), and updated live if the OS switches.

@@ -102,6 +102,16 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
     /// only - no image is ever stored, here or anywhere.</summary>
     public DbSet<Camera> Cameras { get; set; }
 
+    /// <summary>Where each person has asked to be notified - one row per browser, and later per
+    /// webhook. Every kind in one table, told apart by <c>Kind</c>.</summary>
+    public DbSet<NotificationDestination> NotificationDestinations { get; set; }
+
+    /// <summary>The browser subscriptions among <see cref="NotificationDestinations"/>.</summary>
+    public DbSet<WebPushDestination> WebPushDestinations { get; set; }
+
+    /// <summary>The one key pair Web Push requests are signed with. A single row.</summary>
+    public DbSet<VapidKey> VapidKeys { get; set; }
+
     public HomespoolDbContext(DbContextOptions<HomespoolDbContext> options)
         : base(options)
     {
@@ -696,6 +706,66 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // restrict blocks the deletion, and set-null is the worst of the three on StoppedByUserId,
             // where null already means "stopped at the panel" and nulling it would rewrite what
             // happened rather than admit the account is gone.
+        });
+
+        builder.Entity<NotificationDestination>(entity =>
+        {
+            // Table-per-hierarchy on Kind, stored as text like every enum column here. A new kind of
+            // destination is a subclass and a HasValue line; the rows already here are untouched.
+            entity.Property(e => e.Kind)
+                  .HasConversion<string>();
+
+            entity.HasDiscriminator(e => e.Kind)
+                  .HasValue<WebPushDestination>(NotificationChannelKind.WebPush);
+
+            // What the remove and test buttons carry, as on ApiToken.
+            entity.HasIndex(e => e.Uuid)
+                  .IsUnique();
+
+            // The settings page lists a person's own, and delivery reads a recipient's.
+            entity.HasIndex(e => e.UserId);
+
+            entity.Property(e => e.Name)
+                  .HasMaxLength(NotificationDestination.NameMaxLength);
+
+            // Cascade: a destination outliving its account would be somewhere to tell nobody.
+            entity.HasOne<HSUser>()
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<WebPushDestination>(entity =>
+        {
+            // One row per subscription, because a subscription is one browser profile. A browser that
+            // subscribes again under another account moves the row rather than gaining a second, so
+            // one screen never shows two accounts' notifications. SQLite counts NULLs as distinct, so
+            // the other kinds' rows, which have no endpoint, do not collide here.
+            entity.HasIndex(e => e.Endpoint)
+                  .IsUnique();
+
+            entity.Property(e => e.Endpoint)
+                  .HasMaxLength(WebPushDestination.EndpointMaxLength);
+
+            entity.Property(e => e.P256dh)
+                  .HasMaxLength(WebPushDestination.P256dhMaxLength);
+
+            entity.Property(e => e.Auth)
+                  .HasMaxLength(WebPushDestination.AuthMaxLength);
+        });
+
+        builder.Entity<VapidKey>(entity =>
+        {
+            // A single row with a fixed key, so "mint it if it is missing" can race only into a failed
+            // insert rather than into two keys, one of which every subscription was not made with.
+            entity.Property(e => e.Id)
+                  .ValueGeneratedNever();
+
+            entity.Property(e => e.PublicKey)
+                  .HasMaxLength(VapidKey.PublicKeyMaxLength);
+
+            entity.Property(e => e.PrivateKeySecret)
+                  .HasMaxLength(VapidKey.PrivateKeySecretMaxLength);
         });
     }
 }

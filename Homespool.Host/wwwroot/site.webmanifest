@@ -1,0 +1,19 @@
+{
+  "name": "Homespool",
+  "short_name": "Homespool",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "icons": [
+    {
+      "src": "/img/homespool-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

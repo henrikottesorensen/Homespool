@@ -1,0 +1,120 @@
+@page
+@model NotificationsModel
+@{
+    ViewData["Title"] = Localiser["Notifications_Heading"].Value;
+}
+
+<h1>@ViewData["Title"]</h1>
+<partial name="_StatusMessage" for="StatusMessage" />
+
+@if (!string.IsNullOrEmpty(Model.ProblemMessage))
+{
+    <div class="alert alert-warning alert-dismissible" role="alert">
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="@Localiser["Common_Close"]"></button>
+        @Model.ProblemMessage
+    </div>
+}
+
+@* Everything the script needs is on this element: the key a subscription is made with, where the
+   worker lives, and the sentences it may have to show - written by the server so they are in the
+   page's language rather than the browser's. *@
+<div id="notifications" class="row"
+     data-application-server-key="@Model.ApplicationServerKey"
+     data-worker="@Url.Content("~/js/push-worker.js")"
+     data-text-insecure="@Localiser["Notifications_NeedsSecureConnection"]"
+     data-text-unsupported="@Localiser["Notifications_Unsupported"]"
+     data-text-blocked="@Localiser["Notifications_Blocked"]"
+     data-text-failed="@Localiser["Notifications_EnableFailed"]"
+     data-text-enabled-here="@Localiser["Notifications_EnabledHere"]">
+    <div class="col-md-8">
+        <p class="text-body-secondary">@Localiser["Notifications_Description"]</p>
+
+        <noscript>
+            <p class="text-body-secondary">@Localiser["Notifications_NeedsScript"]</p>
+        </noscript>
+
+        <p id="notifications-state" class="text-body-secondary" role="status" hidden></p>
+
+        @* Filled in by push-notifications.js with what the browser hands back, then submitted as an
+           ordinary form - so the antiforgery token and the redirect are the same as everywhere else.
+           Without a recent proof the button is not rendered at all, and the script, finding no button,
+           only reports on this browser rather than offering to subscribe it. *@
+        <form id="notifications-subscribe-form" method="post" asp-page-handler="Subscribe">
+            <input type="hidden" name="endpoint" />
+            <input type="hidden" name="p256dh" />
+            <input type="hidden" name="auth" />
+            @if (Model.Proved)
+            {
+                <button id="notifications-enable" type="submit" class="btn btn-primary" hidden>@Localiser["Notifications_Enable"]</button>
+            }
+        </form>
+
+        @if (!Model.Proved)
+        {
+            @* A browser added here goes on hearing after the session ends, so adding one takes a recent proof. *@
+            <div id="notifications-confirm-first">
+                <partial name="_ConfirmFirst" model="@Url.Page("./Notifications")" />
+            </div>
+        }
+    </div>
+</div>
+
+<h2 class="mt-4">@Localiser["Notifications_Yours"]</h2>
+
+@if (Model.Destinations.Count == 0)
+{
+    <p class="text-body-secondary">@Localiser["Notifications_None"]</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th scope="col">@Localiser["Common_Name"]</th>
+                <th scope="col">@Localiser["Notifications_EnabledColumn"]</th>
+                <th scope="col">@Localiser["Notifications_LastColumn"]</th>
+                <th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+        @foreach (var destination in Model.Destinations)
+        {
+            <tr data-endpoint-hash="@destination.EndpointHash">
+                <td>
+                    <span class="typed-name">@destination.Name</span>
+                    <span class="badge text-bg-secondary ms-1" data-this-browser hidden>@Localiser["Notifications_ThisBrowser"]</span>
+                </td>
+                <td>@destination.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                <td>
+                    @if (destination.ConsecutiveFailures > 0)
+                    {
+                        <span class="text-warning-emphasis">@Plural.Format(Localiser, "Notifications_Failing", destination.ConsecutiveFailures)</span>
+                    }
+                    else if (destination.LastDeliveredAt is { } delivered)
+                    {
+                        @delivered.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+                    }
+                    else
+                    {
+                        <span class="text-body-secondary">@Localiser["Notifications_NothingYet"]</span>
+                    }
+                </td>
+                <td class="text-end text-nowrap">
+                    <form method="post" asp-page-handler="Test" class="d-inline">
+                        <input type="hidden" name="uuid" value="@destination.Uuid" />
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Notifications_SendTest"]</button>
+                    </form>
+                    <form method="post" asp-page-handler="Remove" class="d-inline" data-remove-destination>
+                        <input type="hidden" name="uuid" value="@destination.Uuid" />
+                        <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Notifications_Remove"]</button>
+                    </form>
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@section Scripts {
+    <script src="~/js/push-notifications.js" asp-append-version="true"></script>
+}

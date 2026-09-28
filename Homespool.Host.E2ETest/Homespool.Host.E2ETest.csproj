@@ -49,6 +49,11 @@
       <!-- The fake WebAuthn authenticator the unit tests drive the passkey scheme with, linked rather
            than copied so the two suites answer a ceremony the same way. -->
       <Compile Include="..\Homespool.Host.Test\FakeAuthenticator.cs" Link="FakeAuthenticator.cs" />
+
+      <!-- The fake push service and the browser keys it delivers to, linked for the same reason: its
+           decryption is checked against RFC 8291's example there, and both suites should read a
+           notification with the checked copy. -->
+      <Compile Include="..\Homespool.Host.Test\FakePushService.cs" Link="FakePushService.cs" />
     </ItemGroup>
 
     <ItemGroup>

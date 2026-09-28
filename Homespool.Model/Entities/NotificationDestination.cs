@@ -70,4 +70,17 @@ public abstract class NotificationDestination
     /// browser has stopped hearing anything instead of the failure being silent.
     /// </remarks>
     public int ConsecutiveFailures { get; set; }
+
+    /// <summary>
+    /// How many of those failures in a row were refusals - the delivery service saying the request
+    /// itself is wrong - rather than it being unreachable. Zero again after anything else.
+    /// </summary>
+    /// <remarks>
+    /// <b>Counted apart, because only refusals may remove a destination.</b> A deployment that loses
+    /// its internet connection for a day fails every delivery transiently, and removing every browser
+    /// for it would punish the people for the network. A destination refused
+    /// <c>NotificationDestinationService.RemoveAfterRefusals</c> times running is one that will never
+    /// be accepted - a made-up endpoint, or one made with a key this deployment no longer has.
+    /// </remarks>
+    public int ConsecutiveRefusals { get; set; }
 }

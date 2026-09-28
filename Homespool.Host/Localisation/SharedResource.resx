@@ -3227,4 +3227,55 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Notifications_TestBody" xml:space="preserve">
     <value>Notifications reach this browser.</value>
   </data>
+  <data name="Notifications_KindsHeading" xml:space="preserve">
+    <value>What to tell you about</value>
+  </data>
+  <data name="Notifications_KindsHint" xml:space="preserve">
+    <value>These apply to every browser you have enabled.</value>
+  </data>
+  <data name="Notifications_KindsSave" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="Notifications_KindsSaved" xml:space="preserve">
+    <value>Your notification choices are saved.</value>
+  </data>
+  <data name="Notifications_KindPrinterNeedsAttention" xml:space="preserve">
+    <value>When a printer needs someone – a filament change, a dialog, an error</value>
+  </data>
+  <data name="Notifications_KindPrintFinished" xml:space="preserve">
+    <value>When a print of yours finishes</value>
+  </data>
+  <data name="Notifications_KindPrintDidNotFinish" xml:space="preserve">
+    <value>When a print of yours is stopped or fails</value>
+  </data>
+  <data name="Notifications_KindQueueHeld" xml:space="preserve">
+    <value>When a printer’s queue is held until someone sorts something out</value>
+  </data>
+  <data name="Notifications_AttentionTitle" xml:space="preserve">
+    <value>{0} needs you</value>
+  </data>
+  <data name="Notifications_ErrorTitle" xml:space="preserve">
+    <value>{0} has stopped with an error</value>
+  </data>
+  <data name="Notifications_AttentionNoReason" xml:space="preserve">
+    <value>It is waiting for someone at the printer.</value>
+  </data>
+  <data name="Notifications_FinishedTitle" xml:space="preserve">
+    <value>{0} has finished printing</value>
+  </data>
+  <data name="Notifications_StoppedTitle" xml:space="preserve">
+    <value>{0} stopped printing</value>
+  </data>
+  <data name="Notifications_FailedTitle" xml:space="preserve">
+    <value>The print on {0} failed</value>
+  </data>
+  <data name="Notifications_QueueHeldTitle" xml:space="preserve">
+    <value>The queue on {0} is on hold</value>
+  </data>
+  <data name="Notifications_TooManyBrowsers" xml:space="preserve">
+    <value>You already have {0} browsers receiving notifications. Remove one to add another.</value>
+  </data>
+  <data name="Notifications_TestTooSoon" xml:space="preserve">
+    <value>A test was just sent to that browser. Wait a few seconds before sending another.</value>
+  </data>
 </root>

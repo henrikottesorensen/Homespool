@@ -19,6 +19,9 @@ public class HSUser : IdentityUser<long>
     /// </summary>
     public const int LanguageMaxLength = 16;
 
+    /// <summary>The longest <see cref="MutedNotifications"/>: every kind named, with room to grow.</summary>
+    public const int MutedNotificationsMaxLength = 256;
+
     public HSUser()
     {
         SecurityStamp = Guid.NewGuid().ToString();
@@ -63,6 +66,25 @@ public class HSUser : IdentityUser<long>
     /// </remarks>
     [MaxLength(LanguageMaxLength)]
     public string? Language { get; set; }
+
+    /// <summary>
+    /// The kinds of notification this account has turned off, as space-separated
+    /// <see cref="NotificationKind"/> names, or null when none are.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What is off, rather than what is on</b>, so a kind added later reaches everybody until they
+    /// turn it off - the opposite of an API token's scope, deliberately. A token narrowing itself by
+    /// default is a safety property; a notification that nobody hears about because it is new is only
+    /// a feature nobody finds.
+    /// </para>
+    /// <para>
+    /// Per account, not per browser: the same person wants the same things on their phone and their
+    /// laptop, and a destination is only where they are told.
+    /// </para>
+    /// </remarks>
+    [MaxLength(MutedNotificationsMaxLength)]
+    public string? MutedNotifications { get; set; }
 
     /// <summary>
     /// The <see cref="Printer"/> this account reaches for when a page has to pick one, or null when

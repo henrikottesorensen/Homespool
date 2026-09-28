@@ -3120,4 +3120,55 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Notifications_TestBody" xml:space="preserve">
     <value>Notifikationer når frem til denne browser.</value>
   </data>
+  <data name="Notifications_KindsHeading" xml:space="preserve">
+    <value>Hvad du vil have besked om</value>
+  </data>
+  <data name="Notifications_KindsHint" xml:space="preserve">
+    <value>Valgene gælder alle de browsere, du har slået til.</value>
+  </data>
+  <data name="Notifications_KindsSave" xml:space="preserve">
+    <value>Gem</value>
+  </data>
+  <data name="Notifications_KindsSaved" xml:space="preserve">
+    <value>Dine valg er gemt.</value>
+  </data>
+  <data name="Notifications_KindPrinterNeedsAttention" xml:space="preserve">
+    <value>Når en printer har brug for nogen – et filamentskift, en dialog, en fejl</value>
+  </data>
+  <data name="Notifications_KindPrintFinished" xml:space="preserve">
+    <value>Når et af dine print er færdigt</value>
+  </data>
+  <data name="Notifications_KindPrintDidNotFinish" xml:space="preserve">
+    <value>Når et af dine print bliver stoppet eller fejler</value>
+  </data>
+  <data name="Notifications_KindQueueHeld" xml:space="preserve">
+    <value>Når en printers kø venter på, at nogen løser noget</value>
+  </data>
+  <data name="Notifications_AttentionTitle" xml:space="preserve">
+    <value>{0} har brug for dig</value>
+  </data>
+  <data name="Notifications_ErrorTitle" xml:space="preserve">
+    <value>{0} er stoppet med en fejl</value>
+  </data>
+  <data name="Notifications_AttentionNoReason" xml:space="preserve">
+    <value>Den venter på, at nogen kommer hen til printeren.</value>
+  </data>
+  <data name="Notifications_FinishedTitle" xml:space="preserve">
+    <value>{0} er færdig med at printe</value>
+  </data>
+  <data name="Notifications_StoppedTitle" xml:space="preserve">
+    <value>{0} stoppede printet</value>
+  </data>
+  <data name="Notifications_FailedTitle" xml:space="preserve">
+    <value>Printet på {0} fejlede</value>
+  </data>
+  <data name="Notifications_QueueHeldTitle" xml:space="preserve">
+    <value>Køen på {0} venter</value>
+  </data>
+  <data name="Notifications_TooManyBrowsers" xml:space="preserve">
+    <value>Du har allerede {0} browsere, der modtager notifikationer. Fjern en for at tilføje en anden.</value>
+  </data>
+  <data name="Notifications_TestTooSoon" xml:space="preserve">
+    <value>Der er lige sendt en test til den browser. Vent et par sekunder, før du sender en til.</value>
+  </data>
 </root>

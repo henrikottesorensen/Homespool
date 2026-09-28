@@ -272,6 +272,10 @@ public class CameraController : ControllerBase
     /// happened by the time anything is returned: the body is written as it is read, and the result
     /// object's only job is to not touch what was streamed.
     /// </para>
+    /// <para>
+    /// <b><paramref name="view"/> is the page's name for this live view</b>, so that
+    /// <see cref="StopStream"/> can end it. Optional: a script without one ends its stream by leaving.
+    /// </para>
     /// </remarks>
     [HttpGet]
     [Route("{uuid:guid}/stream.mjpeg")]
@@ -280,6 +284,7 @@ public class CameraController : ControllerBase
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     public async Task<Results<EmptyHttpResult, ForbiddenProblem, NotFoundProblem, ConflictProblem, TooManyRequestsProblem, BadGatewayProblem>> Stream(
         Guid uuid,
+        [FromQuery] Guid? view,
         CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -309,17 +314,21 @@ public class CameraController : ControllerBase
         // Taken before the relay opens its sidecar connection and held until the copy below ends,
         // so what is counted is exactly what costs: the connection and its buffer. After the two
         // checks above, so a camera the caller cannot see or cannot watch never uses one up.
-        using IDisposable? slot = _streamLimiter.TryAcquire(userId.Value);
+        using MjpegStreamLease? slot = _streamLimiter.TryAcquire(userId.Value, camera.Uuid, view);
 
         if (slot is null)
         {
             return this.TooManyRequestsProblem("This account already has as many live streams open as it may. Close one and try again.");
         }
 
+        // Ended by whichever comes first: the viewer leaving, or the page asking for it to stop.
+        using CancellationTokenSource watching =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, slot.Stopped);
+
         // Nothing is answered until a whole frame has arrived - the relay proves the camera is
         // producing pictures before 200 is committed, because the stream server cannot (it answers
         // success before it knows). See CameraStreamRelay.
-        using LiveMjpegStream? live = await _relay.OpenAsync(camera.Uuid, cancellationToken)
+        using LiveMjpegStream? live = await _relay.OpenAsync(camera.Uuid, watching.Token)
                                                   .ConfigureAwait(false);
 
         if (live is null)
@@ -342,27 +351,68 @@ public class CameraController : ControllerBase
 
         try
         {
-            await live.CopyToAsync(Response.Body, cancellationToken).ConfigureAwait(false);
+            await live.CopyToAsync(Response.Body, watching.Token).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is OperationCanceledException or
                                                        IOException or
                                                        HttpRequestException)
         {
-            // The viewer left, or the sidecar closed the stream. Either way the answer has already
-            // started and there is nobody to tell.
+            // The viewer left, the page stopped the view, or the sidecar closed the stream. Either
+            // way the answer has already started and there is nobody to tell.
         }
 
         // The viewer is still here, so the stream ended at the sidecar's end - a restart, or the
-        // camera going away. Ending the response cleanly would leave the browser showing the last
-        // frame with nothing to say it stopped: no error event, and the picture's size unchanged,
-        // measured in Chromium and WebKit. A connection that breaks instead drops the picture's size
-        // to zero, which is what the page watches for, and which a Homespool restart does anyway.
+        // camera going away - or was stopped by the page. Ending the response cleanly would leave the
+        // browser showing the last frame with nothing to say it stopped: no error event, and the
+        // picture's size unchanged, measured in Chromium and WebKit. A connection that breaks instead
+        // drops the picture's size to zero, which is what the page watches for, and which a Homespool
+        // restart does anyway; and it is the one end of a stopped view Safari cannot ignore.
         if (!cancellationToken.IsCancellationRequested)
         {
             HttpContext.Abort();
         }
 
         return TypedResults.Empty;
+    }
+
+    /// <summary>
+    /// Ends the caller's own live MJPEG view of a camera, by the name the page gave it when it opened
+    /// the stream.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Safari is why this exists.</b> A page stops watching by taking the picture's source away, and
+    /// Chromium closes the connection when it does. Safari does not - measured on the appliance, the
+    /// stream went on for as long as the tab stayed open, the sidecar holding the camera and the relay
+    /// copying frames to a picture that showed a still - and nothing a page can do to an
+    /// <c>&lt;img&gt;</c> changes that. A connection the server breaks, it has to give up.
+    /// </para>
+    /// <para>
+    /// <b>Only the caller's own views are found</b>, and anything else - another account's view, a name
+    /// never used, a view already ended - is the same 404, so the names are not a way to learn what
+    /// anybody else is watching. No permission on the camera is asked for: ending one's own stream
+    /// takes nothing from anybody.
+    /// </para>
+    /// <para>
+    /// A write on <c>/api/v1</c> with a named caller, the printer page's live view, and no entity: a
+    /// live view is not stored anywhere.
+    /// </para>
+    /// </remarks>
+    [HttpDelete]
+    [Route("{uuid:guid}/stream/{view:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    public Results<NoContent, ForbiddenProblem, NotFoundProblem> StopStream(Guid uuid, Guid view)
+    {
+        long? userId = UserId();
+        if (userId is null)
+        {
+            return this.NoAccount();
+        }
+
+        return _streamLimiter.Stop(userId.Value, uuid, view) ?
+            TypedResults.NoContent() :
+            this.NotFoundProblem("No such live view.");
     }
 
     /// <summary>

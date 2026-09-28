@@ -142,6 +142,67 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A view its page stops is ended by the server: the viewer's connection breaks and the sidecar's
+    /// stream closes, whether or not the browser would have let go by itself - Safari does not.
+    /// </summary>
+    [Fact]
+    public async Task AViewItsPageStopsIsEndedByTheServer()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "mjpeg-stopper@example.com");
+
+        using (client)
+        {
+            Camera camera = await CameraPage.AddNetworkCameraAsync(_factory, client, user, "stopped", Source);
+            Guid view = Guid.NewGuid();
+
+            using HttpResponseMessage response = await OpenAsync(client, camera.Uuid, view);
+            _ = await FirstFrameAsync(response);
+
+            using HttpResponseMessage stopped = await client.DeleteAsync(
+                $"/api/v1/cameras/{camera.Uuid}/stream/{view}", TestContext.Current.CancellationToken);
+
+            stopped.StatusCode.Should().Be(HttpStatusCode.NoContent);
+            (await ReadToTheEndAsync(response)).Should().BeFalse("the server breaks the connection it was asked to end");
+            (await EventuallyAsync(() => _sidecar.OpenMjpegStreams == 0)).Should().BeTrue(
+                "the camera is released with the view");
+        }
+    }
+
+    /// <summary>
+    /// Another account cannot stop a view, and is told nothing it could not have guessed: its request
+    /// is the same 404 as a name never used, and the stream plays on.
+    /// </summary>
+    [Fact]
+    public async Task AnotherAccountCannotStopAView()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "mjpeg-owner@example.com");
+        (HSUser _, HttpClient stranger) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "mjpeg-stranger@example.com");
+
+        using (client)
+        using (stranger)
+        {
+            Camera camera = await CameraPage.AddNetworkCameraAsync(_factory, client, user, "owned", Source);
+            Guid view = Guid.NewGuid();
+
+            using HttpResponseMessage response = await OpenAsync(client, camera.Uuid, view);
+            _ = await FirstFrameAsync(response);
+
+            using HttpResponseMessage refused = await stranger.DeleteAsync(
+                $"/api/v1/cameras/{camera.Uuid}/stream/{view}", TestContext.Current.CancellationToken);
+            using HttpResponseMessage unknown = await client.DeleteAsync(
+                $"/api/v1/cameras/{camera.Uuid}/stream/{Guid.NewGuid()}", TestContext.Current.CancellationToken);
+
+            refused.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            unknown.StatusCode.Should().Be(HttpStatusCode.NotFound, "the stranger's answer must be indistinguishable from this");
+            _ = await FirstFrameAsync(response);
+            _sidecar.OpenMjpegStreams.Should().Be(1, "the owner's stream plays on");
+        }
+    }
+
+    /// <summary>
     /// A sidecar that answers 200 and then sends no picture is not a stream: the viewer is told the
     /// camera produced nothing, rather than handed an empty one.
     /// </summary>
@@ -165,9 +226,10 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
         }
     }
 
-    private static async Task<HttpResponseMessage> OpenAsync(HttpClient client, Guid uuid)
+    private static async Task<HttpResponseMessage> OpenAsync(HttpClient client, Guid uuid, Guid? view = null)
     {
-        using HttpRequestMessage request = new(HttpMethod.Get, $"/api/v1/cameras/{uuid}/stream.mjpeg");
+        using HttpRequestMessage request = new(
+            HttpMethod.Get, $"/api/v1/cameras/{uuid}/stream.mjpeg" + (view is { } named ? $"?view={named}" : string.Empty));
 
         return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
     }

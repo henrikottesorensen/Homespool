@@ -25,11 +25,19 @@ namespace Homespool.Host.Cameras;
 /// <b>In memory, and that is exact rather than approximate.</b> A stream lives no longer than the
 /// process relaying it, so a count that starts again at zero with the process is still right.
 /// </para>
+/// <para>
+/// <b>It is also where a stream is stopped from outside.</b> A page names its live view when it opens
+/// the stream, and <see cref="Stop"/> ends that view on request - because Safari, measured on the
+/// appliance, keeps a multipart picture's connection open after the page takes its source away, for
+/// as long as the tab stays open, and the only end it cannot ignore is the server's. The one place that
+/// already holds every open stream is the one that can find it.
+/// </para>
 /// </remarks>
 public sealed class MjpegStreamLimiter
 {
     private readonly IOptionsMonitor<CameraOptions> _options;
     private readonly Dictionary<long, int> _open = [];
+    private readonly Dictionary<(long userId, Guid camera, Guid view), MjpegStreamLease> _views = [];
     private readonly Lock _lock = new();
 
     /// <summary>Creates the limiter.</summary>
@@ -46,8 +54,15 @@ public sealed class MjpegStreamLimiter
     /// many open as it may.
     /// </summary>
     /// <param name="userId">The account opening the stream.</param>
+    /// <param name="camera">The camera it is of.</param>
+    /// <param name="view">
+    /// The page's name for this live view, by which <see cref="Stop"/> finds it - or
+    /// <see langword="null"/> for a caller with no way to stop it but leaving, which is any script. A
+    /// name already in use by the same account for the same camera is not taken over: the stream is
+    /// counted, and only the first holder of the name can be stopped by it.
+    /// </param>
     /// <returns>A lease that gives the stream back when disposed, or <see langword="null"/>.</returns>
-    public IDisposable? TryAcquire(long userId)
+    public MjpegStreamLease? TryAcquire(long userId, Guid camera, Guid? view)
     {
         int limit = _options.CurrentValue.MaxMjpegStreamsPerUser;
 
@@ -61,15 +76,55 @@ public sealed class MjpegStreamLimiter
             }
 
             _open[userId] = count + 1;
-        }
 
-        return new Lease(this, userId);
+            if (view is { } named && !_views.ContainsKey((userId, camera, named)))
+            {
+                MjpegStreamLease stoppable = new(this, userId, (userId, camera, named));
+                _views.Add((userId, camera, named), stoppable);
+
+                return stoppable;
+            }
+
+            return new MjpegStreamLease(this, userId, null);
+        }
     }
 
-    private void Release(long userId)
+    /// <summary>
+    /// Stops the account's named live view of <paramref name="camera"/>: the stream it is relaying
+    /// sees <see cref="MjpegStreamLease.Stopped"/> and ends, breaking the viewer's connection.
+    /// </summary>
+    /// <returns>
+    /// Whether there was such a view to stop. Another account's view is never found, so a stranger's
+    /// request cannot tell it from one that does not exist.
+    /// </returns>
+    public bool Stop(long userId, Guid camera, Guid view)
+    {
+        MjpegStreamLease? lease;
+
+        lock (_lock)
+        {
+            _views.TryGetValue((userId, camera, view), out lease);
+        }
+
+        // Outside the lock: cancelling runs the stream's own continuations, which give the lease back
+        // through this same lock.
+        lease?.Cancel();
+
+        return lease is not null;
+    }
+
+    /// <summary>Gives a stream back, and forgets its name.</summary>
+    internal void Release(MjpegStreamLease lease)
     {
         lock (_lock)
         {
+            if (lease.Key is { } key)
+            {
+                _views.Remove(key);
+            }
+
+            long userId = lease.UserId;
+
             if (!_open.TryGetValue(userId, out int count))
             {
                 return;
@@ -85,24 +140,6 @@ public sealed class MjpegStreamLimiter
             {
                 _open[userId] = count - 1;
             }
-        }
-    }
-
-    /// <summary>One open stream. Disposing it more than once gives back one stream, not several.</summary>
-    private sealed class Lease : IDisposable
-    {
-        private readonly long _userId;
-        private MjpegStreamLimiter? _owner;
-
-        public Lease(MjpegStreamLimiter owner, long userId)
-        {
-            _owner = owner;
-            _userId = userId;
-        }
-
-        public void Dispose()
-        {
-            Interlocked.Exchange(ref _owner, null)?.Release(_userId);
         }
     }
 }

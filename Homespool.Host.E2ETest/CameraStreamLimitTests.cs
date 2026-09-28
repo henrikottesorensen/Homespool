@@ -208,7 +208,7 @@ public sealed class CameraStreamLimitTests : IAsyncLifetime
     {
         MjpegStreamLimiter limiter = _factory.Services.GetRequiredService<MjpegStreamLimiter>();
 
-        return [.. Enumerable.Range(0, count).Select(_ => limiter.TryAcquire(userId))];
+        return [.. Enumerable.Range(0, count).Select(_ => limiter.TryAcquire(userId, Guid.NewGuid(), null))];
     }
 
     /// <summary>

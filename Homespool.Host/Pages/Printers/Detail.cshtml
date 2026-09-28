@@ -95,7 +95,8 @@
                          data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })"
                          data-camera-live="@Url.Action("Live", "Camera", new { uuid = camera.Uuid })"
                          data-camera-webrtc="@Url.Action("WebRtc", "Camera", new { uuid = camera.Uuid })"
-                         data-camera-stream="@Url.Action("Stream", "Camera", new { uuid = camera.Uuid })">
+                         data-camera-stream="@Url.Action("Stream", "Camera", new { uuid = camera.Uuid })"
+                         data-camera-stop="@Url.Action("StopStream", "Camera", new { uuid = camera.Uuid, view = Guid.Empty })">
                         @* Empty until a frame arrives. An img with no src draws nothing, which is
                            what "no picture yet" should look like - not a broken-image icon. *@
                         <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />

@@ -24,11 +24,10 @@ namespace Homespool.Host.BrowserTest;
 /// half of the feature a person notices when it goes wrong.
 /// </para>
 /// <para>
-/// <b>WebKit keeps a multipart picture's connection open after its source is taken away</b> -
-/// measured: removing or replacing the <c>src</c>, or the element itself, leaves the stream
-/// running for as long as it was watched, and only <c>window.stop()</c> closes it. So the sidecar
-/// is not released when a WebKit viewer stops watching, and that is asserted for Chromium alone
-/// until the page ends a stream some other way. What the page shows is asserted in both.
+/// <b>WebKit keeps a multipart picture's connection open after its source is taken away</b> - as
+/// real Safari does, measured on the appliance - so a page ending its view has the server end it
+/// too. The camera being released is therefore asserted in both engines, and in WebKit it is the
+/// server's stop that does it.
 /// </para>
 /// </remarks>
 public sealed class CameraLiveTests(Browsers browsers)
@@ -221,7 +220,7 @@ public sealed class CameraLiveTests(Browsers browsers)
 
         await scenario.LiveToggle.ClickAsync();
 
-        await ExpectReleasedAsync(engine, scenario, "a stream the viewer has left must not hold the camera open for nobody");
+        await ExpectReleasedAsync(scenario, "a stream the viewer has left must not hold the camera open for nobody");
         await Expect(scenario.LiveToggle).ToHaveAttributeAsync("aria-label", await scenario.LabelAsync("watch"));
         await Expect(scenario.Image).ToHaveAttributeAsync("src", new System.Text.RegularExpressions.Regex("^blob:"),
                                                           new() { Timeout = 10_000 });
@@ -251,7 +250,7 @@ public sealed class CameraLiveTests(Browsers browsers)
             """);
 
         await Expect(scenario.LiveToggle).ToHaveAttributeAsync("aria-label", await scenario.LabelAsync("watch"));
-        await ExpectReleasedAsync(engine, scenario, "a background tab must not hold a camera open for nobody");
+        await ExpectReleasedAsync(scenario, "a background tab must not hold a camera open for nobody");
     }
 
     /// <summary>
@@ -353,17 +352,9 @@ public sealed class CameraLiveTests(Browsers browsers)
         return CameraScenario.OpenAsync(browsers, engine, name, FakeCamera.Jpeg);
     }
 
-    /// <summary>
-    /// The sidecar's stream ended with the viewer's - in the engines that end it; see the remarks on
-    /// this class for the one that does not.
-    /// </summary>
-    private static async Task ExpectReleasedAsync(string engine, CameraScenario scenario, string because)
+    /// <summary>The sidecar's stream ended with the viewer's.</summary>
+    private static async Task ExpectReleasedAsync(CameraScenario scenario, string because)
     {
-        if (engine == Browsers.WebKit)
-        {
-            return;
-        }
-
         (await CameraScenario.EventuallyAsync(() => scenario.Host.Sidecar.OpenMjpegStreams == 0)).Should().BeTrue(because);
     }
 

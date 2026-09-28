@@ -53,6 +53,10 @@
     const MJPEG_PLAYING_POLL_MS = 1000;
     const MJPEG_GONE_AFTER_CHECKS = 2;
 
+    // The stop URL is rendered with an all-zero view, and the view's own name put in its place - so the
+    // route is the server's to spell, not this file's.
+    const NO_VIEW = "00000000-0000-0000-0000-000000000000";
+
     function ready(fn) {
         if (document.readyState !== "loading") {
             fn();
@@ -121,6 +125,9 @@
         let transport = null;
         let streaming = false;
 
+        // This MJPEG view's name, given to the server with the stream so the view can be stopped there.
+        let viewName = null;
+
         // The MJPEG path's poll for "has a frame decoded yet". Separate from the WebRTC path's
         // stats interval because they watch different things and stop() must clear both.
         let framePoll = null;
@@ -174,13 +181,28 @@
             }
 
             if (streaming) {
-                // Dropping the src is what closes the connection, which is what lets the relay and
-                // then the sidecar release the camera. The poller puts its next still back in.
+                // Dropping the src is what closes the connection in Chromium and Firefox. Safari keeps
+                // it open for as long as the tab is - measured - so the server is also asked to end the
+                // view, which breaks the connection from its side; only that releases the relay and
+                // then the camera there. keepalive, so the request still goes when the tab is closing
+                // or going into the background. The poller puts its next still back in.
                 streaming = false;
                 image.onload = null;
                 image.onerror = null;
                 image.removeAttribute("src");
                 image.classList.add("d-none");
+
+                if (viewName) {
+                    fetch(view.dataset.cameraStop.replace(NO_VIEW, viewName), {
+                        method: "DELETE",
+                        credentials: "same-origin",
+                        keepalive: true,
+                    }).catch(function () {
+                        // Already over, or the server is gone - either way nothing is left open.
+                    });
+
+                    viewName = null;
+                }
             }
 
             video.srcObject = null;
@@ -467,7 +489,12 @@
                 }
             };
 
-            image.src = view.dataset.cameraStream;
+            // randomUUID exists only on a secure context. Every deployment serves this page over HTTPS,
+            // so it is missing only on a development server reached over plain http - where the view
+            // goes unnamed, and ends as it did before: Chromium and Firefox on dropping the source,
+            // Safari on closing the tab.
+            viewName = window.crypto.randomUUID ? window.crypto.randomUUID() : null;
+            image.src = view.dataset.cameraStream + (viewName ? "?view=" + viewName : "");
             image.classList.remove("d-none");
         }
 

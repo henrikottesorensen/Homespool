@@ -222,6 +222,46 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
         manifest.Content.Headers.ContentType!.MediaType.Should().Be("application/manifest+json");
     }
 
+    /// <summary>
+    /// Every icon the manifest names exists and is the size it claims. A browser that cannot fetch
+    /// one says nothing; it just installs Homespool with a blank or blurred icon.
+    /// </summary>
+    [Fact]
+    public async Task EveryIconTheManifestNamesIsServedAtItsStatedSize()
+    {
+        using HttpClient client = _factory.CreateClient();
+
+        using JsonDocument manifest = JsonDocument.Parse(
+            await client.GetStringAsync("/site.webmanifest", TestContext.Current.CancellationToken));
+
+        JsonElement[] icons = [.. manifest.RootElement.GetProperty("icons").EnumerateArray()];
+
+        icons.Should().Contain(icon => icon.GetProperty("purpose").GetString() == "maskable",
+                               "Android crops an icon without a maskable version to a circle inside a white one");
+
+        foreach (JsonElement icon in icons)
+        {
+            string source = icon.GetProperty("src").GetString()!;
+
+            using HttpResponseMessage response = await client.GetAsync(source, TestContext.Current.CancellationToken);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK, source);
+            response.Content.Headers.ContentType!.MediaType.Should().Be(icon.GetProperty("type").GetString(), source);
+
+            string sizes = icon.GetProperty("sizes").GetString()!;
+
+            if (sizes != "any")
+            {
+                // A PNG's IHDR: width and height, big-endian, at bytes 16 and 20.
+                byte[] png = await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+                int width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(16, 4));
+                int height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(png.AsSpan(20, 4));
+
+                $"{width}x{height}".Should().Be(sizes, source);
+            }
+        }
+    }
+
     private async Task<List<WebPushDestination>> StoredAsync()
     {
         using IServiceScope scope = _factory.Services.CreateScope();

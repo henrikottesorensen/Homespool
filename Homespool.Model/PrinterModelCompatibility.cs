@@ -200,14 +200,36 @@ public static class PrinterModelCompatibility
     }
 
     /// <summary>
+    /// The group a printer belongs to, given what it reported about itself.
+    /// </summary>
+    /// <remarks>
+    /// <b>A printer names itself with a version triple, not a designation.</b> <c>INFO</c> carries
+    /// <c>printer_type: "1.3.5"</c>, and that string is what is stored - so looking it up as though it
+    /// were <c>MK3.5</c> finds nothing in this table and yields <see cref="PrinterModelGroup.Unknown"/>,
+    /// which the comparison honours as "a machine I have never heard of" and makes no claim about. That
+    /// silence is indistinguishable from the deliberate one - every printer would look like a new
+    /// one, and nothing would say so. So the triple is resolved to a designation first, and only then
+    /// looked up - by <see cref="PrinterModelDesignation"/>, which hands back the raw value where it
+    /// resolves to nothing, so a name reaching this by some other route is not lost.
+    /// </remarks>
+    public static PrinterModelGroup GroupForPrinterType(string? printerType)
+    {
+        return GroupFor(PrinterModelDesignation.Of(printerType));
+    }
+
+    /// <summary>
     /// Whether a printer of <paramref name="printerModel"/> may print a file sliced for
     /// <paramref name="fileModel"/>, or null when either model is one this table does not know.
     /// </summary>
-    /// <param name="printerModel">As the printer reports it, e.g. <c>MK3.5</c>, <c>COREONE</c>.</param>
+    /// <param name="printerModel">
+    /// As the printer reports it - <c>INFO</c>'s <c>printer_type</c>, so a version triple like
+    /// <c>1.3.5</c> rather than <c>MK3.5</c>. A designation is accepted too; see
+    /// <see cref="GroupForPrinterType"/>.
+    /// </param>
     /// <param name="fileModel">As the slicer wrote it, e.g. <c>MK4IS</c>, <c>COREONEMMU3</c>.</param>
     public static bool? CanPrint(string? printerModel, string? fileModel)
     {
-        PrinterModelGroup printer = GroupFor(printerModel);
+        PrinterModelGroup printer = GroupForPrinterType(printerModel);
         PrinterModelGroup file = GroupFor(fileModel);
 
         if (printer == PrinterModelGroup.Unknown || file == PrinterModelGroup.Unknown)

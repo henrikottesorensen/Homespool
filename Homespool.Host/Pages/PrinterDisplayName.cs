@@ -1,3 +1,4 @@
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages;
@@ -17,8 +18,16 @@ public static class PrinterDisplayName
     /// The printer's name, the model it reported, or its uuid - the first of those it has.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>The uuid is a last resort and looks like one</b>, which is deliberate: a wall of hex is a
     /// legible prompt to go and name the thing, where "Printer 4" would read as a name somebody chose.
+    /// </para>
+    /// <para>
+    /// <b>The model is resolved before it is shown.</b> What the printer reported is
+    /// <c>printer_type</c>, a version triple, so shown raw an unnamed printer would be called
+    /// <c>1.3.5</c> - which is not a worse name than the uuid so much as a name that looks like it
+    /// means something and does not.
+    /// </para>
     /// </remarks>
     public static string For(Printer printer)
     {
@@ -29,6 +38,8 @@ public static class PrinterDisplayName
             return printer.Name;
         }
 
-        return !string.IsNullOrWhiteSpace(printer.Model) ? printer.Model : printer.Uuid.ToString();
+        string? model = PrinterModelDesignation.Of(printer.Model);
+
+        return !string.IsNullOrWhiteSpace(model) ? model : printer.Uuid.ToString();
     }
 }

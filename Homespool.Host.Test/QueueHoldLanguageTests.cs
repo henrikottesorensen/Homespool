@@ -137,7 +137,8 @@ public sealed class QueueHoldLanguageTests : IDisposable
             RequiresHighFlowNozzle = true,
         };
 
-        Printer printer = new() { Id = 1, Model = "MK3.5" };
+        // The triple, as INFO carries it - a designation here would exercise a spelling no printer sends.
+        Printer printer = new() { Id = 1, Model = "1.3.5" };
         List<PrinterTool> tools = [new() { PrinterId = 1, ToolNumber = 1, NozzleDiameter = 0.4f }];
 
         foreach (PrintCompatibilityFinding finding in Enum.GetValues<PrintCompatibilityFinding>()

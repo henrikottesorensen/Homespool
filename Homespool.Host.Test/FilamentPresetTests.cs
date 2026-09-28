@@ -46,6 +46,21 @@ public class FilamentPresetTests
         FilamentPreset.Find("MK3.5", "PA")!.NozzleTemperature.Should().Be(285);
     }
 
+    /// <summary>
+    /// And the same MINI as it actually names itself, which is the spelling this ever gets asked with.
+    /// </summary>
+    /// <remarks>
+    /// <b>A MINI reports <c>2.1.0</c>.</b> Matching the string as it arrives against <c>MINI</c> never
+    /// fires, so the one entry that exists because the machine is different would be the one entry
+    /// never applied to it - 285 °C sent to a hotend that will not go there.
+    /// </remarks>
+    [Fact]
+    public void AMiniIsRecognisedFromWhatItReports()
+    {
+        FilamentPreset.Find("2.1.0", "PA")!.NozzleTemperature.Should().Be(280);
+        FilamentPreset.Find("1.3.5", "PA")!.NozzleTemperature.Should().Be(285, "an MK3.5 is not a MINI");
+    }
+
     /// <summary>Only PA moves - the model must not quietly shift anything else.</summary>
     [Fact]
     public void NothingElseChangesWithTheModel()

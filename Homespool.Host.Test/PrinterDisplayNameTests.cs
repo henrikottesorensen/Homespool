@@ -27,12 +27,29 @@ public class PrinterDisplayNameTests
     }
 
     /// <summary>With no name, the model the printer reported is better than its uuid.</summary>
+    /// <remarks>
+    /// <b>Reported, not stored raw.</b> What arrives on the wire is <c>printer_type</c> - a version
+    /// triple - so without resolving it an unnamed printer read out as <c>7.1.0</c>: a string that
+    /// looks like it means something to the person reading it, and does not.
+    /// </remarks>
     [Fact]
     public void FallsBackToTheReportedModel()
     {
-        Printer printer = new() { Model = "COREONE", Uuid = Guid.NewGuid() };
+        Printer printer = new() { Model = "7.1.0", Uuid = Guid.NewGuid() };
 
         PrinterDisplayName.For(printer).Should().Be("COREONE");
+    }
+
+    /// <summary>
+    /// A triple newer than the names table is still better than the uuid: it is the most specific
+    /// true thing there is to say about the machine.
+    /// </summary>
+    [Fact]
+    public void KeepsAnUnresolvableModelRatherThanFallingPastIt()
+    {
+        Printer printer = new() { Model = "9.9.9", Uuid = Guid.NewGuid() };
+
+        PrinterDisplayName.For(printer).Should().Be("9.9.9");
     }
 
     /// <summary>With neither, the uuid - which looks like a prompt to go and name the thing.</summary>

@@ -42,11 +42,13 @@ public static class PrintCompatibilityDescription
             PrintCompatibilityFinding.AbrasiveFilamentMayUseASoftNozzle =>
                 MessageKey.For("Queue_WarnAbrasiveMayUseSoft", file.Name),
 
+            // The printer's side is resolved, not printed raw: what it reported is a version triple,
+            // and "this printer is a 1.3.5" names nothing the reader owns.
             PrintCompatibilityFinding.IncompatiblePrinterModel =>
                 MessageKey.For("Queue_WarnIncompatibleModel",
                                file.Name,
                                file.PrinterModel ?? string.Empty,
-                               printer.Model ?? string.Empty),
+                               PrinterModelDesignation.Of(printer.Model) ?? string.Empty),
 
             PrintCompatibilityFinding.NozzleDiameterMismatch =>
                 MessageKey.For("Queue_WarnNozzleDiameter",

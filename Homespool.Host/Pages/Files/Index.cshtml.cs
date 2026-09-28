@@ -601,13 +601,15 @@ public class IndexModel : PageModel
     }
 
     /// <summary>
-    /// What to call a printer in a message. The same fallback chain <c>Pages/Printers/Index</c>
-    /// uses, and for the reason documented on <see cref="Printer.Name"/>: the uuid is the only part
-    /// that cannot be missing.
+    /// What to call a printer in a message - the shared chain, rather than a fourth copy of it.
     /// </summary>
+    /// <remarks>
+    /// Not <c>Name ?? Model ?? Uuid</c> inline: that reads the reported model as though it were a
+    /// name, and an unnamed printer would be told about as <c>1.3.5</c>.
+    /// </remarks>
     private static string PrinterName(Printer printer)
     {
-        return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
+        return PrinterDisplayName.For(printer);
     }
 
     /// <summary>

@@ -1869,6 +1869,9 @@
   <data name="Error_FileNameConflictAny" xml:space="preserve">
     <value>Der findes allerede en fil med dette navn.</value>
   </data>
+  <data name="Error_IncompatiblePrinterModel" xml:space="preserve">
+    <value>Filen er slicet til en anden printermodel, og kan ikke printes på {2}.</value>
+  </data>
   <data name="Error_NoSuchFile" xml:space="preserve">
     <value>Du har ingen fil, der hedder ‘{0}’.</value>
   </data>
@@ -2027,9 +2030,6 @@
   </data>
   <data name="Queue_WarnAbrasiveMayUseSoft" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og kun nogle af printerens dyser er hærdede. Den starter, så tjek, hvilken dyse den bruger.</value>
-  </data>
-  <data name="Queue_WarnIncompatibleModel" xml:space="preserve">
-    <value>{0} er slicet til {1}, og denne printer er en {2}. Den er sat i kø, men den vil ikke starte: de hastigheder og accelerationer, den beder om, er ikke nogen, denne maskine bør køre med.</value>
   </data>
   <data name="Queue_WarnNozzleDiameter" xml:space="preserve">
     <value>{0} er slicet til en {1} mm dyse, og denne printer har {2} mm dyse monteret. Printeren vil også spørge, før den begynder, så køen vil gå i stå, når opgaven sættes i gang, indtil nogen fysisk svarer ved maskinen.</value>

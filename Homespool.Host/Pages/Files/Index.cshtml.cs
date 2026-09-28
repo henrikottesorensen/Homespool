@@ -413,14 +413,19 @@ public class IndexModel : PageModel
             EnqueueOutcome outcome =
                 await _queue.EnqueueAsync(printer.Id, CallerResolver.For(userId.Value, User), name, cancellationToken);
 
-            // Queued either way - the loop is what stops a print that must not happen, and this is
-            // the moment to say so while somebody is still looking at the screen.
+            // Queued, warnings and all - what would not have been queued has already thrown. The
+            // remaining findings are said here because this is the moment somebody is still looking
+            // at the screen, and the loop is what holds the ones a person can go and clear.
             (StatusMessage, StatusSuccess) = outcome.Warnings.Count == 0 ?
                 (_localiser["Files_Queued", name], true) :
                 (string.Join(' ', outcome.Warnings.Select(_errors.For)),
                  outcome.Severity != PrintCompatibilitySeverity.Hold);
         }
         catch (PrintFileNotFoundException e)
+        {
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+        }
+        catch (IncompatiblePrinterModelException e)
         {
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
@@ -601,13 +606,15 @@ public class IndexModel : PageModel
     }
 
     /// <summary>
-    /// What to call a printer in a message. The same fallback chain <c>Pages/Printers/Index</c>
-    /// uses, and for the reason documented on <see cref="Printer.Name"/>: the uuid is the only part
-    /// that cannot be missing.
+    /// What to call a printer in a message - the shared chain, rather than a fourth copy of it.
     /// </summary>
+    /// <remarks>
+    /// Not <c>Name ?? Model ?? Uuid</c> inline: that reads the reported model as though it were a
+    /// name, and an unnamed printer would be told about as <c>1.3.5</c>.
+    /// </remarks>
     private static string PrinterName(Printer printer)
     {
-        return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
+        return PrinterDisplayName.For(printer);
     }
 
     /// <summary>

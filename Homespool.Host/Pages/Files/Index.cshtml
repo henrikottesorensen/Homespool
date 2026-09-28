@@ -12,7 +12,9 @@
        so the choice is bookmarkable and survives the back button, same as the sort headers below.
        data-printer-select is site.js's hook to submit on change - without it, picking a new option
        only changes what the <select> shows, not what Send/Queue below actually target, until Save
-       is pressed and the page re-renders with it. *@
+       is pressed and the page re-renders with it. Once the change submits, Save has nothing left to
+       do, so the script hides it (data-printer-select-submit); it stays in the markup for when that
+       script never runs, because without it choosing a printer would silently do nothing at all. *@
     <form method="get" asp-page="./Index" class="d-flex align-items-center gap-2 mb-3" data-printer-select>
         <label class="form-label mb-0" for="printer-select">@Localiser["Common_Printer"]</label>
         <select id="printer-select" name="printerUuid" class="form-select form-select-sm w-auto">
@@ -30,7 +32,7 @@
         </select>
         <input type="hidden" name="sort" value="@Model.Sort" />
         <input type="hidden" name="desc" value="@Model.Descending" />
-        <button type="submit" class="btn btn-sm btn-outline-primary">@Localiser["Common_Save"]</button>
+        <button type="submit" class="btn btn-sm btn-outline-primary" data-printer-select-submit>@Localiser["Common_Save"]</button>
     </form>
 
     @if (Model.SelectedPrinterUuid is null)
@@ -167,12 +169,17 @@ else
                        send to would only produce a "not yours" refusal. *@
                     @if (Model.SelectedPrinterUuid is not null)
                     {
+                        @* data-printer-target: site.js repoints this form's printerUuid the moment the
+                           selector changes, rather than waiting for the reload that change triggers.
+                           Every other control here carries printerUuid only to keep the choice, and is
+                           corrected by that reload - these two are the ones where acting on the
+                           previous selection would start something on the wrong machine. *@
                         <form method="post" asp-page-handler="Send"
                               asp-route-name="@file.FileName"
                               asp-route-sort="@Model.Sort"
                               asp-route-desc="@Model.Descending"
                               asp-route-printerUuid="@Model.SelectedPrinterUuid"
-                              class="d-inline">
+                              class="d-inline" data-printer-target>
                             <button type="submit" class="btn btn-sm btn-outline-primary"
                                     title="@Localiser["Files_SendTitle"]">@Localiser["Files_Send"]</button>
                             @* Second submit on the same form. asp-page-handler on a button emits

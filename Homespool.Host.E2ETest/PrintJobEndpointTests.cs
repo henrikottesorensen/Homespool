@@ -399,9 +399,14 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Queueing a file made for another printer still queues it, and says the queue will stop there -
-    /// through both doors a file reaches a queue by over the API.
+    /// Queueing a file the printer should not print still queues it, and says the queue will stop
+    /// there - through both doors a file reaches a queue by over the API.
     /// </summary>
+    /// <remarks>
+    /// <b>The hold is an abrasive filament on a soft nozzle</b>, because that is the finding a person
+    /// can clear - fit a hardened nozzle and the held entry runs - and so the one worth queueing. A
+    /// file sliced for a different machine is not queued at all; the case below.
+    /// </remarks>
     [Fact]
     public async Task QueueingAndReprintingBothSayWhenTheQueueWillHold()
     {
@@ -411,14 +416,15 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
 
         using (client)
         {
-            Guid uuid = await AddPrinterAsync(user.Id, model: "MK3.5");
-            await UploadAsync(client, "coreone.bgcode");
-            await MarkMadeForAsync(user.Id, "coreone.bgcode", "COREONE");
-            Guid printed = await AddPrintAsync(uuid, "coreone.bgcode", user.Id, PrintState.Finished, Morning);
+            Guid uuid = await AddPrinterAsync(user.Id, model: "1.3.5");
+            await AddToolAsync(uuid, hardened: false);
+            await UploadAsync(client, "carbon.bgcode");
+            await MarkAbrasiveAsync(user.Id, "carbon.bgcode");
+            Guid printed = await AddPrintAsync(uuid, "carbon.bgcode", user.Id, PrintState.Finished, Morning);
 
             // Act
             using HttpResponseMessage queued = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/queue",
-                                                                            new { name = "coreone.bgcode" },
+                                                                            new { name = "carbon.bgcode" },
                                                                             TestContext.Current.CancellationToken);
             using HttpResponseMessage reprinted = await ReprintAsync(client, uuid, printed);
 
@@ -431,8 +437,55 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
                 JsonElement warning = payload.RootElement.GetProperty("warnings").EnumerateArray().Single();
 
                 warning.GetProperty("severity").GetString().Should().Be("Hold");
-                warning.GetProperty("message").GetString().Should().Contain("coreone.bgcode");
+                warning.GetProperty("message").GetString().Should().Contain("carbon.bgcode");
             }
+        }
+    }
+
+    /// <summary>
+    /// A file sliced for a faster machine is refused through both doors, and neither leaves an entry.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Refused rather than held, because nothing clears it.</b> Every held entry waits on something
+    /// a person can change at the printer; this one would wait on a bed slinger becoming a CoreXY.
+    /// </para>
+    /// <para>
+    /// <b>The printer is seeded as <c>1.3.5</c>, the triple <c>INFO</c> carries</b>, not as
+    /// <c>MK3.5</c>. A fixture spelled as a designation passes against a comparison that never fires
+    /// on a real printer, so a green test would say nothing about one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task QueueingAndReprintingBothRefuseAFileForAFasterMachine()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "wrongmachine@example.com");
+
+        using (client)
+        {
+            Guid uuid = await AddPrinterAsync(user.Id, model: "1.3.5");
+            await UploadAsync(client, "coreone.bgcode");
+            await MarkMadeForAsync(user.Id, "coreone.bgcode", "COREONE");
+            Guid printed = await AddPrintAsync(uuid, "coreone.bgcode", user.Id, PrintState.Finished, Morning);
+
+            // Act
+            using HttpResponseMessage queued = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/queue",
+                                                                            new { name = "coreone.bgcode" },
+                                                                            TestContext.Current.CancellationToken);
+            using HttpResponseMessage reprinted = await ReprintAsync(client, uuid, printed);
+
+            // Assert
+            queued.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            reprinted.StatusCode.Should().Be(HttpStatusCode.Conflict, "a reprint takes the enqueue's route");
+
+            (await reprinted.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+                .Should().Contain("MK3.5", "the machine is named, not the triple it reported");
+
+            using JsonDocument queue = await ListAsync(client, $"/api/v1/printers/{uuid}/queue");
+
+            queue.RootElement.GetProperty("prints").GetArrayLength().Should().Be(0, "a refusal leaves nothing behind");
         }
     }
 
@@ -514,6 +567,42 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
                                                               TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = printerModel;
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>What the metadata reader writes for a file whose filament wears a nozzle.</summary>
+    private async Task MarkAbrasiveAsync(long userId, string name)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.UserId == userId && row.Name == name,
+                                                              TestContext.Current.CancellationToken);
+        file.MetadataState = PrintFileMetadataState.Read;
+        file.RequiresHardenedNozzle = true;
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>One reported tool, as an <c>INFO</c>'s <c>tools</c> block leaves it.</summary>
+    private async Task AddToolAsync(Guid printerUuid, bool hardened)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = await context.Printers.Where(row => row.Uuid == printerUuid)
+                                     .Select(row => row.Id)
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrinterTools.Add(new PrinterTool
+        {
+            PrinterId = printerId,
+            ToolNumber = 1,
+            NozzleDiameter = 0.4f,
+            Hardened = hardened,
+            HighFlow = false,
+        });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }

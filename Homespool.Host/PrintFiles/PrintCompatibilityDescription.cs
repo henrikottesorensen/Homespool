@@ -17,9 +17,14 @@ namespace Homespool.Host.PrintFiles;
 /// preformatted text, so a Danish reader gets <c>0,4</c> and an English one <c>0.4</c>.
 /// </para>
 /// <para>
-/// <b>The two holding findings say what will happen, and the warnings do not.</b> "It is queued but
-/// will not start" is the whole of what separates them for a reader, and a warning that sounds like
-/// a refusal is how people learn to ignore both.
+/// <b>The holding finding says what will happen, and the warnings do not.</b> "It is queued but will
+/// not start" is the whole of what separates them for a reader, and a warning that sounds like a
+/// refusal is how people learn to ignore both.
+/// </para>
+/// <para>
+/// <b>Only findings that still queue have a sentence here.</b> A file sliced for a different machine
+/// is refused before an entry exists, so it has nothing to be warned about; its words belong to the
+/// refusal.
 /// </para>
 /// </remarks>
 public static class PrintCompatibilityDescription
@@ -42,11 +47,11 @@ public static class PrintCompatibilityDescription
             PrintCompatibilityFinding.AbrasiveFilamentMayUseASoftNozzle =>
                 MessageKey.For("Queue_WarnAbrasiveMayUseSoft", file.Name),
 
+            // Refused before anything is queued, so there is never a queued entry to warn about - the
+            // refusal carries its own sentence, on IncompatiblePrinterModelException. A warning here
+            // would have to say "it has been queued", which is never true of this finding.
             PrintCompatibilityFinding.IncompatiblePrinterModel =>
-                MessageKey.For("Queue_WarnIncompatibleModel",
-                               file.Name,
-                               file.PrinterModel ?? string.Empty,
-                               printer.Model ?? string.Empty),
+                throw new ArgumentOutOfRangeException(nameof(finding), finding, "This finding refuses the queue rather than warning."),
 
             PrintCompatibilityFinding.NozzleDiameterMismatch =>
                 MessageKey.For("Queue_WarnNozzleDiameter",

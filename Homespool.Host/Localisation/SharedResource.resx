@@ -1924,6 +1924,10 @@
   <data name="Error_FileNameConflictAny" xml:space="preserve">
     <value>A file of that name already exists.</value>
   </data>
+  <data name="Error_IncompatiblePrinterModel" xml:space="preserve">
+    <value>‘{0}’ is sliced for {1} and this printer is a {2}, so it has not been queued: the speeds and accelerations it asks for are not ones this machine should be run at. Send it to a {1}, or re-slice it for this printer.</value>
+    <comment>{0} is the file, {1} the model it was sliced for, {2} this printer's model. Directional - a file sliced for an older model is queued without comment. Refused rather than held, because no change to this printer would make it printable.</comment>
+  </data>
   <data name="Error_NoSuchFile" xml:space="preserve">
     <value>You have no file named ‘{0}’.</value>
   </data>
@@ -2112,10 +2116,6 @@
   <data name="Queue_WarnAbrasiveMayUseSoft" xml:space="preserve">
     <value>{0} is sliced for abrasive filament and only some of this printer's nozzles are hardened. It will start, so check which nozzle it uses.</value>
     <comment>A warning rather than a hold, because which tool the print uses is settled by its tool mapping, which only the printer resolves.</comment>
-  </data>
-  <data name="Queue_WarnIncompatibleModel" xml:space="preserve">
-    <value>{0} is sliced for {1} and this printer is a {2}. It has been queued, but it will not start: the speeds and accelerations it asks for are not ones this machine should be run at.</value>
-    <comment>Directional. A file sliced for an older model is queued without comment.</comment>
   </data>
   <data name="Queue_WarnNozzleDiameter" xml:space="preserve">
     <value>{0} is sliced for a {1} mm nozzle and this printer has a {2} mm nozzle fitted. The printer will ask as well before it begins, so the queue will stall when the job starts, until somebody answers in person at the machine.</value>

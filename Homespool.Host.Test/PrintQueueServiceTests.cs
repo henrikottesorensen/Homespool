@@ -488,13 +488,14 @@ public sealed class PrintQueueServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Queueing a file the printer should not print says so, and still queues it.
+    /// Queueing a file the printer should not print warns, and still queues it.
     /// </summary>
     /// <remarks>
-    /// <b>The whole point of warning here rather than refusing</b> (Henrik, 2026-08-19): the entry
-    /// exists, the person is told at the moment they pressed Queue, and the loop is what declines to
-    /// start the job while the disagreement stands. Refusing would also lose the self-clearing
-    /// property - fit the right nozzle and the held entry simply runs.
+    /// <b>The point of warning rather than refusing</b>: the entry exists, the person is told at the
+    /// moment they pressed Queue, and the loop is what declines to start the job while the
+    /// disagreement stands. Refusing would lose the self-clearing property - fit the right nozzle and
+    /// the held entry simply runs. The one disagreement nothing can clear is the model, and that one
+    /// refuses; see the case below.
     /// </remarks>
     [Fact]
     public async Task QueueingAFileThePrinterShouldNotPrintWarnsAndStillQueuesIt()
@@ -504,7 +505,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "abrasive.gcode");
 
-        printer.Model = "MK3.5";
+        printer.Model = "1.3.5";
         context.PrinterTools.Add(new PrinterTool
         {
             PrinterId = printer.Id,
@@ -518,11 +519,12 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         PrintQueueService queue = NewQueue(context);
 
-        // The file's own account of itself, as the reader would have written it at upload.
+        // The file's own account of itself, as the reader would have written it at upload. Sliced for
+        // the same machine, so what is left is the three findings a person can go and answer.
         PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "abrasive.gcode",
                                                               TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
-        file.PrinterModel = "COREONE";
+        file.PrinterModel = "MK3.5";
         file.NozzleDiameter = 0.6f;
         file.RequiresHardenedNozzle = true;
         file.RequiresHighFlowNozzle = true;
@@ -533,8 +535,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                           TestContext.Current.CancellationToken);
 
         // Assert
-        outcome.Findings.Should().Contain(PrintCompatibilityFinding.IncompatiblePrinterModel)
-               .And.Contain(PrintCompatibilityFinding.AbrasiveFilamentNeedsHardenedNozzle)
+        outcome.Findings.Should().Contain(PrintCompatibilityFinding.AbrasiveFilamentNeedsHardenedNozzle)
                .And.Contain(PrintCompatibilityFinding.NozzleDiameterMismatch)
                .And.Contain(PrintCompatibilityFinding.HighFlowNozzleRequired);
 
@@ -545,6 +546,54 @@ public sealed class PrintQueueServiceTests : IDisposable
             .Should().ContainSingle("the entry is created regardless - the loop is what declines to start it");
     }
 
+    /// <summary>
+    /// A CORE One file aimed at a bed slinger is refused outright, and leaves no entry behind.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The printer is seeded as it actually reports itself</b> - <c>1.3.5</c>, not <c>MK3.5</c>.
+    /// <c>INFO</c> carries the version triple, and a suite written in designations compares two
+    /// strings no printer ever sends - green whether or not the check works on a real machine.
+    /// </para>
+    /// <para>
+    /// <b>Refused rather than held, because nothing clears it.</b> A soft nozzle can be swapped; a
+    /// bed slinger cannot be swapped for a CoreXY, so an entry queued against this one would wait for
+    /// an event that cannot happen while the queue behind it waited too.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task QueueingAFileSlicedForAFasterMachineIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
+        await UploadAsync(context, "corexy.bgcode");
+
+        printer.Model = "1.3.5";
+
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "corexy.bgcode",
+                                                              TestContext.Current.CancellationToken);
+        file.MetadataState = PrintFileMetadataState.Read;
+        file.PrinterModel = "COREONE";
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrintQueueService queue = NewQueue(context);
+
+        // Act
+        Func<Task> queueing = () => queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "corexy.bgcode",
+                                                       TestContext.Current.CancellationToken);
+
+        // Assert
+        IncompatiblePrinterModelException refusal =
+            (await queueing.Should().ThrowAsync<IncompatiblePrinterModelException>()).Which;
+
+        refusal.FileModel.Should().Be("COREONE");
+        refusal.PrinterModel.Should().Be("MK3.5", "the sentence names the machine, not the triple it reported");
+
+        (await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken))
+            .Should().BeEmpty("a refused queue leaves nothing to withdraw");
+    }
+
     /// <summary>A file and a printer that agree produce nothing to say.</summary>
     [Fact]
     public async Task QueueingAFileThePrinterCanPrintSaysNothing()
@@ -553,7 +602,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "fine.gcode");
 
-        printer.Model = "MK4S";
+        printer.Model = "1.4.1"; // As INFO reports it; MK4S is the name it resolves to.
         context.PrinterTools.Add(new PrinterTool
         {
             PrinterId = printer.Id,
@@ -603,7 +652,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "abrasive.gcode");
 
-        printer.Model = "MK4S";
+        printer.Model = "1.4.1"; // As INFO reports it; MK4S is the name it resolves to.
         context.PrinterTools.Add(new PrinterTool
         {
             PrinterId = printer.Id, ToolNumber = 1, NozzleDiameter = 0.4f, Hardened = false, HighFlow = true,
@@ -678,7 +727,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
         await UploadAsync(context, "fine.gcode");
 
-        printer.Model = "MK4S";
+        printer.Model = "1.4.1"; // As INFO reports it; MK4S is the name it resolves to.
         context.PrinterTools.Add(new PrinterTool
         {
             PrinterId = printer.Id, ToolNumber = 1, NozzleDiameter = 0.4f, Hardened = true, HighFlow = true,

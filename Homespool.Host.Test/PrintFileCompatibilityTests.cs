@@ -52,7 +52,7 @@ public class PrintFileCompatibilityTests
     public void AFileForAFasterMachineHolds()
     {
         IReadOnlyList<PrintCompatibilityFinding> findings =
-            Evaluate(File(model: "COREONE"), Printer(model: "MK3.5"), Tool());
+            Evaluate(File(model: "COREONE"), Printer("1.3.5"), Tool());
 
         findings.Should().Contain(PrintCompatibilityFinding.IncompatiblePrinterModel);
         PrintFileCompatibility.WorstOf(findings).Should().Be(PrintCompatibilitySeverity.Hold);
@@ -62,7 +62,7 @@ public class PrintFileCompatibilityTests
     [Fact]
     public void AFileForAnOlderMachineSaysNothing()
     {
-        Evaluate(File(model: "MK4S"), Printer(model: "COREONE"), Tool()).Should().BeEmpty();
+        Evaluate(File(model: "MK4S"), Printer("7.1.0"), Tool()).Should().BeEmpty();
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class PrintFileCompatibilityTests
     {
         IReadOnlyList<PrintCompatibilityFinding> findings =
             Evaluate(File(model: "COREONE", nozzle: 0.6f, abrasive: true, highFlow: true),
-                     Printer(model: "MK3.5"),
+                     Printer("1.3.5"),
                      Tool(nozzle: 0.4f, hardened: false, highFlow: false));
 
         findings.Should().HaveCount(4);
@@ -129,8 +129,32 @@ public class PrintFileCompatibilityTests
     [Fact]
     public void AnUnknownModelOnEitherSideProducesNothing()
     {
-        Evaluate(File(model: "MK2.5S"), Printer(model: "MK4"), Tool()).Should().BeEmpty();
-        Evaluate(File(model: "MK4"), Printer(model: null), Tool()).Should().BeEmpty();
+        Evaluate(File(model: "MK2.5S"), Printer("1.4.0"), Tool()).Should().BeEmpty();
+        Evaluate(File(model: "MK4"), Printer(null), Tool()).Should().BeEmpty();
+
+        // A triple newer than the names table is a machine nobody here has heard of, which is the
+        // deliberate silence rather than the accidental one below.
+        Evaluate(File(model: "MK4"), Printer("9.9.9"), Tool()).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// <b>The two sides speak different languages, and only one of them is a model name.</b>
+    /// </summary>
+    /// <remarks>
+    /// The slicer writes <c>COREONE</c> into the file; the printer reports <c>1.3.5</c>. Comparing
+    /// the second against the table of designations makes every real machine unrecognised, which this
+    /// check reads as "say nothing" - silent about every real printer, while agreeing with any suite
+    /// that feeds it names no printer sends. A designation still resolves, because losing that would
+    /// trade one silent failure for another.
+    /// </remarks>
+    [Fact]
+    public void APrinterIsRecognisedFromTheTripleItReportsAsWellAsFromAName()
+    {
+        Evaluate(File(model: "COREONE"), Printer("1.3.5"), Tool())
+            .Should().Contain(PrintCompatibilityFinding.IncompatiblePrinterModel);
+
+        Evaluate(File(model: "COREONE"), Printer("MK3.5"), Tool())
+            .Should().Contain(PrintCompatibilityFinding.IncompatiblePrinterModel);
     }
 
     /// <summary>
@@ -218,9 +242,18 @@ public class PrintFileCompatibilityTests
         };
     }
 
-    private static Printer Printer(string? model = "MK4S", float? nozzle = null)
+    /// <summary>
+    /// A printer as one actually arrives, which is the whole reason this helper takes a triple.
+    /// </summary>
+    /// <remarks>
+    /// <b>No printer sends <c>MK4S</c>.</b> <c>INFO</c> carries <c>printer_type: "1.4.1"</c> and that
+    /// string is what is stored, so a suite written in designations agrees with itself while the model
+    /// rule makes no claim about any real machine - a green check that never fires. Written in
+    /// triples, these fail if the resolution is removed.
+    /// </remarks>
+    private static Printer Printer(string? printerType = "1.4.1", float? nozzle = null)
     {
-        return new Printer { Id = 1, Model = model, NozzleDiameter = nozzle };
+        return new Printer { Id = 1, Model = printerType, NozzleDiameter = nozzle };
     }
 
     private static IReadOnlyList<PrinterTool> Tool(float? nozzle = null,

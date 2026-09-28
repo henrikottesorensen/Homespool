@@ -38,6 +38,51 @@ public class PrinterModelCompatibilityTests
         PrinterModelCompatibility.CanPrint("COREONE", "MK3").Should().BeTrue();
     }
 
+    /// <summary>
+    /// <b>A printer identifies itself by a version triple, not by a name.</b>
+    /// </summary>
+    /// <remarks>
+    /// <c>INFO</c> carries <c>printer_type: "1.3.5"</c> and that is what is stored against the
+    /// printer, so this is the spelling every real comparison arrives in. Every case in this file
+    /// that passes a designation on the printer side is exercising the fallback; these are the ones
+    /// exercising the wire.
+    /// </remarks>
+    [Fact]
+    public void APrinterIsIdentifiedByTheTripleItReports()
+    {
+        PrinterModelCompatibility.CanPrint("1.3.5", "COREONE").Should().BeFalse("an MK3.5 reports 1.3.5");
+        PrinterModelCompatibility.CanPrint("7.1.0", "MK4S").Should().BeTrue("a CORE One reports 7.1.0");
+    }
+
+    /// <summary>
+    /// Every triple a printer can report is a machine this table knows, so no printer loses its model
+    /// check to a vocabulary mismatch.
+    /// </summary>
+    [Theory]
+    [InlineData("1.3.0", "MK3")]
+    [InlineData("1.3.1", "MK3S")]
+    [InlineData("1.3.5", "MK3.5")]
+    [InlineData("1.3.6", "MK3.5S")]
+    [InlineData("1.3.9", "MK3.9")]
+    [InlineData("1.3.10", "MK3.9S")]
+    [InlineData("1.4.0", "MK4")]
+    [InlineData("1.4.1", "MK4S")]
+    [InlineData("2.1.0", "MINI")]
+    [InlineData("3.1.0", "XL")]
+    [InlineData("3.1.1", "XLP")]
+    [InlineData("4.1.0", "iX")]
+    [InlineData("5.1.0", "XL")]
+    [InlineData("7.1.0", "COREONE")]
+    [InlineData("7.2.0", "COREONEOAK")]
+    [InlineData("7.10.0", "COREONEINDX")]
+    [InlineData("8.1.0", "COREONEL")]
+    [InlineData("8.10.0", "COREONEL-INDX")]
+    public void EveryReportableTripleResolvesToTheSameGroupAsItsName(string printerType, string designation)
+    {
+        PrinterModelCompatibility.GroupForPrinterType(printerType).Should().NotBe(PrinterModelGroup.Unknown);
+        PrinterModelCompatibility.GroupForPrinterType(printerType).Should().Be(PrinterModelCompatibility.GroupFor(designation));
+    }
+
     [Theory]
     [InlineData("MK3.5", "MK3", "the upgrade kit's whole promise")]
     [InlineData("MK3.5", "MK3S", "same group as MK3")]

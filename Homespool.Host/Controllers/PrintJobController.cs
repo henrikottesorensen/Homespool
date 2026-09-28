@@ -219,6 +219,12 @@ public class PrintJobController : ControllerBase
         {
             return this.ConflictProblem(_errors.For(e));
         }
+        catch (IncompatiblePrinterModelException e)
+        {
+            // A reprint takes the enqueue's route, so it meets the same refusal: the printer has been
+            // upgraded into a different machine since, or the file under that name was re-sliced for one.
+            return this.ConflictProblem(_errors.For(e));
+        }
         catch (TeamAccessDeniedException e)
         {
             return this.ForbiddenProblem(e.Message);

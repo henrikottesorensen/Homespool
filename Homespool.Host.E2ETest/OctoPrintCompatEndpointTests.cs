@@ -257,6 +257,55 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A file sliced for a faster machine is refused in the slicer's own dialog, and nothing is kept.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The upload is undone, which is the opposite of what every other refusal here does.</b>
+    /// Elsewhere a stored file plus a failed queue is a partial success worth reporting as one - the
+    /// bytes are in the caller's own tree and they may want them. Here the send named a printer that
+    /// will never print this file, so keeping it would leave a file nobody asked to store behind a
+    /// message saying the send failed.
+    /// </para>
+    /// <para>
+    /// <b>Answered where the person is looking.</b> PrusaSlicer renders this body verbatim in a
+    /// dialog, so the refusal reaches them at the moment they pressed Send rather than waiting on a
+    /// page they have no reason to open.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnUploadForTheWrongModelIsRefusedAndKeepsNothing()
+    {
+        // Arrange - a printer that has reported itself as an MK3.5, as INFO spells it
+        (Guid uuid, string token, HttpClient client) = await SetUpAsync("wrongmodel@example.com");
+        await ReportsModelAsync(uuid, "1.3.5");
+
+        // Act
+        using MultipartFormDataContent body = SlicerUpload("corexy.gcode", print: true, slicedFor: "COREONE");
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        string explanation = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        explanation.Should().Contain("MK3.5", "the machine is named, not the triple it reported");
+        explanation.Should().Contain("Nothing was uploaded");
+
+        using HttpClient native = NativeClient(token);
+
+        using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
+                                                                TestContext.Current.CancellationToken);
+
+        (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().NotContain("corexy.gcode", "a refused send leaves no file behind");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Plain <b>Upload</b> stores the file and leaves the queue alone - the distinction the whole
     /// <c>print</c> field exists to make.
     /// </summary>
@@ -593,7 +642,10 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification =
                          "Ownership of every part passes to the MultipartFormDataContent returned, which disposes them with itself; each caller disposes that container.")]
-    private static MultipartFormDataContent SlicerUpload(string fileName, bool print, string path = "")
+    private static MultipartFormDataContent SlicerUpload(string fileName,
+                                                         bool print,
+                                                         string path = "",
+                                                         string? slicedFor = null)
     {
         MultipartFormDataContent body = new()
         {
@@ -601,7 +653,15 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
             { new StringContent(path), "path" },
         };
 
-        ByteArrayContent file = new(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10 Y10 F3000\n"));
+        // The configuration block PrusaSlicer appends, when the test needs the index to read a model
+        // off the file rather than record that it said nothing.
+        string configuration = slicedFor is null ?
+            string.Empty :
+            "; prusaslicer_config = begin\n" +
+            $"; printer_model = {slicedFor}\n" +
+            "; prusaslicer_config = end\n";
+
+        ByteArrayContent file = new(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10 Y10 F3000\n" + configuration));
         body.Add(file, "file", fileName);
 
         return body;
@@ -664,6 +724,22 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
             Capabilities = CapabilitySet.Format(CapabilityPresets.Viewer),
             IsDefault = false,
         });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Puts on a printer's row what its first <c>INFO</c> would have - <c>printer_type</c>, a version
+    /// triple, stored verbatim.
+    /// </summary>
+    private async Task ReportsModelAsync(Guid uuid, string printerType)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        Printer printer = await context.Printers.SingleAsync(row => row.Uuid == uuid,
+                                                             TestContext.Current.CancellationToken);
+        printer.Model = printerType;
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
+using Homespool.Model;
+
 namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
@@ -44,8 +46,9 @@ public sealed record FilamentPreset(string Name, int NozzleTemperature, int BedT
     /// The presets to offer for a printer, given the model it reports.
     /// </summary>
     /// <param name="model">
-    /// The printer's reported model, e.g. <c>MK3.5</c> or <c>MINI</c>. Null or unrecognised gets the
-    /// standard table, which is right for everything except a MINI's PA.
+    /// The printer's reported model - <c>INFO</c>'s <c>printer_type</c>, so <c>2.1.0</c> rather than
+    /// <c>MINI</c>; a designation is understood too. Null or unrecognised gets the standard table,
+    /// which is right for everything except a MINI's PA.
     /// </param>
     public static IReadOnlyList<FilamentPreset> For(string? model)
     {
@@ -71,8 +74,18 @@ public sealed record FilamentPreset(string Name, int NozzleTemperature, int BedT
         return For(model).FirstOrDefault(preset => string.Equals(preset.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Whether the reported model is a MINI, resolved rather than matched raw.
+    /// </summary>
+    /// <remarks>
+    /// <b>A MINI reports <c>2.1.0</c>, so matching on the string as it arrives never fires</b> - and
+    /// that failure is the one that costs something: the standard table's 285 °C is a target a
+    /// MINI's hotend will not reach, so the entry that exists precisely because the machine is
+    /// different would be the one entry never applied to it.
+    /// </remarks>
     private static bool IsMini(string? model)
     {
-        return model is not null && model.Contains(MiniModel, StringComparison.OrdinalIgnoreCase);
+        return PrinterModelDesignation.Of(model) is { } designation &&
+               designation.Contains(MiniModel, StringComparison.OrdinalIgnoreCase);
     }
 }

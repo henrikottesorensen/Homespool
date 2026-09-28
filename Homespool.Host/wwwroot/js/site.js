@@ -189,7 +189,13 @@
 // choice the moment it is picked - that part is the browser, free - but the row buttons below it
 // were rendered against the *previous* selection and stay pointed at it until something reloads the
 // page, so a file dropped straight after picking a different printer would go to the one you just
-// moved away from. Save stays as the button-only fallback for when this never runs.
+// moved away from. Once the change submits, Save has nothing left to do and is hidden; it stays in
+// the markup as the fallback for when this never runs.
+//
+// The submit is not the whole job. It is a navigation, and a click landing before the new page
+// arrives would post the printer that was selected a moment ago - the same mistake, arriving by a
+// narrower door. So the row forms are repointed first, in the same handler, and a click during that
+// window acts on what the box says.
 (function () {
     "use strict";
 
@@ -205,7 +211,46 @@
         return;
     }
 
+    const save = form.querySelector("[data-printer-select-submit]");
+
+    if (save) {
+        save.hidden = true;
+    }
+
+    // The parameter the selection travels under is whatever the <select> is named, read rather than
+    // written down here: a rename on the page then carries this with it instead of leaving a script
+    // that still loads, still binds, and quietly repoints nothing.
+    const parameter = select.name;
+
+    // Rewritten rather than parsed by hand: the value is a route value in a query string, and
+    // building URLs by string surgery is how a file name with an ampersand in it becomes two
+    // parameters. Put back as a path, not as the absolute URL the parser hands over: these came out
+    // of the markup relative, and a rendered origin is a thing to get wrong later for no gain.
+    function repoint(url, value) {
+        const parsed = new URL(url, window.location.href);
+
+        parsed.searchParams.set(parameter, value);
+
+        return parsed.pathname + parsed.search;
+    }
+
+    function retarget(value) {
+        document.querySelectorAll("form[data-printer-target]").forEach(function (target) {
+            target.action = repoint(target.action, value);
+
+            // A second submit on the same form emits its own formaction, which overrides the form's -
+            // so the buttons carry their own copy of the printer and each needs repointing too.
+            target.querySelectorAll("[formaction]").forEach(function (button) {
+                button.setAttribute("formaction", repoint(button.getAttribute("formaction"), value));
+            });
+        });
+    }
+
     select.addEventListener("change", function () {
+        if (parameter && select.value) {
+            retarget(select.value);
+        }
+
         if (form.requestSubmit) {
             form.requestSubmit();
         } else {

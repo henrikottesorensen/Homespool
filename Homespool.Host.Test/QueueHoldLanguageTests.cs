@@ -8,8 +8,10 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Localization;
 
 using Homespool.Data;
+using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Queue;
@@ -123,7 +125,9 @@ public sealed class QueueHoldLanguageTests : IDisposable
     /// <b>Driven from the enum, like the holds above</b>, and for the same reason: these are said to
     /// somebody at the moment they queue a file, so a finding without words would be a silent
     /// warning - the exact failure the check exists to prevent. <c>Undefined</c> is excluded because
-    /// nothing produces it and the description throws for it deliberately.
+    /// nothing produces it and the description throws for it deliberately. A file sliced for a
+    /// different machine is not warned about but refused, so its words are the refusal's, and are
+    /// checked here from there instead - including that the printer is named, in both languages.
     /// </remarks>
     [Fact]
     public void EveryCompatibilityFindingHasWords()
@@ -137,11 +141,13 @@ public sealed class QueueHoldLanguageTests : IDisposable
             RequiresHighFlowNozzle = true,
         };
 
-        Printer printer = new() { Id = 1, Model = "MK3.5" };
+        // The triple, as INFO carries it - a designation here would exercise a spelling no printer sends.
+        Printer printer = new() { Id = 1, Model = "1.3.5" };
         List<PrinterTool> tools = [new() { PrinterId = 1, ToolNumber = 1, NozzleDiameter = 0.4f }];
 
         foreach (PrintCompatibilityFinding finding in Enum.GetValues<PrintCompatibilityFinding>()
-                                                          .Where(f => f != PrintCompatibilityFinding.Undefined))
+                                                          .Where(f => f != PrintCompatibilityFinding.Undefined &&
+                                                                      f != PrintCompatibilityFinding.IncompatiblePrinterModel))
         {
             MessageKey key = PrintCompatibilityDescription.For(finding, file, printer, tools);
 
@@ -150,6 +156,18 @@ public sealed class QueueHoldLanguageTests : IDisposable
                 InCulture(culture, () => TestLocaliser.Shared()[key.Key])
                     .ResourceNotFound.Should().BeFalse($"{finding} is said to somebody queueing a file in {culture}");
             }
+        }
+
+        IncompatiblePrinterModelException refusal =
+            new(file.Name, file.PrinterModel, PrinterModelDesignation.Of(printer.Model));
+
+        foreach (string culture in new[] { "en-GB", "da" })
+        {
+            LocalizedString said =
+                InCulture(culture, () => TestLocaliser.Shared()[refusal.ResourceKey, refusal.ResourceArguments]);
+
+            said.ResourceNotFound.Should().BeFalse($"a refused queue is said to somebody in {culture}");
+            said.Value.Should().Contain("MK3.5", $"the {culture} sentence names the printer it refused on");
         }
     }
 

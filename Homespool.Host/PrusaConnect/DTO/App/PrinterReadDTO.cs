@@ -60,13 +60,22 @@ public class PrinterReadDTO
     public string? PrinterType { get; set; }
 
     /// <summary>
-    /// The human name for <see cref="PrinterType"/> - <c>MK3.5</c> for <c>1.3.5</c>. Null for a
-    /// printer that has not connected, and for one newer than the generated table.
+    /// Firmware's id for <see cref="PrinterType"/> - <c>MK3.5</c> for <c>1.3.5</c>, <c>XLP</c> for
+    /// <c>3.1.1</c>. Null for a printer that has not connected, and for one newer than the generated
+    /// table.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Derived rather than stored: <see cref="PrinterModelNames"/> is generated from firmware's own
     /// <c>printer_model_info</c>, so this needs no column and cannot disagree with
     /// <see cref="PrinterType"/>.
+    /// </para>
+    /// <para>
+    /// <b>The id, not the name the printer shows on its own screen</b> - the two differ only for the
+    /// XL+, which its own screen and the web UI call <c>XL+</c>. An API field is a handle for a program
+    /// rather than a label for a person, and the id is the stable one: it is what model tables and the
+    /// slicer's vocabulary are keyed on.
+    /// </para>
     /// <para>
     /// Connect's third field, <c>printerModel</c> (<c>MK4SISMMU3</c>), is still omitted: it comes
     /// from firmware's separate <c>printer_model_mmu_variant</c> table, which is keyed by model plus

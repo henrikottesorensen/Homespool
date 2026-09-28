@@ -38,7 +38,7 @@ public static class PrinterDisplayName
             return printer.Name;
         }
 
-        string? model = PrinterModelDesignation.Of(printer.Model);
+        string? model = PrinterModelDesignation.ForDisplay(printer.Model);
 
         return !string.IsNullOrWhiteSpace(model) ? model : printer.Uuid.ToString();
     }

@@ -83,6 +83,41 @@ public class PrinterModelCompatibilityTests
         PrinterModelCompatibility.GroupForPrinterType(printerType).Should().Be(PrinterModelCompatibility.GroupFor(designation));
     }
 
+    /// <summary>
+    /// <b>An XL+ is matched as <c>XLP</c> and shown as <c>XL+</c></b> - firmware's id and its
+    /// display name, the one model where the two differ.
+    /// </summary>
+    /// <remarks>
+    /// The display name is in no table, so a lookup keyed on it would find nothing and make no claim -
+    /// the same silent failure as looking up the raw triple. Hence two answers rather than one.
+    /// </remarks>
+    [Fact]
+    public void AnXlPlusIsMatchedByItsIdAndShownByItsDisplayName()
+    {
+        PrinterModelNames.ForPrinterType("3.1.1").Should().Be("XLP");
+        PrinterModelNames.DisplayNameForPrinterType("3.1.1").Should().Be("XL+");
+
+        PrinterModelDesignation.Of("3.1.1").Should().Be("XLP");
+        PrinterModelDesignation.ForDisplay("3.1.1").Should().Be("XL+");
+
+        PrinterModelCompatibility.GroupForPrinterType("3.1.1").Should().Be(PrinterModelGroup.Xlp);
+        PrinterModelCompatibility.GroupFor("XL+").Should().Be(PrinterModelGroup.Unknown,
+                                                               "the display name is for people, never for a lookup");
+    }
+
+    /// <summary>
+    /// Every other model displays as its id, and a triple the table does not know displays as itself.
+    /// </summary>
+    [Theory]
+    [InlineData("1.3.5", "MK3.5")]
+    [InlineData("7.1.0", "COREONE")]
+    [InlineData("3.1.0", "XL")]
+    [InlineData("9.9.9", "9.9.9")]
+    public void OtherModelsDisplayAsTheirId(string printerType, string shown)
+    {
+        PrinterModelDesignation.ForDisplay(printerType).Should().Be(shown);
+    }
+
     [Theory]
     [InlineData("MK3.5", "MK3", "the upgrade kit's whole promise")]
     [InlineData("MK3.5", "MK3S", "same group as MK3")]

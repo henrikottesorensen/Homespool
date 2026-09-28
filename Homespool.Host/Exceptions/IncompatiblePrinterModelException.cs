@@ -48,7 +48,7 @@ public class IncompatiblePrinterModelException : Exception, ILocalisableError
     /// <summary>The model the slicer wrote into the file, as it wrote it.</summary>
     public string? FileModel { get; }
 
-    /// <summary>The printer's own model, resolved to a designation rather than the reported triple.</summary>
+    /// <summary>The printer's own model as it names itself - <c>XL+</c>, not the triple it reported.</summary>
     public string? PrinterModel { get; }
 
     /// <inheritdoc />

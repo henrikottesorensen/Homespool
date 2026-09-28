@@ -159,7 +159,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
         }
 
         IncompatiblePrinterModelException refusal =
-            new(file.Name, file.PrinterModel, PrinterModelDesignation.Of(printer.Model));
+            new(file.Name, file.PrinterModel, PrinterModelDesignation.ForDisplay(printer.Model));
 
         foreach (string culture in new[] { "en-GB", "da" })
         {

@@ -176,7 +176,7 @@ public class PrintQueueService
         {
             throw new IncompatiblePrinterModelException(file.Name,
                                                         file.PrinterModel,
-                                                        PrinterModelDesignation.Of(printer!.Model));
+                                                        PrinterModelDesignation.ForDisplay(printer!.Model));
         }
 
         // Max rather than Count, so cancelling from the middle cannot make a later enqueue collide

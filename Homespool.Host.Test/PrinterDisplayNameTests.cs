@@ -41,6 +41,17 @@ public class PrinterDisplayNameTests
     }
 
     /// <summary>
+    /// An unnamed XL+ is called what it calls itself on its own screen, not by firmware's id for it.
+    /// </summary>
+    [Fact]
+    public void AnUnnamedXlPlusIsCalledXlPlus()
+    {
+        Printer printer = new() { Model = "3.1.1", Uuid = Guid.NewGuid() };
+
+        PrinterDisplayName.For(printer).Should().Be("XL+");
+    }
+
+    /// <summary>
     /// A triple newer than the names table is still better than the uuid: it is the most specific
     /// true thing there is to say about the machine.
     /// </summary>

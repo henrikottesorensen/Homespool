@@ -267,6 +267,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 })();
 
+// A copy button beside a read-only field. What it says comes from the group's data-label-*
+// attributes, so it speaks the page's language rather than this file's.
 (function () {
     "use strict";
 
@@ -290,7 +292,7 @@ document.addEventListener("DOMContentLoaded", function () {
         let revert;
 
         function say(message, copied) {
-            button.textContent = copied ? "Copied" : original;
+            button.textContent = copied ? group.dataset.labelCopied : original;
 
             if (status) {
                 status.textContent = message;
@@ -307,6 +309,19 @@ document.addEventListener("DOMContentLoaded", function () {
             }, 2000);
         }
 
+        // The keyboard fallback names one key, not both: a Mac copies with Cmd and everything else
+        // with Ctrl. Operating-system family is one thing user-agent reduction left in place - it froze
+        // the version, not the platform. A browser that disguises its platform gets the other key, and
+        // an iPad asking for desktop sites reads as a Mac, which with a keyboard it behaves like.
+        function selectedMessage() {
+            const hints = navigator.userAgentData;
+            const mac = hints && hints.platform ?
+                hints.platform === "macOS" :
+                /^Mac/.test(navigator.platform || "");
+
+            return mac ? group.dataset.labelSelectedMac : group.dataset.labelSelected;
+        }
+
         // Selecting first is not decoration: it is the fallback. Where the clipboard API is absent
         // the text is left selected and ready for the keyboard, so the button still advances the
         // user rather than failing silently.
@@ -319,18 +334,18 @@ document.addEventListener("DOMContentLoaded", function () {
             select();
 
             if (!navigator.clipboard) {
-                say("Selected - press Ctrl+C or Cmd+C to copy.", false);
+                say(selectedMessage(), false);
 
                 return;
             }
 
             navigator.clipboard.writeText(source.value).then(
                 function () {
-                    say("Address copied to the clipboard.", true);
+                    say(group.dataset.labelCopiedStatus, true);
                 },
                 function () {
                     // Permission refused, or a browser that has the API and will not use it here.
-                    say("Selected - press Ctrl+C or Cmd+C to copy.", false);
+                    say(selectedMessage(), false);
                 });
         });
 

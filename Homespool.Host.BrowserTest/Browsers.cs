@@ -54,9 +54,11 @@ public sealed class Browsers : IAsyncLifetime
 
     /// <summary>
     /// A fresh context in the named engine, pointed at <paramref name="baseAddress"/>. Skips the
-    /// calling test when that engine is not installed.
+    /// calling test when that engine is not installed. <paramref name="locale"/> is the language the
+    /// browser asks for - <c>da-DK</c>, say - or null for Playwright's default; it reaches the server
+    /// as <c>Accept-Language</c>, which is how an account with no language of its own is served.
     /// </summary>
-    public async Task<IBrowserContext> NewContextAsync(string engine, Uri baseAddress)
+    public async Task<IBrowserContext> NewContextAsync(string engine, Uri baseAddress, string? locale = null)
     {
         ArgumentNullException.ThrowIfNull(baseAddress);
 
@@ -72,7 +74,7 @@ public sealed class Browsers : IAsyncLifetime
             throw;
         }
 
-        return await browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = baseAddress.ToString() });
+        return await browser.NewContextAsync(new BrowserNewContextOptions { BaseURL = baseAddress.ToString(), Locale = locale });
     }
 
     /// <summary>The engine's one browser, launched by whichever test asks for it first.</summary>

@@ -36,6 +36,9 @@ public sealed class CameraScenario : IAsyncDisposable
     /// <summary>The picture, still or live.</summary>
     public ILocator Image => Page.Locator(".camera-image");
 
+    /// <summary>The panel the picture sits in, which carries the still's status wording.</summary>
+    public ILocator View => Page.Locator(".camera-view");
+
     /// <summary>The live view's start and stop button.</summary>
     public ILocator LiveToggle => Page.Locator(".camera-live-toggle");
 
@@ -49,7 +52,8 @@ public sealed class CameraScenario : IAsyncDisposable
     /// Starts a host, declares <paramref name="camera"/> to its sidecar, adds it through the Cameras
     /// page on a printer, and opens that printer's page signed in. <paramref name="beforePage"/> runs
     /// on the browser context before the page opens, for anything that must be in place from the
-    /// page's first script - a clock, for one.
+    /// page's first script - a clock, for one. <paramref name="locale"/> is the language the browser
+    /// asks for; see <see cref="Browsers.NewContextAsync"/>.
     /// </summary>
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification = "The host is owned by the scenario returned, which disposes it; the catch disposes it when there is none.")]
@@ -58,7 +62,8 @@ public sealed class CameraScenario : IAsyncDisposable
                                                        string name,
                                                        FakeCamera camera,
                                                        Action<HomespoolFactory>? configure = null,
-                                                       Func<IBrowserContext, Task>? beforePage = null)
+                                                       Func<IBrowserContext, Task>? beforePage = null,
+                                                       string? locale = null)
     {
         ArgumentNullException.ThrowIfNull(browsers);
 
@@ -70,7 +75,7 @@ public sealed class CameraScenario : IAsyncDisposable
             host.Sidecar.AddCamera(source, camera);
             (string email, Guid printer) = await host.AccountWithCameraAsync($"{name}@example.com", source);
 
-            IBrowserContext context = await browsers.NewContextAsync(engine, host.BaseAddress);
+            IBrowserContext context = await browsers.NewContextAsync(engine, host.BaseAddress, locale);
 
             if (beforePage is not null)
             {
@@ -100,6 +105,13 @@ public sealed class CameraScenario : IAsyncDisposable
     {
         return await Caption.GetAttributeAsync($"data-label-{key}") ??
                throw new InvalidOperationException($"The caption carries no {key} label.");
+    }
+
+    /// <summary>The panel's status wording for <paramref name="key"/>, in whatever language the page rendered.</summary>
+    public async Task<string> StatusLabelAsync(string key)
+    {
+        return await View.GetAttributeAsync($"data-label-{key}") ??
+               throw new InvalidOperationException($"The camera panel carries no {key} label.");
     }
 
     /// <summary>Starts live view, once the page has offered it.</summary>

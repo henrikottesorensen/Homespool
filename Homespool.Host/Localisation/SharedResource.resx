@@ -547,6 +547,9 @@
   <data name="Common_Copy" xml:space="preserve">
     <value>Copy</value>
   </data>
+  <data name="Common_Copied" xml:space="preserve">
+    <value>Copied</value>
+  </data>
   <data name="Printers_SlicerHelp" xml:space="preserve">
     <value>PrusaSlicer can send straight to this printer. Under {0}, set {1} to {2}, paste this as the hostname, and use a {3} as the API key. Pressing {4} will enqueue the print in Homespool.</value>
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
@@ -672,6 +675,9 @@
   </data>
   <data name="Passkeys_Cancelled" xml:space="preserve">
     <value>Adding the passkey was cancelled or timed out. Try again.</value>
+  </data>
+  <data name="Passkeys_AlreadyThere" xml:space="preserve">
+    <value>That device or password manager already holds a passkey for this account. Choose another one to add a second.</value>
   </data>
   <data name="Passkeys_RegistrationFailed" xml:space="preserve">
     <value>The passkey could not be added. Try again.</value>
@@ -1390,6 +1396,9 @@
   <data name="Cameras_Capturing" xml:space="preserve">
     <value>Capturing…</value>
   </data>
+  <data name="Cameras_NotAnswering" xml:space="preserve">
+    <value>Camera not answering</value>
+  </data>
   <data name="Cameras_WatchLive" xml:space="preserve">
     <value>Watch live</value>
   </data>
@@ -1639,6 +1648,15 @@
   </data>
   <data name="Printers_SlicerAddressLabel" xml:space="preserve">
     <value>Print host address for this printer</value>
+  </data>
+  <data name="Printers_SlicerAddressCopied" xml:space="preserve">
+    <value>Address copied to the clipboard.</value>
+  </data>
+  <data name="Printers_SlicerAddressSelected" xml:space="preserve">
+    <value>Selected - press Ctrl+C to copy.</value>
+  </data>
+  <data name="Printers_SlicerAddressSelectedMac" xml:space="preserve">
+    <value>Selected - press Cmd+C to copy.</value>
   </data>
   <data name="Setup_Token" xml:space="preserve">
     <value>Setup token</value>

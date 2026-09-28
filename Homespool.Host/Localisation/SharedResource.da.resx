@@ -523,6 +523,9 @@
   <data name="Common_Copy" xml:space="preserve">
     <value>Kopiér</value>
   </data>
+  <data name="Common_Copied" xml:space="preserve">
+    <value>Kopieret</value>
+  </data>
   <data name="Printers_SlicerHelp" xml:space="preserve">
     <value>PrusaSlicer kan sende direkte til denne printer. Under {0} skal du sætte {1} til {2}, indsætte dette som værtsnavn og bruge et {3} som API-nøgle. Når du trykker på {4}, sættes printet i kø i Homespool.</value>
     <comment>The braces are PrusaSlicer's own menu labels and a link, kept English: they have to match what a person sees in the slicer, which this application does not author.</comment>
@@ -643,6 +646,9 @@
   </data>
   <data name="Passkeys_Cancelled" xml:space="preserve">
     <value>Tilføjelsen af adgangsnøglen blev afbrudt eller udløb. Prøv igen.</value>
+  </data>
+  <data name="Passkeys_AlreadyThere" xml:space="preserve">
+    <value>Den enhed eller adgangskodeadministrator har allerede en adgangsnøgle til denne konto. Vælg en anden for at tilføje en til.</value>
   </data>
   <data name="Passkeys_RegistrationFailed" xml:space="preserve">
     <value>Adgangsnøglen kunne ikke tilføjes. Prøv igen.</value>
@@ -1353,6 +1359,9 @@
   <data name="Cameras_Capturing" xml:space="preserve">
     <value>Henter billede…</value>
   </data>
+  <data name="Cameras_NotAnswering" xml:space="preserve">
+    <value>Kameraet svarer ikke</value>
+  </data>
   <data name="Cameras_WatchLive" xml:space="preserve">
     <value>Se live</value>
   </data>
@@ -1589,6 +1598,15 @@
   </data>
   <data name="Printers_SlicerAddressLabel" xml:space="preserve">
     <value>Adresse til print-host for denne printer</value>
+  </data>
+  <data name="Printers_SlicerAddressCopied" xml:space="preserve">
+    <value>Adressen er kopieret til udklipsholderen.</value>
+  </data>
+  <data name="Printers_SlicerAddressSelected" xml:space="preserve">
+    <value>Markeret - tryk Ctrl+C for at kopiere.</value>
+  </data>
+  <data name="Printers_SlicerAddressSelectedMac" xml:space="preserve">
+    <value>Markeret - tryk Cmd+C for at kopiere.</value>
   </data>
   <data name="Setup_Token" xml:space="preserve">
     <value>Opsætningstoken</value>

@@ -90,6 +90,13 @@
         });
     }
 
+    // Marks the server's refusal apart from everything the browser can reject with.
+    function refused(message) {
+        const refusal = new Error(message);
+        refusal.refusal = true;
+        return refusal;
+    }
+
     function showError(message) {
         error.textContent = message;
         error.hidden = false;
@@ -116,9 +123,9 @@
                     // A refusal that answers with a sentence to show is shown; anything else gets
                     // the generic one.
                     return response.json().then(function (refusal) {
-                        throw new Error(refusal && refusal.message ? refusal.message : "");
+                        throw refused(refusal && refusal.message ? refusal.message : "");
                     }, function () {
-                        throw new Error("");
+                        throw refused("");
                     });
                 }
 
@@ -143,10 +150,19 @@
                     return;
                 }
 
-                // NotAllowedError is cancelled or timed out; InvalidStateError is "this authenticator
-                // already holds a passkey for this account", which the exclude list asks it to say. A
-                // server refusal carries its own sentence.
-                showError(reason && reason.message ? reason.message : form.dataset.passkeyCancelled);
+                // Only the server's sentence is shown as it came: it is in the page's language. What
+                // the browser rejects with is in the browser's words, not the page's - and this file's
+                // own "No credential" was English on every page - so none of it is shown.
+                // InvalidStateError is "this authenticator already holds a passkey for this account",
+                // which the exclude list asks it to say; NotAllowedError, and anything else, is
+                // cancelled or timed out.
+                if (reason && reason.refusal && reason.message) {
+                    showError(reason.message);
+                } else if (reason && reason.name === "InvalidStateError") {
+                    showError(form.dataset.passkeyAlreadyThere);
+                } else {
+                    showError(form.dataset.passkeyCancelled);
+                }
             });
     });
 })();

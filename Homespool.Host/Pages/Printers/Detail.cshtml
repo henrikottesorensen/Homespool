@@ -93,6 +93,8 @@
                        not will letterbox rather than distort, which object-fit-contain is for. *@
                     <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden"
                          data-camera-frame="@Url.Action("Frame", "Camera", new { uuid = camera.Uuid })"
+                         data-label-capturing="@Localiser["Cameras_Capturing"]"
+                         data-label-not-answering="@Localiser["Cameras_NotAnswering"]"
                          data-camera-live="@Url.Action("Live", "Camera", new { uuid = camera.Uuid })"
                          data-camera-webrtc="@Url.Action("WebRtc", "Camera", new { uuid = camera.Uuid })"
                          data-camera-stream="@Url.Action("Stream", "Camera", new { uuid = camera.Uuid })"
@@ -407,7 +409,11 @@
             Markup.Kbd(Markup.Samp("Upload and Print"))]
     </p>
 
-    <div class="input-group mb-3" data-copy>
+    <div class="input-group mb-3" data-copy
+         data-label-copied="@Localiser["Common_Copied"]"
+         data-label-copied-status="@Localiser["Printers_SlicerAddressCopied"]"
+         data-label-selected="@Localiser["Printers_SlicerAddressSelected"]"
+         data-label-selected-mac="@Localiser["Printers_SlicerAddressSelectedMac"]">
         <input type="text" class="form-control font-monospace" readonly
                value="@Model.SlicerUrl" aria-label="@Localiser["Printers_SlicerAddressLabel"]"
                data-copy-source />

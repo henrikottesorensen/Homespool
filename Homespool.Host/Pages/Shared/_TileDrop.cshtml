@@ -150,7 +150,9 @@
                 @if (Model.CameraFrameUrl is { } frame)
                 {
                     <div class="camera-view ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden mb-3"
-                         data-camera-frame="@frame">
+                         data-camera-frame="@frame"
+                         data-label-capturing="@Localiser["Cameras_Capturing"]"
+                         data-label-not-answering="@Localiser["Cameras_NotAnswering"]">
                         <img class="camera-image w-100 h-100 object-fit-contain d-none" alt="" />
                         <div class="camera-status d-flex align-items-center justify-content-center text-body-secondary small">
                             @Localiser["Cameras_Capturing"]

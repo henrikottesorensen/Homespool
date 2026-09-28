@@ -138,7 +138,7 @@
                         // Asked for, not ready. Only complain once it has been quiet long enough to
                         // mean something.
                         if (!lastFrameAt) {
-                            show("Capturing…");
+                            show(view.dataset.labelCapturing);
                         }
                         return null;
                     }
@@ -197,7 +197,7 @@
                             // is about: an old photograph that looks like the present.
                             image.classList.add("d-none");
                             image.removeAttribute("src");
-                            show("Camera not answering");
+                            show(view.dataset.labelNotAnswering);
                             caption("");
                         } else {
                             // Through the guard, not around it: a live view that has just ended

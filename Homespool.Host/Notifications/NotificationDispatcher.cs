@@ -21,15 +21,21 @@ namespace Homespool.Host.Notifications;
 public sealed class NotificationDispatcher : BackgroundService
 {
     private readonly NotificationQueue _queue;
+    private readonly NotificationThrottle _throttle;
     private readonly IServiceScopeFactory _scopes;
+    private readonly TimeProvider _time;
     private readonly ILogger<NotificationDispatcher> _logger;
 
     public NotificationDispatcher(NotificationQueue queue,
+                                  NotificationThrottle throttle,
                                   IServiceScopeFactory scopes,
+                                  TimeProvider time,
                                   ILogger<NotificationDispatcher> logger)
     {
         _queue = queue;
+        _throttle = throttle;
         _scopes = scopes;
+        _time = time;
         _logger = logger;
     }
 
@@ -39,6 +45,16 @@ public sealed class NotificationDispatcher : BackgroundService
         {
             await foreach (PrinterHappening happening in _queue.Reader.ReadAllAsync(stoppingToken))
             {
+                // Here rather than at each source, so no pattern of changes a printer can produce -
+                // and no source added later - gets past it.
+                if (!_throttle.Admit(happening, _time.GetUtcNow()))
+                {
+                    _logger.LogInformation("[{PrinterId}] {Happening} not sent: this printer sent one moments ago.",
+                                           happening.PrinterId, happening.GetType().Name);
+
+                    continue;
+                }
+
                 try
                 {
                     await using AsyncServiceScope scope = _scopes.CreateAsyncScope();

@@ -8,7 +8,8 @@
 //
 //   capturing   nothing current yet - the server answered 204. Shows no image at all, because a
 //               stale one is exactly what the age rule exists to prevent.
-//   live        a frame arrived, with its age beside it.
+//   showing     a frame arrived, with its age beside it - "just now" while fresh, never "live",
+//               which is the live view's word and would read as if its video were playing.
 //   unavailable the camera stopped answering. Says so, rather than leaving the last good frame on
 //               screen looking like now.
 (function () {
@@ -36,20 +37,24 @@
         }
     }
 
-    function describeAge(captured) {
+    // Worded by the page, in its own language: the caption carries both forms.
+    function describeAge(element, captured) {
         const seconds = Math.max(0, Math.round((Date.now() - captured) / 1000));
 
         if (seconds < 2) {
-            return "live";
+            return element.dataset.labelNow;
         }
 
-        return seconds + "s ago";
+        return element.dataset.labelSecondsAgo.replace("{0}", seconds);
     }
 
     function attach(view) {
         const url = view.dataset.cameraFrame;
         const image = view.querySelector(".camera-image");
         const status = view.querySelector(".camera-status");
+        // Absent where the picture has no caption - the front page's drop dialog - so everything
+        // touching it checks first: touching nothing throws, and it threw at the end of the first
+        // poll, before the next was scheduled, so that picture never refreshed.
         const age = view.parentElement.querySelector(".camera-age");
 
         let objectUrl = null;
@@ -90,8 +95,14 @@
         // Only beside a picture: once the camera has been called unavailable its frame is gone, and
         // an age would be describing nothing.
         function showAge() {
-            if (lastFrameAt && !yielded && !image.classList.contains("d-none")) {
-                age.textContent = describeAge(lastFrameAt);
+            if (age && lastFrameAt && !yielded && !image.classList.contains("d-none")) {
+                caption(describeAge(age, lastFrameAt));
+            }
+        }
+
+        function caption(text) {
+            if (age) {
+                age.textContent = text;
             }
         }
 
@@ -187,7 +198,7 @@
                             image.classList.add("d-none");
                             image.removeAttribute("src");
                             show("Camera not answering");
-                            age.textContent = "";
+                            caption("");
                         } else {
                             // Through the guard, not around it: a live view that has just ended
                             // takes its picture down, and until a still replaces it the last frame's
@@ -203,7 +214,7 @@
         // Polling carries on while the tab is hidden, so a page left open has a picture the moment
         // anybody looks at it. The browser throttles a background tab's timers, though, so the frame
         // on screen can be well over a minute old by then: its age is corrected at once rather than
-        // at the end of the next poll - it last said "live" - and a fresh one is asked for now.
+        // at the end of the next poll - it last said "just now" - and a fresh one is asked for now.
         document.addEventListener("visibilitychange", function () {
             if (!document.hidden) {
                 showAge();

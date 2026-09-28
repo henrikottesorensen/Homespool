@@ -1,6 +1,9 @@
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
+
+using Microsoft.Playwright;
 
 using Homespool.Host.E2ETest;
 
@@ -14,7 +17,9 @@ namespace Homespool.Host.BrowserTest;
 public sealed class CameraStillTests(Browsers browsers)
 {
     /// <summary>
-    /// A camera that sends pictures shows one, decoded, with its age beside it and nothing over it.
+    /// A camera that sends pictures shows one, decoded, with its age beside it and nothing over it. A
+    /// fresh one is "just now", not "live": the live view's button sits on this picture, and "live" under
+    /// it read as though its video were already playing.
     /// </summary>
     [Theory]
     [InlineData(Browsers.Chromium)]
@@ -26,7 +31,44 @@ public sealed class CameraStillTests(Browsers browsers)
         await Expect(scenario.Image).ToBeVisibleAsync(new() { Timeout = 15_000 });
         await Expect(scenario.Image).ToHaveJSPropertyAsync("naturalWidth", 32);
         await Expect(scenario.Page.Locator(".camera-status")).ToBeHiddenAsync();
-        await Expect(scenario.Caption).Not.ToBeEmptyAsync();
+        await Expect(scenario.Caption).ToHaveTextAsync(await scenario.CaptionLabelAsync("now"));
+        await Expect(scenario.Caption).Not.ToHaveTextAsync(
+            new Regex($"^{Regex.Escape(await scenario.LabelAsync("live"))}$", RegexOptions.IgnoreCase));
+    }
+
+    /// <summary>
+    /// A picture with no caption beside it keeps refreshing - the front page's drop dialog, whose view
+    /// arrives after load. Writing its age to a caption that is not there threw at the end of the first
+    /// poll, before the next was scheduled, and that picture never changed again.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task APictureWithNoCaptionKeepsRefreshing(string engine)
+    {
+        await using CameraScenario scenario = await CameraScenario.OpenAsync(browsers, engine, "still-uncaptioned", FakeCamera.Jpeg);
+
+        // Bound the way the drop dialog's is, by the hook for views that arrive after load, and marked
+        // up as that dialog's is: a view and its picture, with nothing beside them.
+        await scenario.Page.EvaluateAsync("""
+            () => {
+                const frame = document.querySelector("[data-camera-frame]").dataset.cameraFrame;
+                const host = document.createElement("div");
+                host.id = "uncaptioned";
+                host.innerHTML =
+                    '<div class="camera-view" data-camera-frame="' + frame + '">' +
+                    '<img class="camera-image d-none" alt="" /><div class="camera-status"></div></div>';
+                document.body.appendChild(host);
+                window.homespoolCameras.attachWithin(host);
+            }
+            """);
+
+        ILocator picture = scenario.Page.Locator("#uncaptioned .camera-image");
+        await Expect(picture).ToHaveAttributeAsync("src", new Regex("^blob:"), new() { Timeout = 15_000 });
+        string? first = await picture.GetAttributeAsync("src");
+
+        // Every frame fetched is a new blob, so a changed source is a poll that came back.
+        await Expect(picture).Not.ToHaveAttributeAsync("src", first!, new() { Timeout = 10_000 });
     }
 
     /// <summary>
@@ -53,6 +95,11 @@ public sealed class CameraStillTests(Browsers browsers)
         await Expect(scenario.Image).ToBeVisibleAsync(new() { Timeout = 15_000 });
 
         scenario.Host.Sidecar.AddCamera(scenario.Source, FakeCamera.Jpeg with { Producing = false });
+
+        // Aged in the page's own words on the way down.
+        string secondsAgo = Regex.Escape(await scenario.CaptionLabelAsync("seconds-ago"))
+                                 .Replace(@"\{0}", @"\d+", System.StringComparison.Ordinal);
+        await Expect(scenario.Caption).ToHaveTextAsync(new Regex($"^{secondsAgo}$"), new() { Timeout = 20_000 });
 
         await Expect(scenario.Page.Locator(".camera-status")).ToHaveTextAsync("Camera not answering", new() { Timeout = 40_000 });
         await Expect(scenario.Image).ToBeHiddenAsync();

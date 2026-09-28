@@ -95,6 +95,13 @@ public sealed class CameraScenario : IAsyncDisposable
                throw new InvalidOperationException($"The live button carries no {key} label.");
     }
 
+    /// <summary>The caption's wording for <paramref name="key"/>, in whatever language the page rendered.</summary>
+    public async Task<string> CaptionLabelAsync(string key)
+    {
+        return await Caption.GetAttributeAsync($"data-label-{key}") ??
+               throw new InvalidOperationException($"The caption carries no {key} label.");
+    }
+
     /// <summary>Starts live view, once the page has offered it.</summary>
     public async Task StartLiveAsync()
     {

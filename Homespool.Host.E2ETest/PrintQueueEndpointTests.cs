@@ -280,6 +280,43 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime
         aliceClient.Dispose();
     }
 
+    /// <summary>
+    /// A file sliced for a faster machine is a 409, not a queued entry with a warning attached.
+    /// </summary>
+    /// <remarks>
+    /// <b>A conflict rather than a bad request</b>, because nothing about the request is malformed:
+    /// the file exists, the printer exists, and the caller may use it. What disagrees is the state of
+    /// the two - and unlike every other compatibility finding, no change a caller could make to the
+    /// printer would resolve it.
+    /// </remarks>
+    [Fact]
+    public async Task AFileSlicedForAFasterMachineIsRefused()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "queue-model@example.com");
+
+        Guid uuid = await AddPrinterAsync(user.Id);
+        await ReportsModelAsync(uuid, "1.3.5");
+        await UploadAsync(client, "corexy.bgcode");
+        await SlicedForAsync("corexy.bgcode", "COREONE");
+
+        // Act
+        using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/queue",
+                                                                          new { name = "corexy.bgcode" },
+                                                                          TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        using JsonDocument listed = await ListAsync(client, uuid);
+
+        listed.RootElement.GetProperty("prints").GetArrayLength()
+              .Should().Be(0, "a refused queue leaves nothing behind");
+
+        client.Dispose();
+    }
+
     [Fact]
     public async Task AnAnonymousCallerIsChallengedRatherThanAnswered()
     {
@@ -330,6 +367,40 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.OK);
 
         return JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// Puts on the printer's row what its first <c>INFO</c> would have - <c>printer_type</c>, which is
+    /// a version triple and is stored verbatim.
+    /// </summary>
+    private async Task ReportsModelAsync(Guid uuid, string printerType)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        Printer printer = await context.Printers.SingleAsync(row => row.Uuid == uuid,
+                                                             TestContext.Current.CancellationToken);
+        printer.Model = printerType;
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// What the metadata reader would have written for a file sliced for <paramref name="model"/> -
+    /// the fixture upload is one line of G-code, and this is about the comparison rather than the
+    /// parser.
+    /// </summary>
+    private async Task SlicedForAsync(string name, string model)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == name,
+                                                              TestContext.Current.CancellationToken);
+        file.MetadataState = PrintFileMetadataState.Read;
+        file.PrinterModel = model;
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>A printer on the user's own default team, inserted directly - enrolling one properly

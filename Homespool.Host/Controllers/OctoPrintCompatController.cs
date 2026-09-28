@@ -240,11 +240,24 @@ public class OctoPrintCompatController : ControllerBase
         {
             try
             {
-                // The findings are dropped here on purpose: this is the endpoint PrusaSlicer posts to,
+                // The warnings are dropped here on purpose: this is the endpoint PrusaSlicer posts to,
                 // whose response shape is not ours to extend and whose caller is a slicer rather than a
                 // reader. A holding finding still stops the print at the loop, and the person sees it on
                 // the printer's page - which is where they would look after pressing Send anyway.
                 await _queue.EnqueueAsync(printer.Id, CallerResolver.For(owner, User), stored.FileName, cancellationToken);
+            }
+            catch (IncompatiblePrinterModelException e)
+            {
+                // The one finding that is worth the slicer's own dialog rather than the printer's page,
+                // and the one where undoing the upload is right: the file was sent *to a printer*, and
+                // this printer will never print it. Keeping the bytes would leave a file nobody asked
+                // to store behind a message saying the send failed. Only ever this request's own file:
+                // a name that already existed was refused above, before a byte of it was stored.
+                await _files.DeleteAsync(CallerResolver.For(owner, User), stored.FileName, cancellationToken);
+
+                return Explain(StatusCodes.Status409Conflict,
+                               $"{e.Message} Nothing was uploaded - send it to the right printer, or " +
+                               "re-slice it for this one.");
             }
             catch (TeamAccessDeniedException)
             {

@@ -12,8 +12,10 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
+using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
 
@@ -438,6 +440,64 @@ public sealed class FilesPageTests : IAsyncLifetime
 
         Regex.Match(after, """<option value="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"[^>]*selected""").Groups[1].Value.Should().Be(
             ids[0], "a one-off choice is not a new default");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A file sliced for a faster machine is refused at the page, and named in a language a person
+    /// reads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>End to end because the two halves only meet here.</b> The printer reports
+    /// <c>printer_type = "1.3.5"</c>, exactly as one does, and the file says <c>COREONE</c>, exactly
+    /// as PrusaSlicer writes it. A unit test that spells either side the way the other does passes
+    /// against a comparison that never fires on a real printer.
+    /// </para>
+    /// <para>
+    /// <b>The sentence is asserted, not just the refusal.</b> Resolving the triple for the comparison
+    /// and forgetting to resolve it for the words would produce "this printer is a 1.3.5", which
+    /// names nothing the reader owns.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task QueueingAFileSlicedForAFasterMachineIsRefusedOnThePage()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagemodel@example.com");
+        await ClaimAPrinterAsync(client);
+
+        string printerUuid = await OnlyPrinterUuidAsync(client);
+        await ReportsModelAsync(printerUuid, "1.3.5");
+        await UploadSlicedForAsync(client, "corexy.gcode", "COREONE");
+
+        string page =
+            await (await client.GetAsync($"/Files?printerUuid={printerUuid}", TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        using FormUrlEncodedContent form = new(new List<KeyValuePair<string, string>>
+        {
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+        });
+
+        // Act
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/Files?handler=Queue&name=corexy.gcode&printerUuid={printerUuid}", form,
+            TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        string after =
+            await (await client.GetAsync($"/Files?printerUuid={printerUuid}", TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        after.Should().Contain("has not been queued", "a refusal has to say that nothing happened");
+        after.Should().Contain("MK3.5", "the machine is named, not the triple it reported");
+        after.Should().NotContain("1.3.5");
+        after.Should().Contain("corexy.gcode", "the file itself is untouched - only the queueing was refused");
 
         client.Dispose();
     }
@@ -940,6 +1000,48 @@ public sealed class FilesPageTests : IAsyncLifetime
     private static async Task UploadAsync(HttpClient client, string name, int bytes)
     {
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes(new string('G', bytes))));
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/files/{name}", body);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "the fixture upload has to have worked");
+    }
+
+    /// <summary>
+    /// Puts on the printer's row what its first <c>INFO</c> would have - the version triple, which is
+    /// what <c>printer_type</c> carries and what is stored verbatim.
+    /// </summary>
+    /// <remarks>
+    /// <b>Claiming a printer does not set this</b>: the registration handshake carries
+    /// <c>printer_type</c> too and it is deliberately not persisted, because <c>INFO</c> arrives on
+    /// every connection and anything stored earlier would be a staler copy of it. Driving a real
+    /// websocket session for one column belongs in the loop's own suite, which does exactly that -
+    /// this one is about the page.
+    /// </remarks>
+    private async Task ReportsModelAsync(string printerUuid, string printerType)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        Guid uuid = Guid.Parse(printerUuid);
+        Printer printer = await context.Printers.SingleAsync(row => row.Uuid == uuid,
+                                                             TestContext.Current.CancellationToken);
+        printer.Model = printerType;
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// An upload carrying the configuration block PrusaSlicer appends, so the index reads a model
+    /// off it rather than recording that the file said nothing.
+    /// </summary>
+    private static async Task UploadSlicedForAsync(HttpClient client, string name, string model)
+    {
+        string gcode = "; generated by PrusaSlicer\nG1 X0 Y0 E0\n" +
+                       "; prusaslicer_config = begin\n" +
+                       $"; printer_model = {model}\n" +
+                       "; nozzle_diameter = 0.4\n" +
+                       "; prusaslicer_config = end\n";
+
+        using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes(gcode)));
         using HttpResponseMessage response = await client.PutAsync($"/api/v1/files/{name}", body);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the fixture upload has to have worked");

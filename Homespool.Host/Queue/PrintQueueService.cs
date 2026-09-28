@@ -132,10 +132,23 @@ public class PrintQueueService
     /// <exception cref="PrinterNotFoundException">No printer has that id.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.Print"/> on the printer's team.</exception>
     /// <exception cref="PrintFileNotFoundException">The caller has no file by that name.</exception>
+    /// <exception cref="IncompatiblePrinterModelException">
+    /// The file was sliced for a machine this printer must not be asked to imitate.
+    /// </exception>
     /// <remarks>
+    /// <para>
     /// <b>The same file may be queued more than once</b>, deliberately - printing two copies is an
     /// ordinary thing to want, and the loop transfers the bytes once regardless because the transfer
     /// belongs to <i>(file, printer)</i> rather than to the entry.
+    /// </para>
+    /// <para>
+    /// <b>One disagreement refuses and the rest are warnings</b>, which is a split about what can be
+    /// cleared rather than about what is serious. A soft nozzle can be swapped for a hardened one and
+    /// the waiting entry then runs, so keeping it is worth something; a printer cannot be swapped for
+    /// a different model, so an entry queued against that would wait on nothing while the queue behind
+    /// it waited too. <see cref="PrintFileCompatibility"/> still decides what is wrong - this decides
+    /// only what to do about it.
+    /// </para>
     /// </remarks>
     public async Task<EnqueueOutcome> EnqueueAsync(int printerId,
                                                    Caller caller,
@@ -149,6 +162,21 @@ public class PrintQueueService
         if (file is null)
         {
             throw new PrintFileNotFoundException(fileName);
+        }
+
+        // Before the row is written, which is what refusing at all requires: a print this machine
+        // must not be asked for has to be turned away while there is still nothing to withdraw. The
+        // two reads it needs are the ones the outcome below wanted anyway, moved rather than added.
+        (Printer? printer, List<PrinterTool> tools) = await HardwareAsync(printerId, cancellationToken);
+
+        IReadOnlyList<PrintCompatibilityFinding> findings =
+            printer is null ? [] : PrintFileCompatibility.Evaluate(file, printer, tools);
+
+        if (findings.Contains(PrintCompatibilityFinding.IncompatiblePrinterModel))
+        {
+            throw new IncompatiblePrinterModelException(file.Name,
+                                                        file.PrinterModel,
+                                                        PrinterModelDesignation.Of(printer!.Model));
         }
 
         // Max rather than Count, so cancelling from the middle cannot make a later enqueue collide
@@ -205,7 +233,15 @@ public class PrintQueueService
         // poll interval.
         _signal.Poke();
 
-        return await OutcomeAsync(printerId, file, queued, cancellationToken);
+        // What is left is what a person is told rather than what stops them: the warnings, and the
+        // one hold that a person can go and clear by fitting a different nozzle.
+        return printer is null ?
+            new EnqueueOutcome(queued, file, [], []) :
+            new EnqueueOutcome(
+                queued,
+                file,
+                findings,
+                [.. findings.Select(finding => PrintCompatibilityDescription.For(finding, file, printer, tools))]);
     }
 
     /// <summary>
@@ -283,18 +319,11 @@ public class PrintQueueService
     }
 
     /// <summary>
-    /// How this file and this printer disagree, for telling whoever just queued it.
+    /// The printer and the per-tool hardware a compatibility comparison needs, or a null printer when
+    /// there is no such row - which silences the comparison rather than failing it.
     /// </summary>
-    /// <remarks>
-    /// <b>Read after the entry is saved, not before.</b> Nothing here can refuse the enqueue, so
-    /// there is no reason to make somebody wait on two more queries before their entry exists - and
-    /// doing it afterwards means a printer that has never reported its hardware costs one empty
-    /// lookup rather than blocking the common path.
-    /// </remarks>
-    private async Task<EnqueueOutcome> OutcomeAsync(int printerId,
-                                                    PrintFile file,
-                                                    QueuedPrint queued,
-                                                    CancellationToken cancellationToken)
+    private async Task<(Printer? printer, List<PrinterTool> tools)> HardwareAsync(int printerId,
+                                                                                  CancellationToken cancellationToken)
     {
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()
@@ -302,7 +331,7 @@ public class PrintQueueService
 
         if (printer is null)
         {
-            return new EnqueueOutcome(queued, file, [], []);
+            return (null, []);
         }
 
         List<PrinterTool> tools = await _dbContext.PrinterTools
@@ -310,13 +339,7 @@ public class PrintQueueService
                                                   .Where(tool => tool.PrinterId == printerId)
                                                   .ToListAsync(cancellationToken);
 
-        IReadOnlyList<PrintCompatibilityFinding> findings = PrintFileCompatibility.Evaluate(file, printer, tools);
-
-        return new EnqueueOutcome(
-            queued,
-            file,
-            findings,
-            [.. findings.Select(finding => PrintCompatibilityDescription.For(finding, file, printer, tools))]);
+        return (printer, tools);
     }
 
     /// <summary>

@@ -127,10 +127,16 @@ public class PrintQueueController : ControllerBase
     /// <b>A file the printer cannot print is queued anyway, and the response says so</b> in its
     /// warnings - a <c>Hold</c> is the queue telling you now that it will stop at this entry later.
     /// </para>
+    /// <para>
+    /// <b>Except a file sliced for a machine this printer must not imitate, which is a 409</b> rather
+    /// than a queued entry with a warning attached. Every held entry waits on something a person can
+    /// change at the printer; this one would wait on the printer becoming a different model, so there
+    /// is nothing for it to wait for.
+    /// </para>
     /// </remarks>
     [HttpPost]
     [Route("printers/{printerUuid:guid}/queue")]
-    public async Task<Results<Created<EnqueuedPrintReadDTO>, ForbiddenProblem, NotFoundProblem>> Enqueue(
+    public async Task<Results<Created<EnqueuedPrintReadDTO>, ConflictProblem, ForbiddenProblem, NotFoundProblem>> Enqueue(
         Guid printerUuid,
         [FromBody] EnqueueRequest body,
         CancellationToken cancellationToken)
@@ -161,6 +167,10 @@ public class PrintQueueController : ControllerBase
         catch (PrintFileNotFoundException e)
         {
             return this.NotFoundProblem(e.Message);
+        }
+        catch (IncompatiblePrinterModelException e)
+        {
+            return this.ConflictProblem(e.Message);
         }
         catch (TeamAccessDeniedException e)
         {

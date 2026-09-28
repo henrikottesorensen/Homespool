@@ -21,6 +21,7 @@ using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
 using Homespool.Host.Controllers;
+using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -912,6 +913,58 @@ public sealed class QueueLoopTests : IAsyncLifetime
                       .AdvanceAsync(printerId, TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// A file sliced for a faster machine is refused by a printer that has said what it is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The one test that spans the vocabulary gap end to end.</b> Everything else about this check
+    /// is asserted against hand-built rows; here the model comes off the wire, written by the same
+    /// <c>INFO</c> handling a real printer drives. That matters because the gap is exactly there:
+    /// firmware sends <c>printer_type: "1.3.5"</c> and the comparison wants an <c>MK3.5</c>, and a unit
+    /// test fed designations no printer sends stays green whether or not the two are ever reconciled.
+    /// </para>
+    /// <para>
+    /// <b>Refused rather than held</b>, because nothing clears it: a bed slinger does not become a
+    /// CoreXY, so an entry waiting on that would block the queue behind it for ever.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AFileSlicedForAFasterMachineIsRefusedByAPrinterThatHasReportedItself()
+    {
+        // Arrange - an enrolled, connected printer that has sent its INFO
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        (await WaitUntilAsync(async () => await ModelAsync(printerId) is not null, TimeSpan.FromSeconds(30)))
+            .Should().BeTrue("INFO is what tells this application what the printer is");
+
+        (await ModelAsync(printerId)).Should().Be("1.3.5", "a printer names itself with a version triple");
+
+        await UploadAsync(userId, "corexy.bgcode");
+        await SlicedForAsync("corexy.bgcode", "COREONE");
+
+        // Act
+        Func<Task> queueing = () => EnqueueAsync(printerId, userId, "corexy.bgcode");
+
+        // Assert
+        IncompatiblePrinterModelException refusal =
+            (await queueing.Should().ThrowAsync<IncompatiblePrinterModelException>()).Which;
+
+        refusal.PrinterModel.Should().Be("MK3.5", "the sentence names the machine, not the triple");
+
+        (await QueueDepthAsync(printerId)).Should().Be(0, "a refused queue leaves nothing behind");
+
+        await EndRunAsync(fake, run);
+    }
+
     private async Task UploadAsync(long userId, string name)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
@@ -1035,6 +1088,35 @@ public sealed class QueueLoopTests : IAsyncLifetime
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .PrintFilesOnPrinters.CountAsync(row => row.PrinterId == printerId,
                                                            TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>What the printer has told this application it is - <c>INFO</c>'s <c>printer_type</c>.</summary>
+    private async Task<string?> ModelAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                          .Printers.Where(printer => printer.Id == printerId)
+                          .Select(printer => printer.Model)
+                          .SingleAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Writes onto the file's row what the metadata reader would have read off a file sliced for
+    /// <paramref name="model"/> - the fixture upload is two lines of G-code with no configuration
+    /// block, and this test is about the comparison rather than about the parser.
+    /// </summary>
+    private async Task SlicedForAsync(string name, string model)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == name,
+                                                              TestContext.Current.CancellationToken);
+        file.MetadataState = PrintFileMetadataState.Read;
+        file.PrinterModel = model;
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>Whether the loop has seen the printer's own <c>FILE_INFO</c> and recorded its path.</summary>

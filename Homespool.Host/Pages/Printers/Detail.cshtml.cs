@@ -1084,8 +1084,8 @@ public class DetailModel : PageModel
                     return (_localiser["Printers_JobGone"].Value, false);
                 }
 
-                // Queued either way - the loop is what stops a print that must not happen, and this is
-                // the moment to say so while somebody is still looking at the screen. Files_Queued
+                // Queued, warnings and all - what would not have been queued has already thrown, and
+                // the rest is said here while somebody is still looking at the screen. Files_Queued
                 // rather than a printer-prefixed twin of it: the sentence is the same one, and a
                 // second key holding it would be a second thing to translate and to let drift.
                 return outcome.Warnings.Count == 0 ?
@@ -1101,6 +1101,12 @@ public class DetailModel : PageModel
             }
             catch (Exception e) when (e is PrintNotYoursException or PrintFileNotFoundException)
             {
+                return (_errors.For(e), false);
+            }
+            catch (IncompatiblePrinterModelException e)
+            {
+                // Reachable from a reprint of a job whose printer has since been upgraded into a
+                // different machine, or whose file has been replaced by one sliced for another.
                 return (_errors.For(e), false);
             }
         }, cancellationToken);

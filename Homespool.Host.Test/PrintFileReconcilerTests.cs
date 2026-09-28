@@ -578,6 +578,77 @@ public sealed class PrintFileReconcilerTests : IDisposable
     }
 
     /// <summary>
+    /// A row whose file was renamed on disk to another case, while the service was stopped, takes the
+    /// disk's spelling - so a later lookup by that spelling finds it rather than indexing a second row.
+    /// </summary>
+    [Fact]
+    public async Task ARowTakesTheSpellingOfItsFileOnDisk()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+
+        string path = await WriteFileAsync("ærø.gcode", [1, 2, 3]);
+        await AddRowFromDiskAsync(context, "ærø.gcode", "uploaded");
+        File.Move(path, Path.Combine(Path.GetDirectoryName(path)!, "Ærø.gcode"));
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.Name.Should().Be("Ærø.gcode");
+        row.Digest.Should().Be("uploaded", "a rename does not change the bytes");
+    }
+
+    /// <summary>
+    /// Two rows for one file - which a database written before rows were matched by the store's rule
+    /// can hold - are reported and left alone, not a reason to stop reconciling every other user.
+    /// </summary>
+    [Fact]
+    public async Task TwoRowsForOneFileDoNotStopTheReconcileForAnyoneElse()
+    {
+        // Arrange
+        const long bob = 2;
+
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await AddUserAsync(context, bob, "bob@example.com");
+
+        await WriteFileAsync("Ærø.gcode", [1, 2, 3]);
+
+        foreach (string name in new[] { "ærø.gcode", "Ærø.gcode" })
+        {
+            context.PrintFiles.Add(new PrintFile { UserId = Alice, Name = name, Size = 3, UploadedAt = DateTimeOffset.UnixEpoch });
+        }
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Directory.CreateDirectory(Path.Combine(_root, "2-bob"));
+        await File.WriteAllBytesAsync(Path.Combine(_root, "2-bob", "handcopied.gcode"), [1, 2, 3],
+                                      TestContext.Current.CancellationToken);
+
+        FakeLogger<PrintFileReconciler> logger = new();
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler(logger);
+        await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        (await context.PrintFiles.CountAsync(row => row.UserId == Alice, TestContext.Current.CancellationToken))
+            .Should().Be(2, "neither row is the reconcile's to remove");
+        (await context.PrintFiles.SingleAsync(row => row.UserId == bob, TestContext.Current.CancellationToken))
+            .Name.Should().Be("handcopied.gcode");
+        logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Error);
+    }
+
+    /// <summary>
     /// A removed account's files are left exactly where they are - indexing them would break the
     /// foreign key, and deleting them would be this class writing to the disk, which it never does.
     /// </summary>
@@ -600,13 +671,11 @@ public sealed class PrintFileReconcilerTests : IDisposable
         File.Exists(path).Should().BeTrue("the reconciler never writes to the disk");
     }
 
-    private static async Task AddUserAsync(HomespoolDbContext context)
+    private static async Task AddUserAsync(HomespoolDbContext context, long id = Alice, string email = "alice@example.com")
     {
-        const string email = "alice@example.com";
-
         context.Users.Add(new HSUser(email)
         {
-            Id = Alice,
+            Id = id,
             Email = email,
             NormalizedEmail = email.ToUpperInvariant(),
             NormalizedUserName = email.ToUpperInvariant(),

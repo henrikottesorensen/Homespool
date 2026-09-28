@@ -142,12 +142,16 @@ public sealed class PrintFileReconciler : BackgroundService
 
         foreach ((long userId, List<StoredFile> files) in onDisk)
         {
-            Dictionary<string, PrintFile> byName = rows.Where(row => row.UserId == userId)
-                                                       .ToDictionary(row => row.Name, StringComparer.OrdinalIgnoreCase);
+            // The store's rule for names, applied here: SQLite's NOCASE folds ASCII only, so no query
+            // could match a file to its row the way the store matches a name to its file.
+            ILookup<string, PrintFile> byName = rows.Where(row => row.UserId == userId)
+                                                    .ToLookup(row => row.Name, StringComparer.OrdinalIgnoreCase);
 
             foreach (StoredFile file in files)
             {
-                if (!byName.TryGetValue(file.FileName, out PrintFile? row))
+                PrintFile[] matching = [.. byName[file.FileName]];
+
+                if (matching.Length == 0)
                 {
                     dbContext.PrintFiles.Add(new PrintFile
                     {
@@ -168,7 +172,30 @@ public sealed class PrintFileReconciler : BackgroundService
                     continue;
                 }
 
-                if (HasMoved(row, file))
+                if (matching.Length > 1)
+                {
+                    // Two rows for one file, which only a database from before rows were matched by
+                    // the store's rule can hold. Neither is this pass's to remove, and picking one could
+                    // strand a queued print on the other - so they are reported for a person to merge,
+                    // and every other file is still reconciled.
+                    _logger.LogError("{FileName} (user {UserId}) has {Count} rows; leaving them to be merged by hand.",
+                                     file.FileName, userId, matching.Length);
+
+                    continue;
+                }
+
+                PrintFile row = matching[0];
+                bool renamed = !string.Equals(row.Name, file.FileName, StringComparison.Ordinal);
+                bool moved = HasMoved(row, file);
+
+                if (renamed)
+                {
+                    // Renamed on disk to another case while the service was stopped. The row takes the
+                    // disk's spelling, which is the one the printer is sent.
+                    row.Name = file.FileName;
+                }
+
+                if (moved)
                 {
                     // The bytes changed underneath us. The digest and the metadata are now statements
                     // about content that is gone, so they are cleared rather than left to be believed -
@@ -179,7 +206,10 @@ public sealed class PrintFileReconciler : BackgroundService
                     row.UploadedAt = file.UploadedAt;
                     row.Digest = null;
                     PrintFileMetadata.Forget(row);
+                }
 
+                if (renamed || moved)
+                {
                     corrected++;
                 }
             }

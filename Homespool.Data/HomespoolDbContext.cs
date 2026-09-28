@@ -548,14 +548,15 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.HasIndex(e => new { e.UserId, e.Name })
                   .IsUnique();
 
-            // NOCASE so the uniqueness matches how UserFileStore resolves a name - it compares
+            // NOCASE so the uniqueness leans the way UserFileStore resolves a name - it compares
             // case-insensitively on purpose, because macOS folds case, Linux does not, and the
             // printer's FAT32 would collide the two at /usb/ regardless.
             //
-            // Note SQLite's NOCASE folds ASCII only, while the store uses full OrdinalIgnoreCase - so
-            // this index is a slightly weaker backstop than the rule it backs, not an equal one. That
-            // is acceptable precisely because it IS a backstop: the store is the gate, and the only
-            // way to reach a pair it would have refused is meddling with the tree by hand.
+            // A backstop only, and never asked whether two names are the same. SQLite's NOCASE folds
+            // ASCII only, while the store uses OrdinalIgnoreCase across all of Unicode, and no
+            // collation SQLite offers agrees with it - so the code matches rows to files in .NET and
+            // fetches a row by the exact spelling it holds. What this index refuses is a subset of
+            // what the store refuses, so it can never refuse a pair the store allows.
             entity.Property(e => e.Name)
                   .UseCollation("NOCASE");
 

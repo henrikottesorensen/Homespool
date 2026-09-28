@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Text;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -213,6 +214,102 @@ public sealed class PrintFileCatalogTests : IDisposable
         row!.Name.Should().Be("orphan.gcode");
         row.Digest.Should().BeNull("resolving does not read the file to hash it");
         row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "nor to read its metadata");
+    }
+
+    /// <summary>
+    /// An overwrite spelled with a different case of a non-ASCII letter replaces the one file, so it
+    /// must keep the one row. SQLite's <c>NOCASE</c> folds ASCII only, so a row lookup it answered
+    /// missed <c>ærø</c> for <c>Ærø</c> and inserted a second row beside the first.
+    /// </summary>
+    [Fact]
+    public async Task OverwritingUnderAnotherCaseOfANonAsciiLetterKeepsTheOneRow()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "ærø.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+                                TestContext.Current.CancellationToken);
+
+        PrintFile original = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        long queuedPrintId = await AddQueuedPrintAsync(context, original.Id);
+
+        // Act
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "Ærø.gcode", new MemoryStream([4, 5, 6, 7]), overwrite: true,
+                                TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.Id.Should().Be(original.Id, "the queued print points at this row");
+        row.Name.Should().Be("Ærø.gcode", "a row carries the spelling on disk");
+        row.Size.Should().Be(4);
+        (await context.QueuedPrints.SingleAsync(job => job.Id == queuedPrintId, TestContext.Current.CancellationToken))
+            .PrintFileId.Should().Be(original.Id);
+    }
+
+    /// <summary>
+    /// A file renamed on disk by hand to another case is still the same file: resolving it finds its
+    /// row, rather than indexing a second one, and the row takes the new spelling.
+    /// </summary>
+    [Fact]
+    public async Task ResolvingAFileRenamedOnDiskToAnotherCaseFindsItsRow()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        UserFileStore store = NewStore();
+        PrintFileCatalog catalog = NewCatalog(context, store);
+
+        StoredFile saved = await catalog.SaveAsync(Caller.Unscoped(Alice), "ærø.gcode", new MemoryStream([1, 2, 3]),
+                                                   overwrite: false, TestContext.Current.CancellationToken);
+
+        long originalId = (await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken)).Id;
+        File.Move(saved.Path, Path.Combine(Path.GetDirectoryName(saved.Path)!, "Ærø.gcode"));
+
+        // Act
+        PrintFile? row = await catalog.ResolveAsync(Alice, "Ærø.gcode", TestContext.Current.CancellationToken);
+
+        // Assert
+        row.Should().NotBeNull();
+        row!.Id.Should().Be(originalId);
+
+        context.ChangeTracker.Clear();
+
+        (await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken)).Name.Should().Be("Ærø.gcode");
+    }
+
+    /// <summary>
+    /// Two rows for one file - which only a database from before rows were matched by the store's rule
+    /// can hold - still list: the file is described by the row spelled as the disk is, whichever is
+    /// older.
+    /// </summary>
+    [Fact]
+    public async Task ListingAFileWithTwoRowsDescribesItByTheOneSpelledAsTheDisk()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "Ærø.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+                                TestContext.Current.CancellationToken);
+
+        PrintFile exact = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        exact.Name = "ærø.gcode";
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFiles.Add(new PrintFile { UserId = Alice, Name = "Ærø.gcode", Size = 3, UploadedAt = DateTimeOffset.UnixEpoch });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IReadOnlyList<CataloguedFile> listed = await catalog.ListAsync(Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+
+        // Assert
+        listed.Should().ContainSingle().Which.Row!.Name.Should().Be("Ærø.gcode");
     }
 
     [Fact]

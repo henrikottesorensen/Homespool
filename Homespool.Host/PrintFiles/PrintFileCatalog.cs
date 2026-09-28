@@ -75,8 +75,8 @@ public sealed class PrintFileCatalog
     /// with nothing known about it rather than left out.
     /// </para>
     /// <para>
-    /// One query for all of the caller's rows, matched by name the way the store matches names,
-    /// case-insensitively, as <c>PrintFileReconciler</c> matches them.
+    /// One query for all of the caller's rows, each file matched to its row by
+    /// <see cref="BestMatch{T}"/> - the store's rule, applied here rather than asked of the database.
     /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<CataloguedFile>> ListAsync(Caller caller, CancellationToken cancellationToken)
@@ -85,14 +85,13 @@ public sealed class PrintFileCatalog
 
         IReadOnlyList<StoredFile> files = _store.List(caller.UserId);
 
-        Dictionary<string, PrintFile> rows = await _dbContext.PrintFiles
-                                                             .AsNoTracking()
-                                                             .Where(row => row.UserId == caller.UserId)
-                                                             .ToDictionaryAsync(row => row.Name,
-                                                                                StringComparer.OrdinalIgnoreCase,
-                                                                                cancellationToken);
+        List<PrintFile> rows = await _dbContext.PrintFiles
+                                               .AsNoTracking()
+                                               .Where(row => row.UserId == caller.UserId)
+                                               .OrderBy(row => row.Id)
+                                               .ToListAsync(cancellationToken);
 
-        return [.. files.Select(file => new CataloguedFile(file, rows.GetValueOrDefault(file.FileName)))];
+        return [.. files.Select(file => new CataloguedFile(file, BestMatch(rows, row => row.Name, file.FileName)))];
     }
 
     /// <summary>
@@ -197,6 +196,14 @@ public sealed class PrintFileCatalog
 
         if (row is not null)
         {
+            if (!string.Equals(row.Name, file.FileName, StringComparison.Ordinal))
+            {
+                // Renamed on disk to another case since the row was written. The row carries the
+                // disk's spelling, which is the one the printer is sent.
+                row.Name = file.FileName;
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+
             return row;
         }
 
@@ -429,17 +436,62 @@ public sealed class PrintFileCatalog
     }
 
     /// <summary>
-    /// The row for a name, matched the way the store matches names.
+    /// The row for a file the store has resolved, matched by the store's rule for names.
     /// </summary>
     /// <remarks>
-    /// The equality below is case-insensitive because the column carries SQLite's <c>NOCASE</c>
-    /// collation, not because of anything in this expression - which is the point of putting the
-    /// collation on the column rather than at each call site, since <c>OrdinalIgnoreCase</c> has no
-    /// translation and a query that quietly became case-sensitive would duplicate rows.
+    /// <para>
+    /// <b>The database is never asked whether two names are the same.</b> The store decides that with
+    /// <c>OrdinalIgnoreCase</c>, across all of Unicode; the column's <c>NOCASE</c> folds ASCII only, so
+    /// a lookup the database answered missed <c>ærø</c> for <c>Ærø</c> and an overwrite inserted a
+    /// second row for the one file. No collation SQLite offers agrees with .NET's, so the user's names
+    /// are read and matched here - tens to hundreds of short strings - and the row is then fetched by
+    /// the exact spelling it holds, which every collation agrees on.
+    /// </para>
     /// </remarks>
-    private Task<PrintFile?> FindRowAsync(long userId, string fileName, CancellationToken cancellationToken)
+    private async Task<PrintFile?> FindRowAsync(long userId, string fileName, CancellationToken cancellationToken)
     {
-        return _dbContext.PrintFiles
-                         .SingleOrDefaultAsync(f => f.UserId == userId && f.Name == fileName, cancellationToken);
+        List<string> names = await _dbContext.PrintFiles
+                                             .Where(row => row.UserId == userId)
+                                             .OrderBy(row => row.Id)
+                                             .Select(row => row.Name)
+                                             .ToListAsync(cancellationToken);
+
+        string? name = BestMatch(names, candidate => candidate, fileName);
+
+        return name is null ?
+            null :
+            await _dbContext.PrintFiles.SingleAsync(row => row.UserId == userId && row.Name == name, cancellationToken);
+    }
+
+    /// <summary>
+    /// The item whose name is <paramref name="fileName"/> by the store's rule: the exact spelling if
+    /// one has it, otherwise the first that differs only in case, otherwise none.
+    /// </summary>
+    /// <remarks>
+    /// Exact first, because two items can answer only in a database holding two rows for one file,
+    /// written before rows were matched this way - and of those, the one spelled as the disk is the
+    /// one that is right.
+    /// </remarks>
+    private static T? BestMatch<T>(IEnumerable<T> items, Func<T, string> nameOf, string fileName)
+        where T : class
+    {
+        T? folded = null;
+
+        foreach (T item in items)
+        {
+            string name = nameOf(item);
+
+            if (string.Equals(name, fileName, StringComparison.Ordinal))
+            {
+                return item;
+            }
+
+            if (folded is null && string.Equals(name, fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                folded = item;
+            }
+        }
+
+        return folded;
     }
 }

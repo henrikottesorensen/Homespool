@@ -35,8 +35,8 @@
            the route value is left out of every URL rather than carried as false. *@
         @if (Model.SelectedPrinterUuid is not null)
         {
-            <div class="form-check mb-0">
-                <input type="checkbox" id="compatible-only" name="compatible" value="true" class="form-check-input"
+            <div class="form-check form-switch mb-0">
+                <input type="checkbox" role="switch" id="compatible-only" name="compatible" value="true" class="form-check-input"
                        checked="@Model.CompatibleOnly" />
                 <label class="form-check-label" for="compatible-only">@Localiser["Files_CompatibleOnly"]</label>
             </div>

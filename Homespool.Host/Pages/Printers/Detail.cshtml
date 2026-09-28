@@ -3,13 +3,13 @@
 @using Homespool.Model
 @model DetailModel
 @{
-    ViewData["Title"] = Model.Statistics.Printer.Name ?? Model.Statistics.Printer.Model ?? Model.Statistics.Printer.Uuid.ToString();
+    @* The same helper the code-behind uses for the name a removal asks to be typed: the two have to
+       agree to the character. *@
+    string printerName = PrinterDisplayName.For(Model.Statistics.Printer);
+
+    ViewData["Title"] = printerName;
 
     var uuid = Model.Statistics.Printer.Uuid;
-
-    string printerName = Model.Statistics.Printer.Name ??
-                         Model.Statistics.Printer.Model ??
-                         Model.Statistics.Printer.Uuid.ToString();
 }
 
 @* The page answers one question first - what is this printer doing - and everything that is a

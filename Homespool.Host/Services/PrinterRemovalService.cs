@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Pages;
 using Homespool.Host.Printing;
 using Homespool.Host.Queue;
 using Homespool.Host.Telemetry;
@@ -137,7 +138,7 @@ public class PrinterRemovalService
             throw new PrinterBusyException(snapshot.Status);
         }
 
-        string name = printer.Name ?? printer.Model ?? printer.Uuid.ToString();
+        string name = PrinterDisplayName.For(printer);
 
         // Ordered, and each step depends on the one before it.
         //

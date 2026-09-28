@@ -36,18 +36,16 @@ public class PrinterReadDTO
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Worth exposing beyond curiosity: it is the second link in the display chain a client has to
-    /// reproduce, <c>Name ?? Model ?? Uuid</c>. Without it an API consumer cannot render a printer
-    /// the way the web UI does.
+    /// Worth exposing beyond curiosity: it says what the machine is, where the name says which one.
+    /// It is a code - shown to a person it reads as <c>1.3.5</c> - and <see cref="PrinterTypeName"/>
+    /// is firmware's id for it.
     /// </para>
     /// <para>
-    /// <b>Named <c>printerType</c>, which took two goes to get right</b> (2026-07-28). It shipped as
-    /// <c>model</c>, was renamed <c>printerModel</c> to match Connect's schema, and that was the wrong
-    /// field of three: their examples are <c>printerType: "1.4.0"</c>, <c>printerTypeName: "MK4"</c>
-    /// and <c>printerModel: "MK4SISMMU3"</c>. Ours is <c>1.3.5</c> - a code, straight from
-    /// <c>INFO</c>'s <c>printer_type</c> - so it is their <c>printerType</c>. The other two are
-    /// omitted rather than faked: <c>printerTypeName</c> needs a code-to-name lookup we do not have,
-    /// and <c>printerModel</c> needs a SKU the printer never sends.
+    /// <b>Named <c>printerType</c> because it is Connect's <c>printerType</c></b>, the one of their
+    /// three model fields that holds a code: their examples are <c>printerType: "1.4.0"</c>,
+    /// <c>printerTypeName: "MK4"</c> and <c>printerModel: "MK4SISMMU3"</c>. Ours is <c>1.3.5</c>,
+    /// straight from <c>INFO</c>'s <c>printer_type</c>, so <c>printerModel</c> - the easy name to reach
+    /// for - would be the wrong field.
     /// </para>
     /// <para>
     /// <b>Do not confuse this with <see cref="Homespool.Model.PrinterType"/></b>, the entity's own

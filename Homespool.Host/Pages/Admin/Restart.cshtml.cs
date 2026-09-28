@@ -125,9 +125,7 @@ public class RestartModel : PageModel
                                                         .AsNoTracking()
                                                         .Where(printer => named.Contains(printer.Id))
                                                         .ToDictionaryAsync(printer => printer.Id,
-                                                                           printer => printer.Name ??
-                                                                                      printer.Model ??
-                                                                                      printer.Uuid.ToString(),
+                                                                           PrinterDisplayName.For,
                                                                            cancellationToken);
 
         Transfers = offers.Select(offer => (fileName: offer.fileName, printerName: names.GetValueOrDefault(offer.printerId)))

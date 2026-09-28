@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 using AwesomeAssertions;
 
@@ -83,5 +86,52 @@ public class PrinterDisplayNameTests
         Printer printer = new() { Name = "   ", Model = "MK4S", Uuid = Guid.NewGuid() };
 
         PrinterDisplayName.For(printer).Should().Be("MK4S");
+    }
+
+    /// <summary>
+    /// No page or service builds the chain itself - every one of them asks this helper.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The chain is short enough to retype, which is the danger.</b> An inline
+    /// <c>Name ?? Model ?? Uuid</c> reads the reported model as though it were a name, so it shows an
+    /// unnamed printer as <c>1.3.5</c> - and a copy in a removal confirmation has to agree with the one
+    /// that checks it to the character, which two copies only do by luck.
+    /// </para>
+    /// <para>
+    /// <b>Scoped to the shape the copies take</b>: <c>.Model ??</c>, in product code. It does not try
+    /// to recognise every way a name could be assembled; it stops the one that keeps coming back.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void NoPageOrServiceBuildsTheChainItself()
+    {
+        DirectoryInfo host = new(Path.Combine(RepositoryRoot().FullName, "Homespool.Host"));
+        Regex inlineChain = new(@"\.Model\s*\?\?");
+
+        string[] offenders = host.EnumerateFiles("*", SearchOption.AllDirectories)
+                                 .Where(file => file.Extension is ".cs" or ".cshtml")
+                                 .Where(file => !file.FullName.Split(Path.DirectorySeparatorChar)
+                                                     .Any(part => part is "obj" or "bin"))
+                                 .SelectMany(file => File.ReadLines(file.FullName)
+                                                         .Select((line, index) => (file, line, index)))
+                                 .Where(hit => inlineChain.IsMatch(hit.line))
+                                 .Select(hit => $"{Path.GetRelativePath(host.FullName, hit.file.FullName)}:{hit.index + 1}")
+                                 .ToArray();
+
+        offenders.Should().BeEmpty("a printer's display name comes from PrinterDisplayName.For, which resolves the model");
+    }
+
+    private static DirectoryInfo RepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Homespool.slnx")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory ??
+               throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
     }
 }

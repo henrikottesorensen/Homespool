@@ -1411,13 +1411,16 @@ public class DetailModel : PageModel
     }
 
     /// <summary>
-    /// What the page calls this printer, and what the removal confirmation asks to be typed. The
-    /// chain is <see cref="Printer.Name"/>'s documented one, and the view computes the same thing
-    /// for its heading.
+    /// What the page calls this printer, and what the removal confirmation asks to be typed.
     /// </summary>
+    /// <remarks>
+    /// <b>The shared chain, and the view uses it too</b> - for its heading and for the name it asks
+    /// to be typed. The two have to agree to the character, or a confirmation typed exactly as shown
+    /// is refused.
+    /// </remarks>
     private static string DisplayNameFor(Printer printer)
     {
-        return printer.Name ?? printer.Model ?? printer.Uuid.ToString();
+        return PrinterDisplayName.For(printer);
     }
 
     /// <summary>

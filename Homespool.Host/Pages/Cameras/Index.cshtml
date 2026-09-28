@@ -53,7 +53,7 @@ else
                             }
                         </td>
                         <td><code class="small">@CameraSourceDisplay.AddressOnly(camera.Source)</code></td>
-                        <td class="typed-name">@(camera.Printer?.Name ?? camera.Printer?.Model ?? "—")</td>
+                        <td class="typed-name">@(camera.Printer is null ? "—" : PrinterDisplayName.For(camera.Printer))</td>
                         <td>
                             @if (age is null)
                             {
@@ -133,7 +133,7 @@ else
                 @foreach (var printer in Model.Printers)
                 {
                     <option value="@printer.Uuid" selected="@(printer.Id == Model.Editing.PrinterId)">
-                        @(printer.Name ?? printer.Model ?? printer.Uuid.ToString())
+                        @PrinterDisplayName.For(printer)
                     </option>
                 }
             </select>
@@ -185,7 +185,7 @@ else
                 <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
-                    <option value="@printer.Uuid">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                    <option value="@printer.Uuid">@PrinterDisplayName.For(printer)</option>
                 }
             </select>
         </div>
@@ -249,7 +249,7 @@ else
                 <option value="">@Localiser["Common_None"]</option>
                 @foreach (var printer in Model.Printers)
                 {
-                    <option value="@printer.Uuid">@(printer.Name ?? printer.Model ?? printer.Uuid.ToString())</option>
+                    <option value="@printer.Uuid">@PrinterDisplayName.For(printer)</option>
                 }
             </select>
         </div>

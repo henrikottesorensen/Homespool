@@ -503,6 +503,35 @@ public sealed class FilesPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The printer selector needs no Save press: the hooks site.js binds to are on the page.
+    /// </summary>
+    /// <remarks>
+    /// <b>A no-script fallback that nothing can reach is not a fallback.</b> These attributes are the
+    /// contract between this page and the script - one renamed in one file only leaves a selector that
+    /// silently does nothing until somebody finds the button again. A printer is named in the URL
+    /// because the row forms only render once one is chosen.
+    /// </remarks>
+    [Fact]
+    public async Task ThePrinterSelectorCarriesTheHooksThatSubmitItOnChange()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pageselector@example.com");
+        await ClaimAPrinterAsync(client);
+        await UploadAsync(client, "one.gcode", 128);
+
+        string printerUuid = await OnlyPrinterUuidAsync(client);
+
+        string page =
+            await (await client.GetAsync($"/Files?printerUuid={printerUuid}", TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        page.Should().Contain("data-printer-select-submit", "the button site.js hides once the change submits");
+        page.Should().Contain("data-printer-target", "the row forms it repoints before that submit lands");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Names a printer as this account's default by driving the listing's own button.
     /// </summary>
     private async Task MakeDefaultAsync(HttpClient client, string printerUuid)

@@ -49,14 +49,15 @@ internal sealed class WebPushRig : IAsyncDisposable
     /// </summary>
     public static async Task<WebPushRig> CreateAsync(string databasePath,
                                                      IDataProtectionProvider protection,
-                                                     IDictionary<string, string?>? configuration = null)
+                                                     IDictionary<string, string?>? configuration = null,
+                                                     TimeProvider? time = null)
     {
         FakePushService pushService = new();
 
         ServiceCollection services = new();
         services.AddLogging();
         services.AddLocalization();
-        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton(time ?? TimeProvider.System);
         services.AddSingleton(protection);
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={databasePath}"));
 

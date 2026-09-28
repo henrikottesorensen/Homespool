@@ -50,6 +50,10 @@ public static class PushAddressGuard
         IPNetwork.Parse("::/128"),
         IPNetwork.Parse("::1/128"),
 
+        // IPv4-compatible IPv6, deprecated and never a push service's, but an IPv4 address inside all
+        // the same. .NET does not unmap this form as it does ::ffff:, so it is refused whole.
+        IPNetwork.Parse("::/96"),
+
         // NAT64 and its local-use sibling, Teredo and 6to4 all carry an IPv4 address inside, which
         // could be any of the above. No push service is reached through one.
         IPNetwork.Parse("64:ff9b::/96"),

@@ -100,6 +100,8 @@ public sealed class WebPushEndpointPolicyTests
     [InlineData("::1", false)]
     [InlineData("::", false)]
     [InlineData("::ffff:10.0.0.5", false)]
+    [InlineData("::a00:5", false)]
+    [InlineData("::8efa:4a6a", false)]
     [InlineData("::ffff:142.250.74.106", true)]
     [InlineData("fd00::1", false)]
     [InlineData("fe80::1", false)]

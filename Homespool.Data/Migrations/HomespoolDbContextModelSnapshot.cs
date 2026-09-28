@@ -149,6 +149,10 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("LockoutEnd")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MutedNotifications")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("NormalizedEmail")
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
@@ -254,6 +258,11 @@ namespace Homespool.Data.Migrations
 
                     b.Property<int>("ConsecutiveFailures")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConsecutiveRefusals")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(0);
 
                     b.Property<long>("CreatedAt")
                         .HasColumnType("INTEGER");

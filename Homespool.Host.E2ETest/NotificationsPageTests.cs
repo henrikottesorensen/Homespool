@@ -19,6 +19,7 @@ using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Notifications.WebPush;
 using Homespool.Host.Test;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -200,6 +201,50 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
 
             _pushService.Received.Should().BeEmpty();
             (await StoredAsync()).Should().ContainSingle().Which.UserId.Should().Be(owner.Id);
+        }
+    }
+
+    /// <summary>
+    /// Everything is on to start with; what is left unticked when saving is turned off, and the page
+    /// shows it so afterwards.
+    /// </summary>
+    [Fact]
+    public async Task UntickedKindsAreTurnedOff()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "chooser@example.com");
+
+        using (client)
+        {
+            string page = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+
+            page.Should().Contain("id=\"kind-QueueHeld\"").And.Contain("checked=\"checked\"", "a new account hears everything");
+
+            using FormUrlEncodedContent form = new(
+            [
+                new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+                new("enabled", nameof(NotificationKind.PrinterNeedsAttention)),
+                new("enabled", nameof(NotificationKind.PrintFinished)),
+            ]);
+
+            using HttpResponseMessage saved = await client.PostAsync("/Account/Manage/Notifications?handler=Kinds", form,
+                                                                     TestContext.Current.CancellationToken);
+
+            saved.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            using (IServiceScope scope = _factory.Services.CreateScope())
+            {
+                string? muted = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                           .Users.Where(row => row.Id == user.Id)
+                                           .Select(row => row.MutedNotifications)
+                                           .SingleAsync(TestContext.Current.CancellationToken);
+
+                muted.Should().Be("PrintDidNotFinish QueueHeld");
+            }
+
+            string after = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+
+            Regex.IsMatch(after, "id=\"kind-QueueHeld\"[^>]*checked").Should().BeFalse("what was turned off shows as off");
+            Regex.IsMatch(after, "id=\"kind-PrintFinished\"[^>]*checked").Should().BeTrue();
         }
     }
 

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -22,11 +23,12 @@ namespace Homespool.Host.Test;
 public sealed class NotificationDestinationServiceTests : IAsyncLifetime
 {
     private readonly string _databasePath = WebPushRig.NewDatabasePath();
+    private readonly Microsoft.Extensions.Time.Testing.FakeTimeProvider _clock = new(new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero));
     private WebPushRig _rig = null!;
 
     public async ValueTask InitializeAsync()
     {
-        _rig = await WebPushRig.CreateAsync(_databasePath, new EphemeralDataProtectionProvider());
+        _rig = await WebPushRig.CreateAsync(_databasePath, new EphemeralDataProtectionProvider(), time: _clock);
     }
 
     public async ValueTask DisposeAsync()
@@ -45,6 +47,14 @@ public sealed class NotificationDestinationServiceTests : IAsyncLifetime
         return _rig.InScopeAsync(services =>
             services.GetRequiredService<HomespoolDbContext>().WebPushDestinations.AsNoTracking()
                     .ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>A test send after the cooldown has passed, as a person pressing the button again later would.</summary>
+    private Task<TestSendResult> TestLaterAsync(long userId, Guid uuid)
+    {
+        _clock.Advance(NotificationDestinationService.TestCooldown);
+
+        return WithServiceAsync(service => service.SendTestAsync(userId, uuid, TestContext.Current.CancellationToken));
     }
 
     private Task<WebPushSubscribeResult> SubscribeAsync(long userId, string endpoint, string p256dh, string auth)
@@ -121,10 +131,10 @@ public sealed class NotificationDestinationServiceTests : IAsyncLifetime
         WebPushDestination destination = await _rig.AddBrowserAsync(owner.Id, browser);
 
         bool removed = await WithServiceAsync(service => service.RemoveAsync(stranger.Id, destination.Uuid, TestContext.Current.CancellationToken));
-        DeliveryOutcome? tested = await WithServiceAsync(service => service.SendTestAsync(stranger.Id, destination.Uuid, TestContext.Current.CancellationToken));
+        TestSendResult tested = await WithServiceAsync(service => service.SendTestAsync(stranger.Id, destination.Uuid, TestContext.Current.CancellationToken));
 
         removed.Should().BeFalse();
-        tested.Should().BeNull();
+        tested.Should().Be(TestSendResult.NotFound);
         (await StoredAsync()).Should().ContainSingle();
         _rig.PushService.Received.Should().BeEmpty();
     }
@@ -153,9 +163,9 @@ public sealed class NotificationDestinationServiceTests : IAsyncLifetime
         using FakePushBrowser browser = FakePushService.NewBrowser();
         WebPushDestination destination = await _rig.AddBrowserAsync(owner.Id, browser);
 
-        DeliveryOutcome? outcome = await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
+        TestSendResult outcome = await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
 
-        outcome.Should().Be(DeliveryOutcome.Delivered);
+        outcome.Should().Be(TestSendResult.Delivered);
 
         System.Text.Json.JsonElement payload = browser.DecryptJson(_rig.PushService.Received.Should().ContainSingle().Subject.Body);
         payload.GetProperty("title").GetString().Should().Be("Homespool-test");
@@ -174,8 +184,8 @@ public sealed class NotificationDestinationServiceTests : IAsyncLifetime
         WebPushDestination destination = await _rig.AddBrowserAsync(owner.Id, browser);
 
         _rig.PushService.Answer = HttpStatusCode.ServiceUnavailable;
-        await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
-        await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
+        await TestLaterAsync(owner.Id, destination.Uuid);
+        await TestLaterAsync(owner.Id, destination.Uuid);
 
         WebPushDestination failing = (await StoredAsync()).Should().ContainSingle().Subject;
         failing.ConsecutiveFailures.Should().Be(2);
@@ -183,7 +193,7 @@ public sealed class NotificationDestinationServiceTests : IAsyncLifetime
         failing.LastDeliveredAt.Should().BeNull();
 
         _rig.PushService.Answer = HttpStatusCode.Created;
-        await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
+        await TestLaterAsync(owner.Id, destination.Uuid);
 
         WebPushDestination recovered = (await StoredAsync()).Should().ContainSingle().Subject;
         recovered.ConsecutiveFailures.Should().Be(0);
@@ -199,10 +209,87 @@ public sealed class NotificationDestinationServiceTests : IAsyncLifetime
 
         _rig.PushService.Answer = HttpStatusCode.Gone;
 
-        DeliveryOutcome? outcome = await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
+        TestSendResult outcome = await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
 
-        outcome.Should().Be(DeliveryOutcome.Gone);
+        outcome.Should().Be(TestSendResult.Gone);
         (await StoredAsync()).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A destination refused time after time is one that will never be accepted - and only refusals
+    /// count, so a deployment that lost its internet connection keeps everybody's browsers.
+    /// </summary>
+    [Fact]
+    public async Task RepeatedRefusalsRemoveADestinationAndOutagesDoNot()
+    {
+        HSUser owner = await _rig.AddUserAsync("owner@example.com");
+        using FakePushBrowser refused = FakePushService.NewBrowser();
+        WebPushDestination destination = await _rig.AddBrowserAsync(owner.Id, refused);
+
+        _rig.PushService.Answer = HttpStatusCode.ServiceUnavailable;
+
+        for (int attempt = 0; attempt < NotificationDestinationService.RemoveAfterRefusals * 2; attempt++)
+        {
+            await TestLaterAsync(owner.Id, destination.Uuid);
+        }
+
+        (await StoredAsync()).Should().ContainSingle("an outage removes nothing, however long");
+
+        _rig.PushService.Answer = HttpStatusCode.Forbidden;
+
+        for (int attempt = 1; attempt < NotificationDestinationService.RemoveAfterRefusals; attempt++)
+        {
+            await TestLaterAsync(owner.Id, destination.Uuid);
+        }
+
+        (await StoredAsync()).Should().ContainSingle("one refusal short of the limit");
+
+        await TestLaterAsync(owner.Id, destination.Uuid);
+
+        (await StoredAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ATestTooSoonAfterTheLastSendIsNotSent()
+    {
+        HSUser owner = await _rig.AddUserAsync("owner@example.com");
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+        WebPushDestination destination = await _rig.AddBrowserAsync(owner.Id, browser);
+
+        TestSendResult first = await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
+        TestSendResult second = await WithServiceAsync(service => service.SendTestAsync(owner.Id, destination.Uuid, TestContext.Current.CancellationToken));
+        TestSendResult later = await TestLaterAsync(owner.Id, destination.Uuid);
+
+        first.Should().Be(TestSendResult.Delivered);
+        second.Should().Be(TestSendResult.TooSoon);
+        later.Should().Be(TestSendResult.Delivered);
+        _rig.PushService.Received.Should().HaveCount(2, "the refused press never reached the push service");
+    }
+
+    [Fact]
+    public async Task AnAccountCannotHaveMoreThanItsShareOfDestinations()
+    {
+        HSUser owner = await _rig.AddUserAsync("owner@example.com");
+        List<FakePushBrowser> browsers = [.. Enumerable.Range(0, NotificationDestinationService.MaxPerAccount + 1).Select(_ => FakePushService.NewBrowser())];
+
+        try
+        {
+            foreach (FakePushBrowser browser in browsers.Take(NotificationDestinationService.MaxPerAccount))
+            {
+                (await SubscribeAsync(owner.Id, browser.Endpoint, browser.P256dh, browser.Auth)).Should().Be(WebPushSubscribeResult.Subscribed);
+            }
+
+            FakePushBrowser extra = browsers[^1];
+
+            (await SubscribeAsync(owner.Id, extra.Endpoint, extra.P256dh, extra.Auth)).Should().Be(WebPushSubscribeResult.TooMany);
+            (await SubscribeAsync(owner.Id, browsers[0].Endpoint, browsers[0].P256dh, browsers[0].Auth))
+                .Should().Be(WebPushSubscribeResult.Subscribed, "a browser already on the list refreshing its keys is not a new one");
+            (await StoredAsync()).Should().HaveCount(NotificationDestinationService.MaxPerAccount);
+        }
+        finally
+        {
+            browsers.ForEach(browser => browser.Dispose());
+        }
     }
 
     /// <summary>Browser names as real user agents give them, the Chromium family first among them.</summary>

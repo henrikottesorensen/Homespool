@@ -115,6 +115,12 @@ public sealed class UserAdministration
     /// remembered browsers.
     /// </para>
     /// <para>
+    /// <b>So are its notification destinations.</b> A browser subscription outlives the session that
+    /// made it - signing out leaves it in place - so one added by a stolen session would otherwise go on
+    /// hearing about the account's printers after the closure, and again after a reopening. Delivery
+    /// already skips a closed account; deleting is what survives reopening, as for the tokens.
+    /// </para>
+    /// <para>
     /// <b>The invitations it issued and nobody has used yet expire at the moment of closure.</b> An
     /// invite's link is shown to the administrator who issued it, and redeeming one asks nothing about
     /// that administrator - so without this, one closed as compromised would keep, for the invite's
@@ -138,6 +144,7 @@ public sealed class UserAdministration
     {
         int revoked;
         int expired;
+        int silenced;
 
         // A refusal returns from inside the transaction; disposing it uncommitted writes nothing.
         await using (IDbContextTransaction transaction = await _unitOfWork.BeginSerializableTransactionAsync(cancellationToken))
@@ -185,6 +192,10 @@ public sealed class UserAdministration
             revoked = await _tokens.RevokeAllForUserAsync(userId, cancellationToken);
             await _sessions.RevokeAllAsync(userId, cancellationToken);
 
+            silenced = await _dbContext.NotificationDestinations
+                                       .Where(destination => destination.UserId == userId)
+                                       .ExecuteDeleteAsync(cancellationToken);
+
             // Only the outstanding ones: a used invite has done its work, and one already expired
             // keeps the expiry it had.
             expired = await _dbContext.Invitations
@@ -199,11 +210,12 @@ public sealed class UserAdministration
         }
 
         _logger.LogWarning(
-            "Administrator {AdministratorId} deactivated user {UserId}; {RevokedTokenCount} API tokens revoked, {ExpiredInvitationCount} invitations expired.",
+            "Administrator {AdministratorId} deactivated user {UserId}; {RevokedTokenCount} API tokens revoked, {ExpiredInvitationCount} invitations expired, {RemovedDestinationCount} notification destinations removed.",
             administratorId,
             userId,
             revoked,
-            expired);
+            expired,
+            silenced);
 
         return UserAdminResult.Done(revoked);
     }

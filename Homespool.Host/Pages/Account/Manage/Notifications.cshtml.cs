@@ -17,6 +17,7 @@ using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -75,6 +76,9 @@ public class NotificationsModel : PageModel
     /// <summary>This account's destinations, oldest first.</summary>
     public IReadOnlyList<DestinationRow> Destinations { get; private set; } = [];
 
+    /// <summary>Each kind of notification, and whether this account hears it.</summary>
+    public IReadOnlyList<KindChoice> Kinds { get; private set; } = [];
+
     /// <summary>The deployment's public VAPID key, which a browser subscribes with.</summary>
     public string ApplicationServerKey { get; private set; } = string.Empty;
 
@@ -101,7 +105,50 @@ public class NotificationsModel : PageModel
 
         Destinations = [.. destinations.Select(DestinationRow.From)];
 
+        IReadOnlySet<NotificationKind> muted = await _destinations.MutedAsync(user.Id, cancellationToken);
+        Kinds = [.. NotificationMutes.Choosable.Select(kind => new KindChoice(kind, LabelKey(kind), !muted.Contains(kind)))];
+
         return Page();
+    }
+
+    /// <summary>
+    /// Saves which kinds this account hears: every kind offered and not ticked is turned off.
+    /// </summary>
+    /// <remarks>
+    /// No recent proof, unlike adding a browser: this only narrows what the account already hears, and
+    /// turning everything off is the one thing the holder of a stolen session gains nothing from.
+    /// </remarks>
+    /// <param name="enabled">The kinds ticked.</param>
+    /// <param name="cancellationToken">Cancels the save.</param>
+    public async Task<IActionResult> OnPostKindsAsync(List<NotificationKind> enabled, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        await _destinations.SetMutedAsync(user.Id,
+                                          NotificationMutes.Choosable.Where(kind => !enabled.Contains(kind)),
+                                          cancellationToken);
+
+        StatusMessage = _localiser["Notifications_KindsSaved"];
+
+        return RedirectToPage();
+    }
+
+    /// <summary>The resource key naming a kind on this page. Written out, so every key is findable.</summary>
+    public static string LabelKey(NotificationKind kind)
+    {
+        return kind switch
+        {
+            NotificationKind.PrinterNeedsAttention => "Notifications_KindPrinterNeedsAttention",
+            NotificationKind.PrintFinished => "Notifications_KindPrintFinished",
+            NotificationKind.PrintDidNotFinish => "Notifications_KindPrintDidNotFinish",
+            NotificationKind.QueueHeld => "Notifications_KindQueueHeld",
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a kind a person can choose."),
+        };
     }
 
     /// <summary>Stores the subscription the script got from this browser.</summary>
@@ -142,6 +189,10 @@ public class NotificationsModel : PageModel
                 ProblemMessage = _localiser["Notifications_SubscriptionInvalid"];
                 break;
 
+            case WebPushSubscribeResult.TooMany:
+                ProblemMessage = _localiser["Notifications_TooManyBrowsers", NotificationDestinationService.MaxPerAccount];
+                break;
+
             default:
                 throw new InvalidOperationException($"Subscribing answered {result}.");
         }
@@ -161,28 +212,32 @@ public class NotificationsModel : PageModel
             return NotFound();
         }
 
-        DeliveryOutcome? outcome = await _destinations.SendTestAsync(user.Id, uuid, cancellationToken);
+        TestSendResult outcome = await _destinations.SendTestAsync(user.Id, uuid, cancellationToken);
 
         switch (outcome)
         {
-            case DeliveryOutcome.Delivered:
+            case TestSendResult.Delivered:
                 StatusMessage = _localiser["Notifications_TestSent"];
                 break;
 
-            case DeliveryOutcome.Gone:
+            case TestSendResult.Gone:
                 ProblemMessage = _localiser["Notifications_TestGone"];
                 break;
 
-            case DeliveryOutcome.Transient:
+            case TestSendResult.Transient:
                 ProblemMessage = _localiser["Notifications_TestTransient"];
                 break;
 
-            case DeliveryOutcome.Refused:
+            case TestSendResult.Refused:
                 ProblemMessage = _localiser["Notifications_TestRefused"];
                 break;
 
-            case null:
+            case TestSendResult.NotFound:
                 ProblemMessage = _localiser["Notifications_NoSuchBrowser"];
+                break;
+
+            case TestSendResult.TooSoon:
+                ProblemMessage = _localiser["Notifications_TestTooSoon"];
                 break;
 
             default:
@@ -226,6 +281,12 @@ public class NotificationsModel : PageModel
 
         return WebEncoders.Base64UrlEncode(SHA256.HashData(Encoding.UTF8.GetBytes(endpoint)))[..EndpointHashLength];
     }
+
+    /// <summary>One kind of notification as the page offers it.</summary>
+    /// <param name="Kind">The kind.</param>
+    /// <param name="LabelKey">The resource key naming it.</param>
+    /// <param name="Enabled">Whether this account hears it.</param>
+    public sealed record KindChoice(NotificationKind Kind, string LabelKey, bool Enabled);
 
     /// <summary>One destination as the list shows it.</summary>
     /// <param name="Uuid">What the buttons carry.</param>

@@ -176,7 +176,7 @@ public sealed class PrintFileCatalog
     /// Refusing to queue a perfectly real file because an index has not caught up would be an
     /// implementation detail surfacing as an error message. The digest is left null - the bytes are
     /// not streaming past here, and reading a whole file would stand in front of whoever is printing
-    /// it. The background pass after the next startup reconcile fills it in.
+    /// it. The reconciler's background pass fills it in, within one recheck interval.
     /// </para>
     /// </remarks>
     /// <remarks>
@@ -404,42 +404,7 @@ public sealed class PrintFileCatalog
             _logger.LogInformation("Could not read print metadata from {FileName}", row.Name);
         }
 
-        row.MetadataState = metadata switch
-        {
-            null => PrintFileMetadataState.Unreadable,
-            { SaysNothing: true } => PrintFileMetadataState.Silent,
-            _ => PrintFileMetadataState.Read,
-        };
-
-        row.PrinterModel = metadata?.PrinterModel;
-        row.ExtruderCount = metadata?.NozzleDiameters.Count is > 0 ? metadata.NozzleDiameters.Count : null;
-        row.NozzleDiameter = SharedNozzleDiameter(metadata);
-        row.FilamentTypes = metadata?.FilamentTypes.Count is > 0 ? string.Join(';', metadata.FilamentTypes) : null;
-        row.RequiresHardenedNozzle = metadata?.AnyFilamentAbrasive;
-        row.RequiresHighFlowNozzle = metadata?.AnyNozzleHighFlow;
-    }
-
-    /// <summary>
-    /// The one diameter every extruder in the file expects, or null if they disagree.
-    /// </summary>
-    /// <remarks>
-    /// <b>Disagreement is not a failure to parse; it is a toolchanger.</b> Collapsing it to the
-    /// first value would compare a printer's single nozzle against whichever extruder the slicer
-    /// happened to write first, which is a claim nobody can act on - so the file records no
-    /// diameter, and the comparison stays quiet rather than guessing.
-    /// </remarks>
-    private static float? SharedNozzleDiameter(GCodeMetadata? metadata)
-    {
-        if (metadata is null || metadata.NozzleDiameters.Count == 0)
-        {
-            return null;
-        }
-
-        float first = metadata.NozzleDiameters[0];
-
-        return metadata.NozzleDiameters.All(diameter => Math.Abs(diameter - first) < GCodeMetadata.NozzleDiameterTolerance) ?
-            first :
-            null;
+        PrintFileMetadata.Apply(row, metadata);
     }
 
     private PrintFile Insert(long userId, StoredFile file, string? digest)
@@ -452,9 +417,9 @@ public sealed class PrintFileCatalog
             Digest = digest,
             UploadedAt = file.UploadedAt,
 
-            // True until Describe reads the bytes, which an upload does next and a lazy resolve never
-            // does - so a row indexed on the way to a print says nobody has looked, rather than
-            // carrying the default that means nobody wrote a state at all.
+            // True until the bytes are read, which an upload does next and a lazy resolve leaves to
+            // the reconciler's background pass - so a row indexed on the way to a print says nobody
+            // has looked, rather than carrying the default that means nobody wrote a state at all.
             MetadataState = PrintFileMetadataState.Unread,
         };
 

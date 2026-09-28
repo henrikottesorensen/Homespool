@@ -13,14 +13,15 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.PrintFiles.GCode;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrintFiles;
 
 /// <summary>
-/// Brings the file index back into agreement with the disk at startup, and keeps its sizes, timestamps
-/// and digests current while the service runs.
+/// Brings the file index back into agreement with the disk at startup, and keeps what it says about
+/// each file current while the service runs.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -30,11 +31,11 @@ namespace Homespool.Host.PrintFiles;
 /// data directory a supported thing to do rather than a way to corrupt state.
 /// </para>
 /// <para>
-/// <b>Hashing comes after each pass, and nothing waits for it.</b> Once the index agrees with the
-/// disk, <see cref="BackfillDigestsAsync"/> reads every file whose row has no
-/// <see cref="PrintFile.Digest"/> - one that arrived outside the app, one indexed on the way to a print,
-/// one whose bytes moved - one at a time, while the service is already serving. Uploads compute theirs
-/// on the pass they already make, so there is usually nothing left to read.
+/// <b>Reading comes after each pass, and nothing waits for it.</b> Once the index agrees with the
+/// disk, <see cref="BackfillAsync"/> reads every file whose row has no <see cref="PrintFile.Digest"/>
+/// or has not had its slicer metadata read - one that arrived outside the app, one indexed on the way
+/// to a print, one whose bytes moved - one at a time, while the service is already serving. Uploads do
+/// both on the pass they already make, so there is usually nothing left to read.
 /// </para>
 /// <para>
 /// <b>The full reconcile once; a narrower pass on a timer.</b> Every path that changes a file goes
@@ -42,8 +43,8 @@ namespace Homespool.Host.PrintFiles;
 /// missing row on the spot. So adding and removing rows is for what happened while the process was
 /// <i>not</i> running - a restore, a hand-copied file, an interrupted write. What the catalog cannot
 /// see while it runs is a file edited in place by hand, whose row would go on carrying a digest the
-/// reprint check believes, and a row indexed on the way to a print, whose digest would wait for a
-/// restart. <see cref="RecheckAsync"/> covers those every <see cref="RecheckInterval"/>, and says why it
+/// reprint check believes and metadata the compatibility check believes, and a row indexed on the way
+/// to a print, which would wait for a restart to be read. <see cref="RecheckAsync"/> covers those every <see cref="RecheckInterval"/>, and says why it
 /// does no more.
 /// </para>
 /// </remarks>
@@ -88,15 +89,15 @@ public sealed class PrintFileReconciler : BackgroundService
 
         try
         {
-            // Each backfill after its pass, never alongside it: a digest is only worth writing for a
-            // row that describes the file on disk, and the pass is what makes the two agree.
+            // Each backfill after its pass, never alongside it: what it reads is only worth writing to
+            // a row that describes the file on disk, and the pass is what makes the two agree.
             await RunPassAsync(ReconcileAsync, stoppingToken);
-            await RunPassAsync(BackfillDigestsAsync, stoppingToken);
+            await RunPassAsync(BackfillAsync, stoppingToken);
 
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
                 await RunPassAsync(RecheckAsync, stoppingToken);
-                await RunPassAsync(BackfillDigestsAsync, stoppingToken);
+                await RunPassAsync(BackfillAsync, stoppingToken);
             }
         }
         catch (OperationCanceledException)
@@ -156,9 +157,9 @@ public sealed class PrintFileReconciler : BackgroundService
                         Digest = null,
                         UploadedAt = file.UploadedAt,
 
-                        // Indexed without being read, for the reason the digest is left null: a pass
-                        // over every file's bytes would stand between the process starting and it
-                        // serving. Unread says exactly that; the default would say nothing.
+                        // Indexed without being read, like the digest left null: the backfill after
+                        // this pass reads both. Unread says exactly that; the default would say
+                        // nothing.
                         MetadataState = PrintFileMetadataState.Unread,
                     });
 
@@ -169,13 +170,15 @@ public sealed class PrintFileReconciler : BackgroundService
 
                 if (HasMoved(row, file))
                 {
-                    // The bytes changed underneath us. The digest is now a statement about content
-                    // that is gone, so it is cleared rather than left to be believed - and the backfill
-                    // hashes what is there now, so a file that only looked changed, its timestamp
-                    // coarsened by a copy through another filesystem, gets the same digest back.
+                    // The bytes changed underneath us. The digest and the metadata are now statements
+                    // about content that is gone, so they are cleared rather than left to be believed -
+                    // and the backfill reads what is there now, so a file that only looked changed, its
+                    // timestamp coarsened by a copy through another filesystem, gets the same answers
+                    // back.
                     row.Size = file.Length;
                     row.UploadedAt = file.UploadedAt;
                     row.Digest = null;
+                    PrintFileMetadata.Forget(row);
 
                     corrected++;
                 }
@@ -242,8 +245,8 @@ public sealed class PrintFileReconciler : BackgroundService
     /// </para>
     /// <para>
     /// <b>Each write is conditional on the row still saying what it said when it was read</b>, so an
-    /// upload overwriting the file - which writes its own size, timestamp and digest - either lands
-    /// after this and wins, or lands first and leaves this nothing to change. A file that cannot be
+    /// upload overwriting the file - which writes its own size, timestamp, digest and metadata - either
+    /// lands after this and wins, or lands first and leaves this nothing to change. A file that cannot be
     /// found is skipped, not removed: that is a rename or a delete in progress.
     /// </para>
     /// </remarks>
@@ -254,6 +257,9 @@ public sealed class PrintFileReconciler : BackgroundService
 
         List<PrintFile> rows = await dbContext.PrintFiles.AsNoTracking().ToListAsync(cancellationToken);
         int corrected = 0;
+
+        PrintFile forgotten = new() { Name = string.Empty };
+        PrintFileMetadata.Forget(forgotten);
 
         foreach (PrintFile row in rows)
         {
@@ -268,9 +274,14 @@ public sealed class PrintFileReconciler : BackgroundService
                                         .Where(candidate => candidate.Id == row.Id &&
                                                             candidate.Size == row.Size &&
                                                             candidate.UploadedAt == row.UploadedAt)
-                                        .ExecuteUpdateAsync(set => set.SetProperty(candidate => candidate.Size, file.Length)
-                                                                      .SetProperty(candidate => candidate.UploadedAt, file.UploadedAt)
-                                                                      .SetProperty(candidate => candidate.Digest, (string?)null),
+                                        .ExecuteUpdateAsync(set =>
+                                                            {
+                                                                set.SetProperty(candidate => candidate.Size, file.Length)
+                                                                   .SetProperty(candidate => candidate.UploadedAt, file.UploadedAt)
+                                                                   .SetProperty(candidate => candidate.Digest, (string?)null);
+
+                                                                PrintFileMetadata.Set(set, forgotten);
+                                                            },
                                                             cancellationToken);
         }
 
@@ -286,7 +297,7 @@ public sealed class PrintFileReconciler : BackgroundService
     /// <remarks>
     /// <para>
     /// <b>At the column's precision.</b> It holds whole milliseconds and the filesystem ticks, so
-    /// compared exactly every file reads as changed on every pass and loses its digest.
+    /// compared exactly every file reads as changed on every pass and loses its digest and metadata.
     /// </para>
     /// <para>
     /// <b>Size and timestamp, never size alone</b>: an edit that keeps the length - a temperature from
@@ -302,94 +313,128 @@ public sealed class PrintFileReconciler : BackgroundService
     }
 
     /// <summary>
-    /// Hashes every indexed file whose row has no digest, one at a time. Public so a test can run it
-    /// directly.
+    /// Reads every indexed file whose row has no digest or has not had its slicer metadata read, one at
+    /// a time. Public so a test can run it directly.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>A digest is written only for the bytes that were hashed.</b> The size and timestamp are read
-    /// from the handle that was hashed, after its last byte, and the write is conditional on the row
-    /// still carrying exactly those and still having no digest. An upload replacing the file mid-read
-    /// moves a new file into place while this goes on reading the old one, then writes its own digest -
-    /// so the row either has a digest or no longer matches, and this write updates nothing. A file
-    /// edited in place while it is read moves its own timestamp, with the same result. Either way the
-    /// next start tries again.
+    /// <b>One open per file, and only the reads it needs.</b> A missing digest costs the whole file; a
+    /// missing description costs a header and a tail, which is why a row that only lacks the second
+    /// is cheap to finish. <see cref="PrintFileMetadataState.Undefined"/> - rows written before the
+    /// state existed - counts as unread, as the API already reports it.
+    /// </para>
+    /// <para>
+    /// <b>What is written describes only the bytes that were read.</b> The size and timestamp are read
+    /// from the handle, after its last read, and each write is conditional on the row still carrying
+    /// exactly those, and still lacking what is being written: no digest, or the metadata state that
+    /// was read with the row. An upload replacing the file mid-read moves a new file into place while
+    /// this goes on reading the old one, then writes its own digest and metadata - so the row either
+    /// has them or no longer matches, and these writes update nothing. A file edited in place while it
+    /// is read moves its own timestamp, with the same result. Either way the next pass tries again.
     /// </para>
     /// <para>
     /// A file that cannot be read is skipped rather than fatal: the rest of the store still deserves
-    /// its digests, and a null is what the row already had.
+    /// reading, and the row keeps what it already had.
     /// </para>
     /// </remarks>
-    public async Task BackfillDigestsAsync(CancellationToken cancellationToken)
+    public async Task BackfillAsync(CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        List<PrintFile> missing = await dbContext.PrintFiles
+        List<PrintFile> wanting = await dbContext.PrintFiles
                                                  .AsNoTracking()
-                                                 .Where(row => row.Digest == null)
+                                                 .Where(row => row.Digest == null ||
+                                                               row.MetadataState == PrintFileMetadataState.Unread ||
+                                                               row.MetadataState == PrintFileMetadataState.Undefined)
                                                  .ToListAsync(cancellationToken);
 
         long started = Stopwatch.GetTimestamp();
-        int filled = 0;
+        int hashed = 0, described = 0;
         long bytes = 0;
 
-        foreach (PrintFile row in missing)
+        foreach (PrintFile row in wanting)
         {
             StoredFile? file = _store.Find(row.UserId, row.Name);
 
             if (file is null)
             {
-                // Gone since the reconcile; the next start removes the row.
+                // Gone since the pass before this; the next start removes the row.
                 continue;
             }
 
-            HashedFile? hashed = await HashAsync(row.UserId, file, cancellationToken);
+            bool describe = row.MetadataState is PrintFileMetadataState.Unread or PrintFileMetadataState.Undefined;
+            FileReading? reading = await ReadAsync(row.UserId, file, hash: row.Digest is null, describe, cancellationToken);
 
-            if (hashed is null)
+            if (reading is null)
             {
                 continue;
             }
 
-            int written = await dbContext.PrintFiles
-                                         .Where(candidate => candidate.Id == row.Id &&
-                                                             candidate.Digest == null &&
-                                                             candidate.Size == hashed.Length &&
-                                                             candidate.UploadedAt == hashed.WrittenAt)
-                                         .ExecuteUpdateAsync(set => set.SetProperty(candidate => candidate.Digest, hashed.Digest),
-                                                             cancellationToken);
+            int written = 0;
+
+            if (reading.Digest is not null)
+            {
+                int filled = await dbContext.PrintFiles
+                                            .Where(candidate => candidate.Id == row.Id &&
+                                                                candidate.Digest == null &&
+                                                                candidate.Size == reading.Length &&
+                                                                candidate.UploadedAt == reading.WrittenAt)
+                                            .ExecuteUpdateAsync(set => set.SetProperty(candidate => candidate.Digest, reading.Digest),
+                                                                cancellationToken);
+
+                hashed += filled;
+                bytes += filled * reading.Length;
+                written += filled;
+            }
+
+            if (reading.Description is not null)
+            {
+                int filled = await dbContext.PrintFiles
+                                            .Where(candidate => candidate.Id == row.Id &&
+                                                                candidate.MetadataState == row.MetadataState &&
+                                                                candidate.Size == reading.Length &&
+                                                                candidate.UploadedAt == reading.WrittenAt)
+                                            .ExecuteUpdateAsync(set => PrintFileMetadata.Set(set, reading.Description),
+                                                                cancellationToken);
+
+                described += filled;
+                written += filled;
+            }
 
             if (written == 0)
             {
-                _logger.LogDebug("{FileName} (user {UserId}) no longer matches its row; its digest waits for the next start.",
+                _logger.LogDebug("{FileName} (user {UserId}) no longer matches its row; it waits for the next pass.",
                                  row.Name, row.UserId);
 
                 continue;
             }
 
-            _logger.LogDebug("Filled the digest of {FileName} (user {UserId}).", row.Name, row.UserId);
-
-            filled++;
-            bytes += hashed.Length;
+            _logger.LogDebug("Read {FileName} (user {UserId}) into its row.", row.Name, row.UserId);
         }
 
-        if (filled > 0)
+        if (hashed + described > 0)
         {
-            _logger.LogInformation("Filled print-file digests: {Count} files, {Bytes} bytes, in {Elapsed}.",
-                                   filled, bytes, Stopwatch.GetElapsedTime(started));
+            _logger.LogInformation(
+                "Backfilled the print-file index: {Hashed} digests ({Bytes} bytes) and {Described} descriptions, in {Elapsed}.",
+                hashed, bytes, described, Stopwatch.GetElapsedTime(started));
         }
     }
 
     /// <summary>
-    /// The digest of one file, with the size and timestamp of the bytes it describes - or null when
-    /// the file could not be read.
+    /// What one file's bytes say - its digest, its slicer metadata as row columns, or both - with the
+    /// size and timestamp of the bytes they describe, or null when the file could not be read.
     /// </summary>
-    private async Task<HashedFile?> HashAsync(long userId, StoredFile file, CancellationToken cancellationToken)
+    private async Task<FileReading?> ReadAsync(long userId,
+                                               StoredFile file,
+                                               bool hash,
+                                               bool describe,
+                                               CancellationToken cancellationToken)
     {
         try
         {
             // Shared for writing and deleting, so that nothing waits on this read: an upload replacing
-            // the file, or somebody removing it, goes ahead, and the conditional write sorts it out.
+            // the file, or somebody removing it, goes ahead, and the conditional writes sort it out.
             await using FileStream stream = new(file.Path, new FileStreamOptions
             {
                 Mode = FileMode.Open,
@@ -399,17 +444,25 @@ public sealed class PrintFileReconciler : BackgroundService
                 BufferSize = 0,
             });
 
-            string digest = await PrintFileDigest.ComputeAsync(stream, copyTo: null, cancellationToken);
+            string? digest = hash ? await PrintFileDigest.ComputeAsync(stream, copyTo: null, cancellationToken) : null;
+            PrintFile? description = null;
 
-            // After the last byte, and from the handle rather than the path: the path may already name
-            // a replacement, and these have to describe what was hashed.
-            return new HashedFile(digest,
-                                  RandomAccess.GetLength(stream.SafeFileHandle),
-                                  new DateTimeOffset(File.GetLastWriteTimeUtc(stream.SafeFileHandle)));
+            if (describe)
+            {
+                description = new PrintFile { Name = file.FileName };
+                PrintFileMetadata.Apply(description, GCodeMetadataReader.Read(stream));
+            }
+
+            // After the last read, and from the handle rather than the path: the path may already name
+            // a replacement, and these have to describe what was read.
+            return new FileReading(digest,
+                                   description,
+                                   RandomAccess.GetLength(stream.SafeFileHandle),
+                                   new DateTimeOffset(File.GetLastWriteTimeUtc(stream.SafeFileHandle)));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _logger.LogWarning(e, "Could not read {FileName} (user {UserId}) to fill its digest; skipping it.",
+            _logger.LogWarning(e, "Could not read {FileName} (user {UserId}) to fill in its row; skipping it.",
                                file.FileName, userId);
 
             return null;
@@ -462,5 +515,9 @@ public sealed class PrintFileReconciler : BackgroundService
         return found;
     }
 
-    private sealed record HashedFile(string Digest, long Length, DateTimeOffset WrittenAt);
+    /// <param name="Digest">The content digest, or null when it was not asked for.</param>
+    /// <param name="Description">A detached row carrying the metadata columns, or null when they were not asked for.</param>
+    /// <param name="Length">The size of the bytes read.</param>
+    /// <param name="WrittenAt">The modification time of the bytes read.</param>
+    private sealed record FileReading(string? Digest, PrintFile? Description, long Length, DateTimeOffset WrittenAt);
 }

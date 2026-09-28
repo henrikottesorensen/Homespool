@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -31,6 +33,10 @@ namespace Homespool.Host.Test;
 public sealed class PrintFileReconcilerTests : IDisposable
 {
     private const long Alice = 1;
+
+    private static readonly byte[] SlicedForMk4S = Encoding.UTF8.GetBytes(
+        "G28 ; home\nG1 X10 Y10 F3000\n\n; prusaslicer_config = begin\n" +
+        "; printer_model = MK4S\n; nozzle_diameter = 0.4\n; prusaslicer_config = end\n");
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "homespool-reconcile-" + Guid.NewGuid().ToString("N"));
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-reconcile-{Guid.NewGuid():N}.db");
@@ -264,7 +270,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await AddUserAsync(context);
 
         string path = await WriteFileAsync("edited.gcode", [1, 2, 3]);
-        await AddRowFromDiskAsync(context, "edited.gcode", "uploaded");
+        await AddRowFromDiskAsync(context, "edited.gcode", "uploaded", printerModel: "MK4S");
 
         File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(path).AddSeconds(1));
 
@@ -278,6 +284,8 @@ public sealed class PrintFileReconcilerTests : IDisposable
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().BeNull("the bytes may have changed, and the old digest would be believed");
+        row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "the backfill reads it again");
+        row.PrinterModel.Should().BeNull("the compatibility check would hold a queue on the old file's model");
     }
 
     /// <summary>
@@ -301,7 +309,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         // Act
         using PrintFileReconciler reconciler = NewReconciler(logger);
-        await reconciler.BackfillDigestsAsync(TestContext.Current.CancellationToken);
+        await reconciler.BackfillAsync(TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -311,7 +319,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         row.Digest.Should().Be(uploaded.Digest);
         logger.Collector.GetSnapshot()
               .Should().ContainSingle(record => record.Level == LogLevel.Information)
-              .Which.StructuredState.Should().Contain(property => property.Key == "Count" && property.Value == "1");
+              .Which.StructuredState.Should().Contain(property => property.Key == "Hashed" && property.Value == "1");
     }
 
     /// <summary>A digest that is already there is not the backfill's to replace.</summary>
@@ -327,7 +335,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         // Act
         using PrintFileReconciler reconciler = NewReconciler();
-        await reconciler.BackfillDigestsAsync(TestContext.Current.CancellationToken);
+        await reconciler.BackfillAsync(TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -348,22 +356,27 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
 
-        await WriteFileAsync("longer.gcode", [1, 2, 3]);
-        await AddRowFromDiskAsync(context, "longer.gcode", digest: null, sizeOffset: 1);
+        await WriteFileAsync("longer.gcode", SlicedForMk4S);
+        await AddRowFromDiskAsync(context, "longer.gcode", digest: null, PrintFileMetadataState.Unread, sizeOffset: 1);
 
-        string touched = await WriteFileAsync("touched.gcode", [1, 2, 3]);
-        await AddRowFromDiskAsync(context, "touched.gcode", digest: null);
+        string touched = await WriteFileAsync("touched.gcode", SlicedForMk4S);
+        await AddRowFromDiskAsync(context, "touched.gcode", digest: null, PrintFileMetadataState.Unread);
         File.SetLastWriteTimeUtc(touched, File.GetLastWriteTimeUtc(touched).AddSeconds(1));
 
         // Act
         using PrintFileReconciler reconciler = NewReconciler();
-        await reconciler.BackfillDigestsAsync(TestContext.Current.CancellationToken);
+        await reconciler.BackfillAsync(TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
 
-        (await context.PrintFiles.Select(row => row.Digest).ToListAsync(TestContext.Current.CancellationToken))
-            .Should().AllSatisfy(digest => digest.Should().BeNull("a digest of other bytes would be believed"));
+        List<PrintFile> rows = await context.PrintFiles.ToListAsync(TestContext.Current.CancellationToken);
+
+        rows.Should().AllSatisfy(row =>
+        {
+            row.Digest.Should().BeNull("a digest of other bytes would be believed");
+            row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "a description of other bytes would be believed");
+        });
     }
 
     /// <summary>
@@ -393,7 +406,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         // Act
         using PrintFileReconciler reconciler = NewReconciler(logger);
-        await reconciler.BackfillDigestsAsync(TestContext.Current.CancellationToken);
+        await reconciler.BackfillAsync(TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -403,6 +416,42 @@ public sealed class PrintFileReconcilerTests : IDisposable
         (await context.PrintFiles.SingleAsync(row => row.Name == "open.gcode", TestContext.Current.CancellationToken))
             .Digest.Should().NotBeNull();
         logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Warning);
+    }
+
+    /// <summary>
+    /// A row nobody has read - or one written before the state existed - gets the columns an upload
+    /// would have written, without its digest being touched.
+    /// </summary>
+    [Theory]
+    [InlineData(PrintFileMetadataState.Unread)]
+    [InlineData(PrintFileMetadataState.Undefined)]
+    public async Task TheBackfillReadsWhatAnUnreadFileWasSlicedFor(PrintFileMetadataState state)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+
+        await WriteFileAsync("sliced.gcode", SlicedForMk4S);
+        await AddRowFromDiskAsync(context, "sliced.gcode", "uploaded", state);
+
+        FakeLogger<PrintFileReconciler> logger = new();
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler(logger);
+        await reconciler.BackfillAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.MetadataState.Should().Be(PrintFileMetadataState.Read);
+        row.PrinterModel.Should().Be("MK4S");
+        row.NozzleDiameter.Should().BeApproximately(0.4f, 0.0001f);
+        row.Digest.Should().Be("uploaded");
+        logger.Collector.GetSnapshot()
+              .Should().ContainSingle(record => record.Level == LogLevel.Information)
+              .Which.StructuredState.Should().Contain(property => property.Key == "Described" && property.Value == "1");
     }
 
     /// <summary>
@@ -441,7 +490,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await AddUserAsync(context);
 
         string path = await WriteFileAsync("edited.gcode", [1, 2, 3]);
-        await AddRowFromDiskAsync(context, "edited.gcode", "uploaded");
+        await AddRowFromDiskAsync(context, "edited.gcode", "uploaded", printerModel: "MK4S");
 
         await File.WriteAllBytesAsync(path, [1, 2, 3, 4], TestContext.Current.CancellationToken);
 
@@ -456,6 +505,8 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         row.Size.Should().Be(4);
         row.Digest.Should().BeNull("a digest for content that is gone would be believed");
+        row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "the backfill reads it again");
+        row.PrinterModel.Should().BeNull("the compatibility check would hold a queue on the old file's model");
     }
 
     /// <summary>
@@ -590,7 +641,16 @@ public sealed class PrintFileReconcilerTests : IDisposable
     /// <summary>
     /// Writes the row the way an upload does, from the store's own description of the file on disk.
     /// </summary>
-    private async Task AddRowFromDiskAsync(HomespoolDbContext context, string name, string? digest, long sizeOffset = 0)
+    /// <remarks>
+    /// The metadata state defaults to <see cref="PrintFileMetadataState.Read"/>, as an upload leaves it,
+    /// so a test about digests is not also a test about descriptions.
+    /// </remarks>
+    private async Task AddRowFromDiskAsync(HomespoolDbContext context,
+                                           string name,
+                                           string? digest,
+                                           PrintFileMetadataState metadataState = PrintFileMetadataState.Read,
+                                           long sizeOffset = 0,
+                                           string? printerModel = null)
     {
         StoredFile stored = NewStore().Find(Alice, name)!;
 
@@ -601,6 +661,8 @@ public sealed class PrintFileReconcilerTests : IDisposable
             Size = stored.Length + sizeOffset,
             Digest = digest,
             UploadedAt = stored.UploadedAt,
+            MetadataState = metadataState,
+            PrinterModel = printerModel,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

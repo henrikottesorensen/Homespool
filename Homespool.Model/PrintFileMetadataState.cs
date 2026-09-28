@@ -13,10 +13,11 @@ namespace Homespool.Model;
 /// half the world's slicers.
 /// </para>
 /// <para>
-/// <b>It also separates both from <see cref="Unread"/></b>, which is what every row written before
-/// this existed carries. Nothing goes back and reads them: unlike <c>PrintFile.Digest</c>, which a
-/// background pass after the startup reconcile fills in, a row stays <see cref="Unread"/> until its
-/// file is uploaded again.
+/// <b>It also separates both from <see cref="Unread"/></b>: a row indexed without its bytes being
+/// read, or one whose bytes changed after they were. The reconciler's background pass reads those,
+/// as it fills in a missing <c>PrintFile.Digest</c>, and treats <see cref="Undefined"/> - rows written
+/// before this existed - the same way. Until then an unread row's columns are empty, so a
+/// compatibility check has nothing to say rather than something stale.
 /// </para>
 /// <para>
 /// Stored as text, following <c>PrintHoldReason</c> and <c>PrintJob.State</c>.
@@ -27,7 +28,7 @@ public enum PrintFileMetadataState
     /// <summary>Not a state. Present so a default-valued row is not silently a real answer.</summary>
     Undefined = 0,
 
-    /// <summary>Nobody has looked yet - the row predates the reader.</summary>
+    /// <summary>Nobody has looked at these bytes yet; the reconciler's background pass will.</summary>
     Unread = 1,
 
     /// <summary>Looked, and the file is not one this can parse. Corruption, or a container nobody knows.</summary>

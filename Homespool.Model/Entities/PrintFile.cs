@@ -73,7 +73,7 @@ public class PrintFile
     /// <summary>Size in bytes, as it was when the row was written.</summary>
     /// <remarks>
     /// A copy of what the filesystem already knows, kept so that listing a user's files does not have
-    /// to <c>stat</c> each one. Stale after an out-of-band edit, which the startup reconcile corrects.
+    /// to <c>stat</c> each one. Stale after an out-of-band edit, until the reconciler's next pass.
     /// </remarks>
     public long Size { get; set; }
 
@@ -85,8 +85,8 @@ public class PrintFile
     /// <para>
     /// <b>Nullable, and a null is ordinary but temporary.</b> An upload computes it on the pass that
     /// writes the bytes. Anything else - a file copied in by hand, a row indexed on the way to a print,
-    /// a file whose bytes moved while the service was stopped - starts with a null, which a background
-    /// pass after the startup reconcile fills by reading the file.
+    /// a file whose bytes moved - starts with a null, which the reconciler's background pass fills by
+    /// reading the file, after the startup reconcile and after each recheck while running.
     /// </para>
     /// <para>
     /// <b>What reads it:</b> reprinting warns when the file has changed since that print ran, by

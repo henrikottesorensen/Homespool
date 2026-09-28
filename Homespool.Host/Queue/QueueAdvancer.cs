@@ -543,8 +543,8 @@ public sealed class QueueAdvancer : BackgroundService
                                                                                   candidate.ArrivedAt == null)
                                                               .ToListAsync(cancellationToken);
 
-            PrintFileOnPrinter? row = waiting.Where(candidate => string.Equals(candidate.PrintFile!.Name, displayName,
-                                                                               StringComparison.OrdinalIgnoreCase))
+            PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
+                                                                                 displayName))
                                              .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
                                              .ThenByDescending(candidate => candidate.TransferStartedAt)
                                              .FirstOrDefault();
@@ -836,7 +836,7 @@ public sealed class QueueAdvancer : BackgroundService
                                         .Join(dbContext.PrintFilesOnPrinters,
                                               queued => new { queued.PrinterId, queued.PrintFileId },
                                               onPrinter => new { onPrinter.PrinterId, onPrinter.PrintFileId },
-                                              (queued, onPrinter) => new { Entry = queued, onPrinter.PrinterPath })
+                                              (queued, onPrinter) => new { Entry = queued, onPrinter.PrinterPath, onPrinter.DriveName })
                                         .Where(candidate => candidate.Entry.PrinterId == printerId &&
                                                             candidate.PrinterPath != null)
                                         .OrderBy(candidate => candidate.Entry.Position)
@@ -894,7 +894,8 @@ public sealed class QueueAdvancer : BackgroundService
 
         var claimed = candidates.FirstOrDefault(
             candidate => (job.Path is { } path && path == candidate.PrinterPath) ||
-                                        (job.DisplayName is { } displayName && displayName == candidate.Entry.PrintFile!.Name));
+                                        (job.DisplayName is { } displayName &&
+                                         displayName == (candidate.DriveName ?? candidate.Entry.PrintFile!.Name)));
 
         _examinedPanelJobs[printerId] = jobId;
 
@@ -1103,8 +1104,17 @@ public sealed class QueueAdvancer : BackgroundService
             return JobAnswer.Inconclusive;
         }
 
+        // The name the printer knows the file by is the one it was sent under, which may carry its
+        // owner's name; the record keeps the file's own, which is what history shows.
+        string? driveName = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                       .PrintFilesOnPrinters
+                                       .Where(row => row.PrinterId == printerId && row.PrintFileId == entry.PrintFileId)
+                                       .Select(row => row.DriveName)
+                                       .FirstOrDefaultAsync(cancellationToken);
+
         bool ours = (job.Path is { } path && path == commanded.PrinterPath) ||
-                    (job.DisplayName is { } displayName && displayName == commanded.FileName);
+                    (job.DisplayName is { } displayName &&
+                     (displayName == commanded.FileName || displayName == driveName));
 
         if (!ours)
         {
@@ -1293,6 +1303,10 @@ public sealed class QueueAdvancer : BackgroundService
             dbContext.PrintFilesOnPrinters.Add(onPrinter);
         }
 
+        // Chosen once and kept: the printer's reports about this file will carry it, and a retry must
+        // not wander off to another name.
+        onPrinter.DriveName ??= await FirstDriveNameAsync(dbContext, printerId, head, file.FileName, cancellationToken);
+
         if (!await HasRoomForAsync(scope, dbContext, printerId, head, file.Length, onPrinter, cancellationToken))
         {
             return;
@@ -1308,7 +1322,8 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            CommandOutcome? outcome = (await sender.SendAsync(printer, file, CallerFor(head), cancellationToken)).Outcome;
+            CommandOutcome? outcome =
+                (await sender.SendAsync(printer, file, OnDrive(onPrinter.DriveName), CallerFor(head), cancellationToken)).Outcome;
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
@@ -1326,7 +1341,7 @@ public sealed class QueueAdvancer : BackgroundService
                 if (outcome.MachineReason == FileExistsCode)
                 {
                     TransferRetryRules.Forget(onPrinter);
-                    await ReconcileExistingFileAsync(scope, printerId, head, file, onPrinter, cancellationToken);
+                    await ReconcileExistingFileAsync(scope, dbContext, printerId, head, file, onPrinter, cancellationToken);
                 }
                 else if (!TransferRetryRules.IsBusySlot(outcome.MachineReason, outcome.Reason))
                 {
@@ -1439,9 +1454,72 @@ public sealed class QueueAdvancer : BackgroundService
             LogText.Clean(onPrinter.TransferRefusalCode));
     }
 
+    /// <summary>Where on a printer's drive a file stored under <paramref name="driveName"/> is.</summary>
+    private static string OnDrive(string driveName)
+    {
+        return $"/usb/{driveName}";
+    }
+
+    /// <summary>
+    /// The first name for the head's file that no other file on this printer is known by.
+    /// </summary>
+    /// <remarks>
+    /// Its own name when that is free, which is every transfer that shares a printer with nobody.
+    /// When every name is taken it is still its own, and the printer's refusal decides from there.
+    /// </remarks>
+    private static async Task<string> FirstDriveNameAsync(HomespoolDbContext dbContext,
+                                                          int printerId,
+                                                          QueuedPrint head,
+                                                          string fileName,
+                                                          CancellationToken cancellationToken)
+    {
+        List<string> taken = await OtherDriveNamesAsync(dbContext, printerId, head.PrintFileId, cancellationToken);
+        string? owner = await OwnerNameAsync(dbContext, head, cancellationToken);
+
+        return DriveNames.First(fileName, owner, name => taken.Exists(other => DriveNames.Same(other, name))) ?? fileName;
+    }
+
+    /// <summary>The name after <paramref name="refused"/> for the head's file, or null when none is left.</summary>
+    private static async Task<string?> NextDriveNameAsync(HomespoolDbContext dbContext,
+                                                          int printerId,
+                                                          QueuedPrint head,
+                                                          string refused,
+                                                          string fileName,
+                                                          CancellationToken cancellationToken)
+    {
+        List<string> taken = await OtherDriveNamesAsync(dbContext, printerId, head.PrintFileId, cancellationToken);
+        string? owner = await OwnerNameAsync(dbContext, head, cancellationToken);
+
+        return DriveNames.After(refused, fileName, owner, name => taken.Exists(other => DriveNames.Same(other, name)));
+    }
+
+    /// <summary>
+    /// The names every other file with a row on this printer is known by there - sent, or waiting to
+    /// be, under its own name or with its owner's.
+    /// </summary>
+    private static Task<List<string>> OtherDriveNamesAsync(HomespoolDbContext dbContext,
+                                                           int printerId,
+                                                           long printFileId,
+                                                           CancellationToken cancellationToken)
+    {
+        return dbContext.PrintFilesOnPrinters
+                        .Where(row => row.PrinterId == printerId && row.PrintFileId != printFileId)
+                        .Select(row => row.DriveName ?? row.PrintFile!.Name)
+                        .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>The username of whoever owns the head's file, which is what a second name carries.</summary>
+    private static Task<string?> OwnerNameAsync(HomespoolDbContext dbContext, QueuedPrint head, CancellationToken cancellationToken)
+    {
+        return dbContext.Users
+                        .Where(user => user.Id == head.PrintFile!.UserId)
+                        .Select(user => user.UserName)
+                        .SingleOrDefaultAsync(cancellationToken);
+    }
+
     /// <summary>
     /// Answers a <c>FILE_EXISTS</c> refusal by asking what is actually on the drive: adopts the file
-    /// when it is ours, and holds the queue with a sentence when it is somebody else's.
+    /// when it is ours, and sends ours under the next name when it is not.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1458,7 +1536,14 @@ public sealed class QueueAdvancer : BackgroundService
     /// two different files of identical length would be adopted wrongly, and the print would be of
     /// somebody else's model. Judged worth it because the alternative refuses every legitimate
     /// re-queue, and because equal-length-but-different is a coincidence rather than a mechanism.
-    /// <b>Sharpening it needs a digest firmware does not send</b>, so do not reach for one here.
+    /// <b>Sharpening it needs a digest firmware does not send</b>, so do not reach for one here. What
+    /// the residue no longer covers is another Homespool user's file: its name was never offered
+    /// (<see cref="DriveNames"/>), so a name refused here is one nothing here knows the owner of.
+    /// </para>
+    /// <para>
+    /// <b>Anything else goes on under the next name</b> - a different size, or none reported. Holding
+    /// until somebody clears the drive would stop a queue over a stranger's file, and the stranger's
+    /// file is not ours to delete. Only when every name is taken does the queue hold.
     /// </para>
     /// <para>
     /// <b>The path recorded is the one <c>FILE_INFO</c> answers with</b>, not the one we asked about:
@@ -1467,6 +1552,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// </para>
     /// </remarks>
     private async Task ReconcileExistingFileAsync(AsyncServiceScope scope,
+                                                  HomespoolDbContext dbContext,
                                                   int printerId,
                                                   QueuedPrint head,
                                                   StoredFile file,
@@ -1479,7 +1565,8 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<FileInfoEventDataDTO>? answer = await commands.AskAsync(
-                printerId, new PrusaConnect.Commands.SendFileInfo { Path = file.PrinterPath }, CallerFor(head), cancellationToken);
+                printerId, new PrusaConnect.Commands.SendFileInfo { Path = OnDrive(onPrinter.DriveName ?? file.FileName) },
+                CallerFor(head), cancellationToken);
 
             existing = answer?.Answer;
         }
@@ -1509,8 +1596,24 @@ public sealed class QueueAdvancer : BackgroundService
             return;
         }
 
-        // Somebody else's file under our name. Held rather than failed, because the entry is still
-        // wanted and a person deleting it at the panel should see the queue resume by itself.
+        string refused = onPrinter.DriveName ?? file.FileName;
+        string? next = await NextDriveNameAsync(dbContext, printerId, head, refused, file.FileName, cancellationToken);
+
+        if (next is not null)
+        {
+            _logger.LogInformation(
+                "[{PrinterId}] {DriveName} is already on the drive as another file ({PrinterBytes} bytes against {OurBytes} " +
+                "here); sending {FileName} as {NextName} instead.",
+                printerId, refused, existing?.Size, file.Length, file.FileName, next);
+
+            onPrinter.DriveName = next;
+            ClearHold(onPrinter);
+
+            return;
+        }
+
+        // Every name is taken. Held rather than failed, because the entry is still wanted and a
+        // person clearing the drive at the panel should see the queue resume by itself.
         //
         // Two reasons rather than one with a nullable size: "demonstrably not our file" and "cannot
         // be confirmed either way" are different things to tell somebody, and collapsing them would

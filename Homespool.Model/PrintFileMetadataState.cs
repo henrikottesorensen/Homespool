@@ -14,9 +14,9 @@ namespace Homespool.Model;
 /// </para>
 /// <para>
 /// <b>It also separates both from <see cref="Unread"/></b>, which is what every row written before
-/// this existed carries. Nothing goes back and reads them: that would put a pass over every file in
-/// the store between the process starting and it serving, which is the same trade
-/// <c>PrintFile.Digest</c> declines to make for the same reason.
+/// this existed carries. Nothing goes back and reads them: unlike <c>PrintFile.Digest</c>, which a
+/// background pass after the startup reconcile fills in, a row stays <see cref="Unread"/> until its
+/// file is uploaded again.
 /// </para>
 /// <para>
 /// Stored as text, following <c>PrintHoldReason</c> and <c>PrintJob.State</c>.

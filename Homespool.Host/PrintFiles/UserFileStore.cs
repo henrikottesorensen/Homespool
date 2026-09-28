@@ -1,12 +1,9 @@
 using System;
-using System.Buffers;
-using System.Buffers.Text;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -322,7 +319,9 @@ public sealed class UserFileStore
             await using FileStream file = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                                               bufferSize: 64 * 1024, useAsync: true);
 
-            digest = await CopyAndHashAsync(content, file, cancellationToken);
+            // Hashed on the pass that writes it: one CPU sweep over bytes already in hand, where
+            // hashing afterwards would read the whole file back from disk.
+            digest = await PrintFileDigest.ComputeAsync(content, file, cancellationToken);
         }
         catch
         {
@@ -477,49 +476,6 @@ public sealed class UserFileStore
         FileInfo info = new(path);
 
         return new StoredFile(info.Name, path, info.Length, info.LastWriteTimeUtc);
-    }
-
-    /// <summary>
-    /// Streams <paramref name="content"/> into <paramref name="destination"/> and returns the
-    /// base64url SHA-384 of what went past, computed on the same pass.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>The same pass is the whole point.</b> The bytes are already being read and written here, so
-    /// hashing them costs one CPU sweep over data in cache and no second read of the file - which is
-    /// what makes a digest on every upload affordable on the hardware this has to run on. Hashing
-    /// later, from disk, would cost a full re-read per file and is exactly what the startup reconcile
-    /// declines to do.
-    /// </para>
-    /// <para>
-    /// Replaces a plain <c>CopyToAsync</c>. SHA-384 rather than SHA-256 - see
-    /// <see cref="Model.Entities.PrintFile.Digest"/> for why, including why interop did not decide it.
-    /// </para>
-    /// </remarks>
-    private static async Task<string> CopyAndHashAsync(Stream content,
-                                                       Stream destination,
-                                                       CancellationToken cancellationToken)
-    {
-        using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA384);
-
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-
-        try
-        {
-            int read;
-
-            while ((read = await content.ReadAsync(buffer.AsMemory(), cancellationToken)) > 0)
-            {
-                await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                hash.AppendData(buffer.AsSpan(0, read));
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-
-        return Base64Url.EncodeToString(hash.GetHashAndReset());
     }
 
     /// <summary>

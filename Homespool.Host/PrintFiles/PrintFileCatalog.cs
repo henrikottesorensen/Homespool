@@ -175,8 +175,8 @@ public sealed class PrintFileCatalog
     /// user-visible condition: it means the file predates this table, or landed between reconciles.
     /// Refusing to queue a perfectly real file because an index has not caught up would be an
     /// implementation detail surfacing as an error message. The digest is left null - the bytes are
-    /// not streaming past here, and reading a whole file to fill a column nothing yet reads is not a
-    /// trade worth making.
+    /// not streaming past here, and reading a whole file would stand in front of whoever is printing
+    /// it. The background pass after the next startup reconcile fills it in.
     /// </para>
     /// </remarks>
     /// <remarks>

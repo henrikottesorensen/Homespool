@@ -25,6 +25,9 @@ public class PrintFileNameRejectedException : ArgumentException, ILocalisableErr
     /// <summary>Set only by a refusal that has its own sentence; null leaves the two below.</summary>
     private readonly string? _resourceKey;
 
+    /// <summary>What a refusal's own sentence needs beside the name, such as a limit.</summary>
+    private readonly object[] _moreArguments = [];
+
     /// <summary>A name whose extension is not one a printer would take.</summary>
     public PrintFileNameRejectedException(string fileName, string parameterName)
         : base($"'{fileName}' is not a file a printer would accept.", parameterName)
@@ -49,11 +52,16 @@ public class PrintFileNameRejectedException : ArgumentException, ILocalisableErr
     {
     }
 
-    private PrintFileNameRejectedException(string message, string fileName, string parameterName, string resourceKey)
+    private PrintFileNameRejectedException(string message,
+                                           string fileName,
+                                           string parameterName,
+                                           string resourceKey,
+                                           params object[] moreArguments)
         : base(message, parameterName)
     {
         FileName = fileName;
         _resourceKey = resourceKey;
+        _moreArguments = moreArguments;
     }
 
     /// <summary>The name that was refused, when the refusal was about a specific one.</summary>
@@ -64,7 +72,7 @@ public class PrintFileNameRejectedException : ArgumentException, ILocalisableErr
         _resourceKey ?? (FileName is null ? "Error_FileNameUnusable" : "Error_FileNameRejected");
 
     /// <inheritdoc />
-    public object[] ResourceArguments => FileName is null ? [] : [FileName];
+    public object[] ResourceArguments => FileName is null ? [] : [FileName, .. _moreArguments];
 
     /// <summary>
     /// The refusal that is about the characters rather than the extension, so it can say so.
@@ -79,5 +87,13 @@ public class PrintFileNameRejectedException : ArgumentException, ILocalisableErr
         return new PrintFileNameRejectedException(
             $"'{fileName}' contains characters a file name may not have: quotes, angle brackets, backslashes, * : | ?, or control or invisible characters.",
             fileName, parameterName, "Error_FileNameCharacters");
+    }
+
+    /// <summary>The refusal of a name longer than a printer can hold, which says how long that is.</summary>
+    public static PrintFileNameRejectedException ForLength(string fileName, int limit, string parameterName)
+    {
+        return new PrintFileNameRejectedException(
+            $"'{fileName}' is longer than a printer can hold: at most {limit} characters.",
+            fileName, parameterName, "Error_FileNameTooLong", limit);
     }
 }

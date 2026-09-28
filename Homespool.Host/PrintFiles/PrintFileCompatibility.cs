@@ -82,7 +82,7 @@ public static class PrintFileCompatibility
 
         List<PrintCompatibilityFinding> findings = [];
 
-        if (PrinterModelCompatibility.CanPrint(printer.Model, file.PrinterModel) == false)
+        if (IsSlicedForAnotherModel(file, printer))
         {
             findings.Add(PrintCompatibilityFinding.IncompatiblePrinterModel);
         }
@@ -105,6 +105,27 @@ public static class PrintFileCompatibility
         }
 
         return findings;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="file"/> was sliced for a model <paramref name="printer"/> is known not
+    /// to accept - the finding that refuses a queue outright.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its own method because the Files page filters on it</b>, and the filter has to agree with
+    /// the refusal: a file hidden there is one queueing would have refused, and nothing else is.
+    /// </para>
+    /// <para>
+    /// A <paramref name="file"/> of null - no row yet - is known to be nothing, so it is false, the
+    /// same silence every rule here keeps when a side did not say.
+    /// </para>
+    /// </remarks>
+    public static bool IsSlicedForAnotherModel(PrintFile? file, Printer printer)
+    {
+        ArgumentNullException.ThrowIfNull(printer);
+
+        return PrinterModelCompatibility.CanPrint(printer.Model, file?.PrinterModel) == false;
     }
 
     /// <summary>The most serious severity among <paramref name="findings"/>, or null if there are none.</summary>

@@ -560,6 +560,15 @@
   <data name="Files_ChooseAPrinter" xml:space="preserve">
     <value>Vælg en printer ovenfor for at sende eller sætte en fil i kø til den.</value>
   </data>
+  <data name="Files_CompatibleOnly" xml:space="preserve">
+    <value>Kun filer, som denne printer kan printe</value>
+  </data>
+  <data name="Files_HiddenIncompatible_One" xml:space="preserve">
+    <value>{0} fil er skjult: den er slicet til en anden printermodel.</value>
+  </data>
+  <data name="Files_HiddenIncompatible_Other" xml:space="preserve">
+    <value>{0} filer er skjult: de er slicet til andre printermodeller.</value>
+  </data>
   <data name="Printers_Default" xml:space="preserve">
     <value>Standard</value>
   </data>

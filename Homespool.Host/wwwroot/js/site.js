@@ -246,16 +246,27 @@
         });
     }
 
-    select.addEventListener("change", function () {
-        if (parameter && select.value) {
-            retarget(select.value);
-        }
-
+    function submit() {
         if (form.requestSubmit) {
             form.requestSubmit();
         } else {
             form.submit();
         }
+    }
+
+    select.addEventListener("change", function () {
+        if (parameter && select.value) {
+            retarget(select.value);
+        }
+
+        submit();
+    });
+
+    // The "only files this printer can print" filter travels in the same form, and once Save is
+    // hidden a tick that waited for it would do nothing. It aims nothing at a printer, so there is
+    // nothing to repoint first.
+    form.querySelectorAll("input[type=checkbox]").forEach(function (box) {
+        box.addEventListener("change", submit);
     });
 })();
 

@@ -150,6 +150,26 @@ public class IndexModel : PageModel
     public Guid? SelectedPrinterUuid { get; private set; }
 
     /// <summary>
+    /// Whether the list leaves out the files the selected printer's model cannot print. Never true
+    /// with no printer selected, whatever the URL says: there is no model to compare against.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only a file known not to print is left out.</b> One with no model on record - never sliced
+    /// by a slicer that says, or not read yet - stays listed, because hiding it would make a file
+    /// vanish over something nobody knows. Queueing it gets the same silence.
+    /// </remarks>
+    public bool CompatibleOnly { get; private set; }
+
+    /// <summary>
+    /// <see cref="CompatibleOnly"/> as a route value: absent when off, so a URL carries it only when
+    /// somebody asked for it, the way the checkbox itself submits.
+    /// </summary>
+    public bool? CompatibleRoute => CompatibleOnly ? true : null;
+
+    /// <summary>How many files <see cref="CompatibleOnly"/> left out, so the page can say they exist.</summary>
+    public int HiddenIncompatibleCount { get; private set; }
+
+    /// <summary>
     /// Which direction a column starts in when nobody has chosen one.
     /// </summary>
     /// <remarks>
@@ -184,11 +204,21 @@ public class IndexModel : PageModel
     /// "ascending". A plain <c>bool</c> made the two the same thing, which opened the page on the
     /// oldest upload however loudly the defaults below said otherwise.
     /// </remarks>
-    public async Task OnGetAsync(string? sort, bool? desc, string? rename, Guid? printerUuid, CancellationToken cancellationToken)
+    public async Task OnGetAsync(string? sort,
+                                 bool? desc,
+                                 string? rename,
+                                 Guid? printerUuid,
+                                 bool? compatible,
+                                 CancellationToken cancellationToken)
     {
-        Load(sort, desc);
         await LoadPrintersAsync(cancellationToken);
         SelectedPrinterUuid = await ResolveSelectedPrinterAsync(printerUuid, cancellationToken);
+
+        Printer? selected = Printers.FirstOrDefault(printer => printer.Uuid == SelectedPrinterUuid);
+
+        CompatibleOnly = compatible == true && selected is not null;
+
+        await LoadAsync(sort, desc, CompatibleOnly ? selected : null, cancellationToken);
 
         // Only offer to rename something that is actually there, so a stale link is an ordinary page
         // rather than an input editing nothing.
@@ -274,6 +304,7 @@ public class IndexModel : PageModel
                                                        string? sort,
                                                        bool? desc,
                                                        Guid? printerUuid,
+                                                       bool? compatible,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -287,7 +318,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_ChooseFile"], false);
 
-            return RedirectToSelf(sort, desc, printerUuid);
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
         if (file.Length > _options.MaxUploadBytes)
@@ -297,7 +328,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) =
                 (_localiser["Files_TooLarge", ByteSize.Format(_options.MaxUploadBytes, _localiser)], false);
 
-            return RedirectToSelf(sort, desc, printerUuid);
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
         PendingUpload staged;
@@ -312,7 +343,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
 
-            return RedirectToSelf(sort, desc, printerUuid);
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
         try
@@ -329,7 +360,7 @@ public class IndexModel : PageModel
             PendingName = staged.FileName;
         }
 
-        return RedirectToSelf(sort, desc, printerUuid);
+        return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     /// <summary>Answers the replace question with yes, using bytes already on disk.</summary>
@@ -337,6 +368,7 @@ public class IndexModel : PageModel
                                                         string? sort,
                                                         bool? desc,
                                                         Guid? printerUuid,
+                                                        bool? compatible,
                                                         CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -353,11 +385,11 @@ public class IndexModel : PageModel
             (_localiser["Files_UploadGone"], false) :
             (_localiser["Files_Replaced", stored.FileName], true);
 
-        return RedirectToSelf(sort, desc, printerUuid);
+        return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     /// <summary>Answers it with no, and throws the staged bytes away now rather than at the sweep.</summary>
-    public IActionResult OnPostDiscard(string token, string? sort, bool? desc, Guid? printerUuid)
+    public IActionResult OnPostDiscard(string token, string? sort, bool? desc, Guid? printerUuid, bool? compatible)
     {
         long? userId = UserId();
 
@@ -369,7 +401,7 @@ public class IndexModel : PageModel
         _files.Discard(CallerResolver.For(userId.Value, User), token);
         (StatusMessage, StatusSuccess) = (_localiser["Files_Discarded"], true);
 
-        return RedirectToSelf(sort, desc, printerUuid);
+        return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     /// <summary>
@@ -386,6 +418,7 @@ public class IndexModel : PageModel
                                                       Guid printerUuid,
                                                       string? sort,
                                                       bool? desc,
+                                                      bool? compatible,
                                                       CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -405,7 +438,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
-            return RedirectToSelf(sort, desc, printerUuid);
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
         try
@@ -434,7 +467,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterReadOnly"], false);
         }
 
-        return RedirectToSelf(sort, desc, printerUuid);
+        return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     /// <summary>
@@ -456,6 +489,7 @@ public class IndexModel : PageModel
                                                      Guid printerUuid,
                                                      string? sort,
                                                      bool? desc,
+                                                     bool? compatible,
                                                      CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -471,7 +505,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_NoSuchFile", name], false);
 
-            return RedirectToSelf(sort, desc, printerUuid);
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
         if (file.Length >= uint.MaxValue)
@@ -479,7 +513,7 @@ public class IndexModel : PageModel
             // orig_size is uint32 on the wire; a file this large cannot be described at all.
             (StatusMessage, StatusSuccess) = (_localiser["Files_OverFourGiB"], false);
 
-            return RedirectToSelf(sort, desc, printerUuid);
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
         // Looked up in the caller's own list rather than fetched by the uuid the form supplied. That
@@ -493,7 +527,7 @@ public class IndexModel : PageModel
         {
             (StatusMessage, StatusSuccess) = (_localiser["Files_PrinterNotYours"], false);
 
-            return RedirectToSelf(sort, desc, printerUuid);
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
         try
@@ -535,7 +569,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_localiser["Files_SendFailed"], false);
         }
 
-        return RedirectToSelf(sort, desc, printerUuid);
+        return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     public async Task<IActionResult> OnPostRenameAsync(string name,
@@ -543,6 +577,7 @@ public class IndexModel : PageModel
                                                        string? sort,
                                                        bool? desc,
                                                        Guid? printerUuid,
+                                                       bool? compatible,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -571,7 +606,7 @@ public class IndexModel : PageModel
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
 
-        return RedirectToSelf(sort, desc, printerUuid);
+        return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     /// <summary>
@@ -586,6 +621,7 @@ public class IndexModel : PageModel
                                                        string? sort,
                                                        bool? desc,
                                                        Guid? printerUuid,
+                                                       bool? compatible,
                                                        CancellationToken cancellationToken)
     {
         long? userId = UserId();
@@ -602,7 +638,7 @@ public class IndexModel : PageModel
             _ => (_localiser["Files_NoSuchFile", name], false),
         };
 
-        return RedirectToSelf(sort, desc, printerUuid);
+        return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     /// <summary>
@@ -625,9 +661,9 @@ public class IndexModel : PageModel
     /// the table silently jumps back to its default after each delete, which feels broken and reads
     /// as a bug nobody can quite describe.
     /// </remarks>
-    private IActionResult RedirectToSelf(string? sort, bool? desc, Guid? printerUuid)
+    private IActionResult RedirectToSelf(string? sort, bool? desc, Guid? printerUuid, bool? compatible)
     {
-        return RedirectToPage(new { sort, desc, printerUuid });
+        return RedirectToPage(new { sort, desc, printerUuid, compatible });
     }
 
     private async Task LoadPrintersAsync(CancellationToken cancellationToken)
@@ -652,7 +688,12 @@ public class IndexModel : PageModel
         return _userManager.GetUserName(User);
     }
 
-    private void Load(string? sort, bool? desc)
+    /// <summary>The list, ordered, and filtered to what <paramref name="printableOn"/> can print when one is given.</summary>
+    /// <remarks>
+    /// The rows are only read when filtering: the listing itself is the disk, and a query for
+    /// metadata the unfiltered page never shows would be paid on every render for nothing.
+    /// </remarks>
+    private async Task LoadAsync(string? sort, bool? desc, Printer? printableOn, CancellationToken cancellationToken)
     {
         long? userId = UserId();
 
@@ -674,7 +715,21 @@ public class IndexModel : PageModel
 
         Descending = desc ?? DefaultDescendingFor(Sort);
 
-        IReadOnlyList<StoredFile> files = _files.List(CallerResolver.For(userId.Value, User));
+        Caller caller = CallerResolver.For(userId.Value, User);
+        IReadOnlyList<StoredFile> files;
+
+        if (printableOn is null)
+        {
+            files = _files.List(caller);
+        }
+        else
+        {
+            IReadOnlyList<CataloguedFile> catalogued = await _files.ListAsync(caller, cancellationToken);
+
+            files = [.. catalogued.Where(entry => !PrintFileCompatibility.IsSlicedForAnotherModel(entry.Row, printableOn))
+                                  .Select(entry => entry.File)];
+            HiddenIncompatibleCount = catalogued.Count - files.Count;
+        }
 
         IOrderedEnumerable<StoredFile> ordered = Sort switch
         {

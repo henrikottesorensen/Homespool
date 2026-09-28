@@ -589,6 +589,15 @@
   <data name="Files_ChooseAPrinter" xml:space="preserve">
     <value>Choose a printer above to send or queue a file to it.</value>
   </data>
+  <data name="Files_CompatibleOnly" xml:space="preserve">
+    <value>Only files this printer can print</value>
+  </data>
+  <data name="Files_HiddenIncompatible_One" xml:space="preserve">
+    <value>{0} file is hidden: it was sliced for a different printer model.</value>
+  </data>
+  <data name="Files_HiddenIncompatible_Other" xml:space="preserve">
+    <value>{0} files are hidden: they were sliced for other printer models.</value>
+  </data>
   <data name="Printers_Default" xml:space="preserve">
     <value>Default</value>
   </data>

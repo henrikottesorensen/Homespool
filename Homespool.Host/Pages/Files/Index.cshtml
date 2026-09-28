@@ -30,6 +30,17 @@
                 <option value="@printer.Uuid" selected="@(printer.Uuid == Model.SelectedPrinterUuid)">@PrinterDisplayName.For(printer)</option>
             }
         </select>
+        @* Only once a printer is chosen: until then there is no model to filter against. Unticked, a
+           checkbox submits nothing at all, which is the "off" the page model reads - and the reason
+           the route value is left out of every URL rather than carried as false. *@
+        @if (Model.SelectedPrinterUuid is not null)
+        {
+            <div class="form-check mb-0">
+                <input type="checkbox" id="compatible-only" name="compatible" value="true" class="form-check-input"
+                       checked="@Model.CompatibleOnly" />
+                <label class="form-check-label" for="compatible-only">@Localiser["Files_CompatibleOnly"]</label>
+            </div>
+        }
         <input type="hidden" name="sort" value="@Model.Sort" />
         <input type="hidden" name="desc" value="@Model.Descending" />
         <button type="submit" class="btn btn-sm btn-outline-primary" data-printer-select-submit>@Localiser["Common_Save"]</button>
@@ -57,6 +68,7 @@
               asp-route-sort="@Model.Sort"
               asp-route-desc="@Model.Descending"
               asp-route-printerUuid="@Model.SelectedPrinterUuid"
+              asp-route-compatible="@Model.CompatibleRoute"
               class="d-inline">
             <button type="submit" class="btn btn-sm btn-warning">@Localiser["Files_Replace"]</button>
         </form>
@@ -65,6 +77,7 @@
               asp-route-sort="@Model.Sort"
               asp-route-desc="@Model.Descending"
               asp-route-printerUuid="@Model.SelectedPrinterUuid"
+              asp-route-compatible="@Model.CompatibleRoute"
               class="d-inline">
             <button type="submit" class="btn btn-sm btn-outline-secondary">@Localiser["Files_KeepExisting"]</button>
         </form>
@@ -81,7 +94,7 @@
      data-upload-too-many="@Localiser["Files_TooManyDropped"]"
      data-upload-progress="@Localiser["Files_UploadingProgress"]">
     <form method="post" asp-page-handler="Upload" enctype="multipart/form-data"
-          asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending" asp-route-printerUuid="@Model.SelectedPrinterUuid"
+          asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending" asp-route-printerUuid="@Model.SelectedPrinterUuid" asp-route-compatible="@Model.CompatibleRoute"
           class="d-flex align-items-center gap-2">
         <input type="file" name="file" accept=".gcode,.bgcode,.gco,.bgc" class="form-control" aria-label="@Localiser["Files_UploadLabel"]" required />
         <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
@@ -91,9 +104,19 @@
     </p>
 </div>
 
+@* Said whenever the filter left something out, so a file missing from the list reads as filtered
+   rather than lost - and in place of "no files yet" when it left out everything. *@
+@if (Model.HiddenIncompatibleCount > 0)
+{
+    <p class="text-body-secondary small">@Plural.Format(Localiser, "Files_HiddenIncompatible", Model.HiddenIncompatibleCount)</p>
+}
+
 @if (Model.Files.Count == 0)
 {
-    <p>@Localiser["Files_None"]</p>
+    if (Model.HiddenIncompatibleCount == 0)
+    {
+        <p>@Localiser["Files_None"]</p>
+    }
 }
 else
 {
@@ -109,6 +132,7 @@ else
                        asp-route-sort="@IndexModel.Columns.Name"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Name)"
                        asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                       asp-route-compatible="@Model.CompatibleRoute"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Name ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Common_Name"]@(Model.IndicatorFor(IndexModel.Columns.Name))</a>
                 </th>
@@ -117,6 +141,7 @@ else
                        asp-route-sort="@IndexModel.Columns.Size"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Size)"
                        asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                       asp-route-compatible="@Model.CompatibleRoute"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Size ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Files_Size"]@(Model.IndicatorFor(IndexModel.Columns.Size))</a>
                 </th>
@@ -125,6 +150,7 @@ else
                        asp-route-sort="@IndexModel.Columns.Uploaded"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Uploaded)"
                        asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                       asp-route-compatible="@Model.CompatibleRoute"
                        aria-sort="@(Model.Sort == IndexModel.Columns.Uploaded ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Files_Uploaded"]@(Model.IndicatorFor(IndexModel.Columns.Uploaded))</a>
                 </th>
@@ -143,11 +169,12 @@ else
                               asp-route-sort="@Model.Sort"
                               asp-route-desc="@Model.Descending"
                               asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                              asp-route-compatible="@Model.CompatibleRoute"
                               class="d-flex gap-2">
                             <input type="text" name="newName" value="@file.FileName" class="form-control form-control-sm"
                                    aria-label="@Localiser["Files_NewNameLabel"]" required />
                             <button type="submit" class="btn btn-sm btn-primary">@Localiser["Common_Save"]</button>
-                            <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending" asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                            <a asp-page="./Index" asp-route-sort="@Model.Sort" asp-route-desc="@Model.Descending" asp-route-printerUuid="@Model.SelectedPrinterUuid" asp-route-compatible="@Model.CompatibleRoute"
                                class="btn btn-sm btn-outline-secondary">@Localiser["Common_Cancel"]</a>
                         </form>
                     </td>
@@ -179,6 +206,7 @@ else
                               asp-route-sort="@Model.Sort"
                               asp-route-desc="@Model.Descending"
                               asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                              asp-route-compatible="@Model.CompatibleRoute"
                               class="d-inline" data-printer-target>
                             <button type="submit" class="btn btn-sm btn-outline-primary"
                                     title="@Localiser["Files_SendTitle"]">@Localiser["Files_Send"]</button>
@@ -191,6 +219,7 @@ else
                                     asp-route-sort="@Model.Sort"
                                     asp-route-desc="@Model.Descending"
                                     asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                                    asp-route-compatible="@Model.CompatibleRoute"
                                     title="@Localiser["Files_QueueTitle"]">@Localiser["Files_Queue"]</button>
                         </form>
                     }
@@ -199,6 +228,7 @@ else
                        asp-route-desc="@Model.Descending"
                        asp-route-rename="@file.FileName"
                        asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                       asp-route-compatible="@Model.CompatibleRoute"
                        class="btn btn-sm btn-outline-secondary">@Localiser["Files_Rename"]</a>
                     @* Straight to the API, which already answers a cookie-authenticated GET - a second
                        copy of the same download here would be one more place to get ownership wrong. *@
@@ -217,6 +247,7 @@ else
                           asp-route-sort="@Model.Sort"
                           asp-route-desc="@Model.Descending"
                           asp-route-printerUuid="@Model.SelectedPrinterUuid"
+                          asp-route-compatible="@Model.CompatibleRoute"
                           class="d-inline"
                           data-confirm="@Localiser["Files_ConfirmDelete", file.FileName]">
                         <button type="submit" class="btn btn-sm btn-outline-danger">@Localiser["Common_Delete"]</button>

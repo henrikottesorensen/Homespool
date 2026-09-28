@@ -1955,6 +1955,9 @@
   <data name="Error_FileNameCharacters" xml:space="preserve">
     <value>‘{0}’ has characters a file name may not carry: quotes, angle brackets, backslashes, * : | ?, or control or invisible characters. Rename it and upload it again.</value>
   </data>
+  <data name="Error_FileNameTooLong" xml:space="preserve">
+    <value>‘{0}’ is longer than a printer can hold: at most {1} characters. Shorten the name and upload it again.</value>
+  </data>
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>File name is empty, or is a directory reference, once its directory part is removed.</value>
   </data>

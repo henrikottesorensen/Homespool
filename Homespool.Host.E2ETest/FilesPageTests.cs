@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.PrintFiles;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -1116,8 +1117,9 @@ public sealed class FilesPageTests : IAsyncLifetime
         (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "pagelongname@example.com");
 
-        // No space anywhere in it, which is what removes every break opportunity.
-        string unbroken = new string('n', 180) + ".gcode";
+        // No space anywhere in it, which is what removes every break opportunity - and as long as a
+        // name is allowed to be, which a printer's limit decides.
+        string unbroken = new string('n', UserFileStore.MaxNameLength - ".gcode".Length) + ".gcode";
         await UploadAsync(client, unbroken, 512);
 
         // Act

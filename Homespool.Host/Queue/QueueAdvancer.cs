@@ -532,13 +532,24 @@ public sealed class QueueAdvancer : BackgroundService
                 continue;
             }
 
-            PrintFileOnPrinter? row = await dbContext.PrintFilesOnPrinters
-                                                     .Include(candidate => candidate.PrintFile)
-                                                     .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId &&
-                                                                               candidate.PrintFile!.Name == displayName,
-                                                                           cancellationToken);
+            // Only rows still waiting for their bytes, matched by name in .NET and never with Single:
+            // a name is unique per user, not per printer, so two members' files of one name can both
+            // have a row here, and a throw at this point abandons every pass for the printer before
+            // the watermark moves. Of several, the transfer in flight is the one a report ends - the
+            // printer has one transfer slot - and the latest start wins over a stale one.
+            List<PrintFileOnPrinter> waiting = await dbContext.PrintFilesOnPrinters
+                                                              .Include(candidate => candidate.PrintFile)
+                                                              .Where(candidate => candidate.PrinterId == printerId &&
+                                                                                  candidate.ArrivedAt == null)
+                                                              .ToListAsync(cancellationToken);
 
-            if (row is null || row.Arrived)
+            PrintFileOnPrinter? row = waiting.Where(candidate => string.Equals(candidate.PrintFile!.Name, displayName,
+                                                                               StringComparison.OrdinalIgnoreCase))
+                                             .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
+                                             .ThenByDescending(candidate => candidate.TransferStartedAt)
+                                             .FirstOrDefault();
+
+            if (row is null)
             {
                 continue;
             }

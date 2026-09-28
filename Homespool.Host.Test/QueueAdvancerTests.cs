@@ -1892,6 +1892,84 @@ public sealed class QueueAdvancerTests : IDisposable
         ShouldNotHaveLoggedAnEscape(logger);
     }
 
+    /// <summary>
+    /// Two users' files of one name on one printer: the arrival belongs to the transfer in flight, and
+    /// matching by name alone threw on every pass, before the watermark moved, so the printer's whole
+    /// queue stopped for good.
+    /// </summary>
+    /// <param name="theirsArrived">
+    /// Whether the other user's copy is already on the drive, or is a row left waiting with no transfer
+    /// running - the case where only preferring the transfer in flight picks the right one.
+    /// </param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AnArrivalIsMatchedToTheTransferInFlightWhenAnotherUsersFileHasTheName(bool theirsArrived)
+    {
+        // Arrange - the seeded file is the other user's, and has the lower id, so a lookup that
+        // merely took the first row it read would find it; the second user's transfer is in flight.
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        PrintFile theirs = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.Users.Add(new HSUser("other@example.com")
+        {
+            Id = 2,
+            Email = "other@example.com",
+            NormalizedEmail = "OTHER@EXAMPLE.COM",
+            NormalizedUserName = "OTHER@EXAMPLE.COM",
+        });
+
+        PrintFile ours = new() { UserId = 2, Name = theirs.Name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
+        context.PrintFiles.Add(ours);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = theirs.Id,
+            ArrivedAt = theirsArrived ? _clock.GetUtcNow() : null,
+            PrinterPath = theirsArrived ? "/usb/QUEUED~1.BGC" : null,
+        });
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = ours.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await using (TelemetryDbContext telemetry = TestTelemetryContext.For(_databasePath))
+        {
+            telemetry.PrinterEvents.Add(new PrinterEvent
+            {
+                PrinterId = PrinterId,
+                Timestamp = _clock.GetUtcNow(),
+                EventType = PrinterEventType.FileInfo,
+                Payload = $"{{\"display_name\":\"{ours.Name}\",\"path\":\"/usb/QUEUED~2.BGC\"}}",
+            });
+            await telemetry.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        PrintFileOnPrinter arrived = await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == ours.Id,
+                                                                                    TestContext.Current.CancellationToken);
+
+        arrived.ArrivedAt.Should().NotBeNull("the transfer in flight is the one this report ends");
+        arrived.PrinterPath.Should().Be("/usb/QUEUED~2.BGC");
+        (await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == theirs.Id, TestContext.Current.CancellationToken))
+            .PrinterPath.Should().Be(theirsArrived ? "/usb/QUEUED~1.BGC" : null, "the other user's copy is not the one that arrived");
+    }
+
     /// <summary>The job a printer describes as its own, which is a path nothing here ever wrote.</summary>
     [Fact]
     public async Task APanelJobIsLoggedWithThePrintersPathCleaned()

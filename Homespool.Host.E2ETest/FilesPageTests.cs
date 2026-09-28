@@ -503,6 +503,114 @@ public sealed class FilesPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// With the filter on, a file sliced for a machine the selected printer cannot stand in for is
+    /// left out, and the page says one was.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Four files, one per answer the comparison can give.</b> <c>COREONE</c> on an MK3.5 is the
+    /// refusal; <c>MK3</c> is a different model the MK3.5 accepts, so a filter that compared names
+    /// for equality would wrongly hide it; <c>MK3.5</c> is the machine's own; and a file with no
+    /// configuration block has no model at all, which must stay listed rather than vanish.
+    /// </para>
+    /// <para>
+    /// The printer reports the triple, as a real one does - the comparison that once never fired
+    /// was the one fed designations on both sides.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheCompatibleFilterHidesOnlyWhatThePrinterCannotPrint()
+    {
+        // Arrange
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagefilter@example.com");
+        await ClaimAPrinterAsync(client);
+
+        string printerUuid = await OnlyPrinterUuidAsync(client);
+        await ReportsModelAsync(printerUuid, "1.3.5");
+        await UploadSlicedForAsync(client, "corexy.gcode", "COREONE");
+        await UploadSlicedForAsync(client, "older.gcode", "MK3");
+        await UploadSlicedForAsync(client, "own.gcode", "MK3.5");
+        await UploadAsync(client, "unsliced.gcode", 128);
+
+        // Act
+        string unfiltered =
+            await (await client.GetAsync($"/Files?printerUuid={printerUuid}", TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string filtered =
+            await (await client.GetAsync($"/Files?printerUuid={printerUuid}&compatible=true",
+                                         TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        unfiltered.Should().Contain("corexy.gcode", "the filter is off until somebody ticks it");
+        unfiltered.Should().NotContain("is hidden", "nothing was left out");
+        unfiltered.Should().NotContain("checked=\"checked\"");
+
+        filtered.Should().NotContain("corexy.gcode", "a CORE One file is exactly what an MK3.5 must not be sent");
+        filtered.Should().Contain("older.gcode", "an MK3.5 accepts an MK3's files - compatible is not the same model");
+        filtered.Should().Contain("own.gcode");
+        filtered.Should().Contain("unsliced.gcode", "a file with no model is not known to be wrong, so it stays");
+        filtered.Should().Contain("1 file is hidden", "a file missing from the list has to read as filtered, not lost");
+        filtered.Should().Contain("checked=\"checked\"", "the box shows the filter that was applied");
+        filtered.Should().ContainEquivalentOf("compatible=true", "the links carry the filter, so a sort or a delete keeps it");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A filter asked for with no printer selected is no filter: there is no model to compare with.
+    /// </summary>
+    [Fact]
+    public async Task TheCompatibleFilterNeedsAPrinterToFilterFor()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagefilternone@example.com");
+        await ClaimAPrinterAsync(client);
+
+        string printerUuid = await OnlyPrinterUuidAsync(client);
+        await ReportsModelAsync(printerUuid, "1.3.5");
+        await UploadSlicedForAsync(client, "corexy.gcode", "COREONE");
+
+        string page =
+            await (await client.GetAsync("/Files?compatible=true", TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        page.Should().Contain("corexy.gcode", "nothing is selected, so nothing is known about what it can print");
+        page.Should().NotContain("compatible-only", "the checkbox is offered only once a printer is chosen");
+        page.Should().NotContainEquivalentOf("compatible=true", "a filter that was not applied is not carried on");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// Filtering out every file says so, rather than claiming there are no files yet.
+    /// </summary>
+    [Fact]
+    public async Task FilteringOutEveryFileDoesNotSayThereAreNone()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "pagefilterall@example.com");
+        await ClaimAPrinterAsync(client);
+
+        string printerUuid = await OnlyPrinterUuidAsync(client);
+        await ReportsModelAsync(printerUuid, "1.3.5");
+        await UploadSlicedForAsync(client, "corexy.gcode", "COREONE");
+        await UploadSlicedForAsync(client, "fast.gcode", "MK4S");
+
+        string page =
+            await (await client.GetAsync($"/Files?printerUuid={printerUuid}&compatible=true",
+                                         TestContext.Current.CancellationToken))
+                .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        page.Should().Contain("2 files are hidden");
+        page.Should().NotContain("No files yet", "the files exist - this printer just cannot print them");
+        page.Should().NotContain("<table", "there is nothing left to list");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// The printer selector needs no Save press: the hooks site.js binds to are on the page.
     /// </summary>
     /// <remarks>

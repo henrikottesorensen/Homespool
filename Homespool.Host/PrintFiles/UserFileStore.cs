@@ -537,6 +537,12 @@ public sealed class UserFileStore
     /// application recorded, without leaving <c>/usb</c>. Firmware decodes an escaped backslash
     /// correctly, so this is the only place that can stop it.
     /// </para>
+    /// <para>
+    /// <b><c>*</c>, <c>:</c>, <c>|</c> and <c>?</c> are refused because the printer cannot hold them.</b>
+    /// Its FAT driver rejects them in a long name, along with the quotes and angle brackets already
+    /// refused above, and firmware's own check before a transfer reads only the extension. A name
+    /// carrying one would be accepted here and then fail on the printer, after the upload looked done.
+    /// </para>
     /// </remarks>
     private static string RequireSafeName(string fileName)
     {
@@ -544,7 +550,7 @@ public sealed class UserFileStore
 
         // Asked of the whole name, because a character is not always one char: the invisible ones
         // outside the basic plane take two, and half of one is not a character at all.
-        if (!PrintableText.IsPrintable(name) || name.AsSpan().ContainsAny("\"'<>\\"))
+        if (!PrintableText.IsPrintable(name) || name.AsSpan().ContainsAny("\"'<>\\*:|?"))
         {
             throw PrintFileNameRejectedException.ForForbiddenCharacters(name, nameof(fileName));
         }

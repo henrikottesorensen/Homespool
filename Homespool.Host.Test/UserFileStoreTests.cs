@@ -251,6 +251,34 @@ public sealed class UserFileStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A name the printer's FAT cannot hold is refused here, where the person uploading it is still
+    /// looking - not discovered when the transfer fails on the printer.
+    /// </summary>
+    /// <remarks>
+    /// FatFs refuses <c>* : &lt; &gt; | " ?</c> and DEL in a long name, and firmware's check before a
+    /// transfer reads only the extension. The quotes and angle brackets are refused above for their own
+    /// reason; these are the rest.
+    /// </remarks>
+    [Theory]
+    [InlineData("part*2.gcode")]
+    [InlineData("part: v2.gcode")]
+    [InlineData("left|right.gcode")]
+    [InlineData("why?.gcode")]
+    [InlineData("del\u007F.gcode")]
+    public async Task ANameThePrintersFatCannotHoldIsRefused(string given)
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+
+        // Act
+        Func<Task> act = () => SaveAsync(store, Alice, given, [1]);
+
+        // Assert
+        await act.Should().ThrowAsync<PrintFileNameRejectedException>("the printer would refuse to create it");
+        store.List(Alice).Should().BeEmpty();
+    }
+
+    /// <summary>
     /// A name that got in before the refusal above can still be found, and so can still be removed.
     /// </summary>
     /// <remarks>

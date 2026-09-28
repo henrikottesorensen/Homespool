@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -25,15 +26,18 @@ namespace Homespool.Host.Test;
 /// waits before reading on, it says so once per printer, and a shutdown does not wait for it.
 /// </summary>
 /// <remarks>
-/// On a <see cref="FakeTimeProvider"/>, so a wait holds until the test moves the clock. Every
-/// message is written up front, which is what a sender over its budget looks like: the bytes are
-/// there, and whether they are handled is the handler's choice.
+/// On a <see cref="FakeTimeProvider"/>, so a wait holds until the test moves the clock - and the
+/// test moves it only once the handler is waiting on it, never on a guess at how far the loop has
+/// got. Every message is written up front, which is what a sender over its budget looks like: the
+/// bytes are there, and whether they are handled is the handler's choice.
 /// </remarks>
 public class WebSocketHandlerMessageBudgetTests
 {
     private const string Telemetry = """{"state":"PRINTING"}""";
 
-    private readonly FakeTimeProvider _clock = new();
+    private static readonly TimeSpan OneSecond = TimeSpan.FromSeconds(1);
+
+    private readonly WaitAnnouncingClock _clock = new();
     private readonly FakeLogger<PrinterWireComplaints> _complaintLog = new();
     private readonly CountingMessageDispatcher _dispatcher = new();
 
@@ -49,19 +53,19 @@ public class WebSocketHandlerMessageBudgetTests
                                      TestContext.Current.CancellationToken);
 
         // Act, and assert as the clock moves
-        await WaitUntilAsync(() => _dispatcher.Count == 2);
+        (await HandlerWaitsAsync()).Should().Be(OneSecond);
+        _dispatcher.Count.Should().Be(2, "the burst is spent");
 
         // Longer than the one-second wait itself, so a wait timed on the real clock rather than the
         // handler's would have ended by now.
         await Task.Delay(TimeSpan.FromMilliseconds(1200), TestContext.Current.CancellationToken);
         _dispatcher.Count.Should().Be(2, "the burst is spent and the clock has not moved");
 
-        _clock.Advance(TimeSpan.FromSeconds(1));
-        await WaitUntilAsync(() => _dispatcher.Count == 3);
+        _clock.Advance(OneSecond);
+        (await HandlerWaitsAsync()).Should().Be(OneSecond);
+        _dispatcher.Count.Should().Be(3);
 
-        _clock.Advance(TimeSpan.FromSeconds(1));
-        await WaitUntilAsync(() => _dispatcher.Count == 4);
-
+        _clock.Advance(OneSecond);
         await wire.Writer.CompleteAsync();
         await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
@@ -80,18 +84,20 @@ public class WebSocketHandlerMessageBudgetTests
         // Act
         await wire.Writer.WriteAsync(Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(Telemetry, 3))),
                                      TestContext.Current.CancellationToken);
-        await WaitUntilAsync(() => _dispatcher.Count == 1);
 
+        // Both messages after the first go over the budget, so there are two waits to say once.
         for (int i = 0; i < 2; i++)
         {
-            _clock.Advance(TimeSpan.FromSeconds(1));
-            await WaitUntilAsync(() => _dispatcher.Count == i + 2);
+            (await HandlerWaitsAsync()).Should().Be(OneSecond);
+            _clock.Advance(OneSecond);
         }
 
         await wire.Writer.CompleteAsync();
         await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         // Assert
+        _dispatcher.Count.Should().Be(3);
+
         FakeLogRecord line = _complaintLog.Collector.GetSnapshot().Should().ContainSingle().Subject;
 
         line.Level.Should().Be(LogLevel.Warning);
@@ -134,7 +140,7 @@ public class WebSocketHandlerMessageBudgetTests
 
         await wire.Writer.WriteAsync(Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(Telemetry, 100))),
                                      TestContext.Current.CancellationToken);
-        await WaitUntilAsync(() => _dispatcher.Count == 1);
+        (await HandlerWaitsAsync()).Should().Be(OneSecond);
 
         // Act
         await connectionEnd.CancelAsync();
@@ -151,15 +157,19 @@ public class WebSocketHandlerMessageBudgetTests
         return record.StructuredState!.FirstOrDefault(pair => pair.Key == name).Value;
     }
 
-    /// <summary>The handler runs on its own; poll for what it has done rather than sleep a guess.</summary>
-    private static async Task WaitUntilAsync(Func<bool> condition)
+    /// <summary>
+    /// Waits for the handler to start waiting out its budget, and answers how long it will wait. Once
+    /// this returns, moving the clock by that much is sure to end the wait.
+    /// </summary>
+    /// <remarks>
+    /// The timeout is on the real clock and only for a handler that never waits at all; it is generous
+    /// because nothing here depends on how soon the read loop is scheduled.
+    /// </remarks>
+    private async Task<TimeSpan> HandlerWaitsAsync()
     {
-        for (int i = 0; i < 500 && !condition(); i++)
-        {
-            await Task.Delay(10);
-        }
-
-        condition().Should().BeTrue("the read loop should have got this far by now");
+        return await _clock.Waits.ReadAsync(TestContext.Current.CancellationToken)
+                                 .AsTask()
+                                 .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
     }
 
     private WebSocketHandler NewHandler(int perSecond, int burst)
@@ -169,6 +179,33 @@ public class WebSocketHandlerMessageBudgetTests
                    TestOptions.Monitor(new PrusaConnectOptions { MessagesPerSecond = perSecond, MessageBurst = burst }),
                    new PrinterWireComplaints(_complaintLog),
                    _clock);
+    }
+
+    /// <summary>
+    /// A <see cref="FakeTimeProvider"/> that announces every timer created on it, with its due time,
+    /// so a test can move the clock only once the handler is waiting on it.
+    /// </summary>
+    /// <remarks>
+    /// Moving a fake clock fires only the timers that already exist. The handler takes its token,
+    /// complains, and only then creates the timer it waits on - so a test that moves the clock as soon
+    /// as it sees a message handled can land in between, and the timer is then created a whole wait
+    /// after a clock that has already moved: nothing ever fires it, however long the test waits.
+    /// Waiting for the complaint instead leaves the same gap, since it is said before the timer exists.
+    /// </remarks>
+    private sealed class WaitAnnouncingClock : FakeTimeProvider
+    {
+        private readonly Channel<TimeSpan> _waits = Channel.CreateUnbounded<TimeSpan>();
+
+        /// <summary>The due time of each timer, in the order they were created.</summary>
+        public ChannelReader<TimeSpan> Waits => _waits.Reader;
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            ITimer timer = base.CreateTimer(callback, state, dueTime, period);
+            _waits.Writer.TryWrite(dueTime);
+
+            return timer;
+        }
     }
 
     /// <summary>

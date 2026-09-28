@@ -66,19 +66,36 @@ public static class PrinterCertificateNames
     /// only once it resolves - would drop precisely the LAN names a container cannot see, which is the
     /// bug the filtering rule below was written to avoid.
     /// </para>
+    /// <para>
+    /// <b>A name the certificate already covers is confirmed by what it resolves to.</b> Nothing here
+    /// can discover this machine's other names: the container's hostname is its own, and nothing walks
+    /// back from an address to a name. But a name already on the leaf that resolves to an address found
+    /// above is plainly this machine's, and a reissue that dropped it would strand every printer
+    /// provisioned with it. It is kept only in that case - a name that resolves elsewhere or not at all
+    /// is left for the operator to judge, and only names the certificate already vouches for are asked,
+    /// so this can carry a name over but never introduce one.
+    /// </para>
     /// </remarks>
     /// <param name="connect">Supplies the configured printer address, which leads the list.</param>
     /// <param name="containerNetworks">The deployment's own internal ranges.</param>
     /// <param name="resolver">
-    /// Answers what a hostname points at - which decides whether a detected name is dropped, and what
-    /// the configured one is covered alongside. An address answers for itself.
+    /// Answers what a hostname points at - which decides whether a detected name is dropped, what the
+    /// configured one is covered alongside, and whether an already-covered name is still this machine's.
+    /// An address answers for itself.
+    /// </param>
+    /// <param name="alreadyCovered">
+    /// The names on the certificate being served, or empty when there is none.
     /// </param>
     /// <param name="cancellationToken">The usual.</param>
     public static async Task<IReadOnlyList<string>> ForThisMachineAsync(PrusaConnectOptions connect,
                                                                         IReadOnlyList<IPNetwork> containerNetworks,
                                                                         IHostAddressResolver resolver,
+                                                                        IReadOnlyList<string> alreadyCovered,
                                                                         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(resolver);
+        ArgumentNullException.ThrowIfNull(alreadyCovered);
+
         List<string> names = [];
 
         if (connect?.IsPrinterAddressConfigured == true)
@@ -103,6 +120,20 @@ public static class PrinterCertificateNames
             if (!ProvisioningBundleBuilder.IsUnreachableByPrinters(resolved, containerNetworks))
             {
                 names.Add(suggestion.Value);
+            }
+        }
+
+        HashSet<IPAddress> detected = [.. names.Select(name => IPAddress.TryParse(name, out IPAddress? address) ? address : null)
+                                               .OfType<IPAddress>()];
+
+        foreach (string name in alreadyCovered.Where(name => !names.Contains(name, StringComparer.OrdinalIgnoreCase)))
+        {
+            IReadOnlyList<IPAddress> resolved = await resolver.ResolveAsync(name, cancellationToken);
+
+            if (resolved.Any(address => detected.Contains(address) &&
+                                        ProvisioningBundleBuilder.CouldReachAPrinter(address, containerNetworks)))
+            {
+                names.Add(name);
             }
         }
 

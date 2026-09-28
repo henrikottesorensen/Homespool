@@ -143,6 +143,7 @@ public static class PrinterCertificateStartup
                 connect,
                 certificates.ParsedContainerNetworks,
                 services.GetRequiredService<IHostAddressResolver>(),
+                [],
                 CancellationToken.None).GetAwaiter().GetResult()
         ];
 

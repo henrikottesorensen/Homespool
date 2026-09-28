@@ -34,6 +34,7 @@ namespace Homespool.Data.Migrations
                         .Annotation("Sqlite:Autoincrement", true),
                     Uuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     Language = table.Column<string>(type: "TEXT", maxLength: 16, nullable: true),
+                    MutedNotifications = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     DefaultPrinterId = table.Column<int>(type: "INTEGER", nullable: true),
                     DeactivatedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     UserName = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
@@ -261,6 +262,7 @@ namespace Homespool.Data.Migrations
                     LastDeliveredAt = table.Column<long>(type: "INTEGER", nullable: true),
                     LastFailedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     ConsecutiveFailures = table.Column<int>(type: "INTEGER", nullable: false),
+                    ConsecutiveRefusals = table.Column<int>(type: "INTEGER", nullable: false, defaultValue: 0),
                     Endpoint = table.Column<string>(type: "TEXT", maxLength: 1024, nullable: true),
                     P256dh = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
                     Auth = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true)

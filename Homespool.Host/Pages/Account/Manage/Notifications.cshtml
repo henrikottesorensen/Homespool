@@ -115,6 +115,21 @@ else
     </table>
 }
 
+<h2 class="mt-4">@Localiser["Notifications_KindsHeading"]</h2>
+<p class="text-body-secondary">@Localiser["Notifications_KindsHint"]</p>
+
+<form id="notifications-kinds-form" method="post" asp-page-handler="Kinds">
+    @foreach (var choice in Model.Kinds)
+    {
+        <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="enabled" value="@choice.Kind"
+                   id="kind-@choice.Kind" checked="@choice.Enabled" />
+            <label class="form-check-label" for="kind-@choice.Kind">@Localiser[choice.LabelKey]</label>
+        </div>
+    }
+    <button id="notifications-kinds-save" type="submit" class="btn btn-primary mt-2">@Localiser["Notifications_KindsSave"]</button>
+</form>
+
 @section Scripts {
     <script src="~/js/push-notifications.js" asp-append-version="true"></script>
 }

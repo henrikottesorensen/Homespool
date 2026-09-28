@@ -32,6 +32,21 @@ public sealed class NotificationDestinationService
     /// <summary>The test notification's tag, so a second test replaces the first on screen.</summary>
     public const string TestTag = "homespool-test";
 
+    /// <summary>
+    /// How many destinations one account may have. Far more than anybody's browsers and phones, and a
+    /// bound on how many requests one event can make the server send on one person's behalf.
+    /// </summary>
+    public const int MaxPerAccount = 16;
+
+    /// <summary>
+    /// How many refusals in a row remove a destination. More than one, so a single mistake of ours - a
+    /// malformed request refused for every destination at once - does not delete them all.
+    /// </summary>
+    public const int RemoveAfterRefusals = 5;
+
+    /// <summary>How soon after anything was last sent to a destination a test may be sent to it.</summary>
+    public static readonly TimeSpan TestCooldown = TimeSpan.FromSeconds(10);
+
     private readonly HomespoolDbContext _db;
     private readonly WebPushEndpointPolicy _endpoints;
     private readonly IReadOnlyDictionary<Model.NotificationChannelKind, INotificationChannel> _channels;
@@ -100,6 +115,12 @@ public sealed class NotificationDestinationService
         WebPushDestination? existing = await _db.WebPushDestinations
                                                 .SingleOrDefaultAsync(row => row.Endpoint == endpoint, cancellationToken);
 
+        if (existing is null &&
+            await _db.NotificationDestinations.CountAsync(row => row.UserId == userId, cancellationToken) >= MaxPerAccount)
+        {
+            return WebPushSubscribeResult.TooMany;
+        }
+
         if (existing is null)
         {
             existing = new WebPushDestination
@@ -132,6 +153,7 @@ public sealed class NotificationDestinationService
             existing.LastDeliveredAt = null;
             existing.LastFailedAt = null;
             existing.ConsecutiveFailures = 0;
+            existing.ConsecutiveRefusals = 0;
         }
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -158,9 +180,14 @@ public sealed class NotificationDestinationService
 
     /// <summary>
     /// Sends a test notification to one of the owner's destinations, in the owner's language, and
-    /// records how it went. Null when they have no destination by that id.
+    /// records how it went.
     /// </summary>
-    public async Task<DeliveryOutcome?> SendTestAsync(long userId, Guid uuid, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <b>Not more often than <see cref="TestCooldown"/> per destination</b>, measured from whatever
+    /// was last sent to it. Each press is a request from this server to a push service, and a button
+    /// has no other limit on how fast it can be pressed.
+    /// </remarks>
+    public async Task<TestSendResult> SendTestAsync(long userId, Guid uuid, CancellationToken cancellationToken)
     {
         NotificationDestination? destination = await _db.NotificationDestinations
                                                         .SingleOrDefaultAsync(row => row.UserId == userId && row.Uuid == uuid,
@@ -168,7 +195,15 @@ public sealed class NotificationDestinationService
 
         if (destination is null)
         {
-            return null;
+            return TestSendResult.NotFound;
+        }
+
+        DateTimeOffset now = _time.GetUtcNow();
+
+        if ((destination.LastDeliveredAt is { } delivered && now - delivered < TestCooldown) ||
+            (destination.LastFailedAt is { } failed && now - failed < TestCooldown))
+        {
+            return TestSendResult.TooSoon;
         }
 
         string? language = await _db.Users
@@ -188,12 +223,70 @@ public sealed class NotificationDestinationService
 
         DeliveryOutcome outcome = await DeliverAsync(destination, message, cancellationToken);
 
-        return outcome;
+        return outcome switch
+        {
+            DeliveryOutcome.Delivered => TestSendResult.Delivered,
+            DeliveryOutcome.Transient => TestSendResult.Transient,
+            DeliveryOutcome.Gone => TestSendResult.Gone,
+            DeliveryOutcome.Refused => TestSendResult.Refused,
+            _ => throw new InvalidOperationException($"A channel answered {outcome}."),
+        };
     }
 
     /// <summary>
-    /// Delivers through the destination's channel and records the outcome on it: the time and a reset
-    /// count on success, a count on failure, and the row itself removed when the destination is gone.
+    /// Delivers <paramref name="message"/> to every destination <paramref name="userId"/> has, and
+    /// answers how many accepted it.
+    /// </summary>
+    /// <remarks>
+    /// Each destination's outcome is recorded on it as a test send's is, so a browser that stopped
+    /// hearing shows as failing on the settings page, and one its service says is gone disappears.
+    /// </remarks>
+    public async Task<int> DeliverToAllAsync(long userId, NotificationMessage message, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        List<NotificationDestination> destinations = await _db.NotificationDestinations
+                                                              .Where(destination => destination.UserId == userId)
+                                                              .ToListAsync(cancellationToken);
+        int delivered = 0;
+
+        foreach (NotificationDestination destination in destinations)
+        {
+            if (await DeliverAsync(destination, message, cancellationToken) == DeliveryOutcome.Delivered)
+            {
+                delivered++;
+            }
+        }
+
+        return delivered;
+    }
+
+    /// <summary>The kinds <paramref name="userId"/> has turned off.</summary>
+    public async Task<IReadOnlySet<Model.NotificationKind>> MutedAsync(long userId, CancellationToken cancellationToken)
+    {
+        string? stored = await _db.Users
+                                  .Where(user => user.Id == userId)
+                                  .Select(user => user.MutedNotifications)
+                                  .SingleOrDefaultAsync(cancellationToken);
+
+        return NotificationMutes.Parse(stored);
+    }
+
+    /// <summary>Turns off exactly <paramref name="muted"/> for <paramref name="userId"/>, and nothing else.</summary>
+    public async Task SetMutedAsync(long userId, IEnumerable<Model.NotificationKind> muted, CancellationToken cancellationToken)
+    {
+        string? stored = NotificationMutes.Format(muted);
+
+        await _db.Users
+                 .Where(user => user.Id == userId)
+                 .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.MutedNotifications, stored),
+                                     cancellationToken);
+    }
+
+    /// <summary>
+    /// Delivers through the destination's channel and records the outcome on it: the time and reset
+    /// counts on success, counts on failure, and the row itself removed when the destination is gone -
+    /// or has been refused <see cref="RemoveAfterRefusals"/> times running.
     /// </summary>
     private async Task<DeliveryOutcome> DeliverAsync(NotificationDestination destination,
                                                      NotificationMessage message,
@@ -212,6 +305,7 @@ public sealed class NotificationDestinationService
             case DeliveryOutcome.Delivered:
                 destination.LastDeliveredAt = now;
                 destination.ConsecutiveFailures = 0;
+                destination.ConsecutiveRefusals = 0;
                 break;
 
             case DeliveryOutcome.Gone:
@@ -221,9 +315,23 @@ public sealed class NotificationDestinationService
                 break;
 
             case DeliveryOutcome.Transient:
+                destination.LastFailedAt = now;
+                destination.ConsecutiveFailures++;
+                destination.ConsecutiveRefusals = 0;
+                break;
+
             case DeliveryOutcome.Refused:
                 destination.LastFailedAt = now;
                 destination.ConsecutiveFailures++;
+                destination.ConsecutiveRefusals++;
+
+                if (destination.ConsecutiveRefusals >= RemoveAfterRefusals)
+                {
+                    _db.NotificationDestinations.Remove(destination);
+                    _logger.LogWarning("Notification destination {DestinationId} was refused {Refusals} times running and was removed.",
+                                       destination.Uuid, destination.ConsecutiveRefusals);
+                }
+
                 break;
 
             default:

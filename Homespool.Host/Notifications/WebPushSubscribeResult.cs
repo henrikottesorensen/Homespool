@@ -14,4 +14,7 @@ public enum WebPushSubscribeResult
 
     /// <summary>The keys are not a P-256 public key on the curve and a 16-byte secret.</summary>
     KeysInvalid = 3,
+
+    /// <summary>The account already has as many destinations as one may.</summary>
+    TooMany = 4,
 }

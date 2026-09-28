@@ -52,6 +52,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("e2e-fake");
     private readonly CapturingSink _logs = new();
     private readonly List<string> _offerDirectories = [];
+    private readonly Homespool.Host.Test.FakePushService _pushService = new();
     private HomespoolFactory _root = null!;
     private WebApplicationFactory<PrinterAppController> _factory = null!;
 
@@ -59,12 +60,20 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
     {
         _root = new HomespoolFactory(_scratch, null, _logs);
         _factory = _root.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
             services.PostConfigure<PrusaConnectOptions>(options =>
             {
                 options.CommandResponseTimeoutSeconds = 2;
                 options.MessagesPerSecond = 10_000;
                 options.MessageBurst = 100_000;
-            })));
+            });
+
+            // Where a notification goes instead of the network, for the one test that follows a
+            // printer's dialog all the way to a browser.
+            services.AddHttpClient(Notifications.WebPush.WebPushChannel.HttpClientName)
+                    .ConfigurePrimaryHttpMessageHandler(() => _pushService)
+                    .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
+        }));
 
         _ = _factory.Server;
 
@@ -79,6 +88,8 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         await _factory.DisposeAsync();
 
         _root.Dispose();
+        _pushService.Dispose();
+
         foreach (string directory in _offerDirectories)
         {
             if (Directory.Exists(directory))
@@ -360,6 +371,59 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
             AttentionRules.Reason(PrinterStatus.Attention, 23829, text: null)
                           .Should().Be("Please replace filament.",
                                        "and it decodes to the sentence Prusa write for that code");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// A printer stopping on a dialog reaches its owner's browser: the state change over the socket,
+    /// the telemetry writer telling the attention watch, the watcher letting it settle, the router, and
+    /// the push - every part of the path a real runout takes.
+    /// </summary>
+    [Fact]
+    public async Task AnAttentionReachesTheOwnersBrowser()
+    {
+        SyntheticTelemetrySource source = new()
+        {
+            IdleInterval = TimeSpan.FromMilliseconds(50),
+            PrintingInterval = TimeSpan.FromMilliseconds(50),
+        };
+
+        (FakePrinterClient fake, Task run, int printerId, long userId) =
+            await StartConnectedFakeAsync(new FakePrinterOptions { TelemetrySource = source });
+
+        using Homespool.Host.Test.FakePushBrowser browser = Homespool.Host.Test.FakePushService.NewBrowser();
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            context.WebPushDestinations.Add(new WebPushDestination
+            {
+                UserId = userId,
+                Endpoint = browser.Endpoint,
+                P256dh = browser.P256dh,
+                Auth = browser.Auth,
+                Name = "Owner's phone",
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        await using (fake)
+        {
+            fake.Device.ReportAttention(23829);
+
+            bool arrived = await WaitUntilAsync(() => Task.FromResult(_pushService.Received.Count > 0), TimeSpan.FromSeconds(20));
+
+            arrived.Should().BeTrue("the dialog settles in seconds and is sent at the watcher's next look");
+
+            JsonElement payload = browser.DecryptJson(_pushService.Received[0].Body);
+
+            payload.GetProperty("title").GetString().Should().Be("Fake printer needs you");
+            payload.GetProperty("body").GetString().Should().Be("Please replace filament.");
 
             await EndRunAsync(fake, run);
         }

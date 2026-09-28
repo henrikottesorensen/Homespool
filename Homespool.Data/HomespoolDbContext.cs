@@ -729,6 +729,12 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.Property(e => e.Name)
                   .HasMaxLength(NotificationDestination.NameMaxLength);
 
+            // A default so the column can be added to a table already holding rows - ALTER TABLE
+            // cannot add a NOT NULL column without one, and an appliance upgrades in place. Zero is
+            // also the CLR default, so an insert that leaves it alone means the same either way.
+            entity.Property(e => e.ConsecutiveRefusals)
+                  .HasDefaultValue(0);
+
             // Cascade: a destination outliving its account would be somewhere to tell nobody.
             entity.HasOne<HSUser>()
                   .WithMany()

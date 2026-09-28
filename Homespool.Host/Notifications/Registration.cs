@@ -56,6 +56,25 @@ public static class Registration
         // Scoped: holds a DbContext.
         services.AddScoped<NotificationDestinationService>();
 
+        // What notices things to say. The attention watch is the telemetry writer's observer - the one
+        // place a printer's state before and after a message both exist - and the watcher reads what
+        // the queue has committed. Both publish to one queue, which never makes them wait.
+        services.AddSingleton<NotificationQueue>();
+        services.AddSingleton<AttentionWatch>();
+        services.AddSingleton<Telemetry.ILiveStateObserver>(provider => provider.GetRequiredService<AttentionWatch>());
+
+        // Resolvable as itself as well as a hosted service, following QueueAdvancer: a test drives one
+        // look rather than waiting out the interval.
+        services.AddSingleton<NotificationWatcher>();
+        services.AddHostedService(provider => provider.GetRequiredService<NotificationWatcher>());
+
+        // Singleton because it is the memory of what was sent, per printer, across every happening.
+        services.AddSingleton<NotificationThrottle>();
+
+        // Scoped, like the destinations it delivers through; the dispatcher makes one per happening.
+        services.AddScoped<NotificationRouter>();
+        services.AddHostedService<NotificationDispatcher>();
+
         return services;
     }
 }

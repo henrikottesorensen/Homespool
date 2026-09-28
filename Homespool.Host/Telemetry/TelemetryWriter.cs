@@ -185,6 +185,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly ILogger<TelemetryWriter> _logger;
     private readonly TimeProvider _timeProvider;
 
+    // Told how each printer's state moved - see ILiveStateObserver. Optional, so a writer built for a
+    // test that does not care has nobody to tell.
+    private readonly ILiveStateObserver? _observer;
+    private readonly Services.LogThrottle _observerFailures = new(TimeSpan.FromSeconds(10));
+
     // Both wire-rate log sites in this class go through a LogThrottle: drops are recorded on
     // whatever producer thread hit the full channel, processing failures on the drain loop, and
     // either can arrive at wire rate (the second is attacker-driveable - a stream of deliberately
@@ -220,9 +225,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     public TelemetryWriter(IServiceScopeFactory scopeFactory,
                            IOptionsMonitor<StorageOptions> options,
                            ILogger<TelemetryWriter> logger,
-                           TimeProvider timeProvider)
+                           TimeProvider timeProvider,
+                           ILiveStateObserver? observer = null)
     {
         _scopeFactory = scopeFactory;
+        _observer = observer;
         _storage = options;
 
         // Captured, deliberately, and not read from the monitor at the point of use like the ingest
@@ -872,8 +879,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             cache[item.PrinterId] = entry;
         }
 
+        LiveStateSnapshot before = LiveStateSnapshot.Of(entry.State);
+
         PrinterLiveStateMerger.Apply(entry.State, item.Data, item.ReceivedAt);
         dirtyPrinterIds.Add(item.PrinterId);
+
+        Tell(item.PrinterId, before, entry.State, item.ReceivedAt);
 
         // Printer.LoadedMaterial lives on a different table from PrinterLiveState, so it can't ride
         // along in the merge above; carried on the cache entry instead and applied at flush.
@@ -1229,6 +1240,37 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
+    /// Tells the observer how one message moved a printer's state, and keeps anything it throws off
+    /// the loop.
+    /// </summary>
+    /// <remarks>
+    /// Caught here rather than left to the loop's catch-all, because that one drops the message - and
+    /// a sample or an event lost because something reacting to it failed would be the wrong way round.
+    /// Throttled like the loop's own failure warning, since it can happen at wire rate.
+    /// </remarks>
+    private void Tell(int printerId, LiveStateSnapshot before, PrinterLiveState after, DateTimeOffset at)
+    {
+        if (_observer is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _observer.Observed(printerId, before, LiveStateSnapshot.Of(after), at);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            if (_observerFailures.Record() is { } window)
+            {
+                _logger.LogError(e,
+                                 "[{PrinterId}] the live-state observer failed - {Count} time(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. Telemetry is unaffected.",
+                                 printerId, window.Count, window.Elapsed.TotalSeconds, window.Total);
+            }
+        }
+    }
+
+    /// <summary>
     /// A drive listing waiting for the next flush, with the moment it was heard - which the wire does
     /// not carry and only the writer knows, since the edge that parsed it has no clock in scope.
     /// </summary>
@@ -1270,9 +1312,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 cache[item.PrinterId] = entry;
             }
 
+            LiveStateSnapshot before = LiveStateSnapshot.Of(entry.State);
+
             entry.State.AttentionCode = record.Attention?.Code;
             entry.State.AttentionText = record.Attention?.Text;
             dirtyPrinterIds.Add(item.PrinterId);
+
+            Tell(item.PrinterId, before, entry.State, item.ReceivedAt);
         }
 
         if (record.Cancellable is { } cancellable)

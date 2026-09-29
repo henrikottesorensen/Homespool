@@ -135,17 +135,20 @@ public sealed class PrintQueueLayoutTests(Browsers browsers)
 
             await page.GotoAsync($"/Files?printerUuid={printer}");
 
-            // In the order they should queue, each waiting for the page the post lands on before the
-            // next click, so no click can meet a page that is on its way out.
+            // In the order they should queue, each waiting until the page the post lands on says that
+            // file was queued before the next click. Only the new page carries that sentence, so no click
+            // can meet a page that is on its way out. A wait for the navigation's response and then for
+            // "load" cannot promise the same: WebKit's click can return before the form has posted, and
+            // the outgoing page's own "load" then answers the wait. The timeout is Playwright's default for
+            // an action rather than for an assertion, because this covers the post, its redirect and the new
+            // page arriving, not a check of a page that is already there.
             foreach (string file in Names)
             {
                 ILocator queue = page.Locator("table tbody tr", new() { HasText = file })
                                      .Locator("button[formaction*='handler=Queue']");
 
-                await page.RunAndWaitForResponseAsync(
-                    () => queue.ClickAsync(),
-                    response => response.Request.IsNavigationRequest && response.Request.Method == "GET");
-                await page.WaitForLoadStateAsync(LoadState.Load);
+                await queue.ClickAsync();
+                await Expect(page.GetByRole(AriaRole.Alert)).ToHaveTextAsync($"Queued {file}.", new() { Timeout = 30_000 });
             }
 
             await page.SetViewportSizeAsync(width, height);

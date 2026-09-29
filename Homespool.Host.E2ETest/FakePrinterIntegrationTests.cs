@@ -1193,7 +1193,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
 
         problem.GetProperty("detail").GetString().Should().Be("File not found",
                                                               "the printer's own words, not ours");
-        problem.GetProperty("command").GetString().Should().Be("SEND_FILE_INFO");
+        problem.GetProperty("command").GetString().Should().Be("browse", "the act as the API names it, not the wire command");
         problem.GetProperty("outcome").GetString().Should().Be("Rejected");
 
         await EndRunAsync(fake, run);

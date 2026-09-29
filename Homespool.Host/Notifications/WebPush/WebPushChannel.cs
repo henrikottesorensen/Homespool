@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -12,6 +11,7 @@ using Lib.Net.Http.WebPush;
 
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -33,8 +33,16 @@ namespace Homespool.Host.Notifications.WebPush;
 /// </para>
 /// <para>
 /// <b>An endpoint is never logged.</b> It is a capability URL, and the library's exception carries it -
-/// so failures are logged by the destination's public id and the status code, and the exception object
-/// is not handed to the logger.
+/// so failures are logged by the destination's public id, the status code and what the push service
+/// said, and the exception object is not handed to the logger. What it said is logged because a status
+/// alone does not say which header was wrong: Apple's push service answers with a 400 or a 403 and
+/// puts the reason in the body.
+/// </para>
+/// <para>
+/// <b>No <c>Topic</c> header</b>, although RFC 8030 offers one for replacing a message still queued
+/// for an offline device. Apple's push service has been refusing pushes that carry one with
+/// <c>400 BadWebPushTopic</c>, and what it would buy is already done on screen: the message's tag goes
+/// in the payload, and the browser replaces a notification with the next one of the same tag.
 /// </para>
 /// </remarks>
 public sealed class WebPushChannel : INotificationChannel
@@ -48,10 +56,13 @@ public sealed class WebPushChannel : INotificationChannel
     /// </summary>
     public const int MaxPayloadBytes = 4096 - 86 - 16 - 1;
 
-    private static readonly JsonSerializerOptions PayloadJson = new(JsonSerializerDefaults.Web);
+    /// <summary>
+    /// How much of a push service's answer a log line keeps: a reason is a word or a sentence, and the
+    /// body is the other side's to make as long as it likes.
+    /// </summary>
+    private const int MaxLoggedAnswerLength = 200;
 
-    private static readonly SearchValues<char> TopicCharacters =
-        SearchValues.Create("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_");
+    private static readonly JsonSerializerOptions PayloadJson = new(JsonSerializerDefaults.Web);
 
     private readonly IHttpClientFactory _clients;
     private readonly VapidKeyStore _keys;
@@ -81,11 +92,6 @@ public sealed class WebPushChannel : INotificationChannel
         if (destination is not WebPushDestination browser)
         {
             throw new ArgumentException($"A {destination.Kind} destination was handed to the Web Push channel.", nameof(destination));
-        }
-
-        if (!IsValidTag(message.Tag))
-        {
-            throw new ArgumentException($"A notification's tag must be 1 to {NotificationMessage.MaxTagLength} URL-safe characters.", nameof(message));
         }
 
         // Asked again at every delivery, not only when the row was stored: the allowlist is
@@ -125,7 +131,6 @@ public sealed class WebPushChannel : INotificationChannel
 
         PushMessage push = new(content)
         {
-            Topic = message.Tag,
             Urgency = ToPushUrgency(message.Urgency),
             TimeToLive = (int)Math.Clamp(message.TimeToLive.TotalSeconds, 0, int.MaxValue),
         };
@@ -140,8 +145,8 @@ public sealed class WebPushChannel : INotificationChannel
         {
             DeliveryOutcome outcome = ForStatus(refusal.StatusCode);
 
-            _logger.LogWarning("The push service answered {StatusCode} for browser subscription {DestinationId}, which counts as {Outcome}.",
-                               (int)refusal.StatusCode, browser.Uuid, outcome);
+            _logger.LogWarning("The push service answered {StatusCode} for browser subscription {DestinationId}, which counts as {Outcome}: {Answer}",
+                               (int)refusal.StatusCode, browser.Uuid, outcome, LogText.Clean(refusal.Body, MaxLoggedAnswerLength));
 
             return outcome;
         }
@@ -195,14 +200,6 @@ public sealed class WebPushChannel : INotificationChannel
             408 or 429 or >= 500 => DeliveryOutcome.Transient,
             _ => DeliveryOutcome.Refused,
         };
-    }
-
-    /// <summary>Whether a tag can be sent as a push topic: RFC 8030's alphabet and length.</summary>
-    public static bool IsValidTag(string? tag)
-    {
-        return !string.IsNullOrEmpty(tag) &&
-               tag.Length <= NotificationMessage.MaxTagLength &&
-               !tag.AsSpan().ContainsAnyExcept(TopicCharacters);
     }
 
     private static PushMessageUrgency ToPushUrgency(NotificationUrgency urgency)

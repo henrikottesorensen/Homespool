@@ -1961,6 +1961,260 @@ public sealed class QueueAdvancerTests : IDisposable
         job.State.Should().Be(PrintState.Finished, "the printer remembered how it ended");
     }
 
+    /// <summary>
+    /// A print begins when the filament odometer first rises past the reading it opened with, not when
+    /// the printer says <c>PRINTING</c> - and what it extruded is the reading at the end less that one.
+    /// </summary>
+    /// <remarks>
+    /// The MK3.5's shape: <c>PRINTING</c> from the first report with the nozzle cold, minutes of homing,
+    /// probing and heating, and a retraction on the way that dips the reading below where it started.
+    /// A dip is still "not yet", which is why the rule is a rise above the opening reading and not a
+    /// change from it.
+    /// </remarks>
+    [Fact]
+    public async Task APrintBeginsWhenItsFilamentFirstRisesAndRecordsWhatItUsed()
+    {
+        // Arrange - printing, and the first reading of this print heard
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+        using QueueAdvancer advancer = NewAdvancer();
+        DateTimeOffset started = _clock.GetUtcNow();
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1000f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Warm-up: a retraction below the opening reading, and back to it
+        _clock.Advance(TimeSpan.FromSeconds(100));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 998f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(60));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1000f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        PrintJob warming = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        warming.FilamentAtStart.Should().Be(1000f);
+        warming.BegunAt.Should().BeNull("nothing has left the nozzle yet, whatever the status says");
+
+        // Act - plastic
+        _clock.Advance(TimeSpan.FromSeconds(8));
+        DateTimeOffset firstPlastic = _clock.GetUtcNow();
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1003.5f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromMinutes(13));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1500f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Finished, jobId: null);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.State.Should().Be(PrintState.Finished);
+        job.BegunAt.Should().Be(firstPlastic);
+        (job.BegunAt - started).Should().Be(TimeSpan.FromSeconds(173));
+        job.FilamentAtEnd.Should().Be(1500f, "the last reading heard during the print, which a finished screen no longer sends");
+        job.FilamentUsed.Should().Be(500f);
+    }
+
+    /// <summary>
+    /// The reading standing when a print is commanded is the previous print's, and is not taken as
+    /// this one's opening reading.
+    /// </summary>
+    /// <remarks>
+    /// Firmware sends the odometer only while it has a job, so between prints the live value is
+    /// whatever the last print said. Anything that moved the extruder since would read, once this
+    /// print reported, as the first plastic.
+    /// </remarks>
+    [Fact]
+    public async Task AReadingLeftFromThePreviousPrintIsNotTheOpeningOne()
+    {
+        // Arrange - a reading this run heard, before the print was opened
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Printing);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await ReportAsync(context, PrinterStatus.Idle, jobId: null, filament: 900f);
+
+        _clock.Advance(TimeSpan.FromSeconds(30));
+        context.QueuedPrints.RemoveRange(context.QueuedPrints);
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "frame.bgcode",
+            QueuedByUserId = 1,
+            StartedAt = _clock.GetUtcNow(),
+            CommandedAt = _clock.GetUtcNow(),
+            FirmwareJobId = 790,
+            State = PrintState.Printing,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken)).FilamentAtStart
+            .Should().BeNull("900 was heard before this print existed");
+
+        _clock.Advance(TimeSpan.FromSeconds(3));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 912f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.FilamentAtStart.Should().Be(912f, "the first reading this print reported");
+        job.BegunAt.Should().BeNull("a reading that differs from the previous print's is not plastic moving");
+    }
+
+    /// <summary>
+    /// A reading that rose while this process was not running is not written as when the print began.
+    /// </summary>
+    /// <remarks>
+    /// The first pass after a restart would otherwise record the restart as the first extrusion. Null
+    /// is the honest answer: the moment happened and nobody here saw it.
+    /// </remarks>
+    [Fact]
+    public async Task AFilamentRiseNobodyHereSawIsNotWhenThePrintBegan()
+    {
+        // Arrange - the opening reading taken by the run before this one, and still standing in live
+        // state from then
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+
+        PrintJob opened = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        opened.FilamentAtStart = 1000f;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1000f);
+
+        _clock.Advance(TimeSpan.FromMinutes(4));
+        using QueueAdvancer restarted = NewAdvancer();
+
+        // A pass on a report that carries no reading: the 1000 standing is the old run's, and is not
+        // this run seeing the print before it moved.
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790);
+        await restarted.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Act - the first reading this run hears is already past it, and then more
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1080f);
+        await restarted.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1090f);
+        await restarted.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.BegunAt.Should().BeNull("the rise happened while nothing here was listening");
+        job.FilamentAtStart.Should().Be(1000f, "the opening reading is still good for what the print used");
+    }
+
+    /// <summary>
+    /// A print opened before this process started gets no opening reading from after the restart.
+    /// </summary>
+    /// <remarks>
+    /// The first report after a restart may already be past the first extrusion, and an opening reading
+    /// taken there would make the very next rise look like the start - and undercount what it used.
+    /// </remarks>
+    [Fact]
+    public async Task APrintOpenedBeforeARestartTakesNoOpeningReadingAfterIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        using QueueAdvancer restarted = NewAdvancer();
+
+        // Act
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1000f);
+        await restarted.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1010f);
+        await restarted.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.FilamentAtStart.Should().BeNull();
+        job.BegunAt.Should().BeNull();
+    }
+
+    /// <summary>A print adopted from the panel was noticed, not started, and gets no filament readings.</summary>
+    [Fact]
+    public async Task APanelPrintGetsNoFilamentReadings()
+    {
+        // Arrange - no command of ours started it
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+
+        PrintJob adopted = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        adopted.CommandedAt = null;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1000f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1010f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.FilamentAtStart.Should().BeNull("the first extrusion may have passed before the print was noticed");
+        job.BegunAt.Should().BeNull();
+    }
+
+    /// <summary>
+    /// An ending the printer did not state records no closing reading, so what the print used is left
+    /// unknown rather than recorded short.
+    /// </summary>
+    [Fact]
+    public async Task AnEndingThePrinterDidNotStateRecordsNoClosingReading()
+    {
+        // Arrange - an opening reading and some plastic
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1000f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 790, filament: 1200f);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Act - it stopped printing without saying how, and nothing is connected to ask
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await ReportAsync(context, PrinterStatus.Unknown, jobId: null);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.EndedAt.Should().NotBeNull();
+        job.BegunAt.Should().NotBeNull();
+        job.FilamentAtEnd.Should().BeNull("how much was printed after the last reading nobody heard");
+        job.FilamentUsed.Should().BeNull();
+    }
+
     /// <summary>One open print on the test printer, with the firmware job id and authority a promoted row carries.</summary>
     private async Task<HomespoolDbContext> OpenPrintAsync(PrinterStatus status)
     {
@@ -1995,9 +2249,11 @@ public sealed class QueueAdvancerTests : IDisposable
     /// <summary>Overwrites what the printer is last known to have said.</summary>
     /// <remarks>
     /// <c>LastSeenAt</c> moves with it, deliberately: a live state that has not been refreshed since
-    /// the command is not an answer about it, and several rules turn on exactly that.
+    /// the command is not an answer about it, and several rules turn on exactly that. A
+    /// <paramref name="filament"/> reading is heard now too; without one, whatever reading was
+    /// standing stays, with the time it was heard, as a message not carrying the field leaves it.
     /// </remarks>
-    private async Task ReportAsync(HomespoolDbContext context, PrinterStatus status, int? jobId)
+    private async Task ReportAsync(HomespoolDbContext context, PrinterStatus status, int? jobId, float? filament = null)
     {
         context.ChangeTracker.Clear();
 
@@ -2008,6 +2264,12 @@ public sealed class QueueAdvancerTests : IDisposable
         live.Status = status;
         live.JobId = jobId;
         live.LastSeenAt = _clock.GetUtcNow();
+
+        if (filament is not null)
+        {
+            live.FilamentUsed = filament;
+            live.FilamentUsedAt = _clock.GetUtcNow();
+        }
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }

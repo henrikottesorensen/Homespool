@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260929082210_InitialCreate")]
+    [Migration("20260929175346_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -234,9 +234,7 @@ namespace Homespool.Data.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValue("Signup");
+                        .HasColumnType("TEXT");
 
                     b.Property<long?>("UsedAt")
                         .HasColumnType("INTEGER");
@@ -428,6 +426,9 @@ namespace Homespool.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<long?>("BegunAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("CommandedAt")
                         .HasColumnType("INTEGER");
 
@@ -436,6 +437,12 @@ namespace Homespool.Data.Migrations
 
                     b.Property<long?>("EndedAt")
                         .HasColumnType("INTEGER");
+
+                    b.Property<float?>("FilamentAtEnd")
+                        .HasColumnType("REAL");
+
+                    b.Property<float?>("FilamentAtStart")
+                        .HasColumnType("REAL");
 
                     b.Property<string>("FileName")
                         .IsRequired()
@@ -701,6 +708,9 @@ namespace Homespool.Data.Migrations
                     b.Property<float?>("FilamentUsed")
                         .HasColumnType("REAL");
 
+                    b.Property<long?>("FilamentUsedAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("Flow")
                         .HasColumnType("INTEGER");
 
@@ -866,6 +876,14 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("FingerPrint")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Firmware")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
                         .IsRequired()
                         .HasColumnType("TEXT");
 

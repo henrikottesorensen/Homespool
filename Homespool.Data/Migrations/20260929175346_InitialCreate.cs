@@ -371,7 +371,7 @@ namespace Homespool.Data.Migrations
                     InvitedBy = table.Column<long>(type: "INTEGER", nullable: false),
                     TeamId = table.Column<int>(type: "INTEGER", nullable: true),
                     RecoversUserId = table.Column<long>(type: "INTEGER", nullable: true),
-                    Type = table.Column<string>(type: "TEXT", nullable: false, defaultValue: "Signup"),
+                    Type = table.Column<string>(type: "TEXT", nullable: false),
                     ClearsTwoFactor = table.Column<bool>(type: "INTEGER", nullable: false)
                 },
                 constraints: table =>
@@ -547,6 +547,7 @@ namespace Homespool.Data.Migrations
                     ExtruderFan = table.Column<int>(type: "INTEGER", nullable: true),
                     PrintFan = table.Column<int>(type: "INTEGER", nullable: true),
                     FilamentUsed = table.Column<float>(type: "REAL", nullable: true),
+                    FilamentUsedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     TimeToFilamentChange = table.Column<int>(type: "INTEGER", nullable: true),
                     ChamberTemperature = table.Column<float>(type: "REAL", nullable: true),
                     ChamberTargetTemperature = table.Column<int>(type: "INTEGER", nullable: true),
@@ -652,11 +653,14 @@ namespace Homespool.Data.Migrations
                     PrinterPath = table.Column<string>(type: "TEXT", nullable: true),
                     StartedAt = table.Column<long>(type: "INTEGER", nullable: false),
                     CommandedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    BegunAt = table.Column<long>(type: "INTEGER", nullable: true),
                     EndedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     FirmwareJobId = table.Column<int>(type: "INTEGER", nullable: true),
                     State = table.Column<string>(type: "TEXT", nullable: false),
                     StoppedByUserId = table.Column<long>(type: "INTEGER", nullable: true),
-                    Reason = table.Column<string>(type: "TEXT", nullable: true)
+                    Reason = table.Column<string>(type: "TEXT", nullable: true),
+                    FilamentAtStart = table.Column<float>(type: "REAL", nullable: true),
+                    FilamentAtEnd = table.Column<float>(type: "REAL", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -723,6 +727,8 @@ namespace Homespool.Data.Migrations
                     SerialNumber = table.Column<string>(type: "TEXT", nullable: false),
                     FingerPrint = table.Column<string>(type: "TEXT", nullable: false),
                     TemporaryCode = table.Column<string>(type: "TEXT", nullable: false),
+                    Model = table.Column<string>(type: "TEXT", nullable: false),
+                    Firmware = table.Column<string>(type: "TEXT", nullable: false),
                     TemporaryCodeExpiry = table.Column<long>(type: "INTEGER", nullable: false),
                     CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
                 },

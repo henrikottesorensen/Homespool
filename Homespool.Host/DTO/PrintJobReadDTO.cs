@@ -56,8 +56,20 @@ public class PrintJobReadDTO
     /// <summary>When Homespool sent the start. Null means the print was started at the printer.</summary>
     public DateTimeOffset? CommandedAt { get; set; }
 
+    /// <summary>
+    /// When plastic first moved. Everything from <see cref="StartedAt"/> to here was homing, probing and
+    /// heating. Null when that moment was not seen - which includes every print that never extruded.
+    /// </summary>
+    public DateTimeOffset? BegunAt { get; set; }
+
     /// <summary>When it stopped printing. Null means it is running now.</summary>
     public DateTimeOffset? EndedAt { get; set; }
+
+    /// <summary>
+    /// Filament extruded, in millimetres. Null unless both the start and the end of the print were
+    /// heard from the printer itself.
+    /// </summary>
+    public float? FilamentUsed { get; set; }
 
     /// <summary>
     /// Why it ended badly or never began, in the printer's own words where it gave any. Not translated.
@@ -87,7 +99,9 @@ public class PrintJobReadDTO
             StoppedBy = job.StoppedByUserId is { } stopper ? Person(people, stopper) : null,
             StartedAt = job.StartedAt,
             CommandedAt = job.CommandedAt,
+            BegunAt = job.BegunAt,
             EndedAt = job.EndedAt,
+            FilamentUsed = job.FilamentUsed,
             Reason = job.Reason,
             CanReprint = canReprint,
         };

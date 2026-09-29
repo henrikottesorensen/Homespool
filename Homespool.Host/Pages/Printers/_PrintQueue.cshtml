@@ -14,52 +14,57 @@
 }
 else
 {
-    <table class="table table-sm w-auto align-middle">
-        <thead>
-            <tr>
-                <th scope="col">#</th>
-                <th scope="col">@Localiser["Common_File"]</th>
-                <th scope="col" class="text-end">@Localiser["Files_Size"]</th>
-                <th scope="col">@Localiser["Common_Queued"]</th>
-                <th scope="col">@Localiser["Queue_QueuedBy"]</th>
-                <th scope="col">@Localiser["Common_Status"]</th>
+    @* The roles are for below the phone breakpoint, where site.css lays each entry out as a block
+       of its own: Safari stops announcing a table once its rows are given another display, and the
+       explicit roles keep it one. *@
+    <table class="table table-sm w-auto align-middle queue-table" role="table">
+        <thead role="rowgroup">
+            <tr role="row">
+                <th scope="col" role="columnheader">#</th>
+                <th scope="col" role="columnheader">@Localiser["Common_File"]</th>
+                <th scope="col" class="text-end" role="columnheader">@Localiser["Files_Size"]</th>
+                <th scope="col" role="columnheader">@Localiser["Common_Queued"]</th>
+                <th scope="col" role="columnheader">@Localiser["Queue_QueuedBy"]</th>
+                <th scope="col" role="columnheader">@Localiser["Common_Status"]</th>
                 @if (Model.QueueHasActions)
                 {
-                    <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
+                    <th scope="col" role="columnheader"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
                 }
             </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
             @for (int index = 0; index < Model.Queue.Count; index++)
             {
                 var job = Model.Queue[index];
 
-                <tr>
+                <tr role="row">
                     @* The row's place in the list, not its stored Position - cancelling leaves gaps in
                        those, deliberately, and a gap shown to a person reads as a bug. *@
-                    <td>@(index + 1)</td>
-                    <td class="typed-name">@(job.PrintFile?.Name ?? "(missing)")</td>
-                    <td class="text-end">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
+                    <td class="queue-position" role="cell">@(index + 1)</td>
+                    <td class="typed-name queue-name" role="cell">@(job.PrintFile?.Name ?? "(missing)")</td>
+                    <td class="text-end queue-meta" role="cell">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
 
                     @* Fixed format rather than a culture-dependent one, matching the Files table -
                        and ToLocalTime, without which this column rendered UTC while the print history
                        below it rendered local, two hours apart on the same page. *@
-                    <td>@job.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                    <td class="queue-meta" role="cell">@job.QueuedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
 
                     @* Whose work this is. The loop sends as whoever queued it, so this is also who
-                       the permission will be checked against when it goes. *@
-                    <td class="typed-name">@Model.QueuedByDescription(job)</td>
+                       the permission will be checked against when it goes. data-label is the column
+                       heading again, for the phone layout, where there is no heading above it and a
+                       bare account name among a size and a date says nothing about why it is there. *@
+                    <td class="typed-name queue-meta queue-by" role="cell" data-label="@Localiser["Queue_QueuedBy"]">@Model.QueuedByDescription(job)</td>
 
                     @* Derived on every read - the entry stores no state. Only the head is ever
                        anything but waiting, because the loop never looks past it. *@
-                    <td>@Model.QueueStatusText(Model.QueueStatusOf(index))</td>
+                    <td class="queue-meta" role="cell">@Model.QueueStatusText(Model.QueueStatusOf(index))</td>
 
                     @* Reordering moves everybody's work, so it is ControlPrinter's; removing an entry
                        is Print's for your own and ControlPrinter's for anybody's. A row with neither
                        keeps its empty cell so the columns still line up. *@
                     @if (Model.QueueHasActions)
                     {
-                        <td class="text-nowrap">
+                        <td class="text-nowrap queue-actions" role="cell">
                             @if (Model.CanControlPrinter)
                             {
                                 <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"

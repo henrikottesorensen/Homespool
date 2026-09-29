@@ -438,10 +438,18 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
     /// <b>A fresh install starts in memory without a failed restore.</b>
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The restore reads the application database's live state, which does not exist until the
     /// migration has run. Done before it, startup survives - the failure is caught - but every fresh
     /// install logs a warning about state it never had, and a stale database is read before the guard
     /// has checked its schema.
+    /// </para>
+    /// <para>
+    /// <b>EF's model warnings are left out</b>, because this startup sees them only when it is the
+    /// first in the process to build the model: alone it would fail on one, in a full run usually
+    /// not, and either way the failure would point at the restore. <c>DbContextModelTests</c> builds
+    /// each model in its own sight and fails on them every time.
+    /// </para>
     /// </remarks>
     [Fact]
     public void AFreshInstallStartsInMemoryWithoutAFailedRestore()
@@ -452,6 +460,7 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
         // Assert
         _logs.GetSnapshot()
              .Where(record => record.Level >= LogLevel.Warning)
+             .Where(record => record.Category != DbLoggerCategory.Model.Validation.Name)
              .Select(record => record.Message)
              .Should().BeEmpty("there is nothing to restore, and nothing should have been tried before the tables existed");
     }

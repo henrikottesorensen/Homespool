@@ -37,10 +37,10 @@ public class InvitationService
     /// </summary>
     /// <remarks>
     /// Nothing but this class writes invitations, and it always writes the two together, so a row
-    /// failing this was written by something else - most plausibly a recovery issued before the
-    /// column existed and given its default. Refused rather than resolved: either reading of such a
-    /// row would be a guess about what an administrator meant. An expression rather than a method so
-    /// the address lookup can run it in SQL.
+    /// failing this was written by something else - by hand, or by a repair to the database.
+    /// Refused rather than resolved: either reading of such a row would be a guess about what an
+    /// administrator meant. An expression rather than a method so the address lookup can run it in
+    /// SQL.
     /// </remarks>
     private static readonly Expression<Func<Invitation, bool>> Coherent =
         i => (i.Type == InvitationType.Recovery && i.RecoversUserId != null) ||

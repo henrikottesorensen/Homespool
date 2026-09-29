@@ -696,6 +696,52 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
                 .Should().BeFalse("reaping unregisters");
     }
 
+    /// <summary>
+    /// A printer displaced by another connection under its credential takes its identity back with its
+    /// next post, as last-wins intends - rather than every post failing against the displaced session.
+    /// </summary>
+    /// <remarks>
+    /// The other connection is a stand-in registered straight into the registry, because what matters
+    /// is the registry's displacement and not the socket that caused it. Before the sessions checked
+    /// for it, the second post answered 500: the session handed back the actor the registry had
+    /// completed, and the post threw on its closed mailbox.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterDisplacedByAnotherConnectionTakesItsIdentityBackOnTheNextPost()
+    {
+        // Arrange
+        StartWithCapturingDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        using (HttpRequestMessage request = Post("/p/telemetry", identity, token, TelemetryBody))
+        {
+            using HttpResponseMessage response = await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        PrinterConnectionRegistry registry = _factory.Services.GetRequiredService<PrinterConnectionRegistry>();
+        StandInLink other = new();
+        registry.Register(printerId, other, overPlaintext: false);
+
+        // Act
+        using (HttpRequestMessage request = Post("/p/telemetry", identity, token, TelemetryBody))
+        {
+            using HttpResponseMessage response = await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+            // Assert
+            response.StatusCode.Should().Be(HttpStatusCode.NoContent, "the printer's own post is a fresh session");
+        }
+
+        registry.TryGet(printerId, out IPrinterLink? live).Should().BeTrue();
+        live.Should().NotBeSameAs(other, "the printer's post displaced the other connection in its turn");
+        other.Completed.Should().BeTrue();
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
@@ -854,6 +900,24 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         public TimeSpan DelayBeforeNext(FakeDevice device)
         {
             return _interval;
+        }
+    }
+
+    /// <summary>Another connection holding the printer's identity, reduced to what the registry asks of one.</summary>
+    private sealed class StandInLink : IPrinterLink
+    {
+        public bool Completed { get; private set; }
+
+        public bool IsOpen => !Completed;
+
+        public Task<CommandSendResult> SendAsync(IPrinterIntent intent, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException("Nothing sends to the stand-in in this test.");
+        }
+
+        public void Complete()
+        {
+            Completed = true;
         }
     }
 

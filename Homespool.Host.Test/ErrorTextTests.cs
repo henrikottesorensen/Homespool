@@ -217,7 +217,7 @@ public sealed class ErrorTextTests
             "Cameras_AttachedSourceNotComposed", "Cameras_NotYourTeam", "Cameras_PrinterNotOnTeam",
             "Cameras_StreamServerRefused", "Cameras_StreamServerConfigurationNotSaved",
             "Cameras_StreamServerUnavailable", "Cameras_StreamServerNoCredential",
-            "Cameras_PasswordNotCarriedOver", "Cameras_SourceFragmentAddress",
+            "Cameras_PasswordNotCarriedOver", "Cameras_SourceFragmentAddress", "Cameras_SourcePlaceholder",
             "Cameras_NoPictureLocal", "Cameras_NoPictureNetwork",
             "Bundle_AddressSurvivesLease", "Bundle_AddressIsTheContainers",
             "Bundle_AddressUntilLeaseMoves", "Bundle_AddressUnclassified",

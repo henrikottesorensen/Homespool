@@ -13,9 +13,10 @@ namespace Homespool.FakePrinter;
 /// </summary>
 /// <remarks>
 /// The job block (<c>job_id</c>, <c>time_printing</c>, <c>time_remaining</c>, <c>progress</c>) is
-/// gated on a job existing, and <c>axis_x</c>/<c>axis_y</c> are sent only when <b>not</b> printing
-/// while the fan/filament fields are sent only when printing - the two groups never co-occur
-/// (render.cpp:158-232). <c>state</c> is always sent, last, matching the capture.
+/// gated on <c>has_job</c> rather than on a job id being held (render.cpp:159), and
+/// <c>axis_x</c>/<c>axis_y</c> are sent only when there is <b>no</b> job while the fan/filament fields
+/// are sent only when there is one - firmware's <c>has_job</c> on both sides, so the two groups never
+/// co-occur (render.cpp:216-229). <c>state</c> is always sent, last, matching the capture.
 /// </remarks>
 public static class TelemetryMessageBuilder
 {
@@ -41,7 +42,9 @@ public static class TelemetryMessageBuilder
     /// <summary>The full shape - everything the single-tool capture printer sends, minus its chamber.</summary>
     public static byte[] BuildFull(FakeDevice device, TelemetryReadings readings)
     {
-        bool printing = device.State == DeviceState.Printing;
+        // Firmware's has_job rather than the state, so a paused print still reports its fans and
+        // filament, and a finished one reports positions again.
+        bool hasJob = device.HasJob;
         ArrayBufferWriter<byte> buffer = new();
 
         using (Utf8JsonWriter writer = new(buffer))
@@ -56,7 +59,7 @@ public static class TelemetryMessageBuilder
             writer.WriteNumber("flow", readings.Flow);
             writer.WriteString("material", device.WireMaterialOf(PreferredTool(readings)));
 
-            if (!printing)
+            if (!hasJob)
             {
                 // Positions only when not printing - "connect doesn't want positions during
                 // printing" (render.cpp:216-220).
@@ -66,11 +69,13 @@ public static class TelemetryMessageBuilder
 
             writer.WriteNumber("axis_z", readings.AxisZ);
 
-            if (printing)
+            if (hasJob)
             {
                 writer.WriteNumber("fan_extruder", readings.FanExtruder);
                 writer.WriteNumber("fan_print", readings.FanPrint);
-                writer.WriteNumber("filament", 2428288.0);
+
+                // One decimal, as firmware renders it (JSON_FIELD_FFIXED with precision 1).
+                writer.WriteNumber("filament", Math.Round(device.FilamentUsed, 1));
             }
 
             WriteSlotBlock(writer, device, readings);
@@ -163,12 +168,15 @@ public static class TelemetryMessageBuilder
 
     private static void WriteJobBlock(Utf8JsonWriter writer, FakeDevice device, TelemetryReadings readings)
     {
-        if (!device.JobId.HasValue)
+        // has_job rather than the id (render.cpp:159): a finished printer keeps its job id for
+        // SEND_JOB_INFO, but stops sending the block, and a server clearing job fields when the
+        // block goes missing is reached only if the fake stops too.
+        if (!device.HasJob || device.JobId is not { } jobId)
         {
             return;
         }
 
-        writer.WriteNumber("job_id", device.JobId.Value);
+        writer.WriteNumber("job_id", jobId);
         writer.WriteNumber("time_printing", readings.TimePrinting);
         writer.WriteNumber("time_remaining", readings.TimeRemaining);
 

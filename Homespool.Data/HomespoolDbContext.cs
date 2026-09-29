@@ -455,14 +455,12 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.HasIndex(e => e.Uuid)
                   .IsUnique();
 
-            // Text, like every enum column here. The default is for rows that predate the column:
-            // adding it to a deployed table needs a value for them, and a signup is what every
-            // invite was before recoveries existed. A recovery issued before the column arrives is
-            // labelled wrongly by it, so a deployment is checked for outstanding ones before
-            // upgrading.
+            // Text, like every enum column here, and no default. Every invitation is written with
+            // its type, so a default would only ever speak for a row nobody gave one - and EF would
+            // write it in place of Undefined, making an unset type a signup. Rows in a table that
+            // predates the column have no honest value either: a recovery among them is not one.
             entity.Property(e => e.Type)
-                  .HasConversion<string>()
-                  .HasDefaultValue(InvitationType.Signup);
+                  .HasConversion<string>();
 
             // A nullable team target: null invites mint a new account with its own default team,
             // non-null ones join an existing team. Restrict so an invite cannot outlive its target

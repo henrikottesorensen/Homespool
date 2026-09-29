@@ -35,11 +35,7 @@ public static class BackoffWait
 
         if (remaining < TimeSpan.FromMinutes(1))
         {
-            int seconds = (int)Math.Ceiling(remaining.TotalSeconds);
-
-            return seconds == 1 ?
-                localiser["Common_WaitOneSecond"].Value :
-                localiser["Common_WaitSeconds", seconds].Value;
+            return Plural.Format(localiser, "Common_Seconds", (int)Math.Ceiling(remaining.TotalSeconds));
         }
 
         int minutes = (int)Math.Ceiling(remaining.TotalMinutes);

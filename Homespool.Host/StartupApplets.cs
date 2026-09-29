@@ -104,7 +104,10 @@ public static class StartupApplets
         }
 
         string windowsId = args[1];
-        string? region = args.Length > 2 && !string.IsNullOrWhiteSpace(args[2]) ? args[2] : null;
+
+        // setup-env.sh passes an empty region when the launcher gave none. The framework already reads
+        // an empty or whitespace region as no region, so it goes through as it came.
+        string? region = args.Length > 2 ? args[2] : null;
 
         bool converted = region is null ?
             TimeZoneInfo.TryConvertWindowsIdToIanaId(windowsId, out string? iana) :

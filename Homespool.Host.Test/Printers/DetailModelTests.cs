@@ -28,6 +28,7 @@ using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Host.Telemetry;
@@ -125,7 +126,8 @@ public sealed class DetailModelTests : IDisposable
                                   NullLogger<UserFileStore>.Instance);
 
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
-        QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System, access);
+        QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System, access,
+                                            Substitute.For<ITransferOffers>());
         PrintHistoryService history = new(context, access, snapshots, new UserNameLookup(context));
 
         PrintQueueService queueService = new(context, access,

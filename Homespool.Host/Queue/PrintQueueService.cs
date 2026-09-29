@@ -201,19 +201,21 @@ public class PrintQueueService
 
         _dbContext.QueuedPrints.Add(queued);
 
-        // Queueing a file again is the deliberate act that answers the two holds whose exit is a
-        // person: an unresolved print start (PrintHoldReason.PrintStartUnresolved), where the loop
-        // could not establish whether a previous START_PRINT took, and a transfer the printer kept
-        // refusing (PrintHoldReason.TransferRefused), where waiting has already been tried. Asking
-        // for the file now is somebody saying they have looked. Scoped to those two - the other
-        // holds are conditions on the printer the loop re-checks itself, and none of them is cleared
-        // by wanting the file more.
+        // Queueing a file again is the deliberate act that answers the holds whose exit is a person:
+        // an unresolved print start (PrintHoldReason.PrintStartUnresolved), where the loop could not
+        // establish whether a previous START_PRINT took; a transfer the printer kept refusing or kept
+        // abandoning (TransferRefused, TransferAborted), where waiting has already been tried; and a
+        // transfer somebody stopped at the printer (TransferStopped). Asking for the file now is
+        // somebody saying they have looked. Scoped to those - the other holds are conditions on the
+        // printer the loop re-checks itself, and none of them is cleared by wanting the file more.
         PrintFileOnPrinter? personHeld = await _dbContext.PrintFilesOnPrinters
                                                          .SingleOrDefaultAsync(
                                                              row => row.PrinterId == printerId &&
                                                                     row.PrintFileId == file.Id &&
                                                                     (row.HoldReason == PrintHoldReason.PrintStartUnresolved ||
-                                                                     row.HoldReason == PrintHoldReason.TransferRefused),
+                                                                     row.HoldReason == PrintHoldReason.TransferRefused ||
+                                                                     row.HoldReason == PrintHoldReason.TransferAborted ||
+                                                                     row.HoldReason == PrintHoldReason.TransferStopped),
                                                              cancellationToken);
 
         if (personHeld is not null)

@@ -2143,6 +2143,14 @@
     <value>{0} is still stored here but could not be read to send it to the printer. This is a problem with this server, not the printer - the file's permissions or the disk it is on - and the queue carries on by itself once the file can be read.</value>
     <comment>{0} is the file name. Names no action on the printer page because none there helps: the fix is on the server, and the hold lifts itself within a minute of it.</comment>
   </data>
+  <data name="Queue_HoldTransferStopped" xml:space="preserve">
+    <value>The transfer of {0} was stopped at the printer, so the queue has stopped too rather than send it again. Cancel this print, or queue it again to send it.</value>
+    <comment>{0} is the file name. Somebody stopped the download on the printer itself, so the queue does not argue with them. Queueing it again is what lifts this hold.</comment>
+  </data>
+  <data name="Queue_HoldTransferAborted" xml:space="preserve">
+    <value>The printer took {0} and gave up the transfer {1} times in a row. Trying again has not helped, so the queue has stopped. Check the printer page, then cancel this print, or queue it again to retry.</value>
+    <comment>{0} is the file name, {1} how many times (always more than one). Unlike a refusal, the printer accepted each attempt and then abandoned the download, and it gives no reason. Queueing it again lifts this hold and starts a fresh set of attempts.</comment>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle. It has been queued, but it will not start until the printer reports that a hardened nozzle is fitted.</value>
     <comment>Queued rather than refused: fitting a hardened nozzle and letting the printer say so releases it with nothing pressed here.</comment>
@@ -2172,6 +2180,14 @@
   </data>
   <data name="Queue_WaitTransferRetryingUnnamed" xml:space="preserve">
     <value>The printer refused the next file. Trying again shortly.</value>
+    <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
+  </data>
+  <data name="Queue_WaitTransferAbortRetrying" xml:space="preserve">
+    <value>The printer gave up transferring {0}. Trying again shortly.</value>
+    <comment>{0} is the file name. The printer accepted the transfer and then abandoned it - not a refusal. A wait of seconds to a couple of minutes; after several in a row the queue holds instead.</comment>
+  </data>
+  <data name="Queue_WaitTransferAbortRetryingUnnamed" xml:space="preserve">
+    <value>The printer gave up transferring the next file. Trying again shortly.</value>
     <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">

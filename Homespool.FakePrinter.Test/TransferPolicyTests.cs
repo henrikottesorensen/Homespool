@@ -104,21 +104,80 @@ public class TransferPolicyTests
     }
 
     /// <summary>A partial chunk is answered with nothing; the outstanding request still stands.</summary>
+    /// <remarks>The start report is switched off: it is a report, not a request, and has tests of its own.</remarks>
     [Fact]
     public void APartlyDeliveredSegmentDrawsNoNewRequest()
     {
-        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System) { ReportsTransferStart = false };
         IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 8192), _device);
         uint fileId = FileIdOf(start[1]);
 
         policy.Answer(Chunk(fileId, new byte[1000]), _device).Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The first chunk that does not finish the transfer reports the partial, as firmware does a few
+    /// seconds in: a <c>FILE_INFO</c> at full size, <c>read_only</c>, naming the path the file will keep.
+    /// </summary>
+    [Fact]
+    public void TheFirstChunkReportsThePartialFile()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 8192), _device);
+        uint fileId = FileIdOf(start[1]);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(Chunk(fileId, new byte[1000]), _device);
+
+        replies.Should().HaveCount(1, "a report, and no new request while the segment is incomplete");
+
+        using JsonDocument report = Parse(replies[0]);
+        report.RootElement.GetProperty("event").GetString().Should().Be("FILE_INFO");
+        report.RootElement.GetProperty("data").GetProperty("read_only").GetBoolean().Should().BeTrue();
+        report.RootElement.GetProperty("data").GetProperty("size").GetInt64().Should().Be(8192);
+        report.RootElement.GetProperty("data").GetProperty("path").GetString().Should().Be("/usb/model.bgcode");
+    }
+
+    /// <summary>The partial is reported once, not on every chunk.</summary>
+    [Fact]
+    public void ThePartialIsReportedOnce()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 8192), _device);
+        uint fileId = FileIdOf(start[1]);
+        policy.Answer(Chunk(fileId, new byte[1000]), _device);
+
+        policy.Answer(Chunk(fileId, new byte[1000]), _device).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A transfer that completes on its first chunk still reports the partial first, as the smallest
+    /// transfers on hardware did.
+    /// </summary>
+    [Fact]
+    public void ATransferFinishedByItsFirstChunkStillReportsThePartialFirst()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 4096), _device);
+        uint fileId = FileIdOf(start[1]);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(Chunk(fileId, new byte[4096]), _device);
+
+        replies.Should().HaveCount(3);
+
+        using JsonDocument partial = Parse(replies[0]);
+        partial.RootElement.GetProperty("event").GetString().Should().Be("FILE_INFO");
+        partial.RootElement.GetProperty("data").GetProperty("read_only").GetBoolean().Should().BeTrue();
+
+        using JsonDocument finished = Parse(replies[1]);
+        finished.RootElement.GetProperty("event").GetString().Should().Be("TRANSFER_FINISHED");
+    }
+
     /// <summary>The last chunk produces TRANSFER_FINISHED and then the FILE_INFO for the new file.</summary>
+    /// <remarks>The start report is switched off, so the two replies this is about are the only ones.</remarks>
     [Fact]
     public void TheFinalChunkProducesTransferFinishedThenFileInfo()
     {
-        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System) { ReportsTransferStart = false };
         IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 4096), _device);
         uint fileId = FileIdOf(start[1]);
         int transferId = _device.Transfer!.TransferId;
@@ -175,7 +234,11 @@ public class TransferPolicyTests
     [Fact]
     public void ChunksAreServedWhileABackgroundCommandIsBusy()
     {
-        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System) { GcodeExecutionTime = TimeSpan.FromMinutes(1) };
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System)
+        {
+            GcodeExecutionTime = TimeSpan.FromMinutes(1),
+            ReportsTransferStart = false,
+        };
         IReadOnlyList<PlannedReply> start = policy.Answer(StartDownload(11, size: 8192), _device);
         uint fileId = FileIdOf(start[1]);
 

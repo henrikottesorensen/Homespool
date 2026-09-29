@@ -11,11 +11,14 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -406,7 +409,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         return new PrinterFilamentService(commands: null!,
                                           access,
-                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System, access),
+                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System, access, Substitute.For<ITransferOffers>()),
                                           new ToolTargetReader(context, TestTelemetryContext.For(context)));
     }
 

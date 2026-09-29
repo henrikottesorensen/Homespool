@@ -60,6 +60,17 @@ public static class TransferRetryRules
     public const string TransferInProgressText = "Another transfer in progress";
 
     /// <summary>
+    /// The code recorded when the printer abandons a transfer it had taken - firmware's own event name,
+    /// since <c>TRANSFER_ABORTED</c> carries no reason of its own.
+    /// </summary>
+    /// <remarks>
+    /// Counted exactly as a refusal is, so the same waits space the attempts and the same number of them
+    /// in a row holds the queue, as <see cref="PrintHoldReason.TransferAborted"/>. Stored in the refusal
+    /// columns with no text beside it, which is what tells the two apart there.
+    /// </remarks>
+    public const string TransferAbortedCode = "TRANSFER_ABORTED";
+
+    /// <summary>
     /// How long to wait after the first, second, third, fourth and fifth identical refusal.
     /// </summary>
     private static readonly TimeSpan[] Waits =
@@ -145,11 +156,25 @@ public static class TransferRetryRules
         return value[..cut];
     }
 
+    /// <summary>
+    /// Whether the count on a row is of aborts - transfers the printer took and gave up - rather than
+    /// refusals.
+    /// </summary>
+    /// <param name="row">The <i>(file, printer)</i> row, or null when nothing has been tried.</param>
+    public static bool IsCountingAborts(PrintFileOnPrinter? row)
+    {
+        return row?.TransferRefusalCount is > 0 &&
+               string.Equals(row.TransferRefusalCode, TransferAbortedCode, StringComparison.Ordinal);
+    }
+
     /// <summary>Forgets every refusal recorded on a row.</summary>
     /// <remarks>
     /// Called when the transfer is accepted, when the printer answers <c>FILE_EXISTS</c> - a different
     /// answer, with a path of its own - and when a hold is lifted. Each is a fresh start for the
     /// count. A busy slot is deliberately not among them: it says nothing about this file either way.
+    /// <b>Nor is acceptance, for a count of aborts</b> (<see cref="IsCountingAborts"/>): every aborted
+    /// attempt is accepted first, so forgetting there would restart the count on every attempt. That
+    /// count ends when a transfer finishes.
     /// </remarks>
     /// <param name="row">The row to reset.</param>
     public static void Forget(PrintFileOnPrinter row)

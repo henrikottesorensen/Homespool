@@ -140,6 +140,12 @@ public sealed class FakeTransfer
     /// <summary>Whether every byte has arrived.</summary>
     public bool IsComplete { get; private set; }
 
+    /// <summary>
+    /// Whether the printer has sent the <c>FILE_INFO</c> that names the partial file - the report
+    /// firmware makes once, a few seconds into a transfer.
+    /// </summary>
+    public bool StartReported { get; set; }
+
     /// <summary>Whether a chunk killed it. Terminal - nothing resumes from here.</summary>
     public bool HasFailed { get; private set; }
 

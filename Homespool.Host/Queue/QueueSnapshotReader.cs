@@ -10,6 +10,7 @@ using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -50,32 +51,58 @@ public class QueueSnapshotReader
     private readonly PrinterConnectionRegistry _registry;
     private readonly TimeProvider _timeProvider;
     private readonly PrinterAccessService _access;
+    private readonly ITransferOffers _offers;
 
     public QueueSnapshotReader(HomespoolDbContext dbContext,
                                TelemetryDbContext telemetry,
                                PrinterConnectionRegistry registry,
                                TimeProvider timeProvider,
-                               PrinterAccessService access)
+                               PrinterAccessService access,
+                               ITransferOffers offers)
     {
         _dbContext = dbContext;
         _telemetry = telemetry;
         _registry = registry;
         _timeProvider = timeProvider;
         _access = access;
+        _offers = offers;
     }
 
     /// <summary>
     /// Whether a transfer this printer is pulling is still worth waiting for.
     /// </summary>
+    /// <param name="onPrinter">The <i>(file, printer)</i> row, or null when nothing has been sent.</param>
+    /// <param name="fileName">The stored file's name, as its offer records it.</param>
     /// <remarks>
-    /// A stale stamp reads as "no transfer" rather than "a transfer": the alternative is a queue that
-    /// never advances again after a restart caught one mid-flight. See
-    /// <see cref="QueueAdvancer.TransferStaleAfter"/>.
+    /// <para>
+    /// <b>The stamp says a transfer was started; it takes an observation to say one is running.</b>
+    /// Two count, and which one depends on whether the printer has said anything yet:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><b>Once it has reported the file</b> - the <c>FILE_INFO</c> firmware sends a few seconds
+    /// in, which set <see cref="PrintFileOnPrinter.PrinterPath"/> - only the transfer's own terminal event
+    /// ends it. The offer is not asked: <c>TRANSFER_FINISHED</c> releases it at once, while the event
+    /// reaches the database at the writer's next flush, and a pass in that gap would offer the file
+    /// again while it is being printed.</item>
+    /// <item><b>Before that</b>, the offer is the evidence. Standing, the printer may be pulling it; gone,
+    /// it never took the command - a send that failed revokes it, one never collected is swept. A
+    /// collected offer keeps answering for a minute after it ends, because a small file can start and
+    /// finish before the printer's report of either has been flushed to the event log.</item>
+    /// </list>
+    /// <para>
+    /// A stale stamp still reads as "no transfer" rather than "a transfer": the bound for a report
+    /// that never comes. See <see cref="QueueAdvancer.TransferStaleAfter"/>.
+    /// </para>
     /// </remarks>
-    public bool IsTransferInFlight(PrintFileOnPrinter? onPrinter)
+    public bool IsTransferInFlight(PrintFileOnPrinter? onPrinter, string fileName)
     {
-        return onPrinter?.TransferStartedAt is { } startedAt &&
-               _timeProvider.GetUtcNow() - startedAt < QueueAdvancer.TransferStaleAfter;
+        if (onPrinter?.TransferStartedAt is not { } startedAt ||
+            _timeProvider.GetUtcNow() - startedAt >= QueueAdvancer.TransferStaleAfter)
+        {
+            return false;
+        }
+
+        return onPrinter.PrinterPath is not null || _offers.IsOffered(onPrinter.PrinterId, fileName);
     }
 
     /// <summary>Reads the situation for one printer.</summary>
@@ -132,11 +159,12 @@ public class QueueSnapshotReader
             live?.Status ?? PrinterStatus.Unknown,
             new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name, onPrinter?.Arrived ?? false,
                           onPrinter?.PrinterPath),
-            IsTransferInFlight(onPrinter),
+            IsTransferInFlight(onPrinter, head.PrintFile.Name),
             printInFlight,
             CompatibilityHold(head.PrintFile, printer, tools) ?? onPrinter?.HoldReason,
             TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()),
-            authorityLapsed);
+            authorityLapsed,
+            TransferRetryRules.IsCountingAborts(onPrinter));
     }
 
     /// <summary>

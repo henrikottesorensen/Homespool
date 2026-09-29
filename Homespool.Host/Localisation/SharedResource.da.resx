@@ -2058,6 +2058,12 @@
   <data name="Queue_HoldFileUnreadable" xml:space="preserve">
     <value>{0} ligger stadig her, men kunne ikke læses, så den kan ikke sendes til printeren. Det er et problem med denne server, ikke med printeren - filens rettigheder eller disken, den ligger på - og køen fortsætter af sig selv, så snart filen kan læses.</value>
   </data>
+  <data name="Queue_HoldTransferStopped" xml:space="preserve">
+    <value>Overførslen af {0} blev stoppet på printeren, så køen er også stoppet i stedet for at sende den igen. Annuller dette print, eller sæt det i kø igen for at sende det.</value>
+  </data>
+  <data name="Queue_HoldTransferAborted" xml:space="preserve">
+    <value>Printeren tog imod {0} og opgav overførslen {1} gange i træk. Nye forsøg har ikke hjulpet, så køen er gået i stå. Se efter på printersiden, og annuller så dette print, eller sæt det i kø igen for at prøve igen.</value>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
   </data>
@@ -2081,6 +2087,12 @@
   </data>
   <data name="Queue_WaitTransferRetryingUnnamed" xml:space="preserve">
     <value>Printeren afviste den næste fil. Prøver igen om lidt.</value>
+  </data>
+  <data name="Queue_WaitTransferAbortRetrying" xml:space="preserve">
+    <value>Printeren opgav at overføre {0}. Prøver igen om lidt.</value>
+  </data>
+  <data name="Queue_WaitTransferAbortRetryingUnnamed" xml:space="preserve">
+    <value>Printeren opgav at overføre den næste fil. Prøver igen om lidt.</value>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">
     <value>Afventer at printeren bekræfter filens navn.</value>

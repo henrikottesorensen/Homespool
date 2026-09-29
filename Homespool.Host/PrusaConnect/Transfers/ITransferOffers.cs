@@ -40,4 +40,31 @@ public interface ITransferOffers
     /// token is not an error, because the transfer ending and an operator cancelling can race.
     /// </summary>
     void Revoke(string token);
+
+    /// <summary>
+    /// Whether an offer of a file named <paramref name="fileName"/> still stands for
+    /// <paramref name="printerId"/> - one the printer is pulling, or has been told to fetch and has not
+    /// yet opened.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The one observation of a transfer that needs nothing from the printer.</b> A printer can only
+    /// fetch bytes through a standing offer, so where none stands no transfer of that file can be
+    /// running, whatever the command that started it was or was not told. Offers leave on every path
+    /// that ends one: a refusal or a failed send revokes it, a terminal transfer event releases it, an
+    /// offer never collected is swept, and a restart loses them all.
+    /// </para>
+    /// <para>
+    /// <b>One the printer collected still answers true for a short while after it ends</b>, until the
+    /// printer's own report of the end has had time to reach the event log - see
+    /// <see cref="TransferOfferStore.EndReportedWithin"/>. Without that, "no offer" in the gap would
+    /// read as a command never taken.
+    /// </para>
+    /// <para>
+    /// By name rather than by token, because the queue that asks does not keep tokens: they are
+    /// minted per send and mean nothing afterwards. Two users' files of one name to one printer are
+    /// indistinguishable here, which costs only a wait - the printer has one transfer slot either way.
+    /// </para>
+    /// </remarks>
+    bool IsOffered(int printerId, string fileName);
 }

@@ -352,6 +352,11 @@ public class PrintHistoryService
 
             PrintHoldReason.FileUnreadable => MessageKey.For("Queue_HoldFileUnreadable", hold.FileName),
 
+            PrintHoldReason.TransferStopped => MessageKey.For("Queue_HoldTransferStopped", hold.FileName),
+
+            PrintHoldReason.TransferAborted => MessageKey.For(
+                "Queue_HoldTransferAborted", hold.FileName, hold.TransferRefusalCount ?? 0),
+
             // Undefined is not a hold, and neither is null. Both answer "nothing is in the way"
             // rather than inventing a sentence for a value nothing writes.
             _ => null,

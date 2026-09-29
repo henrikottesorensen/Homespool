@@ -152,4 +152,40 @@ public enum PrintHoldReason
     /// </para>
     /// </remarks>
     FileUnreadable = 8,
+
+    /// <summary>
+    /// Somebody stopped the file's transfer at the printer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A person's decision, so the queue does not argue with it.</b> Firmware reports
+    /// <c>TRANSFER_STOPPED</c> when a transfer is stopped deliberately - from the printer's own
+    /// screen - and removes the partial. Sending the file again would undo what somebody standing at
+    /// the machine just did, and would go on undoing it for as long as they kept pressing stop.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person, like <see cref="TransferRefused"/>.</b> Cancelling the entry moves the
+    /// queue past it; queueing the file again clears it, because asking for it a second time is
+    /// somebody saying they want it after all.
+    /// </para>
+    /// </remarks>
+    TransferStopped = 9,
+
+    /// <summary>
+    /// The printer took the file's transfer and gave it up, several times running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><see cref="TransferRefused"/>'s bound, for the other way a transfer fails.</b> A refusal is
+    /// the printer saying no to the command; an abort is it saying yes and then abandoning the
+    /// download - <c>TRANSFER_ABORTED</c>, the partial removed. An abort is offered again after the
+    /// same waits, and the same number of them in a row holds here. Without that a file that aborts
+    /// every time would be sent for ever, each attempt a transfer's worth of traffic.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person</b>, as for the refusals: cancelling moves past it, queueing again
+    /// clears it and starts a fresh count.
+    /// </para>
+    /// </remarks>
+    TransferAborted = 10,
 }

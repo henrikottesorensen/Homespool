@@ -10,6 +10,8 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
@@ -17,6 +19,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -193,8 +196,9 @@ public sealed class PrintQueueServiceTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Two holds say "look, then decide"</b>: an unresolved print start, and a transfer the printer
-    /// kept refusing. Asking for the file again is that decision. The other holds are conditions the
+    /// <b>Four holds say "look, then decide"</b>: an unresolved print start, a transfer the printer
+    /// kept refusing or kept abandoning, and one somebody stopped at the printer. Asking for the file
+    /// again is that decision. The other holds are conditions the
     /// loop re-checks itself, and wanting the file more changes none of them, so they stay.
     /// </para>
     /// <para>
@@ -205,6 +209,8 @@ public sealed class PrintQueueServiceTests : IDisposable
     [Theory]
     [InlineData(PrintHoldReason.PrintStartUnresolved, true)]
     [InlineData(PrintHoldReason.TransferRefused, true)]
+    [InlineData(PrintHoldReason.TransferAborted, true)]
+    [InlineData(PrintHoldReason.TransferStopped, true)]
     [InlineData(PrintHoldReason.InsufficientSpace, false)]
     [InlineData(PrintHoldReason.FileExistsDifferentSize, false)]
     public async Task QueueingAgainLiftsOnlyTheHoldsAPersonClears(PrintHoldReason hold, bool lifted)
@@ -888,7 +894,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                        new QueueSnapshotReader(context, TestTelemetryContext.For(context),
                                                                new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
                                                                TimeProvider.System,
-                                                               new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance)),
+                                                               new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                                               Substitute.For<ITransferOffers>()),
                                        new UserNameLookup(context));
     }
 

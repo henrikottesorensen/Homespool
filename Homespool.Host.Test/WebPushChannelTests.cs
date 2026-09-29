@@ -15,6 +15,8 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
@@ -48,9 +50,9 @@ public sealed class WebPushChannelTests : IAsyncLifetime
         WebPushRig.Delete(_databasePath);
     }
 
-    private static NotificationMessage Message(string body = "Replace filament.", string tag = "printer-3")
+    private static NotificationMessage Message(string body = "Replace filament.")
     {
-        return new NotificationMessage("Core One needs you", body, "/Printers/Detail/3", tag,
+        return new NotificationMessage("Core One needs you", body, "/Printers/Detail/3", "printer-3",
                                        NotificationUrgency.High, TimeSpan.FromMinutes(10));
     }
 
@@ -122,7 +124,7 @@ public sealed class WebPushChannelTests : IAsyncLifetime
         push.Header("Content-Encoding").Should().Be("aes128gcm");
         push.Header("TTL").Should().Be("600");
         push.Header("Urgency").Should().Be("high");
-        push.Header("Topic").Should().Be("printer-3");
+        push.Header("Topic").Should().BeNull("Apple's push service refuses a push that carries one");
 
         JsonElement claims = push.VerifiedVapidClaims(publicKey);
         claims.GetProperty("aud").GetString().Should().Be("https://fcm.googleapis.com");
@@ -373,17 +375,83 @@ public sealed class WebPushChannelTests : IAsyncLifetime
                            .Should().ThrowAsync<ArgumentException>();
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("has space")]
-    [InlineData("has/slash")]
-    [InlineData("a-tag-that-is-far-longer-than-thirty-two")]
-    public async Task ATagAPushServiceWouldRefuseIsAProgrammingError(string tag)
+    /// <summary>
+    /// What a push service says when it refuses is logged beside the status, because the status does
+    /// not say what was wrong - and the endpoint, which the same exception carries, is not.
+    /// </summary>
+    [Fact]
+    public async Task APushServicesReasonForARefusalIsLoggedAndItsEndpointIsNot()
     {
+        // Arrange
+        string databasePath = WebPushRig.NewDatabasePath();
         using FakePushBrowser browser = FakePushService.NewBrowser();
+        FakeLogger<WebPushChannel> logger = new();
 
-        await FluentActions.Awaiting(() => DeliverAsync(Destination(browser), Message(tag: tag)))
-                           .Should().ThrowAsync<ArgumentException>();
+        try
+        {
+            await using WebPushRig rig = await WebPushRig.CreateAsync(
+                databasePath,
+                new EphemeralDataProtectionProvider(),
+                services: services => services.AddSingleton<ILogger<WebPushChannel>>(logger));
+
+            rig.PushService.Respond = () => new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"reason\":\"BadWebPushTopic\"}"),
+            };
+
+            // Act
+            DeliveryOutcome outcome = await rig.Services.GetRequiredService<WebPushChannel>()
+                                               .DeliverAsync(Destination(browser), Message(), TestContext.Current.CancellationToken);
+
+            // Assert
+            outcome.Should().Be(DeliveryOutcome.Refused);
+
+            FakeLogRecord refusal = logger.Collector.GetSnapshot().Should().ContainSingle().Subject;
+            refusal.Message.Should().Contain("BadWebPushTopic");
+            refusal.Message.Should().NotContain(browser.Endpoint);
+        }
+        finally
+        {
+            WebPushRig.Delete(databasePath);
+        }
+    }
+
+    /// <summary>
+    /// An answer as long as the push service cares to make it is cut, and says how long it was.
+    /// </summary>
+    [Fact]
+    public async Task ALongAnswerIsCutInTheLog()
+    {
+        // Arrange
+        string databasePath = WebPushRig.NewDatabasePath();
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+        FakeLogger<WebPushChannel> logger = new();
+
+        try
+        {
+            await using WebPushRig rig = await WebPushRig.CreateAsync(
+                databasePath,
+                new EphemeralDataProtectionProvider(),
+                services: services => services.AddSingleton<ILogger<WebPushChannel>>(logger));
+
+            rig.PushService.Respond = () => new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent(new string('x', 5000)),
+            };
+
+            // Act
+            await rig.Services.GetRequiredService<WebPushChannel>()
+                     .DeliverAsync(Destination(browser), Message(), TestContext.Current.CancellationToken);
+
+            // Assert
+            string message = logger.Collector.GetSnapshot().Should().ContainSingle().Subject.Message;
+            message.Should().Contain("<5000 characters in all>");
+            message.Length.Should().BeLessThan(600);
+        }
+        finally
+        {
+            WebPushRig.Delete(databasePath);
+        }
     }
 
     /// <summary>

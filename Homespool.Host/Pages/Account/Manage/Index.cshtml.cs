@@ -111,9 +111,10 @@ public class IndexModel : PageModel
             }
         }
 
-        // Re-issues the cookie, which is where the username lives for rendering. Without this the
-        // header - and every other reader of the sign-in identity - keeps the old name until the next
-        // sign-in.
+        // Re-issues the cookie, for two reasons. Renaming changes the security stamp, so a session
+        // still carrying the old one is signed out on its next request. And the cookie is where the
+        // username lives for rendering, so the header - and every other reader of the sign-in
+        // identity - would otherwise show the old name.
         await _signIn.RefreshSignInAsync(HttpContext, user);
         StatusMessage = _localiser["Manage_ProfileUpdated"];
         return RedirectToPage();

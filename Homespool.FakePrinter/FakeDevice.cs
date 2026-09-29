@@ -135,7 +135,8 @@ public sealed class FakeDevice
     /// <remarks>
     /// <b>Not the same as <see cref="JobId"/> having a value</b>: the finished screen keeps the id here
     /// so <c>SEND_JOB_INFO</c> can still name the job, while firmware's own answer is that a finished
-    /// printer has no job. What telemetry sends beside the positions turns on this.
+    /// printer has no job. Telemetry's job block, its positions and its fan and filament fields all
+    /// turn on this.
     /// </remarks>
     public bool HasJob => State is DeviceState.Printing or DeviceState.Paused ||
                           (State == DeviceState.Attention && JobId is not null);

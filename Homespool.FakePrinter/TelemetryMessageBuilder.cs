@@ -13,10 +13,10 @@ namespace Homespool.FakePrinter;
 /// </summary>
 /// <remarks>
 /// The job block (<c>job_id</c>, <c>time_printing</c>, <c>time_remaining</c>, <c>progress</c>) is
-/// gated on a job existing, and <c>axis_x</c>/<c>axis_y</c> are sent only when there is <b>no</b> job
-/// while the fan/filament fields are sent only when there is one - firmware's <c>has_job</c> on both
-/// sides, so the two groups never co-occur (render.cpp:216-229). <c>state</c> is always sent, last,
-/// matching the capture.
+/// gated on <c>has_job</c> rather than on a job id being held (render.cpp:159), and
+/// <c>axis_x</c>/<c>axis_y</c> are sent only when there is <b>no</b> job while the fan/filament fields
+/// are sent only when there is one - firmware's <c>has_job</c> on both sides, so the two groups never
+/// co-occur (render.cpp:216-229). <c>state</c> is always sent, last, matching the capture.
 /// </remarks>
 public static class TelemetryMessageBuilder
 {
@@ -168,12 +168,15 @@ public static class TelemetryMessageBuilder
 
     private static void WriteJobBlock(Utf8JsonWriter writer, FakeDevice device, TelemetryReadings readings)
     {
-        if (!device.JobId.HasValue)
+        // has_job rather than the id (render.cpp:159): a finished printer keeps its job id for
+        // SEND_JOB_INFO, but stops sending the block, and a server clearing job fields when the
+        // block goes missing is reached only if the fake stops too.
+        if (!device.HasJob || device.JobId is not { } jobId)
         {
             return;
         }
 
-        writer.WriteNumber("job_id", device.JobId.Value);
+        writer.WriteNumber("job_id", jobId);
         writer.WriteNumber("time_printing", readings.TimePrinting);
         writer.WriteNumber("time_remaining", readings.TimeRemaining);
 

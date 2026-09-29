@@ -196,7 +196,7 @@ public sealed class RegistrationRetentionTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        TestSqlitePool.Release(_databasePath);
 
         foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
         {

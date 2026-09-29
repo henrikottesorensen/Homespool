@@ -194,7 +194,7 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
     public void Dispose()
     {
-        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        TestSqlitePool.Release(_databasePath);
 
         if (File.Exists(_databasePath))
         {

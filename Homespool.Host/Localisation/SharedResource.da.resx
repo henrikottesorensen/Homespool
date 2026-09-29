@@ -3214,13 +3214,13 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Dine printervalg er gemt.</value>
   </data>
   <data name="Printers_PendingHeading" xml:space="preserve">
-    <value>Printere, der venter på at blive tilføjet</value>
+    <value>Printere, der venter på at blive tilknyttet</value>
   </data>
   <data name="Printers_PendingIntro" xml:space="preserve">
-    <value>Disse printere har bedt denne server om en kode og venter på, at den bliver tastet ind. Listen er kun til orientering: det er koden, du indtaster, der afgør, hvilken printer du tilføjer.</value>
+    <value>Disse printere har bedt denne server om en kode og venter på, at den bliver tastet ind. Listen er kun til orientering: det er koden, du indtaster, der afgør, hvilken printer du tilknytter.</value>
   </data>
   <data name="Printers_PendingNone" xml:space="preserve">
-    <value>Ingen printer venter på at blive tilføjet. Viser din printer en kode, har den fået koden fra en anden server, eller også er koden udløbet - start registreringen på printeren igen, og opdater så denne side.</value>
+    <value>Ingen printer venter på at blive tilknyttet. Viser din printer en kode, har den fået koden fra en anden server, eller også er koden udløbet - start registreringen på printeren igen, og opdater så denne side.</value>
   </data>
   <data name="Printers_PendingModel" xml:space="preserve">
     <value>Model</value>
@@ -3238,6 +3238,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Ukendt model</value>
   </data>
   <data name="Printers_ClaimNoSuchCodeNothingWaiting" xml:space="preserve">
-    <value>Ingen printer venter på at blive tilføjet her, så koden kom ikke fra denne server, eller også er den udløbet. Tjek, at printeren peger på denne server, og start så registreringen på den igen.</value>
+    <value>Ingen printer venter på at blive tilknyttet her, så koden kom ikke fra denne server, eller også er den udløbet. Tjek, at printeren peger på denne server, og start så registreringen på den igen.</value>
   </data>
 </root>

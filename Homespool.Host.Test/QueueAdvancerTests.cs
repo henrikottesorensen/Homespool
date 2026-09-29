@@ -1015,13 +1015,19 @@ public sealed class QueueAdvancerTests : IDisposable
     /// Another member's file of the same name on this printer: ours is sent under its owner's name from
     /// the start, so the two never share a path on the drive and neither can be printed for the other.
     /// </summary>
-    [Fact]
-    public async Task AnotherUsersFileOfTheSameNameMakesTheTransferUseTheOwnersName()
+    /// <param name="theirsArrived">
+    /// Whether the other file is on the drive by the queue's own record, or only reserved there by a
+    /// direct send, which records the name and nothing else.
+    /// </param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AnotherUsersFileOfTheSameNameMakesTheTransferUseTheOwnersName(bool theirsArrived)
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
-        await AddOtherUsersFileOnThePrinterAsync(context, "queued.bgcode");
+        await AddOtherUsersFileOnThePrinterAsync(context, "queued.bgcode", theirsArrived);
         IPrinterConnectionActor actor = ConnectAccepting();
 
         // Act
@@ -2317,6 +2323,7 @@ public sealed class QueueAdvancerTests : IDisposable
         services.AddSingleton<EncryptedTransferOffers>();
         services.AddSingleton(Options.Create(new PrusaConnectOptions()));
         services.AddScoped<PrintFileSender>();
+        services.AddScoped<PrinterDriveNames>();
         services.AddLogging();
 
         return new QueueAdvancer(
@@ -2327,8 +2334,11 @@ public sealed class QueueAdvancerTests : IDisposable
             logger ?? NullLogger<QueueAdvancer>.Instance);
     }
 
-    /// <summary>A second member's file of <paramref name="name"/>, already on this printer's drive.</summary>
-    private async Task AddOtherUsersFileOnThePrinterAsync(HomespoolDbContext context, string name)
+    /// <summary>
+    /// A second member's file of <paramref name="name"/> on this printer's drive - arrived by the
+    /// queue's record, or only reserved under that name by a direct send.
+    /// </summary>
+    private async Task AddOtherUsersFileOnThePrinterAsync(HomespoolDbContext context, string name, bool arrived = true)
     {
         context.Users.Add(new HSUser("other@example.com")
         {
@@ -2346,8 +2356,9 @@ public sealed class QueueAdvancerTests : IDisposable
         {
             PrinterId = PrinterId,
             PrintFileId = theirs.Id,
-            ArrivedAt = _clock.GetUtcNow(),
-            PrinterPath = "/usb/QUEUED~1.BGC",
+            ArrivedAt = arrived ? _clock.GetUtcNow() : null,
+            PrinterPath = arrived ? "/usb/QUEUED~1.BGC" : null,
+            DriveName = arrived ? null : name,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }

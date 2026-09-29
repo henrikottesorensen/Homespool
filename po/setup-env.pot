@@ -181,66 +181,69 @@ msgstr ""
 #: setup-env.sh:1742
 msgid "Generated a passphrase for the printer CA key; the server encrypts the key with it on its next start. Do not lose it - without it the key cannot be read and every printer would need re-provisioning from a USB stick. Back .env up separately from data/."
 msgstr ""
-#: setup-env.sh:1782
+#: setup-env.sh:1804
+msgid "This machine's Docker gives every client the same address, so the sign-in pages and printer registration will not be limited per address."
+msgstr ""
+#: setup-env.sh:1835
 msgid "Detected $address as the address printers reach this server on."
 msgstr ""
-#: setup-env.sh:1812
+#: setup-env.sh:1866
 msgid "/16 from 172.16 to 172.31 is taken. Set the network's range in .env by hand."
 msgstr ""
-#: setup-env.sh:1817
+#: setup-env.sh:1871
 msgid "$candidate instead."
 msgstr ""
-#: setup-env.sh:1881
+#: setup-env.sh:1935
 msgid "Once the certificate is in place, the site can tell browsers to insist on HTTPS for the public name and to refuse any certificate warning for it - for two years at a time. That is HSTS. It is sent only on a name that actually holds an issued certificate; a .lan name or an address never gets it."
 msgstr ""
-#: setup-env.sh:1883
+#: setup-env.sh:1937
 msgid "  Turn on HSTS for the public name"
 msgstr ""
-#: setup-env.sh:1899
+#: setup-env.sh:1953
 msgid "HSTS was on for that name. Browsers that saw it will refuse the self-signed certificate it now falls back to until the two years they were told about run down - keep the public name and its certificate for that long if you can, or expect to clear the name from each browser by hand."
 msgstr ""
-#: setup-env.sh:1920
+#: setup-env.sh:1974
 msgid "The compose network $label ($subnet) collides with:$colliding"
 msgstr ""
-#: setup-env.sh:1922
+#: setup-env.sh:1976
 msgid "A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 msgstr ""
-#: setup-env.sh:1926
+#: setup-env.sh:1980
 msgid "Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
 msgstr ""
-#: setup-env.sh:1972
+#: setup-env.sh:2026
 msgid "This stack has run before, so the printer certificate has already been issued - and it is issued once. Changing PRINTER_HOST in .env does not change what that certificate covers. Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
 msgstr ""
-#: setup-env.sh:2010
+#: setup-env.sh:2064
 msgid "This will change:"
 msgstr ""
-#: setup-env.sh:2043
+#: setup-env.sh:2097
 msgid "Every other line - comments, blank lines, and any key not listed - is left as it is."
 msgstr ""
-#: setup-env.sh:2057
+#: setup-env.sh:2111
 msgid "Created $env_file from .env.example."
 msgstr ""
-#: setup-env.sh:2234
+#: setup-env.sh:2288
 msgid "Homespool - .env setup"
 msgstr ""
-#: setup-env.sh:2237
+#: setup-env.sh:2291
 msgid "Editing the existing file, and only the settings below are touched:"
 msgstr ""
-#: setup-env.sh:2240
+#: setup-env.sh:2294
 msgid "No .env yet. One will be created from .env.example, with these settings filled in."
 msgstr ""
-#: setup-env.sh:2260
+#: setup-env.sh:2315
 msgid "Nothing to change."
 msgstr ""
-#: setup-env.sh:2269
+#: setup-env.sh:2324
 msgid "--dry-run: nothing written."
 msgstr ""
-#: setup-env.sh:2275
+#: setup-env.sh:2330
 msgid "Write these"
 msgstr ""
-#: setup-env.sh:2284
+#: setup-env.sh:2339
 msgid "Written. Bring the stack up with:"
 msgstr ""
-#: setup-env.sh:2286
+#: setup-env.sh:2341
 msgid "    docker compose up -d"
 msgstr ""

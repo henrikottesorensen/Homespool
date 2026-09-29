@@ -127,7 +127,7 @@ public sealed class CameraStreamReconcilerTests : IDisposable
                                         }),
                                         NullLogger<Go2RtcClient>.Instance);
 
-        IServiceScopeFactory scopes = ScopeFactoryFor(context);
+        IServiceScopeFactory scopes = ScopeFactoryFor(context, streamServer);
 
         using CameraStreamReconciler reconciler = new(
             scopes,
@@ -148,12 +148,13 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
     /// <summary>
     /// A scope factory over one already-migrated context, so the reconciler resolves the same
-    /// database this test seeded.
+    /// database this test seeded - and a sweeper over that database and the same sidecar.
     /// </summary>
-    private static IServiceScopeFactory ScopeFactoryFor(HomespoolDbContext context)
+    private static IServiceScopeFactory ScopeFactoryFor(HomespoolDbContext context, Go2RtcClient streamServer)
     {
         ServiceCollection services = [];
         services.AddScoped(_ => context);
+        services.AddScoped(_ => new CameraStreamSweeper(context, streamServer, NullLogger<CameraStreamSweeper>.Instance));
 
         return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
     }

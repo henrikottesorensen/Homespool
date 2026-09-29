@@ -26,10 +26,10 @@ namespace Homespool.Host.Cameras;
 /// brought up from a database restored onto a fresh sidecar.
 /// </para>
 /// <para>
-/// <b>It adds and never removes.</b> A stream present in the sidecar and absent here might be
-/// somebody's hand-added experiment, and deleting other people's configuration to enforce a
-/// symmetry nobody asked for is the kind of tidiness that loses work. Cameras deleted through
-/// Homespool are removed at the point of deletion, where the intent is unambiguous.
+/// <b>It removes only what Homespool made.</b> A stream named after a camera uuid that no camera has
+/// is one this application lost track of - deleted while the sidecar could not be told, or taken with
+/// its printer - and <see cref="CameraStreamSweeper"/> removes those before anything is added. Any
+/// other stream the sidecar holds might be somebody's hand-added experiment, and is left alone.
 /// </para>
 /// <para>
 /// <b>It also warms the codec memo</b>, because that memo is empty on every start and the first
@@ -82,6 +82,18 @@ public sealed class CameraStreamReconciler : BackgroundService
         {
             using IServiceScope scope = _scopeFactory.CreateScope();
             HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            // Before the cameras are counted, so the last camera's removal is swept as well, and
+            // before anything is registered, so a device an orphan still holds is free when its
+            // camera's own stream arrives.
+            int swept = await scope.ServiceProvider.GetRequiredService<CameraStreamSweeper>()
+                                   .SweepAsync(stoppingToken)
+                                   .ConfigureAwait(false);
+
+            if (swept > 0)
+            {
+                _logger.LogInformation("Removed {Count} streams no camera owns from the stream server.", swept);
+            }
 
             List<Camera> cameras = await database.Cameras
                                                  .AsNoTracking()

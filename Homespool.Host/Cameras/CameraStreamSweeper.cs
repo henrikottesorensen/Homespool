@@ -1,0 +1,122 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+
+using Homespool.Data;
+
+namespace Homespool.Host.Cameras;
+
+/// <summary>
+/// Removes the streams Homespool registered with the stream server for cameras it no longer has.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Why a camera can outlive its row in the sidecar.</b> Removing a camera deletes the row and then
+/// asks the sidecar to drop the stream, and that second step fails whenever the sidecar is restarting
+/// or unreachable - after which nothing remembers the uuid to ask again. Removing a printer takes its
+/// cameras by cascade and never asks at all. A stream left behind is not inert: for a camera attached
+/// to this machine, the device reads as free again, and re-adding it puts two streams on one device
+/// node - the loser retrying forever at a whole core, and the camera silently missing.
+/// </para>
+/// <para>
+/// <b>Only streams Homespool made, recognised by name.</b> Every stream this application registers is
+/// named after its camera's uuid in canonical form, and nothing else is removed - a stream with any
+/// other name might be somebody's hand-added experiment, and deleting it to enforce a symmetry nobody
+/// asked for would lose their work. Matching on the source instead was considered and does not work:
+/// the sidecar reports a running producer by its connection, whose address need not be the source it
+/// was registered with, and a running producer on a contended device is exactly the case that matters.
+/// </para>
+/// <para>
+/// <b>The sidecar is listed before the cameras are read, and that order is what makes this safe to run
+/// beside a save.</b> A camera's row is committed before its stream is registered, so every uuid-named
+/// stream in the listing has its row committed by the time the rows are read. Read the other way
+/// round, a camera added in between would be listed without its row and have its new stream removed.
+/// </para>
+/// <para>
+/// <b>More than one deployment sharing one sidecar would sweep each other's cameras.</b> No supported
+/// arrangement does that - each stack has its own - but two development servers pointed at one local
+/// stream server would.
+/// </para>
+/// </remarks>
+public sealed class CameraStreamSweeper
+{
+    private readonly HomespoolDbContext _dbContext;
+    private readonly Go2RtcClient _streamServer;
+    private readonly ILogger<CameraStreamSweeper> _logger;
+
+    public CameraStreamSweeper(HomespoolDbContext dbContext,
+                               Go2RtcClient streamServer,
+                               ILogger<CameraStreamSweeper> logger)
+    {
+        _dbContext = dbContext;
+        _streamServer = streamServer;
+        _logger = logger;
+    }
+
+    /// <summary>
+    /// Removes every uuid-named stream no camera owns, and says how many the sidecar confirmed.
+    /// </summary>
+    /// <remarks>
+    /// Does nothing when the sidecar cannot be listed: an unreachable sidecar is not one holding
+    /// nothing, and the next save or start asks again.
+    /// </remarks>
+    public async Task<int> SweepAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlySet<string>? names = await _streamServer.ListStreamNamesAsync(cancellationToken).ConfigureAwait(false);
+
+        if (names is null)
+        {
+            return 0;
+        }
+
+        List<Guid> named = names.Select(OwnedName)
+                                .OfType<Guid>()
+                                .ToList();
+
+        if (named.Count == 0)
+        {
+            return 0;
+        }
+
+        List<Guid> owned = await _dbContext.Cameras
+                                           .Where(camera => named.Contains(camera.Uuid))
+                                           .Select(camera => camera.Uuid)
+                                           .ToListAsync(cancellationToken)
+                                           .ConfigureAwait(false);
+
+        int removed = 0;
+
+        foreach (Guid orphan in named.Except(owned))
+        {
+            if (await _streamServer.DeleteStreamAsync(orphan, cancellationToken).ConfigureAwait(false))
+            {
+                _logger.LogInformation("Removed stream {Stream} from the stream server, which no camera owns.", orphan);
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    /// <summary>
+    /// The camera uuid a stream name is, or null for a name Homespool would not have written.
+    /// </summary>
+    /// <remarks>
+    /// Canonical form only - lower case, hyphenated, no braces - because that is the one form
+    /// <see cref="Go2RtcClient.PutStreamAsync"/> writes. A name that parses as a uuid in any other
+    /// form was written by somebody else, and is theirs.
+    /// </remarks>
+    private static Guid? OwnedName(string name)
+    {
+        return Guid.TryParseExact(name, "D", out Guid uuid) &&
+               string.Equals(name, uuid.ToString("D", CultureInfo.InvariantCulture), StringComparison.Ordinal) ?
+            uuid :
+            null;
+    }
+}

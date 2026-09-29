@@ -291,14 +291,20 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     }
 
     /// <summary>
-    /// Removes a stream. Failure is logged and swallowed: a camera the user deleted is gone from
-    /// Homespool either way, and a stream left behind in the sidecar is swept by the reconciler.
+    /// Removes a stream, and says whether the sidecar confirmed it. A failure is logged rather than
+    /// thrown: a camera the user deleted is gone from Homespool either way, and the stream left behind
+    /// is removed by <see cref="CameraStreamSweeper"/> at the next save or start.
     /// </summary>
-    public async Task DeleteStreamAsync(Guid streamName, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <b>Safe to repeat.</b> go2rtc answers 200 for a name it does not have. A 400 is its
+    /// configuration file refusing the write, after the stream is already gone from memory - so it
+    /// comes back at the sidecar's next restart, and is reported here as not removed.
+    /// </remarks>
+    public async Task<bool> DeleteStreamAsync(Guid streamName, CancellationToken cancellationToken)
     {
         if (!IsUsable())
         {
-            return;
+            return false;
         }
 
         // src, not name. Both are accepted and both answer 200; only src actually removes the
@@ -317,13 +323,15 @@ public sealed class Go2RtcClient : ICameraCodecProbe
                                                        .DeleteAsync(request, cancellationToken)
                                                        .ConfigureAwait(false);
 
-            if (!response.IsSuccessStatusCode)
+            if (response.IsSuccessStatusCode)
             {
-                _logger.LogWarning(
-                    "The stream server would not remove camera {Stream}: {StatusCode}.",
-                    streamName,
-                    (int)response.StatusCode);
+                return true;
             }
+
+            _logger.LogWarning(
+                "The stream server would not remove camera {Stream}: {StatusCode}.",
+                streamName,
+                (int)response.StatusCode);
         }
         catch (HttpRequestException exception)
         {
@@ -336,6 +344,8 @@ public sealed class Go2RtcClient : ICameraCodecProbe
         {
             _logger.LogWarning("The stream server timed out removing camera {Stream}.", streamName);
         }
+
+        return false;
     }
 
     /// <summary>

@@ -42,6 +42,7 @@ public class CameraService
     private readonly PrinterAccessService _printerAccess;
     private readonly CameraSourcePolicy _sourcePolicy;
     private readonly Go2RtcClient _streamServer;
+    private readonly CameraStreamSweeper _sweeper;
     private readonly ICameraSnapshotFetcher _fetcher;
     private readonly CameraFrameCache _frames;
     private readonly CameraLiveAvailability _liveView;
@@ -55,6 +56,7 @@ public class CameraService
                          PrinterAccessService printerAccess,
                          CameraSourcePolicy sourcePolicy,
                          Go2RtcClient streamServer,
+                         CameraStreamSweeper sweeper,
                          ICameraSnapshotFetcher fetcher,
                          CameraFrameCache frames,
                          CameraLiveAvailability liveView,
@@ -68,6 +70,7 @@ public class CameraService
         _printerAccess = printerAccess;
         _sourcePolicy = sourcePolicy;
         _streamServer = streamServer;
+        _sweeper = sweeper;
         _fetcher = fetcher;
         _frames = frames;
         _liveView = liveView;
@@ -383,7 +386,11 @@ public class CameraService
 
         _frames.Forget(camera.Id);
         _liveView.Forget(camera.Uuid);
-        await _streamServer.DeleteStreamAsync(camera.Uuid, cancellationToken).ConfigureAwait(false);
+
+        // After the row, so a sidecar that cannot be told leaves a stream no camera owns - which the
+        // sweep before the next save, or at the next start, removes. Refusing the removal instead would
+        // not help a camera taken by its printer's removal, which never comes through here.
+        _ = await _streamServer.DeleteStreamAsync(camera.Uuid, cancellationToken).ConfigureAwait(false);
 
         return true;
     }
@@ -516,12 +523,22 @@ public class CameraService
     /// describes what happened rather than what was intended.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A failure here does not undo the save. A camera being switched off while it is set up is
     /// ordinary, and refusing to remember its address until it answers would be worse than saying
     /// it did not.
+    /// </para>
+    /// <para>
+    /// <b>Streams no camera owns are removed first</b>, because this is the moment one starts to
+    /// matter: a camera deleted while the sidecar could not be told leaves its device held, and the
+    /// device is offered again as free - so a save naming it is the one that would lose to the
+    /// orphan. See <see cref="CameraStreamSweeper"/>.
+    /// </para>
     /// </remarks>
     private async Task<CameraSaveOutcome> RegisterAndProveAsync(Camera camera, CancellationToken cancellationToken)
     {
+        _ = await _sweeper.SweepAsync(cancellationToken).ConfigureAwait(false);
+
         StreamRegistration registration = await _streamServer
                                                 .PutStreamAsync(camera.Uuid, _credentials.Reveal(camera), cancellationToken)
                                                 .ConfigureAwait(false);

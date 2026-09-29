@@ -164,7 +164,10 @@ public abstract class Go2RtcContract : IAsyncLifetime
         (await ListedAsync()).Should().Contain(Name(stream));
     }
 
-    /// <summary>Homespool's delete removes the stream.</summary>
+    /// <summary>
+    /// Homespool's delete removes the stream and says so - and says so again for a stream already
+    /// gone, which is what makes a delete safe to repeat.
+    /// </summary>
     [Fact]
     public async Task HomespoolsDeleteRemovesTheStream()
     {
@@ -172,9 +175,11 @@ public abstract class Go2RtcContract : IAsyncLifetime
         Guid stream = Guid.NewGuid();
         await Client.PutStreamAsync(stream, H264Source, TestContext.Current.CancellationToken);
 
-        await Client.DeleteStreamAsync(stream, TestContext.Current.CancellationToken);
+        (await Client.DeleteStreamAsync(stream, TestContext.Current.CancellationToken)).Should().BeTrue();
 
         (await ListedAsync()).Should().NotContain(Name(stream));
+        (await Client.DeleteStreamAsync(stream, TestContext.Current.CancellationToken)).Should().BeTrue(
+            "a name the sidecar does not hold is answered 200, not an error");
     }
 
     /// <summary>A stream the sidecar does not hold has no frame, in go2rtc's own words.</summary>

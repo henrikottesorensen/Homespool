@@ -82,9 +82,10 @@ public static class Registration
 
         // Scoped: holds a DbContext.
 
-        // Scoped: both hold a DbContext, and the access gate memoises within a request.
+        // Scoped: all three hold a DbContext, and the access gate memoises within a request.
         services.AddScoped<Authorisation.CameraAccessService>();
         services.AddScoped<CameraService>();
+        services.AddScoped<CameraStreamSweeper>();
 
         // Ordered, and the order is the design rather than the sequence they were written in.
         // Writing the WebRTC address is a read-modify-write of the sidecar's configuration file that

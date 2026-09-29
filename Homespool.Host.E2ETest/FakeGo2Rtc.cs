@@ -255,6 +255,18 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Puts a stream in the sidecar that this Homespool did not register - somebody's own, or one an
+    /// earlier camera left behind - as if it were already in go2rtc.yaml.
+    /// </summary>
+    public void HoldStream(string name, string source)
+    {
+        lock (_gate)
+        {
+            _streams[name] = source;
+        }
+    }
+
     /// <summary>Makes <c>PUT /api/streams</c> refuse <paramref name="source"/>, as go2rtc refuses <c>exec:</c>.</summary>
     public void RefuseSource(string source)
     {

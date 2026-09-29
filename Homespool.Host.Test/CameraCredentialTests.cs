@@ -93,7 +93,8 @@ public sealed class CameraCredentialTests : IDisposable
     {
         (Go2RtcClient client, IHttpClientFactory factory) = Build(credentialed: false);
 
-        await client.DeleteStreamAsync(Guid.NewGuid(), CancellationToken.None);
+        (await client.DeleteStreamAsync(Guid.NewGuid(), CancellationToken.None)).Should().BeFalse(
+            "a delete never sent is not one the sidecar confirmed");
 
         factory.DidNotReceive().CreateClient(Arg.Any<string>());
     }

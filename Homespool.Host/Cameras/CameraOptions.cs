@@ -45,6 +45,34 @@ public class CameraOptions
     public int StreamServerRtspPort { get; set; } = 8554;
 
     /// <summary>
+    /// Where <b>this</b> container reads udev's stable names for attached cameras. Default
+    /// <c>/hostdev/v4l/by-id</c>: the host's <c>/dev</c> bind-mounted read-only beside our own, not
+    /// over it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The host's <c>/dev</c> root, at a path of our own, and both halves of that are
+    /// load-bearing (2026-08-29).</b> The root, because <c>udev</c> removes and recreates
+    /// <c>/dev/v4l/by-id</c> whenever the device set changes while a bind mount pins the inode it
+    /// found at container start - so mounting that subdirectory left this service reading a stale,
+    /// orphaned, empty directory after any USB change, with no error and a blank camera picker. A
+    /// filesystem root cannot be unlinked, so lookups beneath it always resolve live. At a path of
+    /// our own, because mounting over <c>/dev</c> would replace the private one Docker builds for
+    /// this container, taking <c>/dev/shm</c> and <c>/dev/pts</c> with it.
+    /// </para>
+    /// <para>
+    /// <b>Not in <c>.env</c> or <c>compose.yaml</c>, and nothing in a deployment should set it</b>:
+    /// the mount is part of the stack, so the path never moves there. It is bindable so that a test
+    /// host can stand in a directory of symlinks of its own - the only way anything but a machine
+    /// with a camera plugged in reaches the attached-camera path. It is only ever read here; the
+    /// source strings the sidecar is given name its own view of the directory, which this does not
+    /// change.
+    /// </para>
+    /// </remarks>
+    [Required]
+    public string LocalDeviceDirectory { get; set; } = "/hostdev/v4l/by-id";
+
+    /// <summary>
     /// Username for the stream server's API, or empty for none. Default empty.
     /// </summary>
     /// <remarks>

@@ -33,8 +33,9 @@ namespace Homespool.Host.E2ETest;
 /// refused before anything is registered.
 /// </para>
 /// <para>
-/// The device list is empty in a test - <c>LocalCameraDevices</c> reads a directory that exists only
-/// in the container - so any device name is one this machine does not have. That is the same refusal
+/// The device list is empty in a test - <c>LocalCameraDevices</c> reads
+/// <c>Cameras:LocalDeviceDirectory</c>, which by default exists only in the container - so any device
+/// name is one this machine does not have. That is the same refusal
 /// a forged name gets on a real machine, reached without needing hardware.
 /// </para>
 /// </remarks>

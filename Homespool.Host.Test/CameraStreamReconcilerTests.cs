@@ -136,7 +136,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
             new CameraCredentialProtector(new EphemeralDataProtectionProvider(),
                                           NullLogger<CameraCredentialProtector>.Instance),
             new LocalCameraDevices(NullLogger<LocalCameraDevices>.Instance,
-                                   new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance)),
+                                   new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance),
+                                   TestOptions.Monitor(new CameraOptions())),
             policy ?? CameraSourcePolicyTests.Build(),
             NullLogger<CameraStreamReconciler>.Instance);
 

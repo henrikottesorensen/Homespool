@@ -1899,6 +1899,9 @@
   <data name="Error_FileNameCharacters" xml:space="preserve">
     <value>‘{0}’ indeholder tegn, som et filnavn ikke må have: anførselstegn, vinkelparenteser, omvendte skråstreger, * : | ?, kontroltegn eller usynlige tegn. Omdøb filen, og upload den igen.</value>
   </data>
+  <data name="Error_FileNameTooLong" xml:space="preserve">
+    <value>‘{0}’ er længere, end en printer kan gemme: højst {1} tegn. Forkort navnet, og upload filen igen.</value>
+  </data>
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>
   </data>

@@ -6,7 +6,7 @@ namespace Homespool.Host.Printing;
 /// <remarks>
 /// <para>
 /// <b>The wire name is here because the caller cannot know it.</b>
-/// <see cref="PrintFileSender.SendAsync"/> chooses between two commands from a property of the
+/// <see cref="PrintFileSender.SendAsync(Homespool.Model.Entities.Printer, PrintFiles.StoredFile, string, Homespool.Model.Caller, System.Threading.CancellationToken)"/> chooses between two commands from a property of the
 /// printer's connection - an inline transfer over its socket, or an encrypted download it fetches
 /// itself - and that choice is deliberately invisible to whoever asked for the file to be sent.
 /// A caller that then names a command in a refusal has to be told which one, or it will guess.

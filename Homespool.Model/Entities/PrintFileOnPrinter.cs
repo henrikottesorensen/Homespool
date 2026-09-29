@@ -190,4 +190,23 @@ public class PrintFileOnPrinter
     /// </para>
     /// </remarks>
     public string? PrinterPath { get; set; }
+
+    /// <summary>
+    /// The long name this file was sent under on this printer's drive: its own, or with its owner's
+    /// name added when another file already had it there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Recorded before the transfer</b>, because it is what the printer's own reports carry - an
+    /// arriving file's <c>display_name</c>, a job started at the panel - and they have to be matched
+    /// to this row rather than to another user's file of the same name. <see cref="PrintFile"/>'s
+    /// name will not do: it is unique only per user, and a rename in Homespool changes it while the
+    /// copy on the drive keeps the name it was sent under.
+    /// </para>
+    /// <para>
+    /// Null on a row written before this existed, which is read as the file's own name - what every
+    /// transfer used then.
+    /// </para>
+    /// </remarks>
+    public string? DriveName { get; set; }
 }

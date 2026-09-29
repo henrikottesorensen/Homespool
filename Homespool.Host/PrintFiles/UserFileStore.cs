@@ -58,6 +58,16 @@ namespace Homespool.Host.PrintFiles;
                      "Every caller-supplied name is reduced by SafeName to Path.GetFileName and then refused if it is empty, '.' or '..', so no input can express a directory or traverse upwards. The other path component is a user id, which is an integer this process read from its own database.")]
 public sealed class UserFileStore
 {
+    /// <summary>The longest file name, in UTF-16 code units, that a store will take.</summary>
+    /// <remarks>
+    /// <b>The printer's limit, not the filesystem's.</b> Buddy firmware's <c>MAX_FILENAME_LENGTH</c>
+    /// is FatFs's long-name limit, and its FAT driver refuses a longer name when the transfer tries
+    /// to create the file. The host's own limit is 255 bytes, which a longer name can be under and
+    /// still never reach a printer. Code units, because FAT stores long names as UTF-16 - which is
+    /// what <see cref="string.Length"/> counts.
+    /// </remarks>
+    public const int MaxNameLength = 167;
+
     /// <summary>
     /// Where a file is assembled before it is given its name. A sibling of the user directories
     /// rather than a child, so a half-written upload can never appear in anyone's listing.
@@ -543,6 +553,10 @@ public sealed class UserFileStore
     /// refused above, and firmware's own check before a transfer reads only the extension. A name
     /// carrying one would be accepted here and then fail on the printer, after the upload looked done.
     /// </para>
+    /// <para>
+    /// <b>So is a name longer than <see cref="MaxNameLength"/></b>, for the same reason: the printer
+    /// cannot create it. Refused here, it is refused before the bytes are read rather than after.
+    /// </para>
     /// </remarks>
     private static string RequireSafeName(string fileName)
     {
@@ -553,6 +567,11 @@ public sealed class UserFileStore
         if (!PrintableText.IsPrintable(name) || name.AsSpan().ContainsAny("\"'<>\\*:|?"))
         {
             throw PrintFileNameRejectedException.ForForbiddenCharacters(name, nameof(fileName));
+        }
+
+        if (name.Length > MaxNameLength)
+        {
+            throw PrintFileNameRejectedException.ForLength(name, MaxNameLength, nameof(fileName));
         }
 
         return name;

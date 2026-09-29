@@ -68,6 +68,7 @@ public class PrinterController : ControllerBase
 {
     private readonly PrintFileCatalog _files;
     private readonly PrintFileSender _sender;
+    private readonly PrinterDriveNames _driveNames;
     private readonly PrinterCommandService _commands;
     private readonly PrintStopService _stops;
     private readonly PrinterQueryService _printers;
@@ -77,6 +78,7 @@ public class PrinterController : ControllerBase
 
     public PrinterController(PrintFileCatalog files,
                              PrintFileSender sender,
+                             PrinterDriveNames driveNames,
                              PrinterCommandService commands,
                              PrintStopService stops,
                              PrinterQueryService printers,
@@ -86,6 +88,7 @@ public class PrinterController : ControllerBase
     {
         _files = files;
         _sender = sender;
+        _driveNames = driveNames;
         _commands = commands;
         _stops = stops;
         _printers = printers;
@@ -165,6 +168,18 @@ public class PrinterController : ControllerBase
             return this.BadRequestProblem("Files must be under 4 GiB - a printer cannot be sent anything larger.");
         }
 
+        // The name on the printer's drive is reserved before the send, as the queue reserves it, so
+        // the next transfer there - queued or direct, anyone's - sees it taken rather than finding a
+        // file it has no record of and adopting it as its own.
+        PrintFile? indexed = await _files.ResolveAsync(user.Id, file.FileName, cancellationToken);
+
+        if (indexed is null)
+        {
+            return this.NotFoundProblem($"You have no file named {body.Name}.");
+        }
+
+        PrintFileOnPrinter onPrinter = await _driveNames.ReserveAsync(printer.Id, indexed, cancellationToken);
+
         // Minting the token, offering the bytes and cleaning up after a send that did not take all
         // live in PrintFileSender, because the Files page needs exactly the same three things and
         // the cleanup rule is the one worth having a single copy of.
@@ -174,7 +189,8 @@ public class PrinterController : ControllerBase
             // an inline transfer and an encrypted download from a property of the connection, and
             // this used to hold a hardcoded START_CONNECT_DOWNLOAD - so every refusal on the
             // pre-websocket transport named a command that had never been on the wire.
-            FileSendResult sent = await _sender.SendAsync(printer, file, CallerResolver.For(user, User), cancellationToken);
+            FileSendResult sent = await _sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName!),
+                                                          CallerResolver.For(user, User), cancellationToken);
             CommandOutcome? outcome = sent.Outcome;
 
             return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?

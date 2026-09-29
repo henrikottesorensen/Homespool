@@ -54,6 +54,7 @@ public class IndexModel : PageModel
     private readonly PrinterQueryService _printers;
     private readonly DefaultPrinterService _defaults;
     private readonly PrintFileSender _sender;
+    private readonly PrinterDriveNames _driveNames;
     private readonly PrintQueueService _queue;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ErrorText _errors;
@@ -65,6 +66,7 @@ public class IndexModel : PageModel
                       PrinterQueryService printers,
                       DefaultPrinterService defaults,
                       PrintFileSender sender,
+                      PrinterDriveNames driveNames,
                       PrintQueueService queue,
                       IStringLocalizer<SharedResource> localiser,
                       ErrorText errors,
@@ -76,6 +78,7 @@ public class IndexModel : PageModel
         _printers = printers;
         _defaults = defaults;
         _sender = sender;
+        _driveNames = driveNames;
         _queue = queue;
         _localiser = localiser;
         _errors = errors;
@@ -532,7 +535,21 @@ public class IndexModel : PageModel
 
         try
         {
-            CommandOutcome? outcome = (await _sender.SendAsync(printer, file, CallerResolver.For(userId.Value, User), cancellationToken)).Outcome;
+            // Reserved before the send, as the queue reserves it, so the next transfer to this
+            // printer sees the name taken rather than adopting a file it has no record of.
+            PrintFile? indexed = await _files.ResolveAsync(userId.Value, file.FileName, cancellationToken);
+
+            if (indexed is null)
+            {
+                (StatusMessage, StatusSuccess) = (_localiser["Files_NoSuchFile", name], false);
+
+                return RedirectToSelf(sort, desc, printerUuid, compatible);
+            }
+
+            PrintFileOnPrinter onPrinter = await _driveNames.ReserveAsync(printer.Id, indexed, cancellationToken);
+
+            CommandOutcome? outcome = (await _sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName!),
+                                                               CallerResolver.For(userId.Value, User), cancellationToken)).Outcome;
 
             (StatusMessage, StatusSuccess) =
                 outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?

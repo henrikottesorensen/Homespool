@@ -64,6 +64,9 @@ public sealed class QueueAdvancerTests : IDisposable
 
     private const string CleanedPath = "/usb/ALIEN\uFFFD[2J.BGC";
 
+    /// <summary>The seeded file's name with its owner's added - what a second file of its name is sent as.</summary>
+    private const string OwnersName = "queued (owner@example.com).bgcode";
+
     /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
     private static readonly Guid QueuedPrintUuid = new("11111111-2222-3333-4444-555555555555");
 
@@ -851,7 +854,7 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>A printer that accepts whatever it is sent, so a refusal can only be ours.</summary>
-    private void ConnectAccepting()
+    private IPrinterConnectionActor ConnectAccepting()
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
@@ -863,6 +866,8 @@ public sealed class QueueAdvancerTests : IDisposable
                                                             new CommandOutcome(PrinterEventType.Finished, null))));
 
         _registry.Register(PrinterId, actor, overPlaintext: false);
+
+        return actor;
     }
 
     /// <summary>
@@ -871,7 +876,7 @@ public sealed class QueueAdvancerTests : IDisposable
     /// </summary>
     /// <param name="existingSize">What the drive says the existing file's size is, or null to answer without one.</param>
     /// <param name="existingPath">The 8.3 alias the printer reports, which is what a print must use.</param>
-    private void ConnectRefusingTransferAsExisting(long? existingSize, string existingPath = "/usb/SHAPE-~1.BGC")
+    private IPrinterConnectionActor ConnectRefusingTransferAsExisting(long? existingSize, string existingPath = "/usb/SHAPE-~1.BGC")
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
@@ -901,6 +906,22 @@ public sealed class QueueAdvancerTests : IDisposable
              });
 
         _registry.Register(PrinterId, actor, overPlaintext: false);
+
+        return actor;
+    }
+
+    /// <summary>Every drive path the printer was asked to fetch a file to, in order.</summary>
+    private static string[] OfferedPaths(IPrinterConnectionActor actor)
+    {
+        return [.. actor.ReceivedCalls()
+                        .Select(call => call.GetArguments().FirstOrDefault())
+                        .Select(argument => argument switch
+                        {
+                            StartConnectDownload inline => inline.Path,
+                            StartEncryptedDownload encrypted => encrypted.Path,
+                            _ => null,
+                        })
+                        .OfType<string>()];
     }
 
     /// <summary>
@@ -930,16 +951,148 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
-    /// A name can match while the bytes do not, and printing somebody else's model is worse than
-    /// stopping - so the queue holds with a sentence rather than adopting or retrying for ever.
+    /// A file of our name already on the drive at another size is somebody else's: ours goes on under
+    /// its owner's name, rather than into theirs or into a hold until somebody clears the drive.
     /// </summary>
     [Fact]
-    public async Task AFileAlreadyOnTheDriveAtADifferentSizeHoldsTheQueue()
+    public async Task AFileAlreadyOnTheDriveAtADifferentSizeIsSentUnderTheOwnersName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectRefusingTransferAsExisting(existingSize: OnDiskLength + 4096);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - the pass that is refused, and the one after it
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter refused = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        refused.DriveName.Should().Be(OwnersName, "the next name for the file is its own with its owner's added");
+        refused.ArrivedAt.Should().BeNull("a matching name is not matching content");
+        refused.HoldReason.Should().BeNull("a stranger's file is no reason to stop the queue");
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode", "/usb/" + OwnersName],
+                                           "the second attempt goes to the new name");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "somebody still wants this printed");
+    }
+
+    /// <summary>
+    /// When every name the file could take is already on the drive, the queue holds as it always did,
+    /// with both sizes stated.
+    /// </summary>
+    [Fact]
+    public async Task WhenEveryNameIsTakenOnTheDriveTheQueueHolds()
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
         ConnectRefusingTransferAsExisting(existingSize: OnDiskLength + 4096);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - one refused pass per name: its own, then every one with its owner's added
+        for (int pass = 0; pass <= DriveNames.MaxNumbered; pass++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        }
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().Be(PrintHoldReason.FileExistsDifferentSize,
+                                   "the reason has to reach a person, or the queue stalls silently");
+        row.HoldPrinterFileBytes.Should().Be(OnDiskLength + 4096);
+        row.BlockedAt.Should().NotBeNull("the hold is re-checked on a clock, not every tick");
+    }
+
+    /// <summary>
+    /// Another member's file of the same name on this printer: ours is sent under its owner's name from
+    /// the start, so the two never share a path on the drive and neither can be printed for the other.
+    /// </summary>
+    /// <param name="theirsArrived">
+    /// Whether the other file is on the drive by the queue's own record, or only reserved there by a
+    /// direct send, which records the name and nothing else.
+    /// </param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AnotherUsersFileOfTheSameNameMakesTheTransferUseTheOwnersName(bool theirsArrived)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await AddOtherUsersFileOnThePrinterAsync(context, "queued.bgcode", theirsArrived);
+        IPrinterConnectionActor actor = ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().Equal(["/usb/" + OwnersName]);
+
+        context.ChangeTracker.Clear();
+        (await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == 1, TestContext.Current.CancellationToken))
+            .DriveName.Should().Be(OwnersName);
+    }
+
+    /// <summary>A file sharing its printer with nobody is sent under its own name, and that is recorded.</summary>
+    [Fact]
+    public async Task AFileWithNoOtherOfItsNameIsSentUnderItsOwnName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
+
+        context.ChangeTracker.Clear();
+        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+            .DriveName.Should().Be("queued.bgcode", "the printer's reports about it will carry this name");
+    }
+
+    /// <summary>A file sent under its owner's name arrives under that name, and is matched by it.</summary>
+    [Fact]
+    public async Task AnArrivalIsMatchedByTheNameTheFileWasSentUnder()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+            DriveName = OwnersName,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await using (TelemetryDbContext telemetry = TestTelemetryContext.For(_databasePath))
+        {
+            telemetry.PrinterEvents.Add(new PrinterEvent
+            {
+                PrinterId = PrinterId,
+                Timestamp = _clock.GetUtcNow(),
+                EventType = PrinterEventType.FileInfo,
+                Payload = $"{{\"display_name\":\"{OwnersName}\",\"path\":\"/usb/QUEUED~2.BGC\"}}",
+            });
+            await telemetry.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        ConnectAccepting();
 
         // Act
         using QueueAdvancer advancer = NewAdvancer();
@@ -949,15 +1102,8 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
-        row.ArrivedAt.Should().BeNull("a matching name is not matching content");
-        row.HoldReason.Should().Be(PrintHoldReason.FileExistsDifferentSize,
-                                   "the reason has to reach a person, or the queue stalls silently");
-        row.HoldPrinterFileBytes.Should().Be(OnDiskLength + 4096,
-                                             "the page states both sizes, and this is the one only the printer knows");
-        row.BlockedAt.Should().NotBeNull("the hold is re-checked on a clock, not every tick");
-
-        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
-            "somebody still wants this printed - a block is not a cancellation");
+        row.ArrivedAt.Should().NotBeNull("the printer names the file by the name it was sent under");
+        row.PrinterPath.Should().Be("/usb/QUEUED~2.BGC");
     }
 
     /// <summary>
@@ -1253,6 +1399,38 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// The same, for a file staged under its owner's name: the printer describes the job by that name,
+    /// not the file's own, and it is still ours.
+    /// </summary>
+    [Fact]
+    public async Task APrintTheTimedOutCommandStartedIsRecognisedByTheNameTheFileWasSentUnder()
+    {
+        // Arrange - staged under its owner's name; the job answer names it that way, by another path
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        PrintFileOnPrinter staged = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        staged.DriveName = OwnersName;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 726);
+        ConnectAnsweringJobInfo("/usb/OTHER~9.BGC", OwnersName);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob adopted = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        adopted.FirmwareJobId.Should().Be(726, "the name the printer uses is the one the file was sent under");
+        adopted.FileName.Should().Be("queued.bgcode", "history keeps the file's own name");
+    }
+
+    /// <summary>
     /// The printer says it has no job, so the command really was ignored: the question is dropped and
     /// the print is queued as before.
     /// </summary>
@@ -1499,6 +1677,32 @@ public sealed class QueueAdvancerTests : IDisposable
 
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
             "the entry surviving is what used to print the file a second time");
+    }
+
+    /// <summary>
+    /// A panel print of a file sent under its owner's name is recognised by that name, since that is
+    /// what the printer calls it.
+    /// </summary>
+    [Fact]
+    public async Task APanelPrintOfAFileSentUnderItsOwnersNameIsAdopted()
+    {
+        // Arrange - staged under its owner's name; the printer's job names it that way, by another path
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Idle);
+        PrintFileOnPrinter staged = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        staged.DriveName = OwnersName;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 739);
+        ConnectAnsweringJobInfo("/usb/OTHER~9.BGC", OwnersName);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken)).FirmwareJobId.Should().Be(739);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
     /// <summary>
@@ -1892,6 +2096,84 @@ public sealed class QueueAdvancerTests : IDisposable
         ShouldNotHaveLoggedAnEscape(logger);
     }
 
+    /// <summary>
+    /// Two users' files of one name on one printer: the arrival belongs to the transfer in flight, and
+    /// matching by name alone threw on every pass, before the watermark moved, so the printer's whole
+    /// queue stopped for good.
+    /// </summary>
+    /// <param name="theirsArrived">
+    /// Whether the other user's copy is already on the drive, or is a row left waiting with no transfer
+    /// running - the case where only preferring the transfer in flight picks the right one.
+    /// </param>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AnArrivalIsMatchedToTheTransferInFlightWhenAnotherUsersFileHasTheName(bool theirsArrived)
+    {
+        // Arrange - the seeded file is the other user's, and has the lower id, so a lookup that
+        // merely took the first row it read would find it; the second user's transfer is in flight.
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        PrintFile theirs = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.Users.Add(new HSUser("other@example.com")
+        {
+            Id = 2,
+            Email = "other@example.com",
+            NormalizedEmail = "OTHER@EXAMPLE.COM",
+            NormalizedUserName = "OTHER@EXAMPLE.COM",
+        });
+
+        PrintFile ours = new() { UserId = 2, Name = theirs.Name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
+        context.PrintFiles.Add(ours);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = theirs.Id,
+            ArrivedAt = theirsArrived ? _clock.GetUtcNow() : null,
+            PrinterPath = theirsArrived ? "/usb/QUEUED~1.BGC" : null,
+        });
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = ours.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await using (TelemetryDbContext telemetry = TestTelemetryContext.For(_databasePath))
+        {
+            telemetry.PrinterEvents.Add(new PrinterEvent
+            {
+                PrinterId = PrinterId,
+                Timestamp = _clock.GetUtcNow(),
+                EventType = PrinterEventType.FileInfo,
+                Payload = $"{{\"display_name\":\"{ours.Name}\",\"path\":\"/usb/QUEUED~2.BGC\"}}",
+            });
+            await telemetry.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        PrintFileOnPrinter arrived = await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == ours.Id,
+                                                                                    TestContext.Current.CancellationToken);
+
+        arrived.ArrivedAt.Should().NotBeNull("the transfer in flight is the one this report ends");
+        arrived.PrinterPath.Should().Be("/usb/QUEUED~2.BGC");
+        (await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == theirs.Id, TestContext.Current.CancellationToken))
+            .PrinterPath.Should().Be(theirsArrived ? "/usb/QUEUED~1.BGC" : null, "the other user's copy is not the one that arrived");
+    }
+
     /// <summary>The job a printer describes as its own, which is a path nothing here ever wrote.</summary>
     [Fact]
     public async Task APanelJobIsLoggedWithThePrintersPathCleaned()
@@ -1990,8 +2272,10 @@ public sealed class QueueAdvancerTests : IDisposable
     /// A printer that describes the job it is running as <paramref name="path"/>, and still will not
     /// answer a print command. Returned so a test can count how often it was asked.
     /// </summary>
-    private IPrinterConnectionActor ConnectAnsweringJobInfo(string path)
+    private IPrinterConnectionActor ConnectAnsweringJobInfo(string path, string? displayName = null)
     {
+        string name = displayName is null ? string.Empty : $",\"display_name\":\"{displayName}\"";
+
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
@@ -2002,7 +2286,7 @@ public sealed class QueueAdvancerTests : IDisposable
                                               CommandSendOutcome.Completed,
                                               new CommandOutcome(PrinterEventType.JobInfo, null),
                                               JsonSerializer.Deserialize<JsonElement>(
-                                                  $"{{\"state\":\"PRINTING\",\"path\":\"{path}\"}}"))) :
+                                                  $"{{\"state\":\"PRINTING\",\"path\":\"{path}\"{name}}}"))) :
                           Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
 
         _registry.Register(PrinterId, actor, overPlaintext: false);
@@ -2039,6 +2323,7 @@ public sealed class QueueAdvancerTests : IDisposable
         services.AddSingleton<EncryptedTransferOffers>();
         services.AddSingleton(Options.Create(new PrusaConnectOptions()));
         services.AddScoped<PrintFileSender>();
+        services.AddScoped<PrinterDriveNames>();
         services.AddLogging();
 
         return new QueueAdvancer(
@@ -2047,6 +2332,35 @@ public sealed class QueueAdvancerTests : IDisposable
             _signal,
             _clock,
             logger ?? NullLogger<QueueAdvancer>.Instance);
+    }
+
+    /// <summary>
+    /// A second member's file of <paramref name="name"/> on this printer's drive - arrived by the
+    /// queue's record, or only reserved under that name by a direct send.
+    /// </summary>
+    private async Task AddOtherUsersFileOnThePrinterAsync(HomespoolDbContext context, string name, bool arrived = true)
+    {
+        context.Users.Add(new HSUser("other@example.com")
+        {
+            Id = 2,
+            Email = "other@example.com",
+            NormalizedEmail = "OTHER@EXAMPLE.COM",
+            NormalizedUserName = "OTHER@EXAMPLE.COM",
+        });
+
+        PrintFile theirs = new() { UserId = 2, Name = name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
+        context.PrintFiles.Add(theirs);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = theirs.Id,
+            ArrivedAt = arrived ? _clock.GetUtcNow() : null,
+            PrinterPath = arrived ? "/usb/QUEUED~1.BGC" : null,
+            DriveName = arrived ? null : name,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>A user, a team, a printer, a file, and one thing queued on it.</summary>

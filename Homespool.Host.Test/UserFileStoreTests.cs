@@ -279,6 +279,43 @@ public sealed class UserFileStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A name longer than the printer's FAT can hold is refused before its bytes are read, not
+    /// discovered after the whole upload - or not until the transfer fails on the printer.
+    /// </summary>
+    [Fact]
+    public async Task ANameLongerThanThePrinterHoldsIsRefused()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        string name = new string('a', UserFileStore.MaxNameLength - ".gcode".Length + 1) + ".gcode";
+
+        // Act
+        Func<Task> act = () => SaveAsync(store, Alice, name, [1]);
+
+        // Assert
+        PrintFileNameRejectedException refused = (await act.Should().ThrowAsync<PrintFileNameRejectedException>()).Which;
+
+        refused.ResourceKey.Should().Be("Error_FileNameTooLong");
+        refused.ResourceArguments.Should().Equal([name, UserFileStore.MaxNameLength], "the sentence says how long a name may be");
+        store.List(Alice).Should().BeEmpty();
+    }
+
+    /// <summary>The longest name the printer holds is still a name the store takes.</summary>
+    [Fact]
+    public async Task ANameOfExactlyThePrintersLimitIsAccepted()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        string name = new string('a', UserFileStore.MaxNameLength - ".gcode".Length) + ".gcode";
+
+        // Act
+        StoredFile stored = await SaveAsync(store, Alice, name, [1]);
+
+        // Assert
+        stored.FileName.Should().HaveLength(UserFileStore.MaxNameLength);
+    }
+
+    /// <summary>
     /// A name that got in before the refusal above can still be found, and so can still be removed.
     /// </summary>
     /// <remarks>

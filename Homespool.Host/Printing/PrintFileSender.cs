@@ -94,8 +94,33 @@ public class PrintFileSender
     /// it then pulls the bytes at its own pace over the same WebSocket, and a full-size model takes
     /// minutes. Watch for <c>TRANSFER_FINISHED</c>, or the transfer fields in telemetry.
     /// </remarks>
+    public Task<FileSendResult> SendAsync(Printer printer,
+                                          StoredFile file,
+                                          Caller caller,
+                                          CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return SendAsync(printer, file, file.PrinterPath, caller, cancellationToken);
+    }
+
+    /// <summary>
+    /// Offers <paramref name="file"/> for the printer to store at <paramref name="printerPath"/>
+    /// rather than under its own name.
+    /// </summary>
+    /// <param name="printer">The printer to send to.</param>
+    /// <param name="file">The bytes, as the store holds them.</param>
+    /// <param name="printerPath">Where on the printer's drive the file is to be stored.</param>
+    /// <param name="caller">The authority the send is made under.</param>
+    /// <param name="cancellationToken">Cancels the send, not a transfer the printer has accepted.</param>
+    /// <exception cref="PrintFileUnreadableException">The file could not be opened.</exception>
+    /// <remarks>
+    /// The queue's path: two users' files of one name share a printer's drive, so the queue chooses
+    /// the name each is stored under there.
+    /// </remarks>
     public async Task<FileSendResult> SendAsync(Printer printer,
                                                 StoredFile file,
+                                                string printerPath,
                                                 Caller caller,
                                                 CancellationToken cancellationToken)
     {
@@ -116,9 +141,9 @@ public class PrintFileSender
         // this branch, and a refusal that names the wrong command sends somebody to the wrong code.
         return encrypted ?
             new FileSendResult(PrusaConnect.Commands.StartEncryptedDownload.Wire,
-                               await SendEncryptedAsync(printer, file, caller, cancellationToken)) :
+                               await SendEncryptedAsync(printer, file, printerPath, caller, cancellationToken)) :
             new FileSendResult(PrusaConnect.Commands.StartConnectDownload.Wire,
-                               await SendInlineAsync(printer, file, caller, cancellationToken));
+                               await SendInlineAsync(printer, file, printerPath, caller, cancellationToken));
     }
 
     /// <summary>
@@ -127,6 +152,7 @@ public class PrintFileSender
     /// </summary>
     private async Task<CommandOutcome?> SendInlineAsync(Printer printer,
                                                         StoredFile file,
+                                                        string printerPath,
                                                         Caller caller,
                                                         CancellationToken cancellationToken)
     {
@@ -140,7 +166,7 @@ public class PrintFileSender
 
         StartConnectDownload command = new()
         {
-            Path = file.PrinterPath,
+            Path = printerPath,
             Hash = token,
             TeamId = (ulong)printer.TeamId,
             OriginalSize = file.Length,
@@ -176,6 +202,7 @@ public class PrintFileSender
     /// </remarks>
     private async Task<CommandOutcome?> SendEncryptedAsync(Printer printer,
                                                            StoredFile file,
+                                                           string printerPath,
                                                            Caller caller,
                                                            CancellationToken cancellationToken)
     {
@@ -197,7 +224,7 @@ public class PrintFileSender
             // not share an array with anything zeroed below.
             StartEncryptedDownload command = new()
             {
-                Path = file.PrinterPath,
+                Path = printerPath,
                 Key = (byte[])key.Clone(),
                 Iv = (byte[])iv.Clone(),
                 OriginalSize = file.Length,

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -17,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -228,6 +230,149 @@ public sealed class WebPushChannelTests : IAsyncLifetime
         outcome.Should().Be(DeliveryOutcome.Refused);
     }
 
+    /// <summary>
+    /// A push service whose name resolves only to this machine is refused by the address guard, and
+    /// told apart from an outage: the fault is the destination's, not the network's.
+    /// </summary>
+    /// <remarks>
+    /// Through the production handler, because what is pinned is how <c>SocketsHttpHandler</c> hands
+    /// on an exception from its connect callback, which a fake handler could only imitate. A guard
+    /// that let the connection through would end in <see cref="DeliveryOutcome.Transient"/> instead,
+    /// whatever did or did not answer on this machine's port 443.
+    /// </remarks>
+    [Fact]
+    public async Task AnEndpointResolvingToThisMachineIsRefusedByTheAddressGuard()
+    {
+        // Arrange
+        string databasePath = WebPushRig.NewDatabasePath();
+        using FakePushBrowser browser = new("https://localhost/push/1");
+
+        try
+        {
+            await using WebPushRig rig = await WebPushRig.CreateAsync(
+                databasePath,
+                new EphemeralDataProtectionProvider(),
+                new Dictionary<string, string?> { [$"{WebPushOptions.SectionName}:{nameof(WebPushOptions.AdditionalEndpointHosts)}:0"] = "localhost" },
+                realNetwork: true);
+
+            // Act
+            DeliveryOutcome outcome = await rig.Services.GetRequiredService<WebPushChannel>()
+                                               .DeliverAsync(Destination(browser), Message(), TestContext.Current.CancellationToken);
+
+            // Assert
+            outcome.Should().Be(DeliveryOutcome.Refused);
+        }
+        finally
+        {
+            WebPushRig.Delete(databasePath);
+        }
+    }
+
+    /// <summary>
+    /// A push service that cannot be reached is an outage, which never counts towards removing a
+    /// browser: a phone out of signal has not gone anywhere.
+    /// </summary>
+    [Fact]
+    public async Task APushServiceThatCannotBeReachedIsAnOutage()
+    {
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        _rig.PushService.Respond = () => throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused.");
+
+        DeliveryOutcome outcome = await DeliverAsync(Destination(browser));
+
+        outcome.Should().Be(DeliveryOutcome.Transient);
+    }
+
+    /// <summary>
+    /// A push service that takes longer than the client's timeout is an outage too - the timeout
+    /// arrives as a cancellation, and one nobody asked for.
+    /// </summary>
+    [Fact(Timeout = 30_000)]
+    public async Task APushServiceThatDoesNotAnswerInTimeIsAnOutage()
+    {
+        // Arrange
+        string databasePath = WebPushRig.NewDatabasePath();
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        try
+        {
+            await using WebPushRig rig = await WebPushRig.CreateAsync(
+                databasePath,
+                new EphemeralDataProtectionProvider(),
+                services: services => services.AddHttpClient(WebPushChannel.HttpClientName,
+                                                              client => client.Timeout = TimeSpan.FromMilliseconds(200)));
+
+            rig.PushService.Delay = TimeSpan.FromMinutes(1);
+
+            // Act
+            DeliveryOutcome outcome = await rig.Services.GetRequiredService<WebPushChannel>()
+                                               .DeliverAsync(Destination(browser), Message(), TestContext.Current.CancellationToken);
+
+            // Assert
+            outcome.Should().Be(DeliveryOutcome.Transient);
+        }
+        finally
+        {
+            WebPushRig.Delete(databasePath);
+        }
+    }
+
+    /// <summary>
+    /// A delivery the caller cuts short - the service shutting down - has no outcome. Answered as an
+    /// outage, it would mark a browser that was working as failing.
+    /// </summary>
+    [Fact(Timeout = 30_000)]
+    public async Task ADeliveryTheCallerCancelsHasNoOutcome()
+    {
+        // Arrange
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+        using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        // Made first, so the cancellation lands on the request rather than on making the key.
+        await _rig.Services.GetRequiredService<VapidKeyStore>().GetAsync(TestContext.Current.CancellationToken);
+
+        _rig.PushService.Delay = TimeSpan.FromMinutes(1);
+        stopping.CancelAfter(TimeSpan.FromMilliseconds(200));
+
+        // Act
+        Func<Task> delivering = () => _rig.Services.GetRequiredService<WebPushChannel>()
+                                          .DeliverAsync(Destination(browser), Message(), stopping.Token);
+
+        // Assert
+        await delivering.Should().ThrowAsync<OperationCanceledException>();
+        _rig.PushService.Received.Should().ContainSingle("the request was on its way when it was cancelled");
+    }
+
+    /// <summary>
+    /// Keys that passed the check when they were stored but cannot be encrypted to now are refused, not
+    /// thrown: one bad row must not stop the rest of an account's browsers hearing.
+    /// </summary>
+    [Fact]
+    public async Task KeysThatCannotBeEncryptedToAreRefusedWithoutARequest()
+    {
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        byte[] offCurve = WebEncoders.Base64UrlDecode(browser.P256dh);
+        offCurve[^1] ^= 0x01;
+
+        WebPushDestination destination = Destination(browser);
+        destination.P256dh = WebEncoders.Base64UrlEncode(offCurve);
+
+        DeliveryOutcome outcome = await DeliverAsync(destination);
+
+        outcome.Should().Be(DeliveryOutcome.Refused);
+        _rig.PushService.Received.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ADestinationOfAnotherKindIsAProgrammingError()
+    {
+        await FluentActions.Awaiting(() => _rig.Services.GetRequiredService<WebPushChannel>()
+                                               .DeliverAsync(new Elsewhere { Name = "Elsewhere" }, Message(), TestContext.Current.CancellationToken))
+                           .Should().ThrowAsync<ArgumentException>();
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("has space")]
@@ -263,6 +408,9 @@ public sealed class WebPushChannelTests : IAsyncLifetime
         WebPushSubscriptionKeys.AreValid(browser.P256dh, WebEncoders.Base64UrlEncode(new byte[15])).Should().BeFalse();
         WebPushSubscriptionKeys.AreValid(browser.P256dh, null).Should().BeFalse();
     }
+
+    /// <summary>A destination of a kind the Web Push channel does not deliver to.</summary>
+    private sealed class Elsewhere() : NotificationDestination(NotificationChannelKind.Undefined);
 
     /// <summary>A stream that produces bytes for as long as anybody reads it.</summary>
     private sealed class EndlessStream : Stream

@@ -47,35 +47,51 @@ internal sealed class WebPushRig : IAsyncDisposable
     /// <paramref name="protection"/> - pass the same one twice to be the same deployment restarted, a
     /// different one to be a deployment that lost its key ring.
     /// </summary>
+    /// <param name="databasePath">The SQLite file, from <see cref="NewDatabasePath"/>.</param>
+    /// <param name="protection">What protects the stored key.</param>
+    /// <param name="configuration">Settings, as the configuration file would give them.</param>
+    /// <param name="time">The clock; the system's when omitted.</param>
+    /// <param name="realNetwork">
+    /// Leaves the production handler in place, address guard and all, instead of the fake push
+    /// service - for a test that must be refused before anything is reached.
+    /// </param>
+    /// <param name="services">Changes made after the application's registrations, which they override.</param>
     public static async Task<WebPushRig> CreateAsync(string databasePath,
                                                      IDataProtectionProvider protection,
                                                      IDictionary<string, string?>? configuration = null,
-                                                     TimeProvider? time = null)
+                                                     TimeProvider? time = null,
+                                                     bool realNetwork = false,
+                                                     Action<IServiceCollection>? services = null)
     {
         FakePushService pushService = new();
 
-        ServiceCollection services = new();
-        services.AddLogging();
-        services.AddLocalization();
-        services.AddSingleton(time ?? TimeProvider.System);
+        ServiceCollection registrations = new();
+        registrations.AddLogging();
+        registrations.AddLocalization();
+        registrations.AddSingleton(time ?? TimeProvider.System);
 
         // The notification watcher asks it which printers are connected.
-        services.AddSingleton<Printing.PrinterConnectionRegistry>();
-        services.AddSingleton(protection);
-        services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={databasePath}"));
+        registrations.AddSingleton<Printing.PrinterConnectionRegistry>();
+        registrations.AddSingleton(protection);
+        registrations.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={databasePath}"));
 
-        services.AddNotifications(new ConfigurationBuilder()
-                                  .AddInMemoryCollection(configuration ?? new Dictionary<string, string?>())
-                                  .Build());
+        registrations.AddNotifications(new ConfigurationBuilder()
+                                       .AddInMemoryCollection(configuration ?? new Dictionary<string, string?>())
+                                       .Build());
 
         // Replaces the primary handler, and with it the address guard, which has tests of its own.
         // Kept for the rig's life: the factory would otherwise dispose the one shared instance when its
         // handler lifetime ran out.
-        services.AddHttpClient(WebPushChannel.HttpClientName)
-                .ConfigurePrimaryHttpMessageHandler(() => pushService)
-                .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
+        if (!realNetwork)
+        {
+            registrations.AddHttpClient(WebPushChannel.HttpClientName)
+                         .ConfigurePrimaryHttpMessageHandler(() => pushService)
+                         .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
+        }
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        services?.Invoke(registrations);
+
+        ServiceProvider provider = registrations.BuildServiceProvider();
 
         using (IServiceScope scope = provider.CreateScope())
         {

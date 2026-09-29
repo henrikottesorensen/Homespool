@@ -45,6 +45,9 @@ internal sealed class FakePushService : HttpMessageHandler
     /// <summary>Builds the whole response, for a test that needs headers or a body.</summary>
     public Func<HttpResponseMessage>? Respond { get; set; }
 
+    /// <summary>How long to take over answering, for a test of a push service that is slow.</summary>
+    public TimeSpan Delay { get; set; } = TimeSpan.Zero;
+
     /// <summary>Every request received, oldest first.</summary>
     public IReadOnlyList<FakePush> Received => [.. _received];
 
@@ -75,6 +78,11 @@ internal sealed class FakePushService : HttpMessageHandler
         }
 
         _received.Enqueue(new FakePush(request.RequestUri!, headers, body));
+
+        if (Delay > TimeSpan.Zero)
+        {
+            await Task.Delay(Delay, cancellationToken);
+        }
 
         if (Respond is not null)
         {

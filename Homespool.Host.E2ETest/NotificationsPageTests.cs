@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
 using Homespool.Host.Test;
 using Homespool.Model;
@@ -201,7 +202,145 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
 
             _pushService.Received.Should().BeEmpty();
             (await StoredAsync()).Should().ContainSingle().Which.UserId.Should().Be(owner.Id);
+
+            string page = await stranger.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            page.Should().Contain("That browser is not on your list.");
         }
+    }
+
+    /// <summary>
+    /// Each way a test can fail is said on the page in its own words, because each asks something
+    /// different of the reader: nothing, try again, or look at the browser.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.Gone, "That browser no longer accepts notifications, so it has been removed.")]
+    [InlineData(HttpStatusCode.ServiceUnavailable, "The browser’s push service could not be reached. Try again in a moment.")]
+    [InlineData(HttpStatusCode.BadRequest, "The browser’s push service refused the notification.")]
+    public async Task EachFailedTestIsSaidOnThePage(HttpStatusCode answer, string sentence)
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "tester@example.com");
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+        Guid uuid = await AddBrowserAsync(user.Id, browser);
+
+        _pushService.Answer = answer;
+
+        using (client)
+        {
+            using (HttpResponseMessage tested = await PostHandlerAsync(client, "Test", uuid))
+            {
+                tested.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            }
+
+            string page = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            page.Should().Contain(sentence);
+        }
+
+        (await StoredAsync()).Should().HaveCount(answer == HttpStatusCode.Gone ? 0 : 1, "only a browser its service calls gone is removed");
+    }
+
+    [Fact]
+    public async Task ASecondTestStraightAfterTheFirstIsHeldBack()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "eager@example.com");
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+        Guid uuid = await AddBrowserAsync(user.Id, browser);
+
+        using (client)
+        {
+            using (await PostHandlerAsync(client, "Test", uuid))
+            using (await PostHandlerAsync(client, "Test", uuid))
+            {
+            }
+
+            string page = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            page.Should().Contain("A test was just sent to that browser. Wait a few seconds before sending another.");
+        }
+
+        _pushService.Received.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ASubscriptionWithUnusableKeysIsRefusedWithASentence()
+    {
+        (HSUser _, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "garbled@example.com");
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        using (client)
+        {
+            await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
+            using (await SubscribeAsync(client, browser.Endpoint, "not-a-key", browser.Auth))
+            {
+            }
+
+            string page = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            page.Should().Contain("The browser’s subscription could not be used. Try enabling notifications again.");
+        }
+
+        (await StoredAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ABrowserBeyondTheLimitIsRefusedWithASentence()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "collector@example.com");
+        List<FakePushBrowser> browsers = [.. Enumerable.Range(0, NotificationDestinationService.MaxPerAccount + 1).Select(_ => FakePushService.NewBrowser())];
+
+        try
+        {
+            foreach (FakePushBrowser browser in browsers.Take(NotificationDestinationService.MaxPerAccount))
+            {
+                await AddBrowserAsync(user.Id, browser);
+            }
+
+            using (client)
+            {
+                await EnrolmentFlowHelper.ReauthenticateAsync(client);
+
+                FakePushBrowser oneTooMany = browsers[^1];
+
+                using (await SubscribeAsync(client, oneTooMany.Endpoint, oneTooMany.P256dh, oneTooMany.Auth))
+                {
+                }
+
+                string page = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+                page.Should().Contain($"You already have {NotificationDestinationService.MaxPerAccount} browsers receiving notifications.");
+            }
+
+            (await StoredAsync()).Should().HaveCount(NotificationDestinationService.MaxPerAccount);
+        }
+        finally
+        {
+            browsers.ForEach(browser => browser.Dispose());
+        }
+    }
+
+    [Fact]
+    public async Task ARemovedBrowserHearsNothingMore()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "leaver@example.com");
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+        Guid uuid = await AddBrowserAsync(user.Id, browser);
+
+        using (client)
+        {
+            using (await PostHandlerAsync(client, "Remove", uuid))
+            {
+            }
+
+            string removed = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            removed.Should().Contain("The browser no longer receives notifications.");
+
+            using (await PostHandlerAsync(client, "Test", uuid))
+            {
+            }
+
+            string tested = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            tested.Should().Contain("That browser is not on your list.", "a test after the removal finds nothing to send to");
+        }
+
+        (await StoredAsync()).Should().BeEmpty();
+        _pushService.Received.Should().BeEmpty();
     }
 
     /// <summary>
@@ -362,6 +501,28 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                           .WebPushDestinations.AsNoTracking()
                           .ToListAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Stores <paramref name="browser"/> as <paramref name="userId"/>'s, as a subscription would have.</summary>
+    private async Task<Guid> AddBrowserAsync(long userId, FakePushBrowser browser)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext db = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        WebPushDestination destination = new()
+        {
+            UserId = userId,
+            Endpoint = browser.Endpoint,
+            P256dh = browser.P256dh,
+            Auth = browser.Auth,
+            Name = "Test browser",
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        db.WebPushDestinations.Add(destination);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return destination.Uuid;
     }
 
     private async Task SetLanguageAsync(long userId, string language)

@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
@@ -188,7 +187,7 @@ public sealed class MigrationHistoryGuardTests : IDisposable
             await RestampAsync(context, "20260820162112_InitialCreate");
         }
 
-        SqliteConnection.ClearAllPools();
+        TestSqlitePool.Release(_databasePath);
 
         SchemaWriter.Write(_databasePath).Should().Be(1, "migrating into it is what this must never do");
 
@@ -227,7 +226,7 @@ public sealed class MigrationHistoryGuardTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
+        TestSqlitePool.Release(_databasePath);
 
         foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
         {

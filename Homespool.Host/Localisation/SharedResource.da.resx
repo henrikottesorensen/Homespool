@@ -415,6 +415,15 @@
   <data name="Printers_NothingFinished" xml:space="preserve">
     <value>Intet er færdigprintet endnu.</value>
   </data>
+  <data name="Printers_DurationWithWarmUp" xml:space="preserve">
+    <value>{0} ({1} opvarmning)</value>
+  </data>
+  <data name="Printers_WarmUpExplained" xml:space="preserve">
+    <value>Nulstilling af akserne, måling af pladen og opvarmning, før den første plast</value>
+  </data>
+  <data name="Printers_FilamentMetres" xml:space="preserve">
+    <value>{0:N2} m</value>
+  </data>
   <data name="Printers_RecentEvents" xml:space="preserve">
     <value>Seneste hændelser</value>
   </data>
@@ -504,6 +513,12 @@
   </data>
   <data name="Common_Started" xml:space="preserve">
     <value>Startet</value>
+  </data>
+  <data name="Common_Duration" xml:space="preserve">
+    <value>Varighed</value>
+  </data>
+  <data name="Common_Filament" xml:space="preserve">
+    <value>Filament</value>
   </data>
   <data name="Common_File" xml:space="preserve">
     <value>Fil</value>
@@ -838,6 +853,12 @@
   </data>
   <data name="Common_Minutes_Other" xml:space="preserve">
     <value>{0} minutter</value>
+  </data>
+  <data name="Common_Seconds_One" xml:space="preserve">
+    <value>{0} sekund</value>
+  </data>
+  <data name="Common_Seconds_Other" xml:space="preserve">
+    <value>{0} sekunder</value>
   </data>
   <data name="Common_DurationParts" xml:space="preserve">
     <value>{0} {1}</value>
@@ -1733,12 +1754,6 @@
   </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>For mange ukendte koder. Prøv igen om {0}. Printerens egen kode er upåvirket - den venter stadig.</value>
-  </data>
-  <data name="Common_WaitSeconds" xml:space="preserve">
-    <value>{0} sekunder</value>
-  </data>
-  <data name="Common_WaitOneSecond" xml:space="preserve">
-    <value>1 sekund</value>
   </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
     <value>Ingen printer venter med denne kode. Tjek den mod printerens skærm - koder udløber, så den kan allerede være skiftet ud. Bogstaverne O, I og L læses som 0, 1 og 1, så dem er det ufarligt at tage fejl af.</value>

@@ -547,6 +547,7 @@ namespace Homespool.Data.Migrations
                     ExtruderFan = table.Column<int>(type: "INTEGER", nullable: true),
                     PrintFan = table.Column<int>(type: "INTEGER", nullable: true),
                     FilamentUsed = table.Column<float>(type: "REAL", nullable: true),
+                    FilamentUsedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     TimeToFilamentChange = table.Column<int>(type: "INTEGER", nullable: true),
                     ChamberTemperature = table.Column<float>(type: "REAL", nullable: true),
                     ChamberTargetTemperature = table.Column<int>(type: "INTEGER", nullable: true),
@@ -652,11 +653,14 @@ namespace Homespool.Data.Migrations
                     PrinterPath = table.Column<string>(type: "TEXT", nullable: true),
                     StartedAt = table.Column<long>(type: "INTEGER", nullable: false),
                     CommandedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    BegunAt = table.Column<long>(type: "INTEGER", nullable: true),
                     EndedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     FirmwareJobId = table.Column<int>(type: "INTEGER", nullable: true),
                     State = table.Column<string>(type: "TEXT", nullable: false),
                     StoppedByUserId = table.Column<long>(type: "INTEGER", nullable: true),
-                    Reason = table.Column<string>(type: "TEXT", nullable: true)
+                    Reason = table.Column<string>(type: "TEXT", nullable: true),
+                    FilamentAtStart = table.Column<float>(type: "REAL", nullable: true),
+                    FilamentAtEnd = table.Column<float>(type: "REAL", nullable: true)
                 },
                 constraints: table =>
                 {

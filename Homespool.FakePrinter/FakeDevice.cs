@@ -129,6 +129,18 @@ public sealed class FakeDevice
     public int? JobId { get; private set; }
 
     /// <summary>
+    /// Firmware's <c>printer_state::has_job()</c> (<c>src/state/printer_state.cpp:580</c>): printing,
+    /// paused, or waiting on somebody in the middle of a print.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not the same as <see cref="JobId"/> having a value</b>: the finished screen keeps the id here
+    /// so <c>SEND_JOB_INFO</c> can still name the job, while firmware's own answer is that a finished
+    /// printer has no job. What telemetry sends beside the positions turns on this.
+    /// </remarks>
+    public bool HasJob => State is DeviceState.Printing or DeviceState.Paused ||
+                          (State == DeviceState.Attention && JobId is not null);
+
+    /// <summary>
     /// What the running job is printing, so <c>SEND_JOB_INFO</c> can name it. Null when no job
     /// exists, and null again once one ends.
     /// </summary>
@@ -140,6 +152,31 @@ public sealed class FakeDevice
     /// <see cref="EventMessageBuilder.BuildJobInfo"/>.
     /// </remarks>
     public string? JobPath { get; private set; }
+
+    /// <summary>
+    /// Filament this machine has ever extruded, in millimetres - firmware's
+    /// <c>Odometer_s::get_extruded_all()</c>, which telemetry sends as <c>filament</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A lifetime figure that a print adds to, not a per-print one</b>, starting from the value the
+    /// fake always used to send. Moved only by <see cref="Extrude"/>, which
+    /// <see cref="SyntheticTelemetrySource"/> calls while a print is past its warm-up - the fake has
+    /// no G-code, so something has to stand in for the E axis.
+    /// </para>
+    /// <para>
+    /// Owned by the telemetry loop, which is the only thing that moves or reads it outside a test.
+    /// </para>
+    /// </remarks>
+    public double FilamentUsed { get; private set; } = 2428288.0;
+
+    /// <summary>Adds <paramref name="millimetres"/> to <see cref="FilamentUsed"/>, as extruding does.</summary>
+    public void Extrude(double millimetres)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(millimetres);
+
+        FilamentUsed += millimetres;
+    }
 
     /// <summary>
     /// The one transfer this device may have in progress, or null.

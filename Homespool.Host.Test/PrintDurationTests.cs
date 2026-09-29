@@ -74,6 +74,23 @@ public class PrintDurationTests
         InCulture("da", () => PrintDuration.WithoutSeconds(Localiser(), seconds).Should().Be(expected));
     }
 
+    /// <summary>
+    /// What already happened is rounded to the nearest minute rather than truncated, and said in
+    /// seconds under one - so a warm bed's short preamble is not "0 minutes" of warm-up.
+    /// </summary>
+    [Theory]
+    [InlineData(168, "3 minutes")]
+    [InlineData(149, "2 minutes")]
+    [InlineData(966, "16 minutes")]
+    [InlineData(59, "59 seconds")]
+    [InlineData(1, "1 second")]
+    [InlineData(0, "0 seconds")]
+    [InlineData(3599.6, "1 hour")]
+    public void ElapsedRoundsAndSaysSecondsUnderAMinute(double seconds, string expected)
+    {
+        InEnglish(() => PrintDuration.Elapsed(Localiser(), System.TimeSpan.FromSeconds(seconds)).Should().Be(expected));
+    }
+
     private static IStringLocalizer<SharedResource> Localiser()
     {
         ServiceCollection services = new();

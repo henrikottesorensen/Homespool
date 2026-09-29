@@ -340,6 +340,87 @@ public sealed class QueueLoopTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A print records when plastic first moved and how much it used, from the odometer the printer
+    /// sends - end to end, through the wire, the merge and the loop.
+    /// </summary>
+    /// <remarks>
+    /// The fake reports <c>PRINTING</c> from the start and extrudes nothing for its warm-up, which is the
+    /// hardware shape this exists for. Every message is full, so the reading rides on each one; the
+    /// warm-up is seconds rather than minutes, and long enough that the opening reading is certainly
+    /// taken before it ends.
+    /// </remarks>
+    [Fact]
+    public async Task APrintRecordsWhenItBeganExtrudingAndWhatItUsed()
+    {
+        // Arrange
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        FakePrinterOptions options = new()
+        {
+            TelemetrySource = new SyntheticTelemetrySource
+            {
+                IdleInterval = TimeSpan.FromMilliseconds(200),
+                PrintingInterval = TimeSpan.FromMilliseconds(200),
+                FullShapeEvery = 1,
+                WarmUp = TimeSpan.FromSeconds(3),
+                ExtrusionRate = 50,
+            },
+        };
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, options) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, "odometer.bgcode");
+        await EnqueueAsync(printerId, userId, "odometer.bgcode");
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        // Act - the print starts, warms up, and extrudes
+        await AdvanceAsync(printerId);
+
+        (await WaitUntilAsync(async () => await OutcomeIsAsync(printerId, PrintState.Printing),
+                              TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        PrintJob warming = await ActiveAsync(printerId);
+        warming.FilamentAtStart.Should().NotBeNull("the first reading this print reported is its opening one");
+        warming.BegunAt.Should().BeNull("the fake is still in its warm-up");
+
+        (await WaitUntilAsync(async () =>
+                              {
+                                  await AdvanceAsync(printerId);
+
+                                  return (await ActiveAsync(printerId)).BegunAt is not null;
+                              },
+                              TimeSpan.FromSeconds(30))).Should().BeTrue("the odometer rises once the warm-up is over");
+
+        fake.Device.FinishPrint().Should().BeTrue();
+
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Finished), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        // Assert
+        PrintJob finished = await SingleJobAsync(printerId);
+        finished.State.Should().Be(PrintState.Finished);
+        finished.BegunAt.Should().BeAfter(finished.StartedAt);
+        finished.BegunAt.Should().BeOnOrBefore(finished.EndedAt!.Value);
+        finished.FilamentUsed.Should().BePositive("the fake extruded between the warm-up and the finish");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// A print running across a restart is still the running print afterwards, and ends as itself.
     /// </summary>
     /// <remarks>

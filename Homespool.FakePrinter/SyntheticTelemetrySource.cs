@@ -22,6 +22,15 @@ public sealed class SyntheticTelemetrySource : ITelemetrySource
     /// <summary>The materials the last message reported, to tell whether they have changed since.</summary>
     private string? _lastMaterials;
 
+    /// <summary>The job the warm-up is being counted for, so a new print starts its own.</summary>
+    private int? _countedJob;
+
+    /// <summary>Time spent actually printing on <see cref="_countedJob"/> - a pause does not count.</summary>
+    private TimeSpan _printedFor;
+
+    /// <summary>When the last message was built, for the time elapsed since.</summary>
+    private DateTimeOffset? _lastMessageAt;
+
     /// <summary>Delay while not printing. Firmware: 15 s.</summary>
     public TimeSpan IdleInterval { get; init; } = TimeSpan.FromSeconds(15);
 
@@ -41,9 +50,23 @@ public sealed class SyntheticTelemetrySource : ITelemetrySource
     /// <summary>The analog values reported; replace to script temperatures etc.</summary>
     public TelemetryReadings Readings { get; set; } = new();
 
+    /// <summary>
+    /// How long a print homes, probes and heats before it extrudes anything. Measured at 168 s on an
+    /// MK3.5 from cold; shorter here so a development run shows the split without the wait.
+    /// </summary>
+    public TimeSpan WarmUp { get; init; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>Millimetres of filament extruded per second of printing once the warm-up is over.</summary>
+    public double ExtrusionRate { get; init; } = 1.5;
+
+    /// <summary>What <see cref="WarmUp"/> and <see cref="ExtrusionRate"/> are measured against.</summary>
+    public TimeProvider Clock { get; init; } = TimeProvider.System;
+
     /// <inheritdoc/>
     public byte[]? NextMessage(FakeDevice device)
     {
+        Advance(device);
+
         // A change sends the full shape, as firmware's want_full = changes does: the slim one has no
         // material field, so a slim message after an unload would report nothing about it.
         string materials = MaterialsOf(device);
@@ -54,6 +77,54 @@ public sealed class SyntheticTelemetrySource : ITelemetrySource
         _sent++;
 
         return full ? TelemetryMessageBuilder.BuildFull(device, Readings) : TelemetryMessageBuilder.BuildSlim(device, Readings);
+    }
+
+    /// <summary>
+    /// Moves the device's filament odometer on by whatever the print extruded since the last message.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing for the first <see cref="WarmUp"/> of each print</b>, which is the finding this
+    /// exists to reproduce: a printer reports <c>PRINTING</c> with the nozzle cold, and the odometer
+    /// first rising is the only sign that plastic has started to move.
+    /// </para>
+    /// <para>
+    /// <b>Our invention, and simpler than the machine in one way worth knowing</b>: firmware sends a
+    /// full message whenever the odometer crosses another 10 mm, and this one keeps to its own
+    /// cadence, so the figure reaches the server only as often as <see cref="FullShapeEvery"/> allows.
+    /// </para>
+    /// </remarks>
+    private void Advance(FakeDevice device)
+    {
+        DateTimeOffset now = Clock.GetUtcNow();
+        TimeSpan elapsed = _lastMessageAt is { } last && now > last ? now - last : TimeSpan.Zero;
+        _lastMessageAt = now;
+
+        if (device.JobId != _countedJob)
+        {
+            _countedJob = device.JobId;
+            _printedFor = TimeSpan.Zero;
+        }
+
+        if (device.State != DeviceState.Printing)
+        {
+            return;
+        }
+
+        TimeSpan before = _printedFor;
+        _printedFor += elapsed;
+
+        TimeSpan extruding = Past(_printedFor) - Past(before);
+
+        if (extruding > TimeSpan.Zero)
+        {
+            device.Extrude(extruding.TotalSeconds * ExtrusionRate);
+        }
+    }
+
+    private TimeSpan Past(TimeSpan printed)
+    {
+        return printed > WarmUp ? printed - WarmUp : TimeSpan.Zero;
     }
 
     private string MaterialsOf(FakeDevice device)

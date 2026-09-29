@@ -89,6 +89,31 @@ public class PrinterLiveStateMergerTests
     }
 
     /// <summary>
+    /// When the filament odometer was last heard moves only with a message that carries it, so a
+    /// carried-forward reading can be told from a fresh one.
+    /// </summary>
+    /// <remarks>
+    /// Firmware sends it in full messages while it has a job and in nothing else, so most messages -
+    /// and every one between prints - leave the reading standing from whenever it was last sent.
+    /// </remarks>
+    [Fact]
+    public void MergeRecordsWhenTheFilamentReadingWasHeard()
+    {
+        // Arrange
+        PrinterLiveState state = NewState();
+        DateTimeOffset heard = DateTimeOffset.UnixEpoch.AddYears(56);
+
+        // Act - one message with the reading, then one without
+        Merge(state, new TelemetryDTO { Status = "PRINTING", FilamentUsed = 1013555.875f }, heard);
+        Merge(state, new TelemetryDTO { Status = "PRINTING" }, heard.AddSeconds(5));
+
+        // Assert
+        state.FilamentUsed.Should().Be(1013555.875f);
+        state.FilamentUsedAt.Should().Be(heard, "the second message said nothing about the odometer");
+        state.LastSeenAt.Should().Be(heard.AddSeconds(5));
+    }
+
+    /// <summary>
     /// And the block survives while any part of it is still arriving, so a message carrying one job
     /// field does not blank the others.
     /// </summary>

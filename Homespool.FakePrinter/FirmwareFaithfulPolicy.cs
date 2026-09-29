@@ -50,6 +50,21 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     public Func<uint>? FileIdSource { get; init; }
 
     /// <summary>
+    /// Whether a transfer reports its partial file - a <c>FILE_INFO</c>, <c>read_only</c> and at full
+    /// size - after its first chunk, as well as the finished file at the end. True by default,
+    /// because firmware does: every transfer Homespool started on the appliance reported it before
+    /// it ended (88 of 88), a median 4 s after the command was answered - the smallest, 64 KB, too.
+    /// </summary>
+    /// <remarks>
+    /// Firmware's report comes from <c>notify_created</c> at a backup checkpoint once the partial is
+    /// printable (transfer.cpp:262), so its exact timing depends on backup intervals this fake does
+    /// not model. After the first chunk is the nearest honest place, and a transfer that completes on
+    /// that chunk still reports the partial first. False reproduces a transfer that fails before
+    /// reporting anything.
+    /// </remarks>
+    public bool ReportsTransferStart { get; init; } = true;
+
+    /// <summary>
     /// Arms the <c>START_PRINT</c> false negative: the next <c>START_PRINT</c> that would have
     /// succeeded is executed - the print really begins - but answered
     /// <c>REJECTED "No job in progress"</c>, carrying the command id and the state the machine was
@@ -398,9 +413,9 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// </para>
     /// <para>
     /// A file still arriving is <b>not</b> refused: <c>is_valid_file_or_transfer</c> accepts a partial
-    /// transfer, so this looks the file up in storage exactly as <c>SEND_FILE_INFO</c> does and lets
-    /// the state gate decide. That is why the fake starts a print on a file whose transfer is still
-    /// running, which is what hardware does.
+    /// transfer, so this accepts the path of the transfer in progress as well as a file in storage,
+    /// and lets the state gate decide. That is why the fake starts a print on a file whose transfer is
+    /// still running, which is what hardware does.
     /// </para>
     /// </remarks>
     private IReadOnlyList<PlannedReply> StartPrint(ServerCommandFrame frame, FakeDevice device)
@@ -421,8 +436,9 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
         }
 
         FakeStorageEntry? entry = device.Storage.Find(path);
+        bool arriving = string.Equals(device.Transfer?.Path, path, StringComparison.Ordinal);
 
-        if (entry is null || entry.IsFolder)
+        if ((entry is null && !arriving) || entry?.IsFolder == true)
         {
             return [Reject(frame.CommandId, device, "File not found")];
         }
@@ -634,11 +650,9 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// </para>
     /// <para>
     /// On success the printer emits <c>TRANSFER_FINISHED</c> and then a <c>FILE_INFO</c> for the file
-    /// that now exists. Real firmware can emit that <c>FILE_INFO</c> more than once and as early as
-    /// mid-transfer (<c>notify_created</c> fires from a backup checkpoint once the partial file is
-    /// printable, transfer.cpp:262); reproducing that timing would mean modelling the backup intervals
-    /// and the download order's validity rules, so this emits exactly one, at the end. A documented
-    /// simplification, like the ping cadence in <see cref="FakePrinterClient"/>.
+    /// that now exists. The first accepted chunk also reports the partial, unless
+    /// <see cref="ReportsTransferStart"/> is off - see there for how that timing approximates
+    /// firmware's.
     /// </para>
     /// </remarks>
     private IReadOnlyList<PlannedReply> AnswerChunk(ServerCommandFrame frame, FakeDevice device)
@@ -656,6 +670,15 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
         {
             case ChunkOutcome.Accepted:
                 List<PlannedReply> replies = [];
+
+                if (ReportsTransferStart && !transfer.StartReported)
+                {
+                    transfer.StartReported = true;
+                    replies.Add(Reply(EventMessageBuilder.BuildFileInfo(device.WireState, transfer.Path, transfer.TotalSize,
+                                                                        _time.GetUtcNow().ToUnixTimeSeconds(),
+                                                                        readOnly: true)));
+                }
+
                 AppendRequest(replies, transfer);
 
                 return replies;
@@ -670,13 +693,21 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
 
                 device.Storage.AddFile(transfer.Path, transfer.TotalSize, completedAt);
 
-                return
-                [
-                    Reply(EventMessageBuilder.BuildTransferTerminal("TRANSFER_FINISHED", device.WireState,
-                                                                    transfer.TransferId, transfer.StartCommandId)),
-                    Reply(EventMessageBuilder.BuildFileInfo(device.WireState, transfer.Path, transfer.TotalSize,
-                                                            completedAt)),
-                ];
+                List<PlannedReply> finished = [];
+
+                if (ReportsTransferStart && !transfer.StartReported)
+                {
+                    transfer.StartReported = true;
+                    finished.Add(Reply(EventMessageBuilder.BuildFileInfo(device.WireState, transfer.Path, transfer.TotalSize,
+                                                                         completedAt, readOnly: true)));
+                }
+
+                finished.Add(Reply(EventMessageBuilder.BuildTransferTerminal("TRANSFER_FINISHED", device.WireState,
+                                                                             transfer.TransferId, transfer.StartCommandId)));
+                finished.Add(Reply(EventMessageBuilder.BuildFileInfo(device.WireState, transfer.Path, transfer.TotalSize,
+                                                                     completedAt)));
+
+                return finished;
 
             default:
                 // FailedRemote -> State::Failed -> Outcome::ErrorOther (transfer.cpp:390), which the

@@ -370,6 +370,22 @@ public class FirmwareFaithfulPolicyTests
         reply.RootElement.GetProperty("event").GetString().Should().Be("JOB_INFO");
     }
 
+    /// <summary>
+    /// And the partial need not be a finished file too: the path of the transfer in progress is enough,
+    /// which is what a queue printing on the transfer's first report meets.
+    /// </summary>
+    [Fact]
+    public void StartPrintOnAPartialThatIsNotYetAFileIsAccepted()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.TryBeginTransfer("hash", 1, "/usb/ARRIVING.BGC", 4096, startCommandId: 1);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartPrintCommand(45, "/usb/ARRIVING.BGC"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("JOB_INFO");
+    }
+
     /// <summary>A directory is not a file, and answers so rather than being started.</summary>
     [Fact]
     public void StartPrintOnAFolderIsFileNotFound()

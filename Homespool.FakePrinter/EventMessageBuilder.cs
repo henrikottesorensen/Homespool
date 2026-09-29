@@ -237,6 +237,10 @@ public static class EventMessageBuilder
     /// <param name="commandId">Set when this answers a <c>SEND_FILE_INFO</c>.</param>
     /// <param name="objectsInfo">The file's <c>objects_info</c> header, relayed verbatim; null for none.</param>
     /// <param name="bedShape">The file's <c>bed_shape</c> header, relayed verbatim; null for none.</param>
+    /// <param name="readOnly">
+    /// Whether the file is in use - true for a partial still arriving, which is how firmware reports
+    /// one, and while it prints.
+    /// </param>
     /// <remarks>
     /// <para>
     /// <b>Not <c>FILE_CHANGED</c>.</b> One ternary picks between them (planner.cpp:503) and a created
@@ -274,7 +278,8 @@ public static class EventMessageBuilder
                                        long modified,
                                        uint? commandId = null,
                                        string? objectsInfo = null,
-                                       string? bedShape = null)
+                                       string? bedShape = null,
+                                       bool readOnly = false)
     {
         ArrayBufferWriter<byte> buffer = new();
 
@@ -297,7 +302,7 @@ public static class EventMessageBuilder
 
             writer.WriteNumber("size", size);
             writer.WriteNumber("m_timestamp", modified);
-            writer.WriteBoolean("read_only", false);
+            writer.WriteBoolean("read_only", readOnly);
             writer.WriteString("display_name", NameOf(path));
             writer.WriteString("type", "PRINT_FILE");
             writer.WriteString("path", path);

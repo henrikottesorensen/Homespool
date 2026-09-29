@@ -165,6 +165,8 @@ public sealed class CameraDisplayNameTests : IDisposable
             NullLogger<UsbDeviceNames>.Instance,
             new List<string> { tablePath ?? _tablePath });
 
-        return new CameraDisplayNames(new LocalCameraDevices(NullLogger<LocalCameraDevices>.Instance, usbNames));
+        return new CameraDisplayNames(new LocalCameraDevices(NullLogger<LocalCameraDevices>.Instance,
+                                                             usbNames,
+                                                             TestOptions.Monitor(new CameraOptions())));
     }
 }

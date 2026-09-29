@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Homespool.Host.Cameras;
 
@@ -34,29 +35,14 @@ namespace Homespool.Host.Cameras;
 public sealed class LocalCameraDevices
 {
     /// <summary>
-    /// Where <b>this</b> container reads udev's stable names: the host's <c>/dev</c> bind-mounted
-    /// read-only beside our own, not over it.
-    /// </summary>
-    /// <remarks>
-    /// <b>The host's <c>/dev</c> root, at a path of our own, and both halves of that are load-bearing
-    /// (2026-08-29).</b> The root, because <c>udev</c> removes and recreates <c>/dev/v4l/by-id</c>
-    /// whenever the device set changes while a bind mount pins the inode it found at container start
-    /// - so mounting that subdirectory left this service reading a stale, orphaned, empty directory
-    /// after any USB change, with no error and a blank camera picker. A filesystem root cannot be
-    /// unlinked, so lookups beneath it always resolve live. At a path of our own, because mounting
-    /// over <c>/dev</c> would replace the private one Docker builds for this container, taking
-    /// <c>/dev/shm</c> and <c>/dev/pts</c> with it.
-    /// </remarks>
-    private const string ByIdDirectory = "/hostdev/v4l/by-id";
-
-    /// <summary>
     /// The same directory <b>as the sidecar sees it</b>, which is where a source string has to point.
     /// </summary>
     /// <remarks>
-    /// <b>Not <see cref="ByIdDirectory"/>, and the two must not be merged back.</b> A source string is
-    /// resolved by go2rtc inside its own container, which has the host's <c>/dev</c> at <c>/dev</c>,
-    /// so it names the path that container can open - never the one we happen to read through. Every
-    /// camera already stored carries this form, so it is also what keeps them working.
+    /// <b>Not <see cref="CameraOptions.LocalDeviceDirectory"/>, and the two must not be merged
+    /// back.</b> A source string is resolved by go2rtc inside its own container, which has the host's
+    /// <c>/dev</c> at <c>/dev</c>, so it names the path that container can open - never the one we
+    /// happen to read through. Every camera already stored carries this form, so it is also what
+    /// keeps them working.
     /// </remarks>
     private const string SidecarByIdDirectory = "/dev/v4l/by-id";
 
@@ -68,11 +54,15 @@ public sealed class LocalCameraDevices
 
     private readonly ILogger<LocalCameraDevices> _logger;
     private readonly UsbDeviceNames _usbNames;
+    private readonly IOptionsMonitor<CameraOptions> _options;
 
-    public LocalCameraDevices(ILogger<LocalCameraDevices> logger, UsbDeviceNames usbNames)
+    public LocalCameraDevices(ILogger<LocalCameraDevices> logger,
+                              UsbDeviceNames usbNames,
+                              IOptionsMonitor<CameraOptions> options)
     {
         _logger = logger;
         _usbNames = usbNames;
+        _options = options;
     }
 
     /// <summary>
@@ -221,7 +211,8 @@ public sealed class LocalCameraDevices
     {
         try
         {
-            FileSystemInfo? target = File.ResolveLinkTarget(Path.Combine(ByIdDirectory, deviceName), returnFinalTarget: false);
+            string link = Path.Combine(_options.CurrentValue.LocalDeviceDirectory, deviceName);
+            FileSystemInfo? target = File.ResolveLinkTarget(link, returnFinalTarget: false);
 
             // "../../video0" - only the last segment is wanted, and it is not resolved against disk.
             return target is null ? null : Path.GetFileName(target.Name);
@@ -244,12 +235,14 @@ public sealed class LocalCameraDevices
     {
         try
         {
-            if (!Directory.Exists(ByIdDirectory))
+            string directory = _options.CurrentValue.LocalDeviceDirectory;
+
+            if (!Directory.Exists(directory))
             {
                 return [];
             }
 
-            return Directory.EnumerateFileSystemEntries(ByIdDirectory)
+            return Directory.EnumerateFileSystemEntries(directory)
                             .Select(Path.GetFileName)
                             .Where(name => name is not null && name.EndsWith(CaptureSuffix, StringComparison.Ordinal))
                             .Select(name => new LocalCameraDevice(name!, Describe(name!)))

@@ -163,7 +163,8 @@ public sealed class DetailModelTests : IDisposable
                                 new CameraDisplayNames(
                                     new LocalCameraDevices(
                                         NullLogger<LocalCameraDevices>.Instance,
-                                        new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance))),
+                                        new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance),
+                                        TestOptions.Monitor(new CameraOptions()))),
                                 connectionRegistry,
 
                                 // Null for the same reason the preheat service above takes one: these

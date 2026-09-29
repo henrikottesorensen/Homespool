@@ -2055,6 +2055,517 @@ public sealed class QueueAdvancerTests : IDisposable
         return actor;
     }
 
+    /// <summary>
+    /// A print running at the panel while nothing of ours is on the drive cannot be ours, so the
+    /// printer is not asked about it at all.
+    /// </summary>
+    [Fact]
+    public async Task APanelPrintWithNothingStagedIsNotAskedAbout()
+    {
+        // Arrange - queued, but never sent, so no path of ours exists for the job to match
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 740);
+        IPrinterConnectionActor actor = ConnectAnsweringJobInfo("/usb/QUEUED~1.BGC");
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.DidNotReceive().SendCommandAsync(Arg.Any<SendJobInfo>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A question about a panel print that goes unanswered is asked again on the next pass, since
+    /// nothing was learnt from it.
+    /// </summary>
+    [Theory]
+    [InlineData(CommandSendOutcome.NotConnected)]
+    [InlineData(CommandSendOutcome.AlreadyInFlight)]
+    [InlineData(CommandSendOutcome.ResponseTimedOut)]
+    [InlineData(CommandSendOutcome.SendTimedOut)]
+    public async Task AnUnansweredQuestionAboutAPanelPrintIsAskedAgain(CommandSendOutcome outcome)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Idle);
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 741);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Unanswered(outcome));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.Received(2).SendCommandAsync(Arg.Any<SendJobInfo>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A panel print the printer refuses to describe is asked about once - except when the refusal is
+    /// "No job in progress", which is what a print that is only just starting sounds like.
+    /// </summary>
+    /// <param name="reason">The printer's refusal.</param>
+    /// <param name="asked">How many of two passes should ask.</param>
+    [Theory]
+    [InlineData("No job in progress", 2)]
+    [InlineData("Job ID doesn't match", 1)]
+    public async Task APanelPrintThePrinterWillNotDescribeIsAskedAboutAgainOnlyWhileStarting(string reason, int asked)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Idle);
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 742);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.Rejected, reason));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.Received(asked).SendCommandAsync(Arg.Any<SendJobInfo>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A panel print described without a name settles nothing, and a current job always carries one,
+    /// so it is not asked about again.
+    /// </summary>
+    [Fact]
+    public async Task APanelPrintDescribedWithoutANameIsAskedAboutOnce()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Idle);
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 743);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.JobInfo, json: "{\"state\":\"PRINTING\"}"));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.Received(1).SendCommandAsync(Arg.Any<SendJobInfo>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "nothing named the job, so nothing can claim it");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// After an unanswered start, only "No job in progress" past the grace period says the print never
+    /// began; any other refusal, or a job described without a name, leaves the question open.
+    /// </summary>
+    /// <param name="reason">The printer's refusal, or null when it answers.</param>
+    /// <param name="json">What it answers with, when it does.</param>
+    /// <param name="neverStarted">Whether the unanswered start is settled as never having happened.</param>
+    [Theory]
+    [InlineData("No job in progress", null, true)]
+    [InlineData("Job ID doesn't match", null, false)]
+    [InlineData(null, "{\"state\":\"FIN_OK\"}", false)]
+    public async Task AnUnansweredStartIsSettledAsNeverBegunOnlyByNoJobInProgress(string? reason, string? json, bool neverStarted)
+    {
+        // Arrange - a START_PRINT nobody answered, and a printer that later reports a job id
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Idle, so the pass that settles the question does not go on to start the print again.
+        _clock.Advance(QueueAdvancer.StartUnconfirmedGrace + TimeSpan.FromMinutes(1));
+        await ReportAsync(context, PrinterStatus.Idle, jobId: 744);
+        ConnectAnswering(command => command is SendJobInfo ?
+                             Answered(reason is null ? PrinterEventType.JobInfo : PrinterEventType.Rejected, reason, json) :
+                             Unanswered(CommandSendOutcome.ResponseTimedOut));
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(neverStarted ? 0 : 1,
+            neverStarted ? "a print that never began is not history" : "nothing the printer said settles it");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "the entry is kept either way");
+    }
+
+    /// <summary>
+    /// A print closed at the bound closes as <c>Unknown</c> when the printer cannot say how it ended -
+    /// unanswered, refused, or describing something other than an ending.
+    /// </summary>
+    /// <param name="kind">How the printer fails to say.</param>
+    [Theory]
+    [InlineData("unanswered")]
+    [InlineData("refused")]
+    [InlineData("still printing")]
+    public async Task APrintThePrinterCannotSayTheEndOfIsClosedAsUnknown(string kind)
+    {
+        // Arrange - stranded with a job id, past the bound
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "stuck.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+            FirmwareJobId = 753,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        CommandSendResult answer = kind switch
+        {
+            "unanswered" => Unanswered(CommandSendOutcome.ResponseTimedOut),
+            "refused" => Answered(PrinterEventType.Rejected, "Job ID doesn't match"),
+            _ => Answered(PrinterEventType.JobInfo, json: "{\"state\":\"PRINTING\"}"),
+        };
+
+        IPrinterConnectionActor actor = ConnectAnswering(_ => answer);
+        await ReportAsync(context, PrinterStatus.Attention, jobId: 753);
+        _clock.Advance(QueueAdvancer.StartingStaleAfter + TimeSpan.FromMinutes(1));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert - asked, and closed regardless
+        await actor.Received(1).SendCommandAsync(Arg.Any<SendJobInfo>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull("an open row would block this printer for good");
+        job.State.Should().Be(PrintState.Unknown, "the printer said nothing about how it ended");
+    }
+
+    /// <summary>
+    /// A transfer the printer never took is not waited out as though it were under way: the next pass
+    /// offers it again, and nothing is held.
+    /// </summary>
+    [Theory]
+    [InlineData(CommandSendOutcome.NotConnected)]
+    [InlineData(CommandSendOutcome.AlreadyInFlight)]
+    [InlineData(CommandSendOutcome.ResponseTimedOut)]
+    [InlineData(CommandSendOutcome.SendTimedOut)]
+    public async Task ATransferThatCouldNotBeStartedIsOfferedAgainOnTheNextPass(CommandSendOutcome outcome)
+    {
+        // Arrange - room on the drive, and the offer itself going unanswered
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAnswering(command => command is SendInfo ?
+                                                             Answered(PrinterEventType.Info) :
+                                                             Unanswered(outcome));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        row.TransferStartedAt.Should().BeNull("a transfer that is not under way must not be waited out");
+        row.HoldReason.Should().BeNull("not being answered is not a reason to stop the queue");
+        OfferedPaths(actor).Should().HaveCount(2, "the next pass offers it again");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// When the question after a <c>FILE_EXISTS</c> goes unanswered, nothing is concluded: the file
+    /// keeps its name and the queue does not hold.
+    /// </summary>
+    [Theory]
+    [InlineData(CommandSendOutcome.NotConnected)]
+    [InlineData(CommandSendOutcome.AlreadyInFlight)]
+    [InlineData(CommandSendOutcome.ResponseTimedOut)]
+    [InlineData(CommandSendOutcome.SendTimedOut)]
+    public async Task AFileExistsRefusalWhoseFollowUpGoesUnansweredConcludesNothing(CommandSendOutcome outcome)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectAnswering(command => command switch
+        {
+            SendInfo => Answered(PrinterEventType.Info),
+            SendFileInfo => Unanswered(outcome),
+            _ => new CommandSendResult(CommandSendOutcome.Completed,
+                                       new CommandOutcome(PrinterEventType.Rejected, "File already exists")
+                                           { MachineReason = "FILE_EXISTS" }),
+        });
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.DriveName.Should().Be("queued.bgcode", "nothing said the name belongs to another file");
+        row.ArrivedAt.Should().BeNull("nothing said the file on the drive is ours");
+        row.HoldReason.Should().BeNull("an unanswered question is not a reason to stop the queue");
+        row.TransferStartedAt.Should().BeNull("the next pass tries again");
+    }
+
+    /// <summary>
+    /// When the free-space question goes unanswered, nothing is sent and nothing is held - "no answer"
+    /// is not "no room".
+    /// </summary>
+    [Theory]
+    [InlineData(CommandSendOutcome.NotConnected)]
+    [InlineData(CommandSendOutcome.AlreadyInFlight)]
+    [InlineData(CommandSendOutcome.ResponseTimedOut)]
+    [InlineData(CommandSendOutcome.SendTimedOut)]
+    public async Task AnUnansweredFreeSpaceQuestionSendsNothingAndHoldsNothing(CommandSendOutcome outcome)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAnswering(command => command is SendInfo ?
+                                                             Unanswered(outcome) :
+                                                             Answered(PrinterEventType.Finished));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().BeEmpty("whether it fits is not known yet");
+
+        context.ChangeTracker.Clear();
+        (await context.PrintFilesOnPrinters.AnyAsync(row => row.HoldReason != null, TestContext.Current.CancellationToken))
+            .Should().BeFalse("a busy printer is not a full one");
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "there is no failure to put in history");
+    }
+
+    /// <summary>
+    /// A start refused before it reached the printer - another command held the slot - leaves no
+    /// question behind, and the entry stays queued.
+    /// </summary>
+    [Fact]
+    public async Task APrintCommandThatNeverLeftLeavesNoQuestion()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectAnswering(_ => Unanswered(CommandSendOutcome.AlreadyInFlight));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "the command was never written, so there is nothing to ask the printer about");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// Reports that cannot be read, or name nothing waiting, are passed over - and a good report behind
+    /// them in the same batch still marks the file arrived.
+    /// </summary>
+    [Fact]
+    public async Task UnreadableFileReportsDoNotHideAnArrivalBehindThem()
+    {
+        // Arrange - a transfer in flight
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        string?[] payloads =
+        [
+            null,
+            "not json",
+            "{\"path\":\"/usb/NONAME~1.BGC\"}",
+            $"{{\"display_name\":\"{file.Name}\"}}",
+            "{\"display_name\":\"stranger.bgcode\",\"path\":\"/usb/STRANG~1.BGC\"}",
+            $"{{\"display_name\":\"{file.Name}\",\"path\":\"/usb/QUEUED~1.BGC\"}}",
+        ];
+
+        await using (TelemetryDbContext telemetry = TestTelemetryContext.For(_databasePath))
+        {
+            foreach (string? payload in payloads)
+            {
+                telemetry.PrinterEvents.Add(new PrinterEvent
+                {
+                    PrinterId = PrinterId,
+                    Timestamp = _clock.GetUtcNow(),
+                    EventType = PrinterEventType.FileInfo,
+                    Payload = payload,
+                });
+            }
+
+            await telemetry.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().NotBeNull("the last report names the file and where it is");
+        row.PrinterPath.Should().Be("/usb/QUEUED~1.BGC", "a report without a path cannot say where the file is");
+    }
+
+    /// <summary>
+    /// A report naming the file but not where it is does not mark it arrived: the path is what a print
+    /// has to be started with.
+    /// </summary>
+    /// <remarks>
+    /// A pass of its own, because within one batch a later report still finds the row - nothing is
+    /// saved until the batch ends - and would cover for a pathless one accepted before it.
+    /// </remarks>
+    [Fact]
+    public async Task AFileReportWithoutAPathDoesNotMarkTheFileArrived()
+    {
+        // Arrange - a transfer in flight
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await using (TelemetryDbContext telemetry = TestTelemetryContext.For(_databasePath))
+        {
+            telemetry.PrinterEvents.Add(new PrinterEvent
+            {
+                PrinterId = PrinterId,
+                Timestamp = _clock.GetUtcNow(),
+                EventType = PrinterEventType.FileInfo,
+                Payload = $"{{\"display_name\":\"{file.Name}\"}}",
+            });
+            await telemetry.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().BeNull("an arrival with nowhere to print it from would wedge the queue on a null path");
+        row.PrinterPath.Should().BeNull();
+    }
+
+    /// <summary>
+    /// One printer's failure does not stop the pass reaching the others.
+    /// </summary>
+    [Fact]
+    public async Task OnePrintersFailureDoesNotStopTheOthers()
+    {
+        // Arrange - two printers each with a file to send, and the first failing in a way nothing expects
+        const int secondPrinterId = 2;
+
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        Printer first = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.Printers.Add(new Printer { Id = secondPrinterId, Uuid = Guid.NewGuid(), TeamId = first.TeamId });
+        context.QueuedPrints.Add(new QueuedPrint
+        {
+            PrinterId = secondPrinterId,
+            PrintFileId = file.Id,
+            PrintUuid = Guid.NewGuid(),
+            Position = 0,
+            QueuedByUserId = 1,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedAt = _clock.GetUtcNow(),
+        });
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = secondPrinterId,
+            Status = PrinterStatus.Ready,
+            LastSeenAt = _clock.GetUtcNow(),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectAnswering(_ => throw new InvalidOperationException("a defect in the first printer's path"));
+        IPrinterConnectionActor second = ConnectAnswering(_ => Answered(PrinterEventType.Finished), secondPrinterId);
+        FakeLogger<QueueAdvancer> logger = new();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer(logger);
+        await advancer.AdvanceAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(second).Should().ContainSingle("the second printer's pass ran despite the first");
+        logger.Collector.GetSnapshot().Should().Contain(record => record.Level == LogLevel.Error,
+                                                        "the failure is still reported");
+    }
+
+    /// <summary>
+    /// A printer that answers each command, on either face of the actor, with whatever
+    /// <paramref name="answer"/> gives for it. Returned so a test can see what it was asked.
+    /// </summary>
+    private IPrinterConnectionActor ConnectAnswering(Func<object, CommandSendResult> answer, int printerId = PrinterId)
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(call => Task.FromResult(answer(call.Arg<IPrinterIntent>())));
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call => Task.FromResult(answer(call.Arg<ISendableCommand>())));
+
+        _registry.Register(printerId, actor, overPlaintext: false);
+
+        return actor;
+    }
+
+    /// <summary>An answer from the printer, carrying <paramref name="json"/> as its payload when there is one.</summary>
+    private static CommandSendResult Answered(PrinterEventType eventType, string? reason = null, string? json = null)
+    {
+        return new CommandSendResult(CommandSendOutcome.Completed,
+                                     new CommandOutcome(eventType, reason),
+                                     json is null ? null : JsonSerializer.Deserialize<JsonElement>(json));
+    }
+
+    /// <summary>No answer at all, for the reason <paramref name="outcome"/> names.</summary>
+    private static CommandSendResult Unanswered(CommandSendOutcome outcome)
+    {
+        return new CommandSendResult(outcome, null);
+    }
+
     // ---- what the printer wrote, in the log ----
     [Fact]
     public async Task AnArrivalIsLoggedWithThePrintersPathCleaned()

@@ -66,6 +66,18 @@ namespace Homespool.Host.Controllers;
 [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 public class PrinterController : ControllerBase
 {
+    // What each action is called in a refusal's `command`. A job-control verb is the last segment of
+    // its own route, which is built from the same constant, so the field and the URL cannot drift
+    // apart; a send and a browse have no verb in their routes and are named for what they do.
+    private const string SendAct = "send";
+    private const string BrowseAct = "browse";
+    private const string PauseAct = "pause";
+    private const string ResumeAct = "resume";
+    private const string StopAct = "stop";
+    private const string ReadyAct = "ready";
+    private const string UnreadyAct = "unready";
+    private const string IdleAct = "idle";
+
     private readonly PrintFileCatalog _files;
     private readonly PrintFileSender _sender;
     private readonly PrinterDriveNames _driveNames;
@@ -185,17 +197,22 @@ public class PrinterController : ControllerBase
         // the cleanup rule is the one worth having a single copy of.
         try
         {
-            // The command named in a refusal is the one the sender actually sent. It chooses between
-            // an inline transfer and an encrypted download from a property of the connection, and
-            // this used to hold a hardcoded START_CONNECT_DOWNLOAD - so every refusal on the
-            // pre-websocket transport named a command that had never been on the wire.
             FileSendResult sent = await _sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName!),
                                                           CallerResolver.For(user, User), cancellationToken);
             CommandOutcome? outcome = sent.Outcome;
 
-            return outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
-                this.CommandRefused(sent.WireName, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString()) :
-                TypedResults.NoContent();
+            if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+            {
+                // The sender chooses between an inline transfer and an encrypted download from a
+                // property of the connection, which the caller cannot see and cannot act on - so the
+                // answer names the act, and this line is where the command actually sent is kept.
+                _logger.LogInformation("{Command} to printer {PrinterId} answered {Outcome}",
+                                       sent.WireName, printer.Id, outcome.EventType.ToString());
+
+                return this.CommandRefused(SendAct, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
+            }
+
+            return TypedResults.NoContent();
         }
         catch (PrintFileUnreadableException e)
         {
@@ -204,11 +221,9 @@ public class PrinterController : ControllerBase
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
                                       CommandResponseTimedOutException or CommandSendTimedOutException)
         {
-            // The send never got far enough to say which command it would have been, so this one
-            // names the endpoint's job rather than inventing a wire name.
             _logger.LogInformation(e, "Sending a file to printer {PrinterId} did not complete", printer.Id);
 
-            return this.CommandRefused(PrusaConnect.Commands.StartConnectDownload.Wire, e.Message);
+            return this.CommandRefused(SendAct, e.Message);
         }
         catch (TeamAccessDeniedException e)
         {
@@ -302,7 +317,7 @@ public class PrinterController : ControllerBase
                 // Firmware answers a path that does not exist and a path it will not touch with the
                 // same event, distinguished only by reason text - so this stays one status code and
                 // hands the caller firmware's own words rather than guessing at a 404.
-                return this.CommandRefused(command.WireName,
+                return this.CommandRefused(BrowseAct,
                                            outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
@@ -314,7 +329,7 @@ public class PrinterController : ControllerBase
                 _logger.LogInformation("{Command} to printer {PrinterId} answered {Outcome} with no data",
                                        command.WireName, printer.Id, outcome?.EventType.ToString() ?? "nothing");
 
-                return this.CommandAnswerUnusable(command.WireName, "The printer answered without a listing.");
+                return this.CommandAnswerUnusable(BrowseAct, "The printer answered without a listing.");
             }
 
             return TypedResults.Ok(PrinterStorageReadDTO.FromEvent(outcome.Answer));
@@ -325,14 +340,14 @@ public class PrinterController : ControllerBase
             // the caller's - so 502 rather than the 409 the transport failures below get.
             _logger.LogWarning(e, "{Command} to printer {PrinterId} answered unreadably", command.WireName, printer.Id);
 
-            return this.CommandAnswerUnusable(command.WireName, e.Message);
+            return this.CommandAnswerUnusable(BrowseAct, e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
                                       CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.WireName, printer.Id);
 
-            return this.CommandRefused(command.WireName, e.Message);
+            return this.CommandRefused(BrowseAct, e.Message);
         }
         catch (TeamAccessDeniedException e)
         {
@@ -354,18 +369,18 @@ public class PrinterController : ControllerBase
     /// </para>
     /// </remarks>
     [HttpPut]
-    [Route("printers/{uuid:guid}/command/pause")]
+    [Route("printers/{uuid:guid}/command/" + PauseAct)]
     public Task<JobControlResult> Pause(Guid uuid, CancellationToken cancellationToken)
     {
-        return SendJobControlAsync(uuid, new PausePrint(), cancellationToken);
+        return SendJobControlAsync(uuid, PauseAct, new PausePrint(), cancellationToken);
     }
 
     /// <summary>Resumes a paused print. <c>PUT /api/v1/printers/{uuid}/command/resume</c>.</summary>
     [HttpPut]
-    [Route("printers/{uuid:guid}/command/resume")]
+    [Route("printers/{uuid:guid}/command/" + ResumeAct)]
     public Task<JobControlResult> Resume(Guid uuid, CancellationToken cancellationToken)
     {
-        return SendJobControlAsync(uuid, new ResumePrint(), cancellationToken);
+        return SendJobControlAsync(uuid, ResumeAct, new ResumePrint(), cancellationToken);
     }
 
     /// <summary>Stops a running print. <c>PUT /api/v1/printers/{uuid}/command/stop</c>.</summary>
@@ -377,7 +392,7 @@ public class PrinterController : ControllerBase
     /// else about the call is unchanged, refusals included.
     /// </remarks>
     [HttpPut]
-    [Route("printers/{uuid:guid}/command/stop")]
+    [Route("printers/{uuid:guid}/command/" + StopAct)]
     public async Task<JobControlResult> Stop(Guid uuid, CancellationToken cancellationToken)
     {
         // Which printer, and whether this caller may be told it exists.
@@ -395,7 +410,7 @@ public class PrinterController : ControllerBase
 
         // The one difference from the other five verbs: PrintStopService sends the same command
         // through the same permission gate, and notes who asked on the way past.
-        return await SendAsync(printer, new StopPrint(), cancellationToken, send: _stops.StopAsync);
+        return await SendAsync(printer, StopAct, new StopPrint(), cancellationToken, send: _stops.StopAsync);
     }
 
     /// <summary>
@@ -423,18 +438,18 @@ public class PrinterController : ControllerBase
     /// </remarks>
     [NonAction]
     [HttpPut]
-    [Route("printers/{uuid:guid}/command/ready")]
+    [Route("printers/{uuid:guid}/command/" + ReadyAct)]
     public Task<JobControlResult> Ready(Guid uuid, CancellationToken cancellationToken)
     {
-        return SendJobControlAsync(uuid, new SetPrinterReady(), cancellationToken);
+        return SendJobControlAsync(uuid, ReadyAct, new SetPrinterReady(), cancellationToken);
     }
 
     /// <summary>Cancels the ready state. <c>PUT /api/v1/printers/{uuid}/command/unready</c>.</summary>
     [HttpPut]
-    [Route("printers/{uuid:guid}/command/unready")]
+    [Route("printers/{uuid:guid}/command/" + UnreadyAct)]
     public Task<JobControlResult> Unready(Guid uuid, CancellationToken cancellationToken)
     {
-        return SendJobControlAsync(uuid, new CancelPrinterReady(), cancellationToken);
+        return SendJobControlAsync(uuid, UnreadyAct, new CancelPrinterReady(), cancellationToken);
     }
 
     /// <summary>
@@ -449,14 +464,15 @@ public class PrinterController : ControllerBase
     /// Both halves were seen on hardware.
     /// </remarks>
     [HttpPut]
-    [Route("printers/{uuid:guid}/command/idle")]
+    [Route("printers/{uuid:guid}/command/" + IdleAct)]
     public Task<JobControlResult> Idle(Guid uuid, CancellationToken cancellationToken)
     {
-        return SendJobControlAsync(uuid, new SetPrinterIdle(), cancellationToken);
+        return SendJobControlAsync(uuid, IdleAct, new SetPrinterIdle(), cancellationToken);
     }
 
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
     private async Task<JobControlResult> SendJobControlAsync(Guid uuid,
+                                                             string act,
                                                              IPrinterIntent command,
                                                              CancellationToken cancellationToken)
     {
@@ -472,7 +488,7 @@ public class PrinterController : ControllerBase
             return this.NotFoundProblem();
         }
 
-        return await SendAsync(printer, command, cancellationToken);
+        return await SendAsync(printer, act, command, cancellationToken);
     }
 
     /// <summary>
@@ -507,6 +523,7 @@ public class PrinterController : ControllerBase
     /// <see cref="CommandOutcome"/>, so nothing below that line has to know which one ran.
     /// </remarks>
     private async Task<JobControlResult> SendAsync(Printer printer,
+                                                   string act,
                                                    IPrinterIntent command,
                                                    CancellationToken cancellationToken,
                                                    Action? onFailure = null,
@@ -535,7 +552,7 @@ public class PrinterController : ControllerBase
             {
                 onFailure?.Invoke();
 
-                return this.CommandRefused(command.Name, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
+                return this.CommandRefused(act, outcome.Reason ?? "The printer refused the command.", outcome.EventType.ToString());
             }
 
             // 204, which is ours rather than the spec's - Connect documents 200 with a Command
@@ -550,7 +567,7 @@ public class PrinterController : ControllerBase
             onFailure?.Invoke();
             _logger.LogInformation(e, "{Command} to printer {PrinterId} did not complete", command.Name, printer.Id);
 
-            return this.CommandRefused(command.Name, e.Message);
+            return this.CommandRefused(act, e.Message);
         }
 
         // Both are "no, and no permission you could be granted changes that" - one because the caller

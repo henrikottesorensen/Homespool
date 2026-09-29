@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,7 +27,8 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// <c>PrinterController</c>'s dispatch endpoints - send a file, browse storage - each once
 /// with a token whose scope names the capability and once with one that does not, against a
-/// genuinely connected printer.
+/// genuinely connected printer; their refusals that are not about permission; and the job-control
+/// verbs nothing else drives over the API.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -239,6 +241,36 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A file that is found and then cannot be opened is a 409 naming it, and no command leaves -
+    /// a download offered under a token with no bytes behind it would send the printer after nothing.
+    /// </summary>
+    /// <remarks>
+    /// Against a connected printer, because the connection is asked before the file is opened: a
+    /// disconnected one would answer 409 first, for a reason this test is not about.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnreadableFileIsAConflictAndReachesNoPrinter()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        await UploadAsOwnerAsync(userId, "benchy.gcode");
+        UnreadableStoredFile.Make(_factory, userId, "benchy.gcode");
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                          new { name = "benchy.gcode" },
+                                                                          TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await DetailOfAsync(response)).Should().Be("benchy.gcode could not be read - it may have just been deleted.");
+
+        fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame, not after it");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// Nothing over the API starts a print directly - not a slicer's key, and not an unrestricted
     /// one - and the printer hears nothing.
     /// </summary>
@@ -323,6 +355,178 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
         await EndRunAsync(fake, run);
     }
 
+    /// <summary>
+    /// A path climbing out of a directory is refused here, and the printer is never asked - firmware
+    /// would refuse it too, but only after a command had been spent on it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Kestrel delivers this path from an absolute-form request target</b> -
+    /// <c>POST http://host/api/v1/printers/{uuid}/storage/usb/..%2Fsecret</c> - because it takes that
+    /// form's path from <c>Uri.LocalPath</c>, which decodes the slash after dot segments have been
+    /// resolved. An origin-form target never gets here: Kestrel removes its dot segments and leaves
+    /// an encoded slash encoded.
+    /// </para>
+    /// <para>
+    /// <b><c>HttpClient</c> cannot send it either</b>, for the same two reasons, so the path is set on
+    /// the request directly - as Kestrel would hand it over.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ATraversalIsRefusedBeforeThePrinterIsAsked()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        string token = await MintTokenAsync(userId, [Capability.ControlPrinter]);
+
+        HttpContext answered = await _factory.Server.SendAsync(context =>
+        {
+            context.Request.Method = HttpMethods.Post;
+            context.Request.Path = $"/api/v1/printers/{uuid}/storage/usb/../secret";
+            context.Request.Headers.Authorization = $"Bearer {token}";
+        }, TestContext.Current.CancellationToken);
+
+        answered.Response.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
+
+        fake.ReceivedCommands.Should().BeEmpty("a traversal must not cost the printer a command");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// Another team's printer is not found by either endpoint - the same answer as a printer that
+    /// does not exist - and hears nothing.
+    /// </summary>
+    /// <remarks>
+    /// The caller's token is unrestricted and their file exists, so the printer being invisible to
+    /// them is the only thing left to refuse.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterYouCannotSeeIsNotFoundToSendAndToBrowse()
+    {
+        (Guid uuid, long _, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        (HSUser stranger, HttpClient strangerCookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "controller-stranger@example.com");
+
+        using (strangerCookieClient)
+        {
+            await UploadAsync(strangerCookieClient, "benchy.gcode");
+        }
+
+        using HttpClient client = await ScopedClientAsync(stranger.Id, CapabilitySet.Everything);
+
+        Guid[] targets = [uuid, Guid.NewGuid()];
+
+        foreach (Guid target in targets)
+        {
+            using HttpResponseMessage send = await client.PostAsJsonAsync($"/api/v1/printers/{target}/files",
+                                                                          new { name = "benchy.gcode" },
+                                                                          TestContext.Current.CancellationToken);
+            using HttpResponseMessage browse =
+                await client.PostAsync($"/api/v1/printers/{target}/storage/usb", null, TestContext.Current.CancellationToken);
+
+            send.StatusCode.Should().Be(HttpStatusCode.NotFound);
+            browse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+
+        fake.ReceivedCommands.Should().BeEmpty("a printer the caller cannot see must not hear from them");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A printer that is enrolled and not connected is a 409 from both endpoints, each naming the act
+    /// it could not perform.
+    /// </summary>
+    [Fact]
+    public async Task ADisconnectedPrinterIsAConflictToSendAndToBrowse()
+    {
+        (PrinterIdentity _, string _, int printerId, long userId) = await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+        Guid uuid = await UuidOfAsync(printerId);
+
+        await UploadAsOwnerAsync(userId, "benchy.gcode");
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print, Capability.ControlPrinter]);
+
+        using HttpResponseMessage send = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                      new { name = "benchy.gcode" },
+                                                                      TestContext.Current.CancellationToken);
+        using HttpResponseMessage browse =
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
+
+        send.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await CommandOfAsync(send)).Should().Be("send");
+
+        browse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await CommandOfAsync(browse)).Should().Be("browse");
+    }
+
+    /// <summary>
+    /// A token scoped to <c>ControlPrinter</c> resumes a paused print, and the printer is printing
+    /// again afterwards.
+    /// </summary>
+    [Fact]
+    public async Task ATokenScopedToControlPrinterResumesAPausedPrint()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(configure: f =>
+        {
+            f.Device.StartPrint(jobId: 7);
+            f.Device.TryPause();
+        });
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/resume",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        fake.Device.State.Should().Be(DeviceState.Printing, "a 204 means the printer resumed, not that we asked");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A resume with nothing paused comes back as the printer's refusal, in its own words, naming the
+    /// verb the caller used - the route's word, not the intent's type or the wire's.
+    /// </summary>
+    [Fact]
+    public async Task ResumingWithNothingPausedIsRefusedUnderTheRoutesVerb()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/resume",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await DetailOfAsync(response)).Should().Be("No paused print to resume", "the printer's own words");
+        (await CommandOfAsync(response)).Should().Be("resume");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A token scoped to <c>Print</c> alone withdraws a ready printer's readiness - the capability
+    /// that entitles somebody to ready it.
+    /// </summary>
+    [Fact]
+    public async Task ATokenScopedToPrintUnreadiesAReadyPrinter()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.ForceState(DeviceState.Ready));
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/unready",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        fake.Device.State.Should().Be(DeviceState.Idle, "a 204 means the printer stood down, not that we asked");
+
+        await EndRunAsync(fake, run);
+    }
+
     /// <summary>The <c>detail</c> of a ProblemDetails answer, where a refusal explains itself.</summary>
     private static async Task<string> DetailOfAsync(HttpResponseMessage response)
     {
@@ -332,21 +536,46 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
         return payload.RootElement.GetProperty("detail").GetString() ?? string.Empty;
     }
 
+    /// <summary>The <c>command</c> a refusal names - the act, as the API names it.</summary>
+    private static async Task<string> CommandOfAsync(HttpResponseMessage response)
+    {
+        using JsonDocument payload =
+            JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        return payload.RootElement.GetProperty("command").GetString() ?? string.Empty;
+    }
+
+    private async Task<Guid> UuidOfAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return await context.Printers
+                            .Where(printer => printer.Id == printerId)
+                            .Select(printer => printer.Uuid)
+                            .SingleAsync(TestContext.Current.CancellationToken);
+    }
+
     /// <summary>A client authenticating with a freshly minted token carrying exactly this scope.</summary>
     private async Task<HttpClient> ScopedClientAsync(long userId, IEnumerable<Capability> scope)
     {
-        string plaintext;
-
-        using (IServiceScope serviceScope = _factory.Services.CreateScope())
-        {
-            ApiTokenService tokens = serviceScope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, plaintext) = await tokens.CreateAsync(userId, "dispatch-e2e", scope, TestContext.Current.CancellationToken);
-        }
+        string plaintext = await MintTokenAsync(userId, scope);
 
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
 
         return client;
+    }
+
+    /// <summary>A freshly minted token carrying exactly this scope, as its plaintext.</summary>
+    private async Task<string> MintTokenAsync(long userId, IEnumerable<Capability> scope)
+    {
+        using IServiceScope serviceScope = _factory.Services.CreateScope();
+        ApiTokenService tokens = serviceScope.ServiceProvider.GetRequiredService<ApiTokenService>();
+
+        (_, string plaintext) = await tokens.CreateAsync(userId, "dispatch-e2e", scope, TestContext.Current.CancellationToken);
+
+        return plaintext;
     }
 
     /// <summary>Uploads as the printer's owner over a cookie session, so the scoped token under test

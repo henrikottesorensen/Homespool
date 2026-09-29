@@ -434,6 +434,37 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The owner cancelling an object the printer has not reported is told so on the page, and the
+    /// printer is sent nothing - the server's count, not the printer's refusal, is what says no.
+    /// </summary>
+    /// <remarks>
+    /// Id 4 of four, the first one past the end, so a bound that let the count itself through would
+    /// send it. The message numbers it from one, as the plate does.
+    /// </remarks>
+    [Fact]
+    public async Task CancellingAnObjectThePrinterHasNotReportedReachesNoPrinter()
+    {
+        (Guid uuid, long ownerId, HttpClient client, FakePrinterClient fake, Task run) = await PrintingPlateAsync();
+
+        using (client)
+        {
+            await SeedOpenPrintAsync(uuid, ownerId);
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, uuid, "CancelObject", [new("objectId", "4")]);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            posted.Headers.Location!.OriginalString.Should().NotContain("AccessDenied", "the print is the owner's own");
+
+            (await GetPageAsync(client, uuid)).Should().Contain("This print has no object 5 that can be cancelled.");
+
+            fake.Device.CancelledObjects.Should().BeEmpty();
+            fake.ReceivedCommands.Select(frame => frame.TryGetJsonCommandName()).Should().NotContain("CANCEL_OBJECT");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
     /// <b>A print of one object gets no plate at all.</b> Cancelling the only object does not stop
     /// the print - firmware skips its moves and runs the rest - so the card would offer a worse Stop
     /// beside the real one. The printer still reports the object; the page declines to show it.

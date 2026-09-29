@@ -232,24 +232,33 @@ internal static class ProblemResults
     }
 
     /// <summary>
-    /// A command the printer refused, or that never completed: 409, carrying which command it was
-    /// and - when the printer answered rather than went missing - what it answered.
+    /// A command the printer refused, or that never completed: 409, carrying which act it was and -
+    /// when the printer answered rather than went missing - what it answered.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>command</c> and <c>outcome</c> ride as problem extensions, which is where
     /// <see href="https://www.rfc-editor.org/rfc/rfc9457">RFC 9457</see> puts members beyond the
     /// standard five. That keeps the response one shape whether the printer refused or never
     /// answered - the caller reads <c>detail</c> either way and the extensions only add detail for
     /// machines.
+    /// </para>
+    /// <para>
+    /// <b><c>command</c> is the act as the API names it</b> - <c>pause</c>, <c>send</c> - and never
+    /// the protocol's word for it or a type's name. A wire word means something different on each
+    /// protocol and a type name changes with a rename, and either would make this field a contract
+    /// that moves without anybody touching the API. The wire command belongs in the log line beside
+    /// the refusal, where somebody debugging a printer looks.
+    /// </para>
     /// </remarks>
     public static ConflictProblem CommandRefused(this ControllerBase controller,
-                                                 string wireName,
+                                                 string act,
                                                  string detail,
                                                  string? outcome = null)
     {
         ProblemDetails problem = controller.Details(StatusCodes.Status409Conflict, detail);
 
-        problem.Extensions["command"] = wireName;
+        problem.Extensions["command"] = act;
 
         if (outcome is not null)
         {
@@ -261,13 +270,13 @@ internal static class ProblemResults
 
     /// <summary>
     /// A command the printer answered in a way this server could not use: 502, since that is the
-    /// gateway's failure and not the caller's. Carries the command like <see cref="CommandRefused"/>.
+    /// gateway's failure and not the caller's. Carries the act like <see cref="CommandRefused"/>.
     /// </summary>
-    public static BadGatewayProblem CommandAnswerUnusable(this ControllerBase controller, string wireName, string detail)
+    public static BadGatewayProblem CommandAnswerUnusable(this ControllerBase controller, string act, string detail)
     {
         ProblemDetails problem = controller.Details(StatusCodes.Status502BadGateway, detail);
 
-        problem.Extensions["command"] = wireName;
+        problem.Extensions["command"] = act;
 
         return new(problem);
     }

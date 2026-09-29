@@ -109,28 +109,13 @@ public sealed class CameraStreamReconciler : BackgroundService
             using IServiceScope scope = _scopeFactory.CreateScope();
             HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-            // Before the cameras are counted, so the last camera's removal is swept as well, and
-            // before anything is registered, so a device an orphan still holds is free when its
-            // camera's own stream arrives.
-            int swept = await scope.ServiceProvider.GetRequiredService<CameraStreamSweeper>()
-                                   .SweepAsync(stoppingToken)
-                                   .ConfigureAwait(false);
-
-            if (swept > 0)
-            {
-                _logger.LogInformation("Removed {Count} streams no camera owns from the stream server.", swept);
-            }
-
             List<Camera> cameras = await database.Cameras
                                                  .AsNoTracking()
                                                  .ToListAsync(stoppingToken)
                                                  .ConfigureAwait(false);
 
-            if (cameras.Count == 0)
-            {
-                return;
-            }
-
+            // Asked for even with no cameras, because the sweep below needs it: the removal of the
+            // last camera is the one it would otherwise never see.
             IReadOnlySet<string>? known = await ListStreamNamesAsync(stoppingToken).ConfigureAwait(false);
 
             // Null means the sidecar could not be asked, which is not the same as it knowing
@@ -138,11 +123,33 @@ public sealed class CameraStreamReconciler : BackgroundService
             // would be work at best and a thundering herd at worst.
             if (known is null)
             {
-                _logger.LogInformation(
-                    "The stream server could not be reached within {Seconds}s of startup; {Count} cameras will be " +
-                    "registered when one is next saved.",
-                    ListingPatience.TotalSeconds,
-                    cameras.Count);
+                if (cameras.Count > 0)
+                {
+                    _logger.LogInformation(
+                        "The stream server could not be reached within {Seconds}s of startup; {Count} cameras will be " +
+                        "registered when one is next saved.",
+                        ListingPatience.TotalSeconds,
+                        cameras.Count);
+                }
+
+                return;
+            }
+
+            // After the wait for a listing, so a sidecar restarting under the configurer is swept
+            // once it is back rather than found empty-handed; before anything is registered, so a
+            // device an orphan still holds is free when its camera's own stream arrives. The rows
+            // the sweep reads are its own, taken after this listing.
+            int swept = await scope.ServiceProvider.GetRequiredService<CameraStreamSweeper>()
+                                   .SweepAsync(known, stoppingToken)
+                                   .ConfigureAwait(false);
+
+            if (swept > 0)
+            {
+                _logger.LogInformation("Removed {Count} streams no camera owns from the stream server.", swept);
+            }
+
+            if (cameras.Count == 0)
+            {
                 return;
             }
 

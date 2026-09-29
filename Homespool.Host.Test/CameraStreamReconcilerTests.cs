@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Threading;
@@ -148,6 +149,25 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         handler.Listings.Should().BeInRange(2, 31, "asked again once a second for thirty seconds, not in a busy loop");
         handler.Attempted.Should().BeEmpty("with no listing, nothing is known to be missing");
+    }
+
+    /// <summary>
+    /// A stream no camera owns is swept once a restarting sidecar is back - with no cameras at all,
+    /// which is when the last camera's removal left it. Swept from the listing the wait produced, not
+    /// from one asked for before it, which a restarting sidecar would have refused.
+    /// </summary>
+    [Fact]
+    public async Task AnOrphanIsSweptOnceARestartingSidecarIsBack()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid orphan = Guid.NewGuid();
+
+        using RecordingHandler handler = new() { ListingsToRefuse = 2, Held = [orphan.ToString("D")] };
+        await RunReconcilerAsync(context, handler);
+
+        handler.Deleted.Should().Equal([orphan.ToString("D")], "the sidecar answered once it was back, and the stream is no camera's");
+        handler.Listings.Should().Be(3, "the sweep uses the listing the wait produced rather than asking again");
     }
 
     /// <summary>
@@ -314,8 +334,9 @@ public sealed class CameraStreamReconcilerTests : IDisposable
     /// Answers the sidecar's calls and remembers which stream names were PUT.
     /// </summary>
     /// <remarks>
-    /// The listing answers empty, so every camera counts as missing and the registration loop is
-    /// actually entered - which is the loop under test. Anything else answers 200 with an empty
+    /// The listing answers with <see cref="Held"/>, empty unless a test says otherwise, so every
+    /// camera counts as missing and the registration loop is actually entered - which is the loop
+    /// under test. Anything else answers 200 with an empty
     /// object, since the probe that follows is not what this is about.
     /// </remarks>
     private sealed class RecordingHandler : HttpMessageHandler
@@ -337,6 +358,12 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         public int Listings { get; private set; }
 
+        /// <summary>The stream names the listing answers with.</summary>
+        public IReadOnlyList<string> Held { get; init; } = [];
+
+        /// <summary>Every stream name a delete was sent for.</summary>
+        public List<string> Deleted { get; } = [];
+
         /// <summary>When each of <see cref="Attempted"/> was made.</summary>
         public List<DateTimeOffset> AttemptedAt { get; } = [];
 
@@ -355,6 +382,18 @@ public sealed class CameraStreamReconcilerTests : IDisposable
                 {
                     throw new HttpRequestException("Connection refused");
                 }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(Held.ToDictionary(name => name, _ => new { }))),
+                });
+            }
+
+            if (request.Method == HttpMethod.Delete &&
+                System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["src"] is { } deleted)
+            {
+                Deleted.Add(deleted);
             }
 
             if (request.Method == HttpMethod.Put &&

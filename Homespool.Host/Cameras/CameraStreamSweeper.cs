@@ -70,10 +70,20 @@ public sealed class CameraStreamSweeper
     {
         IReadOnlySet<string>? names = await _streamServer.ListStreamNamesAsync(cancellationToken).ConfigureAwait(false);
 
-        if (names is null)
-        {
-            return 0;
-        }
+        return names is null ? 0 : await SweepAsync(names, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Removes every uuid-named stream no camera owns from a listing the caller already has.
+    /// </summary>
+    /// <remarks>
+    /// For a caller that had to wait for the sidecar to answer before it could list it, and would
+    /// otherwise ask twice. The listing must have been taken before this is called, and not from
+    /// rows read earlier - the order the class remarks give is what keeps a camera being added safe.
+    /// </remarks>
+    public async Task<int> SweepAsync(IReadOnlySet<string> names, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(names);
 
         List<Guid> named = names.Select(OwnedName)
                                 .OfType<Guid>()

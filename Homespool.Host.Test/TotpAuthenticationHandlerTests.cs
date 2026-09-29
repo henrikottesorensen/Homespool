@@ -9,6 +9,7 @@ using AwesomeAssertions;
 using Duende.IdentityModel;
 
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Http;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
@@ -73,6 +74,28 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
         AuthenticateResult result = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(await rig.PendingTwoFactorCookieAsync(user)), Schemes.Totp);
 
         result.None.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The code page asks for a code and the cookie scheme already sends people to it; neither code
+    /// scheme is anywhere to be sent, so a challenge or a forbid through one answers bare.
+    /// </summary>
+    [Theory]
+    [InlineData(Schemes.Totp)]
+    [InlineData(Schemes.RecoveryCode)]
+    public async Task AChallengeAnswers401AndAForbid403WithoutRedirecting(string scheme)
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        DefaultHttpContext challenged = rig.NewRequest();
+        DefaultHttpContext forbidden = rig.NewRequest();
+
+        await challenged.ChallengeAsync(scheme);
+        await forbidden.ForbidAsync(scheme);
+
+        challenged.Response.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
+        challenged.Response.Headers.Location.ToString().Should().BeEmpty();
+        forbidden.Response.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        forbidden.Response.Headers.Location.ToString().Should().BeEmpty();
     }
 
     [Theory]
@@ -268,5 +291,49 @@ public sealed class TotpAuthenticationHandlerTests : IDisposable
         AuthenticateResult result = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(await rig.SessionCookieAsync(user)), Schemes.RecoveryCode, Recovery(code));
 
         result.Succeeded.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A right code for an account that may not sign in is refused before it is redeemed, so it is still
+    /// there once the lockout ends. Spending it first would cost the owner a code for a sign-in that was
+    /// never going to happen.
+    /// </summary>
+    [Fact]
+    public async Task ARecoveryCodeIsNotSpentOnAnAccountThatMayNotSignIn()
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        await rig.EnableAuthenticatorAsync(user);
+        string code = (await rig.Users.GenerateNewTwoFactorRecoveryCodesAsync(user, 2))!.First();
+        string pending = await rig.PendingTwoFactorCookieAsync(user);
+        (await rig.Users.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddMinutes(5))).Succeeded.Should().BeTrue();
+
+        AuthenticateResult result = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(pending), Schemes.RecoveryCode, Recovery(code));
+
+        result.Succeeded.Should().BeFalse();
+        result.Refusal().Should().Be(SignInRefusal.LockedOut);
+        (await rig.Users.CountRecoveryCodesAsync(user)).Should().Be(2, "a refused sign-in spends nothing");
+    }
+
+    /// <summary>
+    /// Nothing presented, or only the spaces the page groups a code with, is no attempt at all: no
+    /// result, rather than a refusal the page would report as a wrong code.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task NoRecoveryCodeYieldsNoResult(string? code)
+    {
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        await rig.EnableAuthenticatorAsync(user);
+        DefaultHttpContext request = rig.NewRequest(await rig.PendingTwoFactorCookieAsync(user));
+
+        AuthenticateResult result = code is null ?
+                                        await LocalSchemeRig.AuthenticateAsync(request, Schemes.RecoveryCode) :
+                                        await LocalSchemeRig.AuthenticateAsync(request, Schemes.RecoveryCode, Recovery(code));
+
+        result.None.Should().BeTrue();
     }
 }

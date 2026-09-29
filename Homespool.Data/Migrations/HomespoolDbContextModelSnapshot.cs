@@ -231,9 +231,7 @@ namespace Homespool.Data.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValue("Signup");
+                        .HasColumnType("TEXT");
 
                     b.Property<long?>("UsedAt")
                         .HasColumnType("INTEGER");

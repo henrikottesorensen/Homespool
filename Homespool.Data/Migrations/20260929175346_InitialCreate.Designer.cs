@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260929170810_InitialCreate")]
+    [Migration("20260929175346_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -234,9 +234,7 @@ namespace Homespool.Data.Migrations
 
                     b.Property<string>("Type")
                         .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT")
-                        .HasDefaultValue("Signup");
+                        .HasColumnType("TEXT");
 
                     b.Property<long?>("UsedAt")
                         .HasColumnType("INTEGER");

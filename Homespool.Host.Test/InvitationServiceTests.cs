@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
@@ -261,10 +262,9 @@ public sealed class InvitationServiceTests : IDisposable
     /// types the caller accepts.
     /// </summary>
     /// <remarks>
-    /// The signup-with-an-account case is the one a deployment can actually hold: a recovery issued
-    /// before the column existed, labelled a signup by its default. Handing it to a caller that
-    /// creates accounts is the defect this column exists to prevent, so the default must not
-    /// reintroduce it.
+    /// The signup-with-an-account case is the dangerous one: handing a recovery to a caller that
+    /// creates accounts is the defect this column exists to prevent, so a row that says signup while
+    /// naming an account must not reintroduce it.
     /// </remarks>
     [Theory]
     [InlineData(InvitationType.Signup, 42L)]
@@ -301,25 +301,24 @@ public sealed class InvitationServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A row written without a type reads back as a signup. That default is what a deployment's
-    /// existing rows receive when the column is added to them, so it is pinned here rather than
-    /// left to whatever the migration happened to say.
+    /// A row written without a type is refused. The column has no default, so nothing - not a
+    /// migration, not a hand-written insert - can make an invitation a signup by leaving it out.
     /// </summary>
     [Fact]
-    public async Task ARowWrittenWithoutATypeIsASignup()
+    public async Task ARowWrittenWithoutATypeIsRefused()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
         // Act
-        await context.Database.ExecuteSqlRawAsync(
+        Func<Task> insert = () => context.Database.ExecuteSqlRawAsync(
             "INSERT INTO \"Invitations\" (\"Uuid\", \"HashedToken\", \"Email\", \"CreatedAt\", \"ExpiresAt\", \"InvitedBy\", \"ClearsTwoFactor\") " +
             "VALUES ('6f1c1d2e-0000-4000-8000-000000000001', 'hash', 'old@example.com', 0, 0, 1, 0)",
             TestContext.Current.CancellationToken);
 
         // Assert
-        Invitation stored = await context.Invitations.SingleAsync(TestContext.Current.CancellationToken);
-        stored.Type.Should().Be(InvitationType.Signup);
+        (await insert.Should().ThrowAsync<SqliteException>("a type nobody wrote has no value to fall back on"))
+            .WithMessage("*NOT NULL constraint failed: Invitations.Type*");
     }
 
     // ---------- FindOutstandingForEmailAsync ----------

@@ -87,10 +87,9 @@ public class Invitation
     /// finds them disagreeing refuses the invite rather than choosing one.
     /// </para>
     /// <para>
-    /// <b>Required, although the column has a default.</b> The default exists so that a column added
-    /// to an existing table has something to give the rows already in it; a new invitation has no
-    /// such excuse, and an omitted type would otherwise arrive as a signup without anybody having
-    /// said so.
+    /// <b>Required here, and the column has no default.</b> An omitted type fails to compile and a
+    /// row inserted without one is refused by the database, so no invitation becomes a signup
+    /// without anybody having said so.
     /// </para>
     /// </remarks>
     public required InvitationType Type { get; set; }

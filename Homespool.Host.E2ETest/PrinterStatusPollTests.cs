@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -16,7 +18,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// The two handlers behind the printer page's self-refreshing blocks.
+/// The handlers behind the printer page's self-refreshing blocks, and the one the unload dialog
+/// fetches when it opens.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,6 +36,12 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class PrinterStatusPollTests : IAsyncLifetime
 {
+    /// <summary>How Razor renders a true boolean attribute, which is how a head's radio is found chosen.</summary>
+    private const string Checked = "checked=\"checked\"";
+
+    /// <summary>Likewise for a head that cannot be unloaded.</summary>
+    private const string Disabled = "disabled=\"disabled\"";
+
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("status-poll");
 
     private HomespoolFactory _factory = null!;
@@ -280,18 +289,135 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
     }
 
     /// <summary>A uuid the caller cannot read is a 404 here, as everywhere else on this page.</summary>
-    [Fact]
-    public async Task AnUnknownPrinterIsNotFound()
+    [Theory]
+    [InlineData("Status")]
+    [InlineData("Tools")]
+    public async Task AnUnknownPrinterIsNotFound(string handler)
     {
         (Guid _, HttpClient client) = await SeedAsync("status-unknown@example.com");
 
         using (client)
         {
             using HttpResponseMessage response = await client.GetAsync(
-                $"/Printers/Detail/{Guid.NewGuid()}?handler=Status", TestContext.Current.CancellationToken);
+                $"/Printers/Detail/{Guid.NewGuid()}?handler={handler}", TestContext.Current.CancellationToken);
 
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         }
+    }
+
+    /// <summary>
+    /// The unload dialog's rows answer for each head as it is when the dialog opens, down to the
+    /// moment the last one is emptied.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The last step is the one the handler exists for.</b> The dialog is refetched on open because
+    /// the page's copy goes stale while an unload runs, and the unload that empties the last loaded
+    /// head is the one after which somebody is most likely to look again. A fragment that failed
+    /// there would leave the script showing the stale list, still offering the filament that has
+    /// just come out.
+    /// </para>
+    /// <para>
+    /// The live state is changed in the database between fetches, so each answer can only have come
+    /// from reading it again.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task TheToolsHandlerAnswersEachHeadAsItIsNow()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("tools-fresh@example.com", Toolchanger("PLA", "PETG"));
+
+        using (client)
+        {
+            string loaded = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Tools");
+
+            loaded.Should().NotContain("<!DOCTYPE", "a fragment is not a document");
+            loaded.Should().Contain("PETG");
+            Head(loaded, 1).Should().Contain(Checked, "the first loaded head is the default choice");
+            Head(loaded, 2).Should().NotContain(Disabled);
+
+            await EmptyHeadAsync(uuid, 1);
+            string oneLeft = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Tools");
+
+            Head(oneLeft, 1).Should().Contain(Disabled, "an empty head is listed and inert");
+            Head(oneLeft, 2).Should().Contain(Checked, "the choice moves to the head that still has filament");
+
+            await EmptyHeadAsync(uuid, 2);
+            string noneLeft = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Tools");
+
+            Head(noneLeft, 1).Should().Contain(Disabled);
+            Head(noneLeft, 2).Should().Contain(Disabled);
+            noneLeft.Should().NotContain(Checked, "there is nothing left to choose");
+        }
+    }
+
+    /// <summary>
+    /// A toolchanger with every head empty still has a printer page.
+    /// </summary>
+    /// <remarks>
+    /// The unload dialog is rendered for anybody who may control a printer with more than one tool,
+    /// whether or not anything is loaded - only its trigger waits for filament - so the dialog's rows
+    /// are drawn on this page too, and an empty machine is an ordinary state for one.
+    /// </remarks>
+    [Fact]
+    public async Task AToolchangerWithEveryHeadEmptyStillHasAPage()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("tools-empty@example.com", Toolchanger(null, null));
+
+        using (client)
+        {
+            string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
+
+            page.Should().Contain("data-unload-tools", "the owner may control the printer, so the dialog is drawn");
+            Head(page, 1).Should().Contain(Disabled);
+            Head(page, 2).Should().Contain(Disabled);
+        }
+    }
+
+    /// <summary>A live state for an idle toolchanger holding <paramref name="materials"/>, one per head.</summary>
+    private static PrinterLiveState Toolchanger(params string?[] materials)
+    {
+        PrinterLiveState state = new()
+        {
+            Status = PrinterStatus.Idle,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        };
+
+        for (int slot = 1; slot <= materials.Length; slot++)
+        {
+            state.Slots.Add(new PrinterLiveSlotState { SlotNumber = slot, Material = materials[slot - 1], Temperature = 25 });
+        }
+
+        return state;
+    }
+
+    /// <summary>The unload dialog's radio for one head, as rendered.</summary>
+    private static string Head(string html, int toolNumber)
+    {
+        Match input = Regex.Match(html, $"<input[^>]*id=\"unload-tool-{toolNumber}\"[^>]*>");
+
+        input.Success.Should().BeTrue($"head {toolNumber} is listed whatever it holds");
+
+        return input.Value;
+    }
+
+    /// <summary>What an unload leaves behind, written the way telemetry would write it.</summary>
+    private async Task EmptyHeadAsync(Guid uuid, int slot)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = await context.Printers
+                                     .Where(printer => printer.Uuid == uuid)
+                                     .Select(printer => printer.Id)
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        int updated = await context.PrinterLiveSlotStates
+                                   .Where(state => state.PrinterId == printerId && state.SlotNumber == slot)
+                                   .ExecuteUpdateAsync(set => set.SetProperty(state => state.Material, (string?)null),
+                                                       TestContext.Current.CancellationToken);
+
+        updated.Should().Be(1, "the head exists, so the unload has something to empty");
     }
 
     private static async Task<string> GetAsync(HttpClient client, string url)
@@ -332,6 +458,12 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
         if (state is not null)
         {
             state.PrinterId = printer.Id;
+
+            foreach (PrinterLiveSlotState slot in state.Slots)
+            {
+                slot.PrinterId = printer.Id;
+            }
+
             context.PrinterLiveStates.Add(state);
         }
 

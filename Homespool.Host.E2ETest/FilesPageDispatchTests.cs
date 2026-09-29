@@ -128,7 +128,7 @@ public sealed class FilesPageDispatchTests : IAsyncLifetime
     [Fact]
     public async Task SendingThroughThePageReachesThePrinter()
     {
-        (Guid uuid, HttpClient client, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        (Guid uuid, long _, HttpClient client, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
 
         using (client)
         {
@@ -164,7 +164,7 @@ public sealed class FilesPageDispatchTests : IAsyncLifetime
     [Fact]
     public async Task AMemberWithoutPrintSendsNothingToThePrinter()
     {
-        (Guid uuid, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
         (HSUser viewer, HttpClient viewerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "page-send-viewer@example.com");
 
@@ -180,6 +180,35 @@ public sealed class FilesPageDispatchTests : IAsyncLifetime
 
             fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame, not after it");
             (await StatusShownAsync(viewerClient, uuid)).Should().Contain("permission");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// A file that is listed and then cannot be opened is reported on the page by name, and the
+    /// printer is sent nothing.
+    /// </summary>
+    /// <remarks>
+    /// Against a connected printer, because the connection is asked before the file is opened: a
+    /// disconnected one would be reported first, for a reason this test is not about.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnreadableFileIsReportedOnThePageAndReachesNoPrinter()
+    {
+        (Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        using (client)
+        {
+            await UploadAsync(client, "benchy.gcode");
+            UnreadableStoredFile.Make(_factory, userId, "benchy.gcode");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, "Send", "benchy.gcode", uuid);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            (await StatusShownAsync(client, uuid)).Should().Be("benchy.gcode could not be read - it may have just been deleted.");
+            fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame, not after it");
 
             await EndRunAsync(fake, run);
         }
@@ -301,7 +330,7 @@ public sealed class FilesPageDispatchTests : IAsyncLifetime
     /// An enrolled, connected printer whose owner is signed in - the send tests need a live socket,
     /// both to receive the transfer and to prove nothing was sent.
     /// </summary>
-    private async Task<(Guid uuid, HttpClient client, FakePrinterClient fake, Task run)> ConnectedPrinterAsync()
+    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> ConnectedPrinterAsync()
     {
         (PrinterIdentity identity, string token, int printerId, long userId) =
             await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
@@ -324,7 +353,7 @@ public sealed class FilesPageDispatchTests : IAsyncLifetime
 
         HSUser owner = await EnrolmentFlowHelper.FindUserAsync(_factory, userId);
 
-        return (uuid, await EnrolmentFlowHelper.SignInAsAsync(_factory, owner), fake, run);
+        return (uuid, userId, await EnrolmentFlowHelper.SignInAsAsync(_factory, owner), fake, run);
     }
 
     private static async Task<FakeTransfer> WaitForTransferAsync(FakePrinterClient fake)

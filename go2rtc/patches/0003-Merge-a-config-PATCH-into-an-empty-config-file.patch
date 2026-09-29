@@ -1,0 +1,94 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Henrik=20O=2E=20S=C3=B8rensen?= <henrik.sorensen@gmail.com>
+Date: Tue, 29 Sep 2026 13:23:57 +0200
+Subject: [PATCH] Merge a config PATCH into an empty config file without
+ panicking
+
+PATCH /api/config unmarshals the config file into a map and merges the
+request into it. An empty file - or one holding only comments, or only
+null - unmarshals to a nil map, and the first assignment into it panics
+the request: nothing is written, and the client sees its connection
+dropped with no answer.
+
+Start from an empty map instead, so the patch becomes the whole config,
+as it would for a file that did not exist yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ internal/api/config.go      |  6 +++++
+ internal/api/config_test.go | 49 +++++++++++++++++++++++++++++++++++++
+ 2 files changed, 55 insertions(+)
+ create mode 100644 internal/api/config_test.go
+
+diff --git a/internal/api/config.go b/internal/api/config.go
+index 9072e8d..d070324 100644
+--- a/internal/api/config.go
++++ b/internal/api/config.go
+@@ -67,6 +67,12 @@ func mergeYAML(file1 string, yaml2 []byte) ([]byte, error) {
+ 		return nil, err
+ 	}
+ 
++	// An empty, comment-only or null document leaves the map nil, and merge would panic
++	// assigning into it
++	if config1 == nil {
++		config1 = map[string]any{}
++	}
++
+ 	// Unmarshal the second YAML document into a map
+ 	var config2 map[string]any
+ 	if err = yaml.Unmarshal(yaml2, &config2); err != nil {
+diff --git a/internal/api/config_test.go b/internal/api/config_test.go
+new file mode 100644
+index 0000000..7fe36bf
+--- /dev/null
++++ b/internal/api/config_test.go
+@@ -0,0 +1,49 @@
++package api
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/stretchr/testify/require"
++	"gopkg.in/yaml.v3"
++)
++
++func mergeFile(t *testing.T, config, patch string) map[string]any {
++	path := filepath.Join(t.TempDir(), "go2rtc.yaml")
++	require.NoError(t, os.WriteFile(path, []byte(config), 0644))
++
++	b, err := mergeYAML(path, []byte(patch))
++	require.NoError(t, err)
++
++	var merged map[string]any
++	require.NoError(t, yaml.Unmarshal(b, &merged))
++	return merged
++}
++
++func TestMergeYAMLIntoAnEmptyConfig(t *testing.T) {
++	for name, config := range map[string]string{
++		"empty":        "",
++		"blank lines":  "\n\n",
++		"comment only": "# written by hand\n",
++		"null":         "null\n",
++	} {
++		t.Run(name, func(t *testing.T) {
++			merged := mergeFile(t, config, `{"webrtc":{"candidates":["192.0.2.1:8555"]}}`)
++			require.Equal(t, map[string]any{
++				"webrtc": map[string]any{"candidates": []any{"192.0.2.1:8555"}},
++			}, merged)
++		})
++	}
++}
++
++func TestMergeYAMLKeepsWhatThePatchDoesNotName(t *testing.T) {
++	config := "streams:\n  cam: rtsp://192.0.2.2/stream\nwebrtc:\n  candidates:\n    - 192.0.2.1:8555\n"
++
++	merged := mergeFile(t, config, `{"webrtc":{"candidates":["192.0.2.3:8555"]}}`)
++
++	require.Equal(t, map[string]any{
++		"streams": map[string]any{"cam": "rtsp://192.0.2.2/stream"},
++		"webrtc":  map[string]any{"candidates": []any{"192.0.2.3:8555"}},
++	}, merged)
++}

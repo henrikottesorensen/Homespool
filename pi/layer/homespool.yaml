@@ -210,7 +210,6 @@ mmdebstrap:
     # after the chown above, which the sidecar cannot write - worse than an absent one, being a
     # quiet 400 on saving a camera instead of a container that will not start.
     #
-    # Empty is a valid configuration: go2rtc reads it, starts, and writes the first camera into it.
     # Group 44 is video on Debian and Raspberry Pi OS, which is what this image is; the sidecar runs
     # as 65532:44 and rewrites this file in place, so group write is exactly and only what it needs.
     # The numeric gid rather than the name, because the name would be resolved against the wrong

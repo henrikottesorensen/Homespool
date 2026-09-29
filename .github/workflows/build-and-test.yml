@@ -20,7 +20,13 @@ permissions:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    # The release the application image runs on, named rather than taken from ubuntu-latest. The
+    # images build inside Docker whatever the runner is, but the test suite runs on the runner itself,
+    # and .NET formats dates and numbers with the host's ICU: on another release, a CLDR change fails
+    # a test the deployment would pass, or passes one it would fail. The shell-script tests run on the
+    # runner's coreutils too, so a new release is a change to them as well, and one to make on
+    # purpose. Moves when mcr.microsoft.com/dotnet/aspnet:10.0 moves.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:

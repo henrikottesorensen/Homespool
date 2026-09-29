@@ -27,8 +27,9 @@ namespace Homespool.Host.E2ETest;
 /// <summary>
 /// <c>PrinterController</c>'s dispatch endpoints - send a file, browse storage - each once
 /// with a token whose scope names the capability and once with one that does not, against a
-/// genuinely connected printer; their refusals that are not about permission; and the job-control
-/// verbs nothing else drives over the API.
+/// genuinely connected printer; their refusals that are not about permission, and the answers a
+/// listing cannot be made from; the job-control verbs nothing else drives over the API; and the
+/// readying route that is switched off.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -462,6 +463,66 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A printer that accepts the listing command and answers with no listing in it is a 502 naming
+    /// the act - not an empty listing, which would claim the storage is empty when the printer said
+    /// nothing about it.
+    /// </summary>
+    /// <remarks>
+    /// The answer is a <c>FINISHED</c> correlated to the command, which is success on the wire, so
+    /// this cannot be told from the ordinary case by the event type alone - the payload is what is
+    /// missing.
+    /// </remarks>
+    [Fact]
+    public async Task AListingThePrinterAnswersWithoutIsABadGateway()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            policyFactory: identity => new FileInfoAnsweredWith(
+                new FirmwareFaithfulPolicy(identity, TimeProvider.System),
+                (frame, device) => EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId)));
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response =
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadGateway, "the printer answered, and the answer is unusable");
+        (await DetailOfAsync(response)).Should().Be("The printer answered without a listing.");
+        (await CommandOfAsync(response)).Should().Be("browse");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A listing whose payload will not parse is a 502 naming the act - the printer's answer arrived
+    /// and could not be read, which is the gateway's failure rather than the caller's or the machine's.
+    /// </summary>
+    /// <remarks>
+    /// The payload is a JSON string where an object is expected. The connection survives it: the
+    /// answer's <c>data</c> is carried raw to the one reader that parses it, so nothing earlier on the
+    /// path has an opinion about its shape.
+    /// </remarks>
+    [Fact]
+    public async Task AListingThePrinterAnswersUnreadablyIsABadGateway()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            policyFactory: identity => new FileInfoAnsweredWith(
+                new FirmwareFaithfulPolicy(identity, TimeProvider.System),
+                (frame, device) => Encoding.UTF8.GetBytes(
+                    $$"""{"data":"not a listing","state":"{{device.WireState}}","command_id":{{frame.CommandId}},"event":"FILE_INFO"}""")));
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response =
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadGateway, "the printer answered, and the answer could not be read");
+        (await DetailOfAsync(response)).Should().Match("Printer * answered SEND_FILE_INFO with a payload that could not be read.");
+        (await CommandOfAsync(response)).Should().Be("browse");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// A token scoped to <c>ControlPrinter</c> resumes a paused print, and the printer is printing
     /// again afterwards.
     /// </summary>
@@ -523,6 +584,108 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         fake.Device.State.Should().Be(DeviceState.Idle, "a 204 means the printer stood down, not that we asked");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A token scoped to <c>ControlPrinter</c> returns a finished printer to idle - leaving the
+    /// finished screen, which is the one moment firmware accepts it.
+    /// </summary>
+    [Fact]
+    public async Task ATokenScopedToControlPrinterIdlesAFinishedPrinter()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.ForceState(DeviceState.Finished));
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/idle",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        fake.Device.State.Should().Be(DeviceState.Idle, "a 204 means the printer left the finished screen, not that we asked");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// Idling a printer that is not on the finished or stopped screen comes back as the printer's
+    /// refusal, in its own words, under the route's verb - the one route here that is ours rather
+    /// than Connect's, so the verb is the invented name and not a wire word.
+    /// </summary>
+    [Fact]
+    public async Task IdlingAPrinterThatIsNotFinishedIsRefusedUnderTheRoutesVerb()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/idle",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await DetailOfAsync(response)).Should().Be("Can't set idle now", "the printer's own words");
+        (await CommandOfAsync(response)).Should().Be("idle");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A token whose scope does not name <c>ControlPrinter</c> is refused the idle with a 403 naming
+    /// it, and the printer stays on its finished screen having heard nothing.
+    /// </summary>
+    /// <remarks>
+    /// <c>Print</c> is the scope, deliberately: it is what readies and un-readies a printer, and a
+    /// reader could take idling for the same family. It is a machine-state act, and gated as one.
+    /// </remarks>
+    [Fact]
+    public async Task ATokenWithoutControlPrinterCannotIdleAPrinter()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.ForceState(DeviceState.Finished));
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/idle",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await DetailOfAsync(response)).Should().Contain("ControlPrinter",
+                                                         "a scope refusal names the capability, so the fix is a new token");
+
+        fake.Device.State.Should().Be(DeviceState.Finished);
+        fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame, not after it");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// Nothing over the API readies a printer - the route is absent, not refusing - and a finished
+    /// printer that would accept the command stays finished having heard nothing.
+    /// </summary>
+    /// <remarks>
+    /// Readying is a person's assertion that the print sheet is clear, and the API has nobody on
+    /// the other end - so <c>Ready</c> is switched off with <c>[NonAction]</c> rather than deleted.
+    /// A 404 is what pins that: a live route would answer 204 here, or 403 if the printer's own
+    /// remote-ready toggle were off, and either would be the route existing. The unrestricted token
+    /// makes the 404 the route's absence rather than a scope's.
+    /// </remarks>
+    [Fact]
+    public async Task NoTokenReadiesAPrinterDirectly()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.ForceState(DeviceState.Finished));
+
+        using HttpClient client = await ScopedClientAsync(userId, CapabilitySet.Everything);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/ready",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound, "there is no such route, rather than one that refuses");
+
+        fake.Device.State.Should().Be(DeviceState.Finished, "a finished printer accepts SET_PRINTER_READY, so Ready would mean it was asked");
+        fake.ReceivedCommands.Should().BeEmpty("nothing may reach the printer that could ready it");
 
         await EndRunAsync(fake, run);
     }
@@ -628,13 +791,22 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
 
     /// <summary>An enrolled, connected printer - every test here needs a live socket, either to
     /// receive a command or to prove nothing arrived.</summary>
+    /// <param name="configure">Seeds the device before it connects.</param>
+    /// <param name="policyFactory">
+    /// How the fake answers commands, when the firmware-faithful default is not what the test is
+    /// about. Takes the identity because a policy wrapping <see cref="FirmwareFaithfulPolicy"/>
+    /// needs it, and it does not exist until the printer is enrolled.
+    /// </param>
     private async Task<(Guid uuid, long userId, FakePrinterClient fake, Task run)> ConnectedPrinterAsync(
-        Action<FakePrinterClient>? configure = null)
+        Action<FakePrinterClient>? configure = null,
+        Func<PrinterIdentity, CommandAnswerPolicy>? policyFactory = null)
     {
         (PrinterIdentity identity, string token, int printerId, long userId) =
             await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
 
-        FakePrinterClient fake = new(identity, TimeProvider.System) { Token = token };
+        FakePrinterOptions options = new() { Policy = policyFactory?.Invoke(identity) };
+
+        FakePrinterClient fake = new(identity, TimeProvider.System, options) { Token = token };
         configure?.Invoke(fake);
 
         await fake.ConnectAsync(FakePrinterConnections.ViaTestServerAsync(_factory), TestContext.Current.CancellationToken);
@@ -670,5 +842,29 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
         fake.ReplyFault.Should().BeNull("a faulted fake would invalidate what this test claims about the server");
 
         await fake.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Firmware-faithful for everything but <c>SEND_FILE_INFO</c>, which it answers with whatever
+    /// payload the test hands it - for the answers a real printer does not give and the endpoint
+    /// still has to survive.
+    /// </summary>
+    private sealed class FileInfoAnsweredWith : CommandAnswerPolicy
+    {
+        private readonly CommandAnswerPolicy _inner;
+        private readonly Func<ServerCommandFrame, FakeDevice, byte[]> _payload;
+
+        public FileInfoAnsweredWith(CommandAnswerPolicy inner, Func<ServerCommandFrame, FakeDevice, byte[]> payload)
+        {
+            _inner = inner;
+            _payload = payload;
+        }
+
+        public override IReadOnlyList<PlannedReply> Answer(ServerCommandFrame frame, FakeDevice device)
+        {
+            return frame.TryGetJsonCommandName() == "SEND_FILE_INFO" ?
+                [new PlannedReply(_payload(frame, device))] :
+                _inner.Answer(frame, device);
+        }
     }
 }

@@ -262,7 +262,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// <i>new</i> state - because readiness is a local flag rather than a Marlin round trip. So this
     /// is a property of asynchronous job control, not a blanket rule about acks, and the fix is
     /// scoped to the three <c>JC</c> commands that have evidence. <c>CANCEL_PRINTER_READY</c> and
-    /// <c>SET_PRINTER_IDLE</c> are untested either way and left reporting the new state, on the same
+    /// <c>SET_IDLE</c> are untested either way and left reporting the new state, on the same
     /// local-flag reasoning.
     /// </para>
     /// </remarks>
@@ -323,7 +323,8 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
 
                 return [Reply(EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId))];
 
-            case "SET_PRINTER_IDLE":
+            case "SET_IDLE":
+                // command.cpp:166 names it SET_IDLE, not SET_PRINTER_IDLE like its neighbours;
                 // planner.cpp:786-790 + marlin_printer.cpp:579-586.
                 return
                 [

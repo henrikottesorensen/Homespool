@@ -105,13 +105,13 @@ public class FirmwareFaithfulPolicyTests
         reply.RootElement.GetProperty("state").GetString().Should().Be("READY");
     }
 
-    /// <summary>SET_PRINTER_IDLE outside Finished/Stopped rejects "Can't set idle now" - the real MK3.5's answer.</summary>
+    /// <summary>SET_IDLE outside Finished/Stopped rejects "Can't set idle now" - the real MK3.5's answer.</summary>
     [Fact]
     public void SetIdleMidSessionIsRejectedLikeTheRealPrinter()
     {
         FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
 
-        IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(7, "SET_PRINTER_IDLE"), _device);
+        IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(7, "SET_IDLE"), _device);
 
         using JsonDocument reply = Parse(replies[0]);
         reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");

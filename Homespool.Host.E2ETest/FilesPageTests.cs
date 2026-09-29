@@ -1104,8 +1104,9 @@ public sealed class FilesPageTests : IAsyncLifetime
     /// </para>
     /// <para>
     /// <b>This asserts the class, not the geometry</b>, and that is the honest limit of it: these
-    /// tests parse HTML and never lay it out, so nothing here can see an overflow. What it does buy
-    /// is a guard on the plumbing - a rewritten row or a new column that drops <c>typed-name</c>
+    /// tests parse HTML and never lay it out, so nothing here can see an overflow - the browser
+    /// suite's <c>FilesPageLayoutTests</c> is what measures the page at a phone's width. What this
+    /// buys is a guard on the plumbing - a rewritten row or a new column that drops <c>typed-name</c>
     /// fails here rather than on somebody's phone. The rule itself lives in <c>site.css</c>, with
     /// the reasoning for <c>anywhere</c> over <c>break-word</c>.
     /// </para>
@@ -1129,8 +1130,8 @@ public sealed class FilesPageTests : IAsyncLifetime
 
         // Assert
         page.Should().Contain(unbroken, "the name is rendered whole rather than cut short");
-        page.Should().Contain(
-            $"<td class=\"typed-name\">{unbroken}</td>",
+        page.Should().MatchRegex(
+            $"<td class=\"[^\"]*\\btyped-name\\b[^\"]*\"[^>]*>{unbroken}</td>",
             "the cell carrying a name somebody chose has to be allowed to wrap inside a word");
 
         client.Dispose();

@@ -15,7 +15,7 @@
        is pressed and the page re-renders with it. Once the change submits, Save has nothing left to
        do, so the script hides it (data-printer-select-submit); it stays in the markup for when that
        script never runs, because without it choosing a printer would silently do nothing at all. *@
-    <form method="get" asp-page="./Index" class="d-flex align-items-center gap-2 mb-3" data-printer-select>
+    <form method="get" asp-page="./Index" class="d-flex flex-wrap align-items-center gap-2 mb-3" data-printer-select>
         <label class="form-label mb-0" for="printer-select">@Localiser["Common_Printer"]</label>
         <select id="printer-select" name="printerUuid" class="form-select form-select-sm w-auto">
             @* An empty option, rendered only while nothing is chosen. Without it the browser shows the
@@ -120,14 +120,17 @@
 }
 else
 {
-    <table class="table align-middle">
-        <thead>
-            <tr>
+    @* The roles are for below the phone breakpoint, where site.css lays each row out as a block of
+       its own: Safari stops announcing a table once its rows are given another display, and the
+       explicit roles keep it one. *@
+    <table class="table align-middle file-table" role="table">
+        <thead role="rowgroup">
+            <tr role="row">
                 @* Headings are links rather than script: the sorted view is then linkable, bookmarkable
                    and survives the back button, none of which a JavaScript toggle would give. *@
                 @* Name is the only column with no col-shrink: everything else is pinned to its content
                    width, so Name is left holding all the space nothing else asked for. *@
-                <th>
+                <th role="columnheader">
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Name"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Name)"
@@ -136,7 +139,7 @@ else
                        aria-sort="@(Model.Sort == IndexModel.Columns.Name ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Common_Name"]@(Model.IndicatorFor(IndexModel.Columns.Name))</a>
                 </th>
-                <th class="text-end col-shrink">
+                <th class="text-end col-shrink" role="columnheader">
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Size"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Size)"
@@ -145,7 +148,7 @@ else
                        aria-sort="@(Model.Sort == IndexModel.Columns.Size ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Files_Size"]@(Model.IndicatorFor(IndexModel.Columns.Size))</a>
                 </th>
-                <th class="col-shrink">
+                <th class="col-shrink" role="columnheader">
                     <a asp-page="./Index"
                        asp-route-sort="@IndexModel.Columns.Uploaded"
                        asp-route-desc="@Model.NextDescendingFor(IndexModel.Columns.Uploaded)"
@@ -154,16 +157,16 @@ else
                        aria-sort="@(Model.Sort == IndexModel.Columns.Uploaded ? (Model.Descending ? "descending" : "ascending") : "none")"
                        class="link-body-emphasis text-decoration-none">@Localiser["Files_Uploaded"]@(Model.IndicatorFor(IndexModel.Columns.Uploaded))</a>
                 </th>
-                <th class="col-shrink"></th>
+                <th class="col-shrink file-actions-heading" role="columnheader"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
             </tr>
         </thead>
-        <tbody>
+        <tbody role="rowgroup">
         @foreach (var file in Model.Files)
         {
-            <tr>
+            <tr role="row">
                 @if (Model.Renaming == file.FileName)
                 {
-                    <td colspan="3">
+                    <td colspan="3" class="file-rename" role="cell">
                         <form method="post" asp-page-handler="Rename"
                               asp-route-name="@file.FileName"
                               asp-route-sort="@Model.Sort"
@@ -181,17 +184,17 @@ else
                 }
                 else
                 {
-                    <td class="typed-name">@file.FileName</td>
-                    <td class="text-end font-monospace">@ByteSize.Format(file.Length, Localiser)</td>
+                    <td class="typed-name file-name" role="cell">@file.FileName</td>
+                    <td class="text-end font-monospace file-size" role="cell">@ByteSize.Format(file.Length, Localiser)</td>
                     @* ISO, deliberately, and not because the reader's culture is unknown - it is known
                        per request, and ByteSize.Format beside this now follows it. A timestamp is the one
                        value where following it would make the column worse: en-GB and en-US are both
                        supported here and disagree silently about 01/02/2026, so a short date is only
                        unambiguous to a reader who knows which of the two they are being shown. This
                        also sorts, and matches what the logs and the printer's own events carry. *@
-                    <td>@file.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                    <td class="file-uploaded" role="cell">@file.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                 }
-                <td class="text-end text-nowrap">
+                <td class="text-end text-nowrap file-actions" role="cell">
                     @* Only when a printer is selected up top: a Send/Queue button with nothing to
                        send to would only produce a "not yours" refusal. *@
                     @if (Model.SelectedPrinterUuid is not null)

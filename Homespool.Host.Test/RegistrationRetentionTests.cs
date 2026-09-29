@@ -147,6 +147,8 @@ public sealed class RegistrationRetentionTests : IDisposable
         {
             SerialNumber = "TEST-0001",
             FingerPrint = code + "-fingerprint",
+            Model = "1.3.5",
+            Firmware = "6.4.0+11974",
             TemporaryCode = code,
             TemporaryCodeExpiry = expiry,
             CreatedAt = DateTimeOffset.UtcNow,

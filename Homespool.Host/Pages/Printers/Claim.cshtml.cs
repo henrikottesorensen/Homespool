@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -18,6 +20,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Printers;
@@ -31,24 +34,39 @@ namespace Homespool.Host.Pages.Printers;
 /// <c>GET /p/register</c> to redeem its own token; immediately after claiming, it shows on the list
 /// as "Awaiting connection".
 /// </summary>
+/// <remarks>
+/// <b>The page also lists the printers waiting to be added</b>, and the list is there to explain, not
+/// to choose: every entry came from an anonymous request, so the typed code still decides the claim
+/// on its own. What the list adds is the answer a refused code cannot give - an empty one says no
+/// printer has reached this server at all, which is a different problem from a mistyped code.
+/// </remarks>
 [Authorize]
 public class ClaimModel : PageModel
 {
     private readonly RegistrationCodeClaim _registrationCodeClaim;
+    private readonly PrusaConnectService _prusaConnectService;
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
+    private readonly RelativeTimeText _ages;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<ClaimModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ClaimModel(RegistrationCodeClaim registrationCodeClaim,
+                      PrusaConnectService prusaConnectService,
                       TeamService teamService,
                       UserManager<HSUser> userManager,
+                      RelativeTimeText ages,
+                      TimeProvider timeProvider,
                       ILogger<ClaimModel> logger,
                       IStringLocalizer<SharedResource> localiser)
     {
         _registrationCodeClaim = registrationCodeClaim;
+        _prusaConnectService = prusaConnectService;
         _teamService = teamService;
         _userManager = userManager;
+        _ages = ages;
+        _timeProvider = timeProvider;
         _logger = logger;
         _localiser = localiser;
     }
@@ -57,6 +75,16 @@ public class ClaimModel : PageModel
     public InputModel Input { get; set; } = new();
 
     public IReadOnlyList<SelectListItem> TeamOptions { get; private set; } = [];
+
+    /// <summary>
+    /// Whether the page lists the printers waiting to be added: only for somebody who could claim one
+    /// into a team, which is what <see cref="TeamOptions"/> already holds. A pending registration
+    /// belongs to no team, so this is the only thing deciding who sees it.
+    /// </summary>
+    public bool ShowsPending => TeamOptions.Count > 0;
+
+    /// <summary>The printers waiting to be added, newest first; empty when <see cref="ShowsPending"/> is false.</summary>
+    public IReadOnlyList<PendingPrinter> Pending { get; private set; } = [];
 
     /// <summary>
     /// Set on success, before redirecting to <c>Index</c>. Property name matches
@@ -96,14 +124,20 @@ public class ClaimModel : PageModel
         public Guid? TeamUuid { get; set; }
     }
 
+    /// <summary>One printer waiting to be added, in the words the page shows it in.</summary>
+    /// <param name="Model">The model's name, or a localised "unknown" for a triple no table knows.</param>
+    /// <param name="Firmware">The firmware version, or <see langword="null"/> when what was stated is not one.</param>
+    /// <param name="Age">How long ago it asked for its code.</param>
+    public sealed record PendingPrinter(string Model, string? Firmware, string Age);
+
     public async Task OnGetAsync(CancellationToken cancellationToken)
     {
-        await LoadTeamOptionsAsync(cancellationToken);
+        await LoadAsync(cancellationToken);
     }
 
     public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
     {
-        await LoadTeamOptionsAsync(cancellationToken);
+        await LoadAsync(cancellationToken);
 
         if (!ModelState.IsValid)
         {
@@ -145,7 +179,11 @@ public class ClaimModel : PageModel
         }
         catch (PrinterNotFoundException)
         {
-            ModelState.AddModelError(string.Empty, _localiser["Printers_ClaimNoSuchCode"]);
+            // With nothing waiting, the code cannot have come from this server, and saying so points
+            // at the printer's configuration rather than at the typing.
+            string message = ShowsPending && Pending.Count == 0 ? "Printers_ClaimNoSuchCodeNothingWaiting" : "Printers_ClaimNoSuchCode";
+
+            ModelState.AddModelError(string.Empty, _localiser[message]);
 
             return Page();
         }
@@ -169,6 +207,43 @@ public class ClaimModel : PageModel
 
             return Page();
         }
+    }
+
+    private async Task LoadAsync(CancellationToken cancellationToken)
+    {
+        await LoadTeamOptionsAsync(cancellationToken);
+
+        if (!ShowsPending)
+        {
+            return;
+        }
+
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        IReadOnlyList<PendingRegistration> pending = await _prusaConnectService.GetPendingRegistrationsAsync(cancellationToken);
+
+        Pending = pending.Select(p => Describe(p, now)).ToList();
+    }
+
+    /// <summary>
+    /// Puts a pending registration into words, showing nothing of what the printer stated except
+    /// through something that already knows what the value may be.
+    /// </summary>
+    /// <remarks>
+    /// The model goes through the firmware's own table of names, and the firmware version is rebuilt
+    /// from the numbers it parsed to rather than echoed - the parser ignores everything after a
+    /// <c>+</c>, and that part is whatever the sender wrote. Razor would encode either string safely;
+    /// the point is that a stranger's POST cannot put words of its choosing on this page.
+    /// </remarks>
+    private PendingPrinter Describe(PendingRegistration registration, DateTimeOffset now)
+    {
+        string model = PrinterModelNames.DisplayNameForPrinterType(registration.Model) ?? _localiser["Printers_PendingUnknownModel"];
+
+        string? firmware = PrinterFirmwareVersion.TryParse(registration.Firmware, out PrinterFirmwareVersion version) ?
+            string.Create(CultureInfo.InvariantCulture, $"{version.Major}.{version.Minor}.{version.Patch}") :
+            null;
+
+        return new PendingPrinter(model, firmware, _ages.Since(registration.CreatedAt, now));
     }
 
     private async Task LoadTeamOptionsAsync(CancellationToken cancellationToken)

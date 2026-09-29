@@ -302,7 +302,14 @@ public class PrinterController : ControllerBase
         string trimmed = path?.Trim('/') ?? string.Empty;
         PrusaConnect.Commands.SendFileInfo command = new() { Path = trimmed.Length == 0 ? "/usb" : $"/usb/{trimmed}" };
 
-        if (!await _access.AllowsAsync(printer.Id, CallerResolver.For(user, User), Capability.ControlPrinter, cancellationToken))
+        // The throwing gate rather than the bool one, so a scope refusal names ControlPrinter through
+        // the exception filter as every other scope refusal does. The team's refusal is answered here
+        // and names no capability, because no token would fix it.
+        try
+        {
+            await _access.RequireAsync(printer.Id, CallerResolver.For(user, User), Capability.ControlPrinter, cancellationToken);
+        }
+        catch (TeamAccessDeniedException)
         {
             return this.ForbiddenProblem("You may not browse this printer's storage.");
         }

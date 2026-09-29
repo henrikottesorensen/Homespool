@@ -2068,6 +2068,9 @@
   <data name="Cameras_SourceFragmentAddress" xml:space="preserve">
     <value>The part of the address after # names another address, which this camera cannot use. Remove it.</value>
   </data>
+  <data name="Cameras_SourcePlaceholder" xml:space="preserve">
+    <value>The address contains ${, which the go2rtc service would replace with one of its own settings. Remove it.</value>
+  </data>
   <data name="Cameras_PasswordNotCarriedOver" xml:space="preserve">
     <value>Type the camera's password again, or remove it if the new address needs none. The address or user name has changed, and a saved password can only be used with the camera and user name it was saved with.</value>
     <comment>"Address" is the camera's source as typed into the form.</comment>
@@ -3335,5 +3338,32 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Notifications_PrintersSaved" xml:space="preserve">
     <value>Your printer choices are saved.</value>
+  </data>
+  <data name="Printers_PendingHeading" xml:space="preserve">
+    <value>Printers waiting to be added</value>
+  </data>
+  <data name="Printers_PendingIntro" xml:space="preserve">
+    <value>These printers have asked this server for a code and are waiting for it to be typed in. The list is for reference: the code you type decides which printer you add.</value>
+  </data>
+  <data name="Printers_PendingNone" xml:space="preserve">
+    <value>No printer is waiting to be added. If yours is showing a code, it got that code from another server, or the code has expired - start registration on the printer again, then refresh this page.</value>
+  </data>
+  <data name="Printers_PendingModel" xml:space="preserve">
+    <value>Model</value>
+  </data>
+  <data name="Printers_PendingFirmware" xml:space="preserve">
+    <value>Firmware</value>
+  </data>
+  <data name="Printers_PendingAsked" xml:space="preserve">
+    <value>Code issued</value>
+  </data>
+  <data name="Printers_PendingRefresh" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Printers_PendingUnknownModel" xml:space="preserve">
+    <value>Unknown model</value>
+  </data>
+  <data name="Printers_ClaimNoSuchCodeNothingWaiting" xml:space="preserve">
+    <value>No printer is waiting to be added here, so that code did not come from this server, or it has expired. Check that the printer points at this server, then start registration on it again.</value>
   </data>
 </root>

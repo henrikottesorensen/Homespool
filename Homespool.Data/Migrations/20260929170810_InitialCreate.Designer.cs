@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260929145322_InitialCreate")]
+    [Migration("20260929170810_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -878,6 +878,14 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("FingerPrint")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Firmware")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
                         .IsRequired()
                         .HasColumnType("TEXT");
 

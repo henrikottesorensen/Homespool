@@ -207,6 +207,8 @@ public sealed class ClaimAttemptCountingTests : IAsyncLifetime
         {
             SerialNumber = "TEST-0001",
             FingerPrint = "TESTFINGERPRINT0000000000000000000000000000000000",
+            Model = "1.3.5",
+            Firmware = "6.4.0+11974",
             TemporaryCode = code,
             TemporaryCodeExpiry = DateTimeOffset.UtcNow.AddMinutes(30),
             CreatedAt = DateTimeOffset.UtcNow,

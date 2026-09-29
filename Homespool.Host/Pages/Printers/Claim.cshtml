@@ -22,6 +22,43 @@
 </div>
 
 <div class="row">
+    @* First in the markup so a phone shows it above the form - seeing the printer listed is what
+       tells somebody it reached this server before they start typing - and moved beside the form
+       from md up. Only for somebody who could claim into a team (ShowsPending). *@
+    @if (Model.ShowsPending)
+    {
+        <div class="col-md-6 order-md-last mb-4">
+            <h2 class="h5">@Localiser["Printers_PendingHeading"]</h2>
+            @if (Model.Pending.Count == 0)
+            {
+                <p class="text-body-secondary">@Localiser["Printers_PendingNone"]</p>
+            }
+            else
+            {
+                <p class="text-body-secondary">@Localiser["Printers_PendingIntro"]</p>
+                <table class="table table-sm">
+                    <thead>
+                        <tr>
+                            <th scope="col">@Localiser["Printers_PendingModel"]</th>
+                            <th scope="col">@Localiser["Printers_PendingFirmware"]</th>
+                            <th scope="col">@Localiser["Printers_PendingAsked"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (ClaimModel.PendingPrinter printer in Model.Pending)
+                        {
+                            <tr>
+                                <td>@printer.Model</td>
+                                <td>@printer.Firmware</td>
+                                <td>@printer.Age</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            <a class="btn btn-sm btn-outline-secondary" asp-page="Claim">@Localiser["Printers_PendingRefresh"]</a>
+        </div>
+    }
     <div class="col-md-6">
         <form method="post">
             <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>

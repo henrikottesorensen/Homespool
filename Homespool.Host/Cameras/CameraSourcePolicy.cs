@@ -314,7 +314,8 @@ public sealed class CameraSourcePolicy
     }
 
     /// <summary>
-    /// Checks a camera source: its shape, and where its host resolves to.
+    /// Checks a camera source: its shape, what the sidecar would read into it, and where its host
+    /// resolves to.
     /// </summary>
     public Task<CameraSourceCheck> CheckAsync(string? source, CancellationToken cancellationToken)
     {
@@ -342,6 +343,18 @@ public sealed class CameraSourcePolicy
         }
 
         string trimmed = source.Trim();
+
+        // go2rtc replaces ${NAME} in its configuration file with a value from its own environment or
+        // its credentials directory whenever it loads that file, and a source is written into the
+        // file verbatim, password included. So a source carrying one names one of the sidecar's
+        // secrets, and sends it wherever the rest of the source points. Checked before everything
+        // else because it is not a question about an address: turning the address checks off, or the
+        // source being a local device, changes nothing about it. A lone $ is not a placeholder, and a
+        // password keeps it.
+        if (trimmed.Contains("${", StringComparison.Ordinal))
+        {
+            return CameraSourceCheck.Refused("Cameras_SourcePlaceholder");
+        }
 
         // A local device reaches no network at all, so there is nothing here to check. Whether the
         // path exists is answered by trying it, which the save does immediately afterwards.

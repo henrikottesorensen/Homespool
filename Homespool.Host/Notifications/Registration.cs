@@ -62,6 +62,8 @@ public static class Registration
         services.AddSingleton<NotificationQueue>();
         services.AddSingleton<AttentionWatch>();
         services.AddSingleton<Telemetry.ILiveStateObserver>(provider => provider.GetRequiredService<AttentionWatch>());
+        services.AddSingleton<FilamentChangeWatch>();
+        services.AddSingleton<Telemetry.ILiveStateObserver>(provider => provider.GetRequiredService<FilamentChangeWatch>());
 
         // Resolvable as itself as well as a hosted service, following QueueAdvancer: a test drives one
         // look rather than waiting out the interval.

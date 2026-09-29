@@ -47,7 +47,7 @@ public sealed class NotificationDispatcher : BackgroundService
             {
                 // Here rather than at each source, so no pattern of changes a printer can produce -
                 // and no source added later - gets past it.
-                if (!_throttle.Admit(happening, _time.GetUtcNow()))
+                if (!_throttle.Allows(happening, _time.GetUtcNow()))
                 {
                     _logger.LogInformation("[{PrinterId}] {Happening} not sent: this printer sent one moments ago.",
                                            happening.PrinterId, happening.GetType().Name);
@@ -61,6 +61,11 @@ public sealed class NotificationDispatcher : BackgroundService
 
                     int told = await scope.ServiceProvider.GetRequiredService<NotificationRouter>()
                                           .SendAsync(happening, stoppingToken);
+
+                    if (told > 0)
+                    {
+                        _throttle.Sent(happening, _time.GetUtcNow());
+                    }
 
                     _logger.LogInformation("[{PrinterId}] {Happening}: {People} person(s) notified.",
                                            happening.PrinterId, happening.GetType().Name, told);

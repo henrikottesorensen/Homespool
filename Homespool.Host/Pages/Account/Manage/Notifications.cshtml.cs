@@ -52,18 +52,21 @@ public class NotificationsModel : PageModel
     public const int EndpointHashLength = 22;
 
     private readonly NotificationDestinationService _destinations;
+    private readonly Services.PrinterQueryService _printers;
     private readonly VapidKeyStore _keys;
     private readonly UserManager<HSUser> _userManager;
     private readonly RecentProof _proof;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public NotificationsModel(NotificationDestinationService destinations,
+                              Services.PrinterQueryService printers,
                               VapidKeyStore keys,
                               UserManager<HSUser> userManager,
                               RecentProof proof,
                               IStringLocalizer<SharedResource> localiser)
     {
         _destinations = destinations;
+        _printers = printers;
         _keys = keys;
         _userManager = userManager;
         _proof = proof;
@@ -78,6 +81,9 @@ public class NotificationsModel : PageModel
 
     /// <summary>Each kind of notification, and whether this account hears it.</summary>
     public IReadOnlyList<KindChoice> Kinds { get; private set; } = [];
+
+    /// <summary>Each printer this account may see, and whether it hears about it.</summary>
+    public IReadOnlyList<PrinterChoice> Printers { get; private set; } = [];
 
     /// <summary>The deployment's public VAPID key, which a browser subscribes with.</summary>
     public string ApplicationServerKey { get; private set; } = string.Empty;
@@ -107,6 +113,11 @@ public class NotificationsModel : PageModel
 
         IReadOnlySet<NotificationKind> muted = await _destinations.MutedAsync(user.Id, cancellationToken);
         Kinds = [.. NotificationMutes.Choosable.Select(kind => new KindChoice(kind, LabelKey(kind), !muted.Contains(kind)))];
+
+        IReadOnlySet<Guid> mutedPrinters = await _destinations.MutedPrintersAsync(user.Id, cancellationToken);
+        IReadOnlyList<Printer> visible = await _printers.ListPrintersForUserAsync(Caller.Unscoped(user.Id), cancellationToken);
+        Printers = [.. visible.Select(printer => new PrinterChoice(printer.Uuid, PrinterDisplayName.For(printer), !mutedPrinters.Contains(printer.Uuid)))
+                              .OrderBy(choice => choice.Name, StringComparer.CurrentCultureIgnoreCase)];
 
         return Page();
     }
@@ -138,12 +149,44 @@ public class NotificationsModel : PageModel
         return RedirectToPage();
     }
 
+    /// <summary>
+    /// Saves which printers this account hears about: every printer it may see and did not tick is
+    /// muted, whatever kind of notification it would have sent.
+    /// </summary>
+    /// <remarks>
+    /// Rewritten whole from the printers the account may see now, so a printer it has since lost access
+    /// to drops out of the list rather than staying muted for nobody.
+    /// </remarks>
+    /// <param name="enabled">The printers ticked.</param>
+    /// <param name="cancellationToken">Cancels the save.</param>
+    public async Task<IActionResult> OnPostPrintersAsync(List<Guid> enabled, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return NotFound();
+        }
+
+        IReadOnlyList<Printer> visible = await _printers.ListPrintersForUserAsync(Caller.Unscoped(user.Id), cancellationToken);
+
+        await _destinations.SetMutedPrintersAsync(user.Id,
+                                                  visible.Select(printer => printer.Uuid).Where(uuid => !enabled.Contains(uuid)),
+                                                  cancellationToken);
+
+        StatusMessage = _localiser["Notifications_PrintersSaved"];
+
+        return RedirectToPage();
+    }
+
     /// <summary>The resource key naming a kind on this page. Written out, so every key is findable.</summary>
     public static string LabelKey(NotificationKind kind)
     {
         return kind switch
         {
             NotificationKind.PrinterNeedsAttention => "Notifications_KindPrinterNeedsAttention",
+            NotificationKind.FilamentChangeSoon => "Notifications_KindFilamentChangeSoon",
+            NotificationKind.PrinterLost => "Notifications_KindPrinterLost",
             NotificationKind.PrintFinished => "Notifications_KindPrintFinished",
             NotificationKind.PrintDidNotFinish => "Notifications_KindPrintDidNotFinish",
             NotificationKind.QueueHeld => "Notifications_KindQueueHeld",
@@ -287,6 +330,12 @@ public class NotificationsModel : PageModel
     /// <param name="LabelKey">The resource key naming it.</param>
     /// <param name="Enabled">Whether this account hears it.</param>
     public sealed record KindChoice(NotificationKind Kind, string LabelKey, bool Enabled);
+
+    /// <summary>One printer as the page offers it.</summary>
+    /// <param name="Uuid">The printer's public id, which the form posts.</param>
+    /// <param name="Name">What the printer is called.</param>
+    /// <param name="Enabled">Whether this account hears about it.</param>
+    public sealed record PrinterChoice(Guid Uuid, string Name, bool Enabled);
 
     /// <summary>One destination as the list shows it.</summary>
     /// <param name="Uuid">What the buttons carry.</param>

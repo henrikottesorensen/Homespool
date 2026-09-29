@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260928213859_InitialCreate")]
+    [Migration("20260928230334_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -154,6 +154,10 @@ namespace Homespool.Data.Migrations
 
                     b.Property<string>("MutedNotifications")
                         .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MutedPrinters")
+                        .HasMaxLength(2048)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("NormalizedEmail")

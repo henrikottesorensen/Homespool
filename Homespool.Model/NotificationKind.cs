@@ -26,4 +26,10 @@ public enum NotificationKind
 
     /// <summary>A printer's queue is held behind something a person has to sort out.</summary>
     QueueHeld = 4,
+
+    /// <summary>A print will stop for a filament change within a few minutes.</summary>
+    FilamentChangeSoon = 5,
+
+    /// <summary>A printer stopped answering while it had a print running.</summary>
+    PrinterLost = 6,
 }

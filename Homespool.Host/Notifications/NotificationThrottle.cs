@@ -33,41 +33,72 @@ public sealed class NotificationThrottle
     /// <summary>The least time between two notifications that a printer's queue is held.</summary>
     public static readonly TimeSpan QueueHeldGap = TimeSpan.FromMinutes(15);
 
+    /// <summary>The least time between two warnings of a filament change coming.</summary>
+    public static readonly TimeSpan FilamentChangeSoonGap = TimeSpan.FromMinutes(5);
+
+    /// <summary>The least time between two notifications that a printer has gone quiet.</summary>
+    public static readonly TimeSpan PrinterLostGap = TimeSpan.FromMinutes(15);
+
     private readonly Lock _lock = new();
     private readonly Dictionary<Key, DateTimeOffset> _lastSent = [];
 
-    /// <summary>
-    /// Whether <paramref name="happening"/> may be sent now - and if so, counts it as sent.
-    /// </summary>
-    public bool Admit(PrinterHappening happening, DateTimeOffset now)
+    /// <summary>Whether <paramref name="happening"/> may be sent now. Records nothing.</summary>
+    public bool Allows(PrinterHappening happening, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(happening);
 
-        TimeSpan gap = happening switch
-        {
-            PrinterNeedsAttention => AttentionGap,
-            QueueHeld => QueueHeldGap,
-            _ => TimeSpan.Zero,
-        };
+        TimeSpan gap = GapFor(happening);
 
         if (gap <= TimeSpan.Zero)
         {
             return true;
         }
 
-        Key key = new(happening.PrinterId, happening.GetType());
+        lock (_lock)
+        {
+            return !_lastSent.TryGetValue(KeyOf(happening), out DateTimeOffset last) || now - last >= gap;
+        }
+    }
+
+    /// <summary>
+    /// Records that <paramref name="happening"/> reached somebody, which starts its gap.
+    /// </summary>
+    /// <remarks>
+    /// <b>Separate from <see cref="Allows"/>, and called only after something was delivered.</b> A
+    /// happening the router tells nobody about - a hold already cleared by the time it is composed -
+    /// would otherwise use up the gap, and the next hold, a real one, would be dropped for fifteen
+    /// minutes behind a notification nobody received.
+    /// </remarks>
+    public void Sent(PrinterHappening happening, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(happening);
+
+        if (GapFor(happening) <= TimeSpan.Zero)
+        {
+            return;
+        }
 
         lock (_lock)
         {
-            if (_lastSent.TryGetValue(key, out DateTimeOffset last) && now - last < gap)
-            {
-                return false;
-            }
-
-            _lastSent[key] = now;
-
-            return true;
+            _lastSent[KeyOf(happening)] = now;
         }
+    }
+
+    private static TimeSpan GapFor(PrinterHappening happening)
+    {
+        return happening switch
+        {
+            PrinterNeedsAttention => AttentionGap,
+            QueueHeld => QueueHeldGap,
+            FilamentChangeSoon => FilamentChangeSoonGap,
+            PrinterLost => PrinterLostGap,
+            _ => TimeSpan.Zero,
+        };
+    }
+
+    private static Key KeyOf(PrinterHappening happening)
+    {
+        return new Key(happening.PrinterId, happening.GetType());
     }
 
     /// <summary>One printer and one kind of happening.</summary>

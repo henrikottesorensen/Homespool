@@ -238,7 +238,7 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
                                            .Select(row => row.MutedNotifications)
                                            .SingleAsync(TestContext.Current.CancellationToken);
 
-                muted.Should().Be("PrintDidNotFinish QueueHeld");
+                muted.Should().Be("PrintDidNotFinish QueueHeld FilamentChangeSoon PrinterLost");
             }
 
             string after = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
@@ -246,6 +246,54 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
             Regex.IsMatch(after, "id=\"kind-QueueHeld\"[^>]*checked").Should().BeFalse("what was turned off shows as off");
             Regex.IsMatch(after, "id=\"kind-PrintFinished\"[^>]*checked").Should().BeTrue();
         }
+    }
+
+    /// <summary>
+    /// The printers an account may see are listed, all ticked; an unticked one is muted, by its public
+    /// id.
+    /// </summary>
+    [Fact]
+    public async Task AnUntickedPrinterIsMuted()
+    {
+        (_, _, int printerId, long userId) = await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+        HSUser user = await EnrolmentFlowHelper.FindUserAsync(_factory, userId);
+        Guid uuid;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            uuid = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                              .Printers.Where(printer => printer.Id == printerId)
+                              .Select(printer => printer.Uuid)
+                              .SingleAsync(TestContext.Current.CancellationToken);
+        }
+
+        using HttpClient client = await EnrolmentFlowHelper.SignInAsAsync(_factory, user);
+
+        string page = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+        Regex.IsMatch(page, $"id=\"printer-{uuid}\"[^>]*checked").Should().BeTrue("a printer is heard about until muted");
+
+        using FormUrlEncodedContent form = new(
+        [
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+        ]);
+
+        using HttpResponseMessage saved = await client.PostAsync("/Account/Manage/Notifications?handler=Printers", form,
+                                                                 TestContext.Current.CancellationToken);
+
+        saved.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            string? muted = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                       .Users.Where(row => row.Id == userId)
+                                       .Select(row => row.MutedPrinters)
+                                       .SingleAsync(TestContext.Current.CancellationToken);
+
+            muted.Should().Be(uuid.ToString());
+        }
+
+        string after = await client.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+        Regex.IsMatch(after, $"id=\"printer-{uuid}\"[^>]*checked").Should().BeFalse();
     }
 
     /// <summary>

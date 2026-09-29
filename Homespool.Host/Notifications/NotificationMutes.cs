@@ -21,6 +21,8 @@ public static class NotificationMutes
     public static readonly IReadOnlyList<NotificationKind> Choosable =
     [
         NotificationKind.PrinterNeedsAttention,
+        NotificationKind.FilamentChangeSoon,
+        NotificationKind.PrinterLost,
         NotificationKind.PrintFinished,
         NotificationKind.PrintDidNotFinish,
         NotificationKind.QueueHeld,
@@ -38,6 +40,30 @@ public static class NotificationMutes
                      .Select(name => Enum.TryParse(name, ignoreCase: false, out NotificationKind kind) ? kind : NotificationKind.Undefined)
                      .Where(kind => kind.IsSet())
                      .ToHashSet();
+    }
+
+    /// <summary>The printers muted in <paramref name="stored"/>, from <c>HSUser.MutedPrinters</c>.</summary>
+    public static IReadOnlySet<Guid> ParsePrinters(string? stored)
+    {
+        if (string.IsNullOrWhiteSpace(stored))
+        {
+            return new HashSet<Guid>();
+        }
+
+        return stored.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                     .Select(text => Guid.TryParse(text, out Guid uuid) ? uuid : Guid.Empty)
+                     .Where(uuid => uuid != Guid.Empty)
+                     .ToHashSet();
+    }
+
+    /// <summary>What to store for <paramref name="muted"/> printers, or null when none are.</summary>
+    public static string? FormatPrinters(IEnumerable<Guid> muted)
+    {
+        ArgumentNullException.ThrowIfNull(muted);
+
+        string[] ids = [.. muted.Where(uuid => uuid != Guid.Empty).Distinct().Order().Select(uuid => uuid.ToString("D"))];
+
+        return ids.Length == 0 ? null : string.Join(' ', ids);
     }
 
     /// <summary>What to store for <paramref name="muted"/>, or null when nothing is turned off.</summary>

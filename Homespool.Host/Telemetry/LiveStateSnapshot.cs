@@ -11,16 +11,21 @@ namespace Homespool.Host.Telemetry;
 /// <param name="AttentionCode">The code of the dialog it is showing, if any.</param>
 /// <param name="AttentionText">The text of that dialog, when the printer sent words.</param>
 /// <param name="JobId">The printer's own job number, while it has one.</param>
+/// <param name="TimeToFilamentChange">
+/// Seconds until the print next stops for a filament change or a pause, while one is scheduled.
+/// </param>
 public readonly record struct LiveStateSnapshot(PrinterStatus Status,
                                                 int? AttentionCode,
                                                 string? AttentionText,
-                                                int? JobId)
+                                                int? JobId,
+                                                int? TimeToFilamentChange = null)
 {
     /// <summary>Copies the observed fields out of <paramref name="state"/>.</summary>
     public static LiveStateSnapshot Of(PrinterLiveState state)
     {
         System.ArgumentNullException.ThrowIfNull(state);
 
-        return new LiveStateSnapshot(state.Status, state.AttentionCode, state.AttentionText, state.JobId);
+        return new LiveStateSnapshot(state.Status, state.AttentionCode, state.AttentionText, state.JobId,
+                                     state.TimeToFilamentChange);
     }
 }

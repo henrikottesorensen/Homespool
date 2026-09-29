@@ -430,6 +430,61 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A print whose next filament change is under five minutes away warns its owner's browser - the
+    /// countdown in telemetry, the writer telling the filament watch, the router, the push.
+    /// </summary>
+    [Fact]
+    public async Task AFilamentChangeComingReachesTheOwnersBrowser()
+    {
+        (PrinterIdentity identity, string token, int printerId, long userId) = await EnrolNewPrinterAsync();
+
+        using Homespool.Host.Test.FakePushBrowser browser = Homespool.Host.Test.FakePushService.NewBrowser();
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            context.WebPushDestinations.Add(new WebPushDestination
+            {
+                UserId = userId,
+                Endpoint = browser.Endpoint,
+                P256dh = browser.P256dh,
+                Auth = browser.Auth,
+                Name = "Owner's phone",
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+
+            await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        SyntheticTelemetrySource source = new()
+        {
+            PrintingInterval = TimeSpan.FromMilliseconds(50),
+            IdleInterval = TimeSpan.FromMilliseconds(50),
+            Readings = new TelemetryReadings(TimeToFilamentChange: 280),
+        };
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System,
+                                                 new FakePrinterOptions { TelemetrySource = source });
+        fake.Token = token;
+        fake.Device.StartPrint(jobId: 78);
+
+        await fake.ConnectAsync(ConnectViaTestServerAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(CancellationToken.None);
+
+        bool arrived = await WaitUntilAsync(() => Task.FromResult(_pushService.Received.Count > 0), TimeSpan.FromSeconds(20));
+
+        arrived.Should().BeTrue("a countdown appearing under five minutes is a change coming");
+
+        JsonElement payload = browser.DecryptJson(_pushService.Received[0].Body);
+
+        payload.GetProperty("title").GetString().Should().Be("Fake printer will stop for a filament change soon");
+        payload.GetProperty("body").GetString().Should().Be("In about 5 minutes.");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// A printer reporting firmware's no-filament sentinel is refused, and <b>nothing reaches the
     /// socket</b>.
     /// </summary>

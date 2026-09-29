@@ -187,7 +187,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
     // Told how each printer's state moved - see ILiveStateObserver. Optional, so a writer built for a
     // test that does not care has nobody to tell.
-    private readonly ILiveStateObserver? _observer;
+    private readonly ILiveStateObserver[] _observers;
     private readonly Services.LogThrottle _observerFailures = new(TimeSpan.FromSeconds(10));
 
     // Both wire-rate log sites in this class go through a LogThrottle: drops are recorded on
@@ -226,10 +226,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                            IOptionsMonitor<StorageOptions> options,
                            ILogger<TelemetryWriter> logger,
                            TimeProvider timeProvider,
-                           ILiveStateObserver? observer = null)
+                           IEnumerable<ILiveStateObserver>? observers = null)
     {
         _scopeFactory = scopeFactory;
-        _observer = observer;
+        _observers = [.. observers ?? []];
         _storage = options;
 
         // Captured, deliberately, and not read from the monitor at the point of use like the ingest
@@ -1240,7 +1240,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
-    /// Tells the observer how one message moved a printer's state, and keeps anything it throws off
+    /// Tells the observers how one message moved a printer's state, and keeps anything they throw off
     /// the loop.
     /// </summary>
     /// <remarks>
@@ -1250,22 +1250,27 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </remarks>
     private void Tell(int printerId, LiveStateSnapshot before, PrinterLiveState after, DateTimeOffset at)
     {
-        if (_observer is null)
+        if (_observers.Length == 0)
         {
             return;
         }
 
-        try
+        LiveStateSnapshot now = LiveStateSnapshot.Of(after);
+
+        foreach (ILiveStateObserver observer in _observers)
         {
-            _observer.Observed(printerId, before, LiveStateSnapshot.Of(after), at);
-        }
-        catch (Exception e) when (e is not OperationCanceledException)
-        {
-            if (_observerFailures.Record() is { } window)
+            try
             {
-                _logger.LogError(e,
-                                 "[{PrinterId}] the live-state observer failed - {Count} time(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. Telemetry is unaffected.",
-                                 printerId, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                observer.Observed(printerId, before, now, at);
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                if (_observerFailures.Record() is { } window)
+                {
+                    _logger.LogError(e,
+                                     "[{PrinterId}] a live-state observer failed - {Count} time(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. Telemetry is unaffected.",
+                                     printerId, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                }
             }
         }
     }

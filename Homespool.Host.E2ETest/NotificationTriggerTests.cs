@@ -36,9 +36,10 @@ namespace Homespool.Host.E2ETest;
 /// <c>FakePrinterIntegrationTests</c>.
 /// </para>
 /// <para>
-/// <b>One team, six people, each with a browser</b>: the owner (who queues, and reads Danish), a
-/// viewer who may see the printer but not its queue, somebody who has muted two kinds, a closed
-/// account, a member whose membership grants nothing, and an outsider on another team. Each test says who should hear, and every other browser
+/// <b>One team, seven people, each with a browser</b>: the owner (who queues, and reads Danish), a
+/// viewer who may see the printer but not its queue, somebody who has muted two kinds, somebody who has
+/// muted this printer, a closed account, a member whose membership grants nothing, and an outsider on
+/// another team. Each test says who should hear, and every other browser
 /// is checked to have heard nothing.
 /// </para>
 /// </remarks>
@@ -59,6 +60,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
     private long _closed;
     private long _outsider;
     private long _bystander;
+    private long _printerMuted;
     private long _fileId;
 
     public async ValueTask InitializeAsync()
@@ -83,6 +85,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
         _closed = await PersonAsync("closed");
         _outsider = await PersonAsync("outsider");
         _bystander = await PersonAsync("bystander");
+        _printerMuted = await PersonAsync("printer-muted");
 
         await WithDbAsync(async db =>
         {
@@ -102,7 +105,8 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
                 new TeamMember { TeamId = workshop.Id, UserId = _muted, Capabilities = everything },
                 new TeamMember { TeamId = workshop.Id, UserId = _closed, Capabilities = everything },
                 new TeamMember { TeamId = elsewhere.Id, UserId = _outsider, Capabilities = everything },
-                new TeamMember { TeamId = workshop.Id, UserId = _bystander, Capabilities = string.Empty });
+                new TeamMember { TeamId = workshop.Id, UserId = _bystander, Capabilities = string.Empty },
+                new TeamMember { TeamId = workshop.Id, UserId = _printerMuted, Capabilities = everything });
 
             PrintFile file = new() { UserId = _owner, Name = "benchy.bgcode", Size = 1024 };
             db.PrintFiles.Add(file);
@@ -113,6 +117,9 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
                     .ExecuteUpdateAsync(set => set.SetProperty(user => user.Language, "da"), TestContext.Current.CancellationToken);
             await db.Users.Where(user => user.Id == _muted)
                     .ExecuteUpdateAsync(set => set.SetProperty(user => user.MutedNotifications, "PrinterNeedsAttention QueueHeld"),
+                                        TestContext.Current.CancellationToken);
+            await db.Users.Where(user => user.Id == _printerMuted)
+                    .ExecuteUpdateAsync(set => set.SetProperty(user => user.MutedPrinters, _printer.Uuid.ToString()),
                                         TestContext.Current.CancellationToken);
             await db.Users.Where(user => user.Id == _closed)
                     .ExecuteUpdateAsync(set => set.SetProperty(user => user.DeactivatedAt, DateTimeOffset.UtcNow),
@@ -158,7 +165,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
         Dictionary<string, JsonElement> heard = await HeardAsync(expected: 2);
 
         heard.Keys.Should().BeEquivalentTo(["owner", "viewer"],
-                                           "the muted, the closed, the member who may see nothing and the outsider hear nothing");
+                                           "the muted, the printer's muter, the closed, the member who may see nothing and the outsider hear nothing");
 
         heard["owner"].GetProperty("title").GetString().Should().Be("Core One+ har brug for dig");
         heard["owner"].GetProperty("body").GetString().Should().Be(PrinterErrorText.For(23829, "da"));
@@ -241,6 +248,106 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
 
         heard.Keys.Should().BeEquivalentTo(["owner"]);
         _pushService.Received.Should().ContainSingle("the hold came back three times and was news once");
+    }
+
+    /// <summary>
+    /// The countdown crossing five minutes, as the telemetry writer reports it, reaches everybody who may
+    /// see the printer - with the time left counted in the reader's language.
+    /// </summary>
+    [Fact]
+    public async Task AFilamentChangeComingReachesEverybodyWhoMaySeeThePrinter()
+    {
+        FilamentChangeWatch watch = _factory.Services.GetRequiredService<FilamentChangeWatch>();
+
+        watch.Observed(_printer.Id,
+                       new LiveStateSnapshot(PrinterStatus.Printing, null, null, 42, 330),
+                       new LiveStateSnapshot(PrinterStatus.Printing, null, null, 42, 250),
+                       DateTimeOffset.UtcNow);
+
+        Dictionary<string, JsonElement> heard = await HeardAsync(expected: 3);
+
+        heard.Keys.Should().BeEquivalentTo(["owner", "viewer", "muted"],
+                                           "somebody who muted attention and holds still hears of a filament change");
+        heard["owner"].GetProperty("title").GetString().Should().Be("Core One+ stopper snart for et filamentskift");
+        heard["owner"].GetProperty("body").GetString().Should().Be("Om cirka 5 minutter.");
+        heard["viewer"].GetProperty("body").GetString().Should().Be("In about 5 minutes.");
+    }
+
+    [Fact]
+    public async Task APrinterLostMidPrintReachesEverybodyWhoMaySeeIt()
+    {
+        long jobId = 0;
+
+        await WithDbAsync(async db =>
+        {
+            PrintJob job = new()
+            {
+                PrintUuid = Guid.NewGuid(),
+                PrinterId = _printer.Id,
+                FileName = "benchy.bgcode",
+                QueuedByUserId = _owner,
+                StartedAt = DateTimeOffset.UtcNow.AddMinutes(-30),
+                State = PrintState.Printing,
+            };
+
+            db.PrintJobs.Add(job);
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+            jobId = job.Id;
+        });
+
+        // What the watcher publishes once the printer has been quiet for the whole grace, which a test
+        // does not wait out; the watcher's own counting is tested against a clock it can move.
+        _factory.Services.GetRequiredService<NotificationQueue>().Publish(new PrinterLost(_printer.Id, jobId));
+
+        Dictionary<string, JsonElement> heard = await HeardAsync(expected: 3);
+
+        heard.Keys.Should().BeEquivalentTo(["owner", "viewer", "muted"]);
+        heard["owner"].GetProperty("title").GetString().Should().Be("Mistet forbindelsen til Core One+");
+        heard["viewer"].GetProperty("body").GetString().Should().Be("It was printing benchy.bgcode – it may still be.");
+    }
+
+    /// <summary>
+    /// A hold that was gone by the time it was composed reached nobody, and must not use up the gap:
+    /// the real hold after it is heard. Found by the flapping test failing under load, where the
+    /// dispatcher composed each hold after the test had already cleared it.
+    /// </summary>
+    [Fact]
+    public async Task AHoldGoneBeforeItWasComposedDoesNotSilenceTheNextOne()
+    {
+        NotificationQueue queue = _factory.Services.GetRequiredService<NotificationQueue>();
+
+        await WithDbAsync(async db =>
+        {
+            db.QueuedPrints.Add(new QueuedPrint
+            {
+                PrintUuid = Guid.NewGuid(),
+                PrinterId = _printer.Id,
+                PrintFileId = _fileId,
+                Position = 1,
+                QueuedByUserId = _owner,
+                QueuedByScope = CapabilitySet.Format([Capability.Print]),
+            });
+
+            db.PrintFilesOnPrinters.Add(new PrintFileOnPrinter { PrinterId = _printer.Id, PrintFileId = _fileId });
+
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        });
+
+        // Announced, but by the time it is composed there is no hold to describe.
+        queue.Publish(new QueueHeld(_printer.Id, PrintHoldReason.FileExistsUnknownSize));
+        await Task.Delay(NotificationWatcher.Interval, TestContext.Current.CancellationToken);
+        _pushService.Received.Should().BeEmpty("there was nothing to say");
+
+        await WithDbAsync(db => db.PrintFilesOnPrinters
+                                  .Where(row => row.PrinterId == _printer.Id)
+                                  .ExecuteUpdateAsync(set => set.SetProperty(row => row.HoldReason, PrintHoldReason.FileExistsUnknownSize),
+                                                      TestContext.Current.CancellationToken));
+
+        queue.Publish(new QueueHeld(_printer.Id, PrintHoldReason.FileExistsUnknownSize));
+
+        Dictionary<string, JsonElement> heard = await HeardAsync(expected: 1);
+
+        heard.Keys.Should().BeEquivalentTo(["owner"]);
     }
 
     [Fact]

@@ -58,6 +58,9 @@ internal sealed class WebPushRig : IAsyncDisposable
         services.AddLogging();
         services.AddLocalization();
         services.AddSingleton(time ?? TimeProvider.System);
+
+        // The notification watcher asks it which printers are connected.
+        services.AddSingleton<Printing.PrinterConnectionRegistry>();
         services.AddSingleton(protection);
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={databasePath}"));
 

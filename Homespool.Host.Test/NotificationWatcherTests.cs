@@ -202,6 +202,88 @@ public sealed class NotificationWatcherTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// A printer that goes quiet with a print open is announced once it has been quiet for the whole
+    /// grace, once per print - and a reconnect inside the grace starts it again.
+    /// </summary>
+    [Fact]
+    public async Task APrinterQuietForTheWholeGraceWithAPrintOpenIsLostOnce()
+    {
+        Microsoft.Extensions.Time.Testing.FakeTimeProvider clock = new(new DateTimeOffset(2026, 9, 29, 12, 0, 0, TimeSpan.Zero));
+        string path = WebPushRig.NewDatabasePath();
+
+        try
+        {
+            await using WebPushRig rig = await WebPushRig.CreateAsync(path, new EphemeralDataProtectionProvider(), time: clock);
+
+            HSUser user = await rig.AddUserAsync("owner@example.com");
+            NotificationWatcher watcher = rig.Services.GetRequiredService<NotificationWatcher>();
+            NotificationQueue queue = rig.Services.GetRequiredService<NotificationQueue>();
+            Printing.PrinterConnectionRegistry connections = rig.Services.GetRequiredService<Printing.PrinterConnectionRegistry>();
+
+            (int printerId, long jobId) = await rig.InScopeAsync(async services =>
+            {
+                HomespoolDbContext db = services.GetRequiredService<HomespoolDbContext>();
+                Team team = new() { Name = "Workshop" };
+                db.Teams.Add(team);
+                await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+                Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = team.Id };
+                db.Printers.Add(printer);
+                await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+                PrintJob job = new()
+                {
+                    PrintUuid = Guid.NewGuid(),
+                    PrinterId = printer.Id,
+                    FileName = "benchy.bgcode",
+                    QueuedByUserId = user.Id,
+                    StartedAt = clock.GetUtcNow(),
+                    State = PrintState.Printing,
+                };
+
+                db.PrintJobs.Add(job);
+                await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+                return (printer.Id, job.Id);
+            });
+
+            async Task<int> LookAfterAsync(TimeSpan elapsed)
+            {
+                clock.Advance(elapsed);
+                await watcher.LookAsync(TestContext.Current.CancellationToken);
+
+                int published = 0;
+
+                while (queue.Reader.TryRead(out PrinterHappening? happening))
+                {
+                    happening.Should().Be(new PrinterLost(printerId, jobId));
+                    published++;
+                }
+
+                return published;
+            }
+
+            (await LookAfterAsync(TimeSpan.Zero)).Should().Be(0, "quiet from now");
+            (await LookAfterAsync(NotificationWatcher.LostAfter / 2)).Should().Be(0);
+
+            // Back briefly: the grace starts again from the next time it is missed.
+            IPrinterLinkStub link = new();
+            connections.Register(printerId, link, overPlaintext: false);
+            (await LookAfterAsync(TimeSpan.FromSeconds(3))).Should().Be(0);
+            connections.Unregister(printerId, link);
+
+            (await LookAfterAsync(TimeSpan.FromSeconds(3))).Should().Be(0);
+            (await LookAfterAsync(NotificationWatcher.LostAfter - TimeSpan.FromSeconds(1))).Should().Be(0, "a second short of the grace");
+            (await LookAfterAsync(TimeSpan.FromSeconds(1))).Should().Be(1);
+            (await LookAfterAsync(NotificationWatcher.LostAfter * 3)).Should().Be(0, "once per print");
+        }
+        finally
+        {
+            WebPushRig.Delete(path);
+        }
+    }
+
     [Fact]
     public async Task APrintThatEndedBeforeTheStartIsNotAnnounced()
     {
@@ -230,5 +312,21 @@ public sealed class NotificationWatcherTests : IAsyncLifetime
 
         await SetHoldAsync(PrintHoldReason.InsufficientSpace);
         (await LookAsync()).Should().ContainSingle("a different reason is a different thing to sort out");
+    }
+
+    /// <summary>A connection that is open and does nothing, for the registry to count as connected.</summary>
+    private sealed class IPrinterLinkStub : Printing.IPrinterLink
+    {
+        public bool IsOpen => true;
+
+        public System.Threading.Tasks.Task<Printing.CommandSendResult> SendAsync(Printing.IPrinterIntent intent,
+                                                                              System.Threading.CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void Complete()
+        {
+        }
     }
 }

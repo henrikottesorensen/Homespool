@@ -31,3 +31,13 @@ public sealed record PrintEnded(int PrinterId, long PrintJobId) : PrinterHappeni
 /// <param name="PrinterId">The printer.</param>
 /// <param name="Reason">Why, as the hold was recorded.</param>
 public sealed record QueueHeld(int PrinterId, PrintHoldReason Reason) : PrinterHappening(PrinterId);
+
+/// <summary>A print will stop for a filament change or a pause within a few minutes.</summary>
+/// <param name="PrinterId">The printer.</param>
+/// <param name="SecondsLeft">How long the printer said it had, when it crossed the threshold.</param>
+public sealed record FilamentChangeSoon(int PrinterId, int SecondsLeft) : PrinterHappening(PrinterId);
+
+/// <summary>A printer has not been connected for a while and has a print open.</summary>
+/// <param name="PrinterId">The printer.</param>
+/// <param name="PrintJobId">The print it had running when it went quiet.</param>
+public sealed record PrinterLost(int PrinterId, long PrintJobId) : PrinterHappening(PrinterId);

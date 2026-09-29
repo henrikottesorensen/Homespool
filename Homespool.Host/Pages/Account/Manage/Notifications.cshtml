@@ -121,14 +121,32 @@ else
 <form id="notifications-kinds-form" method="post" asp-page-handler="Kinds">
     @foreach (var choice in Model.Kinds)
     {
-        <div class="form-check mb-2">
-            <input class="form-check-input" type="checkbox" name="enabled" value="@choice.Kind"
+        <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" role="switch" name="enabled" value="@choice.Kind"
                    id="kind-@choice.Kind" checked="@choice.Enabled" />
             <label class="form-check-label" for="kind-@choice.Kind">@Localiser[choice.LabelKey]</label>
         </div>
     }
     <button id="notifications-kinds-save" type="submit" class="btn btn-primary mt-2">@Localiser["Notifications_KindsSave"]</button>
 </form>
+
+@if (Model.Printers.Count > 0)
+{
+    <h2 class="mt-4">@Localiser["Notifications_PrintersHeading"]</h2>
+    <p class="text-body-secondary">@Localiser["Notifications_PrintersHint"]</p>
+
+    <form id="notifications-printers-form" method="post" asp-page-handler="Printers">
+        @foreach (var printer in Model.Printers)
+        {
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" name="enabled" value="@printer.Uuid"
+                       id="printer-@printer.Uuid" checked="@printer.Enabled" />
+                <label class="form-check-label typed-name" for="printer-@printer.Uuid">@printer.Name</label>
+            </div>
+        }
+        <button id="notifications-printers-save" type="submit" class="btn btn-primary mt-2">@Localiser["Notifications_PrintersSave"]</button>
+    </form>
+}
 
 @section Scripts {
     <script src="~/js/push-notifications.js" asp-append-version="true"></script>

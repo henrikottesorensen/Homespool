@@ -272,6 +272,28 @@ public sealed class NotificationDestinationService
         return NotificationMutes.Parse(stored);
     }
 
+    /// <summary>The printers <paramref name="userId"/> has muted.</summary>
+    public async Task<IReadOnlySet<Guid>> MutedPrintersAsync(long userId, CancellationToken cancellationToken)
+    {
+        string? stored = await _db.Users
+                                  .Where(user => user.Id == userId)
+                                  .Select(user => user.MutedPrinters)
+                                  .SingleOrDefaultAsync(cancellationToken);
+
+        return NotificationMutes.ParsePrinters(stored);
+    }
+
+    /// <summary>Mutes exactly <paramref name="muted"/> for <paramref name="userId"/>, and no other printer.</summary>
+    public async Task SetMutedPrintersAsync(long userId, IEnumerable<Guid> muted, CancellationToken cancellationToken)
+    {
+        string? stored = NotificationMutes.FormatPrinters(muted);
+
+        await _db.Users
+                 .Where(user => user.Id == userId)
+                 .ExecuteUpdateAsync(setters => setters.SetProperty(user => user.MutedPrinters, stored),
+                                     cancellationToken);
+    }
+
     /// <summary>Turns off exactly <paramref name="muted"/> for <paramref name="userId"/>, and nothing else.</summary>
     public async Task SetMutedAsync(long userId, IEnumerable<Model.NotificationKind> muted, CancellationToken cancellationToken)
     {

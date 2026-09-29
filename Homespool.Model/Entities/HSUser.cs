@@ -22,6 +22,12 @@ public class HSUser : IdentityUser<long>
     /// <summary>The longest <see cref="MutedNotifications"/>: every kind named, with room to grow.</summary>
     public const int MutedNotificationsMaxLength = 256;
 
+    /// <summary>
+    /// The longest <see cref="MutedPrinters"/>: fifty printers' ids, which is more than this project
+    /// is built to run.
+    /// </summary>
+    public const int MutedPrintersMaxLength = 2048;
+
     public HSUser()
     {
         SecurityStamp = Guid.NewGuid().ToString();
@@ -85,6 +91,19 @@ public class HSUser : IdentityUser<long>
     /// </remarks>
     [MaxLength(MutedNotificationsMaxLength)]
     public string? MutedNotifications { get; set; }
+
+    /// <summary>
+    /// The printers this account hears nothing about, as space-separated <see cref="Printer.Uuid"/>s,
+    /// or null when none are muted.
+    /// </summary>
+    /// <remarks>
+    /// <b>Public ids rather than a table of foreign keys.</b> A removed printer leaves its id behind
+    /// here, which names nothing and costs nothing - the same reasoning <see cref="DefaultPrinterId"/>
+    /// gives for not entangling a preference with a printer's lifetime - and the list is rewritten
+    /// whole, from the printers the account can see, whenever it is saved.
+    /// </remarks>
+    [MaxLength(MutedPrintersMaxLength)]
+    public string? MutedPrinters { get; set; }
 
     /// <summary>
     /// The <see cref="Printer"/> this account reaches for when a page has to pick one, or null when

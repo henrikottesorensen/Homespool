@@ -3171,4 +3171,40 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Notifications_TestTooSoon" xml:space="preserve">
     <value>Der er lige sendt en test til den browser. Vent et par sekunder, før du sender en til.</value>
   </data>
+  <data name="Notifications_KindFilamentChangeSoon" xml:space="preserve">
+    <value>Når et print om få minutter stopper for et filamentskift</value>
+  </data>
+  <data name="Notifications_KindPrinterLost" xml:space="preserve">
+    <value>Når en printer holder op med at svare midt i et print</value>
+  </data>
+  <data name="Notifications_FilamentSoonTitle" xml:space="preserve">
+    <value>{0} stopper snart for et filamentskift</value>
+  </data>
+  <data name="Notifications_FilamentSoonBody_One" xml:space="preserve">
+    <value>Om cirka et minut.</value>
+  </data>
+  <data name="Notifications_FilamentSoonBody_Other" xml:space="preserve">
+    <value>Om cirka {0:N0} minutter.</value>
+  </data>
+  <data name="Notifications_LostTitle" xml:space="preserve">
+    <value>Mistet forbindelsen til {0}</value>
+  </data>
+  <data name="Notifications_LostBody" xml:space="preserve">
+    <value>Den var i gang med at printe {0} – det er den måske stadig.</value>
+  </data>
+  <data name="Notifications_LostBodyNoFile" xml:space="preserve">
+    <value>Den var i gang med at printe – det er den måske stadig.</value>
+  </data>
+  <data name="Notifications_PrintersHeading" xml:space="preserve">
+    <value>Modtag notifikationer fra følgende printere</value>
+  </data>
+  <data name="Notifications_PrintersHint" xml:space="preserve">
+    <value>En printer, der er slået fra, sender dig slet ingen beskeder.</value>
+  </data>
+  <data name="Notifications_PrintersSave" xml:space="preserve">
+    <value>Gem printere</value>
+  </data>
+  <data name="Notifications_PrintersSaved" xml:space="preserve">
+    <value>Dine printervalg er gemt.</value>
+  </data>
 </root>

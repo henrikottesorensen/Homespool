@@ -86,6 +86,14 @@ public sealed class NotificationRouter
                                                                    language => Task.FromResult<NotificationMessage?>(Attention(printer, waiting, language)),
                                                                    cancellationToken),
 
+            FilamentChangeSoon soon => await SendToTeamAsync(printer,
+                                                             Capability.ViewPrinter,
+                                                             NotificationKind.FilamentChangeSoon,
+                                                             language => Task.FromResult<NotificationMessage?>(FilamentSoon(printer, soon, language)),
+                                                             cancellationToken),
+
+            PrinterLost lost => await SendLostAsync(printer, lost, cancellationToken),
+
             QueueHeld => await SendToTeamAsync(printer,
                                                Capability.ViewQueue,
                                                NotificationKind.QueueHeld,
@@ -122,7 +130,7 @@ public sealed class NotificationRouter
                                             Func<string?, Task<NotificationMessage?>>? compose,
                                             CancellationToken cancellationToken)
     {
-        IReadOnlyList<Recipient> recipients = await AudienceAsync(printer.TeamId, needed, kind, cancellationToken);
+        IReadOnlyList<Recipient> recipients = await AudienceAsync(printer, needed, kind, cancellationToken);
         int told = 0;
 
         foreach (Recipient recipient in recipients)
@@ -165,7 +173,7 @@ public sealed class NotificationRouter
             return 0;
         }
 
-        IReadOnlyList<Recipient> audience = await AudienceAsync(printer.TeamId, Capability.ViewPrinter, kind, cancellationToken);
+        IReadOnlyList<Recipient> audience = await AudienceAsync(printer, Capability.ViewPrinter, kind, cancellationToken);
         Recipient? owner = audience.SingleOrDefault(recipient => recipient.UserId == job.QueuedByUserId);
 
         if (owner is null)
@@ -189,6 +197,44 @@ public sealed class NotificationRouter
         await _destinations.DeliverToAllAsync(owner.UserId, message, cancellationToken);
 
         return 1;
+    }
+
+    private async Task<int> SendLostAsync(Printer printer, PrinterLost lost, CancellationToken cancellationToken)
+    {
+        string? file = await _db.PrintJobs
+                                .AsNoTracking()
+                                .Where(job => job.Id == lost.PrintJobId)
+                                .Select(job => job.FileName)
+                                .SingleOrDefaultAsync(cancellationToken);
+
+        return await SendToTeamAsync(printer,
+                                     Capability.ViewPrinter,
+                                     NotificationKind.PrinterLost,
+                                     language => Task.FromResult<NotificationMessage?>(UserCultures.InCulture(language, () =>
+                                         new NotificationMessage(
+                                             _localiser["Notifications_LostTitle", PrinterDisplayName.For(printer)].Value,
+                                             file is null ?
+                                                 _localiser["Notifications_LostBodyNoFile"].Value :
+                                                 _localiser["Notifications_LostBody", file].Value,
+                                             UrlFor(printer),
+                                             TagFor(printer),
+                                             NotificationUrgency.High,
+                                             TimeSpan.FromHours(1)))),
+                                     cancellationToken);
+    }
+
+    private NotificationMessage FilamentSoon(Printer printer, FilamentChangeSoon soon, string? language)
+    {
+        // Rounded up: "about 5 minutes" at 4:10 left is the promise a person can walk over on.
+        int minutes = Math.Max(1, (int)Math.Ceiling(soon.SecondsLeft / 60.0));
+
+        return UserCultures.InCulture(language, () => new NotificationMessage(
+            _localiser["Notifications_FilamentSoonTitle", PrinterDisplayName.For(printer)].Value,
+            Plural.Format(_localiser, "Notifications_FilamentSoonBody", minutes),
+            UrlFor(printer),
+            TagFor(printer),
+            NotificationUrgency.High,
+            TimeSpan.FromMinutes(10)));
     }
 
     private NotificationMessage Attention(Printer printer, PrinterNeedsAttention waiting, string? language)
@@ -243,25 +289,36 @@ public sealed class NotificationRouter
     }
 
     /// <summary>
-    /// The active members of a team whose membership allows <paramref name="needed"/> and who have not
-    /// turned <paramref name="kind"/> off.
+    /// The active members of the printer's team whose membership allows <paramref name="needed"/>, who
+    /// have not turned <paramref name="kind"/> off, and who have not muted this printer.
     /// </summary>
-    private async Task<IReadOnlyList<Recipient>> AudienceAsync(int teamId,
+    private async Task<IReadOnlyList<Recipient>> AudienceAsync(Printer printer,
                                                                Capability needed,
                                                                NotificationKind kind,
                                                                CancellationToken cancellationToken)
     {
+        int teamId = printer.TeamId;
+
         var members = await (from member in Memberships.Open(_db)
                              join account in _db.Users on member.UserId equals account.Id
                              where member.TeamId == teamId
-                             select new { member.UserId, member.Capabilities, account.Language, account.MutedNotifications })
+                             select new
+                             {
+                                 member.UserId,
+                                 member.Capabilities,
+                                 account.Language,
+                                 account.MutedNotifications,
+                                 account.MutedPrinters,
+                             })
                             .AsNoTracking()
                             .ToListAsync(cancellationToken);
 
         // Filtered here rather than in SQL: capabilities are a space-separated string, and matching
-        // one by substring is the trap the capability set exists to avoid.
+        // one by substring is the trap the capability set exists to avoid - as is matching an id in
+        // the muted printers by substring.
         return [.. members.Where(member => CapabilitySet.Parse(member.Capabilities).Allows(needed))
                           .Where(member => !NotificationMutes.Parse(member.MutedNotifications).Contains(kind))
+                          .Where(member => !NotificationMutes.ParsePrinters(member.MutedPrinters).Contains(printer.Uuid))
                           .Select(member => new Recipient(member.UserId, member.Language))];
     }
 

@@ -15,8 +15,9 @@ using Homespool.Model;
 namespace Homespool.Host.Notifications;
 
 /// <summary>
-/// Notices prints ending and queues becoming held, by reading what the queue has committed, and
-/// releases the waits <see cref="AttentionWatch"/> has let settle.
+/// Notices prints ending and queues becoming held, by reading what the queue has committed, notices a
+/// printer going quiet in the middle of a print, and releases the waits <see cref="AttentionWatch"/>
+/// has let settle.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -31,6 +32,13 @@ namespace Homespool.Host.Notifications;
 /// <c>BlockedAt</c> is when it was last confirmed, rewritten while it lasts - so holds are compared
 /// against the set held at the previous look, and a hold is news when its row was not held then, or
 /// was held for a different reason.
+/// </para>
+/// <para>
+/// <b>A printer is lost when it has been disconnected for <see cref="LostAfter"/> with a print
+/// open</b>, and not before: Wi-Fi drops and a printer reconnects within seconds, and a phone that
+/// buzzed at every blip would be turned off. Asked of the connection registry rather than of the
+/// live state, because nothing writes a disconnect there - a printer unplugged mid-print goes on
+/// saying <c>Printing</c>. Once per print, however often it comes and goes.
 /// </para>
 /// <para>
 /// <b>A start announces nothing old.</b> The watermark begins at the start and the first look at
@@ -53,7 +61,11 @@ public sealed class NotificationWatcher : BackgroundService
 
     private static readonly PrintState[] Announced = [PrintState.Finished, PrintState.Stopped, PrintState.Failed];
 
+    /// <summary>How long a printer with a print open must stay disconnected to be announced as lost.</summary>
+    public static readonly TimeSpan LostAfter = TimeSpan.FromMinutes(2);
+
     private readonly IServiceScopeFactory _scopes;
+    private readonly Printing.PrinterConnectionRegistry _connections;
     private readonly AttentionWatch _attention;
     private readonly NotificationQueue _queue;
     private readonly TimeProvider _time;
@@ -64,16 +76,23 @@ public sealed class NotificationWatcher : BackgroundService
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private readonly Dictionary<long, DateTimeOffset> _announcedEnds = [];
+
+    // Per open print: since when its printer has been unreachable, and whether that was announced.
+    private readonly Dictionary<long, DateTimeOffset> _quietSince = [];
+    private readonly HashSet<long> _announcedLost = [];
+
     private Dictionary<long, PrintHoldReason>? _held;
     private DateTimeOffset _since;
 
     public NotificationWatcher(IServiceScopeFactory scopes,
+                               Printing.PrinterConnectionRegistry connections,
                                AttentionWatch attention,
                                NotificationQueue queue,
                                TimeProvider time,
                                ILogger<NotificationWatcher> logger)
     {
         _scopes = scopes;
+        _connections = connections;
         _attention = attention;
         _queue = queue;
         _time = time;
@@ -104,6 +123,7 @@ public sealed class NotificationWatcher : BackgroundService
 
             await LookForEndsAsync(db, cancellationToken);
             await LookForHoldsAsync(db, cancellationToken);
+            await LookForLostPrintersAsync(db, cancellationToken);
         }
         finally
         {
@@ -178,6 +198,44 @@ public sealed class NotificationWatcher : BackgroundService
         {
             _announcedEnds.Remove(forgotten);
         }
+    }
+
+    private async Task LookForLostPrintersAsync(HomespoolDbContext db, CancellationToken cancellationToken)
+    {
+        var open = await db.PrintJobs
+                           .AsNoTracking()
+                           .Where(job => job.EndedAt == null)
+                           .Select(job => new { job.Id, job.PrinterId })
+                           .ToListAsync(cancellationToken);
+
+        DateTimeOffset now = _time.GetUtcNow();
+        HashSet<long> stillOpen = [.. open.Select(job => job.Id)];
+
+        foreach (var job in open)
+        {
+            if (_connections.IsConnected(job.PrinterId))
+            {
+                _quietSince.Remove(job.Id);
+
+                continue;
+            }
+
+            if (!_quietSince.TryGetValue(job.Id, out DateTimeOffset since))
+            {
+                _quietSince[job.Id] = now;
+
+                continue;
+            }
+
+            if (now - since >= LostAfter && _announcedLost.Add(job.Id))
+            {
+                _queue.Publish(new PrinterLost(job.PrinterId, job.Id));
+            }
+        }
+
+        // A print that has closed needs no more watching, and its id will not come back.
+        _quietSince.Keys.Where(id => !stillOpen.Contains(id)).ToList().ForEach(id => _quietSince.Remove(id));
+        _announcedLost.RemoveWhere(id => !stillOpen.Contains(id));
     }
 
     private async Task LookForHoldsAsync(HomespoolDbContext db, CancellationToken cancellationToken)

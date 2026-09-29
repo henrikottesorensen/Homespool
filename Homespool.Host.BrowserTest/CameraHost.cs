@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO;
 using System.Net;
@@ -112,8 +113,41 @@ public sealed class CameraHost : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// An account with a printer on its team and nothing else, for a page that needs only that. The
+    /// client is signed in as the account and already points at this host's listener.
+    /// </summary>
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification = "The client is the caller's to dispose; the catch disposes it when there is no caller to hand it to.")]
+    public async Task<(HttpClient client, Guid printer)> AccountWithPrinterAsync(string email)
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(Factory, email);
+
+        try
+        {
+            client.BaseAddress = BaseAddress;
+
+            return (client, await SeedPrinterAsync(user.Id));
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
+    }
+
     /// <summary>Signs in through the real login page and opens the printer's page.</summary>
     public static async Task<IPage> OpenPrinterPageAsync(IBrowserContext context, string email, Guid printer)
+    {
+        IPage page = await SignInAsync(context, email);
+
+        await page.GotoAsync($"/Printers/Detail/{printer}");
+
+        return page;
+    }
+
+    /// <summary>Signs in through the real login page, leaving the page wherever that lands.</summary>
+    public static async Task<IPage> SignInAsync(IBrowserContext context, string email)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -124,8 +158,6 @@ public sealed class CameraHost : IAsyncDisposable
         await page.FillAsync("#Input_Password", EnrolmentFlowHelper.AccountPassword);
         await page.ClickAsync("#login-submit");
         await page.WaitForURLAsync(url => !url.Contains("/Account/Login", StringComparison.Ordinal));
-
-        await page.GotoAsync($"/Printers/Detail/{printer}");
 
         return page;
     }

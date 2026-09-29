@@ -233,6 +233,90 @@ body {
   white-space: nowrap;
 }
 
+/* The Files table below the phone breakpoint: each file a block of its own - the name across the
+   top, size and date on a quieter line under it, the buttons wrapping below. As a table, the row of
+   five buttons could not wrap, so it made the page wider than the screen and left the name, the one
+   column allowed to give way, four characters a line. Above the breakpoint none of this applies and
+   it is the table it always was. The header row stays, as a line of sort links; the actions heading
+   is only a label for a screen reader, and here it would be a gap. The two forms among the buttons
+   take display: contents so their buttons wrap with the rest rather than as a pair. */
+@media (max-width: 767.98px) {
+  .file-table,
+  .file-table > thead,
+  .file-table > tbody {
+    display: block;
+  }
+
+  .file-table > thead > tr {
+    display: flex;
+    gap: 1rem;
+    border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+  }
+
+  .file-table > thead > tr > th {
+    width: auto;
+    padding-left: 0;
+    padding-right: 0;
+    border-bottom-width: 0;
+  }
+
+  .file-table > thead > tr > .file-actions-heading {
+    display: none;
+  }
+
+  .file-table > tbody > tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "name name"
+      "size uploaded"
+      "actions actions";
+    column-gap: 1rem;
+    padding: .5rem 0;
+    border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+  }
+
+  .file-table > tbody > tr > td {
+    padding: 0;
+    border-bottom-width: 0;
+    text-align: start;
+  }
+
+  .file-table .file-name {
+    grid-area: name;
+  }
+
+  .file-table .file-rename {
+    grid-column: 1 / -1;
+  }
+
+  .file-table .file-size,
+  .file-table .file-uploaded {
+    font-size: .875em;
+    color: var(--bs-secondary-color);
+  }
+
+  .file-table .file-size {
+    grid-area: size;
+  }
+
+  .file-table .file-uploaded {
+    grid-area: uploaded;
+  }
+
+  .file-table .file-actions {
+    grid-area: actions;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    margin-top: .5rem;
+  }
+
+  .file-table .file-actions > form {
+    display: contents;
+  }
+}
+
 /* The upload area, and what it looks like with a file held over it. Dashed because that is the
    conventional shape of "you may drop here"; without scripting it is simply a border, and the
    picker inside it behaves the same either way. */

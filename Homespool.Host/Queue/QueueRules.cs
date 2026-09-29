@@ -94,10 +94,11 @@ public static class QueueRules
             return QueueAction.Nothing;
         }
 
-        if (situation.TransferInFlight)
+        if (situation.TransferInFlight && head.PrinterPath is null)
         {
-            // Firmware has one system-wide transfer slot, so there is nothing useful to start while
-            // one is running - including for a different file.
+            // Nothing to send - firmware has one system-wide transfer slot - and nothing to print yet,
+            // because the printer has not named the file. Once it has, the print checks below apply:
+            // firmware prints a file while it is still downloading, and so does this queue.
             return QueueAction.Wait(QueueWaitReason.Transferring);
         }
 
@@ -134,19 +135,25 @@ public static class QueueRules
                 // Out of the transfer branch too: that branch would send the file again, and the
                 // printer has already answered the same way for every attempt the budget allowed.
                 PrintHoldReason.TransferRefused => QueueWaitReason.TransferRefused,
+                PrintHoldReason.TransferAborted => QueueWaitReason.TransferAborted,
+
+                // Out of it above all: somebody at the printer stopped this transfer.
+                PrintHoldReason.TransferStopped => QueueWaitReason.TransferStopped,
                 PrintHoldReason.FileUnreadable => QueueWaitReason.FileUnreadable,
                 _ => QueueWaitReason.InsufficientSpace,
             });
         }
 
-        if (!head.FileHasArrived && situation.TransferRetryPending)
+        if (!head.FileHasArrived && !situation.TransferInFlight && situation.TransferRetryPending)
         {
             // A wait rather than a Transfer the advancer declines, so that anything reading this
             // decision says what the loop is doing.
-            return QueueAction.Wait(QueueWaitReason.TransferRetrying);
+            return QueueAction.Wait(situation.TransferRetryAfterAbort ?
+                                        QueueWaitReason.TransferAbortRetrying :
+                                        QueueWaitReason.TransferRetrying);
         }
 
-        if (!head.FileHasArrived)
+        if (!head.FileHasArrived && !situation.TransferInFlight)
         {
             // Deliberately not gated on the printer being available: a transfer runs alongside a
             // print, which is proven on hardware and is the point of pipelining - the next job's
@@ -161,6 +168,7 @@ public static class QueueRules
             return QueueAction.Wait(QueueWaitReason.AwaitingPrinterPath);
         }
 
+        // From here the file is either on the drive or on its way under a name the printer gave it.
         if (situation.PrintInFlight)
         {
             // Commanded already; the printer just has not caught up. See PrintInFlight - this is the

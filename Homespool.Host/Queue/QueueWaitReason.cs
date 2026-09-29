@@ -156,4 +156,31 @@ public enum QueueWaitReason
     /// its own, because the hold banner carries one.
     /// </remarks>
     FileUnreadable = 12,
+
+    /// <summary>
+    /// Somebody stopped the head's transfer at the printer, and the queue holds until a person acts -
+    /// see <see cref="PrintHoldReason.TransferStopped"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not routed back into the transfer path: sending it again is exactly what the person at the
+    /// printer said no to. The hold banner carries the sentence.
+    /// </remarks>
+    TransferStopped = 13,
+
+    /// <summary>
+    /// The printer gave up the head's transfer too many times running, and the queue holds until a
+    /// person acts - see <see cref="PrintHoldReason.TransferAborted"/>.
+    /// </summary>
+    /// <remarks>Not routed back into the transfer path, for the reason <see cref="TransferRefused"/> is not.</remarks>
+    TransferAborted = 14,
+
+    /// <summary>
+    /// The printer took the last attempt to send the head and then gave it up, and the loop is
+    /// waiting before it tries again.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TransferRetrying"/>'s wait, after an abort rather than a refusal. A reason of its own
+    /// because the sentence differs: the printer did not refuse anything.
+    /// </remarks>
+    TransferAbortRetrying = 15,
 }

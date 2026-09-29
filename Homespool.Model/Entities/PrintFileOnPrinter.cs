@@ -59,15 +59,22 @@ public class PrintFileOnPrinter
     public virtual PrintFile? PrintFile { get; set; }
 
     /// <summary>
-    /// When the transfer was started, or null if none has been. Set back to null when a transfer
-    /// ends, so a non-null value means "in flight right now".
+    /// When the transfer was started, or null if none has been. Set back to null when the printer
+    /// reports the transfer ended, or when a send failed in a way that leaves nothing to fetch.
     /// </summary>
     /// <remarks>
-    /// A timestamp rather than a flag because it is also the retry clock: firmware has a single
-    /// system-wide transfer slot, so a busy signal is answered by waiting, and knowing <i>how long</i>
-    /// is what distinguishes waiting from wedged. It is not authoritative either - a server restart
-    /// mid-transfer leaves this set with nothing running, which is why the loop treats an old value as
-    /// stale rather than as a transfer to keep waiting on.
+    /// <para>
+    /// <b>A record that a transfer was started, not proof that one is running.</b> It is written
+    /// before the command, and a command the printer did not answer in time leaves it set, because
+    /// that says nothing either way. Whether the transfer is running is an observation the queue makes
+    /// beside it: the printer having reported the file (<see cref="PrinterPath"/>), or an offer of it
+    /// still standing.
+    /// </para>
+    /// <para>
+    /// A timestamp rather than a flag because it is also the bound: a report that never comes must
+    /// not wedge a queue, so an old value is treated as stale rather than as a transfer to keep
+    /// waiting on.
+    /// </para>
     /// </remarks>
     public DateTimeOffset? TransferStartedAt { get; set; }
 
@@ -167,9 +174,15 @@ public class PrintFileOnPrinter
     public string? TransferRefusalReason { get; set; }
 
     /// <summary>When the printer reported the transfer finished. Null until it has.</summary>
+    /// <remarks>
+    /// <b><c>TRANSFER_FINISHED</c>, not the first <c>FILE_INFO</c></b>, which firmware sends a few
+    /// seconds in, once the partial is printable. A print may start on that report - see
+    /// <see cref="PrinterPath"/> - but a transfer that fails after it leaves a partial, and firmware
+    /// removes that, so it is not a file on the drive.
+    /// </remarks>
     public DateTimeOffset? ArrivedAt { get; set; }
 
-    /// <summary>Whether the bytes are believed to be on the drive.</summary>
+    /// <summary>Whether the whole file is believed to be on the drive.</summary>
     public bool Arrived => ArrivedAt is not null;
 
     /// <summary>
@@ -185,8 +198,10 @@ public class PrintFileOnPrinter
     /// directory contents we cannot see, where a wrong guess prints a different file.
     /// </para>
     /// <para>
-    /// Null until a <c>FILE_INFO</c> has named it, which is the second half of a completed transfer
-    /// and the reason arrival is not simply <c>TRANSFER_FINISHED</c>.
+    /// <b>Set by the first <c>FILE_INFO</c>, while the file is still arriving</b> - firmware names the
+    /// partial by the 8.3 path the finished file keeps, so a print can start on it before
+    /// <see cref="ArrivedAt"/>. Null until then, and cleared when a transfer ends without finishing,
+    /// because the partial it named has gone.
     /// </para>
     /// </remarks>
     public string? PrinterPath { get; set; }

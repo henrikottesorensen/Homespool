@@ -99,7 +99,32 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     /// </remarks>
     public static readonly TimeSpan ResumeWithin = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// How long an offer the printer collected still counts for <see cref="IsOffered"/> after it has
+    /// ended.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The end of a transfer reaches this store before it reaches anyone reading the event log.</b>
+    /// The actor releases the offer the moment <c>TRANSFER_FINISHED</c> arrives; the event itself,
+    /// and the <c>FILE_INFO</c> that named the file before it, land in the database at the telemetry
+    /// writer's next flush. A small file can start and finish inside one flush, and a queue asking in
+    /// that gap would see neither an offer nor a report, read it as a command the printer never
+    /// took, and send the file again - twenty times in one end-to-end run.
+    /// </para>
+    /// <para>
+    /// A minute is many flushes and several queue passes. Only a collected offer is kept: one revoked
+    /// or never opened was never a transfer, and is gone at once.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan EndReportedWithin = TimeSpan.FromMinutes(1);
+
     private readonly ConcurrentDictionary<string, PinnedOffer> _offers = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// When each collected offer ended, by printer and file, for <see cref="EndReportedWithin"/>.
+    /// </summary>
+    private readonly ConcurrentDictionary<(int printerId, string fileName), DateTimeOffset> _ended = new();
     private readonly TimeProvider _timeProvider;
     private readonly IOptionsMonitor<PrusaConnectOptions> _options;
     private readonly ILogger<TransferOfferStore> _logger;
@@ -207,6 +232,11 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     /// </summary>
     private void Retire(string token, PinnedOffer offer)
     {
+        if (offer.WasOpened)
+        {
+            _ended[(offer.PrinterId, offer.FileName)] = _timeProvider.GetUtcNow();
+        }
+
         offer.Retire();
         Retired?.Invoke(token);
     }
@@ -263,6 +293,16 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
                 RetireAbandoned(entry.Key, entry.Value);
             }
         }
+
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        foreach (KeyValuePair<(int printerId, string fileName), DateTimeOffset> ended in _ended)
+        {
+            if (now - ended.Value >= EndReportedWithin)
+            {
+                _ended.TryRemove(ended);
+            }
+        }
     }
 
     /// <summary>
@@ -285,6 +325,27 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
                       .Select(offer => (offer.PrinterId, offer.FileName))
                       .Distinct()
                       .ToList();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// An offer past its limit and not yet swept counts as gone, as in <see cref="StandingOffers"/>:
+    /// the next sweep ends it, and <see cref="TryOpen"/> already refuses it. One the printer collected
+    /// counts for <see cref="EndReportedWithin"/> after it ends - see there.
+    /// </remarks>
+    public bool IsOffered(int printerId, string fileName)
+    {
+        TimeSpan maxLifetime = _options.CurrentValue.TransferOfferMaxLifetime;
+
+        if (_ended.TryGetValue((printerId, fileName), out DateTimeOffset endedAt) &&
+            _timeProvider.GetUtcNow() - endedAt < EndReportedWithin)
+        {
+            return true;
+        }
+
+        return _offers.Values.Any(offer => offer.PrinterId == printerId &&
+                                           string.Equals(offer.FileName, fileName, StringComparison.Ordinal) &&
+                                           !offer.IsAbandoned(maxLifetime));
     }
 
     private void RetireAbandoned(string token, PinnedOffer offer)
@@ -333,6 +394,18 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         /// on, so this is the name the transfer was started under.
         /// </summary>
         public string FileName { get; }
+
+        /// <summary>Whether a printer has ever opened this - whether it was a transfer at all.</summary>
+        public bool WasOpened
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _opened;
+                }
+            }
+        }
 
         /// <summary>Whether nothing is currently reading this, and so it can be closed.</summary>
         public bool IsIdle

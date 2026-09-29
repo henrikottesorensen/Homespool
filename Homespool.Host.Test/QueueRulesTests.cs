@@ -182,6 +182,72 @@ public class QueueRulesTests
     }
 
     /// <summary>
+    /// A retry after the printer abandoned a transfer is the same wait as after a refusal, said as what
+    /// it is: the printer did not refuse anything.
+    /// </summary>
+    [Theory]
+    [InlineData(false, QueueWaitReason.TransferRetrying)]
+    [InlineData(true, QueueWaitReason.TransferAbortRetrying)]
+    public void ARetryWaitSaysWhetherThePrinterRefusedOrGaveUp(bool afterAbort, QueueWaitReason expected)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: false, path: null) with
+            {
+                TransferRetryPending = true,
+                TransferRetryAfterAbort = afterAbort,
+            });
+
+        action.Reason.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// A file still arriving is printed once the printer has named it - firmware prints a partial
+    /// while the rest downloads - and not sent again.
+    /// </summary>
+    [Fact]
+    public void AFileStillArrivingIsPrintedOnceThePrinterHasNamedIt()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: false, path: "/usb/BENCHY~1.BGC") with { TransferInFlight = true });
+
+        action.Kind.Should().Be(QueueActionKind.Print);
+        action.Head!.PrinterPath.Should().Be("/usb/BENCHY~1.BGC");
+    }
+
+    /// <summary>
+    /// Named but still arriving, on a printer that is not ready: the ordinary wait for a person, and
+    /// never a second transfer of a file already on its way.
+    /// </summary>
+    [Theory]
+    [InlineData(PrinterStatus.Idle, QueueWaitReason.PrinterNotAvailable)]
+    [InlineData(PrinterStatus.Printing, QueueWaitReason.PrinterBusy)]
+    public void AFileStillArrivingOnAPrinterNotReadyWaitsForThePrinter(PrinterStatus status, QueueWaitReason expected)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(status, arrived: false, path: "/usb/BENCHY~1.BGC") with { TransferInFlight = true });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// A retry wait recorded against an earlier refusal does not override a transfer that is now
+    /// running and named: the file is on its way, and nothing is about to be retried.
+    /// </summary>
+    [Fact]
+    public void ARetryWaitDoesNotHoldBackAFileAlreadyArriving()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: false, path: "/usb/BENCHY~1.BGC") with
+            {
+                TransferInFlight = true,
+                TransferRetryPending = true,
+            });
+
+        action.Kind.Should().Be(QueueActionKind.Print);
+    }
+
+    /// <summary>
     /// Arrived but unnamed: the print waits for the <c>FILE_INFO</c> rather than guessing at an 8.3
     /// path, because a wrong guess prints a different file.
     /// </summary>
@@ -487,6 +553,7 @@ public class QueueRulesTests
     {
         bool expected = reason is QueueWaitReason.Transferring or
                                   QueueWaitReason.TransferRetrying or
+                                  QueueWaitReason.TransferAbortRetrying or
                                   QueueWaitReason.AwaitingPrinterPath or
                                   QueueWaitReason.PrinterNotAvailable or
                                   QueueWaitReason.QueuerLostAccess;

@@ -36,6 +36,10 @@ namespace Homespool.Host.Queue;
 /// Whether the printer refused the head's last transfer and the wait before the next attempt has not
 /// run out - see <see cref="TransferRetryRules.IsWaiting"/>.
 /// </param>
+/// <param name="TransferRetryAfterAbort">
+/// Whether the pending retry follows the printer abandoning a transfer it had taken, rather than
+/// refusing one - the same wait, said differently.
+/// </param>
 /// <param name="HeadAuthorityLapsed">
 /// Whether the authority the head was queued under may no longer print on this printer - see
 /// <see cref="QueueWaitReason.QueuerLostAccess"/>.
@@ -48,4 +52,5 @@ public sealed record QueueSnapshot(
     bool PrintInFlight = false,
     PrintHoldReason? HoldReason = null,
     bool TransferRetryPending = false,
-    bool HeadAuthorityLapsed = false);
+    bool HeadAuthorityLapsed = false,
+    bool TransferRetryAfterAbort = false);

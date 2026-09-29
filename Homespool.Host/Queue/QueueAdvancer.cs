@@ -65,10 +65,10 @@ public sealed class QueueAdvancer : BackgroundService
     /// </summary>
     /// <remarks>
     /// Generous, because a full-size model over TLS is minutes - 279.8 KB/s measured through nginx, so
-    /// 100 MB is close to six. This exists for the case with no other bound: a server restarted
-    /// mid-transfer leaves <see cref="PrintFileOnPrinter.TransferStartedAt"/> set with nothing running
-    /// and no terminal event ever coming, which without this would wedge that printer's queue
-    /// permanently.
+    /// 100 MB is close to six. This exists for the case with no other bound: a transfer the printer
+    /// has reported whose terminal event never arrives - a printer that goes away mid-transfer and
+    /// does not come back to fetch again - leaves <see cref="PrintFileOnPrinter.TransferStartedAt"/>
+    /// set with nothing running, which without this would wedge that printer's queue permanently.
     /// </remarks>
     public static readonly TimeSpan TransferStaleAfter = TimeSpan.FromMinutes(30);
 
@@ -459,21 +459,31 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
-    /// Turns the printer's own reports into arrival: a <c>FILE_INFO</c> naming one of our files marks
-    /// it present and records the path the printer calls it.
+    /// Turns the printer's own reports into what is known about each file on its drive: a
+    /// <c>FILE_INFO</c> names it, and the transfer's own terminal event says whether it all arrived.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Arrival is the <c>FILE_INFO</c>, not the <c>TRANSFER_FINISHED</c></b>, because the path to
-    /// print with only exists in the former. Connect does the same - it transfers to the long name and
-    /// starts the print with the 8.3 name the answering <c>FILE_INFO</c> reports - and deriving that
-    /// name ourselves would mean inventing a <c>~N</c> collision index against a directory we cannot
-    /// see, where a wrong guess prints a different file.
+    /// <b>Two reports, two facts.</b> Firmware sends a <c>FILE_INFO</c> a few seconds into a transfer,
+    /// once the partial file is printable - <c>read_only</c>, the full size, and the 8.3 path the file
+    /// keeps - and another when it completes. The first is what lets a print start while the rest
+    /// downloads, which firmware supports and this queue does. It is not arrival: a transfer that
+    /// fails after it leaves a partial, and treating that as present is how a queue came to print a
+    /// file firmware then called a file error. So the path is taken from the first report, and
+    /// <see cref="PrintFileOnPrinter.ArrivedAt"/> waits for <c>TRANSFER_FINISHED</c>.
     /// </para>
     /// <para>
-    /// Matched on <c>display_name</c>, which is the only field carrying the name we sent. A transfer
-    /// whose <c>FILE_INFO</c> never arrives leaves the row unarrived, and the staleness timeout above
-    /// eventually offers the file again rather than waiting forever.
+    /// <b>The path is the <c>FILE_INFO</c>'s, never ours.</b> Connect transfers to the long name and
+    /// starts the print with the 8.3 name the answering <c>FILE_INFO</c> reports, and deriving that name
+    /// here would mean inventing a <c>~N</c> collision index against a directory we cannot see, where a
+    /// wrong guess prints a different file. Matched on <c>display_name</c>, the only field carrying the
+    /// name we sent.
+    /// </para>
+    /// <para>
+    /// <b>A terminal event is matched through the command that started it.</b> It carries only
+    /// <c>start_cmd_id</c>; the <c>TRANSFER_INFO</c> answering that command carries the path. An event
+    /// without one ended a transfer nothing here commanded - a PrusaLink upload - and is not ours to
+    /// read.
     /// </para>
     /// </remarks>
     private async Task ReconcileArrivalsAsync(HomespoolDbContext dbContext,
@@ -487,7 +497,10 @@ public sealed class QueueAdvancer : BackgroundService
                                                    .AsNoTracking()
                                                    .Where(printerEvent => printerEvent.PrinterId == printerId &&
                                                                           printerEvent.Id > watermark &&
-                                                                          printerEvent.EventType == PrinterEventType.FileInfo)
+                                                                          (printerEvent.EventType == PrinterEventType.FileInfo ||
+                                                                           printerEvent.EventType == PrinterEventType.TransferFinished ||
+                                                                           printerEvent.EventType == PrinterEventType.TransferAborted ||
+                                                                           printerEvent.EventType == PrinterEventType.TransferStopped))
                                                    .OrderBy(printerEvent => printerEvent.Id)
                                                    .ToListAsync(cancellationToken);
 
@@ -511,58 +524,9 @@ public sealed class QueueAdvancer : BackgroundService
 
         foreach (PrinterEvent printerEvent in events)
         {
-            if (printerEvent.Payload is not { } payload)
-            {
-                continue;
-            }
-
-            FileInfoEventDataDTO? data;
-
-            try
-            {
-                data = JsonSerializer.Deserialize<FileInfoEventDataDTO>(payload);
-            }
-            catch (JsonException)
-            {
-                // Stored verbatim from the wire, so this is a printer sending something unmodelled
-                // rather than our own corruption. Not this loop's business to complain about.
-                continue;
-            }
-
-            if (data?.DisplayName is not { } displayName || data.Path is null)
-            {
-                continue;
-            }
-
-            // Only rows still waiting for their bytes, matched by name in .NET and never with Single:
-            // a name is unique per user, not per printer, so two members' files of one name can both
-            // have a row here, and a throw at this point abandons every pass for the printer before
-            // the watermark moves. Of several, the transfer in flight is the one a report ends - the
-            // printer has one transfer slot - and the latest start wins over a stale one.
-            List<PrintFileOnPrinter> waiting = await dbContext.PrintFilesOnPrinters
-                                                              .Include(candidate => candidate.PrintFile)
-                                                              .Where(candidate => candidate.PrinterId == printerId &&
-                                                                                  candidate.ArrivedAt == null)
-                                                              .ToListAsync(cancellationToken);
-
-            PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
-                                                                                 displayName))
-                                             .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
-                                             .ThenByDescending(candidate => candidate.TransferStartedAt)
-                                             .FirstOrDefault();
-
-            if (row is null)
-            {
-                continue;
-            }
-
-            row.ArrivedAt = printerEvent.Timestamp;
-            row.PrinterPath = data.Path;
-            row.TransferStartedAt = null;
-            changed = true;
-
-            _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}",
-                                   printerId, displayName, ForLog(data.Path));
+            changed |= printerEvent.EventType == PrinterEventType.FileInfo ?
+                await RecordReportedPathAsync(dbContext, printerId, printerEvent, cancellationToken) :
+                await EndTransferAsync(dbContext, telemetry, printerId, printerEvent, cancellationToken);
         }
 
         if (changed)
@@ -571,6 +535,198 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         _watermarks[printerId] = highest;
+    }
+
+    /// <summary>
+    /// Records the path a <c>FILE_INFO</c> gives one of our files that is still arriving, or has
+    /// arrived without being named.
+    /// </summary>
+    /// <returns>Whether a row changed.</returns>
+    private async Task<bool> RecordReportedPathAsync(HomespoolDbContext dbContext,
+                                                     int printerId,
+                                                     PrinterEvent printerEvent,
+                                                     CancellationToken cancellationToken)
+    {
+        if (Deserialize<FileInfoEventDataDTO>(printerEvent) is not { DisplayName: { } displayName, Path: { } path })
+        {
+            return false;
+        }
+
+        // Matched by name in .NET and never with Single: a name is unique per user, not per printer,
+        // so two members' files of one name can both have a row here, and a throw at this point
+        // abandons every pass for the printer before the watermark moves. Of several, the transfer
+        // in flight is the one a report describes - the printer has one transfer slot - and the
+        // latest start wins over a stale one.
+        List<PrintFileOnPrinter> waiting = await dbContext.PrintFilesOnPrinters
+                                                          .Include(candidate => candidate.PrintFile)
+                                                          .Where(candidate => candidate.PrinterId == printerId &&
+                                                                              (candidate.ArrivedAt == null ||
+                                                                               candidate.PrinterPath == null))
+                                                          .ToListAsync(cancellationToken);
+
+        PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
+                                                                             displayName))
+                                         .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
+                                         .ThenByDescending(candidate => candidate.TransferStartedAt)
+                                         .FirstOrDefault();
+
+        if (row is null || row.PrinterPath == path)
+        {
+            return false;
+        }
+
+        row.PrinterPath = path;
+
+        if (row.Arrived)
+        {
+            _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}",
+                                   printerId, displayName, ForLog(path));
+        }
+        else
+        {
+            _logger.LogInformation("[{PrinterId}] {FileName} is arriving on the drive as {PrinterPath}",
+                                   printerId, displayName, ForLog(path));
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Settles one of our transfers from its terminal event: arrived on <c>TRANSFER_FINISHED</c>,
+    /// offered again after a wait on <c>TRANSFER_ABORTED</c> until the retry bound holds it, and held
+    /// on <c>TRANSFER_STOPPED</c>, which is somebody at the printer saying no.
+    /// </summary>
+    /// <returns>Whether a row changed.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>An ending that is not a finish clears the path as well as the stamp.</b> Firmware removes
+    /// the partial when a transfer fails, so the name no longer holds anything of ours, and a path
+    /// left behind would let the queue print it. A print already started on the partial fails on the
+    /// printer, and the print's own row records that like any other failure.
+    /// </para>
+    /// <para>
+    /// <b>Only the attempt that is running.</b> The command's answer must postdate the row's stamp,
+    /// so the end of an earlier attempt, read late, cannot end the one that replaced it.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> EndTransferAsync(HomespoolDbContext dbContext,
+                                              TelemetryDbContext telemetry,
+                                              int printerId,
+                                              PrinterEvent printerEvent,
+                                              CancellationToken cancellationToken)
+    {
+        if (Deserialize<TransferEventDataDTO>(printerEvent)?.StartCommandId is not { } startCommandId)
+        {
+            return false;
+        }
+
+        PrinterEvent? answer = await telemetry.PrinterEvents
+                                              .AsNoTracking()
+                                              .Where(candidate => candidate.PrinterId == printerId &&
+                                                                  candidate.EventType == PrinterEventType.TransferInfo &&
+                                                                  candidate.CommandId == startCommandId)
+                                              .OrderByDescending(candidate => candidate.Id)
+                                              .FirstOrDefaultAsync(cancellationToken);
+
+        if (Deserialize<TransferEventDataDTO>(answer)?.Path is not { } sentTo)
+        {
+            _logger.LogDebug("[{PrinterId}] {EventType} for command {StartCommandId}, whose answer was not seen",
+                             printerId, printerEvent.EventType, startCommandId);
+
+            return false;
+        }
+
+        string driveName = sentTo[(sentTo.LastIndexOf('/') + 1)..];
+
+        List<PrintFileOnPrinter> waiting = await dbContext.PrintFilesOnPrinters
+                                                          .Include(candidate => candidate.PrintFile)
+                                                          .Where(candidate => candidate.PrinterId == printerId &&
+                                                                              candidate.ArrivedAt == null)
+                                                          .ToListAsync(cancellationToken);
+
+        PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
+                                                                             driveName) &&
+                                                             (candidate.TransferStartedAt is not { } startedAt ||
+                                                              answer!.Timestamp >= startedAt))
+                                         .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
+                                         .ThenByDescending(candidate => candidate.TransferStartedAt)
+                                         .FirstOrDefault();
+
+        if (row is null)
+        {
+            return false;
+        }
+
+        row.TransferStartedAt = null;
+
+        if (printerEvent.EventType == PrinterEventType.TransferFinished)
+        {
+            row.ArrivedAt = printerEvent.Timestamp;
+
+            // A count of aborts survives acceptance, so it ends here.
+            TransferRetryRules.Forget(row);
+
+            _logger.LogInformation("[{PrinterId}] {FileName} has arrived", printerId, ForLog(driveName));
+
+            return true;
+        }
+
+        row.PrinterPath = null;
+
+        // The entry decides what happens next, and a direct send has none: then the row only stops
+        // claiming a partial that has gone.
+        QueuedPrint? head = await dbContext.QueuedPrints
+                                           .Include(queued => queued.PrintFile)
+                                           .Where(queued => queued.PrinterId == printerId &&
+                                                            queued.PrintFileId == row.PrintFileId)
+                                           .OrderBy(queued => queued.Position)
+                                           .ThenBy(queued => queued.Id)
+                                           .FirstOrDefaultAsync(cancellationToken);
+
+        if (head is null)
+        {
+            _logger.LogInformation("[{PrinterId}] the transfer of {FileName} ended with {EventType} before it finished",
+                                   printerId, ForLog(driveName), printerEvent.EventType);
+        }
+        else if (printerEvent.EventType == PrinterEventType.TransferStopped)
+        {
+            HoldStopped(dbContext, printerId, head, row);
+        }
+        else
+        {
+            _logger.LogWarning("[{PrinterId}] the printer gave up the transfer of {FileName}; it will be offered again",
+                               printerId, ForLog(driveName));
+            RecordRefusal(dbContext, printerId, head, row, TransferRetryRules.TransferAbortedCode, reason: null,
+                          PrintHoldReason.TransferAborted);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// An event's payload as <typeparamref name="T"/>, or null when there is none or it does not
+    /// parse.
+    /// </summary>
+    /// <remarks>
+    /// Stored verbatim from the wire, so a payload that does not parse is a printer sending something
+    /// unmodelled rather than our own corruption. Not this loop's business to complain about.
+    /// </remarks>
+    private static T? Deserialize<T>(PrinterEvent? printerEvent)
+        where T : class
+    {
+        if (printerEvent?.Payload is not { } payload)
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(payload);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -1319,8 +1475,10 @@ public sealed class QueueAdvancer : BackgroundService
 
         // Recorded before the send rather than after: the printer can begin asking for chunks the
         // instant it accepts, and a row written afterwards would leave a window in which the next tick
-        // saw no transfer and offered the file again.
+        // saw no transfer and offered the file again. A path left from an attempt that went stale is
+        // cleared with it: it names nothing this transfer has reported, and would count as a report.
         onPrinter.TransferStartedAt = _timeProvider.GetUtcNow();
+        onPrinter.PrinterPath = null;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         try
@@ -1359,22 +1517,40 @@ public sealed class QueueAdvancer : BackgroundService
                 }
                 else if (!TransferRetryRules.IsBusySlot(outcome.MachineReason, outcome.Reason))
                 {
-                    RecordRefusal(dbContext, printerId, head, onPrinter, outcome);
+                    RecordRefusal(dbContext, printerId, head, onPrinter, outcome.MachineReason, outcome.Reason,
+                                  PrintHoldReason.TransferRefused);
                 }
 
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
-            else if (outcome is not null && onPrinter.TransferRefusalCount is not null)
+            else if (outcome is not null && onPrinter.TransferRefusalCount is not null &&
+                     !TransferRetryRules.IsCountingAborts(onPrinter))
             {
                 // Taken, so whatever was refusing it has stopped. Only on an answer: a null outcome is
-                // the absence of one, which says nothing about the refusals before it.
+                // the absence of one, which says nothing about the refusals before it. Not a count of
+                // aborts, which every aborted attempt is taken before it fails - that one ends when a
+                // transfer finishes.
                 TransferRetryRules.Forget(onPrinter);
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
         }
-        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
-                                      CommandResponseTimedOutException or CommandSendTimedOutException)
+        catch (CommandResponseTimedOutException)
         {
+            // Not an answer, and the stamp stays. Firmware acknowledges a download late when it is
+            // busy and starts fetching either way, so this is as likely a transfer running as one that
+            // never began - and PrintFileSender leaves the offer standing for exactly that reason. The
+            // snapshot settles it by observation: the printer reporting the file, or the offer going
+            // uncollected.
+            _logger.LogInformation(
+                "[{PrinterId}] the printer did not answer the offer of {FileName} in time; waiting for it to report the transfer",
+                printerId, file.FileName);
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandSendTimedOutException)
+        {
+            // Cleared, and not because the command is known to have failed: PrintFileSender revoked the
+            // offer, so a printer that did take it can fetch nothing and firmware abandons the
+            // download. No transfer of these bytes can be running, and the next pass offers them again.
             _logger.LogInformation(e, "[{PrinterId}] could not start the transfer of {FileName}",
                                    printerId, file.FileName);
             onPrinter.TransferStartedAt = null;
@@ -1431,33 +1607,38 @@ public sealed class QueueAdvancer : BackgroundService
     /// <b>History gets one row, on the transition</b>, carrying the printer's own words, as the space
     /// hold does. The rules never route this hold back here, so the transition happens once per hold.
     /// </para>
+    /// <para>
+    /// <b>Aborts are counted here too</b>, as <see cref="TransferRetryRules.TransferAbortedCode"/> with no
+    /// text, and hold as <see cref="PrintHoldReason.TransferAborted"/> - a printer that takes a file and
+    /// abandons it every time is bounded the way one refusing it every time is.
+    /// </para>
     /// </remarks>
     private void RecordRefusal(HomespoolDbContext dbContext,
                                int printerId,
                                QueuedPrint head,
                                PrintFileOnPrinter onPrinter,
-                               CommandOutcome outcome)
+                               string? code,
+                               string? reason,
+                               PrintHoldReason holdAs)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
-        int count = TransferRetryRules.CountAfter(onPrinter, outcome.MachineReason, outcome.Reason);
+        int count = TransferRetryRules.CountAfter(onPrinter, code, reason);
 
         onPrinter.TransferRefusalCount = count;
         onPrinter.TransferRefusedAt = now;
-        onPrinter.TransferRefusalCode = TransferRetryRules.Bound(outcome.MachineReason,
-                                                                 PrintFileOnPrinter.TransferRefusalCodeMaxLength);
-        onPrinter.TransferRefusalReason = TransferRetryRules.Bound(outcome.Reason,
-                                                                   PrintFileOnPrinter.TransferRefusalReasonMaxLength);
+        onPrinter.TransferRefusalCode = TransferRetryRules.Bound(code, PrintFileOnPrinter.TransferRefusalCodeMaxLength);
+        onPrinter.TransferRefusalReason = TransferRetryRules.Bound(reason, PrintFileOnPrinter.TransferRefusalReasonMaxLength);
 
         if (count < TransferRetryRules.HoldAfter)
         {
-            _logger.LogDebug("[{PrinterId}] refusal {Count} of {HoldAfter} for {FileName}; trying again in {Wait}",
-                             printerId, count, TransferRetryRules.HoldAfter, head.PrintFile!.Name,
-                             TransferRetryRules.WaitAfter(count));
+            _logger.LogDebug("[{PrinterId}] {Code} {Count} of {HoldAfter} for {FileName}; trying again in {Wait}",
+                             printerId, LogText.Clean(onPrinter.TransferRefusalCode), count, TransferRetryRules.HoldAfter,
+                             head.PrintFile!.Name, TransferRetryRules.WaitAfter(count));
 
             return;
         }
 
-        onPrinter.HoldReason = PrintHoldReason.TransferRefused;
+        onPrinter.HoldReason = holdAs;
         onPrinter.HoldPrinterFreeBytes = null;
         onPrinter.HoldPrinterFileBytes = null;
         onPrinter.BlockedAt = now;
@@ -1478,11 +1659,59 @@ public sealed class QueueAdvancer : BackgroundService
             Reason = onPrinter.TransferRefusalReason ?? onPrinter.TransferRefusalCode,
         });
 
+        if (holdAs == PrintHoldReason.TransferAborted)
+        {
+            _logger.LogWarning(
+                "[{PrinterId}] gave up the transfer of {FileName} {Count} times running; holding the queue " +
+                "until somebody cancels or re-queues it.",
+                printerId, head.PrintFile.Name, count);
+
+            return;
+        }
+
         _logger.LogWarning(
             "[{PrinterId}] refused the transfer of {FileName} {Count} times running with the same answer, " +
             "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
             printerId, head.PrintFile.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
             LogText.Clean(onPrinter.TransferRefusalCode));
+    }
+
+    /// <summary>
+    /// Holds the queue behind a file whose transfer somebody stopped at the printer.
+    /// </summary>
+    /// <remarks>
+    /// A person's decision rather than a fault, so nothing re-attempts it: see
+    /// <see cref="PrintHoldReason.TransferStopped"/>. History gets one row, as for the other holds,
+    /// in English - the column records what happened, the banner says it in the reader's language.
+    /// </remarks>
+    private void HoldStopped(HomespoolDbContext dbContext, int printerId, QueuedPrint head, PrintFileOnPrinter onPrinter)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        onPrinter.HoldReason = PrintHoldReason.TransferStopped;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = now;
+        TransferRetryRules.Forget(onPrinter);
+
+        string recorded = $"The transfer of {head.PrintFile!.Name} was stopped at the printer.";
+
+        dbContext.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            PrintUuid = head.PrintUuid,
+            FileName = head.PrintFile.Name,
+            Digest = head.PrintFile.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
+            StartedAt = now,
+            EndedAt = now,
+            State = PrintState.Failed,
+            Reason = recorded,
+        });
+
+        _logger.LogWarning("[{PrinterId}] {Reason} Holding the queue until somebody cancels or re-queues it.",
+                           printerId, recorded);
     }
 
     /// <summary>
@@ -1567,7 +1796,8 @@ public sealed class QueueAdvancer : BackgroundService
     /// so a name refused here is one nothing here put on that drive.
     /// </para>
     /// <para>
-    /// <b>Anything else goes on under the next name</b> - a different size, or none reported. Holding
+    /// <b>Anything else goes on under the next name</b> - a different size, none reported, or a file
+    /// still read-only, which is in use or not yet whole. Holding
     /// until somebody clears the drive would stop a queue over a stranger's file, and the stranger's
     /// file is not ours to delete. Only when every name is taken does the queue hold.
     /// </para>
@@ -1608,7 +1838,9 @@ public sealed class QueueAdvancer : BackgroundService
             return;
         }
 
-        if (existing?.Size == file.Length)
+        // Not while it is read-only: that is a file in use, and an unfinished transfer is one - firmware
+        // preallocates the partial to its full size, so the size alone would adopt it.
+        if (existing?.Size == file.Length && existing.ReadOnly != true)
         {
             _logger.LogInformation(
                 "[{PrinterId}] {FileName} is already on the drive as {PrinterPath} at the same size; adopting it",

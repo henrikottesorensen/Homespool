@@ -50,6 +50,9 @@ public static class QueueWaitDescription
             QueueWaitReason.TransferRetrying => fileName is null ?
                 MessageKey.For("Queue_WaitTransferRetryingUnnamed") :
                 MessageKey.For("Queue_WaitTransferRetrying", fileName),
+            QueueWaitReason.TransferAbortRetrying => fileName is null ?
+                MessageKey.For("Queue_WaitTransferAbortRetryingUnnamed") :
+                MessageKey.For("Queue_WaitTransferAbortRetrying", fileName),
             QueueWaitReason.AwaitingPrinterPath => MessageKey.For("Queue_WaitAwaitingPath"),
             QueueWaitReason.PrinterNotAvailable => MessageKey.For("Queue_WaitPrinterNotReady"),
             QueueWaitReason.QueuerLostAccess => fileName is null ?

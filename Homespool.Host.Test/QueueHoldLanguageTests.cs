@@ -108,6 +108,8 @@ public sealed class QueueHoldLanguageTests : IDisposable
                 PrintHoldReason.PrintStartUnresolved => "Queue_HoldPrintStartUnresolved",
                 PrintHoldReason.TransferRefused => "Queue_HoldTransferRefused",
                 PrintHoldReason.FileUnreadable => "Queue_HoldFileUnreadable",
+                PrintHoldReason.TransferStopped => "Queue_HoldTransferStopped",
+                PrintHoldReason.TransferAborted => "Queue_HoldTransferAborted",
                 _ => throw new InvalidOperationException($"{reason} has no key; add one to PrintHistoryService too."),
             };
 

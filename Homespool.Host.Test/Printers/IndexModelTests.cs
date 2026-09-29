@@ -26,6 +26,7 @@ using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -153,7 +154,7 @@ public sealed class IndexModelTests : IDisposable
         PrintHistoryService history = new(context,
                                           access,
                                           new QueueSnapshotReader(context, TestTelemetryContext.For(context), connectionRegistry,
-                                                                  TimeProvider.System, access),
+                                                                  TimeProvider.System, access, Substitute.For<ITransferOffers>()),
                                           new UserNameLookup(context));
         PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal, history);
 

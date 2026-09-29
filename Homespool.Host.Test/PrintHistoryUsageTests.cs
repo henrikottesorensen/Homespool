@@ -9,10 +9,13 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Printing;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Model.Entities;
 
@@ -254,7 +257,8 @@ public sealed class PrintHistoryUsageTests : IDisposable
                                        new QueueSnapshotReader(context, TestTelemetryContext.For(context),
                                                                new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
                                                                TimeProvider.System,
-                                                               new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance)),
+                                                               new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                                               Substitute.For<ITransferOffers>()),
                                        new UserNameLookup(context));
     }
 

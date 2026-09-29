@@ -415,6 +415,77 @@ public sealed class TransferOfferStoreTests : IDisposable
         _store.StandingOffers().Should().BeEmpty("an offer nobody collected in time is over, swept or not");
     }
 
+    /// <summary>
+    /// The queue's question - is this file still offered to this printer - is answered by the file and
+    /// the printer together, and goes false on each way an offer leaves: revoked, released, or never
+    /// collected in time.
+    /// </summary>
+    [Fact]
+    public void AnOfferIsOfferedToItsPrinterUntilItLeaves()
+    {
+        // Arrange
+        string file = WriteFile();
+        string name = Path.GetFileName(file);
+        string revoked = Offer(Printer, file);
+
+        // Act, Assert
+        _store.IsOffered(Printer, name).Should().BeTrue();
+        _store.IsOffered(OtherPrinter, name).Should().BeFalse("the offer is bound to the printer it was made to");
+        _store.IsOffered(Printer, "another.bgcode").Should().BeFalse();
+
+        // Act
+        _store.Revoke(revoked);
+
+        // Assert
+        _store.IsOffered(Printer, name).Should().BeFalse("a refused or failed send revokes its offer");
+
+        // Act
+        string released = Offer(Printer, file);
+        _store.Release(Printer, released);
+
+        // Assert
+        _store.IsOffered(Printer, name).Should().BeFalse("a transfer's terminal event releases its offer");
+
+        // Act
+        Offer(Printer, file);
+        _clock.Advance(TransferOfferStore.CollectWithin);
+
+        // Assert
+        _store.IsOffered(Printer, name).Should().BeFalse("an offer nobody collected is a command the printer never took");
+    }
+
+    /// <summary>
+    /// An offer the printer collected still counts for a minute after the transfer ends, because the
+    /// printer's report of the end reaches the event log later than the release reaches this store.
+    /// One never collected is not given that minute: it was never a transfer.
+    /// </summary>
+    [Fact]
+    public void ACollectedOfferCountsForAMinuteAfterItEnds()
+    {
+        // Arrange - one offer the printer opened, and one it never did
+        string file = WriteFile();
+        string name = Path.GetFileName(file);
+        string collected = Offer(Printer, file);
+        string uncollected = Offer(OtherPrinter, file);
+
+        _store.TryOpen(collected, Printer, out ITransferContent? content).Should().BeTrue();
+        content!.Dispose();
+
+        // Act - both transfers end
+        _store.Release(Printer, collected);
+        _store.Release(OtherPrinter, uncollected);
+
+        // Assert
+        _store.IsOffered(Printer, name).Should().BeTrue("the end may not have reached the event log yet");
+        _store.IsOffered(OtherPrinter, name).Should().BeFalse("an offer nobody opened was never a transfer");
+
+        // Act
+        _clock.Advance(TransferOfferStore.EndReportedWithin);
+
+        // Assert
+        _store.IsOffered(Printer, name).Should().BeFalse("by now the printer's report has been read");
+    }
+
     private string Offer(int printerId)
     {
         return Offer(printerId, WriteFile());

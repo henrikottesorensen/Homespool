@@ -71,6 +71,21 @@ public static class Registration
             {
                 Log.Information("Within those, only from whatever {ProxyHost} resolves to.", forwarded.ProxyHost);
             }
+
+            // Trusting the proxy is not enough for a per-address limit: the host may have rewritten
+            // every client's address before the proxy saw it, and only the engine can say.
+            switch (forwarded.ClientAddressesUnreliable)
+            {
+                case true:
+                    Log.Information("XForwarded:ClientAddressesUnreliable is set: this host gives every client the " +
+                                    "same address, so the sign-in and printer-registration limits per address are off.");
+                    break;
+                case null:
+                    Log.Warning("XForwarded:ClientAddressesUnreliable is not set, so the sign-in and printer-registration " +
+                                "limits per address are off: under Docker Desktop, rootless Docker or WSL every client " +
+                                "arrives with one address. Run setup-env.sh, which asks Docker and sets it.");
+                    break;
+            }
         }
         else if (!string.IsNullOrWhiteSpace(forwarded.ProxyHost))
         {
@@ -84,8 +99,9 @@ public static class Registration
             Log.Warning("No proxy is trusted (XForwarded:KnownProxies and :KnownNetworks are both empty), so " +
                         "forwarded headers are ignored except from loopback. If this deployment sits behind a " +
                         "reverse proxy, links in outgoing mail will say http://, client addresses in the log " +
-                        "will be the proxy's, and the sign-in rate limit is off - it needs an address that " +
-                        "names one client, and every visitor would otherwise share one window. Set " +
+                        "will be the proxy's, and the sign-in and printer-registration limits per address are " +
+                        "off - they need an address that names one client, and every visitor would otherwise " +
+                        "share one window. Set " +
                         "XForwarded:KnownNetworks to the proxy's network.");
         }
 

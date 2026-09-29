@@ -27,15 +27,16 @@ namespace Homespool.Host.Pages.Account;
 /// against many usernames trips nothing.
 /// </para>
 /// <para>
-/// <b>Only when an address means a client.</b> The limiter is off unless the deployment has said
-/// which peer is its proxy (<see cref="XForwardedOptions.TrustsAnything"/>), and this is the
-/// load-bearing decision rather than a caveat. Without that, forwarded headers are ignored and every
-/// visitor arrives as the proxy's own address - one partition for the whole world, where a single
-/// flood would close the sign-in form to everybody including the administrator who would fix it.
-/// Refusing to limit is the safer failure: the per-account lockout is still underneath, and the
-/// startup warning about untrusted proxies says this is off. The cost is that a deployment serving
-/// Kestrel straight to the internet gets no ceiling either, which is the price of the rule being one
-/// question rather than a guess about what is in front.
+/// <b>Only when an address means a client</b> (<see cref="XForwardedOptions.AddressesAreClients"/>),
+/// and this is the load-bearing decision rather than a caveat. Two things take that away: no proxy
+/// being trusted, so forwarded headers are ignored and every visitor arrives as the proxy's own
+/// address; and a host whose port forwarding rewrites the address before the proxy ever sees it,
+/// which Docker Desktop does with every setting correct. Either way it is one partition for the whole
+/// world, where a single flood would close the sign-in form to everybody including the administrator
+/// who would fix it. Refusing to limit is the safer failure: the per-account lockout is still
+/// underneath, and the startup log says this is off. The cost is that a deployment serving Kestrel
+/// straight to the internet gets no ceiling either, which is the price of the rule being one question
+/// rather than a guess about what is in front.
 /// </para>
 /// <para>
 /// <b>POST handlers only, so a flood cannot stop the pages rendering</b>, and the passkey challenge
@@ -99,7 +100,7 @@ public static class SignInRateLimit
 
         XForwardedOptions forwarded = context.RequestServices.GetRequiredService<IOptions<XForwardedOptions>>().Value;
 
-        return forwarded.TrustsAnything ?
+        return forwarded.AddressesAreClients ?
                    WindowFor(context, PermitLimit, Window) :
                    RateLimitPartition.GetNoLimiter(string.Empty);
     }

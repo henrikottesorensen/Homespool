@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 
+using Homespool.Host.Middleware;
 using Homespool.Host.RateLimiting;
 
 namespace Homespool.Host.PrusaConnect;
@@ -54,18 +56,16 @@ namespace Homespool.Host.PrusaConnect;
 /// deliberately, so a rejected request costs no database work.
 /// </para>
 /// <para>
-/// <b>Not partitioned per client IP</b>, and the reason is no longer the address itself. On the
-/// shipped stack it is real by the time this runs - nginx sets <c>X-Real-IP</c> on the printer
-/// server block, <c>XForwarded:KnownNetworks</c> names the proxy's subnet, and
-/// <see cref="Listeners.ForwardedHeaderScope"/> honours that header on the printer listener because
-/// <c>PrusaConnect:PrinterTls</c> puts the proxy in front of it. But with both <c>XForwarded</c> lists
-/// empty, which is the default in code, no forwarded-headers middleware is registered at all and every
-/// printer request behind a proxy carries the proxy's address. A per-IP partition would silently
-/// collapse into one bucket for the world there, so the first brute-force attempt locks out the
-/// household. The fingerprint has no such failure mode: it is either present and names one printer, or
-/// absent, in which case every request lacking it shares one window. (Corrected 2026-09-02 - this used
-/// to say that nothing here called <c>UseForwardedHeaders</c>, which stopped being true when that block
-/// was added to the pipeline.)
+/// <b>The two registration verbs are partitioned by address instead, and only where an address is a
+/// client</b> (<see cref="XForwardedOptions.AddressesAreClients"/>). Neither names a printer this can
+/// read, so the address is the only partition they can have - and without one, a single caller
+/// spending the ceiling refuses every printer enrolling anywhere. Elsewhere the address may be one
+/// for the whole world: with no proxy trusted every request carries the proxy's, and Docker Desktop
+/// rewrites every client to its VM gateway before the proxy sees it. A window per address there
+/// would be one small window for everybody, far tighter than the ceiling it sits under, so the
+/// verbs keep the ceiling alone. The fingerprinted routes stay on the fingerprint, which has no such
+/// failure mode: it is either present and names one printer, or absent, in which case every request
+/// lacking it shares one window.
 /// </para>
 /// <para>
 /// <b>Limits are generous on purpose, because rejecting a real printer is expensive.</b> The
@@ -106,8 +106,16 @@ public static class PrinterRateLimits
     public const int RegistrationStartCeiling = 120;
 
     /// <summary>
-    /// How many registration polls every caller together may make in a <see cref="Window"/>. A
-    /// printer polls every 5s, so ten of them sit near 120/minute under this.
+    /// How many code requests one address may make in a <see cref="Window"/>, where addresses are
+    /// clients. Buddy spends at most three - it gives up for good after three refusals - and the SDK
+    /// one.
+    /// </summary>
+    public const int RegistrationStartPerAddressLimit = 5;
+
+    /// <summary>
+    /// How many registration polls every caller together may make in a <see cref="Window"/>. Buddy
+    /// polls every 5s, about 12 a minute; the SDK about once a second, so a few printers enrolling
+    /// at once sit well under this.
     /// </summary>
     /// <remarks>
     /// Buddy's poll carries a <c>Code</c> header and nothing else, so
@@ -116,6 +124,18 @@ public static class PrinterRateLimits
     /// this ceiling is what bounds the oracle.
     /// </remarks>
     public const int RegistrationPollCeiling = 300;
+
+    /// <summary>
+    /// How many registration polls one address may make in a <see cref="Window"/>, where addresses
+    /// are clients: one SDK printer's once a second, with room.
+    /// </summary>
+    /// <remarks>
+    /// <b>A refused poll is fatal to an SDK printer's enrolment</b> - it drops the poll on any answer
+    /// but 200 or 202 - where Buddy retries forever. So the window is sized for the SDK. What it does
+    /// not cover is an SDK printer and a Buddy enrolling at the same moment behind one address, a
+    /// router's hairpin NAT for instance, which together poll about 72 times a minute.
+    /// </remarks>
+    public const int RegistrationPollPerAddressLimit = 65;
 
     /// <summary>
     /// How many socket upgrades one printer may ask for in a <see cref="Window"/>. A printer holding
@@ -186,6 +206,11 @@ public static class PrinterRateLimits
     private const string Unattributed = "(none)";
 
     /// <summary>
+    /// The partition a connection with no address shares - a test host, or a unix socket.
+    /// </summary>
+    private const string UnknownAddress = "unknown";
+
+    /// <summary>
     /// Every policy this class wires, and both of the limits each one gets.
     /// </summary>
     /// <remarks>
@@ -201,10 +226,11 @@ public static class PrinterRateLimits
     /// registrations from this table is what makes the halves impossible to separate.
     /// </para>
     /// <para>
-    /// <b>A null <see cref="PolicyLimits.PerPrinter"/> means the ceiling and nothing else</b>, which
-    /// is the honest shape for the two registration verbs: neither names a printer this middleware can
-    /// read, so there is nothing to partition on. It is a deliberate value here rather than an absent
-    /// entry, so the table lists every policy and a reader can see which ones have no window and why.
+    /// <b>A policy has at most one partition: per printer, or per address.</b> The two registration
+    /// verbs name no printer this middleware can read, so theirs is the address - which exists only
+    /// where addresses are clients, and otherwise they get the ceiling and nothing else. Both nulls
+    /// are deliberate values here rather than absent entries, so the table lists every policy and a
+    /// reader can see which window each one has and why.
     /// </para>
     /// <para>
     /// Frozen because it is read on the global limiter's per-request path - which the measurement in
@@ -214,11 +240,11 @@ public static class PrinterRateLimits
     private static readonly FrozenDictionary<string, PolicyLimits> Policies =
         new Dictionary<string, PolicyLimits>(StringComparer.Ordinal)
         {
-            [RateLimitPolicies.PrinterRegistrationStart] = new(RegistrationStartCeiling, null),
-            [RateLimitPolicies.PrinterRegistrationPoll] = new(RegistrationPollCeiling, null),
-            [RateLimitPolicies.PrinterSocket] = new(SocketCeiling, SocketPerPrinterLimit),
-            [RateLimitPolicies.PrinterHttpTransport] = new(HttpTransportCeiling, HttpTransportPerPrinterLimit),
-            [RateLimitPolicies.PrinterFile] = new(FileCeiling, FilePerPrinterLimit),
+            [RateLimitPolicies.PrinterRegistrationStart] = new(RegistrationStartCeiling, null, RegistrationStartPerAddressLimit),
+            [RateLimitPolicies.PrinterRegistrationPoll] = new(RegistrationPollCeiling, null, RegistrationPollPerAddressLimit),
+            [RateLimitPolicies.PrinterSocket] = new(SocketCeiling, SocketPerPrinterLimit, null),
+            [RateLimitPolicies.PrinterHttpTransport] = new(HttpTransportCeiling, HttpTransportPerPrinterLimit, null),
+            [RateLimitPolicies.PrinterFile] = new(FileCeiling, FilePerPrinterLimit, null),
         }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>
@@ -258,20 +284,46 @@ public static class PrinterRateLimits
                            RateLimitPartition.GetNoLimiter(string.Empty);
             });
 
-            foreach (KeyValuePair<string, PolicyLimits> entry in Policies)
+            foreach (string policy in Policies.Keys)
             {
-                // Captured per iteration, and read inside the callback rather than branched on out
-                // here, so one lambda serves both shapes: a policy with no per-printer window is the
-                // ceiling and nothing else.
-                int? perPrinter = entry.Value.PerPrinter;
-
-                options.AddPolicy(entry.Key, context => perPrinter is { } permitLimit ?
-                                                            PerPrinter(context, permitLimit) :
-                                                            RateLimitPartition.GetNoLimiter(string.Empty));
+                options.AddPolicy(policy, context => Partition(policy, context));
             }
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Which window a request under <paramref name="policy"/> falls in beneath the ceiling: its
+    /// printer's, its address's, or none.
+    /// </summary>
+    /// <remarks>
+    /// Public so the decision can be tested without a request going through the pipeline: the branch
+    /// that matters is the one that declines to partition by address, and from the outside that is
+    /// indistinguishable from a window with room left in it. The key is the observable - the
+    /// fingerprint or the address for a window, empty for none.
+    /// </remarks>
+    public static RateLimitPartition<string> Partition(string policy, HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(context);
+
+        PolicyLimits limits = Policies[policy];
+
+        if (limits.PerPrinter is { } perPrinter)
+        {
+            return PerPrinter(context, perPrinter);
+        }
+
+        // Read per request, as the sign-in limit does: the rate limiter's options are configured with
+        // no service provider to ask, so there is nowhere earlier to read it.
+        if (limits.PerAddress is { } perAddress &&
+            context.RequestServices.GetRequiredService<IOptions<XForwardedOptions>>().Value.AddressesAreClients)
+        {
+            return PerAddress(context, perAddress);
+        }
+
+        return RateLimitPartition.GetNoLimiter(string.Empty);
     }
 
     /// <summary>
@@ -311,8 +363,27 @@ public static class PrinterRateLimits
     }
 
     /// <summary>
-    /// What one policy is allowed: a ceiling on the route's total, and a window per printer where the
-    /// request names one.
+    /// One window per client address, as the forwarded-headers middleware has resolved it by now.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling is acquired first, so a caller rotating addresses can create no more partitions in
+    /// a window than the ceiling admits - the same bound the fingerprint partition relies on.
+    /// </remarks>
+    private static RateLimitPartition<string> PerAddress(HttpContext context, int permitLimit)
+    {
+        string address = context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress;
+
+        return RateLimitPartition.GetFixedWindowLimiter(address, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permitLimit,
+            Window = Window,
+            QueueLimit = 0,
+        });
+    }
+
+    /// <summary>
+    /// What one policy is allowed: a ceiling on the route's total, and a window per printer or per
+    /// address beneath it.
     /// </summary>
     /// <param name="Ceiling">
     /// Permits every caller together may spend on this policy's route in a <see cref="Window"/>.
@@ -321,7 +392,11 @@ public static class PrinterRateLimits
     /// </param>
     /// <param name="PerPrinter">
     /// Permits one printer may spend, or null for a route where no printer can be read off the
-    /// request - the two registration verbs, which get the ceiling alone.
+    /// request - the two registration verbs.
     /// </param>
-    private readonly record struct PolicyLimits(int Ceiling, int? PerPrinter);
+    /// <param name="PerAddress">
+    /// Permits one client address may spend, where addresses are clients, or null for a route that
+    /// has a printer to partition on instead.
+    /// </param>
+    private readonly record struct PolicyLimits(int Ceiling, int? PerPrinter, int? PerAddress);
 }

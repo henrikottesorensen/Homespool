@@ -1,0 +1,5 @@
+#!/bin/sh
+# A client whose daemon is not running: the template is printed with nothing in it, and it fails.
+case "$1" in
+    info) echo "|[]"; echo "Cannot connect to the Docker daemon" >&2; exit 1 ;;
+esac

@@ -23,9 +23,10 @@ namespace Homespool.Host.E2ETest;
 /// itself stays green.
 /// </para>
 /// <para>
-/// A proxy is named here because the limiter is off without one. Nothing else about this host is
-/// proxied - the address stays absent, so every request shares the one window, which is what makes
-/// the count observable from a single client at all.
+/// A proxy is named here, and the host said to keep each client's address, because the limiter is
+/// off without both. Nothing else about this host is proxied - the address stays absent, so every
+/// request shares the one window, which is what makes the count observable from a single client at
+/// all.
 /// </para>
 /// </remarks>
 public sealed class SignInRateLimitTests : IAsyncLifetime
@@ -37,6 +38,7 @@ public sealed class SignInRateLimitTests : IAsyncLifetime
     {
         _factory = new HomespoolFactory(_scratch);
         _factory.ConfigurationOverrides["XForwarded:KnownProxies:0"] = "172.28.0.2";
+        _factory.ConfigurationOverrides["XForwarded:ClientAddressesUnreliable"] = "false";
         _ = _factory.Server;
 
         using IServiceScope scope = _factory.Services.CreateScope();

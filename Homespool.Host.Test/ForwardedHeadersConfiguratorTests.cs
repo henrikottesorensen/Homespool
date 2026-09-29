@@ -5,6 +5,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Configuration;
 
 using Homespool.Host.Middleware;
 
@@ -182,6 +183,55 @@ public class ForwardedHeadersConfiguratorTests
 
         // Assert
         source.TrustsAnything.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// An address names a client only when a proxy is trusted and the host is known to keep each
+    /// client's address - an unanswered question counts as no, like a host that says it does not.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(true, null, false)]
+    [InlineData(false, false, false)]
+    public void AddressesAreClientsOnlyWhenTrustedAndKnownToSurvive(bool trustsProxy, bool? unreliable, bool expected)
+    {
+        // Arrange
+        XForwardedOptions source = new()
+        {
+            KnownNetworks = trustsProxy ? ["172.28.0.0/16"] : [],
+            ClientAddressesUnreliable = unreliable,
+        };
+
+        // Assert
+        source.AddressesAreClients.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// Compose passes an unset <c>CLIENT_ADDRESSES_UNRELIABLE</c> as an empty string, which has to
+    /// bind as unanswered rather than fail or read as false - false is the one value that switches the
+    /// per-address limits on.
+    /// </summary>
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("false", false)]
+    [InlineData("true", true)]
+    public void AnEmptyAnswerBindsAsUnanswered(string configured, bool? expected)
+    {
+        // Arrange
+        IConfiguration configuration = new ConfigurationBuilder()
+                                       .AddInMemoryCollection(new Dictionary<string, string?>
+                                       {
+                                           ["XForwarded:ClientAddressesUnreliable"] = configured,
+                                       })
+                                       .Build();
+
+        // Act
+        XForwardedOptions bound = new();
+        configuration.GetSection(XForwardedOptions.SectionName).Bind(bound);
+
+        // Assert
+        bound.ClientAddressesUnreliable.Should().Be(expected);
     }
 
     /// <summary>

@@ -1753,6 +1753,59 @@ random_password() {
     fi
 }
 
+# Whether this machine's Docker gives every client the same address before the proxy sees it.
+# Returns 0 when it does, 1 when it keeps each client's own, 2 when it cannot tell.
+#
+# Measured, not assumed: Docker Desktop's port forwarder handed loopback, this machine's LAN address
+# and another device on the LAN to the proxy as one address, its VM gateway, while a Linux engine
+# kept the printer's. Rootless Docker's forwarder and a WSL VM behind Windows' NAT are taken to do the
+# same, unmeasured - the safe direction, since the answer only ever switches limits off.
+#
+# Inside a container there is no Docker to ask, so setup-env.ps1 asks on the host and hands the
+# answer in. Anything else that runs this in a container gets "cannot tell", which writes nothing.
+client_addresses_unreliable() {
+    local info
+    if in_container; then
+        info="${HOMESPOOL_DOCKER_INFO:-}"
+    else
+        command -v docker >/dev/null 2>&1 || return 2
+        info="$(docker info --format '{{.OperatingSystem}}|{{.SecurityOptions}}' 2>/dev/null)" || return 2
+    fi
+    # The operating system, not merely the line. Over a daemon that does not answer, the template
+    # still prints "|[]" and only the exit status says it failed - which this sees here, but not in
+    # what setup-env.ps1 hands in, since it keeps stdout and drops the status. "|[]" is not an answer
+    # that Docker keeps addresses.
+    [ -n "${info%%|*}" ] || return 2
+
+    case "$info" in
+        *"Docker Desktop"*|*rootless*) return 0 ;;
+    esac
+    is_wsl && return 0
+    return 1
+}
+
+# Asked every run rather than only when absent, because it is a fact about the machine and not a
+# choice: a stack moved from a Mac to a Linux server carries its .env, and the answer has to follow
+# the machine. --no-overwrite still protects a value already there, as it does every key.
+ensure_client_addresses() {
+    local status=0 value
+    client_addresses_unreliable || status=$?
+    case "$status" in
+        0) value=true ;;
+        1) value=false ;;
+        # Nothing written: the application reads an absent answer as unreliable, which is the
+        # behaviour every deployment had before this was asked.
+        *) return 0 ;;
+    esac
+
+    plan_set CLIENT_ADDRESSES_UNRELIABLE "$value"
+    case "$pending" in
+        *"CLIENT_ADDRESSES_UNRELIABLE=true"*)
+            say $"This machine's Docker gives every client the same address, so the sign-in pages and printer registration will not be limited per address." ;;
+    esac
+    return 0
+}
+
 # ------------------------------------------------------------------------------------------------
 # Answering without being asked
 #
@@ -1786,6 +1839,7 @@ auto_answer() {
     ensure_go2rtc_credential
     ensure_go2rtc_config_file
     ensure_ca_passphrase
+    ensure_client_addresses
 
     # Only while creating the file. Moving the compose network under a stack that is already running
     # is not something to do unattended, and after the first write the answer is somebody's - even if
@@ -2252,6 +2306,7 @@ main() {
         ensure_go2rtc_credential
         ensure_go2rtc_config_file
         ensure_ca_passphrase
+        ensure_client_addresses
         check_subnet_collision
     fi
 

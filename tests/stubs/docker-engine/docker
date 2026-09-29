@@ -1,0 +1,5 @@
+#!/bin/sh
+# A native Linux engine, as the appliance answers the wizard's template (29.7.2, trixie).
+case "$1" in
+    info) echo "Debian GNU/Linux 13 (trixie)|[name=seccomp,profile=builtin name=cgroupns]" ;;
+esac

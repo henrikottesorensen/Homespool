@@ -199,6 +199,14 @@ try {
     }
 }
 
+# Empty when the engine does not answer, which the wizard takes as "cannot tell" and writes nothing.
+$dockerInfo = ''
+try {
+    $dockerInfo = (& docker info --format '{{.OperatingSystem}}|{{.SecurityOptions}}' 2>$null | Out-String).Trim()
+} catch {
+    # The run below needs the engine anyway and will say so itself.
+}
+
 # ------------------------------------------------------------------------------------------------
 # Hand over
 #
@@ -232,6 +240,10 @@ $dockerArgs = @(
     # with DK.
     '-e', "HOMESPOOL_WINDOWS_TZ=$windowsTimeZone",
     '-e', "HOMESPOOL_WINDOWS_REGION=$windowsRegion",
+    # What the engine says it is, which the container cannot ask: whether client addresses survive
+    # the port forwarding depends on it, and Docker Desktop's do not. Same template the wizard uses
+    # when it can ask for itself.
+    '-e', "HOMESPOOL_DOCKER_INFO=$dockerInfo",
     $image,
     '/work/setup-env.sh'
 ) + $Arguments

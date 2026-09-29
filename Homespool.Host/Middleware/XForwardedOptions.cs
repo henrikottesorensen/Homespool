@@ -130,4 +130,36 @@ public class XForwardedOptions
     /// <c>http://</c> and nobody connects that to a missing setting.
     /// </remarks>
     public bool TrustsAnything => KnownProxies.Length > 0 || KnownNetworks.Length > 0;
+
+    /// <summary>
+    /// Whether this host rewrites every client's address before the proxy sees it: true under Docker
+    /// Desktop, rootless Docker and Docker inside WSL, false on a native Linux engine, and null when
+    /// nobody has said. <c>setup-env.sh</c> asks Docker and writes it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>No other setting can say this.</b> Docker Desktop's port forwarder hands every connection
+    /// to the proxy from its own VM gateway - measured through the shipped proxy image, loopback, the
+    /// host's LAN address and a second device on the LAN all arrived as <c>192.168.65.1</c>. A stack
+    /// configured exactly like one on Linux passes every check this class can make and still has one
+    /// address for the whole world. The engine knows which it is; the container does not.
+    /// </para>
+    /// <para>
+    /// <b>Null counts as unreliable.</b> A deployment that has never run the wizard since this existed
+    /// keeps the behaviour it had, rather than gaining limits that would collapse into one window for
+    /// everybody on the hosts where it is true.
+    /// </para>
+    /// </remarks>
+    public bool? ClientAddressesUnreliable { get; set; }
+
+    /// <summary>
+    /// True when the address a request carries names one client: a proxy is trusted, so its word
+    /// about the client is believed, and the host is known to have left that word intact.
+    /// </summary>
+    /// <remarks>
+    /// What anything partitioning by address has to ask first. Where it is false every client may
+    /// share one address, and a window per address becomes one window for the world - one flood then
+    /// refuses everybody, which is worse than not partitioning at all.
+    /// </remarks>
+    public bool AddressesAreClients => TrustsAnything && ClientAddressesUnreliable == false;
 }

@@ -155,7 +155,7 @@ reset_state() {
     # assignment, not a command, so the prefix is an ordinary assignment too and stays set for the
     # rest of the run - which is how a later test came to be handed a vEthernet address by an
     # earlier one. Cleared here rather than trusted to be scoped.
-    unset HOMESPOOL_ADDRESSES
+    unset HOMESPOOL_ADDRESSES HOMESPOOL_DOCKER_INFO
     # The "cannot ask Docker" explanation is printed once per run, and the marker that enforces that
     # is a file - so it has to be cleared between tests or the second test never sees it.
     rm -f "${docker_warning_marker:-}" 2>/dev/null || true
@@ -1077,6 +1077,138 @@ USER_HOSTS=already.chosen"
         *) passed=$((passed + 1)) ;;
     esac
     assert_contains "$pending" "GO2RTC_PASSWORD=" "generated the camera credential"
+fi
+
+# ------------------------------------------------------------------------------------------------
+# Whether client addresses survive into the stack
+#
+# Asked of Docker, never of the operator. Each engine shape is a stub, and in_container and is_wsl
+# are pinned per case so the answer cannot depend on the machine running the suite.
+# ------------------------------------------------------------------------------------------------
+
+if test_case "docker desktop and rootless docker give every client one address"; then
+    for engine in docker-desktop docker-rootless; do
+        reset_state
+        sandbox_path linux "$engine"
+        in_container() { return 1; }
+        is_wsl() { return 1; }
+        use_temp_env "CLIENT_ADDRESSES_UNRELIABLE="
+        ensure_client_addresses >/dev/null 2>&1
+        assert_contains "$pending" "CLIENT_ADDRESSES_UNRELIABLE=true
+" "$engine"
+    done
+fi
+
+if test_case "a linux engine keeps each client's address"; then
+    sandbox_path linux docker-engine
+    in_container() { return 1; }
+    is_wsl() { return 1; }
+    use_temp_env "CLIENT_ADDRESSES_UNRELIABLE="
+    out="$(ensure_client_addresses 2>&1)"
+    ensure_client_addresses >/dev/null 2>&1
+    assert_contains "$pending" "CLIENT_ADDRESSES_UNRELIABLE=false
+" "an ordinary engine"
+    assert_eq "" "$out" "and says nothing, since nothing is switched off"
+fi
+
+if test_case "a linux engine inside WSL is behind Windows' NAT"; then
+    # The engine reports an ordinary distribution there; it is the VM's own networking that rewrites.
+    sandbox_path linux docker-engine
+    in_container() { return 1; }
+    is_wsl() { return 0; }
+    use_temp_env "CLIENT_ADDRESSES_UNRELIABLE="
+    ensure_client_addresses >/dev/null 2>&1
+    assert_contains "$pending" "CLIENT_ADDRESSES_UNRELIABLE=true
+" "WSL"
+fi
+
+if test_case "an engine that cannot be asked writes no answer"; then
+    # The application reads an absent answer as unreliable, so writing nothing keeps the limits off -
+    # and "|" printed by a template over a stopped daemon is not an answer that addresses survive.
+    for engine in docker-down none; do
+        reset_state
+        sandbox_path linux "$engine"
+        in_container() { return 1; }
+        is_wsl() { return 1; }
+        use_temp_env "CLIENT_ADDRESSES_UNRELIABLE="
+        ensure_client_addresses >/dev/null 2>&1
+        case "$pending" in
+            *CLIENT_ADDRESSES_UNRELIABLE*) fail "wrote an answer with $engine: $pending" ;;
+            *) passed=$((passed + 1)) ;;
+        esac
+    done
+fi
+
+if test_case "in a container the launcher's answer is the one used"; then
+    # setup-env.ps1 asks Docker on Windows, where it can, and passes the reply in.
+    sandbox_path linux docker-engine
+    in_container() { return 0; }
+    is_wsl() { return 1; }
+    use_temp_env "CLIENT_ADDRESSES_UNRELIABLE="
+    HOMESPOOL_DOCKER_INFO="Docker Desktop|[name=seccomp,profile=builtin]"
+    ensure_client_addresses >/dev/null 2>&1
+    assert_contains "$pending" "CLIENT_ADDRESSES_UNRELIABLE=true
+" "the host's engine, not the stub on this PATH"
+
+    reset_state
+    sandbox_path linux docker-engine
+    in_container() { return 0; }
+    use_temp_env "CLIENT_ADDRESSES_UNRELIABLE="
+    ensure_client_addresses >/dev/null 2>&1
+    case "$pending" in
+        *CLIENT_ADDRESSES_UNRELIABLE*) fail "answered with no launcher to ask: $pending" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+
+    # What the launcher hands in when Windows' daemon is down: the template's output, measured on
+    # 29.8.0, with the exit status that said it failed left behind in PowerShell.
+    reset_state
+    sandbox_path linux docker-engine
+    in_container() { return 0; }
+    is_wsl() { return 1; }
+    use_temp_env "CLIENT_ADDRESSES_UNRELIABLE="
+    HOMESPOOL_DOCKER_INFO="|[]"
+    ensure_client_addresses >/dev/null 2>&1
+    case "$pending" in
+        *CLIENT_ADDRESSES_UNRELIABLE*) fail "took an empty template for an answer: $pending" ;;
+        *) passed=$((passed + 1)) ;;
+    esac
+fi
+
+if test_case "the answer follows the machine, unless told not to overwrite"; then
+    # A stack moved from a Linux server to a Mac carries its .env; an interactive run corrects it.
+    sandbox_path linux docker-desktop
+    in_container() { return 1; }
+    is_wsl() { return 1; }
+    use_temp_env "CLIENT_ADDRESSES_UNRELIABLE=" "CLIENT_ADDRESSES_UNRELIABLE=false"
+    ensure_client_addresses >/dev/null 2>&1
+    assert_contains "$pending" "CLIENT_ADDRESSES_UNRELIABLE=true
+" "re-detected"
+
+    reset_state
+    sandbox_path linux docker-desktop
+    in_container() { return 1; }
+    is_wsl() { return 1; }
+    use_temp_env "CLIENT_ADDRESSES_UNRELIABLE=" "CLIENT_ADDRESSES_UNRELIABLE=false"
+    no_overwrite=true
+    ensure_client_addresses >/dev/null 2>&1
+    assert_eq "" "$pending" "--no-overwrite keeps the value already there"
+fi
+
+if test_case "no-prompt writes the engine's answer on first boot"; then
+    # What the Pi's unit runs, end to end: the key is filled in beside the address. A separate
+    # process, so nothing can be pinned - on a WSL or container runner the true answer is not this
+    # one, and the case says so rather than failing.
+    if in_container || is_wsl; then
+        echo "        skipped: this runner is itself inside WSL or a container"
+    else
+        sandbox_path linux docker-engine
+        dir="$(mktemp -d "${TMPDIR:-/tmp}/setup-env-e2e.XXXXXX")"
+        cp "$repo_root/.env.example" "$repo_root/setup-env.sh" "$dir/"
+        "$BASH" "$dir/setup-env.sh" --no-prompt --no-overwrite >/dev/null 2>&1
+        assert_contains "$(grep '^CLIENT_ADDRESSES_UNRELIABLE=' "$dir/.env")" "CLIENT_ADDRESSES_UNRELIABLE=false" \
+            "a native engine, answered unattended"
+    fi
 fi
 
 if test_case "no-prompt is fatal when no address can be found"; then

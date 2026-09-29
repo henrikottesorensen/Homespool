@@ -1,0 +1,5 @@
+#!/bin/sh
+# Docker Desktop on a Mac, as `docker info` answers the wizard's template there (29.8.0).
+case "$1" in
+    info) echo "Docker Desktop|[name=seccomp,profile=builtin name=cgroupns]" ;;
+esac

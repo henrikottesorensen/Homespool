@@ -1,0 +1,5 @@
+#!/bin/sh
+# A rootless engine: an ordinary distribution, told apart only by its security options.
+case "$1" in
+    info) echo "Ubuntu 24.04.3 LTS|[name=seccomp,profile=builtin name=rootless name=cgroupns]" ;;
+esac

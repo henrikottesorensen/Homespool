@@ -24,11 +24,19 @@ public sealed class SignInRateLimitTests
 {
     private const string NoLimiter = "";
 
-    private static HttpContext Request(string method, bool trustsProxy, string? address = "203.0.113.7", string? handler = null)
+    private static HttpContext Request(string method,
+                                       bool trustsProxy,
+                                       string? address = "203.0.113.7",
+                                       string? handler = null,
+                                       bool? unreliable = false)
     {
         ServiceCollection services = new();
 
-        services.Configure<XForwardedOptions>(options => options.KnownProxies = trustsProxy ? ["172.28.0.2"] : []);
+        services.Configure<XForwardedOptions>(options =>
+        {
+            options.KnownProxies = trustsProxy ? ["172.28.0.2"] : [];
+            options.ClientAddressesUnreliable = unreliable;
+        });
 
         DefaultHttpContext context = new() { RequestServices = services.BuildServiceProvider() };
 
@@ -50,7 +58,10 @@ public sealed class SignInRateLimitTests
         SignInRateLimit.Partition(Request(HttpMethods.Get, trustsProxy: true)).PartitionKey.Should().Be(NoLimiter);
     }
 
-    /// <summary>With a proxy named, the address is the client's and gets its own window.</summary>
+    /// <summary>
+    /// With a proxy named on a host that keeps each client's address, the address is the client's and
+    /// gets its own window.
+    /// </summary>
     [Fact]
     public void APostIsLimitedPerAddressWhenAProxyIsTrusted()
     {
@@ -67,6 +78,30 @@ public sealed class SignInRateLimitTests
     public void APostIsNotLimitedWhenNoProxyIsTrusted()
     {
         SignInRateLimit.Partition(Request(HttpMethods.Post, trustsProxy: false)).PartitionKey.Should().Be(NoLimiter);
+    }
+
+    /// <summary>
+    /// A proxy trusted on a host that gives every client the same address - Docker Desktop's port
+    /// forwarder, measured - is still one window for the world, so the form is left unlimited.
+    /// </summary>
+    [Fact]
+    public void APostIsNotLimitedWhenTheHostGivesEveryClientOneAddress()
+    {
+        HttpContext context = Request(HttpMethods.Post, trustsProxy: true, unreliable: true);
+
+        SignInRateLimit.Partition(context).PartitionKey.Should().Be(NoLimiter);
+    }
+
+    /// <summary>
+    /// A deployment that has never said is treated like one that said its addresses are unreliable:
+    /// what every deployment had before the question was asked.
+    /// </summary>
+    [Fact]
+    public void APostIsNotLimitedWhenNobodyHasSaidWhetherAddressesSurvive()
+    {
+        HttpContext context = Request(HttpMethods.Post, trustsProxy: true, unreliable: null);
+
+        SignInRateLimit.Partition(context).PartitionKey.Should().Be(NoLimiter);
     }
 
     /// <summary>

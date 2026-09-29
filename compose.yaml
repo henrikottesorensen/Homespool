@@ -141,6 +141,11 @@ services:
       XForwarded__KnownNetworks__0: "${PROXY_NETWORK:-172.28.0.0/16}"
       XForwarded__ProxyHost: "proxy"
 
+      # Whether the proxy's word about the client is worth anything as a key: false only where the
+      # engine keeps each client's address on its way in. Empty, the default, is taken as unreliable,
+      # so the limits kept per address stay off until setup-env.sh has asked Docker.
+      XForwarded__ClientAddressesUnreliable: "${CLIENT_ADDRESSES_UNRELIABLE:-}"
+
       # Which addresses exist only in here, so the provisioning page does not offer an address no
       # printer on your network can route to. The network's own range, which is also what the
       # camera source policy refuses as a destination.

@@ -33,6 +33,15 @@ namespace Homespool.Host.PrusaConnect;
 /// situation.
 /// </para>
 /// <para>
+/// <b>A session is reused only while its actor is still the one registered.</b> When another
+/// connection registers under the printer, the registry completes this session's actor, and the
+/// session has to notice: handed back, that actor fails every post against a closed mailbox, and the
+/// posts themselves keep the session from ever looking idle - so whatever displaced it would keep the
+/// printer's identity for as long as it stayed connected, and last-wins would work one way only. The
+/// next post therefore gets a fresh session, which registers and displaces in its turn, and the reaper
+/// tears the old one down.
+/// </para>
+/// <para>
 /// <b>Get-or-create and reap agree under one lock</b>, and that lock is the whole reason this is a
 /// class rather than a <c>ConcurrentDictionary</c>: the race worth closing is a POST arriving as
 /// the reaper decides the printer has gone. Under the lock, either the POST touches the session
@@ -65,6 +74,11 @@ public sealed class HttpPrinterSessions : BackgroundService
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<HttpPrinterSessions> _logger;
     private readonly Dictionary<int, Session> _sessions = new();
+
+    // Sessions GetOrCreate found displaced and replaced, waiting for the reaper. Not torn down there:
+    // the session's logging scope is disposed by whoever tears it down, and disposing it inside a
+    // printer's POST would rewrite that request's own scope.
+    private readonly List<(int printerId, Session session)> _displaced = [];
     private readonly Lock _lock = new();
 
     public HttpPrinterSessions(PrinterConnectionRegistry registry,
@@ -101,10 +115,19 @@ public sealed class HttpPrinterSessions : BackgroundService
         {
             if (_sessions.TryGetValue(printerId, out Session? existing))
             {
-                existing.Connection.Touch();
-                existing.Connection.Announce(userAgent);
+                if (IsRegistered(printerId, existing))
+                {
+                    existing.Connection.Touch();
+                    existing.Connection.Announce(userAgent);
 
-                return existing.Actor;
+                    return existing.Actor;
+                }
+
+                // Another connection registered under this printer since, and the registry has already
+                // completed this actor - see the class remarks. Set aside for the reaper and replaced
+                // below.
+                _sessions.Remove(printerId);
+                _displaced.Add((printerId, existing));
             }
 
             // Opened before Create, and the ordering is the same trick PrinterConnectionSession
@@ -196,34 +219,63 @@ public sealed class HttpPrinterSessions : BackgroundService
     }
 
     /// <summary>
-    /// Removes and tears down every session whose printer has gone quiet - or all of them.
+    /// Removes and tears down every session whose printer has gone quiet or whose actor was displaced -
+    /// or all of them.
     /// </summary>
     private async Task ReapAsync(bool reapAll)
     {
-        List<(int printerId, Session session)> gone = [];
+        List<(int printerId, Session session, string reason)> gone = [];
 
         lock (_lock)
         {
             foreach ((int printerId, Session session) in _sessions)
             {
-                if (reapAll || !session.Connection.IsOpen)
+                if (reapAll)
                 {
-                    gone.Add((printerId, session));
+                    gone.Add((printerId, session, "shutting down"));
+                }
+                else if (!IsRegistered(printerId, session))
+                {
+                    // Displaced by a connection that registered since, with no POST after it to
+                    // notice - so it goes now rather than waiting out the idle window.
+                    gone.Add((printerId, session, "displaced"));
+                }
+                else if (!session.Connection.IsOpen)
+                {
+                    gone.Add((printerId, session, "idle"));
                 }
             }
 
-            foreach ((int printerId, _) in gone)
+            foreach ((int printerId, _, _) in gone)
             {
                 _sessions.Remove(printerId);
             }
+
+            // Already out of the map - GetOrCreate took them out when it replaced them.
+            foreach ((int printerId, Session session) in _displaced)
+            {
+                gone.Add((printerId, session, "displaced"));
+            }
+
+            _displaced.Clear();
         }
 
         // Teardown outside the lock: it awaits, and nothing about it needs the map any more - the
         // sessions are already gone from it, so no POST can reach them.
-        foreach ((int printerId, Session session) in gone)
+        foreach ((int printerId, Session session, string reason) in gone)
         {
-            await TearDownAsync(printerId, session, reapAll ? "shutting down" : "idle");
+            await TearDownAsync(printerId, session, reason);
         }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="session"/>'s actor is still the connection the registry holds for the
+    /// printer. False the moment another connection registers, because the registry swaps synchronously -
+    /// unlike the actor's <c>Completion</c>, which only finishes once it has drained.
+    /// </summary>
+    private bool IsRegistered(int printerId, Session session)
+    {
+        return _registry.TryGet(printerId, out IPrinterLink? live) && ReferenceEquals(live, session.Actor);
     }
 
     private async Task TearDownAsync(int printerId, Session session, string reason)

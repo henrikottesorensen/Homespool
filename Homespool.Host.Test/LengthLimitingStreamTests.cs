@@ -83,6 +83,28 @@ public class LengthLimitingStreamTests
     }
 
     /// <summary>
+    /// The array overload of <c>ReadAsync</c>. Nothing in production reaches it - <c>CopyToAsync</c>,
+    /// <c>StreamReader</c> and the digest all read through <c>Memory{byte}</c> - but the base class
+    /// would satisfy a caller on the older API with a synchronous read on a thread, which a request
+    /// body refuses, so the override forwards asynchronously and must count what it forwards.
+    /// </summary>
+    [Fact]
+    public async Task TheArrayOverloadCountsTowardTheSameLimit()
+    {
+        // Arrange
+        await using LengthLimitingStream limited = new(new MemoryStream(new byte[1001]), 1000);
+        byte[] buffer = new byte[700];
+
+        // Act
+        int first = await limited.ReadAsync(buffer, 100, 600, TestContext.Current.CancellationToken);
+        Func<Task> second = () => limited.ReadAsync(buffer, 100, 600, TestContext.Current.CancellationToken);
+
+        // Assert
+        first.Should().Be(600, "the offset and count are honoured, not the whole buffer");
+        await second.Should().ThrowAsync<UploadTooLargeException>("the limit is cumulative across reads on this overload too");
+    }
+
+    /// <summary>
     /// The wrapped stream is the request body, which the server owns. Disposing the wrapper must not
     /// close it, or the response could not be written afterwards.
     /// </summary>

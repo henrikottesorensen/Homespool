@@ -676,6 +676,59 @@ public sealed class DetailModelTests : IDisposable
         model.QueueStatusOf(0).Should().Be(QueueEntryStatus.Held);
     }
 
+    /// <summary>
+    /// A stopped print in the history says who stopped it, in each of the three ways there are.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The third row is why this is not a boolean.</b> An id with no account behind it is still a
+    /// stop somebody made here, and rendering it as "at the printer" would swap one account of what
+    /// happened for another. Accounts are deactivated rather than deleted, so no path in the product
+    /// makes that id today; it is written as one no account holds.
+    /// </para>
+    /// <para>
+    /// Driven through <see cref="DetailModel.OnGetAsync"/>, because the names are looked up once for
+    /// the history the page loaded, and a job the page never listed has no name to find.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("panel", "at the printer")]
+    [InlineData("person", "by owner")]
+    [InlineData("unnamed", "from here")]
+    public async Task AStoppedPrintSaysWhoStoppedIt(string stopper, string expected)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printer.Id,
+            FileName = "stopped.bgcode",
+            QueuedByUserId = user.Id,
+            StartedAt = DateTimeOffset.UtcNow.AddMinutes(-10),
+            EndedAt = DateTimeOffset.UtcNow,
+            State = PrintState.Stopped,
+            StoppedByUserId = stopper switch
+            {
+                "panel" => null,
+                "person" => user.Id,
+                _ => 999_999,
+            },
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.StoppedByDescription(model.History.Should().ContainSingle().Subject).Should().Be(expected);
+    }
+
     private static async Task<HSUser> AddUserAsync(UserManager<HSUser> users, string name)
     {
         HSUser user = new(name) { Email = $"{name}@example.com", EmailConfirmed = true };

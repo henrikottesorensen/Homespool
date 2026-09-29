@@ -42,14 +42,37 @@ namespace Homespool.Host.Cameras;
 /// Follows <c>PrintFileReconciler</c>: a one-shot at startup rather than a loop, because the thing
 /// it heals only changes when something outside the application does.
 /// </para>
+/// <para>
+/// <b>It can start while the sidecar is restarting</b>, because <see cref="WebRtcConfigurer"/> runs
+/// just before it and restarts the sidecar whenever the WebRTC address changed. go2rtc answers the
+/// restart and then re-executes itself, so for a while nothing is listening at all, and for a while
+/// after it is listening it refuses every source with <c>streams: source not supported</c> - its API
+/// and its stream list come up before the modules that register the source schemes. Both are
+/// milliseconds on a fast machine, and took up to half a second with the sidecar held to a tenth of a
+/// core. So the listing is asked for again until it answers, and a camera refused or unanswered is
+/// tried once more after <see cref="ProbeRetryDelay"/>.
+/// </para>
 /// </remarks>
 public sealed class CameraStreamReconciler : BackgroundService
 {
     /// <summary>
-    /// How long to wait before giving a failed startup probe its one retry. The failure it answers
-    /// is the probe racing the rest of the stack's start, and a few seconds is what that race needs.
+    /// How long to wait before giving a failed startup probe or registration its one retry. The
+    /// failure it answers is racing the rest of the stack's start, and a few seconds is what that
+    /// race needs.
     /// </summary>
     private static readonly TimeSpan ProbeRetryDelay = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How often to ask again for a listing the sidecar did not give.
+    /// </summary>
+    private static readonly TimeSpan ListingRetryInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How long to go on asking for the listing before leaving the cameras to their next save. Far
+    /// longer than a restart takes, and short enough that a sidecar which is really not there is
+    /// given up on while the log still reads as startup.
+    /// </summary>
+    private static readonly TimeSpan ListingPatience = TimeSpan.FromSeconds(30);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Go2RtcClient _streamServer;
@@ -57,6 +80,7 @@ public sealed class CameraStreamReconciler : BackgroundService
     private readonly CameraCredentialProtector _credentials;
     private readonly LocalCameraDevices _devices;
     private readonly CameraSourcePolicy _policy;
+    private readonly TimeProvider _time;
     private readonly ILogger<CameraStreamReconciler> _logger;
 
     public CameraStreamReconciler(IServiceScopeFactory scopeFactory,
@@ -65,6 +89,7 @@ public sealed class CameraStreamReconciler : BackgroundService
                                   CameraCredentialProtector credentials,
                                   LocalCameraDevices devices,
                                   CameraSourcePolicy policy,
+                                  TimeProvider time,
                                   ILogger<CameraStreamReconciler> logger)
     {
         _scopeFactory = scopeFactory;
@@ -73,6 +98,7 @@ public sealed class CameraStreamReconciler : BackgroundService
         _credentials = credentials;
         _devices = devices;
         _policy = policy;
+        _time = time;
         _logger = logger;
     }
 
@@ -93,8 +119,7 @@ public sealed class CameraStreamReconciler : BackgroundService
                 return;
             }
 
-            IReadOnlySet<string>? known = await _streamServer.ListStreamNamesAsync(stoppingToken)
-                                                             .ConfigureAwait(false);
+            IReadOnlySet<string>? known = await ListStreamNamesAsync(stoppingToken).ConfigureAwait(false);
 
             // Null means the sidecar could not be asked, which is not the same as it knowing
             // nothing. Re-registering every camera against a server that is merely still starting
@@ -102,8 +127,9 @@ public sealed class CameraStreamReconciler : BackgroundService
             if (known is null)
             {
                 _logger.LogInformation(
-                    "The stream server could not be reached at startup; {Count} cameras will be " +
+                    "The stream server could not be reached within {Seconds}s of startup; {Count} cameras will be " +
                     "registered when one is next saved.",
+                    ListingPatience.TotalSeconds,
                     cameras.Count);
                 return;
             }
@@ -112,6 +138,7 @@ public sealed class CameraStreamReconciler : BackgroundService
                 cameras.Where(camera => !known.Contains(camera.Uuid.ToString("D", CultureInfo.InvariantCulture)));
 
             int restored = 0;
+            List<(Guid uuid, string source)> retry = [];
 
             foreach (Camera camera in missing)
             {
@@ -161,10 +188,33 @@ public sealed class CameraStreamReconciler : BackgroundService
                     }
                 }
 
-                if (await _streamServer.PutStreamAsync(camera.Uuid, source, stoppingToken).ConfigureAwait(false) ==
-                    StreamRegistration.Registered)
+                switch (await _streamServer.PutStreamAsync(camera.Uuid, source, stoppingToken).ConfigureAwait(false))
                 {
-                    restored++;
+                    case StreamRegistration.Registered:
+                        restored++;
+                        break;
+
+                    // A sidecar that has only just come back refuses every source for a moment, in
+                    // the same words it refuses a bad one, so a refusal here earns the retry too. A
+                    // source that really is refused costs one more request and one more log line.
+                    case StreamRegistration.Unavailable:
+                    case StreamRegistration.SourceRefused:
+                        retry.Add((camera.Uuid, source));
+                        break;
+                }
+            }
+
+            if (retry.Count > 0)
+            {
+                await Task.Delay(ProbeRetryDelay, _time, stoppingToken).ConfigureAwait(false);
+
+                foreach ((Guid uuid, string source) in retry)
+                {
+                    if (await _streamServer.PutStreamAsync(uuid, source, stoppingToken).ConfigureAwait(false) ==
+                        StreamRegistration.Registered)
+                    {
+                        restored++;
+                    }
                 }
             }
 
@@ -186,7 +236,7 @@ public sealed class CameraStreamReconciler : BackgroundService
                 // One retry. A None here is either a definite "no transport" - in which case the
                 // memo answers and the second ask costs nothing - or a camera that did not answer,
                 // most likely because it is still waking up alongside everything else.
-                await Task.Delay(ProbeRetryDelay, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(ProbeRetryDelay, _time, stoppingToken).ConfigureAwait(false);
                 _ = await _liveView.HowToWatchAsync(camera.Uuid, stoppingToken).ConfigureAwait(false);
             }
         }
@@ -194,6 +244,28 @@ public sealed class CameraStreamReconciler : BackgroundService
         {
             // Shutting down before the sweep finished. Nothing is half-done: each registration is
             // its own request, and the next start does this again.
+        }
+    }
+
+    /// <summary>
+    /// The sidecar's stream names, asked for until it answers or <see cref="ListingPatience"/> runs
+    /// out - or <see langword="null"/> if it never did.
+    /// </summary>
+    private async Task<IReadOnlySet<string>?> ListStreamNamesAsync(CancellationToken cancellationToken)
+    {
+        long started = _time.GetTimestamp();
+
+        while (true)
+        {
+            IReadOnlySet<string>? known = await _streamServer.ListStreamNamesAsync(cancellationToken)
+                                                             .ConfigureAwait(false);
+
+            if (known is not null || _time.GetElapsedTime(started) >= ListingPatience)
+            {
+                return known;
+            }
+
+            await Task.Delay(ListingRetryInterval, _time, cancellationToken).ConfigureAwait(false);
         }
     }
 }

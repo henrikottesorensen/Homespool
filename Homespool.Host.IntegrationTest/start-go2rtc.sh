@@ -68,10 +68,8 @@ state_dir="$(mktemp -d "${TMPDIR:-/tmp}/homespool-go2rtc-contract.XXXXXX")"
 printf '%s' "$state_dir" > "$run_record"
 mkdir -p "$state_dir/config" "$state_dir/secrets"
 
-# Exactly what setup-env.sh seeds a new deployment with, so the contract starts where a deployment
-# does. Upstream go2rtc refuses every stream PUT into a file reading `streams: {}`; the image's own
-# patch fixes that, and an image without it fails the registration tests here, as it should.
-printf 'streams: {}\n' > "$state_dir/config/go2rtc.yaml"
+# Empty, as setup-env.sh creates it, so the contract starts where a deployment does.
+: > "$state_dir/config/go2rtc.yaml"
 
 printf '%s' "$password" > "$state_dir/secrets/GO2RTC_PASSWORD"
 

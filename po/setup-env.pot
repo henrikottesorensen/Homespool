@@ -160,96 +160,87 @@ msgstr ""
 #: setup-env.sh:1613
 msgid "Generated a credential for the camera sidecar."
 msgstr ""
-#: setup-env.sh:1697
-msgid "--dry-run: %s is empty, and would be given a starting point the camera sidecar can write over."
-msgstr ""
-#: setup-env.sh:1699
+#: setup-env.sh:1685
 msgid "--dry-run: %s would be created for the camera sidecar."
 msgstr ""
-#: setup-env.sh:1710
-msgid "%s is empty and could not be written to. Put a line saying: streams: {} in it yourself - an empty file makes the camera sidecar lose the settings Homespool writes at startup, and live camera view stays off."
-msgstr ""
-#: setup-env.sh:1712
+#: setup-env.sh:1691
 msgid "Could not create %s, which the camera sidecar needs before it starts. Create it yourself - otherwise Docker makes a directory of that name and the sidecar fails on it."
 msgstr ""
-#: setup-env.sh:1722
-msgid "%s was empty, and now holds a starting point the camera sidecar can write over."
-msgstr ""
-#: setup-env.sh:1738
+#: setup-env.sh:1707
 msgid "Created %s for the camera sidecar, writable by group %s."
 msgstr ""
-#: setup-env.sh:1747
+#: setup-env.sh:1716
 msgid "Created %s for the camera sidecar."
 msgstr ""
-#: setup-env.sh:1752
+#: setup-env.sh:1721
 msgid "Created %s but could not give it group %s, so the camera sidecar cannot write it and adding a camera will fail. Fix it with: sudo chgrp %s %s && sudo chmod 660 %s"
 msgstr ""
-#: setup-env.sh:1768
+#: setup-env.sh:1737
 msgid "No source of randomness found, and the server refuses to start without CA_PASSPHRASE. Set it by hand to the output of: openssl rand -base64 24 (run anywhere)."
 msgstr ""
-#: setup-env.sh:1773
+#: setup-env.sh:1742
 msgid "Generated a passphrase for the printer CA key; the server encrypts the key with it on its next start. Do not lose it - without it the key cannot be read and every printer would need re-provisioning from a USB stick. Back .env up separately from data/."
 msgstr ""
-#: setup-env.sh:1813
+#: setup-env.sh:1782
 msgid "Detected $address as the address printers reach this server on."
 msgstr ""
-#: setup-env.sh:1843
+#: setup-env.sh:1812
 msgid "/16 from 172.16 to 172.31 is taken. Set the network's range in .env by hand."
 msgstr ""
-#: setup-env.sh:1848
+#: setup-env.sh:1817
 msgid "$candidate instead."
 msgstr ""
-#: setup-env.sh:1912
+#: setup-env.sh:1881
 msgid "Once the certificate is in place, the site can tell browsers to insist on HTTPS for the public name and to refuse any certificate warning for it - for two years at a time. That is HSTS. It is sent only on a name that actually holds an issued certificate; a .lan name or an address never gets it."
 msgstr ""
-#: setup-env.sh:1914
+#: setup-env.sh:1883
 msgid "  Turn on HSTS for the public name"
 msgstr ""
-#: setup-env.sh:1930
+#: setup-env.sh:1899
 msgid "HSTS was on for that name. Browsers that saw it will refuse the self-signed certificate it now falls back to until the two years they were told about run down - keep the public name and its certificate for that long if you can, or expect to clear the name from each browser by hand."
 msgstr ""
-#: setup-env.sh:1951
+#: setup-env.sh:1920
 msgid "The compose network $label ($subnet) collides with:$colliding"
 msgstr ""
-#: setup-env.sh:1953
+#: setup-env.sh:1922
 msgid "A collision with another Docker network fails loudly at startup. A collision with a route this machine already has does not: the stack comes up, and that network stops being reachable from here."
 msgstr ""
-#: setup-env.sh:1957
+#: setup-env.sh:1926
 msgid "Every /16 from 172.16 to 172.31 is in use here - pick a range by hand."
 msgstr ""
-#: setup-env.sh:2003
+#: setup-env.sh:1972
 msgid "This stack has run before, so the printer certificate has already been issued - and it is issued once. Changing PRINTER_HOST in .env does not change what that certificate covers. Reissue it afterwards from Admin -> Printer certificate, or printers will fail to verify."
 msgstr ""
-#: setup-env.sh:2041
+#: setup-env.sh:2010
 msgid "This will change:"
 msgstr ""
-#: setup-env.sh:2074
+#: setup-env.sh:2043
 msgid "Every other line - comments, blank lines, and any key not listed - is left as it is."
 msgstr ""
-#: setup-env.sh:2088
+#: setup-env.sh:2057
 msgid "Created $env_file from .env.example."
 msgstr ""
-#: setup-env.sh:2265
+#: setup-env.sh:2234
 msgid "Homespool - .env setup"
 msgstr ""
-#: setup-env.sh:2268
+#: setup-env.sh:2237
 msgid "Editing the existing file, and only the settings below are touched:"
 msgstr ""
-#: setup-env.sh:2271
+#: setup-env.sh:2240
 msgid "No .env yet. One will be created from .env.example, with these settings filled in."
 msgstr ""
-#: setup-env.sh:2291
+#: setup-env.sh:2260
 msgid "Nothing to change."
 msgstr ""
-#: setup-env.sh:2300
+#: setup-env.sh:2269
 msgid "--dry-run: nothing written."
 msgstr ""
-#: setup-env.sh:2306
+#: setup-env.sh:2275
 msgid "Write these"
 msgstr ""
-#: setup-env.sh:2315
+#: setup-env.sh:2284
 msgid "Written. Bring the stack up with:"
 msgstr ""
-#: setup-env.sh:2317
+#: setup-env.sh:2286
 msgid "    docker compose up -d"
 msgstr ""

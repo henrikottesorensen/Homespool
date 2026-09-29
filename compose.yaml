@@ -625,7 +625,7 @@ services:
       # is missing, and go2rtc then fails on a directory where it wanted its configuration. From
       # nothing:
       #
-      #   printf 'streams: {}\n' > ./go2rtc.yaml && chown 65532:44 ./go2rtc.yaml && chmod 660 ./go2rtc.yaml
+      #   touch ./go2rtc.yaml && chown 65532:44 ./go2rtc.yaml && chmod 660 ./go2rtc.yaml
       #
       # The requirement is only that the file be WRITABLE by the identity in `user:` above, by owner
       # or by group - the line above is one way to satisfy it, not the shape it has to have. A file
@@ -636,14 +636,6 @@ services:
       # What is not negotiable is the last digit. A camera's source is stored here as go2rtc was
       # given it, so an RTSP URL carrying a password is a plaintext password in this file - and
       # nothing but go2rtc ever reads it, so there is no one for the world bit to serve.
-      #
-      # IT MUST NOT BE EMPTY, and that is newer than the rest of this comment: the sidecar is now
-      # started with more than one configuration file (the password is in the third -c), and with
-      # more than one, an empty first file leaves go2rtc merging into a nil map. The write
-      # Homespool makes at startup then panics that request inside the sidecar - the WebRTC
-      # candidate is lost, live view stays off, and the sidecar goes on running as though nothing
-      # happened, with the panic the only trace. `streams: {}` is enough; setup-env.sh writes it,
-      # and seeds a file it finds empty. Measured on 1.9.14, one file against two.
       #
       # Do not edit it by hand: it is rewritten by the sidecar whenever Homespool registers a
       # camera, and a camera described in two places is described wrongly in one of them.

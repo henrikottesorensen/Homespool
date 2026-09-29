@@ -1570,10 +1570,7 @@ if test_case "the sidecar config file is created beside .env"; then
     use_temp_env "PRINTER_HOST="
     ensure_go2rtc_config_file >/dev/null 2>&1
     assert_succeeds test -f "$temp_env_dir/go2rtc.yaml"
-    # Not empty, and that is the whole point of the line: go2rtc is started with a second config
-    # file for its password, and an empty first one makes it panic on the write Homespool does at
-    # startup. `streams: {}` is the least we can invent - the sidecar rewrites the file over it.
-    assert_eq "streams: {}" "$(cat "$temp_env_dir/go2rtc.yaml")" "created with something to parse"
+    assert_eq "0" "$(wc -c < "$temp_env_dir/go2rtc.yaml" | tr -d ' ')" "created empty"
 fi
 
 if test_case "the sidecar config file is not world-readable"; then
@@ -1588,11 +1585,14 @@ if test_case "the sidecar config file is not world-readable"; then
     assert_eq "660" "$mode" "not world-readable"
 fi
 
-if test_case "an existing but empty sidecar config is seeded"; then
+if test_case "an existing but empty sidecar config is left alone"; then
     use_temp_env "PRINTER_HOST="
     : > "$temp_env_dir/go2rtc.yaml"
+    chmod 640 "$temp_env_dir/go2rtc.yaml"
     ensure_go2rtc_config_file >/dev/null 2>&1
-    assert_eq "streams: {}" "$(cat "$temp_env_dir/go2rtc.yaml")" "the file an older wizard left empty is filled in"
+    assert_eq "0" "$(wc -c < "$temp_env_dir/go2rtc.yaml" | tr -d ' ')" "still empty"
+    mode="$(stat -c '%a' "$temp_env_dir/go2rtc.yaml" 2>/dev/null || stat -f '%Lp' "$temp_env_dir/go2rtc.yaml")"
+    assert_eq "640" "$mode" "its mode not reset either"
 fi
 
 if test_case "an existing sidecar config is never touched"; then

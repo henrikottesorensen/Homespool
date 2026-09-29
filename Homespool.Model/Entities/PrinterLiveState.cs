@@ -149,7 +149,7 @@ public class PrinterLiveState
     /// nothing extrudes is correct, where a progress that stops falling is a lie.
     /// </para>
     /// <para>
-    /// <b>But it is not monotonic, because the printer's EEPROM can be reset</b> (Henrik, 2026-08-10) -
+    /// <b>But it is not monotonic, because the printer's EEPROM can be reset</b> -
     /// so it goes backwards exactly once, unpredictably, and a machine that has extruded a kilometre
     /// then reports zero with nothing anywhere flagging it as odd. <b>Anything subtracting two readings
     /// must treat a decrease as the counter resetting rather than as negative extrusion</b>, which is a
@@ -162,8 +162,26 @@ public class PrinterLiveState
     /// waits for the value to <i>increase</i>, so a reset merely means it counts up from zero instead
     /// of from a kilometre. The signal is a change, not a level.
     /// </para>
+    /// <para>
+    /// <b>It dips as well as resets.</b> Firmware adds up the E axis of every G-code move, retractions
+    /// included, so a reading can fall by a few millimetres mid-print and recover - a rise is a reading
+    /// <i>above</i> an earlier one, never merely a different one.
+    /// </para>
     /// </remarks>
     public float? FilamentUsed { get; set; }
+
+    /// <summary>
+    /// When a message last carried <see cref="FilamentUsed"/> - which, unlike <see cref="LastSeenAt"/>,
+    /// is not every message.
+    /// </summary>
+    /// <remarks>
+    /// <b>Firmware sends the reading only in a full message, and only while it has a job</b>, so the
+    /// value standing here when a print is commanded is whatever the previous print last said, or
+    /// nothing at all on a printer that has not printed since it was enrolled. Carried forward, it is
+    /// indistinguishable from a fresh one; this is what tells them apart, so a print's opening reading
+    /// can be one reported during that print.
+    /// </remarks>
+    public DateTimeOffset? FilamentUsedAt { get; set; }
 
     /// <summary>Seconds until the next filament change.</summary>
     public int? TimeToFilamentChange { get; set; }

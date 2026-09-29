@@ -81,6 +81,7 @@ public static class PrinterLiveStateMerger
         if (update.FilamentUsed.IsPresent)
         {
             state.FilamentUsed = FiniteFloat.OrNull(update.FilamentUsed.Value);
+            state.FilamentUsedAt = receivedAt;
         }
 
         if (update.NozzleTemperature.IsPresent)

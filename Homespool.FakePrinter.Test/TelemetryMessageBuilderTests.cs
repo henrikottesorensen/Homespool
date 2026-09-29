@@ -64,6 +64,37 @@ public class TelemetryMessageBuilderTests
     }
 
     /// <summary>
+    /// The groups turn on firmware's <c>has_job</c>, not on the state being <c>PRINTING</c>: a paused
+    /// print still reports fans and filament, and a finished one reports positions again.
+    /// </summary>
+    /// <remarks>
+    /// <c>has_job</c> is printing, paused, or attention mid-print (<c>printer_state.cpp:580</c>) - and
+    /// not finished, although the fake keeps a finished job's id so <c>SEND_JOB_INFO</c> can name it.
+    /// </remarks>
+    [Fact]
+    public void TheGroupsFollowWhetherThereIsAJobNotWhetherItIsPrinting()
+    {
+        FakeDevice paused = new();
+        paused.StartPrint(jobId: 1);
+        paused.Extrude(12.5);
+        paused.TryPause().Should().BeTrue();
+
+        FakeDevice finished = new();
+        finished.StartPrint(jobId: 2);
+        finished.FinishPrint().Should().BeTrue();
+
+        using JsonDocument pausedDoc = JsonDocument.Parse(TelemetryMessageBuilder.BuildFull(paused, new TelemetryReadings()));
+        using JsonDocument finishedDoc = JsonDocument.Parse(TelemetryMessageBuilder.BuildFull(finished, new TelemetryReadings()));
+
+        pausedDoc.RootElement.TryGetProperty("fan_extruder", out _).Should().BeTrue();
+        pausedDoc.RootElement.TryGetProperty("axis_x", out _).Should().BeFalse();
+        pausedDoc.RootElement.GetProperty("filament").GetDouble().Should().Be(2428300.5, "the odometer, moved by what was extruded");
+
+        finishedDoc.RootElement.TryGetProperty("axis_x", out _).Should().BeTrue();
+        finishedDoc.RootElement.TryGetProperty("filament", out _).Should().BeFalse();
+    }
+
+    /// <summary>
     /// <c>filament_change_in</c> is emitted only when a pause is actually scheduled, and in the
     /// firmware's own position - between <c>time_remaining</c> and <c>progress</c>.
     /// </summary>

@@ -432,6 +432,15 @@
   <data name="Printers_NothingFinished" xml:space="preserve">
     <value>Nothing has finished printing yet.</value>
   </data>
+  <data name="Printers_DurationWithWarmUp" xml:space="preserve">
+    <value>{0} ({1} warm-up)</value>
+  </data>
+  <data name="Printers_WarmUpExplained" xml:space="preserve">
+    <value>Homing, bed probing and heating, before the first plastic</value>
+  </data>
+  <data name="Printers_FilamentMetres" xml:space="preserve">
+    <value>{0:N2} m</value>
+  </data>
   <data name="Printers_RecentEvents" xml:space="preserve">
     <value>Recent events</value>
   </data>
@@ -528,6 +537,12 @@
   </data>
   <data name="Common_Started" xml:space="preserve">
     <value>Started</value>
+  </data>
+  <data name="Common_Duration" xml:space="preserve">
+    <value>Duration</value>
+  </data>
+  <data name="Common_Filament" xml:space="preserve">
+    <value>Filament</value>
   </data>
   <data name="Common_File" xml:space="preserve">
     <value>File</value>
@@ -869,6 +884,12 @@
   </data>
   <data name="Common_Minutes_Other" xml:space="preserve">
     <value>{0} minutes</value>
+  </data>
+  <data name="Common_Seconds_One" xml:space="preserve">
+    <value>{0} second</value>
+  </data>
+  <data name="Common_Seconds_Other" xml:space="preserve">
+    <value>{0} seconds</value>
   </data>
   <data name="Common_DurationParts" xml:space="preserve">
     <value>{0} {1}</value>
@@ -1784,12 +1805,6 @@
   </data>
   <data name="Printers_ClaimLockedOut" xml:space="preserve">
     <value>Too many unrecognised codes. Try again in {0}. The printer’s own code is unaffected - it is still waiting.</value>
-  </data>
-  <data name="Common_WaitSeconds" xml:space="preserve">
-    <value>{0} seconds</value>
-  </data>
-  <data name="Common_WaitOneSecond" xml:space="preserve">
-    <value>1 second</value>
   </data>
   <data name="Printers_ClaimNoSuchCode" xml:space="preserve">
     <value>No printer is waiting with that code. Check it against the printer’s screen - codes expire, so it may have already been replaced. Letters O, I and L are read as 0, 1 and 1, so those are safe to get wrong.</value>

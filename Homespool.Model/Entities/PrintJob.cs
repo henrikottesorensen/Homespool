@@ -133,6 +133,28 @@ public class PrintJob
     /// </remarks>
     public DateTimeOffset? CommandedAt { get; set; }
 
+    /// <summary>
+    /// When plastic first moved - the first pass on which the printer's filament odometer read above
+    /// <see cref="FilamentAtStart"/>. <b>Null means that moment was not seen</b>, which is not the
+    /// same as it not happening.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not when the printer said <c>PRINTING</c></b>: some machines say it in the first report after
+    /// the command, with the nozzle cold, and then home, probe and heat for minutes before extruding.
+    /// <see cref="StartedAt"/> to here is that preamble, and it is why a print's wall-clock length
+    /// overstates what the slicer estimated.
+    /// </para>
+    /// <para>
+    /// <b>Null in four cases</b>: the print ended before extruding; the row was adopted from a start at
+    /// the panel, so the first extrusion may already have passed unseen; the printer never reported
+    /// the odometer; or Homespool was not running across the moment the reading first rose. The last
+    /// is null rather than late, because the pass after a restart would otherwise record the restart.
+    /// Accurate to one pass of the queue loop, a few seconds.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? BegunAt { get; set; }
+
     /// <summary>When the printer stopped printing. <b>Null means this print is the active one.</b></summary>
     public DateTimeOffset? EndedAt { get; set; }
 
@@ -207,4 +229,36 @@ public class PrintJob
     /// printed.
     /// </remarks>
     public string? Reason { get; set; }
+
+    /// <summary>
+    /// The printer's lifetime filament odometer, in millimetres, as first reported during this print.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The first reading reported after the row opened, not the one standing when it did.</b>
+    /// Firmware sends the odometer only while it has a job, so the live value at the command is the
+    /// previous print's last word, or nothing on a printer that has not printed since enrolment.
+    /// </para>
+    /// <para>
+    /// <b>Null when it could not be taken honestly</b>: on a row adopted from the panel, and on one
+    /// opened before Homespool last started, because the first report after a restart may already be
+    /// past the first extrusion. With it goes <see cref="BegunAt"/> and <see cref="FilamentUsed"/>.
+    /// </para>
+    /// </remarks>
+    public float? FilamentAtStart { get; set; }
+
+    /// <summary>The same odometer at the print's end, in millimetres.</summary>
+    /// <remarks>
+    /// <b>Taken only when the printer itself said the print was finished or stopped.</b> A print that
+    /// ended while nobody was listening leaves the last reading short of the truth by however much
+    /// was printed unheard, so it is left null rather than recorded short.
+    /// </remarks>
+    public float? FilamentAtEnd { get; set; }
+
+    /// <summary>What this print extruded, in millimetres - null where either reading is missing.</summary>
+    /// <remarks>
+    /// <b>Null too when the odometer went backwards</b> - an EEPROM reset, or a print stopped inside a
+    /// retraction before it extruded anything - because a negative length is a figure nobody could act on.
+    /// </remarks>
+    public float? FilamentUsed => FilamentAtEnd - FilamentAtStart is { } used && used >= 0 ? used : null;
 }

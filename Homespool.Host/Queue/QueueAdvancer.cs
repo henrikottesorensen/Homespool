@@ -47,7 +47,9 @@ namespace Homespool.Host.Queue;
 /// between passes beyond the event watermark and the last panel job examined, both optimisations
 /// rather than state: losing either costs a re-scan or a repeated question, not correctness. A
 /// restart therefore resumes without ceremony, and the design's "nudged on enqueue and on connect"
-/// is a latency improvement over the timer rather than the mechanism.
+/// is a latency improvement over the timer rather than the mechanism. The one exception is whether
+/// this run has watched the open print's filament before it moved, and a restart forgetting it
+/// costs only a <see cref="PrintJob.BegunAt"/> that could not have been told honestly anyway.
 /// </para>
 /// </remarks>
 public sealed class QueueAdvancer : BackgroundService
@@ -189,6 +191,18 @@ public sealed class QueueAdvancer : BackgroundService
     /// restart - costs one repeated <c>SEND_JOB_INFO</c>, not correctness.
     /// </remarks>
     private readonly Dictionary<int, int> _examinedPanelJobs = [];
+
+    /// <summary>
+    /// Per printer, the open print this run has seen with its filament odometer still at the opening
+    /// reading - the only print whose first rise this run can vouch for.
+    /// </summary>
+    /// <remarks>
+    /// <b>Unlike the two above, state rather than an optimisation, and losing it is the point.</b> A
+    /// restart forgets it, so a reading that rose while nothing was listening is never written as
+    /// <see cref="PrintJob.BegunAt"/> - that would be the moment of the restart, not of the extrusion.
+    /// See <see cref="ObserveFilament"/>.
+    /// </remarks>
+    private readonly Dictionary<int, long> _seenAtOpeningReading = [];
 
     /// <summary>
     /// One pass at a time per printer.
@@ -367,6 +381,95 @@ public sealed class QueueAdvancer : BackgroundService
     {
         job.State = outcome;
         job.EndedAt = at;
+    }
+
+    /// <summary>
+    /// Takes an open print's opening filament reading, and then watches for the reading to rise past
+    /// it - which is <see cref="PrintJob.BegunAt"/>.
+    /// </summary>
+    /// <returns>Whether the row changed and needs saving.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Only a reading this run heard during this print counts</b>, on both halves. The odometer is
+    /// sent only while the printer has a job, so the value standing at the command belongs to the
+    /// previous print; and live state can outlive the process, so a value standing after a restart
+    /// belongs to the run before.
+    /// </para>
+    /// <para>
+    /// <b>No opening reading for a row opened before this run started</b>: the first report after a
+    /// restart may already be past the first extrusion, and an opening reading taken there would make
+    /// the next pass's rise look like the start. Nor for one adopted from the panel, which was noticed
+    /// rather than started, for the same reason.
+    /// </para>
+    /// <para>
+    /// <b>A rise counts only when this run saw the reading at or below the opening one first.</b>
+    /// Retractions dip it mid-preamble and that is still "not yet", so at-or-below rather than equal.
+    /// </para>
+    /// </remarks>
+    private bool ObserveFilament(int printerId, PrintJob active, PrinterLiveState? live, DateTimeOffset now)
+    {
+        if (active.State is not (PrintState.Starting or PrintState.Printing) ||
+            active.CommandedAt is null ||
+            active.BegunAt is not null)
+        {
+            return false;
+        }
+
+        if (live?.FilamentUsed is not { } reading ||
+            live.FilamentUsedAt is not { } heardAt ||
+            heardAt < active.StartedAt ||
+            heardAt < _startedAt)
+        {
+            return false;
+        }
+
+        if (active.FilamentAtStart is not { } opening)
+        {
+            if (active.StartedAt < _startedAt)
+            {
+                return false;
+            }
+
+            active.FilamentAtStart = reading;
+            _seenAtOpeningReading[printerId] = active.Id;
+
+            return true;
+        }
+
+        if (reading <= opening)
+        {
+            _seenAtOpeningReading[printerId] = active.Id;
+
+            return false;
+        }
+
+        if (!_seenAtOpeningReading.Remove(printerId, out long watched) || watched != active.Id)
+        {
+            return false;
+        }
+
+        active.BegunAt = now;
+
+        _logger.LogInformation("[{PrinterId}] {FileName} began extruding {Preamble:F0} s after it was started",
+                               printerId, active.FileName, (now - active.StartedAt).TotalSeconds);
+
+        return true;
+    }
+
+    /// <summary>
+    /// The odometer as the print ends, for <see cref="PrintJob.FilamentUsed"/> - when this run heard
+    /// it during the print, and the print has an opening reading to subtract it from.
+    /// </summary>
+    private void RecordFilamentAtEnd(PrintJob job, PrinterLiveState? live)
+    {
+        if (job.FilamentAtStart is not null &&
+            live?.FilamentUsed is { } reading &&
+            live.FilamentUsedAt is { } heardAt &&
+            heardAt >= job.StartedAt &&
+            heardAt >= _startedAt)
+        {
+            job.FilamentAtEnd = reading;
+        }
     }
 
     /// <summary>
@@ -642,6 +745,11 @@ public sealed class QueueAdvancer : BackgroundService
             // identified it is the telemetry that says the printer is printing.
         }
 
+        if (ObserveFilament(printerId, active, live, now))
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
         if (active.State == PrintState.Starting)
         {
             // The job id is the evidence, and it arrives whether or not Printing is ever sampled.
@@ -672,6 +780,7 @@ public sealed class QueueAdvancer : BackgroundService
             {
                 PrintState said = status == PrinterStatus.Finished ? PrintState.Finished : PrintState.Stopped;
 
+                RecordFilamentAtEnd(active, live);
                 Close(active, said, now);
                 await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -773,6 +882,14 @@ public sealed class QueueAdvancer : BackgroundService
             // listening - the printer comes back already Ready, its Finished screen long dismissed.
             _ => await AskPriorOutcomeAsync(scope, printerId, active, cancellationToken) ?? PrintState.Unknown,
         };
+
+        // Only on the printer's own word. An ending that had to be asked about happened while
+        // nobody here was listening, and the last reading heard falls short by whatever was
+        // printed unheard.
+        if (status is PrinterStatus.Finished or PrinterStatus.Stopped)
+        {
+            RecordFilamentAtEnd(active, live);
+        }
 
         Close(active, outcome, now);
         await dbContext.SaveChangesAsync(cancellationToken);

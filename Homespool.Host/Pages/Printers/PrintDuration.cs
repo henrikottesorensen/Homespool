@@ -76,4 +76,31 @@ public static class PrintDuration
             spelledHours,
             Plural.Format(localiser, "Common_Minutes", span.Minutes)].Value;
     }
+
+    /// <summary>
+    /// How long something that has already happened took: to the nearest minute, or in seconds when
+    /// it was under one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Rounded where <see cref="WithoutSeconds"/> truncates</b>, because the two answer different
+    /// questions. A countdown that says a minute too few is harmless; a history saying a 2 m 48 s
+    /// warm-up took <c>2 minutes</c> is simply wrong by most of one. <b>Seconds under a minute</b>,
+    /// because a warm bed can bring the preamble below one, and <c>0 minutes</c> of warm-up would
+    /// contradict the very column it sits in.
+    /// </remarks>
+    public static string Elapsed(IStringLocalizer localiser, TimeSpan span)
+    {
+        ArgumentNullException.ThrowIfNull(localiser);
+
+        int seconds = (int)Math.Round(span.TotalSeconds, MidpointRounding.AwayFromZero);
+
+        if (seconds < 60)
+        {
+            return Plural.Format(localiser, "Common_Seconds", seconds);
+        }
+
+        int minutes = (int)Math.Round(seconds / 60.0, MidpointRounding.AwayFromZero);
+
+        return WithoutSeconds(localiser, minutes * 60);
+    }
 }

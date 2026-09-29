@@ -436,79 +436,123 @@
     }
     else
     {
-        <table class="table table-sm w-auto">
-            <thead>
-                <tr>
-                    <th scope="col">@Localiser["Common_File"]</th>
-                    <th scope="col">@Localiser["Common_Started"]</th>
-
-                    @* "Outcome", though the property is PrintState.State - and deliberately, not left
-                       over from the rename. This table is filtered to EndedAt != null, and Close() sets
-                       EndedAt and State together, so the only values reachable here are Finished,
-                       Stopped, Failed and Unknown: all of them outcomes. "State" would be the worse
-                       word, inviting "is it printing?" about a table where everything has ended.
-
-                       Same reason Close(PrintJob, PrintState outcome, ...) keeps "outcome" for its
-                       parameter. The type is named for the whole lifecycle because it spans it; this
-                       column only ever sees the end of it. *@
-                    <th scope="col">@Localiser["Common_Outcome"]</th>
-
-                    @* Only when some row can actually offer something, so a table of other people's
-                       prints does not carry an empty column of its own. *@
-                    @if (Model.History.Any(Model.CanReprint))
-                    {
-                        <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
-                    }
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var job in Model.History)
-                {
+        @* Scrolls within itself on a phone rather than widening the page: six columns and a
+           button do not fit 375px, and wrapping a file name letter by letter is worse. *@
+        <div class="table-responsive">
+            <table class="table table-sm w-auto">
+                <thead>
                     <tr>
-                        <td class="typed-name">@job.FileName</td>
-                        <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
-                            System.Globalization.CultureInfo.InvariantCulture)</td>
-                        <td>
-                            @job.State
-                            @* A stop says who, because the printer cannot: it reports the same state
-                               change whether somebody pressed stop here or on the panel. *@
-                            @if (job.State == PrintState.Stopped)
-                            {
-                                <br />
+                        <th scope="col">@Localiser["Common_File"]</th>
+                        <th scope="col">@Localiser["Common_Started"]</th>
+                        <th scope="col">@Localiser["Common_Duration"]</th>
 
-                                <span class="text-muted">@Model.StoppedByDescription(job)</span>
-                            }
-                            @* Firmware's own words, and the only place a refused print explains itself.
-                               Without this a queued print that never ran left nothing a person could read. *@
-                            @if (job.Reason is { } reason)
-                            {
-                                <br />
+                        @* Only when some row has a figure, for the same reason as the actions column below:
+                           rows from before the odometer was read, and every print that ended unheard, have
+                           none, and a column of blanks says nothing. *@
+                        @if (Model.History.Any(job => job.FilamentUsed is not null))
+                        {
+                            <th scope="col">@Localiser["Common_Filament"]</th>
+                        }
 
-                                <span class="text-muted">@reason</span>
-                            }
-                        </td>
+                        @* "Outcome", though the property is PrintState.State - and deliberately, not left
+                           over from the rename. This table is filtered to EndedAt != null, and Close() sets
+                           EndedAt and State together, so the only values reachable here are Finished,
+                           Stopped, Failed and Unknown: all of them outcomes. "State" would be the worse
+                           word, inviting "is it printing?" about a table where everything has ended.
 
-                        @* Your own prints only, and the reason is that the file is found by name in
-                           your own tree: on somebody else's row this would offer to print your
-                           bracket.bgcode believing it was theirs. Offered on every outcome though -
-                           a print that failed or was stopped is exactly the one to run again. *@
+                           Same reason Close(PrintJob, PrintState outcome, ...) keeps "outcome" for its
+                           parameter. The type is named for the whole lifecycle because it spans it; this
+                           column only ever sees the end of it. *@
+                        <th scope="col">@Localiser["Common_Outcome"]</th>
+
+                        @* Only when some row can actually offer something, so a table of other people's
+                           prints does not carry an empty column of its own. *@
                         @if (Model.History.Any(Model.CanReprint))
                         {
-                            <td class="text-nowrap">
-                                @if (Model.CanReprint(job))
-                                {
-                                    <form method="post" asp-page-handler="Reprint" asp-route-uuid="@uuid">
-                                        <input type="hidden" name="printUuid" value="@job.PrintUuid" />
-                                        <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                                aria-label="@Localiser["Printers_ReprintFile", job.FileName]">@Localiser["Printers_Reprint"]</button>
-                                    </form>
-                                }
-                            </td>
+                            <th scope="col"><span class="visually-hidden">@Localiser["Common_Actions"]</span></th>
                         }
                     </tr>
-                }
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    @foreach (var job in Model.History)
+                    {
+                        <tr>
+                            <td class="typed-name">@job.FileName</td>
+                            <td>@job.StartedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm",
+                                System.Globalization.CultureInfo.InvariantCulture)</td>
+
+                            @* The wall clock, and how much of it went before the first plastic where that was
+                               seen. Without the split a print reads as the slicer's estimate being wrong, when
+                               minutes of it were homing, probing and heating. A refused print opened and
+                               closed in one moment, so it has no length to show. *@
+                            <td>
+                                @if (job.EndedAt is { } ended && ended > job.StartedAt)
+                                {
+                                    string total = PrintDuration.Elapsed(Localiser, ended - job.StartedAt);
+
+                                    if (job.BegunAt is { } begun)
+                                    {
+                                        <span title="@Localiser["Printers_WarmUpExplained"]">@Localiser["Printers_DurationWithWarmUp",
+                                            total, PrintDuration.Elapsed(Localiser, begun - job.StartedAt)]</span>
+                                    }
+                                    else
+                                    {
+                                        @total
+                                    }
+                                }
+                            </td>
+
+                            @if (Model.History.Any(row => row.FilamentUsed is not null))
+                            {
+                                <td class="text-nowrap">
+                                    @if (job.FilamentUsed is { } used)
+                                    {
+                                        @Localiser["Printers_FilamentMetres", used / 1000f]
+                                    }
+                                </td>
+                            }
+                            <td>
+                                @job.State
+                                @* A stop says who, because the printer cannot: it reports the same state
+                                   change whether somebody pressed stop here or on the panel. *@
+                                @if (job.State == PrintState.Stopped)
+                                {
+                                    <br />
+
+                                    <span class="text-muted">@Model.StoppedByDescription(job)</span>
+                                }
+                                @* Firmware's own words, and the only place a refused print explains itself.
+                                   Without this a queued print that never ran left nothing a person could read. *@
+                                @if (job.Reason is { } reason)
+                                {
+                                    <br />
+
+                                    <span class="text-muted">@reason</span>
+                                }
+                            </td>
+
+                            @* Your own prints only, and the reason is that the file is found by name in
+                               your own tree: on somebody else's row this would offer to print your
+                               bracket.bgcode believing it was theirs. Offered on every outcome though -
+                               a print that failed or was stopped is exactly the one to run again. *@
+                            @if (Model.History.Any(Model.CanReprint))
+                            {
+                                <td class="text-nowrap">
+                                    @if (Model.CanReprint(job))
+                                    {
+                                        <form method="post" asp-page-handler="Reprint" asp-route-uuid="@uuid">
+                                            <input type="hidden" name="printUuid" value="@job.PrintUuid" />
+                                            <button type="submit" class="btn btn-sm btn-outline-secondary"
+                                                    aria-label="@Localiser["Printers_ReprintFile", job.FileName]">@Localiser["Printers_Reprint"]</button>
+                                        </form>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
 </details>
 

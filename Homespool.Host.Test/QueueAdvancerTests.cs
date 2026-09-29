@@ -2535,6 +2535,121 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A file still in storage that cannot be opened holds the queue with one line of history, and is
+    /// tried again on the recheck clock rather than every tick.
+    /// </summary>
+    [Fact]
+    public async Task AFileThatCannotBeReadHoldsTheQueueAndIsTriedAgainOnTheRecheckClock()
+    {
+        // Arrange - the file is there, and opening it fails every time
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAccepting();
+        ITransferOffers offers = Substitute.For<ITransferOffers>();
+        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>()).Returns(false);
+
+        using QueueAdvancer advancer = NewAdvancer(offers: offers);
+
+        // Act - the failure, a tick inside the recheck window, and one past it
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        offers.ReceivedCalls().Should().HaveCount(1, "a held file is not retried every tick");
+
+        _clock.Advance(QueueAdvancer.BlockRecheckAfter + TimeSpan.FromSeconds(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        offers.ReceivedCalls().Should().HaveCount(2, "the hold is re-checked by trying the file again");
+        OfferedPaths(actor).Should().BeEmpty("nothing could be offered");
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().Be(PrintHoldReason.FileUnreadable, "the reason has to reach a person, or the queue stalls silently");
+        row.TransferStartedAt.Should().BeNull("no transfer is under way");
+
+        PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        recorded.State.Should().Be(PrintState.Failed);
+        recorded.Reason.Should().Contain("queued.bgcode", "history says which file, once, however long the hold lasts");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "somebody still wants this printed");
+    }
+
+    /// <summary>
+    /// Once the file can be read, the next recheck sends it and the hold lifts with nobody pressing
+    /// anything.
+    /// </summary>
+    [Fact]
+    public async Task AnUnreadableFileIsSentOnceItCanBeReadAgain()
+    {
+        // Arrange - unreadable once, then fixed
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAccepting();
+        ITransferOffers offers = Substitute.For<ITransferOffers>();
+        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>()).Returns(false, true);
+
+        using QueueAdvancer advancer = NewAdvancer(offers: offers);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Act
+        _clock.Advance(QueueAdvancer.BlockRecheckAfter + TimeSpan.FromSeconds(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().ContainSingle("the file is offered as soon as it opens");
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().BeNull("the fault was on this side, and it has gone");
+        row.BlockedAt.Should().BeNull();
+        row.TransferStartedAt.Should().NotBeNull("the transfer is under way");
+    }
+
+    /// <summary>
+    /// A file deleted between being found and being opened is not held: the next pass finds it
+    /// missing and drops the entry, as a delete a moment sooner would have.
+    /// </summary>
+    [Fact]
+    public async Task AFileDeletedWhileBeingSentIsDroppedRatherThanHeld()
+    {
+        // Arrange - the open fails because the file has just gone
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectAccepting();
+        ITransferOffers offers = Substitute.For<ITransferOffers>();
+        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>())
+              .Returns(call =>
+              {
+                  File.Delete(call.ArgAt<string>(1));
+
+                  return false;
+              });
+
+        using QueueAdvancer advancer = NewAdvancer(offers: offers);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        row.HoldReason.Should().BeNull("a file that is gone is not a fault to wait out");
+        row.TransferStartedAt.Should().BeNull();
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "there is nothing left to print");
+    }
+
+    /// <summary>
     /// A printer that answers each command, on either face of the actor, with whatever
     /// <paramref name="answer"/> gives for it. Returned so a test can see what it was asked.
     /// </summary>
@@ -2805,7 +2920,10 @@ public sealed class QueueAdvancerTests : IDisposable
         return actor;
     }
 
-    private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null)
+    /// <summary>An advancer over this test's database, clock, registry and file store.</summary>
+    /// <param name="logger">Where the advancer logs, when a test reads it.</param>
+    /// <param name="offers">Stands in for the offer store the sender opens files through, when a test needs it to fail.</param>
+    private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null, ITransferOffers? offers = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
@@ -2830,7 +2948,7 @@ public sealed class QueueAdvancerTests : IDisposable
         // As itself and as the interface, the way Program.cs registers it: the key store follows the
         // concrete store's retirements, so it has to be able to find it.
         services.AddSingleton(new TransferOfferStore(_clock, TestOptions.Monitor(new PrusaConnectOptions()), NullLogger<TransferOfferStore>.Instance));
-        services.AddSingleton<ITransferOffers>(sp => sp.GetRequiredService<TransferOfferStore>());
+        services.AddSingleton<ITransferOffers>(sp => offers ?? sp.GetRequiredService<TransferOfferStore>());
         services.AddSingleton<EncryptedTransferOffers>();
         services.AddSingleton(Options.Create(new PrusaConnectOptions()));
         services.AddScoped<PrintFileSender>();

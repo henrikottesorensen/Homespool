@@ -2037,6 +2037,9 @@
   <data name="Queue_HoldTransferRefused" xml:space="preserve">
     <value>Printeren afviste {0} {1} gange i træk, hver gang med beskeden &quot;{2}&quot;. Nye forsøg har ikke ændret svaret, så køen er gået i stå. Se efter på printersiden, og annuller så dette print, eller sæt det i kø igen for at prøve igen.</value>
   </data>
+  <data name="Queue_HoldFileUnreadable" xml:space="preserve">
+    <value>{0} ligger stadig her, men kunne ikke læses, så den kan ikke sendes til printeren. Det er et problem med denne server, ikke med printeren - filens rettigheder eller disken, den ligger på - og køen fortsætter af sig selv, så snart filen kan læses.</value>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
   </data>

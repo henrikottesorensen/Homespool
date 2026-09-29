@@ -336,6 +336,8 @@ public sealed class DateTimeOffsetConverterTests : IDisposable
         {
             FingerPrint = fingerPrint,
             SerialNumber = $"sn-{fingerPrint}",
+            Model = "1.3.5",
+            Firmware = "6.4.0+11974",
             TemporaryCode = $"code-{fingerPrint}",
             TemporaryCodeExpiry = expiry,
             CreatedAt = expiry,

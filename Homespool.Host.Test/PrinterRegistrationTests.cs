@@ -123,6 +123,28 @@ public sealed class PrinterRegistrationTests : IDisposable
     }
 
     /// <summary>
+    /// The model and firmware the printer stated are kept on the pending row, which has no <c>INFO</c>
+    /// to take them from - the claim page's list has nothing else to name a waiting printer by.
+    /// </summary>
+    [Fact]
+    public async Task ARegistrationKeepsTheModelAndFirmwareThePrinterStated()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        // Act
+        await NewService(context).GetPrinterCode(Request(printerType: "7.1.0", firmware: "6.5.7+12345"));
+
+        // Assert
+        await using HomespoolDbContext verify = NewContext();
+        PrusaConnectRegistration stored =
+            await verify.PrusaConnectRegistrations.SingleAsync(TestContext.Current.CancellationToken);
+
+        stored.Model.Should().Be("7.1.0");
+        stored.Firmware.Should().Be("6.5.7+12345");
+    }
+
+    /// <summary>
     /// Every registration gets a row and a code of its own, even for a fingerprint that already has
     /// one pending.
     /// </summary>
@@ -521,6 +543,117 @@ public sealed class PrinterRegistrationTests : IDisposable
 
         held.Should().BeEquivalentTo([neighbours], "only the other printer's registration is left");
         held.Should().NotContain([abandoned, claimedAndAbandoned]);
+    }
+
+    // ---------- the claim page's list of waiting printers ----------
+
+    /// <summary>A waiting printer is listed with the model and firmware it stated, as it stated them.</summary>
+    [Fact]
+    public async Task ThePendingListShowsAWaitingPrinterByWhatItStated()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await service.GetPrinterCode(Request(printerType: "7.1.0", firmware: "6.5.7+12345"));
+
+        // Act
+        IReadOnlyList<PendingRegistration> pending = await service.GetPendingRegistrationsAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        PendingRegistration only = pending.Should().ContainSingle().Subject;
+        only.Model.Should().Be("7.1.0");
+        only.Firmware.Should().Be("6.5.7+12345");
+    }
+
+    /// <summary>
+    /// A printer restarted into registration holds a row per attempt, and is listed once - by its
+    /// newest, the only code its firmware still shows.
+    /// </summary>
+    [Fact]
+    public async Task ThePendingListShowsAPrinterOnceHoweverOftenItRegistered()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await service.GetPrinterCode(Request(firmware: "6.1.0"));
+        await service.GetPrinterCode(Request(fingerprint: "FINGERPRINT-OF-ANOTHER-PRINTER", firmware: "6.2.0"));
+        await service.GetPrinterCode(Request(firmware: "6.3.0"));
+        await service.GetPrinterCode(Request(firmware: "6.4.0"));
+
+        // Act
+        IReadOnlyList<PendingRegistration> pending = await service.GetPendingRegistrationsAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        pending.Select(registration => registration.Firmware).Should().Equal(["6.4.0", "6.2.0"],
+            "one entry per fingerprint, the newest standing for it, newest first");
+    }
+
+    /// <summary>
+    /// A claimed registration is not waiting, and neither is anything older for the same printer: it is
+    /// about to enrol, and its abandoned codes with it.
+    /// </summary>
+    [Fact]
+    public async Task AClaimedRegistrationTakesItsPrinterOffThePendingList()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await service.GetPrinterCode(Request());
+        string newest = (await service.GetPrinterCode(Request())).TemporaryCode;
+        await ClaimAsync(context, newest);
+
+        // Act
+        IReadOnlyList<PendingRegistration> pending = await service.GetPendingRegistrationsAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        pending.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnExpiredRegistrationIsNotOnThePendingList()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        string code = (await service.GetPrinterCode(Request())).TemporaryCode;
+        await ExpireAsync(context, code);
+
+        // Act
+        IReadOnlyList<PendingRegistration> pending = await service.GetPendingRegistrationsAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        pending.Should().BeEmpty("an expired code can no longer be claimed");
+    }
+
+    /// <summary>
+    /// The rows are anonymous and fingerprints cost nothing to invent, so the list is bounded - and
+    /// keeps the newest, since the printer somebody has just walked away from is the latest to ask.
+    /// </summary>
+    [Fact]
+    public async Task ThePendingListKeepsOnlyTheNewestUpToItsBound()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        int registered = PrusaConnectService.MaxPendingRegistrationsListed + 2;
+
+        for (int i = 0; i < registered; i++)
+        {
+            await service.GetPrinterCode(Request(fingerprint: $"INVENTED-FINGERPRINT-{i}", firmware: $"6.{i}.0"));
+        }
+
+        // Act
+        IReadOnlyList<PendingRegistration> pending = await service.GetPendingRegistrationsAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        pending.Should().HaveCount(PrusaConnectService.MaxPendingRegistrationsListed);
+        pending[0].Firmware.Should().Be($"6.{registered - 1}.0", "the newest comes first");
+        pending.Select(registration => registration.Firmware).Should().NotContain(["6.0.0", "6.1.0"], "the two oldest fall off");
     }
 
     // ---------- GET /p/register ----------

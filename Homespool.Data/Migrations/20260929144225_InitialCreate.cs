@@ -723,6 +723,8 @@ namespace Homespool.Data.Migrations
                     SerialNumber = table.Column<string>(type: "TEXT", nullable: false),
                     FingerPrint = table.Column<string>(type: "TEXT", nullable: false),
                     TemporaryCode = table.Column<string>(type: "TEXT", nullable: false),
+                    Model = table.Column<string>(type: "TEXT", nullable: false),
+                    Firmware = table.Column<string>(type: "TEXT", nullable: false),
                     TemporaryCodeExpiry = table.Column<long>(type: "INTEGER", nullable: false),
                     CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
                 },

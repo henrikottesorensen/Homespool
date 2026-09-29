@@ -33,6 +33,17 @@ public class PrusaConnectService
     public const int MaxPendingRegistrationsPerFingerprint = 4;
 
     /// <summary>
+    /// How many printers <see cref="GetPendingRegistrationsAsync"/> lists as waiting to be added.
+    /// </summary>
+    /// <remarks>
+    /// <b>A bound because the rows are anonymous.</b> Anyone who can reach <c>POST /p/register</c> can
+    /// add one under a fingerprint they invented, as fast as its rate limit allows, so how many are
+    /// pending is up to a stranger. Ten is more printers than anybody sets registering at once; past it
+    /// the list stops growing, and a code typed on its own still claims.
+    /// </remarks>
+    public const int MaxPendingRegistrationsListed = 10;
+
+    /// <summary>
     /// How long a pre-provisioned USB-key token stays usable after it is written. Past this the
     /// printer's first contact is refused, and the operator reissues to get a fresh one.
     /// </summary>
@@ -142,6 +153,8 @@ public class PrusaConnectService
             {
                 FingerPrint = printer.FingerPrint,
                 SerialNumber = printer.SerialNumber,
+                Model = printer.PrinterType,
+                Firmware = printer.Firmware,
                 TemporaryCode = _codeGenerator.GenerateCode(printer.SerialNumber),
                 TemporaryCodeExpiry = now + _options.RegistrationCodeLifetime,
                 CreatedAt = now,
@@ -669,6 +682,45 @@ public class PrusaConnectService
         return new PrinterEnrolmentStatus(enrolled, awaitingProvisioning, expiredProvisioning);
     }
 
+    /// <summary>
+    /// The registrations waiting for somebody to claim them, newest first: one per fingerprint, and at
+    /// most <see cref="MaxPendingRegistrationsListed"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This informs; it identifies nothing.</b> Every row came from an anonymous POST, so any of
+    /// them may be a stranger's, and the code on the printer's screen stays the only thing a claim is
+    /// decided by. The list answers what a refused code cannot say on its own: an empty one means no
+    /// printer has reached this server, where a wrong code could otherwise mean anything.
+    /// </para>
+    /// <para>
+    /// <b>Only the newest row per fingerprint.</b> A printer restarted into registration holds a row per
+    /// attempt, and firmware has abandoned every code but the newest, so listing the rest would show one
+    /// printer several times. A newer row that has been claimed hides the older ones too - that printer
+    /// is about to enrol, not waiting. A newer row that has expired cannot hide a live one, since every
+    /// code is given the same lifetime.
+    /// </para>
+    /// <para>
+    /// <b>A pending registration belongs to no team</b> until it is claimed, so nothing here decides who
+    /// may see the list; the caller does.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<PendingRegistration>> GetPendingRegistrationsAsync(CancellationToken cancellationToken)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        // Id rather than CreatedAt for "newest": it is insertion order and cannot tie.
+        return await _dbContext.PrusaConnectRegistrations
+                               .AsNoTracking()
+                               .Where(a => a.PrinterId == null &&
+                                           a.TemporaryCodeExpiry > now &&
+                                           !_dbContext.PrusaConnectRegistrations.Any(b => b.FingerPrint == a.FingerPrint && b.Id > a.Id))
+                               .OrderByDescending(a => a.Id)
+                               .Take(MaxPendingRegistrationsListed)
+                               .Select(a => new PendingRegistration(a.Model, a.Firmware, a.CreatedAt))
+                               .ToListAsync(cancellationToken);
+    }
+
     private static Printer NewPrinter(string? name, string? location, int teamId, DateTimeOffset now)
     {
         return new()
@@ -744,3 +796,9 @@ public class PrusaConnectService
 public sealed record PrinterEnrolmentStatus(IReadOnlySet<int> Enrolled,
                                             IReadOnlySet<int> AwaitingUsbProvisioning,
                                             IReadOnlySet<int> ExpiredUsbProvisioning);
+
+/// <summary>
+/// A registration waiting to be claimed: what the printer said it is, and when it asked. Both strings
+/// are the anonymous POST's own. See <see cref="PrusaConnectService.GetPendingRegistrationsAsync"/>.
+/// </summary>
+public sealed record PendingRegistration(string Model, string Firmware, DateTimeOffset CreatedAt);

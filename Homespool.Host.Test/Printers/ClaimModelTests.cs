@@ -15,6 +15,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO;
@@ -70,14 +71,16 @@ public sealed class ClaimModelTests : IDisposable
                    TestOptions.Monitor(new PrusaConnectOptions()));
     }
 
-    private static RegisterPrinterRequestDTO PrinterRequest(string fingerprint)
+    private static RegisterPrinterRequestDTO PrinterRequest(string fingerprint,
+                                                            string printerType = "1.3.5",
+                                                            string firmware = "6.4.0+11974")
     {
         return new()
         {
             SerialNumber = $"SN-{fingerprint}",
             FingerPrint = fingerprint,
-            PrinterType = "1.3.5",
-            Firmware = "6.4.0+11974",
+            PrinterType = printerType,
+            Firmware = firmware,
         };
     }
 
@@ -100,7 +103,9 @@ public sealed class ClaimModelTests : IDisposable
                                                              NullLogger<AttemptLimiter>.Instance),
                                           TimeProvider.System);
 
-        ClaimModel model = new(claim, new TeamService(context), users,
+        ClaimModel model = new(claim, NewService(context), new TeamService(context), users,
+                               new RelativeTimeText(TestLocaliser.Shared()),
+                               TimeProvider.System,
                                NullLogger<ClaimModel>.Instance,
                                TestLocaliser.Shared())
         {
@@ -117,6 +122,20 @@ public sealed class ClaimModelTests : IDisposable
                             .Where(a => a.UserId == user.Id && a.Action == LimitedAction.ClaimPrinter)
                             .Select(a => a.FailedCount)
                             .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Takes <see cref="Capability.ManagePrinter"/> away from <paramref name="user"/>'s default team.</summary>
+    private static async Task DemoteToOperatorAsync(HomespoolDbContext context, HSUser user)
+    {
+        TeamMember membership = await context.TeamMembers.SingleAsync(m => m.UserId == user.Id, TestContext.Current.CancellationToken);
+        membership.Capabilities = TestMemberships.Literal(CapabilityPresets.Operator);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>The one page-level error the last post left behind.</summary>
+    private static string PageError(ClaimModel model)
+    {
+        return model.ModelState[string.Empty]!.Errors.Should().ContainSingle().Subject.ErrorMessage;
     }
 
     /// <summary>Issues a fresh claimable code via the real registration path, matching
@@ -157,6 +176,92 @@ public sealed class ClaimModelTests : IDisposable
 
         // Assert
         model.TeamOptions.Should().HaveCount(1, "the default team grants ManagePrinter; the second only Print and ControlPrinter");
+    }
+
+    /// <summary>
+    /// A waiting printer is listed by the name the firmware gives its model, with its version and how
+    /// long ago it asked.
+    /// </summary>
+    [Fact]
+    public async Task OnGetAsyncListsAWaitingPrinterByItsModelName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ClaimModel model, _) = await NewModelAsync(context);
+        await NewService(context).GetPrinterCode(PrinterRequest("FP-WAITING", printerType: "3.1.1", firmware: "6.4.0+11974"));
+
+        // Act
+        await model.OnGetAsync(CancellationToken.None);
+
+        // Assert
+        model.ShowsPending.Should().BeTrue();
+        ClaimModel.PendingPrinter printer = model.Pending.Should().ContainSingle().Subject;
+        printer.Model.Should().Be("XL+", "the name the printer shows on its own screen, not its id");
+        printer.Firmware.Should().Be("6.4.0");
+        printer.Age.Should().Be(TestLocaliser.Shared()["Common_JustNow"].Value);
+    }
+
+    /// <summary>
+    /// A model no table knows is shown as unknown rather than as the string that arrived - the POST
+    /// behind it is anonymous, so that string is whatever a stranger chose.
+    /// </summary>
+    [Fact]
+    public async Task OnGetAsyncShowsAModelItDoesNotKnowAsUnknown()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ClaimModel model, _) = await NewModelAsync(context);
+        await NewService(context).GetPrinterCode(PrinterRequest("FP-STRANGER", printerType: "Your printer - call 555-0100"));
+
+        // Act
+        await model.OnGetAsync(CancellationToken.None);
+
+        // Assert
+        model.Pending.Should().ContainSingle()
+             .Which.Model.Should().Be(TestLocaliser.Shared()["Printers_PendingUnknownModel"].Value);
+    }
+
+    /// <summary>
+    /// The firmware shown is rebuilt from the version it parsed to, so nothing a stranger wrote after
+    /// the numbers reaches the page, and a string that is no version at all shows nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("6.4.0+11974", "6.4.0")]
+    [InlineData("6.5.7+ go to evil.example to finish", "6.5.7")]
+    [InlineData("go to evil.example to finish", null)]
+    public async Task OnGetAsyncShowsOnlyTheVersionItCanRead(string stated, string? shown)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ClaimModel model, _) = await NewModelAsync(context);
+        await NewService(context).GetPrinterCode(PrinterRequest("FP-FIRMWARE", firmware: stated));
+
+        // Act
+        await model.OnGetAsync(CancellationToken.None);
+
+        // Assert
+        model.Pending.Should().ContainSingle().Which.Firmware.Should().Be(shown);
+    }
+
+    /// <summary>
+    /// Somebody who could not add a printer to any team is not shown the ones waiting: a pending
+    /// registration belongs to no team, so this is the only line drawn around it.
+    /// </summary>
+    [Fact]
+    public async Task OnGetAsyncListsNothingToSomebodyWhoCannotAddAPrinter()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ClaimModel model, HSUser user) = await NewModelAsync(context);
+        await DemoteToOperatorAsync(context, user);
+        await NewService(context).GetPrinterCode(PrinterRequest("FP-HIDDEN"));
+
+        // Act
+        await model.OnGetAsync(CancellationToken.None);
+
+        // Assert
+        model.ShowsPending.Should().BeFalse();
+        model.Pending.Should().BeEmpty();
     }
 
     // ---------- OnPostAsync ----------
@@ -234,6 +339,61 @@ public sealed class ClaimModelTests : IDisposable
         model.ModelState.IsValid.Should().BeFalse();
         (await context.Printers.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
         (await ClaimAttemptsAsync(context, user)).Should().Be(1, "a code nobody issued is the one outcome that is a guess");
+    }
+
+    /// <summary>
+    /// A wrong code with nothing waiting says so: the code cannot have come from this server, which
+    /// is a different problem from a mistyped one.
+    /// </summary>
+    [Fact]
+    public async Task OnPostAsyncWithNothingWaitingSaysNoPrinterIsWaiting()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ClaimModel model, _) = await NewModelAsync(context);
+        model.Input.Code = "ZZZZZZZZZZ";
+
+        // Act
+        await model.OnPostAsync(CancellationToken.None);
+
+        // Assert
+        PageError(model).Should().Be(TestLocaliser.Shared()["Printers_ClaimNoSuchCodeNothingWaiting"].Value);
+    }
+
+    /// <summary>A wrong code while a printer is waiting points at the code instead.</summary>
+    [Fact]
+    public async Task OnPostAsyncWithAPrinterWaitingSaysToCheckTheCode()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ClaimModel model, _) = await NewModelAsync(context);
+        await SeedClaimableCodeAsync(context, "FP-WAITING-FOR-SOMEONE");
+        model.Input.Code = "ZZZZZZZZZZ";
+
+        // Act
+        await model.OnPostAsync(CancellationToken.None);
+
+        // Assert
+        PageError(model).Should().Be(TestLocaliser.Shared()["Printers_ClaimNoSuchCode"].Value);
+    }
+
+    /// <summary>
+    /// Somebody not shown the list is not told through the error whether it is empty either.
+    /// </summary>
+    [Fact]
+    public async Task OnPostAsyncDoesNotTellSomebodyWhoCannotAddAPrinterWhetherAnyAreWaiting()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ClaimModel model, HSUser user) = await NewModelAsync(context);
+        await DemoteToOperatorAsync(context, user);
+        model.Input.Code = "ZZZZZZZZZZ";
+
+        // Act
+        await model.OnPostAsync(CancellationToken.None);
+
+        // Assert
+        PageError(model).Should().Be(TestLocaliser.Shared()["Printers_ClaimNoSuchCode"].Value);
     }
 
     /// <summary>

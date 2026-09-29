@@ -23,6 +23,13 @@ namespace Homespool.Model.Entities;
 /// the printer's, an attempt it abandoned, somebody else's - each with a code of its own, and only
 /// <see cref="TemporaryCode"/> says which one a poll or a claim means.
 /// </para>
+/// <para>
+/// <see cref="Model"/> and <see cref="Firmware"/> are kept for the claim page's list of printers
+/// waiting to be added, and for nothing else: an enrolled printer states both again on every
+/// <c>INFO</c>, which is where <see cref="Printer.Model"/> and <see cref="Printer.Firmware"/> come
+/// from. A pending row has no <c>INFO</c> yet, so without these the list could only show a serial
+/// number - a sticker on the back of the machine.
+/// </para>
 /// </remarks>
 public class PrusaConnectRegistration
 {
@@ -42,6 +49,18 @@ public class PrusaConnectRegistration
     public required string FingerPrint { get; set; }
 
     public required string TemporaryCode { get; set; }
+
+    /// <summary>
+    /// The <c>printer_type</c> triple the register POST stated, e.g. <c>1.3.5</c>. Anonymous input:
+    /// whoever sent the POST chose it, so it is shown only through a table of known models.
+    /// </summary>
+    public required string Model { get; set; }
+
+    /// <summary>
+    /// The firmware version the register POST stated, e.g. <c>6.4.0+11974</c>. Anonymous input, as
+    /// <see cref="Model"/> is, so it is shown only as the version it parses to.
+    /// </summary>
+    public required string Firmware { get; set; }
 
     public DateTimeOffset TemporaryCodeExpiry { get; set; }
 

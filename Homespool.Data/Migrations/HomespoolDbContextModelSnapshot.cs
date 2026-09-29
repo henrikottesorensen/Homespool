@@ -866,6 +866,14 @@ namespace Homespool.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Firmware")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("PrinterId")
                         .HasColumnType("INTEGER");
 

@@ -107,11 +107,12 @@ public class Printer
     /// </summary>
     /// <remarks>
     /// Null until the first <c>INFO</c> event arrives. The registration handshake also carries
-    /// <c>printer_type</c>, but it is deliberately not persisted: Buddy's <c>Planner::reset()</c>
-    /// marks the info state dirty on every connect ("Will trigger an Info message on the next
-    /// one"), so <c>INFO</c> is guaranteed on connection and re-sent whenever
-    /// <c>info_fingerprint()</c> changes. Anything stored at registration would be a strictly
-    /// poorer, staler copy.
+    /// <c>printer_type</c>, but it is deliberately not copied from there onto the printer: Buddy's
+    /// <c>Planner::reset()</c> marks the info state dirty on every connect ("Will trigger an Info
+    /// message on the next one"), so <c>INFO</c> is guaranteed on connection and re-sent whenever
+    /// <c>info_fingerprint()</c> changes. A copy taken at registration would be a strictly poorer,
+    /// staler one. <see cref="PrusaConnectRegistration.Model"/> keeps the handshake's value only
+    /// while the registration is pending, for a printer that has no <c>INFO</c> yet.
     /// </remarks>
     public string? Model { get; set; }
 

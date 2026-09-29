@@ -328,18 +328,12 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A token whose scope does not name <c>ControlPrinter</c> is refused the listing, and the
-    /// printer is asked nothing - browsing reads, but by making the machine go and work.
+    /// A token whose scope does not name <c>ControlPrinter</c> is refused the listing with a 403
+    /// naming it, and the printer is asked nothing - browsing reads, but by making the machine go and
+    /// work.
     /// </summary>
-    /// <remarks>
-    /// <b>Deliberately not asserted: whether the refusal names the capability.</b> Every other scope
-    /// refusal does, and today this one does not - the endpoint gates on the boolean ask rather
-    /// than the throwing one, so its 403 says only that browsing is not allowed. Whether that
-    /// sentence or the documented promise moves is an open decision, and pinning either wording
-    /// here would take it by accident.
-    /// </remarks>
     [Fact]
-    public async Task ATokenWithoutControlPrinterCannotBrowseStorage()
+    public async Task ATokenWithoutControlPrinterCannotBrowseStorageAndTheRefusalNamesIt()
     {
         (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
             configure: f => f.Device.Storage.AddFile("/usb/lampshade.gcode", 7647560, 1764804970));
@@ -350,8 +344,46 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
             await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await DetailOfAsync(response)).Should().Contain("ControlPrinter",
+                                                         "a scope refusal names the capability, so the fix is a new token");
 
         fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the command, not after it");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A member whose team grants only viewing is refused the listing with the other kind of 403 -
+    /// one naming no capability - and the printer is asked nothing.
+    /// </summary>
+    /// <remarks>
+    /// The credential is unrestricted, so this is the membership refusing where the test above has
+    /// the scope refuse. The documentation tells the two apart by whether a capability is named, and
+    /// a team refusal naming one would send the reader to mint a token that cannot help.
+    /// </remarks>
+    [Fact]
+    public async Task AMemberWhoMayOnlyViewCannotBrowseStorage()
+    {
+        (Guid uuid, long _, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.Storage.AddFile("/usb/lampshade.gcode", 7647560, 1764804970));
+        (HSUser viewer, HttpClient viewerCookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "controller-browse-viewer@example.com");
+
+        using (viewerCookieClient)
+        {
+            await JoinAsync(viewer.Id, await TeamOfAsync(uuid), CapabilityPresets.Viewer);
+        }
+
+        using HttpClient client = await ScopedClientAsync(viewer.Id, CapabilitySet.Everything);
+
+        using HttpResponseMessage response =
+            await client.PostAsync($"/api/v1/printers/{uuid}/storage/usb", null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await DetailOfAsync(response)).Should().NotContain("ControlPrinter",
+                                                            "a team refusal names nothing, because no token would fix it");
+
+        fake.ReceivedCommands.Should().BeEmpty("a Viewer membership must not reach the printer");
 
         await EndRunAsync(fake, run);
     }

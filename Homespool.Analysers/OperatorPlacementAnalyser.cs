@@ -23,11 +23,13 @@ public sealed class OperatorPlacementAnalyser : DiagnosticAnalyzer
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
         "Operator leads a wrapped line",
-        "'{0}' leads its line; it belongs at the end of the line before",
+        "'{0}' leads its line; move it to the end of the line before and leave the rest of the expression as it is",
         "Layout",
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "When an expression wraps, the operator stays on the line it follows and the next line starts with the operand.");
+        description: "When an expression wraps, the operator ends the line it follows and the next line starts with the operand. " +
+            "Moving the operator is the whole fix: a wrapped condition or ternary is fine as it is and does not need " +
+            "rewriting as an if/else.");
 
     /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];

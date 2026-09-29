@@ -1305,7 +1305,8 @@ public sealed class QueueAdvancer : BackgroundService
 
         // Chosen once and kept: the printer's reports about this file will carry it, and a retry must
         // not wander off to another name.
-        onPrinter.DriveName ??= await FirstDriveNameAsync(dbContext, printerId, head, file.FileName, cancellationToken);
+        onPrinter.DriveName ??= await scope.ServiceProvider.GetRequiredService<PrinterDriveNames>()
+                                           .FirstAsync(printerId, head.PrintFile, file.FileName, cancellationToken);
 
         if (!await HasRoomForAsync(scope, dbContext, printerId, head, file.Length, onPrinter, cancellationToken))
         {
@@ -1323,7 +1324,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome? outcome =
-                (await sender.SendAsync(printer, file, OnDrive(onPrinter.DriveName), CallerFor(head), cancellationToken)).Outcome;
+                (await sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName), CallerFor(head), cancellationToken)).Outcome;
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
@@ -1341,7 +1342,7 @@ public sealed class QueueAdvancer : BackgroundService
                 if (outcome.MachineReason == FileExistsCode)
                 {
                     TransferRetryRules.Forget(onPrinter);
-                    await ReconcileExistingFileAsync(scope, dbContext, printerId, head, file, onPrinter, cancellationToken);
+                    await ReconcileExistingFileAsync(scope, printerId, head, file, onPrinter, cancellationToken);
                 }
                 else if (!TransferRetryRules.IsBusySlot(outcome.MachineReason, outcome.Reason))
                 {
@@ -1454,69 +1455,6 @@ public sealed class QueueAdvancer : BackgroundService
             LogText.Clean(onPrinter.TransferRefusalCode));
     }
 
-    /// <summary>Where on a printer's drive a file stored under <paramref name="driveName"/> is.</summary>
-    private static string OnDrive(string driveName)
-    {
-        return $"/usb/{driveName}";
-    }
-
-    /// <summary>
-    /// The first name for the head's file that no other file on this printer is known by.
-    /// </summary>
-    /// <remarks>
-    /// Its own name when that is free, which is every transfer that shares a printer with nobody.
-    /// When every name is taken it is still its own, and the printer's refusal decides from there.
-    /// </remarks>
-    private static async Task<string> FirstDriveNameAsync(HomespoolDbContext dbContext,
-                                                          int printerId,
-                                                          QueuedPrint head,
-                                                          string fileName,
-                                                          CancellationToken cancellationToken)
-    {
-        List<string> taken = await OtherDriveNamesAsync(dbContext, printerId, head.PrintFileId, cancellationToken);
-        string? owner = await OwnerNameAsync(dbContext, head, cancellationToken);
-
-        return DriveNames.First(fileName, owner, name => taken.Exists(other => DriveNames.Same(other, name))) ?? fileName;
-    }
-
-    /// <summary>The name after <paramref name="refused"/> for the head's file, or null when none is left.</summary>
-    private static async Task<string?> NextDriveNameAsync(HomespoolDbContext dbContext,
-                                                          int printerId,
-                                                          QueuedPrint head,
-                                                          string refused,
-                                                          string fileName,
-                                                          CancellationToken cancellationToken)
-    {
-        List<string> taken = await OtherDriveNamesAsync(dbContext, printerId, head.PrintFileId, cancellationToken);
-        string? owner = await OwnerNameAsync(dbContext, head, cancellationToken);
-
-        return DriveNames.After(refused, fileName, owner, name => taken.Exists(other => DriveNames.Same(other, name)));
-    }
-
-    /// <summary>
-    /// The names every other file with a row on this printer is known by there - sent, or waiting to
-    /// be, under its own name or with its owner's.
-    /// </summary>
-    private static Task<List<string>> OtherDriveNamesAsync(HomespoolDbContext dbContext,
-                                                           int printerId,
-                                                           long printFileId,
-                                                           CancellationToken cancellationToken)
-    {
-        return dbContext.PrintFilesOnPrinters
-                        .Where(row => row.PrinterId == printerId && row.PrintFileId != printFileId)
-                        .Select(row => row.DriveName ?? row.PrintFile!.Name)
-                        .ToListAsync(cancellationToken);
-    }
-
-    /// <summary>The username of whoever owns the head's file, which is what a second name carries.</summary>
-    private static Task<string?> OwnerNameAsync(HomespoolDbContext dbContext, QueuedPrint head, CancellationToken cancellationToken)
-    {
-        return dbContext.Users
-                        .Where(user => user.Id == head.PrintFile!.UserId)
-                        .Select(user => user.UserName)
-                        .SingleOrDefaultAsync(cancellationToken);
-    }
-
     /// <summary>
     /// Answers a <c>FILE_EXISTS</c> refusal by asking what is actually on the drive: adopts the file
     /// when it is ours, and sends ours under the next name when it is not.
@@ -1537,8 +1475,9 @@ public sealed class QueueAdvancer : BackgroundService
     /// somebody else's model. Judged worth it because the alternative refuses every legitimate
     /// re-queue, and because equal-length-but-different is a coincidence rather than a mechanism.
     /// <b>Sharpening it needs a digest firmware does not send</b>, so do not reach for one here. What
-    /// the residue no longer covers is another Homespool user's file: its name was never offered
-    /// (<see cref="DriveNames"/>), so a name refused here is one nothing here knows the owner of.
+    /// the residue no longer covers is a file Homespool sent - the queue's or a direct send's, since
+    /// both record the name in <see cref="PrinterDriveNames"/> and another's name is never offered -
+    /// so a name refused here is one nothing here put on that drive.
     /// </para>
     /// <para>
     /// <b>Anything else goes on under the next name</b> - a different size, or none reported. Holding
@@ -1552,7 +1491,6 @@ public sealed class QueueAdvancer : BackgroundService
     /// </para>
     /// </remarks>
     private async Task ReconcileExistingFileAsync(AsyncServiceScope scope,
-                                                  HomespoolDbContext dbContext,
                                                   int printerId,
                                                   QueuedPrint head,
                                                   StoredFile file,
@@ -1565,7 +1503,7 @@ public sealed class QueueAdvancer : BackgroundService
         try
         {
             CommandOutcome<FileInfoEventDataDTO>? answer = await commands.AskAsync(
-                printerId, new PrusaConnect.Commands.SendFileInfo { Path = OnDrive(onPrinter.DriveName ?? file.FileName) },
+                printerId, new PrusaConnect.Commands.SendFileInfo { Path = PrinterDriveNames.OnDrive(onPrinter.DriveName ?? file.FileName) },
                 CallerFor(head), cancellationToken);
 
             existing = answer?.Answer;
@@ -1597,7 +1535,8 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         string refused = onPrinter.DriveName ?? file.FileName;
-        string? next = await NextDriveNameAsync(dbContext, printerId, head, refused, file.FileName, cancellationToken);
+        string? next = await scope.ServiceProvider.GetRequiredService<PrinterDriveNames>()
+                                  .AfterAsync(printerId, head.PrintFile!, refused, file.FileName, cancellationToken);
 
         if (next is not null)
         {

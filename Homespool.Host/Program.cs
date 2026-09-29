@@ -491,6 +491,7 @@ public static class Program
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.
             builder.Services.AddScoped<Printing.PrintFileSender>();
+            builder.Services.AddScoped<Printing.PrinterDriveNames>();
 
             builder.Services.AddPrinterRateLimiting();
             builder.Services.AddPasskeyChallengeRateLimiting();

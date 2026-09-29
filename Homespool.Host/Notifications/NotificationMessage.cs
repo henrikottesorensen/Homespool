@@ -19,10 +19,7 @@ namespace Homespool.Host.Notifications;
 /// application is never told the name people reach it by; the browser resolves it against the origin
 /// that subscribed.
 /// </param>
-/// <param name="Tag">
-/// What a later notification replaces: two with the same tag show as one, the newer. At most
-/// <see cref="MaxTagLength"/> URL-safe characters, which is what a push service accepts as a topic.
-/// </param>
+/// <param name="Tag">What a later notification replaces: two with the same tag show as one, the newer.</param>
 /// <param name="Urgency">How hard the delivery service should try to wake a device for it.</param>
 /// <param name="TimeToLive">How long it is worth delivering at all; after that it is dropped undelivered.</param>
 public sealed record NotificationMessage(string Title,
@@ -30,11 +27,4 @@ public sealed record NotificationMessage(string Title,
                                          string Url,
                                          string Tag,
                                          NotificationUrgency Urgency,
-                                         TimeSpan TimeToLive)
-{
-    /// <summary>
-    /// The longest <see cref="Tag"/>: RFC 8030 bounds a push message's topic at 32 characters of the
-    /// URL-safe base64 alphabet.
-    /// </summary>
-    public const int MaxTagLength = 32;
-}
+                                         TimeSpan TimeToLive);

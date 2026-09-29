@@ -174,7 +174,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
 
         FakePush push = _pushService.Received[0];
         push.Header("Urgency").Should().Be("high");
-        push.Header("Topic").Should().Be($"printer-{_printer.Id}");
+        heard["owner"].GetProperty("tag").GetString().Should().Be($"printer-{_printer.Id}", "the next notification about this printer replaces it");
     }
 
     /// <summary>

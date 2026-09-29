@@ -7,9 +7,9 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Never <see cref="SqliteConnection.ClearAllPools"/> in a test.</b> It empties every pool in the
-/// process, and xUnit runs test classes in parallel, so it disposes handles that another class's
-/// connection is opening at that moment. That surfaces as an <see cref="System.ObjectDisposedException"/>
+/// <b>Never <c>SqliteConnection.ClearAllPools</c>, which is banned for it.</b> It empties every
+/// pool in the process, and xUnit runs test classes in parallel, so it disposes handles that another
+/// class's connection is opening at that moment. That surfaces as an <see cref="System.ObjectDisposedException"/>
 /// on <c>SQLitePCL.sqlite3</c> from <see cref="SqliteConnection.Open"/> in some unrelated test - and,
 /// when the handle goes mid-call, as a <see cref="System.NullReferenceException"/> in SQLite's
 /// function-callback bridge that aborts the test host outright.

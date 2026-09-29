@@ -1,0 +1,1 @@
+M:Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools; Empties every pool in the process, disposing handles under connections other threads are opening - ObjectDisposedException in Open, or an aborted process. Clear one pool with SqliteConnection.ClearPool; tests use TestSqlitePool.Release.

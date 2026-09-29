@@ -140,6 +140,17 @@ done | tail -n +11 | while read -r old; do rm -f &quot;$old&quot;; done"
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+
+        <!--
+            APIs that compile and are wrong here, listed with the reason in BannedSymbols.txt at the
+            root; a use is RS0030, which the build treats as an error like any other warning.
+            Everywhere, so a banned call cannot move into a project that does not check for it.
+        -->
+        <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
     </ItemGroup>
 
     <!--

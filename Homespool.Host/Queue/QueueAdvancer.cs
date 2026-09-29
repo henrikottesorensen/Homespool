@@ -437,13 +437,15 @@ public sealed class QueueAdvancer : BackgroundService
                 await PrintAsync(scope, dbContext, printerId, head, action.Head!.PrinterPath!, cancellationToken);
                 break;
 
-            case QueueActionKind.Wait when action.Reason == QueueWaitReason.InsufficientSpace:
+            case QueueActionKind.Wait when action.Reason is QueueWaitReason.InsufficientSpace or QueueWaitReason.FileUnreadable:
                 // Routed into the transfer path rather than merely logged, because that path is what
                 // *re-checks* the drive and clears the block - it begins by asking, and only then
                 // sends. Teaching the rules about the block (so a page could not report a transfer
                 // that cannot happen) made this necessary: without it the block is self-perpetuating,
                 // the rules refusing to transfer and nothing left able to discover there is room now.
                 // Caught by the end-to-end test that frees space and expects the queue to resume.
+                // An unreadable file comes the same way, for the same reason: only trying to send it
+                // finds out that it can be read now.
                 await TransferAsync(scope, dbContext, printerId, head, onPrinter, cancellationToken);
                 break;
 
@@ -1326,6 +1328,17 @@ public sealed class QueueAdvancer : BackgroundService
             CommandOutcome? outcome =
                 (await sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName), CallerFor(head), cancellationToken)).Outcome;
 
+            // Whatever the printer said, the file was opened to offer it, which is all this hold was
+            // about.
+            if (onPrinter.HoldReason == PrintHoldReason.FileUnreadable)
+            {
+                _logger.LogInformation("[{PrinterId}] {FileName} can be read again; the queue resumes",
+                                       printerId, file.FileName);
+
+                ClearHold(onPrinter);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 // Classified on MachineReason, not on the prose: the code is a fixed vocabulary and
@@ -1360,12 +1373,29 @@ public sealed class QueueAdvancer : BackgroundService
             }
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
-                                      CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      PrintFileUnreadableException)
+                                      CommandResponseTimedOutException or CommandSendTimedOutException)
         {
             _logger.LogInformation(e, "[{PrinterId}] could not start the transfer of {FileName}",
                                    printerId, file.FileName);
             onPrinter.TransferStartedAt = null;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (PrintFileUnreadableException e)
+        {
+            onPrinter.TransferStartedAt = null;
+
+            if (catalog.FindForPrinting(head.QueuedByUserId, head.PrintFile.Name) is null)
+            {
+                // Deleted between being found and being opened. The next pass finds it missing and
+                // drops the entry, as it would have had the delete come a moment sooner.
+                _logger.LogInformation(e, "[{PrinterId}] {FileName} went while it was being sent",
+                                       printerId, file.FileName);
+            }
+            else
+            {
+                HoldUnreadable(dbContext, printerId, head, onPrinter, e);
+            }
+
             await dbContext.SaveChangesAsync(cancellationToken);
         }
         catch (Exception e) when (e is TeamAccessDeniedException or CredentialScopeDeniedException)
@@ -1453,6 +1483,63 @@ public sealed class QueueAdvancer : BackgroundService
             "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
             printerId, head.PrintFile.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
             LogText.Clean(onPrinter.TransferRefusalCode));
+    }
+
+    /// <summary>
+    /// Holds the queue behind a file that is still in storage and could not be opened to send it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Held rather than retried like a busy printer</b>: a file that cannot be opened now will not
+    /// open five seconds later either, and a retry every tick would go on for as long as the fault
+    /// lasted with nothing on the page to say why the queue has not moved.
+    /// </para>
+    /// <para>
+    /// <b>The hold lifts itself</b> - the rules send it back through the transfer path every
+    /// <see cref="BlockRecheckAfter"/>, and the first send that opens the file clears it. So a second
+    /// failure only moves <see cref="PrintFileOnPrinter.BlockedAt"/> on, and history gets one row, on
+    /// the transition, as the space hold writes one.
+    /// </para>
+    /// </remarks>
+    private void HoldUnreadable(HomespoolDbContext dbContext,
+                                int printerId,
+                                QueuedPrint head,
+                                PrintFileOnPrinter onPrinter,
+                                PrintFileUnreadableException unreadable)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        bool newlyHeld = onPrinter.HoldReason != PrintHoldReason.FileUnreadable;
+
+        onPrinter.HoldReason = PrintHoldReason.FileUnreadable;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = now;
+
+        if (!newlyHeld)
+        {
+            return;
+        }
+
+        // English, like the space hold's record, and for the same reason: the column holds what was
+        // said at the time, and the live hold is what a reader acts on, in their own language.
+        string recorded = $"{head.PrintFile!.Name} could not be read from this server's storage to send it to the printer.";
+
+        dbContext.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            PrintUuid = head.PrintUuid,
+            FileName = head.PrintFile.Name,
+            Digest = head.PrintFile.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
+            StartedAt = now,
+            EndedAt = now,
+            State = PrintState.Failed,
+            Reason = recorded,
+        });
+
+        _logger.LogWarning(unreadable, "[{PrinterId}] {Reason} The queue holds, and tries it again every {Recheck}.",
+                           printerId, recorded, BlockRecheckAfter);
     }
 
     /// <summary>

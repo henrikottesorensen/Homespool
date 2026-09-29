@@ -2121,6 +2121,10 @@
     <value>The printer refused {0} {1} times in a row, each time saying &quot;{2}&quot;. Trying again has not changed its answer, so the queue has stopped. Check the printer page, then cancel this print, or queue it again to retry.</value>
     <comment>{0} is the file name, {1} how many refusals (always more than one), {2} the printer's own words, untranslated and quoted as sent. Queueing it again is what lifts this hold and starts a fresh set of attempts.</comment>
   </data>
+  <data name="Queue_HoldFileUnreadable" xml:space="preserve">
+    <value>{0} is still stored here but could not be read to send it to the printer. This is a problem with this server, not the printer - the file's permissions or the disk it is on - and the queue carries on by itself once the file can be read.</value>
+    <comment>{0} is the file name. Names no action on the printer page because none there helps: the fix is on the server, and the hold lifts itself within a minute of it.</comment>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle. It has been queued, but it will not start until the printer reports that a hardened nozzle is fitted.</value>
     <comment>Queued rather than refused: fitting a hardened nozzle and letting the printer say so releases it with nothing pressed here.</comment>

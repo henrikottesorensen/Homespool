@@ -134,6 +134,7 @@ public static class QueueRules
                 // Out of the transfer branch too: that branch would send the file again, and the
                 // printer has already answered the same way for every attempt the budget allowed.
                 PrintHoldReason.TransferRefused => QueueWaitReason.TransferRefused,
+                PrintHoldReason.FileUnreadable => QueueWaitReason.FileUnreadable,
                 _ => QueueWaitReason.InsufficientSpace,
             });
         }

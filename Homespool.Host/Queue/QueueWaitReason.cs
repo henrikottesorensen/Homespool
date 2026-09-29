@@ -145,4 +145,15 @@ public enum QueueWaitReason
     /// </para>
     /// </remarks>
     QueuerLostAccess = 11,
+
+    /// <summary>
+    /// The head's file is in this server's storage and could not be opened to send it - see
+    /// <see cref="PrintHoldReason.FileUnreadable"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Routed back into the transfer path</b>, like <see cref="InsufficientSpace"/>: only trying the
+    /// file again finds out whether it can be read now, and that is what lifts the hold. No sentence of
+    /// its own, because the hold banner carries one.
+    /// </remarks>
+    FileUnreadable = 12,
 }

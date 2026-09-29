@@ -134,4 +134,22 @@ public enum PrintHoldReason
     /// </para>
     /// </remarks>
     TransferRefused = 7,
+
+    /// <summary>
+    /// The file is still in this server's storage, but could not be opened to send it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A fault on this side, not the printer's</b> - file permissions, or a failing disk. A file
+    /// that could not be opened because it had just been deleted never reaches here: the queue entry is
+    /// dropped instead, as it is for a file found missing before the send.
+    /// </para>
+    /// <para>
+    /// <b>Clears by itself, like the space hold.</b> Whatever fixes it happens outside Homespool, so
+    /// the loop tries the file again every <c>QueueAdvancer.BlockRecheckAfter</c>, and the first send
+    /// that can open it lifts the hold. Waiting for a person to re-queue as well would make fixing the
+    /// storage only half the remedy.
+    /// </para>
+    /// </remarks>
+    FileUnreadable = 8,
 }

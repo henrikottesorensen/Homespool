@@ -367,6 +367,26 @@ public class QueueRulesTests
     }
 
     /// <summary>
+    /// A file this server could not read holds under its own reason rather than falling through to the
+    /// space hold's - both route back into the transfer path, but a page reading the decision must not
+    /// be told the printer is full.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(AllStates))]
+    public void AnUnreadableFileHoldsUnderItsOwnReason(PrinterStatus status)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(status, arrived: false, path: null) with
+            {
+                HoldReason = PrintHoldReason.FileUnreadable,
+            });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.FileUnreadable);
+        QueueWaitDescription.For(action, "benchy.bgcode").Should().BeNull("the hold banner carries the sentence");
+    }
+
+    /// <summary>
     /// A head queued under an authority that may no longer print waits under its own reason, whatever
     /// the printer is doing and wherever its file is - the rules never answer a send the gate refuses.
     /// </summary>

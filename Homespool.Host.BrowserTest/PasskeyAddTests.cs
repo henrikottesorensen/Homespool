@@ -60,6 +60,15 @@ public sealed class PasskeyAddTests(Browsers browsers)
         IPage page = await context.NewPageAsync();
 
         await page.GotoAsync("/Account/Login");
+
+        // Playwright's WebKit on Linux, which CI runs, has no navigator.credentials at all - so
+        // passkeys.js never offers the button there and there is no refusal to explain. The Mac
+        // build has it, which is how this passed where it was written and failed in CI.
+        if (!await page.EvaluateAsync<bool>("() => !!window.PublicKeyCredential && !!navigator.credentials"))
+        {
+            Assert.Skip($"{engine} on this platform has no WebAuthn, so the page offers no passkey to add.");
+        }
+
         await page.FillAsync("#Input_Login", email);
         await page.FillAsync("#Input_Password", EnrolmentFlowHelper.AccountPassword);
         await page.ClickAsync("#login-submit");

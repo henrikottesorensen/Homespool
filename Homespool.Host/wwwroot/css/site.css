@@ -317,6 +317,87 @@ body {
   }
 }
 
+/* The printer page's queue table below the same breakpoint, for the same reason as .file-table
+   above: seven columns, one of them a row of buttons that would not wrap, left the file name two
+   characters a line. Here each entry is a wrapping flex row - the name on a line of its own, then
+   size, date, who queued it and status flowing on as many lines as they need, then the buttons -
+   indented past its position number, which sits in the margin like a list's. A flex row rather than
+   .file-table's grid because there are four of those small values and a phone may fit two of them
+   or all four; flex wraps them, a grid would have to choose. The headings have nothing to stand
+   above, so they are hidden from sight but not from a screen reader, and the one value that means
+   nothing without its heading - a bare account name - carries it as data-label instead. */
+@media (max-width: 767.98px) {
+  .queue-table,
+  .queue-table > tbody {
+    display: block;
+  }
+
+  .queue-table > thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .queue-table > tbody > tr {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .125rem 1rem;
+    padding: .5rem 0 .5rem 2rem;
+    border-bottom: var(--bs-border-width) solid var(--bs-border-color);
+  }
+
+  .queue-table > tbody > tr:first-child {
+    border-top: var(--bs-border-width) solid var(--bs-border-color);
+  }
+
+  .queue-table > tbody > tr > td {
+    padding: 0;
+    border-bottom-width: 0;
+    text-align: start;
+    min-width: 0;
+  }
+
+  .queue-table .queue-position {
+    position: absolute;
+    left: 0;
+    top: .5rem;
+    color: var(--bs-secondary-color);
+  }
+
+  .queue-table .queue-name {
+    flex-basis: 100%;
+  }
+
+  .queue-table .queue-meta {
+    font-size: .875em;
+    color: var(--bs-secondary-color);
+  }
+
+  .queue-table .queue-by::before {
+    content: attr(data-label) " ";
+  }
+
+  .queue-table .queue-actions {
+    flex-basis: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem;
+    margin-top: .375rem;
+  }
+
+  .queue-table .queue-actions > form {
+    display: contents;
+  }
+}
+
 /* The upload area, and what it looks like with a file held over it. Dashed because that is the
    conventional shape of "you may drop here"; without scripting it is simply a border, and the
    picker inside it behaves the same either way. */

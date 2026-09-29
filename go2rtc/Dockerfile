@@ -64,8 +64,12 @@ RUN actual="$(git rev-parse HEAD)" && \
 # core per viewer.
 #
 # 0002: adding a camera to a go2rtc.yaml whose streams entry reads `{}` or `null` wrote a file that
-# no longer parsed, so the camera was refused. That is the seed setup-env.sh writes, and what the
-# config becomes after the last camera is deleted and Homespool next writes its WebRTC settings.
+# no longer parsed, so the camera was refused. That is what an older setup-env.sh seeded, and what
+# the config becomes after the last camera is deleted and Homespool next writes its WebRTC settings.
+#
+# 0003: writing to a go2rtc.yaml that was empty, comment-only or null panicked the request instead,
+# and the write Homespool makes at startup is exactly that - so a deployment that had never added a
+# camera lost its WebRTC settings, and with them live view.
 #
 # Every patch by name, so one added to the directory cannot be skipped by accident; git apply fails
 # the build on a patch that no longer fits.
@@ -73,6 +77,8 @@ COPY patches/0001-Add-missing-Huffman-tables-to-stream.mjpeg-frames.patch /patch
 RUN git apply --verbose /patches/0001-Add-missing-Huffman-tables-to-stream.mjpeg-frames.patch
 COPY patches/0002-Patch-into-an-empty-or-flow-style-parent.patch /patches/
 RUN git apply --verbose /patches/0002-Patch-into-an-empty-or-flow-style-parent.patch
+COPY patches/0003-Merge-a-config-PATCH-into-an-empty-config-file.patch /patches/
+RUN git apply --verbose /patches/0003-Merge-a-config-PATCH-into-an-empty-config-file.patch
 
 # The two modules a scanner found fixes for, at their latest release - and only those two, because
 # they are the Go team's own and keep their API; the rest stay at what the release was tested with.
@@ -89,7 +95,7 @@ RUN go get ${GO2RTC_MODULE_VERSIONS:-$(for module in $GO2RTC_UPDATED_MODULES; do
 # the build rather than a viewer. 0001's matters most: nothing else anywhere notices its absence - a
 # test pattern arrives with its tables whether it is there or not - and without it Safari paints
 # nothing.
-RUN go test ./pkg/mjpeg/ ./pkg/yaml/
+RUN go test ./pkg/mjpeg/ ./pkg/yaml/ ./internal/api/
 
 # Upstream's own flags. The version it reports is written into main.go, so it still says 1.9.14.
 RUN GOOS="$TARGETOS" GOARCH="$TARGETARCH" go build -trimpath -ldflags "-s -w" -o /out/go2rtc .

@@ -253,6 +253,159 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Resuming through the page reaches the printer and the print runs again.
+    /// </summary>
+    [Fact]
+    public async Task ResumingThroughThePageReachesThePrinter()
+    {
+        (Guid uuid, long _, HttpClient client, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        using (client)
+        {
+            fake.Device.StartPrint(jobId: 1, path: "/usb/A~1.BGC");
+            fake.Device.TryPause().Should().BeTrue("the print has to be paused for a resume to mean anything");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, uuid, "Resume", []);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            fake.Device.State.Should().Be(DeviceState.Printing,
+                                          "the command must have executed, not merely been accepted by the page");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// A member who may print cannot resume, any more than pause: the paused print may be somebody
+    /// else's, and when it restarts is <c>ControlPrinter</c>'s business. Nothing reaches the printer.
+    /// </summary>
+    /// <remarks>
+    /// <c>ResumePrint</c> declares no capability of its own and takes the intent default, so this is
+    /// the test that notices if it ever declares a lower one.
+    /// </remarks>
+    [Fact]
+    public async Task AMemberWithoutControlPrinterCannotResume()
+    {
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        (HSUser contributor, HttpClient contributorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "detail-resume-contributor@example.com");
+
+        using (ownerClient)
+        using (contributorClient)
+        {
+            await JoinAsync(contributor.Id, await TeamOfAsync(uuid), CapabilityPresets.Contributor);
+
+            fake.Device.StartPrint(jobId: 1, path: "/usb/A~1.BGC");
+            fake.Device.TryPause().Should().BeTrue();
+
+            using HttpResponseMessage posted = await PostHandlerAsync(contributorClient, uuid, "Resume", []);
+
+            AssertAccessDenied(posted);
+
+            fake.Device.State.Should().Be(DeviceState.Paused, "the refusal must come before the frame");
+            fake.ReceivedCommands.Should().BeEmpty();
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// Stopping through the page stops the printer and records who asked, on the print's own row.
+    /// </summary>
+    /// <remarks>
+    /// <b>The record is the half worth asserting.</b> A stop sent from here and one pressed at the
+    /// panel are the same state change on the wire, so the row is the only place the difference
+    /// survives - and the page's handler is a different door from the API's onto the same service.
+    /// </remarks>
+    [Fact]
+    public async Task StoppingThroughThePageStopsThePrinterAndRecordsWho()
+    {
+        (Guid uuid, long ownerId, HttpClient client, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        using (client)
+        {
+            fake.Device.StartPrint(jobId: 7, path: "/usb/PLATE.GCO");
+            await SeedOpenPrintAsync(uuid, ownerId);
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, uuid, "Stop", []);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            fake.Device.State.Should().Be(DeviceState.Stopped, "the command must have executed");
+            (await StoppedByAsync(uuid)).Should().Be(ownerId);
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// <b>A member who may print stops their own print</b> - withdrawing your own work is what
+    /// <c>Print</c> covers, and it is the one machine control a Contributor holds.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWithPrintStopsTheirOwnPrint()
+    {
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        (HSUser contributor, HttpClient contributorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "detail-stop-own@example.com");
+
+        using (ownerClient)
+        using (contributorClient)
+        {
+            await JoinAsync(contributor.Id, await TeamOfAsync(uuid), CapabilityPresets.Contributor);
+
+            fake.Device.StartPrint(jobId: 7, path: "/usb/PLATE.GCO");
+            await SeedOpenPrintAsync(uuid, contributor.Id);
+
+            using HttpResponseMessage posted = await PostHandlerAsync(contributorClient, uuid, "Stop", []);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+            posted.Headers.Location!.OriginalString.Should().NotContain("/Account/AccessDenied");
+
+            fake.Device.State.Should().Be(DeviceState.Stopped);
+            (await StoppedByAsync(uuid)).Should().Be(contributor.Id);
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// The same member cannot stop somebody else's print, and nothing reaches the printer.
+    /// </summary>
+    /// <remarks>
+    /// <c>StopPrint</c>'s own floor is <c>Print</c>, which a Contributor holds, so the command layer
+    /// would send it. Whose print it is gets decided only by the stop service, which makes this the
+    /// test that fails if the page ever sends the stop around it.
+    /// </remarks>
+    [Fact]
+    public async Task AMemberWithPrintCannotStopSomebodyElsesPrint()
+    {
+        (Guid uuid, long ownerId, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        (HSUser contributor, HttpClient contributorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "detail-stop-theirs@example.com");
+
+        using (ownerClient)
+        using (contributorClient)
+        {
+            await JoinAsync(contributor.Id, await TeamOfAsync(uuid), CapabilityPresets.Contributor);
+
+            fake.Device.StartPrint(jobId: 7, path: "/usb/PLATE.GCO");
+            await SeedOpenPrintAsync(uuid, ownerId);
+
+            using HttpResponseMessage posted = await PostHandlerAsync(contributorClient, uuid, "Stop", []);
+
+            AssertAccessDenied(posted);
+
+            fake.Device.State.Should().Be(DeviceState.Printing, "the refusal must come before the frame");
+            fake.ReceivedCommands.Should().BeEmpty();
+            (await StoppedByAsync(uuid)).Should().BeNull("a refused stop is nobody's stop");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
     /// A Contributor holds <c>Print</c> and not <c>ControlPrinter</c>, so the page offers them only
     /// what the first permits: removing their own queue entry, and none of the machine controls.
     /// </summary>
@@ -548,6 +701,23 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Who the printer's one open print row says stopped it; null is nobody here.</summary>
+    private async Task<long?> StoppedByAsync(Guid uuid)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = await context.Printers
+                                     .Where(printer => printer.Uuid == uuid)
+                                     .Select(printer => printer.Id)
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        return await context.PrintJobs
+                            .Where(job => job.PrinterId == printerId)
+                            .Select(job => job.StoppedByUserId)
+                            .SingleAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>

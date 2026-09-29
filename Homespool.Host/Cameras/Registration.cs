@@ -92,7 +92,7 @@ public static class Registration
         // does not take the lock a stream registration takes, so a stream the reconciler registered
         // during it could be dropped from the file and lost at the restart that follows. The
         // configurer does not wait for that restart to finish, so the reconciler can still find the
-        // sidecar restarting, and then registers nothing until a camera is next saved.
+        // sidecar restarting, and asks again until it answers.
         // IHostedService.StartAsync is awaited in registration order, which is why the configurer is
         // one; two BackgroundServices would start together on .NET 10 and race.
         services.AddHostedService<WebRtcConfigurer>();

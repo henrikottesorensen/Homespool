@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
@@ -112,6 +113,98 @@ public sealed class CameraStreamReconcilerTests : IDisposable
                                             "DNS not answering at boot must not cost a camera its registration");
     }
 
+    /// <summary>
+    /// The configurer can restart the sidecar just before the reconciler runs, and a restarting
+    /// sidecar refuses connections for a moment. That is a listing to ask for again, not a reason to
+    /// leave every camera to its next save.
+    /// </summary>
+    [Fact]
+    public async Task AListingRefusedWhileTheSidecarRestartsIsAskedForAgain()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using RecordingHandler handler = new() { ListingsToRefuse = 2 };
+        await RunReconcilerAsync(context, handler);
+
+        handler.Listings.Should().Be(3);
+        handler.Registered.Should().Contain(camera, "the sidecar answered once it was back");
+    }
+
+    /// <summary>
+    /// A sidecar that never answers is given up on, so the reconciler does not sit in a loop for the
+    /// life of the process.
+    /// </summary>
+    [Fact]
+    public async Task ASidecarThatNeverAnswersIsGivenUpOn()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        _ = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using RecordingHandler handler = new() { ListingsToRefuse = int.MaxValue };
+        await RunReconcilerAsync(context, handler);
+
+        handler.Listings.Should().BeInRange(2, 31, "asked again once a second for thirty seconds, not in a busy loop");
+        handler.Attempted.Should().BeEmpty("with no listing, nothing is known to be missing");
+    }
+
+    /// <summary>
+    /// For a moment after it is back, go2rtc lists its streams but refuses every source, in the words
+    /// it refuses a bad one with: its stream list comes up before the modules that register the source
+    /// schemes. The retry is what lets such a camera through.
+    /// </summary>
+    [Fact]
+    public async Task ASourceRefusedJustAfterARestartIsTriedAgain()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using RecordingHandler handler = new() { RegistrationsToRefuse = 1 };
+        await RunReconcilerAsync(context, handler);
+
+        handler.Attempted.Should().Equal(camera, camera);
+        handler.Registered.Should().Contain(camera);
+        (handler.AttemptedAt[1] - handler.AttemptedAt[0]).Should().BeGreaterThanOrEqualTo(
+            TimeSpan.FromSeconds(5), "an immediate retry would land in the same moment the sidecar refused the first");
+    }
+
+    /// <summary>
+    /// A registration the sidecar did not answer at all is tried again too, for the same restart.
+    /// </summary>
+    [Fact]
+    public async Task ARegistrationThatWentUnansweredIsTriedAgain()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using RecordingHandler handler = new() { RegistrationsToDrop = 1 };
+        await RunReconcilerAsync(context, handler);
+
+        handler.Attempted.Should().Equal(camera, camera);
+        handler.Registered.Should().Contain(camera);
+    }
+
+    /// <summary>
+    /// A source the sidecar really does refuse is retried once and then left alone.
+    /// </summary>
+    [Fact]
+    public async Task ASourceThatIsAlwaysRefusedIsTriedTwiceAndNoMore()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using RecordingHandler handler = new() { RegistrationsToRefuse = int.MaxValue };
+        await RunReconcilerAsync(context, handler);
+
+        handler.Attempted.Should().Equal(camera, camera);
+        handler.Registered.Should().BeEmpty();
+    }
+
     private static async Task RunReconcilerAsync(HomespoolDbContext context,
                                                  RecordingHandler handler,
                                                  CameraSourcePolicy? policy = null)
@@ -128,6 +221,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
                                         NullLogger<Go2RtcClient>.Instance);
 
         IServiceScopeFactory scopes = ScopeFactoryFor(context, streamServer);
+        FakeTimeProvider time = new();
+        handler.Clock = time;
 
         using CameraStreamReconciler reconciler = new(
             scopes,
@@ -139,10 +234,22 @@ public sealed class CameraStreamReconcilerTests : IDisposable
                                    new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance),
                                    TestOptions.Monitor(new CameraOptions())),
             policy ?? CameraSourcePolicyTests.Build(),
+            time,
             NullLogger<CameraStreamReconciler>.Instance);
 
         await reconciler.StartAsync(TestContext.Current.CancellationToken);
-        await reconciler.ExecuteTask!;
+
+        // The clock is moved on until the sweep finishes, a quarter-second at a time so no wait is
+        // stepped over by much. The bound is only there so a reconciler that never stops fails
+        // rather than hangs: ten minutes is far past every wait it has.
+        for (int step = 0; step < 2400 && !reconciler.ExecuteTask!.IsCompleted; step++)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(250));
+            await Task.Delay(1, TestContext.Current.CancellationToken);
+        }
+
+        reconciler.ExecuteTask!.IsCompleted.Should().BeTrue("the reconciler runs once and stops");
+        await reconciler.ExecuteTask;
         await reconciler.StopAsync(TestContext.Current.CancellationToken);
     }
 
@@ -213,16 +320,64 @@ public sealed class CameraStreamReconcilerTests : IDisposable
     /// </remarks>
     private sealed class RecordingHandler : HttpMessageHandler
     {
+        /// <summary>Listings refused before one is answered, the way a restarting sidecar's closed port refuses them.</summary>
+        public int ListingsToRefuse { get; init; }
+
+        /// <summary>
+        /// Registrations answered with go2rtc's refusal of a source before one is accepted, the way a
+        /// sidecar that has just come back refuses every source.
+        /// </summary>
+        public int RegistrationsToRefuse { get; init; }
+
+        /// <summary>Registrations whose connection is refused before one is answered at all.</summary>
+        public int RegistrationsToDrop { get; init; }
+
+        /// <summary>The clock <see cref="AttemptedAt"/> is read from.</summary>
+        public TimeProvider Clock { get; set; } = TimeProvider.System;
+
+        public int Listings { get; private set; }
+
+        /// <summary>When each of <see cref="Attempted"/> was made.</summary>
+        public List<DateTimeOffset> AttemptedAt { get; } = [];
+
+        /// <summary>Every stream name PUT, answered or not.</summary>
+        public List<Guid> Attempted { get; } = [];
+
+        /// <summary>The stream names whose PUT was accepted.</summary>
         public List<Guid> Registered { get; } = [];
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
                                                                CancellationToken cancellationToken)
         {
+            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == "/api/streams")
+            {
+                if (Listings++ < ListingsToRefuse)
+                {
+                    throw new HttpRequestException("Connection refused");
+                }
+            }
+
             if (request.Method == HttpMethod.Put &&
                 request.RequestUri!.AbsolutePath == "/api/streams" &&
                 System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query)["name"] is { } name &&
                 Guid.TryParse(name, out Guid uuid))
             {
+                Attempted.Add(uuid);
+                AttemptedAt.Add(Clock.GetUtcNow());
+
+                if (Attempted.Count <= RegistrationsToDrop)
+                {
+                    throw new HttpRequestException("Connection refused");
+                }
+
+                if (Attempted.Count <= RegistrationsToDrop + (long)RegistrationsToRefuse)
+                {
+                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+                    {
+                        Content = new StringContent("streams: source not supported\n"),
+                    });
+                }
+
                 Registered.Add(uuid);
             }
 

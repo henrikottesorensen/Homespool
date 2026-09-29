@@ -153,12 +153,14 @@ public class LoginModel : PageModel
     /// that is a rule about the account rather than about this sign-in.
     /// </para>
     /// <para>
-    /// <b>The checks the password path runs still run</b>, in the scheme, the moment the assertion
-    /// has named the account - nobody knows who is signing in before that - and before anything is
-    /// stored or minted: whether the account is locked out, and whether it may sign in at all, which
-    /// is where the confirmed-account rule lives. This page routes on the refusal as it does for a
-    /// password. Any other refused assertion gets the wrong-password message, so the form is no more
-    /// of an oracle for passkeys than it is for passwords.
+    /// <b>The account's standing is checked</b>, in the scheme, the moment the assertion has named
+    /// the account - nobody knows who is signing in before that - and before anything is stored or
+    /// minted: whether it may sign in at all, which is where deactivation and the confirmed-account
+    /// rule live. The password lockout is not consulted, so a locked-out account's passkey signs in
+    /// and there is no lockout to route to: an assertion cannot be guessed, and honouring the lockout
+    /// would let anyone who knows the username keep the passkey out with one wrong password every few
+    /// minutes. Every refused assertion gets the wrong-password message, so the form is no more of an
+    /// oracle for passkeys than it is for passwords.
     /// </para>
     /// </remarks>
     public async Task<IActionResult> OnPostPasskeyAsync(string? credential = null, bool rememberMe = false, string? returnUrl = null)
@@ -186,13 +188,6 @@ public class LoginModel : PageModel
 
         if (!assertion.Succeeded)
         {
-            if (assertion.Refusal() == SignInRefusal.LockedOut)
-            {
-                _logger.LogWarning("User account locked out.");
-
-                return RedirectToPage("./Lockout");
-            }
-
             ModelState.AddModelError(string.Empty, _localiser["Account_InvalidLogin"]);
 
             return Page();

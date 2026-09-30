@@ -124,6 +124,60 @@ if test_case "an explicit empty suffix means 443, and is not treated as unset"; 
     assert_eq '$host;' "$(arm "$(render HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=)" 8443)"
 fi
 
+# The derivation alone, for the cases where it has to refuse: stderr and the exit status, and no
+# render, since a refused value must not reach one. The status is printed last so a case can match
+# on both from one string.
+refusal() {
+    env "$@" "$posix_sh" -c '. "$0"; echo "rendered: $REDIRECT_PORT_SUFFIX"' "$derive" 2>&1
+    echo "status: $?"
+}
+
+assert_refused() {
+    local variable="$1" output
+    shift
+    output="$(refusal "$@")"
+    assert_contains "$output" "refusing $variable=" "the value was not refused by name"
+    assert_contains "$output" "status: 1" "the proxy would have started on it"
+}
+
+if test_case "a suffix without its colon is refused"; then
+    # Rendered, it reads as a variable named host8443 and nginx stops on a message naming a
+    # generated file rather than .env.
+    assert_refused REDIRECT_PORT_SUFFIX HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=8443
+fi
+
+if test_case "a suffix that parses but is not a port is refused"; then
+    # The quiet ones: nginx starts on every one of these and every emailed link is broken.
+    assert_refused REDIRECT_PORT_SUFFIX HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=:99999
+    assert_refused REDIRECT_PORT_SUFFIX HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=/x
+    assert_refused REDIRECT_PORT_SUFFIX HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=:8443/x
+    assert_refused REDIRECT_PORT_SUFFIX HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=:0
+    assert_refused REDIRECT_PORT_SUFFIX HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=:08443
+fi
+
+if test_case "a suffix carrying nginx syntax is refused before the render"; then
+    assert_refused REDIRECT_PORT_SUFFIX HTTPS_PORT=8443 'REDIRECT_PORT_SUFFIX=:8443; }'
+fi
+
+if test_case "an HTTPS_PORT compose lets through is refused where it becomes the suffix"; then
+    # compose.yaml's port mapping takes a range and 0; neither is a port a browser can be sent to.
+    assert_refused HTTPS_PORT HTTPS_PORT=8443-8444
+    assert_refused HTTPS_PORT HTTPS_PORT=0
+    assert_refused HTTPS_PORT HTTPS_PORT=123456
+fi
+
+if test_case "HTTPS_PORT is not consulted when a suffix is given"; then
+    # Only the derivation reads it; with an explicit suffix it reaches no template, and refusing it
+    # there would be a fourth opinion on a value compose.yaml already owns.
+    assert_eq $'rendered: :9443\nstatus: 0' \
+        "$(refusal HTTPS_PORT=8443-8444 REDIRECT_PORT_SUFFIX=:9443)"
+fi
+
+if test_case "the limits of the port range are accepted"; then
+    assert_eq '$host:1;' "$(arm "$(render HTTPS_PORT=1)" 8443)"
+    assert_eq '$host:65535;' "$(arm "$(render HTTPS_PORT=8443 REDIRECT_PORT_SUFFIX=:65535)" 8443)"
+fi
+
 if test_case "the printer-side arm keeps the client's Host untouched"; then
     # Printers are told where to reach this server by the configured printer host and port, so
     # nothing on those listeners builds a URL from the request - and passing $http_host on is the

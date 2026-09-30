@@ -8,10 +8,60 @@
 # value passes through untouched - INCLUDING explicit empty, for the deployment where a router
 # forwards 443 inward to a different published port and the browser's port really is 443 - so
 # every .env that names a suffix behaves exactly as it did before derivation existed.
+#
+# CHECKED BEFORE IT IS EXPORTED, because the suffix is spliced raw into two templates and nothing
+# downstream looks at it. A value that is not a port either stops nginx with an error naming a
+# rendered file rather than .env - `unknown "host8443" variable` for a missing colon - or, worse,
+# parses: ":99999" or "/x" start a proxy whose every redirect and emailed link points somewhere no
+# browser can reach. HTTPS_PORT is checked only where it becomes the suffix; compose.yaml's port
+# mapping refuses most bad values before this runs, but not a range like "8443-8444", nor 0.
+#
+# REFUSED, NOT REPAIRED: exit ends the entrypoint, which runs under set -e, so the container stops
+# with this line as the cause. There is no safe fallback - deriving a suffix in place of an explicit
+# one would send links to a port the operator did not choose, silently.
+
+# A port from 1 to 65535, written the way a URL would carry it: digits only, no leading zero. The
+# length test comes first so the arithmetic never sees a number too long for the shell.
+hs_is_port() {
+    case "$1" in
+        '' | *[!0-9]* | 0*) return 1 ;;
+    esac
+
+    [ "${#1}" -le 5 ] && [ "$1" -le 65535 ]
+}
+
+hs_refuse_port() {
+    echo "15-redirect-port-suffix.envsh: refusing $1=\"$2\" - $3. Check .env." >&2
+    exit 1
+}
+
 if [ "${REDIRECT_PORT_SUFFIX-auto}" = "auto" ]; then
+    hs_is_port "${HTTPS_PORT:-443}" \
+        || hs_refuse_port HTTPS_PORT "${HTTPS_PORT:-443}" "it must be a port from 1 to 65535"
+
     if [ "${HTTPS_PORT:-443}" = "443" ]; then
         export REDIRECT_PORT_SUFFIX=""
     else
         export REDIRECT_PORT_SUFFIX=":${HTTPS_PORT}"
     fi
+else
+    # compose.yaml fills this from HTTPS_PORT_SUFFIX, the setting's earlier name, when only that is
+    # in .env - so the message names both rather than send somebody looking for a line that is not
+    # there.
+    hs_refuse_suffix() {
+        hs_refuse_port REDIRECT_PORT_SUFFIX "$REDIRECT_PORT_SUFFIX" \
+            "it must be empty, or a colon and a port from 1 to 65535 such as \":8443\" (the same \
+applies to HTTPS_PORT_SUFFIX, its earlier name)"
+    }
+
+    case "$REDIRECT_PORT_SUFFIX" in
+        '') ;;
+        :*) hs_is_port "${REDIRECT_PORT_SUFFIX#:}" || hs_refuse_suffix ;;
+        *) hs_refuse_suffix ;;
+    esac
+
+    unset -f hs_refuse_suffix
 fi
+
+# Sourced, so the helpers would otherwise stay defined in the shell every later hook runs in.
+unset -f hs_is_port hs_refuse_port

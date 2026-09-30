@@ -120,6 +120,18 @@ jobs:
       - name: Test the user TLS server blocks
         run: ./tests/user-tls-servers.test.sh
 
+      # The port named in the redirect and in every emailed link, and the refusal of a value that is
+      # not one - which otherwise either stops nginx on an error naming a generated file, or starts
+      # it with every link broken. The test renders with envsubst and SKIPS without it, passing this
+      # step having checked nothing, and gettext-base is not in the runner's documented packages -
+      # so it is installed when absent rather than assumed.
+      - name: Test the public Host and port suffix
+        run: |
+          if ! command -v envsubst >/dev/null; then
+            sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends gettext-base
+          fi
+          ./tests/public-host.test.sh
+
       # Every server block names the access log format that leaves query strings out, where emailed
       # links carry their codes. A block that forgets inherits the base image's full-URL log without
       # a word, so this is the only thing that notices.

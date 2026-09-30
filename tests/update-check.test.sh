@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Tests for update-check/homespool-update-check.sh - what it calls newer, what it says a pull would
-# bring, and that a report is never written from part of the evidence.
+# bring, that a report is never written from part of the evidence, and that the watch starts a check
+# when, and only when, the running images changed.
 #
 #   tests/update-check.test.sh               # run them all
 #   tests/update-check.test.sh runtime       # run only tests whose name contains "runtime"
@@ -11,7 +12,8 @@
 # The script is RUN, under dash where there is one, exactly as the systemd unit runs it. docker and
 # curl are stubs on PATH answering from fixture files a case writes: the running containers and their
 # images, what the registry publishes, the published revision's history and Microsoft's release
-# metadata. jq is the real one, because the report is jq. Nothing reaches a daemon or the network.
+# metadata. systemctl is a stub that only records. jq is the real one, because the report is jq.
+# Nothing reaches a daemon or the network.
 set -uo pipefail
 
 tests_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -143,7 +145,7 @@ case "$1" in
         case "$3" in
             *Config.Image*) eval "printf '%s\n' \"\${STUB_REF_$service}\"" ;;
             *Mounts*) printf '%s\n' "${STUB_REPORT_VOLUME:-}" ;;
-            *) echo "image-$service" ;;
+            *) eval "printf '%s\n' \"\${STUB_IMAGE_$service:-image-$service}\"" ;;
         esac
         ;;
     buildx)
@@ -156,8 +158,8 @@ case "$1" in
         esac
         ;;
     image)
-        # image inspect --format <format> image-<service>
-        cat "$STUB_FIXTURES/running-${5#image-}.json"
+        # image inspect --format <format> <an image id naming its service>
+        cat "$STUB_FIXTURES/running-$(service_of "$5").json"
         ;;
 esac
 exit 0
@@ -182,7 +184,11 @@ printf 'setpriv %s\n' "$*" >> "$STUB_LOG"
 while [ $# -gt 0 ]; do case "$1" in --*) shift ;; *) break ;; esac; done
 exec "$@"
 STUB
-    chmod 755 "$scratch/bin/docker" "$scratch/bin/curl" "$scratch/bin/setpriv"
+    cat > "$scratch/bin/systemctl" <<'STUB'
+#!/bin/sh
+printf 'systemctl %s\n' "$*" >> "$STUB_LOG"
+STUB
+    chmod 755 "$scratch/bin/docker" "$scratch/bin/curl" "$scratch/bin/setpriv" "$scratch/bin/systemctl"
 
     # The ordinary starting point: all three containers following latest on a registry, all current.
     export STUB_REF_homespool="registry.example.net/homespool"
@@ -205,8 +211,9 @@ STUB
     export STUB_FIXTURES="$scratch/fixtures"
     export STATE_DIRECTORY="$scratch/state"
     export RUNTIME_DIRECTORY="$scratch/run"
+    export HOMESPOOL_WATCH_DIRECTORY="$scratch/watch"
     unset STUB_PROJECT STUB_REGISTRY_FAILS STUB_CURL_FAILS STUB_DIGEST_homespool STUB_DIGEST_proxy HOMESPOOL_PROJECT \
-        STUB_REPORT_VOLUME
+        STUB_REPORT_VOLUME STUB_IMAGE_homespool STUB_IMAGE_proxy STUB_IMAGE_go2rtc
     : > "$STUB_LOG"
     return 0
 }
@@ -517,6 +524,76 @@ if test_case "publish refuses an empty report, one that is not JSON, and JSON th
     assert_status "$status" 1 "services that are not a list are refused"
     assert_contains "$(cat "$scratch/stderr")" "is not a report" "as not a report"
     assert_volume_untouched "the previous report stands through all of them"
+fi
+
+if test_case "collect records which image each container runs, where only root can write"; then
+    export STUB_REF_go2rtc=""
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(cat "$scratch/watch/images")" "homespool image-homespool
+proxy image-proxy
+go2rtc -" "a line per service, - for one not running"
+    assert_equals "$(ls -ld "$scratch/watch" | cut -c1-10)" "drwx------" "in a directory only its owner can read"
+    assert_equals "$(ls -A "$scratch/watch" | tr '\n' ' ')" "images " "replaced whole, nothing left beside it"
+    assert_equals "$(ls -A "$scratch/state" | tr '\n' ' ')" "update-check.json " \
+        "and not in the state directory, which the unprivileged step owns"
+fi
+
+if test_case "watch starts no check while the images are the ones last checked"; then
+    check
+    : > "$STUB_LOG"
+    step watch
+    assert_status "$status" 0 "watch succeeds"
+    assert_not_contains "$log" "systemctl" "no check is started"
+    assert_equals "$output" "" "and nothing is logged"
+fi
+
+if test_case "watch starts a check when a container runs another image, and asks nothing outside"; then
+    check
+    : > "$STUB_LOG"
+    export STUB_IMAGE_proxy="sha256:pulled-proxy"
+    step watch
+    assert_status "$status" 0 "watch succeeds"
+    assert_contains "$log" "systemctl start --no-block homespool-update-check.service" "the check is started"
+    assert_contains "$output" "runs again" "and the journal says why"
+    assert_equals "$(grep -c -E '^(curl|buildx) ' "$STUB_LOG")" "0" "nothing reaches the network"
+fi
+
+if test_case "watch starts a check when a container stopped or started"; then
+    check
+    : > "$STUB_LOG"
+    export STUB_REF_proxy=""
+    step watch
+    assert_contains "$log" "systemctl start" "a stopped container is a change"
+    check
+    export STUB_REF_proxy="registry.example.net/homespool-proxy"
+    : > "$STUB_LOG"
+    step watch
+    assert_contains "$log" "systemctl start" "and so is one started again"
+fi
+
+if test_case "watch starts a check when no check ever ran"; then
+    step watch
+    assert_status "$status" 0 "watch succeeds"
+    assert_contains "$log" "systemctl start --no-block homespool-update-check.service" "the first check is started"
+fi
+
+if test_case "a check that failed after collect is not started again by watch"; then
+    export STUB_REGISTRY_FAILS=1
+    check
+    assert_status "$status" 1 "the check fails"
+    : > "$STUB_LOG"
+    step watch
+    assert_not_contains "$log" "systemctl" "the daily run retries it, not every watch"
+fi
+
+if test_case "watch follows the compose project, as collect does"; then
+    export HOMESPOOL_PROJECT="other"
+    check
+    : > "$STUB_LOG"
+    step watch
+    assert_not_contains "$log" "systemctl" "the same project's containers, unchanged"
+    assert_contains "$log" "project=other" "asked of that project"
 fi
 
 if test_case "without a subcommand it says how to run it and does nothing"; then

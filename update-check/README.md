@@ -2,8 +2,9 @@
 
 **Optional, and it only reports.** Once a day this looks at the Homespool containers running on the
 machine, asks their registry whether it now publishes a newer image under the same tag, and says
-what pulling it would bring. It never pulls, restarts or changes anything; updating stays a thing you
-do.
+what pulling it would bring — and again within five minutes of the containers changing image, so
+after a pull the report is about what is running now. It never pulls, restarts or changes anything;
+updating stays a thing you do.
 
 ## Whether you need it
 
@@ -72,6 +73,12 @@ outside:
 `homespool-update` is created by `install.sh` from `homespool-update-check.sysusers`, and belongs to
 no group but its own — above all not `docker`.
 
+A second timer, `homespool-update-check-watch.timer`, runs `watch` as root every five minutes: it asks
+Docker which image each container runs, by id, and starts the service when that differs from the list
+`collect` last wrote to `/var/lib/homespool-update-check`. It asks nothing outside the machine and
+logs only when it starts a check. A check that fails is not retried by the watch — it already saw
+these images — but by the next daily run.
+
 If the registry, GitHub or Microsoft's release metadata cannot be reached, the run fails and the
 previous report stays where it was. A report built from part of the evidence would say "nothing new"
 about the part it could not see.
@@ -97,8 +104,9 @@ sudo systemctl start homespool-update-check.service
 ## Removing it
 
 ```bash
-sudo systemctl disable --now homespool-update-check.timer
-sudo rm /etc/systemd/system/homespool-update-check.{service,timer} /usr/local/sbin/homespool-update-check
+sudo systemctl disable --now homespool-update-check.timer homespool-update-check-watch.timer
+sudo rm /etc/systemd/system/homespool-update-check{,-watch}.{service,timer} /usr/local/sbin/homespool-update-check
+sudo rm -r /var/lib/homespool-update-check
 sudo rm /usr/lib/sysusers.d/homespool-update-check.conf && sudo userdel homespool-update
 sudo systemctl daemon-reload
 ```

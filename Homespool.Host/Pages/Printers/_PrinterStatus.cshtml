@@ -240,3 +240,8 @@
         }
     </div>
 </div>
+
+@* The preview beside the camera, carried on this card's poll so that a print starting or ending while
+   the page is open changes the picture too. A template renders nothing and loads nothing where it
+   stands; camera-deck.js moves its content into place when it names a different print. *@
+<template data-print-thumbnail-template><partial name="_PrintThumbnail" model="Model" /></template>

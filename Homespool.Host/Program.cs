@@ -572,6 +572,7 @@ public static class Program
             builder.Services.AddScoped<Printing.PrintStopService>();
             builder.Services.AddScoped<Printing.PrintObjectService>();
             builder.Services.AddSingleton<Printing.PrinterPlateReader>();
+            builder.Services.AddSingleton<Printing.PrintThumbnails>();
             builder.Services.AddScoped<Queue.QueueSnapshotReader>();
 
             // The producer loop and the poke that saves it waiting out a tick. Singletons: the signal

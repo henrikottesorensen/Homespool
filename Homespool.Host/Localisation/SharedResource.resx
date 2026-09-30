@@ -1922,6 +1922,22 @@
     <value>Camera {0}</value>
     <comment>The last-resort name for a camera with no name and no device description.</comment>
   </data>
+  <data name="Cameras_Previous" xml:space="preserve">
+    <value>Previous camera</value>
+    <comment>The switcher above a camera on the printer page, when it has more cameras than places to show them.</comment>
+  </data>
+  <data name="Cameras_Next" xml:space="preserve">
+    <value>Next camera</value>
+    <comment>The switcher above a camera on the printer page.</comment>
+  </data>
+  <data name="Cameras_Position" xml:space="preserve">
+    <value>{0} of {1}</value>
+    <comment>Which camera this is, counted over all of the printer's cameras: "2 of 3".</comment>
+  </data>
+  <data name="Printer_PrintPreview" xml:space="preserve">
+    <value>Slicer preview</value>
+    <comment>Alt text for the picture of what is printing, beside the camera. Its caption is the file name.</comment>
+  </data>
   <data name="Health_ServiceProblem" xml:space="preserve">
     <value>Service problem:</value>
   </data>

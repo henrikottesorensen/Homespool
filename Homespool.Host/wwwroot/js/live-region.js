@@ -111,6 +111,10 @@
 
                 lastHtml = next;
                 region.innerHTML = html;
+
+                // For anything that takes its cue from what a region now says - the picture beside
+                // the camera follows the status card's print. Only on a real change, as above.
+                region.dispatchEvent(new CustomEvent("live-region-updated", { bubbles: true }));
             }).catch(function () {
                 // Marked rather than emptied. What is on screen was true when it was fetched, and the
                 // age the card carries already says how long ago that was - the attribute lets the

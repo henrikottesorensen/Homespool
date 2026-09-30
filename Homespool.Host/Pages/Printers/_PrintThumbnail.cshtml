@@ -1,0 +1,22 @@
+@model DetailModel
+
+@* The slicer's preview of what is printing, beside the camera. Rendered twice: in place when the page
+   loads, and inside the status card's template so each poll carries the current one.
+
+   Nothing at all when there is no preview - a print started at the printer's own panel, a file
+   without one, or one overwritten since the print began. The place beside the camera then goes to
+   a second camera, or stays empty - and on a printer with no camera the row is hidden. *@
+@if (Model.HasThumbnail && Model.ActivePrint is { } job)
+{
+    <figure class="mb-0" data-print-thumbnail="@job.PrintUuid">
+        @* The same 16:9 box as the camera beside it, so the two sit level. The preview is 4:3 and is
+           letterboxed rather than cropped: it is the slicer's framing of the whole plate. *@
+        <div class="ratio ratio-16x9 border rounded bg-body-tertiary overflow-hidden">
+            <img class="w-100 h-100 object-fit-contain"
+                 src="@Url.Page("Detail", "Thumbnail", new { uuid = Model.Statistics.Printer.Uuid, printUuid = job.PrintUuid })"
+                 alt="@Localiser["Printer_PrintPreview"]" />
+        </div>
+        @* One line, cut short: the status card under it carries the whole name. *@
+        <figcaption class="small text-body-secondary mt-1 text-truncate" title="@job.FileName">@job.FileName</figcaption>
+    </figure>
+}

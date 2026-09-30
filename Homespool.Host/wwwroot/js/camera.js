@@ -72,6 +72,11 @@
         // underneath a live view would pay for a picture nobody is looking at.
         let yielded = false;
 
+        // Set while this camera is not on show - the printer page shows two places for however many
+        // cameras there are, and camera-deck.js parks the rest. Nobody is looking, so nothing is
+        // asked for; the attribute is how a camera hidden from the start knows before its first poll.
+        let parked = view.hasAttribute("data-camera-parked");
+
         // The pending poll, so that resuming can cancel it first. Without this, resuming while one
         // is still queued leaves two chains running against the same camera for the life of the
         // page - each scheduling its own successor, so it never settles back to one. Live view makes
@@ -121,7 +126,7 @@
         }
 
         function poll() {
-            if (yielded) {
+            if (yielded || parked) {
                 return;
             }
 
@@ -232,6 +237,25 @@
         view.addEventListener("camera-live-stopped", function () {
             if (yielded) {
                 yielded = false;
+                resume();
+            }
+        });
+
+        view.addEventListener("camera-parked", function () {
+            parked = true;
+
+            if (timer) {
+                window.clearTimeout(timer);
+                timer = null;
+            }
+        });
+
+        // Back on show. Its last frame may be minutes old by now, so the age is put right at once,
+        // as for a tab coming back to the front, and a fresh picture asked for.
+        view.addEventListener("camera-unparked", function () {
+            if (parked) {
+                parked = false;
+                showAge();
                 resume();
             }
         });

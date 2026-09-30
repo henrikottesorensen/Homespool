@@ -87,6 +87,37 @@ public sealed class PrinterRateLimitTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// One printer asking well past its own window leaves the ceiling to everybody else. Sized so
+    /// that a refusal costing the ceiling anything - it once cost two permits, one per attempt the
+    /// middleware makes - would have filled it: the window, then half of what the ceiling has left,
+    /// and one more.
+    /// </summary>
+    [Fact]
+    public async Task APrinterOverItsOwnWindowLeavesTheCeilingToOthers()
+    {
+        // Arrange
+        using HttpClient printers = PrinterListener.CreateClient(_factory);
+        string loud = PrinterIdentity.CreateRandom().HeaderFingerprint;
+        int requests = PrinterRateLimits.SocketPerPrinterLimit +
+                       ((PrinterRateLimits.SocketCeiling - PrinterRateLimits.SocketPerPrinterLimit) / 2) + 1;
+        List<HttpStatusCode> answers = [];
+
+        // Act
+        for (int i = 0; i < requests; i += 1)
+        {
+            answers.Add(await UpgradeAsync(printers, loud));
+        }
+
+        HttpStatusCode neighbour = await UpgradeAsync(printers, PrinterIdentity.CreateRandom().HeaderFingerprint);
+
+        // Assert
+        answers[PrinterRateLimits.SocketPerPrinterLimit..]
+            .Should().AllSatisfy(status => status.Should().Be(HttpStatusCode.TooManyRequests, "its own window is spent"));
+
+        neighbour.Should().NotBe(HttpStatusCode.TooManyRequests, "a refusal by the caller's own window takes nothing from the ceiling");
+    }
+
+    /// <summary>
     /// A caller minting a fresh fingerprint per request never meets its own window - and meets the
     /// ceiling instead, which is what keeps the aggregate finite.
     /// </summary>
@@ -161,6 +192,16 @@ public sealed class PrinterRateLimitTests : IAsyncLifetime
             .Should().Be(HttpStatusCode.TooManyRequests, "the permit after the last is refused");
 
         polled.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests, "polling has a window of its own");
+    }
+
+    private static async Task<HttpStatusCode> UpgradeAsync(HttpClient printers, string fingerprint)
+    {
+        using HttpRequestMessage upgrade = new(HttpMethod.Get, "/p/ws");
+        upgrade.Headers.TryAddWithoutValidation(Headers.Fingerprint, fingerprint);
+
+        using HttpResponseMessage response = await printers.SendAsync(upgrade, TestContext.Current.CancellationToken);
+
+        return response.StatusCode;
     }
 
     private static async Task<HttpStatusCode> PostTelemetryAsync(HttpClient printers, string fingerprint)

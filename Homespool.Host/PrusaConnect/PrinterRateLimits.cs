@@ -29,31 +29,28 @@ namespace Homespool.Host.PrusaConnect;
 /// precedent - so "it is only on a LAN" is not a security property this project can rely on.
 /// </para>
 /// <para>
-/// <b>Two limiters, and neither works without the other.</b> A window per printer stops one caller
-/// spending everybody's allowance - which a single global window cannot, so one noisy or hostile
-/// client could keep a whole fleet out. But the printer names itself with the <c>Fingerprint</c>
-/// header, which is unauthenticated at this point in the pipeline and can be minted fresh per
-/// request, so partitioning alone bounds each source and bounds the total at nothing. The ceiling is
-/// what keeps the aggregate finite; the partition is what keeps one caller from consuming it.
+/// <b>A window per caller and a ceiling per route, and neither works without the other.</b> A window
+/// per printer stops one caller spending everybody's allowance - which a single global window cannot,
+/// so one noisy or hostile client could keep a whole fleet out. But the printer names itself with the
+/// <c>Fingerprint</c> header, which is unauthenticated at this point in the pipeline and can be minted
+/// fresh per request, so windows alone bound each source and bound the total at nothing. The ceiling
+/// is what keeps the aggregate finite; the window is what keeps one caller from consuming it.
 /// </para>
 /// <para>
-/// <b>The ceiling is the <see cref="RateLimiterOptions.GlobalLimiter"/> so that it is acquired
-/// first.</b> Measured, not assumed: with a ceiling of one permit and three requests carrying three
-/// fingerprints, one request was admitted and the per-printer partition factory ran exactly once. A
-/// request refused by the ceiling therefore mints no partition, which is what stops a caller
-/// rotating fingerprints from turning the partition table into its own memory-growth vector - the
-/// number of partitions a window can create is the ceiling. The same measurement showed the
-/// partition callback running a second time for a refused request, so it must stay cheap and free of
-/// side effects.
+/// <b>Both are counted by <see cref="PrinterRouteLimiter"/>, not by two framework limiters</b>, because
+/// the framework's pair got the second half wrong: a request the window refused had already spent a
+/// ceiling permit, and spent another on the middleware's retry, so one caller over its own window
+/// filled the ceiling for everybody. That class's remarks carry the reproduction. It sits in the
+/// global slot, which is the only one that takes a whole limiter of our own; the endpoint policies
+/// below are names with no limiter behind them, there so that <c>[EnableRateLimiting]</c> resolves.
 /// </para>
 /// <para>
-/// <b>What this does not fix.</b> The ceiling is acquired before any partition, so a caller rotating
-/// fingerprints who fills it refuses every printer on that route, enrolled or not - a printer's own
-/// window is never reached. What the partition stops is one identity filling the ceiling alone. Nor
-/// is a printer's window its own against anyone who knows its fingerprint, which is an identifier
-/// rather than a secret: they spend that window as the printer. Telling an enrolled printer from an
-/// invented one needs identity this middleware does not have - it runs before authentication,
-/// deliberately, so a rejected request costs no database work.
+/// <b>What this does not fix.</b> A caller rotating fingerprints meets a fresh window each time and so
+/// spends the ceiling, refusing every printer on that route, enrolled or not. Nor is a printer's
+/// window its own against anyone who knows its fingerprint, which is an identifier rather than a
+/// secret: they spend that window as the printer. Telling an enrolled printer from an invented one
+/// needs identity this does not have - it runs before authentication, deliberately, so a rejected
+/// request costs no database work.
 /// </para>
 /// <para>
 /// <b>The two registration verbs are partitioned by address instead, and only where an address is a
@@ -82,9 +79,9 @@ namespace Homespool.Host.PrusaConnect;
 /// would instead let one attacker lock out every legitimate user at once.
 /// </para>
 /// <para>
-/// <b>This class owns the one global limiter.</b> <c>PasskeyChallengeRateLimit</c> configures the
-/// same options object and sets only a policy, so the ceiling here reaches no page: an endpoint
-/// carrying any other policy, or none, is handed a partition with no limiter.
+/// <b>This class owns the one global limiter.</b> <c>PasskeyChallengeRateLimit</c> and
+/// <c>SignInRateLimit</c> configure the same options object and set only policies, so nothing here
+/// reaches a page: an endpoint carrying any other policy, or none, is admitted without counting.
 /// </para>
 /// </remarks>
 public static class PrinterRateLimits
@@ -211,19 +208,15 @@ public static class PrinterRateLimits
     private const string UnknownAddress = "unknown";
 
     /// <summary>
-    /// Every policy this class wires, and both of the limits each one gets.
+    /// Every policy this class wires, and the limits each one gets.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>One table, because a policy needs registering in two places and the pairing used to be a
-    /// habit.</b> The ceiling and the per-printer window are separate mechanisms - a
-    /// <see cref="RateLimiterOptions.GlobalLimiter"/> partition and an endpoint policy - keyed on the
-    /// same string, and neither omission announced itself. Wiring one and not the other left a route
-    /// with a per-printer window and <em>no ceiling at all</em>, answering normally throughout, which
-    /// is precisely what a caller minting a fresh fingerprint per request walks through; the reverse
-    /// answered 500 on every request, at request time rather than at startup, so a route no test drove
-    /// would have shipped broken. Both were reachable by forgetting one line. Driving both
-    /// registrations from this table is what makes the halves impossible to separate.
+    /// <b>One table, because a policy is named in two places.</b> The framework has to know the name,
+    /// or an action carrying it answers 500 on every request - at request time rather than at startup,
+    /// so a route no test drove would ship broken - and <see cref="PrinterRouteLimiter"/> has to know
+    /// its limits, or the route is counted by nothing and answers normally throughout. Both are driven
+    /// from this table, so neither can be written without the other.
     /// </para>
     /// <para>
     /// <b>A policy has at most one partition: per printer, or per address.</b> The two registration
@@ -233,8 +226,8 @@ public static class PrinterRateLimits
     /// reader can see which window each one has and why.
     /// </para>
     /// <para>
-    /// Frozen because it is read on the global limiter's per-request path - which the measurement in
-    /// this class's own remarks shows running a second time for a refused request - and written once.
+    /// Frozen because it is read on every printer request, twice for a refused one - the middleware
+    /// asks the global limiter again before giving up - and written once.
     /// </para>
     /// </remarks>
     private static readonly FrozenDictionary<string, PolicyLimits> Policies =
@@ -254,39 +247,32 @@ public static class PrinterRateLimits
     public static IReadOnlyCollection<string> PolicyNames => Policies.Keys;
 
     /// <summary>
-    /// Adds the rate limiter and, from <see cref="Policies"/>, both halves of every printer policy.
+    /// Adds the rate limiter with <see cref="PrinterRouteLimiter"/> in its global slot, and a name for
+    /// every printer policy in <see cref="Policies"/>.
     /// </summary>
     /// <remarks>
-    /// Neither half is written out per policy here, deliberately: they are the two registrations that
-    /// have to agree, so they are made from one entry in one loop. See <see cref="Policies"/> for what
-    /// forgetting one used to cost.
+    /// The names carry no limiter of their own - <see cref="PrinterRouteLimiter"/> counts both the
+    /// window and the ceiling - so the framework's endpoint limiter admits every printer request and
+    /// cannot spend anything a refusal would have to give back.
     /// </remarks>
     public static IServiceCollection AddPrinterRateLimiting(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddSingleton(provider => new PrinterRouteLimiter(provider.GetRequiredService<TimeProvider>()));
+
+        // Configured with the limiter from the container rather than built in the lambda below,
+        // which has no service provider to ask for the clock.
+        services.AddOptions<RateLimiterOptions>()
+                .Configure<PrinterRouteLimiter>((options, limiter) => options.GlobalLimiter = limiter);
+
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            // The route's own name is the partition, so each policy gets its own ceiling and no
-            // other endpoint in the application is limited here at all. Derived from the endpoint's
-            // metadata rather than from the path, so the policy name stays the single thing that
-            // decides which limits an action gets.
-            options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
-            {
-                string? policy = context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
-
-                // An endpoint carrying no policy, or one this class does not wire, is not limited
-                // here - which is what keeps the ceiling off every page in the application.
-                return policy is not null && Policies.TryGetValue(policy, out PolicyLimits limits) ?
-                           Ceiling(policy, limits.Ceiling) :
-                           RateLimitPartition.GetNoLimiter(string.Empty);
-            });
-
             foreach (string policy in Policies.Keys)
             {
-                options.AddPolicy(policy, context => Partition(policy, context));
+                options.AddPolicy(policy, _ => RateLimitPartition.GetNoLimiter(string.Empty));
             }
         });
 
@@ -294,16 +280,32 @@ public static class PrinterRateLimits
     }
 
     /// <summary>
-    /// Which window a request under <paramref name="policy"/> falls in beneath the ceiling: its
-    /// printer's, its address's, or none.
+    /// What <paramref name="context"/> asks of the printer limits: its route's ceiling, and the
+    /// window of the caller it counts as, if any. Null for an endpoint that carries no printer policy,
+    /// which is every page in the application.
     /// </summary>
     /// <remarks>
-    /// Public so the decision can be tested without a request going through the pipeline: the branch
-    /// that matters is the one that declines to partition by address, and from the outside that is
-    /// indistinguishable from a window with room left in it. The key is the observable - the
-    /// fingerprint or the address for a window, empty for none.
+    /// Derived from the endpoint's metadata rather than from the path, so the policy name stays the
+    /// single thing that decides which limits an action gets.
     /// </remarks>
-    public static RateLimitPartition<string> Partition(string policy, HttpContext context)
+    public static Demand? DemandOf(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        string? policy = context.GetEndpoint()?.Metadata.GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+
+        return policy is not null && Policies.ContainsKey(policy) ? DemandOf(policy, context) : null;
+    }
+
+    /// <summary>
+    /// What a request under <paramref name="policy"/> asks of the printer limits.
+    /// </summary>
+    /// <remarks>
+    /// Public so the choice of caller can be tested without a request going through the pipeline: the
+    /// branch that matters is the one that declines a window per address, and from the outside that
+    /// is indistinguishable from a window with room left in it.
+    /// </remarks>
+    public static Demand DemandOf(string policy, HttpContext context)
     {
         ArgumentNullException.ThrowIfNull(policy);
         ArgumentNullException.ThrowIfNull(context);
@@ -312,74 +314,47 @@ public static class PrinterRateLimits
 
         if (limits.PerPrinter is { } perPrinter)
         {
-            return PerPrinter(context, perPrinter);
+            return new Demand(policy, limits.Ceiling, PrinterOf(context), perPrinter);
         }
 
-        // Read per request, as the sign-in limit does: the rate limiter's options are configured with
-        // no service provider to ask, so there is nowhere earlier to read it.
+        // Read per request, as the sign-in limit does: the options are bound after this class has
+        // registered anything, and a test host sets them late.
         if (limits.PerAddress is { } perAddress &&
             context.RequestServices.GetRequiredService<IOptions<XForwardedOptions>>().Value.AddressesAreClients)
         {
-            return PerAddress(context, perAddress);
+            return new Demand(policy, limits.Ceiling, context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress, perAddress);
         }
 
-        return RateLimitPartition.GetNoLimiter(string.Empty);
+        return new Demand(policy, limits.Ceiling, null, null);
     }
 
     /// <summary>
-    /// One window for the whole of <paramref name="policy"/>, keyed on the policy's own name.
-    /// </summary>
-    private static RateLimitPartition<string> Ceiling(string policy, int permitLimit)
-    {
-        return RateLimitPartition.GetFixedWindowLimiter(policy, _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = permitLimit,
-            Window = Window,
-            QueueLimit = 0,
-        });
-    }
-
-    /// <summary>
-    /// One window per printer, keyed on the fingerprint the request carries.
+    /// The printer a request names, keyed on the fingerprint it carries.
     /// </summary>
     /// <remarks>
     /// Reduced through <see cref="PrinterFingerprint.Key"/>, which is both what identifies an
-    /// enrolled credential and a bound on the key: a caller cannot choose a partition key longer than
+    /// enrolled credential and a bound on the key: a caller cannot choose a key longer than
     /// <see cref="PrinterFingerprint.KeyLength"/> characters.
     /// </remarks>
-    private static RateLimitPartition<string> PerPrinter(HttpContext context, int permitLimit)
+    private static string PrinterOf(HttpContext context)
     {
-        string printer = context.Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues fingerprint) &&
-                         !StringValues.IsNullOrEmpty(fingerprint) ?
-                             PrinterFingerprint.Key(fingerprint.ToString()) :
-                             Unattributed;
-
-        return RateLimitPartition.GetFixedWindowLimiter(printer, _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = permitLimit,
-            Window = Window,
-            QueueLimit = 0,
-        });
+        return context.Request.Headers.TryGetValue(Headers.Fingerprint, out StringValues fingerprint) &&
+               !StringValues.IsNullOrEmpty(fingerprint) ?
+                   PrinterFingerprint.Key(fingerprint.ToString()) :
+                   Unattributed;
     }
 
     /// <summary>
-    /// One window per client address, as the forwarded-headers middleware has resolved it by now.
+    /// What one request asks of the printer limits.
     /// </summary>
-    /// <remarks>
-    /// The ceiling is acquired first, so a caller rotating addresses can create no more partitions in
-    /// a window than the ceiling admits - the same bound the fingerprint partition relies on.
-    /// </remarks>
-    private static RateLimitPartition<string> PerAddress(HttpContext context, int permitLimit)
-    {
-        string address = context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress;
-
-        return RateLimitPartition.GetFixedWindowLimiter(address, _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = permitLimit,
-            Window = Window,
-            QueueLimit = 0,
-        });
-    }
+    /// <param name="Policy">The route's policy, which names its ceiling.</param>
+    /// <param name="Ceiling">Permits every caller together may spend on the route in a <see cref="Window"/>.</param>
+    /// <param name="Caller">
+    /// The printer's key or the client's address, or null where the route has no window per caller -
+    /// a registration verb on a deployment whose addresses may be shared.
+    /// </param>
+    /// <param name="PerCaller">Permits that caller may spend in a <see cref="Window"/>, or null with no caller.</param>
+    public readonly record struct Demand(string Policy, int Ceiling, string? Caller, int? PerCaller);
 
     /// <summary>
     /// What one policy is allowed: a ceiling on the route's total, and a window per printer or per

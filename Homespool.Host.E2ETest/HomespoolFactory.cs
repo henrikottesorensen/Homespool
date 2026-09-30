@@ -305,6 +305,17 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
                 services.AddDbContext<TelemetryDbContext>(options => options.UseSqlite(_connectionString));
             }
 
+            // The health alert service reads or mints the push key and runs every health check as it
+            // starts, and a host is started per test: about a minute on the suite, for a service no test
+            // here drives. Its tests build it themselves, in the unit and integration suites.
+            ServiceDescriptor? healthAlerts = services.SingleOrDefault(d => d.ServiceType == typeof(IHostedService) &&
+                                                                            d.ImplementationType == typeof(Health.TelemetryAlertService));
+
+            if (healthAlerts is not null)
+            {
+                services.Remove(healthAlerts);
+            }
+
             // Everything that keeps a file resolves its configured, relative directory against this.
             // Replacing it is what isolates uploads, certificates and whatever comes next, in one
             // place, instead of overriding each component's options as it is discovered escaping -

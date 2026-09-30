@@ -160,8 +160,9 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
     }
 
     /// <summary>
-    /// The appliance's own report from before it pulled: both images newer, with the host's reason
-    /// repeated per service and the command that acts on it.
+    /// The appliance's own report from before it pulled: both images newer for the same reason, said
+    /// once for both, and the command that acts on it - as plain text, since the banner, the mail and
+    /// <c>/health</c> all carry the description as it is.
     /// </summary>
     [Fact]
     public async Task A_newer_image_with_reasons_is_degraded_and_says_what_to_run()
@@ -171,9 +172,80 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         HealthCheckResult result = await RunAsync(NewCheck());
 
         result.Status.Should().Be(HealthStatus.Degraded);
-        result.Description.Should().Contain("homespool: the running image does not say which Homespool revision it is")
-              .And.Contain("proxy: the running image does not say which Homespool revision it is")
-              .And.Contain("docker compose pull && docker compose up -d");
+        result.Description.Should().Be(
+            "Newer Homespool images are published for homespool and proxy: the running image does not say " +
+            "which Homespool revision it is. To take them, run docker compose pull && docker compose up -d " +
+            "where the stack runs.");
+    }
+
+    [Fact]
+    public async Task Services_with_different_reasons_are_listed_apart()
+    {
+        await WriteAsync("""
+            {
+              "schema": 1,
+              "checked": "2026-09-26T18:00:00Z",
+              "services": [
+                { "service": "homespool", "status": "newer", "reasons": [ "10 Homespool fixes" ] },
+                { "service": "proxy", "status": "newer", "reasons": [ "10 Homespool fixes" ] },
+                { "service": "go2rtc", "status": "newer", "reasons": [ "10 Homespool fixes", "built on a newer base" ] }
+              ]
+            }
+            """);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Description.Should().StartWith(
+            "Newer Homespool images are published for homespool and proxy: 10 Homespool fixes; " +
+            "for go2rtc: 10 Homespool fixes, built on a newer base. ");
+    }
+
+    [Fact]
+    public async Task One_newer_image_is_spoken_of_as_one()
+    {
+        await WriteAsync(Report("2026-09-26T18:00:00Z"));
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Description.Should().Be(
+            "A newer Homespool image is published for homespool: 2 Homespool fixes. " +
+            "To take it, run docker compose pull && docker compose up -d where the stack runs.");
+    }
+
+    [Fact]
+    public async Task Three_services_with_the_same_reasons_are_listed_as_a_sentence_would()
+    {
+        await WriteAsync("""
+            {
+              "schema": 1,
+              "checked": "2026-09-26T18:00:00Z",
+              "services": [
+                { "service": "homespool", "status": "newer", "reasons": [ "10 Homespool fixes" ] },
+                { "service": "proxy", "status": "newer", "reasons": [ "10 Homespool fixes" ] },
+                { "service": "go2rtc", "status": "newer", "reasons": [ "10 Homespool fixes" ] }
+              ]
+            }
+            """);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Description.Should().StartWith(
+            "Newer Homespool images are published for homespool, proxy and go2rtc: 10 Homespool fixes. ");
+    }
+
+    [Fact]
+    public async Task No_description_carries_markdown()
+    {
+        await WriteAsync(BeforeLabels);
+        string newer = (await RunAsync(NewCheck())).Description!;
+
+        _time.Advance(TimeSpan.FromDays(4));
+        string stale = (await RunAsync(NewCheck())).Description!;
+
+        await WriteAsync("not json at all");
+        string unreadable = (await RunAsync(NewCheck())).Description!;
+
+        new[] { newer, stale, unreadable }.Should().AllSatisfy(d => d.Should().NotContain("`"));
     }
 
     [Fact]

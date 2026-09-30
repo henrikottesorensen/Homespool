@@ -85,7 +85,7 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
             return Task.FromResult(HealthCheckResult.Degraded(
                 $"The image update check's report at {options.Path} could not be read ({error}), so " +
                 "nothing here can say whether a newer image is published. The check on the host writes it; " +
-                "`journalctl -u homespool-update-check.service` there says what it last did."));
+                "journalctl -u homespool-update-check.service there says what it last did."));
         }
 
         return Task.FromResult(Judge(report, options));
@@ -104,7 +104,7 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
             return HealthCheckResult.Degraded(
                 $"The image update check has not reported since {report.Checked:yyyy-MM-dd HH:mm} UTC, so " +
                 "nothing here can say whether a newer image is published. It runs daily on the host from " +
-                "homespool-update-check.timer; `systemctl status homespool-update-check.timer` there says " +
+                "homespool-update-check.timer; systemctl status homespool-update-check.timer there says " +
                 "whether it is still enabled.");
         }
 
@@ -113,11 +113,16 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
 
         if (worthPulling.Count > 0)
         {
-            string reasons = string.Join("; ", worthPulling.Select(s => $"{s.Service}: {string.Join(", ", s.Reasons!)}"));
+            // Grouped by what they bring, because the images are built from one revision and usually
+            // bring the same thing: three services each saying "10 Homespool fixes" reads as thirty.
+            string reasons = string.Join("; ", worthPulling
+                .GroupBy(s => string.Join(", ", s.Reasons!), StringComparer.Ordinal)
+                .Select(g => $"for {JoinNames([.. g.Select(s => s.Service)])}: {g.Key}"));
+            bool several = worthPulling.Count > 1;
 
             return HealthCheckResult.Degraded(
-                $"A newer Homespool image is published - {reasons}. " +
-                $"Pull it where the stack runs with `{PullCommand}`.");
+                $"{(several ? "Newer Homespool images are" : "A newer Homespool image is")} published {reasons}. " +
+                $"To take {(several ? "them" : "it")}, run {PullCommand} where the stack runs.");
         }
 
         string checkedAt = $"{report.Checked:yyyy-MM-dd HH:mm} UTC";
@@ -130,6 +135,14 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
 
         return HealthCheckResult.Healthy(
             $"Image update check at {checkedAt}: {string.Join("; ", report.Services.Select(Describe))}.");
+    }
+
+    /// <summary>Service names as a sentence lists them: "a", "a and b", "a, b and c".</summary>
+    private static string JoinNames(IReadOnlyList<string> names)
+    {
+        return names.Count == 1 ?
+            names[0] :
+            $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
     }
 
     /// <summary>One container's line, for every status but a newer image worth pulling.</summary>

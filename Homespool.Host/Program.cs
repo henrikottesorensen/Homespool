@@ -87,7 +87,7 @@ public static class Program
                 builder.Configuration[SettingsFile.PathConfigurationKey],
                 builder.Environment.ContentRootPath));
 
-            builder.Configuration.AddJsonFile(settingsFile.Path, optional: true, reloadOnChange: false);
+            settingsFile.AddTo(builder.Configuration);
             builder.Services.AddSingleton(settingsFile);
 
             // Add services to the container.

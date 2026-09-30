@@ -25,6 +25,16 @@ public class SettingsFileTests : IDisposable
         Directory.CreateDirectory(_directory);
     }
 
+    /// <summary>Every shape of file that exists but is not a JSON object.</summary>
+    public static TheoryData<string> Unloadable => new()
+    {
+        "{ \"Smtp\": { ",
+        string.Empty,
+        "   \n",
+        "[1, 2, 3]",
+        "null",
+    };
+
     public void Dispose()
     {
         Dispose(true);
@@ -73,28 +83,58 @@ public class SettingsFileTests : IDisposable
     }
 
     /// <summary>
-    /// A hand-edited file with one brace wrong must not stop the deployment starting. There is no
-    /// interface at that point to explain the fault, and no way in to fix it - so the cost of a bad
-    /// file is the settings falling back to their configured defaults, which is visible on the page.
+    /// A file that is there but unreadable is refused, never read as empty: a save starting from empty
+    /// would write the defaults over it and lose what it held.
     /// </summary>
-    [Fact]
-    public void AMalformedFileReadsAsEmptyRatherThanThrowing()
+    [Theory]
+    [MemberData(nameof(Unloadable))]
+    public void AFileThatIsNotAJsonObjectIsRefusedOnRead(string contents)
     {
         File(out SettingsFile file);
 
-        System.IO.File.WriteAllText(file.Path, "{ \"Smtp\": { ");
+        System.IO.File.WriteAllText(file.Path, contents);
 
-        file.Read().Should().BeEmpty();
+        Action reading = () => file.Read();
+
+        reading.Should()
+               .Throw<SettingsFileUnreadableException>()
+               .WithMessage($"*'{file.Path}'*Admin Settings page*");
+    }
+
+    /// <summary>
+    /// The configuration layer refuses these at startup on its own; what is asserted is that the
+    /// refusal names the file, what it is for and how to recover, and keeps the parse error inside.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Unloadable))]
+    public void AFileThatIsNotAJsonObjectRefusesTheLayerWithAMessageNamingIt(string contents)
+    {
+        File(out SettingsFile file);
+
+        System.IO.File.WriteAllText(file.Path, contents);
+
+        using ConfigurationManager configuration = new();
+
+        Action addingTheLayer = () => file.AddTo(configuration);
+
+        addingTheLayer.Should()
+                      .Throw<SettingsFileUnreadableException>()
+                      .WithMessage($"*'{file.Path}'*Admin Settings page*move it aside*")
+                      .WithInnerException<InvalidDataException>();
     }
 
     [Fact]
-    public void AFileHoldingSomethingOtherThanAnObjectReadsAsEmpty()
+    public void AValidFileLoadsAsALayer()
     {
         File(out SettingsFile file);
 
-        System.IO.File.WriteAllText(file.Path, "[1, 2, 3]");
+        file.Write(new JsonObject { ["Smtp"] = new JsonObject { ["Host"] = "mail.example.com" } });
 
-        file.Read().Should().BeEmpty();
+        using ConfigurationManager configuration = new();
+
+        file.AddTo(configuration);
+
+        configuration["Smtp:Host"].Should().Be("mail.example.com");
     }
 
     [Fact]
@@ -177,7 +217,7 @@ public class SettingsFileTests : IDisposable
         {
             using ConfigurationManager configuration = new();
 
-            configuration.AddJsonFile(file.Path, optional: true, reloadOnChange: false);
+            file.AddTo(configuration);
 
             configuration["Smtp:Host"].Should().BeNull();
         };
@@ -195,7 +235,7 @@ public class SettingsFileTests : IDisposable
 
         using ConfigurationManager configuration = new();
 
-        configuration.AddJsonFile(file.Path, optional: true, reloadOnChange: false);
+        file.AddTo(configuration);
 
         configuration["Smtp:Host"].Should().BeNull();
 

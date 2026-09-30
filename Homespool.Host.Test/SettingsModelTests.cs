@@ -49,7 +49,7 @@ public class SettingsModelTests : IDisposable
 
         _configuration = new ConfigurationManager();
 
-        _configuration.AddJsonFile(_file.Path, optional: true, reloadOnChange: false);
+        _file.AddTo(_configuration);
 
         _protector = new SettingsSecretProtector(
             DataProtectionProvider.Create(new DirectoryInfo(Path.Combine(_directory, "keys"))),

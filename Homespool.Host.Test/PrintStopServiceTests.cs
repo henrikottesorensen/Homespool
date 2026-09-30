@@ -321,6 +321,66 @@ public sealed class PrintStopServiceTests : IDisposable
         outcome!.EventType.Should().Be(PrinterEventType.Finished);
     }
 
+    /// <summary>
+    /// A token holding <c>ControlPrinter</c> and not <c>Print</c> stops any print - somebody else's,
+    /// its owner's own, or one with no open row - and the stop is still attributed.
+    /// </summary>
+    /// <remarks>
+    /// <c>ControlPrinter</c> does not imply <c>Print</c>, and <c>StopPrint</c>'s floor is
+    /// <c>Print</c>, so a send checked against the floor refuses the stop the withdrawal check has
+    /// just allowed.
+    /// </remarks>
+    /// <param name="queuedBy">Who queued the running print; null for none of ours running.</param>
+    [Theory]
+    [InlineData(SomebodyElse)]
+    [InlineData(Stopper)]
+    [InlineData(null)]
+    public async Task AControlPrinterScopedTokenStopsAnyPrint(long? queuedBy)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+
+        if (queuedBy is { } owner)
+        {
+            await AddPrintAsync(context, PrintState.Printing, ended: false, queuedBy: owner);
+        }
+
+        Connect(PrinterEventType.Finished);
+        Caller stopButton = Caller.Scoped(Stopper, CapabilitySet.Parse(CapabilitySet.Format([Capability.ControlPrinter])));
+
+        // Act
+        CommandOutcome? outcome = await NewService(context).StopAsync(PrinterId, stopButton, TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome!.EventType.Should().Be(PrinterEventType.Finished);
+
+        context.ChangeTracker.Clear();
+        PrintJob? job = await context.PrintJobs.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        job?.StoppedByUserId.Should().Be(Stopper);
+    }
+
+    /// <summary>
+    /// A token holding <c>Print</c> and not <c>ControlPrinter</c> still stops its owner's own print,
+    /// though the account behind it holds <c>ControlPrinter</c> - the stop is sent as the owner's,
+    /// not as the operator's the token was not lent.
+    /// </summary>
+    [Fact]
+    public async Task APrintScopedTokenStillStopsItsOwnersPrint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        await AddPrintAsync(context, PrintState.Printing, ended: false, queuedBy: Stopper);
+        Connect(PrinterEventType.Finished);
+        Caller slicerKey = Caller.Scoped(Stopper, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+
+        // Act
+        CommandOutcome? outcome = await NewService(context).StopAsync(PrinterId, slicerKey, TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome!.EventType.Should().Be(PrinterEventType.Finished);
+    }
+
     private PrintStopService NewService(HomespoolDbContext context)
     {
         return new PrintStopService(context,

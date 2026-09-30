@@ -108,16 +108,23 @@ public class PrintStopService
         // open row there is nobody to be the owner - a print started at the panel, or one running
         // before this process knew of it - so it is nobody's to withdraw and stopping it is running
         // the machine. StopPrint's own floor is only Print, so nothing beneath this would refuse.
+        Capability allowedBy;
+
         if (active is { } job)
         {
-            await _access.RequireWithdrawingAsync(printerId, caller, job.QueuedByUserId, cancellationToken);
+            allowedBy = await _access.RequireWithdrawingAsync(printerId, caller, job.QueuedByUserId, cancellationToken);
         }
         else
         {
             await _access.RequireAsync(printerId, caller, Capability.ControlPrinter, cancellationToken);
+            allowedBy = Capability.ControlPrinter;
         }
 
-        CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, new StopPrint(), caller, cancellationToken);
+        // The send is checked against whatever allowed the stop, not the intent's floor: a token
+        // scoped to ControlPrinter alone holds no Print, and would be refused a stop it was just
+        // allowed.
+        StopPrint stop = new() { AsOperator = allowedBy == Capability.ControlPrinter };
+        CommandOutcome? outcome = await _commands.SendCommandAsync(printerId, stop, caller, cancellationToken);
 
         if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {

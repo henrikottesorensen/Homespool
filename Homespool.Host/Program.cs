@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -844,6 +845,17 @@ public static class Program
             // Environment.ExitCode because the test factory runs Main inside the test process,
             // where that setting would become the test runner's exit code.
             Log.Fatal(ex, "Application terminated unexpectedly");
+
+            // Unless Main was called by another program - the test factory, dotnet-ef, the OpenAPI
+            // document generator - rather than run as the process. The exit code is not Main's to
+            // set there, and the caller discards the return value: a refusal returned as 1 reaches
+            // it as "the entry point exited without ever building an IHost", or as a start that
+            // appears to succeed on a host that never ran or is already disposed. Only the
+            // exception tells it why.
+            if (Assembly.GetEntryAssembly() != typeof(Program).Assembly)
+            {
+                throw;
+            }
 
             return 1;
         }

@@ -3,6 +3,8 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
+using Microsoft.Extensions.Configuration;
+
 namespace Homespool.Host.Configuration;
 
 /// <summary>
@@ -40,6 +42,13 @@ namespace Homespool.Host.Configuration;
 /// rather than in the clear, but the permission bits are what keep it from being read by anything
 /// else sharing the volume in the first place. Windows has no equivalent and needs none: the
 /// deployment is a Linux container, and the development case is one person's own machine.
+/// </para>
+/// <para>
+/// <b>A file that is there but not a JSON object is refused, never read as empty.</b> The
+/// configuration layer already refuses it at startup, empty and whitespace-only files included, so
+/// the only choice here is what the refusal says - and a save must refuse too, because one that
+/// started from nothing would write the defaults over the file and lose what it held, the stored
+/// SMTP password among it. A missing file is the one state that means "nothing saved yet".
 /// </para>
 /// </remarks>
 public sealed class SettingsFile
@@ -97,19 +106,37 @@ public sealed class SettingsFile
     }
 
     /// <summary>
+    /// Adds the file as a configuration layer, refusing one that is there but cannot be loaded.
+    /// </summary>
+    /// <param name="configuration">The configuration to add the layer to.</param>
+    /// <exception cref="SettingsFileUnreadableException">The file exists and cannot be loaded.</exception>
+    /// <remarks>
+    /// The refusal is the configuration layer's own, rewrapped so that it names the file's purpose and
+    /// the fix rather than only the parse error - which keeps what is refused exactly what the layer
+    /// cannot load. It surfaces here only against a <see cref="ConfigurationManager"/>, which loads a
+    /// source as it is added; a plain builder defers the load to <c>Build</c>.
+    /// </remarks>
+    public void AddTo(IConfigurationBuilder configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        try
+        {
+            configuration.AddJsonFile(_path, optional: true, reloadOnChange: false);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw Unreadable(exception.GetBaseException().Message, exception);
+        }
+    }
+
+    /// <summary>
     /// Reads the file's current contents.
     /// </summary>
-    /// <returns>
-    /// The stored settings, or an empty object when the file is absent, empty, or holds anything
-    /// other than a JSON object.
-    /// </returns>
-    /// <remarks>
-    /// <b>Unreadable is treated as absent rather than fatal.</b> The alternative is a deployment that
-    /// will not start because one hand-edited brace is wrong, with no way in to fix it - and the
-    /// startup path here has no interface to explain itself. What a bad file costs instead is the
-    /// settings reverting to their configured defaults, which is visible on the page and correctable
-    /// there.
-    /// </remarks>
+    /// <returns>The stored settings, or an empty object when the file does not exist.</returns>
+    /// <exception cref="SettingsFileUnreadableException">
+    /// The file exists and cannot be read, or holds anything other than a JSON object.
+    /// </exception>
     public JsonObject Read()
     {
         if (!File.Exists(_path))
@@ -117,25 +144,22 @@ public sealed class SettingsFile
             return new JsonObject();
         }
 
+        JsonNode? contents;
+
         try
         {
-            string json = File.ReadAllText(_path);
-
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                return new JsonObject();
-            }
-
-            return JsonNode.Parse(json) as JsonObject ?? new JsonObject();
+            contents = JsonNode.Parse(File.ReadAllText(_path));
         }
-        catch (JsonException)
+        catch (JsonException exception)
         {
-            return new JsonObject();
+            throw Unreadable(exception.Message, exception);
         }
-        catch (IOException)
+        catch (IOException exception)
         {
-            return new JsonObject();
+            throw Unreadable(exception.Message, exception);
         }
+
+        return contents as JsonObject ?? throw Unreadable("It holds something other than a JSON object.", null);
     }
 
     /// <summary>
@@ -158,6 +182,18 @@ public sealed class SettingsFile
                              contents.ToJsonString(WriteOptions),
                              UnixFileMode.UserRead | UnixFileMode.UserWrite);
         File.Move(temporaryPath, _path, overwrite: true);
+    }
+
+    private SettingsFileUnreadableException Unreadable(string reason, Exception? innerException)
+    {
+        string message =
+            $"The settings file '{_path}' cannot be loaded: {reason} It holds what was saved on the " +
+            "Admin Settings page. Correct it by hand, or move it aside to start with the configured " +
+            "defaults - everything saved there, the SMTP password included, then has to be entered again.";
+
+        return innerException is null ?
+            new SettingsFileUnreadableException(message) :
+            new SettingsFileUnreadableException(message, innerException);
     }
 
     private void EnsureDirectory()

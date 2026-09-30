@@ -123,6 +123,31 @@ public class SettingsStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A file broken while the application runs is refused rather than saved over. Starting from
+    /// nothing would write back only what the form carries, and the form never carries the password.
+    /// </summary>
+    [Fact]
+    public void ASaveOverAFileThatCannotBeReadIsRefusedAndLeavesItAlone()
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:FromName"] = "Workshop";
+
+        File.WriteAllText(_file.Path, "{ \"Smtp\": { ");
+
+        Action saving = () => store.Save(form);
+
+        saving.Should().Throw<SettingsFileUnreadableException>();
+
+        File.ReadAllText(_file.Path).Should().Be("{ \"Smtp\": { ", "the file is left for someone to correct");
+        configuration["Smtp:ProtectedPassword"].Should().NotBeNullOrEmpty("nothing reloaded over it");
+    }
+
+    /// <summary>
     /// The stored password goes to the server and account it was saved for, and nowhere else. An
     /// administrator who was never told it must not be able to point it at a server of their own -
     /// with TLS or without, since whoever names the server can hold its certificate.
@@ -431,7 +456,7 @@ public class SettingsStoreTests : IDisposable
             configuration.AddInMemoryCollection(beneath);
         }
 
-        configuration.AddJsonFile(_file.Path, optional: true, reloadOnChange: false);
+        _file.AddTo(configuration);
 
         return (new SettingsStore(configuration, _file, _protector, TestLocaliser.Shared()), configuration);
     }

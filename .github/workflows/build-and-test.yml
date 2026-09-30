@@ -4,6 +4,12 @@
 # clean machine cannot: the Dockerfile's restore layer was broken for weeks, through a project rename
 # and several features, while every local `dotnet build` and the whole test suite stayed green,
 # because nothing here ever built the image. That is the failure this exists to notice.
+#
+# Split into jobs that run side by side, because one job doing all of it had grown to about nineteen
+# minutes and its run time was down to which runner it drew. The runner has four cores, and
+# `dotnet test` over the whole solution sometimes ran two test projects at once, each parallelising
+# across all four, so both ran slower than either would alone. Each job below builds what it tests
+# and has the machine to itself; the longest of them is the run's length.
 name: build and test
 
 on:
@@ -19,15 +25,16 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
+  # The whole solution's build, and every test project that needs nothing running beside it.
+  unit:
     # The release the application image runs on, named rather than taken from ubuntu-latest. The
-    # images build inside Docker whatever the runner is, but the test suite runs on the runner itself,
+    # images build inside Docker whatever the runner is, but the test suites run on the runner itself,
     # and .NET formats dates and numbers with the host's ICU: on another release, a CLDR change fails
     # a test the deployment would pass, or passes one it would fail. The shell-script tests run on the
     # runner's coreutils too, so a new release is a change to them as well, and one to make on
-    # purpose. Moves when mcr.microsoft.com/dotnet/aspnet:10.0 moves.
+    # purpose. Moves when mcr.microsoft.com/dotnet/aspnet:10.0 moves, and so does every runs-on below.
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       # Every action is pinned to a commit, with the release it was in beside it. A tag is a movable
@@ -48,7 +55,8 @@ jobs:
 
       # The Host's build runs ESLint over wwwroot/js and needs Node for it. Stated rather than taken from
       # the runner image, whose Node version is the image's to change, and ESLint refuses one too old.
-      # 24 to match NODE_MAJOR in Homespool.Host/Dockerfile.
+      # 24 to match NODE_MAJOR in Homespool.Host/Dockerfile. This is the one job that lints; the others
+      # build the same scripts and set ESLint off.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
@@ -56,6 +64,88 @@ jobs:
       # Client-side assets are gitignored rather than committed, and the static-asset pipeline wants
       # them present at build time. The Docker build does this for itself inside the image; this is
       # for `dotnet test`, which does not.
+      - name: Fetch client-side assets
+        run: |
+          dotnet tool restore
+          cd Homespool.Host && dotnet libman restore
+
+      # Every project, including the ones no test project references, so a compile error anywhere is
+      # red here whichever job's tests would have reached it.
+      - name: Build
+        run: dotnet build Homespool.slnx --nologo
+
+      # Every test project in the solution except the three with jobs of their own, so a new test
+      # project runs here without anyone remembering to list it. Each runs even when one before it
+      # failed. Host.Test is required in the list: a listing whose format changed would otherwise
+      # select nothing and pass.
+      - name: Test
+        run: |
+          projects=$(dotnet sln Homespool.slnx list | grep -E 'Test\.csproj$' | grep -v -E 'Host\.(E2E|Integration|Browser)Test')
+          if ! grep -q 'Homespool\.Host\.Test\.csproj' <<< "$projects"; then
+            echo "::error::The solution listing did not include Homespool.Host.Test: $projects"
+            exit 1
+          fi
+          status=0
+          for project in $projects; do
+            dotnet test "$project" --no-build --nologo || status=1
+          done
+          exit $status
+
+      # Every run writes a .trx per test project; without this they die with the runner, and a red run
+      # is diagnosed from its log alone. always(), because a failed run is the one worth reading.
+      - name: Keep the test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-unit
+          path: TestResults/*.trx
+          retention-days: 14
+
+  # One WebApplicationFactory host per test, so this is the longest suite and the one that most needs
+  # the four cores to itself.
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Read by MSBuild as a property. The unit job lints; here it would only repeat npm ci.
+      ESLint: 'false'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Fetch client-side assets
+        run: |
+          dotnet tool restore
+          cd Homespool.Host && dotnet libman restore
+
+      - name: Test
+        run: dotnet test Homespool.Host.E2ETest/Homespool.Host.E2ETest.csproj --nologo
+
+      - name: Keep the test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-e2e
+          path: TestResults/*.trx
+          retention-days: 14
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      ESLint: 'false'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Fetch client-side assets
         run: |
           dotnet tool restore
@@ -75,20 +165,135 @@ jobs:
       - name: Start dex
         run: ./Homespool.Host.IntegrationTest/start-dex.sh
 
-      # Chromium and WebKit for the browser tests, which skip themselves without them - the same
-      # argument as the two above. They are the only tests that run the camera page's scripts, and
-      # WebKit is the nearest thing to Safari a Linux runner has, where the camera view's worst bugs
-      # have lived. --with-deps installs the system libraries a fresh runner lacks.
-      - name: Install browsers for the browser tests
-        run: ./Homespool.Host.BrowserTest/install-browsers.sh --with-deps
+      - name: Test
+        run: dotnet test Homespool.Host.IntegrationTest/Homespool.Host.IntegrationTest.csproj --nologo
+
+      - name: Keep the test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-integration
+          path: TestResults/*.trx
+          retention-days: 14
+
+      # always(), so a failed test still tears down. On an ephemeral runner that costs nothing; the
+      # same script runs on a laptop, where it does.
+      - name: Stop Mailpit
+        if: always()
+        run: ./Homespool.Host.IntegrationTest/stop-mailpit-tls.sh
+
+      - name: Stop dex
+        if: always()
+        run: ./Homespool.Host.IntegrationTest/stop-dex.sh
+
+  # The Playwright release the browser tests are built against, so the browser job can run in the
+  # image carrying exactly those browsers. A container image has to be named before a job's first
+  # step, so this cannot be a step of that job.
+  playwright-version:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: Homespool.Host.BrowserTest/Homespool.Host.BrowserTest.csproj
+          sparse-checkout-cone-mode: false
+
+      - id: read
+        run: |
+          version=$(grep -oP 'Include="Microsoft\.Playwright" Version="\K[0-9.]+(?=")' Homespool.Host.BrowserTest/Homespool.Host.BrowserTest.csproj)
+          if [ -z "$version" ]; then
+            echo "::error::No Microsoft.Playwright version found in Homespool.Host.BrowserTest.csproj"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # Chromium and WebKit, which the browser tests skip themselves without. They are the only tests that
+  # run the camera page's scripts, and WebKit is the nearest thing to Safari a Linux runner has, where
+  # the camera view's worst bugs have lived.
+  #
+  # In Playwright's own image rather than on the runner, because installing the browsers' system
+  # libraries on the runner is a hundred-odd packages from Ubuntu's mirror, and on a slow day that
+  # alone outlasted the whole job. The image is Ubuntu 24.04 like the runner, so the ICU argument on
+  # the unit job holds here too. It floats with the package version, as the application's base image
+  # floats with 10.0: Microsoft publishes both.
+  browser:
+    needs: playwright-version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright/dotnet:v${{ needs.playwright-version.outputs.version }}-noble
+      # Chromium's shared memory, which Docker's default /dev/shm is too small for. Playwright's own
+      # guidance for running it in a container.
+      options: --ipc=host
+    env:
+      ESLint: 'false'
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The image carries an SDK, but not necessarily the newest 10.0 band; the same floor argument as
+      # the unit job.
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # Without these the tests skip themselves rather than fail, the same as a missing browser.
+      - name: Fetch client-side assets
+        run: |
+          dotnet tool restore
+          cd Homespool.Host && dotnet libman restore
+
+      # Builds the tests and asks Playwright for their browsers. In this image they are already
+      # present and this downloads nothing; were the image and the package ever to disagree, it
+      # fetches the right ones instead of letting every test skip. No --with-deps: the image has the
+      # system libraries, and fetching them is what this job is here to avoid.
+      - name: Check the browsers
+        run: ./Homespool.Host.BrowserTest/install-browsers.sh
 
       - name: Test
-        run: dotnet test Homespool.slnx --nologo
+        run: dotnet test Homespool.Host.BrowserTest/Homespool.Host.BrowserTest.csproj --nologo
+
+      - name: Keep the test results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-results-browser
+          path: TestResults/*.trx
+          retention-days: 14
+
+  images:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Cheap, and compose.yaml carries real decisions now - two published ports, a pinned hostname,
       # a network the application is told about by name.
       - name: Validate the compose file
         run: docker compose config > /dev/null
+
+      # All three images: the application, the proxy that terminates TLS in front of it, and the
+      # camera sidecar, compiled from go2rtc's released source.
+      #
+      # Through ./build.sh rather than `docker compose build` directly, for the same reason this job
+      # builds the images at all: the wrapper is what a person is told to run, so it is the thing that
+      # has to keep working. Calling compose here would leave the commit-stamping path - the one that
+      # only fails by producing an image that quietly reports an unknown commit - tested by nothing.
+      - name: Build the container images
+        run: ./build.sh
+
+  # The shell scripts' own suites. Each stubs what it talks to, so none needs .NET, a daemon or a
+  # network beyond the package install noted on its step.
+  scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # setup-env.sh, on GNU tools. The macOS job below is the half that matters more; this one is
       # here because it costs a second and the Linux route parsing has to work somewhere real.
@@ -184,26 +389,6 @@ jobs:
       # under dash, as systemd runs it; docker and curl are stubs.
       - name: Test the host's image check
         run: ./tests/update-check.test.sh
-
-      # All three images: the application, the proxy that terminates TLS in front of it, and the
-      # camera sidecar, compiled from go2rtc's released source.
-      #
-      # Through ./build.sh rather than `docker compose build` directly, for the same reason this job
-      # builds the images at all: the wrapper is what a person is told to run, so it is the thing that
-      # has to keep working. Calling compose here would leave the commit-stamping path - the one that
-      # only fails by producing an image that quietly reports an unknown commit - tested by nothing.
-      - name: Build the container images
-        run: ./build.sh
-
-      # always(), so a failed test still tears down. On an ephemeral runner that costs nothing; the
-      # same script runs on a laptop, where it does.
-      - name: Stop Mailpit
-        if: always()
-        run: ./Homespool.Host.IntegrationTest/stop-mailpit-tls.sh
-
-      - name: Stop dex
-        if: always()
-        run: ./Homespool.Host.IntegrationTest/stop-dex.sh
 
   # setup-env.sh is the one thing here an operator runs BEFORE anything is built, on their own
   # machine, with whatever their operating system ships - so it is the one thing that has to be

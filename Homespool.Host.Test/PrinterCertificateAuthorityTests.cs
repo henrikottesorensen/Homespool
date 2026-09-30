@@ -571,13 +571,17 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     /// Both directions of the mistake: a fresh deployment must not mint an unencrypted key it would
     /// then live with forever, and an existing one must not have its startup interpreted as "no
     /// passphrase, carry on" when the variable was lost. The no-files assertion is the fresh half —
-    /// a refused start leaves nothing behind to migrate or trip over.
+    /// a refused start leaves nothing behind to migrate or trip over. Whitespace alone counts as
+    /// empty: it is no protection, and a quoted value in <c>.env</c> delivers it intact.
     /// </remarks>
-    [Fact]
-    public void AnEmptyPassphraseRefusesAndMintsNothing()
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("\t\n")]
+    public void AnEmptyPassphraseRefusesAndMintsNothing(string passphrase)
     {
         // Arrange
-        PrinterCertificateAuthority unconfigured = NewAuthority(string.Empty);
+        PrinterCertificateAuthority unconfigured = NewAuthority(passphrase);
 
         // Act
         Assert.Throws<CertificateAuthorityUnreadableException>(() => unconfigured.EnsureAuthority());
@@ -589,7 +593,7 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
         // And the same refusal once an authority exists and the variable goes missing.
         NewAuthority().EnsureAuthority().Dispose();
 
-        Assert.Throws<CertificateAuthorityUnreadableException>(() => NewAuthority(string.Empty).EnsureAuthority());
+        Assert.Throws<CertificateAuthorityUnreadableException>(() => NewAuthority(passphrase).EnsureAuthority());
     }
 
     /// <summary>

@@ -6,6 +6,8 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -30,9 +32,18 @@ namespace Homespool.Host.BrowserTest;
 /// <para>
 /// <b>Every listener on a port of its own.</b> The application binds the user, printer and transfer
 /// listeners itself, on fixed defaults a developer's own server would also be using, so each is given
-/// a free port. The port is found by binding and releasing it, which leaves a moment in which
-/// something else could take it; nothing on a test machine is racing for ephemeral ports at that
-/// rate.
+/// a free port - and it has to be known before the host starts, because the listener options refuse
+/// two listeners on one port and a request's listener is told apart by the port it arrived on.
+/// </para>
+/// <para>
+/// <b>Not a port the kernel chose.</b> Asking for port zero and releasing what comes back leaves the
+/// port free until the host binds it, seconds later under load, and this suite asks for port zero
+/// about five times per host started - three probes and the fake sidecar's two listeners, with
+/// several classes starting hosts at once. The kernel hands a freed port straight back out as readily
+/// as any other, so a host would sometimes find its port already taken by another test's host or
+/// sidecar. The ports here come from below every kernel's ephemeral range, where nothing asking for
+/// port zero is ever given one, and from one counter, so no two hosts in this process are given the
+/// same one.
 /// </para>
 /// <para>
 /// <b>Addressed as <c>localhost</c>, not <c>127.0.0.1</c></b>: the host's allowed-hosts list names
@@ -41,6 +52,16 @@ namespace Homespool.Host.BrowserTest;
 /// </remarks>
 public sealed class CameraHost : IAsyncDisposable
 {
+    /// <summary>
+    /// The first port <see cref="FreePort"/> hands out: below Linux's ephemeral range, which starts at
+    /// 32768, and far below macOS's and Windows', which start at 49152.
+    /// </summary>
+    private const int FirstPort = 20000;
+
+    private const int PortCount = 12000;
+
+    private static int _lastPort = RandomNumberGenerator.GetInt32(PortCount);
+
     private readonly ScratchDirectory _scratch;
 
     private CameraHost(ScratchDirectory scratch, FakeGo2Rtc sidecar, HomespoolFactory factory, Uri baseAddress)
@@ -187,12 +208,55 @@ public sealed class CameraHost : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// A port for one of the host's listeners: below the range a bind on port zero is given, never
+    /// handed out twice by this process, and free at the moment it is handed out.
+    /// </summary>
+    /// <remarks>
+    /// Checked by binding it exactly as Kestrel will - dual-mode on <c>[::]</c> - so a port anything
+    /// holds on any address is passed over, where a loopback probe would miss one held on another
+    /// interface. The counter starts at a random point so that two suites running side by side on one
+    /// machine walk different ports; that they could still meet is the one race left, and it needs a
+    /// second process picking fixed ports in the same range at the same moment.
+    /// </remarks>
     private static int FreePort()
     {
-        using TcpListener probe = new(IPAddress.Loopback, 0);
-        probe.Start();
+        for (int attempt = 0; attempt < PortCount; attempt++)
+        {
+            int port = FirstPort + (int)((uint)Interlocked.Increment(ref _lastPort) % PortCount);
 
-        return ((IPEndPoint)probe.LocalEndpoint).Port;
+            if (IsFree(port))
+            {
+                return port;
+            }
+        }
+
+        throw new InvalidOperationException($"No port between {FirstPort} and {FirstPort + PortCount - 1} is free.");
+    }
+
+    private static bool IsFree(int port)
+    {
+        bool dualMode = Socket.OSSupportsIPv6;
+
+        using Socket probe = new(dualMode ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork,
+                                 SocketType.Stream,
+                                 ProtocolType.Tcp);
+
+        if (dualMode)
+        {
+            probe.DualMode = true;
+        }
+
+        try
+        {
+            probe.Bind(new IPEndPoint(dualMode ? IPAddress.IPv6Any : IPAddress.Any, port));
+
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
     }
 
     /// <summary>A printer on the account's default team, inserted directly - enrolment is not the subject.</summary>

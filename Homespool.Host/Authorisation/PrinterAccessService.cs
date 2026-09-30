@@ -135,23 +135,26 @@ public class PrinterAccessService
                                                    long queuedByUserId,
                                                    CancellationToken cancellationToken)
     {
-        if (await AllowsAsync(printerId, caller, Capability.ControlPrinter, cancellationToken))
-        {
-            return true;
-        }
-
-        return queuedByUserId == caller.UserId &&
-               await AllowsAsync(printerId, caller, Capability.Print, cancellationToken);
+        return await WithdrawingCapabilityAsync(printerId, caller, queuedByUserId, cancellationToken) is not null;
     }
 
     /// <summary>
     /// <see cref="AllowsWithdrawingAsync"/>, throwing the refusal the services here already speak.
     /// </summary>
+    /// <remarks>
+    /// <b>It answers which capability allowed it</b>, so that a command sent next can be checked
+    /// against the same one. A token scoped to <see cref="Capability.ControlPrinter"/> alone is
+    /// allowed here, and a send that then asked for <see cref="Capability.Print"/> would refuse it.
+    /// </remarks>
+    /// <returns>
+    /// <see cref="Capability.ControlPrinter"/> when the caller holds it, whoever's work it is;
+    /// otherwise <see cref="Capability.Print"/>, for the caller's own.
+    /// </returns>
     /// <exception cref="TeamAccessDeniedException">The caller may not withdraw this work.</exception>
-    public async Task RequireWithdrawingAsync(int printerId,
-                                              Caller caller,
-                                              long queuedByUserId,
-                                              CancellationToken cancellationToken)
+    public async Task<Capability> RequireWithdrawingAsync(int printerId,
+                                                          Caller caller,
+                                                          long queuedByUserId,
+                                                          CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(caller);
 
@@ -163,10 +166,27 @@ public class PrinterAccessService
             throw CredentialScopeDeniedException.For(Capability.Print);
         }
 
-        if (!await AllowsWithdrawingAsync(printerId, caller, queuedByUserId, cancellationToken))
+        return await WithdrawingCapabilityAsync(printerId, caller, queuedByUserId, cancellationToken) ??
+               throw new TeamAccessDeniedException();
+    }
+
+    private async Task<Capability?> WithdrawingCapabilityAsync(int printerId,
+                                                               Caller caller,
+                                                               long queuedByUserId,
+                                                               CancellationToken cancellationToken)
+    {
+        if (await AllowsAsync(printerId, caller, Capability.ControlPrinter, cancellationToken))
         {
-            throw new TeamAccessDeniedException();
+            return Capability.ControlPrinter;
         }
+
+        if (queuedByUserId == caller.UserId &&
+            await AllowsAsync(printerId, caller, Capability.Print, cancellationToken))
+        {
+            return Capability.Print;
+        }
+
+        return null;
     }
 
     /// <summary>

@@ -276,6 +276,28 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
         body.EndsWith('…').Should().Be(descriptionLength > TelemetryAlertService.MaxPushBodyLength);
     }
 
+    /// <summary>
+    /// The mail encodes a description because it builds markup from it; a notification's body is
+    /// shown as text, where an entity would be shown as one.
+    /// </summary>
+    [Fact]
+    public void APushCarriesADescriptionAsText()
+    {
+        // Arrange
+        HealthReport report = new(
+            new Dictionary<string, HealthReportEntry>
+            {
+                ["broken"] = new(HealthStatus.Unhealthy, "Refused <b>everything</b> & gave up", TimeSpan.Zero, null, null),
+            },
+            TimeSpan.Zero);
+
+        // Act
+        string body = TelemetryAlertService.DescribeForPush(report);
+
+        // Assert
+        body.Should().Be("Refused <b>everything</b> & gave up");
+    }
+
     [Fact]
     public void APushNeverEndsHalfWayThroughACharacter()
     {

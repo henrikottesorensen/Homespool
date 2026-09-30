@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -108,15 +109,23 @@ public sealed class TelemetryAlertService : BackgroundService
     /// <summary>Reuses each check's own description, so the email, the banner and <c>/health</c> all
     /// say the same thing about the same condition.</summary>
     /// <remarks>
+    /// <para>
     /// <b>The prose around the list is localised; the list itself is not.</b> Each item is a health
     /// check's own description, or failing that its key - text this application does not author and
     /// which names a component rather than describing it to a reader. Translating those would put
     /// three surfaces out of step with each other for no gain, since the banner and <c>/health</c>
     /// carry the same strings untranslated.
+    /// </para>
+    /// <para>
+    /// <b>Each item is encoded.</b> A description is plain text - the banner and <c>/health</c> encode
+    /// it on the way out - and this is the one place markup is built from it. It is not fixed text:
+    /// descriptions carry configured hosts and paths, a host report's contents, a shell command with
+    /// <c>&amp;&amp;</c> in it, and, for a check that throws, the exception's message.
+    /// </para>
     /// </remarks>
     private static string Describe(HealthReport report, IStringLocalizer<SharedResource> localiser)
     {
-        IEnumerable<string> problems = Problems(report).Select(problem => $"<li>{problem}</li>");
+        IEnumerable<string> problems = Problems(report).Select(problem => $"<li>{HtmlEncoder.Default.Encode(problem)}</li>");
 
         return $"<p>{localiser["Alert_UnhealthyIntro"].Value}</p><ul>{string.Concat(problems)}</ul>" +
                $"<p>{localiser["Alert_UnhealthyFooter"].Value}</p>";
@@ -124,7 +133,8 @@ public sealed class TelemetryAlertService : BackgroundService
 
     /// <summary>
     /// The same list as <see cref="Describe"/>, as plain text for a notification - one problem a line,
-    /// cut at <see cref="MaxPushBodyLength"/>.
+    /// cut at <see cref="MaxPushBodyLength"/>. Not encoded: a browser shows a notification's body as
+    /// text, so an entity would be shown as one.
     /// </summary>
     public static string DescribeForPush(HealthReport report)
     {

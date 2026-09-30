@@ -80,7 +80,12 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
     /// Builds the slice of the host the alert service actually touches: a database with Identity in
     /// it, an SMTP sender pointed at Mailpit, and a health check reporting whatever this test wants.
     /// </summary>
-    private async Task<ServiceProvider> BuildAsync(HealthStatus status, string? adminLanguage = null)
+    /// <param name="status">What the stand-in telemetry check reports.</param>
+    /// <param name="adminLanguage">The administrator's stored language.</param>
+    /// <param name="check">The stand-in check itself, for a test that needs more than a status.</param>
+    private async Task<ServiceProvider> BuildAsync(HealthStatus status,
+                                                   string? adminLanguage = null,
+                                                   Func<HealthCheckResult>? check = null)
     {
         ServiceCollection services = new();
 
@@ -115,8 +120,8 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
         // A stand-in for the telemetry check, so this test controls health without needing a broken
         // database - what is under test is the alerting, not the diagnosis.
         services.AddHealthChecks()
-                .AddCheck("telemetry-persistence", () => new HealthCheckResult(
-                              status, "Nothing is reaching the database."));
+                .AddCheck("telemetry-persistence", check ?? (() => new HealthCheckResult(
+                              status, "Nothing is reaching the database.")));
 
         _provider = services.BuildServiceProvider();
 
@@ -220,6 +225,41 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
             message.HTML.Should().Contain(
                 "Nothing is reaching the database.",
                 "the check's own description is not ours to translate - the banner and /health carry it untranslated");
+        }
+        finally
+        {
+            await alerts.StopAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>
+    /// A check's description reaches the mail as text, not as markup.
+    /// </summary>
+    /// <remarks>
+    /// A check that throws is the case with no bound on what it says: the health check service
+    /// reports it Unhealthy with the exception's message as its description, and that message can
+    /// quote anything the check was reading.
+    /// </remarks>
+    [Fact]
+    public async Task ADescriptionIsEncodedIntoTheMail()
+    {
+        // Arrange
+        ServiceProvider provider = await BuildAsync(
+            HealthStatus.Unhealthy,
+            check: () => throw new InvalidOperationException("Refused <b>everything</b> & gave up"));
+        using TelemetryAlertService alerts = NewAlertService(provider);
+
+        // Act
+        await alerts.StartAsync(CancellationToken.None);
+
+        try
+        {
+            MailpitClient.MailpitMessageSummary summary = await _mailpit.AwaitMessageAsync(AdminAddress);
+            MailpitClient.MailpitMessage message = await _mailpit.GetMessageAsync(summary.ID);
+
+            // Assert
+            message.HTML.Should().Contain("<li>Refused &lt;b&gt;everything&lt;/b&gt; &amp; gave up</li>");
+            message.HTML.Should().NotContain("<b>", "a description is text, and the mail is the one place markup is built from it");
         }
         finally
         {

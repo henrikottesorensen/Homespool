@@ -2001,6 +2001,9 @@
   <data name="Cameras_SourcePlaceholder" xml:space="preserve">
     <value>Adressen indeholder ${, som go2rtc-tjenesten ville erstatte med en af sine egne indstillinger. Fjern det.</value>
   </data>
+  <data name="Cameras_SourceUnprintable" xml:space="preserve">
+    <value>Adressen indeholder kontroltegn eller usynlige tegn, som en kameraadresse aldrig har brug for. Skriv adressen igen i stedet for at indsætte den.</value>
+  </data>
   <data name="Cameras_PasswordNotCarriedOver" xml:space="preserve">
     <value>Skriv kameraets adgangskode igen, eller fjern den, hvis den nye adresse ikke kræver en. Adressen eller brugernavnet er ændret, og en gemt adgangskode kan kun bruges med det kamera og brugernavn, den blev gemt sammen med.</value>
   </data>

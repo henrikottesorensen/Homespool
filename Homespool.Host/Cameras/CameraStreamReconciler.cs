@@ -189,7 +189,9 @@ public sealed class CameraStreamReconciler : BackgroundService
                 // check is asked again here, where a source is next handed over. An unresolvable
                 // name is kept: at start-up nobody can retry, and a name that resolves to nothing
                 // reaches nothing. See CameraSourcePolicy.CheckAsync for why the save answers that
-                // differently.
+                // differently. The same check also refuses what a source holds, not only where it
+                // points, so a camera saved before one of those rules existed stops here too - which is
+                // why the log line names the rule rather than claiming an address.
                 if (!CameraSourcePolicy.IsLocalDevice(source))
                 {
                     CameraSourceCheck check = await _policy.CheckAsync(source, acceptUnresolvable: true, stoppingToken)
@@ -199,8 +201,8 @@ public sealed class CameraStreamReconciler : BackgroundService
                     {
                         // The source itself is deliberately not logged, for the reason given above.
                         _logger.LogWarning(
-                            "Camera {Uuid} now points at this deployment rather than at a camera ({Reason}), so it " +
-                            "was not registered. Open it on the cameras page to see where it points.",
+                            "Camera {Uuid}'s source is not one this server accepts ({Reason}), so it was not " +
+                            "registered. Open it on the cameras page and save it to see why.",
                             camera.Uuid,
                             check.Error?.Key);
                         continue;

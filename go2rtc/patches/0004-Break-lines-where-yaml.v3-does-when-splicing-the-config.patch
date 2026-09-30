@@ -1,0 +1,254 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Henrik=20O=2E=20S=C3=B8rensen?= <henrik.sorensen@gmail.com>
+Date: Wed, 30 Sep 2026 00:51:19 +0200
+Subject: [PATCH] Break lines where yaml.v3 does when splicing the config
+
+Patch finds the text to replace or remove from the line numbers yaml.v3
+puts on a node, and turns them into offsets by counting LF. yaml.v3 also
+counts CR, NEL, LS (U+2028) and PS (U+2029) as line breaks, and writes
+LS and PS unescaped inside a quoted scalar. So once a value holding one
+is saved - a stream source is written as given - every key below it is
+found a line too low: PUT /api/streams for a later stream answers 400
+"mapping key already defined" and is not saved, and DELETE removes that
+stream's value but leaves its key, and then removes the key after it.
+
+Every line of the splicer now breaks where yaml.v3 does: the offset of a
+line, the lines a node spans, and the lines Encode's output is indented
+by, which otherwise leaves the part after a separator at its old depth.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ pkg/yaml/yaml.go      |  56 ++++++++++++++-----
+ pkg/yaml/yaml_test.go | 122 ++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 166 insertions(+), 12 deletions(-)
+
+diff --git a/pkg/yaml/yaml.go b/pkg/yaml/yaml.go
+index 20c0459..9bf6fa0 100644
+--- a/pkg/yaml/yaml.go
++++ b/pkg/yaml/yaml.go
+@@ -163,7 +163,7 @@ func nodeBounds(in []byte, node *yaml.Node) (offset0, offset1 int) {
+ 
+ 	for i := offset1; i < len(in); {
+ 		indent, length := parseLine(in[i:])
+-		if indent+1 != length {
++		if lineBreak(in[i:], indent) == 0 {
+ 			if node.Column < indent+1 {
+ 				offset1 = i + length
+ 			} else {
+@@ -215,8 +215,8 @@ func join(items ...[]byte) []byte {
+ func addPrefix(src, pre []byte) (dst []byte) {
+ 	for len(src) > 0 {
+ 		dst = append(dst, pre...)
+-		i := bytes.IndexByte(src, '\n') + 1
+-		if i == 0 {
++		i := lineEnd(src)
++		if i < 0 {
+ 			dst = append(dst, src...)
+ 			break
+ 		}
+@@ -241,8 +241,8 @@ func lineOffset(in []byte, line int) (offset int) {
+ 			return offset
+ 		}
+ 
+-		i := bytes.IndexByte(in[offset:], '\n') + 1
+-		if i == 0 {
++		i := lineEnd(in[offset:])
++		if i < 0 {
+ 			break
+ 		}
+ 		offset += i
+@@ -252,18 +252,50 @@ func lineOffset(in []byte, line int) (offset int) {
+ 
+ func parseLine(b []byte) (indent int, length int) {
+ 	prefix := true
+-	for ; length < len(b); length++ {
+-		switch b[length] {
+-		case ' ':
++	for length < len(b) {
++		if n := lineBreak(b, length); n > 0 {
++			return indent, length + n
++		}
++		if b[length] == ' ' {
+ 			if prefix {
+ 				indent++
+ 			}
+-		case '\n':
+-			length++
+-			return
+-		default:
++		} else {
+ 			prefix = false
+ 		}
++		length++
+ 	}
+ 	return
+ }
++
++// lineEnd returns the length of the first line in b, its line break included, or -1 when b holds
++// no line break.
++func lineEnd(b []byte) int {
++	for i := range b {
++		if n := lineBreak(b, i); n > 0 {
++			return i + n
++		}
++	}
++	return -1
++}
++
++// lineBreak returns the length of the line break at b[i], or 0 when there is none there. It breaks
++// lines where yaml.v3 does - CR LF, LF, CR, NEL, LS and PS - because the line numbers on the nodes
++// it returns count those, and an offset found by counting only LF names a later line for every
++// other break above it. yaml.v3 writes LS and PS into a quoted scalar unescaped, so a value holding
++// one puts every key after it out of place.
++func lineBreak(b []byte, i int) int {
++	switch {
++	case i >= len(b):
++		return 0
++	case b[i] == '\r' && i+1 < len(b) && b[i+1] == '\n':
++		return 2
++	case b[i] == '\n' || b[i] == '\r':
++		return 1
++	case b[i] == 0xC2 && i+1 < len(b) && b[i+1] == 0x85: // NEL
++		return 2
++	case b[i] == 0xE2 && i+2 < len(b) && b[i+1] == 0x80 && (b[i+2] == 0xA8 || b[i+2] == 0xA9): // LS, PS
++		return 3
++	}
++	return 0
++}
+diff --git a/pkg/yaml/yaml_test.go b/pkg/yaml/yaml_test.go
+index 7abc450..5a9476c 100644
+--- a/pkg/yaml/yaml_test.go
++++ b/pkg/yaml/yaml_test.go
+@@ -140,6 +140,69 @@ func TestPatch(t *testing.T) {
+ 			value:  []string{"val1"},
+ 			expect: "homekit:\n  camera1:\n    pairings:\n      - val1\nstreams:\n  camera1: url1\n",
+ 		},
++		{
++			name:   "replace after a line separator",
++			src:    "streams:\n  camera1:\n    - 'url1\u2028      a'\n  camera2:\n    - url2\n  camera3:\n    - url3\n",
++			path:   []string{"streams", "camera2"},
++			value:  []string{"url4"},
++			expect: "streams:\n  camera1:\n    - 'url1\u2028      a'\n  camera2:\n    - url4\n  camera3:\n    - url3\n",
++		},
++		{
++			name:   "remove after a line separator",
++			src:    "streams:\n  camera1:\n    - 'url1\u2028      a'\n  camera2:\n    - url2\n  camera3:\n    - url3\n",
++			path:   []string{"streams", "camera2"},
++			value:  nil,
++			expect: "streams:\n  camera1:\n    - 'url1\u2028      a'\n  camera3:\n    - url3\n",
++		},
++		{
++			name:   "replace after a paragraph separator",
++			src:    "streams:\n  camera1:\n    - 'url1\u2029      a'\n  camera2:\n    - url2\n  camera3:\n    - url3\n",
++			path:   []string{"streams", "camera2"},
++			value:  []string{"url4"},
++			expect: "streams:\n  camera1:\n    - 'url1\u2029      a'\n  camera2:\n    - url4\n  camera3:\n    - url3\n",
++		},
++		{
++			name:   "remove after a paragraph separator",
++			src:    "streams:\n  camera1:\n    - 'url1\u2029      a'\n  camera2:\n    - url2\n  camera3:\n    - url3\n",
++			path:   []string{"streams", "camera2"},
++			value:  nil,
++			expect: "streams:\n  camera1:\n    - 'url1\u2029      a'\n  camera3:\n    - url3\n",
++		},
++		{
++			name:   "replace after a next line",
++			src:    "streams:\n  camera1:\n    - 'url1\u0085      a'\n  camera2:\n    - url2\n  camera3:\n    - url3\n",
++			path:   []string{"streams", "camera2"},
++			value:  []string{"url4"},
++			expect: "streams:\n  camera1:\n    - 'url1\u0085      a'\n  camera2:\n    - url4\n  camera3:\n    - url3\n",
++		},
++		{
++			name:   "remove after a next line",
++			src:    "streams:\n  camera1:\n    - 'url1\u0085      a'\n  camera2:\n    - url2\n  camera3:\n    - url3\n",
++			path:   []string{"streams", "camera2"},
++			value:  nil,
++			expect: "streams:\n  camera1:\n    - 'url1\u0085      a'\n  camera3:\n    - url3\n",
++		},
++		{
++			name:   "remove before a line separator outside quotes",
++			src:    "streams:\n  camera1:\n    - url1\u2028  camera2: url2\n  camera3: url3\n",
++			path:   []string{"streams", "camera1"},
++			value:  nil,
++			expect: "streams:\n  camera2: url2\n  camera3: url3\n",
++		},
++		{
++			name:   "remove a block holding a blank line, with CRLF line ends",
++			src:    "streams:\r\n  camera1:\r\n    - url1\r\n\r\n    - url2\r\n  camera2: url3\r\n",
++			path:   []string{"streams", "camera1"},
++			value:  nil,
++			expect: "streams:\r\n  camera2: url3\r\n",
++		},
++		{
++			name:   "remove from a file with CRLF line ends",
++			src:    "streams:\r\n  camera1: url1\r\n  camera2: url2\r\n  camera3: url3\r\n",
++			path:   []string{"streams", "camera2"},
++			value:  nil,
++			expect: "streams:\r\n  camera1: url1\r\n  camera3: url3\r\n",
++		},
+ 	}
+ 	for _, tt := range tests {
+ 		t.Run(tt.name, func(t *testing.T) {
+@@ -149,3 +212,62 @@ func TestPatch(t *testing.T) {
+ 		})
+ 	}
+ }
++
++// A value holding a line separator is written by Patch itself, and every later patch still finds
++// the key it names: yaml.v3 counts the separator as a line break, so the offsets have to as well.
++func TestPatchAfterASeparatorItWrote(t *testing.T) {
++	for _, sep := range []string{"\u2028", "\u2029"} {
++		b, err := Patch(nil, []string{"streams", "camera1"}, []string{"url1" + sep + "a"})
++		require.NoError(t, err)
++		for _, step := range []struct {
++			key   string
++			value any
++		}{
++			{"camera2", []string{"url2"}},
++			{"camera3", []string{"url3"}},
++			{"camera2", nil},
++			{"camera3", []string{"url4"}},
++			{"camera4", []string{"url5"}},
++		} {
++			b, err = Patch(b, []string{"streams", step.key}, step.value)
++			require.NoError(t, err)
++		}
++
++		var got map[string]map[string][]string
++		require.NoError(t, Unmarshal(b, &got))
++		require.Equal(t, map[string][]string{
++			"camera1": {"url1" + sep + "a"},
++			"camera3": {"url4"},
++			"camera4": {"url5"},
++		}, got["streams"])
++	}
++}
++
++// A file whose lines end in CR alone: yaml.v3 counts those too. join separates what it splices with
++// an LF, which makes a CR LF there - still one break - so the result is checked by what it holds.
++func TestPatchRemoveWithCRLineEnds(t *testing.T) {
++	b, err := Patch([]byte("streams:\r  camera1: url1\r  camera2: url2\r  camera3: url3\r"), []string{"streams", "camera2"}, nil)
++	require.NoError(t, err)
++
++	var got map[string]map[string]string
++	require.NoError(t, Unmarshal(b, &got))
++	require.Equal(t, map[string]string{"camera1": "url1", "camera3": "url3"}, got["streams"])
++}
++
++// A value holding a line separator, spliced in deeper than Encode wrote it: every line of it has to
++// move with it, including the one after the separator, or removing it again leaves that line behind.
++func TestPatchIndentsAfterASeparator(t *testing.T) {
++	src := "homekit:\n  camera1:\n    pairings:\n      - val1\n"
++	for _, sep := range []string{"\u2028", "\u2029"} {
++		b, err := Patch([]byte(src), []string{"homekit", "camera1", "name"}, "one"+sep+"two")
++		require.NoError(t, err)
++
++		var got map[string]map[string]map[string]any
++		require.NoError(t, Unmarshal(b, &got))
++		require.Equal(t, "one"+sep+"two", got["homekit"]["camera1"]["name"])
++
++		b, err = Patch(b, []string{"homekit", "camera1", "name"}, nil)
++		require.NoError(t, err)
++		require.Equal(t, src, string(b))
++	}
++}

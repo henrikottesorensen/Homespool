@@ -157,6 +157,42 @@ public class GCodeThumbnailReaderTests
         GCodeThumbnailReader.ReadFile(Path.Combine(AppContext.BaseDirectory, fixture)).Should().BeNull();
     }
 
+    /// <summary>
+    /// A file of one line with no newline is read no further than its head. A line reader builds the
+    /// whole line before it can be told to stop, and anybody who may print can upload such a file and
+    /// start it: 64 MiB of it once cost 640 MiB, read on every poll of the printer's page.
+    /// </summary>
+    [Fact]
+    public void AFileOfOneEndlessLineIsReadNoFurtherThanItsHead()
+    {
+        byte[] file = new byte[64 * 1024 * 1024];
+        Array.Fill(file, (byte)';');
+
+        using MemoryStream stream = new(file);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+
+        byte[]? image = GCodeThumbnailReader.Read(stream);
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        image.Should().BeNull();
+        allocated.Should().BeLessThan(8L * GCodeThumbnailReader.MaxHeadBytes, "reading is bounded by the head, not the file");
+    }
+
+    /// <summary>
+    /// A preview whose section runs past the head is not found: the file shows none, rather than the
+    /// reader following it.
+    /// </summary>
+    [Fact]
+    public void APreviewRunningPastTheHeadIsNotFound()
+    {
+        byte[] large = [.. TinyPng, .. new byte[GCodeThumbnailReader.MaxHeadBytes]];
+
+        string gcode = Section("thumbnail", "1024x1024", large) + "G28\n";
+
+        Read(Encoding.ASCII.GetBytes(gcode)).Should().BeNull();
+    }
+
     /// <summary>A file that is not there is no preview, not an exception.</summary>
     [Fact]
     public void AMissingFileHasNone()

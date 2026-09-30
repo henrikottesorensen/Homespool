@@ -36,6 +36,12 @@ namespace Homespool.Host.Printing;
 /// what was printed. A preview is not written to the database. The last <see cref="Capacity"/> prints
 /// are held, a few printers' worth of about 53 KB each.
 /// </para>
+/// <para>
+/// <b>One read per print, whoever is asking.</b> What is remembered is the read itself, so viewers and
+/// polls arriving together wait on the same one rather than each starting their own. It runs on none of
+/// their cancellations, for the same reason: another viewer may be waiting on it. A read that fails is
+/// forgotten, so the next poll tries again.
+/// </para>
 /// </remarks>
 public sealed class PrintThumbnails
 {
@@ -47,7 +53,7 @@ public sealed class PrintThumbnails
     private readonly ILogger<PrintThumbnails> _logger;
 
     private readonly Lock _gate = new();
-    private readonly Dictionary<Guid, byte[]?> _images = [];
+    private readonly Dictionary<Guid, Task<byte[]?>> _reads = [];
     private readonly Queue<Guid> _order = new();
 
     public PrintThumbnails(UserFileStore store, IServiceScopeFactory scopeFactory, ILogger<PrintThumbnails> logger)
@@ -66,31 +72,46 @@ public sealed class PrintThumbnails
     {
         ArgumentNullException.ThrowIfNull(job);
 
-        lock (_gate)
-        {
-            if (_images.TryGetValue(job.PrintUuid, out byte[]? known))
-            {
-                return known;
-            }
-        }
-
-        byte[]? image = await ReadAsync(job, cancellationToken);
+        Task<byte[]?>? read;
 
         lock (_gate)
         {
-            // Two viewers asking at once both read; the first answer is the one kept.
-            if (_images.TryAdd(job.PrintUuid, image))
+            if (!_reads.TryGetValue(job.PrintUuid, out read))
             {
+                // Off this caller's stack before anything is read, so the lock is never held across it.
+                read = Task.Run(() => ReadAsync(job, CancellationToken.None), CancellationToken.None);
+
+                _reads[job.PrintUuid] = read;
                 _order.Enqueue(job.PrintUuid);
 
                 while (_order.Count > Capacity)
                 {
-                    _images.Remove(_order.Dequeue());
+                    _reads.Remove(_order.Dequeue());
                 }
+
+                _ = read.ContinueWith(failed => Forget(job.PrintUuid, failed), CancellationToken.None,
+                                      TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
             }
         }
 
-        return image;
+        return await read.WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Drops a failed read, so the next caller starts another. Only if it is still the one held: a
+    /// retry may already have taken its place.
+    /// </summary>
+    private void Forget(Guid printUuid, Task<byte[]?> failed)
+    {
+        _logger.LogWarning(failed.Exception, "[{PrintUuid}] could not read the print's preview", printUuid);
+
+        lock (_gate)
+        {
+            if (_reads.TryGetValue(printUuid, out Task<byte[]?>? held) && held == failed)
+            {
+                _reads.Remove(printUuid);
+            }
+        }
     }
 
     private async Task<byte[]?> ReadAsync(PrintJob job, CancellationToken cancellationToken)

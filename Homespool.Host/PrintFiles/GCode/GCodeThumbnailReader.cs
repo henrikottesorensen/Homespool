@@ -1,5 +1,4 @@
 using System;
-using System.Buffers.Text;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -38,16 +37,20 @@ public static class GCodeThumbnailReader
     public const int MaxImageBytes = 1024 * 1024;
 
     /// <summary>
+    /// How much of a plain file's head is read at all. The measured header, previews included, ends at
+    /// about 190 KB; a preview that runs past this is not found, and the file shows none.
+    /// </summary>
+    /// <remarks>
+    /// A bound on bytes read, not on lines: a line is built whole before anything can look at it, so a
+    /// file of one line with no newline - up to the upload cap - would be read into memory entire.
+    /// </remarks>
+    public const int MaxHeadBytes = 1024 * 1024;
+
+    /// <summary>
     /// How many blocks to walk. File and printer metadata, then the previews - four from a current
     /// PrusaSlicer profile - so anything past this is not a file shaped the way the specification says.
     /// </summary>
     private const int MaxBlocksWalked = 32;
-
-    /// <summary>
-    /// How much of a plain file's head to read before giving up on reaching its first command. The
-    /// measured header, previews included, is about 190 KB.
-    /// </summary>
-    private const int MaxHeadChars = 4 * 1024 * 1024;
 
     /// <summary>The opening line of a PNG preview in a plain file, up to its size.</summary>
     private const string PngBeginTag = "; thumbnail begin ";
@@ -148,23 +151,21 @@ public static class GCodeThumbnailReader
     /// </summary>
     private static byte[]? ReadPlain(Stream stream)
     {
-        using StreamReader reader = new(stream, Encoding.ASCII, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+        // The head is read first and lines are found only inside it, so nothing - a line, a section,
+        // the decoded image - can grow past it. A line the bound cuts short simply ends the header.
+        byte[] head = new byte[(int)Math.Min(stream.Length, MaxHeadBytes)];
+        int length = stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+
+        using StreamReader reader = new(new MemoryStream(head, 0, length, writable: false), Encoding.ASCII,
+                                        detectEncodingFromByteOrderMarks: false);
 
         StringBuilder? capturing = null;
         long capturingArea = 0;
         string? bestBase64 = null;
         long bestArea = 0;
-        long charsRead = 0;
 
         while (reader.ReadLine() is { } line)
         {
-            charsRead += line.Length + 1;
-
-            if (charsRead > MaxHeadChars)
-            {
-                break;
-            }
-
             if (capturing is not null)
             {
                 if (line.StartsWith("; thumbnail end", StringComparison.Ordinal))
@@ -180,12 +181,6 @@ public static class GCodeThumbnailReader
                 else if (line.StartsWith("; ", StringComparison.Ordinal))
                 {
                     capturing.Append(line.AsSpan(2).Trim());
-
-                    // A section that never ends would otherwise grow to the head's bound.
-                    if (capturing.Length > Base64.GetMaxEncodedToUtf8Length(MaxImageBytes))
-                    {
-                        capturing = null;
-                    }
                 }
                 else
                 {

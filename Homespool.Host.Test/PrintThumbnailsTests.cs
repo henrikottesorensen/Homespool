@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -167,6 +168,24 @@ public sealed class PrintThumbnailsTests : IAsyncLifetime
         (await Thumbnails.ForAsync(first, TestContext.Current.CancellationToken)).Should().Equal(Png(1));
         (await Thumbnails.ForAsync(Job(Alice, "cube.gcode", digest: null), TestContext.Current.CancellationToken))
             .Should().Equal(Png(2));
+    }
+
+    /// <summary>
+    /// Viewers and polls arriving at once share one read rather than each starting their own - every
+    /// one of them is handed the very same array.
+    /// </summary>
+    [Fact]
+    public async Task CallersAskingAtOnceShareOneRead()
+    {
+        await UploadAsync(Alice, "cube.gcode", Png(1));
+        PrintJob job = Job(Alice, "cube.gcode", digest: null);
+        PrintThumbnails thumbnails = Thumbnails;
+
+        byte[]?[] images = await Task.WhenAll(Enumerable.Range(0, 16)
+                                                        .Select(_ => Task.Run(() => thumbnails.ForAsync(job, TestContext.Current.CancellationToken))));
+
+        images.Should().AllSatisfy(image => image.Should().BeSameAs(images[0]));
+        images[0].Should().Equal(Png(1));
     }
 
     /// <summary>

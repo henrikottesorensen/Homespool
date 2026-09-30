@@ -71,6 +71,12 @@ RUN actual="$(git rev-parse HEAD)" && \
 # and the write Homespool makes at startup is exactly that - so a deployment that had never added a
 # camera lost its WebRTC settings, and with them live view.
 #
+# 0004: the writer placed text by counting LF, and the YAML library that reports where each key is
+# also counts U+2028 and U+2029 - which it writes into a quoted value unescaped. One camera source
+# holding either put every key after it a line out, so a later camera could not be saved and deleting
+# one removed its neighbour. Homespool refuses such a source; the patch mends a file written before
+# it did.
+#
 # Every patch by name, so one added to the directory cannot be skipped by accident; git apply fails
 # the build on a patch that no longer fits.
 COPY patches/0001-Add-missing-Huffman-tables-to-stream.mjpeg-frames.patch /patches/
@@ -79,6 +85,8 @@ COPY patches/0002-Patch-into-an-empty-or-flow-style-parent.patch /patches/
 RUN git apply --verbose /patches/0002-Patch-into-an-empty-or-flow-style-parent.patch
 COPY patches/0003-Merge-a-config-PATCH-into-an-empty-config-file.patch /patches/
 RUN git apply --verbose /patches/0003-Merge-a-config-PATCH-into-an-empty-config-file.patch
+COPY patches/0004-Break-lines-where-yaml.v3-does-when-splicing-the-config.patch /patches/
+RUN git apply --verbose /patches/0004-Break-lines-where-yaml.v3-does-when-splicing-the-config.patch
 
 # The two modules a scanner found fixes for, at their latest release - and only those two, because
 # they are the Go team's own and keep their API; the rest stay at what the release was tested with.

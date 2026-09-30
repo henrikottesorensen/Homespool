@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Certificates;
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Cameras;
 
@@ -354,6 +355,18 @@ public sealed class CameraSourcePolicy
         if (trimmed.Contains("${", StringComparison.Ordinal))
         {
             return CameraSourceCheck.Refused("Cameras_SourcePlaceholder");
+        }
+
+        // go2rtc screens a source for ASCII whitespace and nothing else, and writes U+2028 and U+2029
+        // into its configuration file unescaped where the parser it reads the file with counts them
+        // as line breaks - so a source holding either put every later camera in that file, whoever's
+        // it is, a line out of place. The image this project builds patches go2rtc's writer to agree;
+        // an upstream one does not. Refused as the whole unprintable set rather than those two,
+        // because a source is shown back to people and no camera needs a character nobody can see.
+        // Ahead of the device return and the address switch for the reason the placeholder is.
+        if (!PrintableText.IsPrintable(trimmed))
+        {
+            return CameraSourceCheck.Refused("Cameras_SourceUnprintable");
         }
 
         // A local device reaches no network at all, so there is nothing here to check. Whether the

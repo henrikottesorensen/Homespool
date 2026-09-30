@@ -296,6 +296,64 @@ public class CameraSourcePolicyTests
     }
 
     /// <summary>
+    /// A source holding a character nobody can see is refused, wherever in the source it sits - the
+    /// password included, which is never shown again once saved.
+    /// </summary>
+    /// <remarks>
+    /// The line and paragraph separators are the two that did damage: go2rtc writes them into its
+    /// configuration file unescaped and reads the file back with a parser that breaks lines at them,
+    /// so every camera after one sat a line out of place. The resolver answers with a public address,
+    /// so nothing but the character is left to refuse these.
+    /// </remarks>
+    [Theory]
+    [InlineData("rtsp://camera.example/live\u2028x")]
+    [InlineData("rtsp://camera.example/live?x=\u2029y")]
+    [InlineData("rtsp://admin:pass\u2028word@camera.example/live")]
+    [InlineData("rtsp://ad\u2029min:password@camera.example/live")]
+    [InlineData("rtsp://camera.example/live\u0085x")]
+    [InlineData("rtsp://camera.example/li\u202Eve")]
+    [InlineData("rtsp://camera.example/li\u200Bve")]
+    [InlineData("rtsp://camera.example/li\tve")]
+    [InlineData("ffmpeg:device?video=/dev/v4l/by-id/usb-camera\u2028&input_format=mjpeg")]
+    public async Task ASourceWithAnUnprintableCharacterIsRefused(string source)
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse("nobody can see the character, and the sidecar's file breaks a line at some of them");
+        check.Error!.Key.Should().Be("Cameras_SourceUnprintable");
+    }
+
+    /// <summary>Not an address rule, so turning the address rules off does not turn it off.</summary>
+    [Fact]
+    public async Task AnUnprintableCharacterIsRefusedWithTheAddressChecksOff()
+    {
+        CameraSourcePolicy policy = Build(refuseLoopback: false);
+
+        CameraSourceCheck check = await policy.CheckAsync("rtsp://camera.example/live\u2028x", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse();
+        check.Error!.Key.Should().Be("Cameras_SourceUnprintable");
+    }
+
+    /// <summary>
+    /// What is merely not English is printable, and a separator around the source rather than in it
+    /// is whitespace, trimmed before the source is checked or stored.
+    /// </summary>
+    [Theory]
+    [InlineData("rtsp://admin:pæssørd@camera.example/stue")]
+    [InlineData("rtsp://camera.example/live\u2028")]
+    public async Task APrintableSourceIsAccepted(string source)
+    {
+        CameraSourcePolicy policy = Build();
+
+        CameraSourceCheck check = await policy.CheckAsync(source, CancellationToken.None);
+
+        check.IsAcceptable.Should().BeTrue();
+    }
+
+    /// <summary>
     /// Homespool's container identity - the name it answers to inside the Compose network.
     /// </summary>
     [Fact]

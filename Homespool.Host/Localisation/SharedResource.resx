@@ -2071,6 +2071,9 @@
   <data name="Cameras_SourcePlaceholder" xml:space="preserve">
     <value>The address contains ${, which the go2rtc service would replace with one of its own settings. Remove it.</value>
   </data>
+  <data name="Cameras_SourceUnprintable" xml:space="preserve">
+    <value>The address contains a control or invisible character, which no camera address needs. Type the address again rather than pasting it.</value>
+  </data>
   <data name="Cameras_PasswordNotCarriedOver" xml:space="preserve">
     <value>Type the camera's password again, or remove it if the new address needs none. The address or user name has changed, and a saved password can only be used with the camera and user name it was saved with.</value>
     <comment>"Address" is the camera's source as typed into the form.</comment>

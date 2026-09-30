@@ -1,5 +1,6 @@
 #!/bin/sh
-# Install the daily check for newer Homespool images on a machine running the stack.
+# Install the daily check for newer Homespool images on a machine running the stack, and the watch
+# that runs it again when the running images change.
 #
 #   sudo ./update-check/install.sh [compose-project]
 #
@@ -57,9 +58,12 @@ install -m 0755 "$here/homespool-update-check.sh" "$SBIN/homespool-update-check"
 sed "s/@PROJECT@/$PROJECT/" "$here/homespool-update-check.service" > "$UNITS/homespool-update-check.service"
 chmod 0644 "$UNITS/homespool-update-check.service"
 install -m 0644 "$here/homespool-update-check.timer" "$UNITS/homespool-update-check.timer"
+sed "s/@PROJECT@/$PROJECT/" "$here/homespool-update-check-watch.service" > "$UNITS/homespool-update-check-watch.service"
+chmod 0644 "$UNITS/homespool-update-check-watch.service"
+install -m 0644 "$here/homespool-update-check-watch.timer" "$UNITS/homespool-update-check-watch.timer"
 
 systemctl daemon-reload
-systemctl enable --now homespool-update-check.timer
+systemctl enable --now homespool-update-check.timer homespool-update-check-watch.timer
 
 echo "Installed for compose project '$PROJECT'. To check now rather than tonight:"
 echo "  sudo systemctl start homespool-update-check.service"

@@ -243,6 +243,8 @@ mmdebstrap:
     - install -m 0755 $1/opt/homespool/update-check/homespool-update-check.sh $1/usr/local/sbin/homespool-update-check
     - sed 's/@PROJECT@/homespool/' $1/opt/homespool/update-check/homespool-update-check.service > $1/etc/systemd/system/homespool-update-check.service
     - install -m 0644 $1/opt/homespool/update-check/homespool-update-check.timer $1/etc/systemd/system/homespool-update-check.timer
+    - sed 's/@PROJECT@/homespool/' $1/opt/homespool/update-check/homespool-update-check-watch.service > $1/etc/systemd/system/homespool-update-check-watch.service
+    - install -m 0644 $1/opt/homespool/update-check/homespool-update-check-watch.timer $1/etc/systemd/system/homespool-update-check-watch.timer
 
     - |-
       #
@@ -772,7 +774,7 @@ mmdebstrap:
     # The account its network half runs as, created now rather than left to systemd-sysusers at first
     # boot, so the card is complete before it has ever started.
     - chroot $1 systemd-sysusers /usr/lib/sysusers.d/homespool-update-check.conf
-    - chroot $1 systemctl enable homespool-update-check.timer
+    - chroot $1 systemctl enable homespool-update-check.timer homespool-update-check-watch.timer
 
     # The package's own postinst should already have done this - earlyoom.service carries an
     # [Install] section and dh_installsystemd enables it. Repeated anyway because it is idempotent

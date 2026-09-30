@@ -5,9 +5,18 @@
 #   homespool-update-check collect    # root: what is running, from the Docker socket
 #   homespool-update-check compare    # unprivileged: what is published, and the report
 #   homespool-update-check publish    # root: the report into the application's volume
+#   homespool-update-check watch      # root: start the three again when the running images changed
 #
 # Run daily from homespool-update-check.timer, which runs the three in that order as one service. To
 # run it by hand, start the service; the steps are not meant to be run on their own.
+#
+# AND AGAIN WHENEVER THE RUNNING IMAGES CHANGE. The report describes the containers that were running
+# when it was written, so a pull leaves it describing the ones just replaced - telling whoever took the
+# update to take it. homespool-update-check-watch.timer runs watch every few minutes: it asks Docker
+# which image each container runs, by id, and starts the service when that is not the list collect
+# last wrote. Nothing leaves the machine, and no JSON is read. A run that fails after collect is not
+# retried by watch - the list is already this one - but by the next daily run, so a registry that is
+# down is not asked every few minutes.
 #
 # THREE STEPS, BECAUSE ONLY TWO OF THEM NEED ROOT, AND THOSE TWO TOUCH NOTHING FROM OUTSIDE.
 #
@@ -58,6 +67,9 @@ project="${HOMESPOOL_PROJECT:-homespool}"
 services="homespool proxy go2rtc"
 state_dir="${STATE_DIRECTORY:-/var/lib/homespool}"
 run_dir="${RUNTIME_DIRECTORY:-/run/homespool-update-check}"
+# Root's, and nobody else's: collect writes the running image ids here for watch to compare with. Not
+# the state directory, which the unprivileged step owns and could rewrite to start runs or stop them.
+watch_dir="${HOMESPOOL_WATCH_DIRECTORY:-/var/lib/homespool-update-check}"
 dotnet_index="https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json"
 
 # The largest report publish will copy. A real one is a few kilobytes.
@@ -85,6 +97,17 @@ running_container() {
         --filter "label=com.docker.compose.service=$1" --format '{{.ID}}' | head -n 1
 }
 
+# What watch compares: a line per service, its name and its container's image id, or - when none runs.
+# collect writes its list with this too, and inspects the image the line names, so the list is exactly
+# what it collected.
+image_line() {
+    if [ -n "$2" ]; then
+        printf '%s %s\n' "$1" "$(docker inspect --format '{{.Image}}' "$2")"
+    else
+        printf '%s -\n' "$1"
+    fi
+}
+
 # --- collect: root, the Docker socket, nothing from outside ------------------------------------------
 
 collect() {
@@ -92,15 +115,25 @@ collect() {
     mkdir -p "$run_dir"
     docker version --format '{{.Server.Os}}/{{.Server.Arch}}' > "$run_dir/platform"
 
+    # For watch, kept past the run where the runtime directory is not, and never in it: the
+    # unprivileged step can write there. Replaced whole, so watch never compares with half a list.
+    mkdir -p "$watch_dir"
+    chmod 0700 "$watch_dir"
+    images="$watch_dir/.images.new"
+    : > "$images"
+
     for service in $services; do
         rm -f "$run_dir/$service.reference" "$run_dir/$service.image.json"
         container="$(running_container "$service")"
+        line="$(image_line "$service" "$container")"
+        printf '%s\n' "$line" >> "$images"
         [ -n "$container" ] || continue
 
         docker inspect --format '{{.Config.Image}}' "$container" > "$run_dir/$service.reference"
-        docker image inspect --format '{{json .}}' "$(docker inspect --format '{{.Image}}' "$container")" \
-            > "$run_dir/$service.image.json"
+        docker image inspect --format '{{json .}}' "${line#* }" > "$run_dir/$service.image.json"
     done
+
+    mv -f "$images" "$watch_dir/images"
 }
 
 # --- compare: unprivileged, everything from outside ----------------------------------------------------
@@ -344,12 +377,27 @@ publish() {
     mv -f "$volume/.update-check.json.new" "$volume/update-check.json"
 }
 
+# --- watch: root, the Docker socket, nothing from outside ---------------------------------------------
+
+watch() {
+    require docker systemctl
+    current="$(for service in $services; do image_line "$service" "$(running_container "$service")"; done)"
+
+    if [ -f "$watch_dir/images" ] && [ "$current" = "$(cat "$watch_dir/images")" ]; then
+        return 0
+    fi
+
+    echo "the running images are not the ones the last check looked at, so it runs again"
+    systemctl start --no-block homespool-update-check.service
+}
+
 case "${1:-}" in
     collect) collect ;;
     compare) compare ;;
     publish) publish ;;
+    watch) watch ;;
     *)
-        echo "usage: $0 collect|compare|publish - start homespool-update-check.service to run all three" >&2
+        echo "usage: $0 collect|compare|publish|watch - start homespool-update-check.service to run the first three" >&2
         exit 2
         ;;
 esac

@@ -1,0 +1,14 @@
+# Every five minutes, and two after boot: after a pull, the report is redone within five minutes
+# rather than at the next daily run. A watch that finds nothing changed asks Docker which container
+# runs which image, a couple of calls per service, and stops, so the interval costs next to nothing.
+
+[Unit]
+Description=Watch for the running Homespool images changing
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

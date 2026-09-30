@@ -1,0 +1,29 @@
+# Starts homespool-update-check.service when the containers run other images than its last run looked
+# at - after a pull, say - so the report, and the banner the application shows from it, does not go on
+# describing the images that were replaced until the next daily run. Only asks Docker which image each
+# container runs; nothing leaves the machine. Installed by update-check/install.sh, which fills in the
+# compose project, or by the Raspberry Pi card's build; run by homespool-update-check-watch.timer.
+#
+# Root, for the Docker socket, as collect is - and holding that socket is root on the host, so the
+# settings below keep it from writing anything or reaching a network rather than pretending to confine
+# it. LogLevelMax keeps systemd's own lines about the unit, a start and a finish every few minutes, out
+# of the journal; what the watch itself says when it starts a check is at notice, so it stays.
+
+[Unit]
+Description=Check for newer Homespool images again when the running images change
+Documentation=file:/usr/local/sbin/homespool-update-check
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=HOMESPOOL_PROJECT=@PROJECT@
+ExecStart=/usr/local/sbin/homespool-update-check watch
+SyslogLevel=notice
+LogLevelMax=notice
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX

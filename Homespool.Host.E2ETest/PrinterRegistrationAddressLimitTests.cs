@@ -99,6 +99,31 @@ public sealed class PrinterRegistrationAddressLimitTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// One address asking well past its own window leaves the ceiling to every other address - sized,
+    /// as the socket's version is, so that a refusal costing the ceiling anything would have filled it.
+    /// </summary>
+    [Fact]
+    public async Task OneAddressOverItsOwnWindowLeavesTheCeilingToOthers()
+    {
+        // Arrange
+        using HttpClient printers = PrinterListener.CreateClient(_factory);
+        PrinterIdentity identity = PrinterIdentity.CreateRandom();
+        int requests = PrinterRateLimits.RegistrationStartPerAddressLimit +
+                       ((PrinterRateLimits.RegistrationStartCeiling - PrinterRateLimits.RegistrationStartPerAddressLimit) / 2) + 1;
+
+        // Act
+        for (int i = 0; i < requests; i += 1)
+        {
+            await RequestCodeAsync(printers, identity, Loud);
+        }
+
+        HttpStatusCode neighbour = await RequestCodeAsync(printers, identity, Quiet);
+
+        // Assert
+        neighbour.Should().Be(HttpStatusCode.OK, "a refusal by the caller's own window takes nothing from the ceiling");
+    }
+
+    /// <summary>
     /// The same for the poll, whose window is sized for one SDK printer asking every second.
     /// </summary>
     [Fact]

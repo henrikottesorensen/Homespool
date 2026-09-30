@@ -36,6 +36,15 @@ namespace Homespool.Host.Health;
 /// installed and has stopped telling anyone anything.
 /// </para>
 /// <para>
+/// <b>A report about images no longer running says nothing about these.</b> The host checks daily, so
+/// after a pull the last report still describes the containers that were replaced, and repeating its
+/// reasons would tell whoever just took the update to take it again. When the report names the
+/// application's running revision or base and this process was built from another, the report is set
+/// aside until the check runs again. The application is the one container whose image this process knows,
+/// and it stands for all three because they are built from one revision and replaced by one
+/// <c>docker compose up</c>.
+/// </para>
+/// <para>
 /// <b>Registered as a singleton</b>, because it keeps the last report it read and reads the file again
 /// only when the file changes. The health service would otherwise construct it afresh for every
 /// report.
@@ -47,7 +56,11 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
 
     private const string PullCommand = "docker compose pull && docker compose up -d";
 
+    /// <summary>The application's service name in the report, as <c>compose.yaml</c> names it.</summary>
+    private const string ApplicationService = "homespool";
+
     private readonly IOptions<UpdateReportOptions> _options;
+    private readonly RunningImage _running;
     private readonly TimeProvider _timeProvider;
 
     private readonly Lock _gate = new();
@@ -57,11 +70,14 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
     private Report? _report;
     private string? _readError;
 
-    public UpdateReportHealthCheck(IOptions<UpdateReportOptions> options, TimeProvider timeProvider)
+    public UpdateReportHealthCheck(IOptions<UpdateReportOptions> options, RunningImage running,
+                                   TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(running);
 
         _options = options;
+        _running = running;
         _timeProvider = timeProvider;
     }
 
@@ -108,6 +124,16 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
                 "whether it is still enabled.");
         }
 
+        string checkedAt = $"{report.Checked:yyyy-MM-dd HH:mm} UTC";
+
+        if (DescribesOtherImages(report))
+        {
+            return HealthCheckResult.Healthy(
+                $"The image update check at {checkedAt} looked at images that are no longer running, so what " +
+                "it found does not apply to these. Its next run on the host will say whether they are the " +
+                "newest published.");
+        }
+
         List<ReportService> worthPulling =
             [.. report.Services.Where(s => s.Status == "newer" && s.Reasons is { Count: > 0 })];
 
@@ -125,8 +151,6 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
                 $"To take {(several ? "them" : "it")}, run {PullCommand} where the stack runs.");
         }
 
-        string checkedAt = $"{report.Checked:yyyy-MM-dd HH:mm} UTC";
-
         if (report.Services.All(s => s.Status == "current"))
         {
             return HealthCheckResult.Healthy(
@@ -135,6 +159,25 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
 
         return HealthCheckResult.Healthy(
             $"Image update check at {checkedAt}: {string.Join("; ", report.Services.Select(Describe))}.");
+    }
+
+    /// <summary>
+    /// Whether the report's application container was running an image other than this process's:
+    /// another revision, or the same revision on another base. Unknown on either side is no difference.
+    /// </summary>
+    private bool DescribesOtherImages(Report report)
+    {
+        ReportImage? reported = report.Services.FirstOrDefault(s => s.Service == ApplicationService)?.Running;
+
+        return reported is not null &&
+               (Differs(reported.Revision, _running.Revision) || Differs(reported.Base, _running.BaseDigest));
+
+        static bool Differs(string? reported, string? own)
+        {
+            return !string.IsNullOrEmpty(reported) &&
+                   !string.IsNullOrEmpty(own) &&
+                   !string.Equals(reported, own, StringComparison.Ordinal);
+        }
     }
 
     /// <summary>Service names as a sentence lists them: "a", "a and b", "a, b and c".</summary>
@@ -260,5 +303,13 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
         [property: JsonPropertyName("service")] string Service,
         [property: JsonPropertyName("status")] string Status,
         [property: JsonPropertyName("reasons")] IReadOnlyList<string>? Reasons,
-        [property: JsonPropertyName("built")] string? Built);
+        [property: JsonPropertyName("built")] string? Built,
+        [property: JsonPropertyName("running")] ReportImage? Running);
+
+    /// <summary>The image a container was running, as its labels described it to the host check.</summary>
+    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
+                     Justification = "Only ever constructed by System.Text.Json when reading the report.")]
+    private sealed record ReportImage(
+        [property: JsonPropertyName("revision")] string? Revision,
+        [property: JsonPropertyName("base")] string? Base);
 }

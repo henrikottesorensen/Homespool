@@ -77,6 +77,12 @@ public static class BuildInformation
     /// </remarks>
     public static string Summary { get; } = Summarise(ReadInformationalVersion());
 
+    /// <summary>
+    /// The commit this build was made from, spelt as an image's <c>org.opencontainers.image.revision</c>
+    /// label spells it, or <see langword="null"/> when the stamp carries none.
+    /// </summary>
+    public static string? Revision { get; } = RevisionOf(ReadInformationalVersion());
+
     /// <summary>Writes the build description to standard output.</summary>
     /// <param name="product">The name to print, as a person would say it.</param>
     /// <returns>Zero. There is no failure case - an absent stamp is reported, not an error.</returns>
@@ -168,6 +174,19 @@ public static class BuildInformation
         string shortCommit = commit.Length > ShortCommitLength ? commit[..ShortCommitLength] : commit;
 
         return modified ? $"{version} ({shortCommit}, modified)" : $"{version} ({shortCommit})";
+    }
+
+    /// <summary>
+    /// A stamp's commit as the image label carries it - the whole build metadata, the modified marker
+    /// included, since both are the one value the build paths pass as the git ref.
+    /// </summary>
+    /// <param name="informationalVersion">The stamp, or <see langword="null"/> when there is none.</param>
+    /// <returns>The commit, or <see langword="null"/> when the stamp carries none.</returns>
+    public static string? RevisionOf(string? informationalVersion)
+    {
+        (_, string? commit, bool modified) = Parse(informationalVersion);
+
+        return commit is null ? null : modified ? commit + ModifiedMarker : commit;
     }
 
     /// <summary>Splits a stamp into the three things anything here wants to know.</summary>

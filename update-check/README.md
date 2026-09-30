@@ -48,7 +48,11 @@ journalctl -u homespool-update-check.service
 volume, which `compose.yaml` mounts read-only into the application, and its health report says what
 the check found, a line per container. A newer image with a reason to take it — a Homespool fix, a
 .NET security release, a rebuild — puts it in the administrators' banner, with the command to pull
-it. So does a report older than three days, because then the check has stopped. Every other status is
+it. After the pull the banner goes as soon as the application is running on the new images, before
+the check next runs: a report about another revision or base than the application's own is set aside,
+not repeated. A rebuild on the same revision and base looks identical from inside, so that one stays
+until the next run. A report older than three days is on the banner too, because then the check has
+stopped. Every other status is
 said as what it is and stays off the banner; `local` above all is never called current. The
 application never checks for updates itself; with no check installed it says nothing at all. Only
 administrators see any of this: the check is left out of the status anonymous `/health` answers,

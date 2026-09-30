@@ -167,4 +167,18 @@ public class BuildInformationTests
     {
         BuildInformation.Summarise(informationalVersion).Should().BeEmpty();
     }
+
+    /// <summary>
+    /// The revision is compared with an image's revision label, which the build paths set from the
+    /// same git ref - so a modified build keeps its marker here, where the other two forms strip it.
+    /// </summary>
+    [Theory]
+    [InlineData($"0.0.1+{Commit}", Commit)]
+    [InlineData($"0.0.1+{Commit}.dirty", $"{Commit}.dirty")]
+    [InlineData("0.0.1", null)]
+    [InlineData(null, null)]
+    public void TheRevisionIsSpeltAsTheImageLabelSpellsIt(string? informationalVersion, string? expected)
+    {
+        BuildInformation.RevisionOf(informationalVersion).Should().Be(expected);
+    }
 }

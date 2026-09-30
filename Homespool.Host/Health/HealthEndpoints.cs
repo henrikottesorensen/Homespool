@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -87,6 +88,9 @@ public static class HealthEndpoints
                 .AddCheck<UpdateReportHealthCheck>("update-check", tags: [AdministratorsOnlyTag]);
 
         services.AddSingleton<UpdateReportHealthCheck>();
+        services.AddSingleton(provider => RunningImage.From(
+            BuildInformation.Revision,
+            provider.GetRequiredService<IConfiguration>()[RunningImage.ImageBaseVariable]));
         services.AddSingleton<HealthStatusCache>();
 
         return services;

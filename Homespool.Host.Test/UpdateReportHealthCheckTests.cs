@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -22,7 +23,8 @@ namespace Homespool.Host.Test;
 /// <remarks>
 /// The descriptions are asserted as well as the statuses, because <c>HealthBanner</c> shows them
 /// verbatim. The reports are the shape update-check/homespool-update-check.sh writes; the first two
-/// are the appliance's own, before and after it pulled the first labelled images.
+/// are the appliance's own, before and after it pulled the first labelled images, and the third is its
+/// report from the night before a pull, still in place after it.
 /// </remarks>
 public sealed class UpdateReportHealthCheckTests : IDisposable
 {
@@ -72,7 +74,53 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         }
         """;
 
+    private const string ReportedRevision = "12b8c52c21b72e1f01445ee04a9a57b142d88a32";
+
+    private const string PulledRevision = "6a9558eaf13150ed328fd50d830ee46377b3507e";
+
+    private const string AspnetBase = "sha256:2d584d8147faddb0d678c5748d47953e5b8e18621ed4fb7049a91381d9d7746f";
+
+    /// <summary>
+    /// Trimmed to the fields the check reads and the two revisions: the other services and the counts
+    /// are as the appliance wrote them.
+    /// </summary>
+    private const string BeforePull = $$"""
+        {
+          "schema": 1,
+          "checked": "2026-09-30T01:43:07Z",
+          "update_available": true,
+          "services": [
+            {
+              "service": "homespool",
+              "status": "newer",
+              "running": { "revision": "{{ReportedRevision}}", "base": "{{AspnetBase}}" },
+              "published": { "revision": "346d97c36250ecfe7c024e256ad8e0bcc764c519", "base": "{{AspnetBase}}" },
+              "reasons": [ "10 Homespool fixes" ]
+            },
+            {
+              "service": "proxy",
+              "status": "newer",
+              "running": { "revision": "{{ReportedRevision}}", "base": "sha256:9eab" },
+              "published": { "revision": "346d97c36250ecfe7c024e256ad8e0bcc764c519", "base": "sha256:9eab" },
+              "reasons": [ "10 Homespool fixes" ]
+            },
+            {
+              "service": "go2rtc",
+              "status": "newer",
+              "running": { "revision": "{{ReportedRevision}}", "base": "sha256:294b" },
+              "published": { "revision": "346d97c36250ecfe7c024e256ad8e0bcc764c519", "base": "sha256:294b" },
+              "reasons": [ "10 Homespool fixes" ]
+            }
+          ]
+        }
+        """;
+
     private static readonly DateTimeOffset Now = new(2026, 9, 26, 19, 0, 0, TimeSpan.Zero);
+
+    /// <summary>When the appliance was found still showing <see cref="BeforePull"/> after its pull.</summary>
+    private static readonly DateTimeOffset AfterPull = new(2026, 9, 30, 20, 31, 0, TimeSpan.Zero);
+
+    private static readonly RunningImage Unknown = new(null, null);
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), $"hs-update-report-{Guid.NewGuid():N}");
     private readonly FakeTimeProvider _time = new(Now);
@@ -89,9 +137,9 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         Directory.Delete(_root, recursive: true);
     }
 
-    private UpdateReportHealthCheck NewCheck()
+    private UpdateReportHealthCheck NewCheck(RunningImage? running = null)
     {
-        return new(Options.Create(new UpdateReportOptions { Path = ReportPath }), _time);
+        return new(Options.Create(new UpdateReportOptions { Path = ReportPath }), running ?? Unknown, _time);
     }
 
     private static Task<HealthCheckResult> RunAsync(UpdateReportHealthCheck check)
@@ -137,6 +185,32 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
                                                        .Value.Registrations.Single(r => r.Name == "update-check");
 
         registration.Tags.Should().BeEquivalentTo([HealthEndpoints.AdministratorsOnlyTag]);
+    }
+
+    /// <summary>
+    /// The base digest comes from the variable the application image sets, through configuration, as
+    /// <c>compose.yaml</c> delivers it.
+    /// </summary>
+    [Fact]
+    public void The_running_base_is_read_from_the_image_s_variable()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
+            .AddInMemoryCollection([new(RunningImage.ImageBaseVariable, $"mcr.microsoft.com/dotnet/aspnet:10.0@{AspnetBase}")])
+            .Build());
+        services.AddHomespoolHealthChecks();
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<RunningImage>().BaseDigest.Should().Be(AspnetBase);
+    }
+
+    [Theory]
+    [InlineData($"mcr.microsoft.com/dotnet/aspnet:10.0@{AspnetBase}", AspnetBase)]
+    [InlineData("mcr.microsoft.com/dotnet/aspnet:10.0", null)]
+    [InlineData(null, null)]
+    public void The_base_digest_is_what_follows_the_at(string? imageBase, string? expected)
+    {
+        RunningImage.From(PulledRevision, imageBase).BaseDigest.Should().Be(expected);
     }
 
     [Fact]
@@ -245,7 +319,11 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         await WriteAsync("not json at all");
         string unreadable = (await RunAsync(NewCheck())).Description!;
 
-        new[] { newer, stale, unreadable }.Should().AllSatisfy(d => d.Should().NotContain("`"));
+        _time.SetUtcNow(AfterPull);
+        await WriteAsync(BeforePull);
+        string setAside = (await RunAsync(NewCheck(new RunningImage(PulledRevision, AspnetBase)))).Description!;
+
+        new[] { newer, stale, unreadable, setAside }.Should().AllSatisfy(d => d.Should().NotContain("`"));
     }
 
     [Fact]
@@ -311,6 +389,92 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         result.Description.Should().Contain(expected)
               .And.Contain("proxy is the image its registry publishes")
               .And.NotContain("The images are the ones their registry publishes");
+    }
+
+    /// <summary>
+    /// The appliance's case: pulled and recreated in the evening, and the night's report still named
+    /// the revision it had replaced, so the banner told whoever had just updated to update.
+    /// </summary>
+    [Fact]
+    public async Task A_report_about_a_replaced_revision_is_set_aside()
+    {
+        _time.SetUtcNow(AfterPull);
+        await WriteAsync(BeforePull);
+
+        HealthCheckResult result = await RunAsync(NewCheck(new RunningImage(PulledRevision, AspnetBase)));
+
+        result.Status.Should().Be(HealthStatus.Healthy);
+        result.Description.Should().Be(
+            "The image update check at 2026-09-30 01:43 UTC looked at images that are no longer running, so " +
+            "what it found does not apply to these. Its next run on the host will say whether they are the " +
+            "newest published.");
+    }
+
+    [Fact]
+    public async Task The_same_revision_on_another_base_is_a_replaced_image_too()
+    {
+        _time.SetUtcNow(AfterPull);
+        await WriteAsync(BeforePull);
+
+        HealthCheckResult result = await RunAsync(NewCheck(new RunningImage(ReportedRevision, "sha256:0ther")));
+
+        result.Status.Should().Be(HealthStatus.Healthy);
+        result.Description.Should().Contain("no longer running");
+    }
+
+    [Fact]
+    public async Task A_report_about_the_running_image_is_repeated()
+    {
+        _time.SetUtcNow(AfterPull);
+        await WriteAsync(BeforePull);
+
+        HealthCheckResult result = await RunAsync(NewCheck(new RunningImage(ReportedRevision, AspnetBase)));
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().StartWith(
+            "Newer Homespool images are published for homespool, proxy and go2rtc: 10 Homespool fixes. ");
+    }
+
+    /// <summary>
+    /// Nothing to compare is no difference: a build with no commit stamped, a base built without a
+    /// digest, or a report from images that predate the labels still says what the host found.
+    /// </summary>
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", "")]
+    [InlineData(null, AspnetBase)]
+    [InlineData(ReportedRevision, null)]
+    public async Task Without_both_sides_known_the_report_is_repeated(string? revision, string? baseDigest)
+    {
+        _time.SetUtcNow(AfterPull);
+        await WriteAsync(BeforePull);
+
+        HealthCheckResult result = await RunAsync(NewCheck(new RunningImage(revision, baseDigest)));
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+    }
+
+    [Fact]
+    public async Task A_report_whose_images_gave_no_revision_is_repeated()
+    {
+        await WriteAsync(BeforeLabels);
+
+        HealthCheckResult result = await RunAsync(NewCheck(new RunningImage(PulledRevision, AspnetBase)));
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+    }
+
+    /// <summary>A report too old says the check stopped whatever it describes: that is the finding.</summary>
+    [Fact]
+    public async Task A_stale_report_about_a_replaced_revision_still_says_the_check_has_stopped()
+    {
+        _time.SetUtcNow(AfterPull.AddDays(4));
+        await WriteAsync(BeforePull);
+
+        HealthCheckResult result = await RunAsync(NewCheck(new RunningImage(PulledRevision, AspnetBase)));
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain("has not reported since");
     }
 
     [Fact]

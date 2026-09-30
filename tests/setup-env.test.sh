@@ -1691,6 +1691,34 @@ if test_case "interactive with no tty refuses instead of hanging"; then
 fi
 
 # ------------------------------------------------------------------------------------------------
+# The printer CA's passphrase
+#
+# Compose strips a pair of quotes and trims an unquoted value, and this script reads .env as written,
+# so what counts as "no passphrase" has to be decided the way compose would read it.
+# ------------------------------------------------------------------------------------------------
+
+if test_case "a passphrase compose reads as whitespace is warned about and left alone"; then
+    for value in '   ' '""' '"   "' "'	'"; do
+        reset_state
+        use_temp_env "CA_PASSPHRASE=" "CA_PASSPHRASE=$value"
+        out="$(ensure_ca_passphrase 2>&1)"
+        ensure_ca_passphrase >/dev/null 2>&1
+        assert_says "$out" "CA_PASSPHRASE is empty or only whitespace" "warned for [$value]"
+        assert_eq "" "$pending" "and not replaced, since a key may be encrypted under [$value]"
+    done
+fi
+
+if test_case "a real passphrase says nothing, whitespace around it included"; then
+    for value in 'x3Kq9' '" x3Kq9 "' "' x3Kq9'"; do
+        reset_state
+        use_temp_env "CA_PASSPHRASE=" "CA_PASSPHRASE=$value"
+        out="$(ensure_ca_passphrase 2>&1)"
+        assert_eq "" "$out" "silent for [$value]"
+        assert_eq "" "$pending" "and untouched"
+    done
+fi
+
+# ------------------------------------------------------------------------------------------------
 # The camera sidecar's configuration file
 #
 # It is bind-mounted as a single file into a container that does not run as root, so its absence and

@@ -100,8 +100,8 @@ public static class DataProtectionCertificate
     /// </remarks>
     /// <param name="directory">Directory to hold the certificate. Created if absent.</param>
     /// <param name="validityDays">Lifetime to mint with, when there is no certificate yet.</param>
-    /// <param name="passphrase">What the key file is encrypted under. Refused if empty, before
-    /// anything touches the disk.</param>
+    /// <param name="passphrase">What the key file is encrypted under. Refused if empty or only
+    /// whitespace, before anything touches the disk.</param>
     /// <param name="time">Clock, so tests need not depend on the wall clock.</param>
     public static X509Certificate2 Ensure(string directory, int validityDays, string passphrase, TimeProvider time)
     {
@@ -109,10 +109,11 @@ public static class DataProtectionCertificate
         ArgumentNullException.ThrowIfNull(passphrase);
         ArgumentNullException.ThrowIfNull(time);
 
-        if (passphrase.Length == 0)
+        if (string.IsNullOrWhiteSpace(passphrase))
         {
             throw new DataProtectionCertificateUnreadableException(
-                "No Certificates:AuthorityPassphrase is configured (CA_PASSPHRASE in .env on the shipped stack; " +
+                "No Certificates:AuthorityPassphrase is configured, or it is only whitespace " +
+                "(CA_PASSPHRASE in .env on the shipped stack; " +
                 "setup-env.sh generates one), and the Data Protection key is never handled without one. " +
                 "If a key encrypted under a previous passphrase exists, only that exact value can open it - " +
                 "nothing here will mint a replacement, because that would invalidate every session and pending token.");

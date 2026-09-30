@@ -223,7 +223,8 @@ public class PrinterCertificateAuthority
     /// <para>
     /// <b>A passphrase is required, full stop.</b> The key is never minted, loaded or migrated
     /// without one, so there is no plaintext-at-rest mode to configure into by accident — an empty
-    /// <see cref="CertificateOptions.AuthorityPassphrase"/> is the first refusal below.
+    /// or whitespace-only <see cref="CertificateOptions.AuthorityPassphrase"/> is the first refusal
+    /// below.
     /// </para>
     /// <para>
     /// Callers that only need to know what the authority <i>says</i> — names, dates — should take
@@ -233,12 +234,16 @@ public class PrinterCertificateAuthority
     /// </remarks>
     public X509Certificate2 EnsureAuthority()
     {
-        if (Passphrase.Length == 0)
+        if (string.IsNullOrWhiteSpace(Passphrase))
         {
             // Before anything touches the disk, so a misconfigured start leaves no trace. This is
-            // the only gate on an empty passphrase: everything below may assume one is set.
+            // the only gate on an empty passphrase: everything below may assume one is set. A
+            // whitespace-only one is refused with it - it is a passphrase in name only - but one
+            // with whitespace around real characters is used exactly as given, since trimming it
+            // would change the key it opens.
             throw new CertificateAuthorityUnreadableException(
-                "No Certificates:AuthorityPassphrase is configured (CA_PASSPHRASE in .env on the shipped stack; " +
+                "No Certificates:AuthorityPassphrase is configured, or it is only whitespace " +
+                "(CA_PASSPHRASE in .env on the shipped stack; " +
                 "setup-env.sh generates one), and the printer authority's private key is never handled without one. " +
                 "If a key encrypted under a previous passphrase exists, only that exact value can open it - nothing " +
                 "here will mint a replacement, because that would strand every provisioned printer.");

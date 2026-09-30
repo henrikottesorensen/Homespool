@@ -207,13 +207,17 @@ public sealed class DataProtectionCertificateTests : IDisposable
     /// <summary>
     /// No passphrase is a refusal, before anything touches the disk - the same gate the printer
     /// authority keeps. Minting an unprotected key "for now" would be the state this arrangement
-    /// exists to remove, and minting under an empty passphrase would be no protection at all.
+    /// exists to remove, and minting under an empty passphrase would be no protection at all. A
+    /// whitespace-only one is no better, and a quoted value in <c>.env</c> delivers one intact.
     /// </summary>
-    [Fact]
-    public void AnEmptyPassphraseIsRefusedBeforeAnythingIsWritten()
+    [Theory]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("\t\n")]
+    public void AnEmptyPassphraseIsRefusedBeforeAnythingIsWritten(string passphrase)
     {
         // Act
-        Action act = () => DataProtectionCertificate.Ensure(_root, 5475, string.Empty, TimeProvider.System);
+        Action act = () => DataProtectionCertificate.Ensure(_root, 5475, passphrase, TimeProvider.System);
 
         // Assert
         act.Should().Throw<DataProtectionCertificateUnreadableException>();
@@ -241,6 +245,26 @@ public sealed class DataProtectionCertificateTests : IDisposable
         File.ReadAllText(KeyPath).Should().StartWith("-----BEGIN ENCRYPTED PRIVATE KEY-----");
         asPlaintext.Should().Throw<CryptographicException>();
         wrongPassphrase.Should().Throw<CryptographicException>();
+    }
+
+    /// <summary>
+    /// Whitespace around a real passphrase is part of it. Only a value that is nothing but
+    /// whitespace is refused; trimming the rest would derive a different key from the same setting,
+    /// and a key already written under the untrimmed value would stop opening.
+    /// </summary>
+    [Fact]
+    public void WhitespaceAroundAPassphraseIsKeptNotTrimmed()
+    {
+        // Arrange
+        using X509Certificate2 certificate = DataProtectionCertificate.Ensure(_root, 5475, " padded ", TimeProvider.System);
+
+        // Act
+        Action asGiven = () => X509Certificate2.CreateFromEncryptedPemFile(CertificatePath, " padded ", KeyPath).Dispose();
+        Action trimmed = () => X509Certificate2.CreateFromEncryptedPemFile(CertificatePath, "padded", KeyPath).Dispose();
+
+        // Assert
+        asGiven.Should().NotThrow();
+        trimmed.Should().Throw<CryptographicException>();
     }
 
     /// <summary>

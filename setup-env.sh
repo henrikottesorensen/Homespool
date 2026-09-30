@@ -1728,9 +1728,23 @@ ensure_go2rtc_config_file() {
 # server refuses to start under a changed passphrase rather than mint a CA that strands the fleet,
 # so overwriting one here would be writing an outage.
 ensure_ca_passphrase() {
-    local passphrase
+    local passphrase unquoted
     passphrase="$(env_get CA_PASSPHRASE)"
-    [ -n "$passphrase" ] && return 0
+
+    if [ -n "$passphrase" ]; then
+        # This reads .env as written, and compose does not: it strips one pair of quotes and trims an
+        # unquoted value. So `CA_PASSPHRASE=   ` and `CA_PASSPHRASE=""` reach the server empty, and
+        # `CA_PASSPHRASE="   "` reaches it as spaces - and the server refuses all three. Warned rather
+        # than replaced, like any value set by hand: a key encrypted under it would be locked away.
+        unquoted="$passphrase"
+        case $unquoted in
+            \"*\"|\'*\') unquoted="${unquoted:1:${#unquoted}-2}" ;;
+        esac
+        if [ -z "${unquoted//[[:space:]]/}" ]; then
+            warn $"CA_PASSPHRASE is empty or only whitespace once compose has read it, and the server refuses to start with that. If the server has never started with this value, replace it with the output of: openssl rand -base64 24. If it has, both keys in data/certificates are encrypted under it - re-encrypt them under the new value first, or every printer needs re-provisioning from a USB stick and every session ends."
+        fi
+        return 0
+    fi
 
     passphrase="$(random_password)"
     if [ -z "$passphrase" ]; then

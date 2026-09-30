@@ -174,10 +174,10 @@ public static class EditableSettings
 
         // Mail. Every one of these is Restart, and the reason is three startup decisions rather than
         // any one property: Program picks SmtpEmailSender or LoggingEmailSender from
-        // SmtpOptions.IsConfigured, registers TelemetryAlertService only when mail is configured, and
-        // has AccountConfirmationPolicy capture the confirm-at-creation rule once. That last one is
-        // deliberate and documented where it is built - whether a new account is auto-confirmed must
-        // not change under a running deployment.
+        // SmtpOptions.IsConfigured, TelemetryAlertService reads whether to email once when it is
+        // built, and AccountConfirmationPolicy captures the confirm-at-creation rule once. That last
+        // one is deliberate and documented where it is built - whether a new account is
+        // auto-confirmed must not change under a running deployment.
         // Naming a server here is what turns mail on, and what that changes lands at the next
         // restart rather than now - so it is asked about, and the answer says when it takes effect.
         // The server, how it is reached and who signs in to it are what the stored password is for:

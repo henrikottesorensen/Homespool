@@ -3328,6 +3328,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Notifications_KindPrinterLost" xml:space="preserve">
     <value>When a printer stops answering in the middle of a print</value>
   </data>
+  <data name="Notifications_KindServiceHealth" xml:space="preserve">
+    <value>When Homespool itself runs into a problem, and when it clears</value>
+  </data>
   <data name="Notifications_FilamentSoonTitle" xml:space="preserve">
     <value>{0} will stop for a filament change soon</value>
   </data>

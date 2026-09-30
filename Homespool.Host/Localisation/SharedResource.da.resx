@@ -3216,6 +3216,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Notifications_KindPrinterLost" xml:space="preserve">
     <value>Når en printer holder op med at svare midt i et print</value>
   </data>
+  <data name="Notifications_KindServiceHealth" xml:space="preserve">
+    <value>Når Homespool selv får et problem, og når det er løst igen</value>
+  </data>
   <data name="Notifications_FilamentSoonTitle" xml:space="preserve">
     <value>{0} stopper snart for et filamentskift</value>
   </data>

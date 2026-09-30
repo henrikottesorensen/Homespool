@@ -75,12 +75,50 @@ public sealed class AlertRecipientsTests : IAsyncDisposable
         await recipients.RefreshAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        recipients.Current.Should().BeEquivalentTo(
+        recipients.Current.Select(r => (r.Email, r.Culture)).Should().BeEquivalentTo(
         [
-            new AlertRecipient("dane@example.com", "da"),
-            new AlertRecipient("brit@example.com", null),
-            new AlertRecipient("german@example.com", null),
+            ("dane@example.com", "da"),
+            ("brit@example.com", (string?)null),
+            ("german@example.com", (string?)null),
         ]);
+    }
+
+    /// <summary>
+    /// Each administrator's browsers come with the list, so a push needs no read at send time. An
+    /// administrator with no address is on it for their browser; one who turned health notifications
+    /// off keeps the address and loses the browsers; one with neither is not on it at all.
+    /// </summary>
+    [Fact]
+    public async Task BrowsersAreReadWithTheListAndTheSwitchSilencesOnlyThem()
+    {
+        // Arrange
+        AlertRecipients recipients = await RecipientsAsync(async context =>
+        {
+            HSUser listening = await AddUserAsync(context, "listening@example.com", null, administrator: true);
+            HSUser muted = await AddUserAsync(context, "muted@example.com", null, administrator: true,
+                                              muted: "PrinterLost ServiceHealth");
+            HSUser addressless = await AddUserAsync(context, null, null, administrator: true, userName: "addressless");
+            await AddUserAsync(context, null, null, administrator: true, userName: "unreachable");
+            HSUser member = await AddUserAsync(context, "member@example.com", null, administrator: false);
+
+            await AddBrowserAsync(context, listening, "listening-1");
+            await AddBrowserAsync(context, listening, "listening-2");
+            await AddBrowserAsync(context, muted, "muted");
+            await AddBrowserAsync(context, addressless, "addressless");
+            await AddBrowserAsync(context, member, "member");
+        });
+
+        // Act
+        await recipients.RefreshAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        recipients.Current.Select(r => (r.Email, Browsers: string.Join(' ', r.Browsers.Select(b => b.Name).Order())))
+                  .Should().BeEquivalentTo(
+                  [
+                      ("listening@example.com", "listening-1 listening-2"),
+                      ("muted@example.com", string.Empty),
+                      ((string?)null, "addressless"),
+                  ]);
     }
 
     /// <summary>
@@ -94,12 +132,14 @@ public sealed class AlertRecipientsTests : IAsyncDisposable
         // Arrange
         AlertRecipients recipients = await RecipientsAsync(async context =>
         {
-            await AddUserAsync(context, "admin@example.com", null, administrator: true);
+            HSUser admin = await AddUserAsync(context, "admin@example.com", null, administrator: true);
             await AddUserAsync(context, "deputy@example.com", null, administrator: true);
+            await AddBrowserAsync(context, admin, "admin");
         });
 
         await recipients.RefreshAsync(TestContext.Current.CancellationToken);
         recipients.Current.Should().HaveCount(2, "the fixture has to reach the state being tested");
+        recipients.Current.Single(r => r.Email == "admin@example.com").Browsers.Should().ContainSingle();
 
         await using (AsyncServiceScope scope = _provider!.CreateAsyncScope())
         {
@@ -115,7 +155,8 @@ public sealed class AlertRecipientsTests : IAsyncDisposable
         _connectionString = $"Data Source={Path.Combine(_databasePath + ".missing", "none.db")};Mode=ReadOnly";
         Func<Task> duringOutage = () => recipients.RefreshAsync(TestContext.Current.CancellationToken);
         await duringOutage.Should().NotThrowAsync("a failed read must not end the poll before the alert is sent");
-        string[] keptThroughOutage = recipients.Current.Select(r => r.Email).ToArray();
+        string?[] keptThroughOutage = recipients.Current.Select(r => r.Email).ToArray();
+        int browsersKept = recipients.Current.Sum(r => r.Browsers.Count);
 
         _connectionString = working;
         await recipients.RefreshAsync(TestContext.Current.CancellationToken);
@@ -123,24 +164,28 @@ public sealed class AlertRecipientsTests : IAsyncDisposable
         // Assert
         keptThroughOutage.Should().BeEquivalentTo(["admin@example.com", "deputy@example.com"],
                                                   "the list from the last read that worked is what an outage is reported to");
+        browsersKept.Should().Be(1, "a browser is how an outage reaches a deployment without mail");
         _logger.Collector.GetSnapshot().Should().ContainSingle(r => r.Level == LogLevel.Warning);
         recipients.Current.Select(r => r.Email).Should().Equal(["admin@example.com"],
                                                              "the closure is seen by the first read that works");
     }
 
-    private static async Task AddUserAsync(HomespoolDbContext context,
-                                           string email,
-                                           string? language,
-                                           bool administrator,
-                                           bool closed = false)
+    private static async Task<HSUser> AddUserAsync(HomespoolDbContext context,
+                                                   string? email,
+                                                   string? language,
+                                                   bool administrator,
+                                                   bool closed = false,
+                                                   string? muted = null,
+                                                   string? userName = null)
     {
-        HSUser user = new(email.Split('@')[0])
+        HSUser user = new(userName ?? email!.Split('@')[0])
         {
             Email = email,
-            NormalizedEmail = email.ToUpperInvariant(),
-            EmailConfirmed = true,
+            NormalizedEmail = email?.ToUpperInvariant(),
+            EmailConfirmed = email is not null,
             Language = language,
             DeactivatedAt = closed ? DateTimeOffset.UtcNow : null,
+            MutedNotifications = muted,
         };
 
         context.Users.Add(user);
@@ -155,6 +200,23 @@ public sealed class AlertRecipientsTests : IAsyncDisposable
             context.UserRoles.Add(new IdentityUserRole<long> { UserId = user.Id, RoleId = role.Id });
             await context.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
+
+        return user;
+    }
+
+    private static async Task AddBrowserAsync(HomespoolDbContext context, HSUser owner, string name)
+    {
+        context.WebPushDestinations.Add(new WebPushDestination
+        {
+            UserId = owner.Id,
+            Name = name,
+            Endpoint = $"https://fcm.googleapis.com/fcm/send/{name}",
+            P256dh = "p256dh",
+            Auth = "auth",
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>

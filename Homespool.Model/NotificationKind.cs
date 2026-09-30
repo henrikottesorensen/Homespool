@@ -32,4 +32,10 @@ public enum NotificationKind
 
     /// <summary>A printer stopped answering while it had a print running.</summary>
     PrinterLost = 6,
+
+    /// <summary>
+    /// Homespool itself became unhealthy, or recovered. Administrators only; turning it off silences
+    /// their browsers, and leaves the alert email to go out where a mail server is configured.
+    /// </summary>
+    ServiceHealth = 7,
 }

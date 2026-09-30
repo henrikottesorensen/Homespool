@@ -147,6 +147,7 @@ public sealed class TelemetryAlertMailpitTests : IAsyncLifetime, IDisposable
     {
         return new(provider.GetRequiredService<HealthCheckService>(),
                    provider.GetRequiredService<IServiceScopeFactory>(),
+                   provider.GetRequiredService<IOptions<SmtpOptions>>(),
                    NullLogger<TelemetryAlertService>.Instance);
     }
 

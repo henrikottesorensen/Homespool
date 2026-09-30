@@ -9,6 +9,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
 using Homespool.Host.Notifications.WebPush;
 using Homespool.Model.Entities;
@@ -261,6 +262,40 @@ public sealed class NotificationDestinationService
         return delivered;
     }
 
+    /// <summary>
+    /// Records how a delivery made without this service went, on the destination it went to - by the
+    /// same rules as one made through it.
+    /// </summary>
+    /// <remarks>
+    /// For a sender that holds destinations it read earlier, because it must still be able to send
+    /// when the database cannot be read. A destination deleted since is left deleted.
+    /// </remarks>
+    public async Task RecordAsync(Guid uuid, DeliveryOutcome outcome, CancellationToken cancellationToken)
+    {
+        NotificationDestination? destination = await _db.NotificationDestinations
+                                                        .SingleOrDefaultAsync(row => row.Uuid == uuid, cancellationToken);
+
+        if (destination is null)
+        {
+            return;
+        }
+
+        Record(destination, outcome);
+
+        await _db.SaveChangesAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// The kinds <paramref name="userId"/> can turn off: the administrators' own as well, for an open
+    /// administrator.
+    /// </summary>
+    public async Task<IReadOnlyList<Model.NotificationKind>> ChoosableAsync(long userId, CancellationToken cancellationToken)
+    {
+        bool administrator = await Administrators.Open(_db).ContainsAsync(userId, cancellationToken);
+
+        return NotificationMutes.ChoosableBy(administrator);
+    }
+
     /// <summary>The kinds <paramref name="userId"/> has turned off.</summary>
     public async Task<IReadOnlySet<Model.NotificationKind>> MutedAsync(long userId, CancellationToken cancellationToken)
     {
@@ -305,11 +340,7 @@ public sealed class NotificationDestinationService
                                      cancellationToken);
     }
 
-    /// <summary>
-    /// Delivers through the destination's channel and records the outcome on it: the time and reset
-    /// counts on success, counts on failure, and the row itself removed when the destination is gone -
-    /// or has been refused <see cref="RemoveAfterRefusals"/> times running.
-    /// </summary>
+    /// <summary>Delivers through the destination's channel and records the outcome on it.</summary>
     private async Task<DeliveryOutcome> DeliverAsync(NotificationDestination destination,
                                                      NotificationMessage message,
                                                      CancellationToken cancellationToken)
@@ -320,6 +351,23 @@ public sealed class NotificationDestinationService
         }
 
         DeliveryOutcome outcome = await channel.DeliverAsync(destination, message, cancellationToken);
+
+        Record(destination, outcome);
+
+        // The delivery was not cancelled, so its record should not be either: a notification that
+        // reached a phone while the request was being abandoned still reached it.
+        await _db.SaveChangesAsync(CancellationToken.None);
+
+        return outcome;
+    }
+
+    /// <summary>
+    /// Applies <paramref name="outcome"/> to the tracked <paramref name="destination"/>: the time and
+    /// reset counts on success, counts on failure, and the row itself removed when the destination is
+    /// gone - or has been refused <see cref="RemoveAfterRefusals"/> times running. Saves nothing.
+    /// </summary>
+    private void Record(NotificationDestination destination, DeliveryOutcome outcome)
+    {
         DateTimeOffset now = _time.GetUtcNow();
 
         switch (outcome)
@@ -359,11 +407,5 @@ public sealed class NotificationDestinationService
             default:
                 throw new InvalidOperationException($"A channel answered {outcome}.");
         }
-
-        // The delivery was not cancelled, so its record should not be either: a notification that
-        // reached a phone while the request was being abandoned still reached it.
-        await _db.SaveChangesAsync(CancellationToken.None);
-
-        return outcome;
     }
 }

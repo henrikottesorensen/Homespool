@@ -180,6 +180,12 @@ public sealed class DetailModelTests : IDisposable
                                 // so the page never reaches for the plate or a cancel.
                                 objects: null!,
                                 plates: null!,
+
+                                // Real, over the same empty store: a print here names a file nobody
+                                // uploaded, so the page renders without a preview, which is its default.
+                                new PrintThumbnails(store,
+                                                    provider.GetRequiredService<IServiceScopeFactory>(),
+                                                    NullLogger<PrintThumbnails>.Instance),
                                 new PrinterStatusText(localiser),
                                 new PrinterIntentText(localiser),
                                 new RelativeTimeText(localiser),

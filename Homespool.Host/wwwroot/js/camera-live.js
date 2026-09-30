@@ -515,6 +515,14 @@
             }
         });
 
+        // Switched away from on the printer page: as with a hidden tab, nobody is watching, and a
+        // live view must not hold the camera open for nobody.
+        view.addEventListener("camera-parked", function () {
+            if (connection || streaming) {
+                stop("");
+            }
+        });
+
         // Whether this camera can be watched is the server's answer, and it can change from no to
         // yes shortly after a restart - the stream server does not know a camera's codec until it
         // has connected to it once. Asked once here; the still is unaffected either way.

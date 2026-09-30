@@ -83,6 +83,14 @@
             }
         });
 
+        // Taken off the page while filling the window - a print starting gives its place to the
+        // preview - would leave the page locked under an overlay that is no longer there.
+        view.addEventListener("camera-parked", function () {
+            if (isOpen()) {
+                close();
+            }
+        });
+
         // A hidden tab already stops the poll and any live view; coming back to a panel still
         // maximised is fine, so nothing is undone here. But a live view that stops for its own
         // reasons hands the panel back to the still, and the maximised state should survive that

@@ -1869,6 +1869,18 @@
   <data name="Cameras_Numbered" xml:space="preserve">
     <value>Kamera {0}</value>
   </data>
+  <data name="Cameras_Previous" xml:space="preserve">
+    <value>Forrige kamera</value>
+  </data>
+  <data name="Cameras_Next" xml:space="preserve">
+    <value>Næste kamera</value>
+  </data>
+  <data name="Cameras_Position" xml:space="preserve">
+    <value>{0} af {1}</value>
+  </data>
+  <data name="Printer_PrintPreview" xml:space="preserve">
+    <value>Forhåndsvisning fra sliceren</value>
+  </data>
   <data name="Health_ServiceProblem" xml:space="preserve">
     <value>Driftsproblem:</value>
   </data>

@@ -77,6 +77,7 @@ public class DetailModel : PageModel
     private readonly PrintStopService _stops;
     private readonly PrintObjectService _objects;
     private readonly PrinterPlateReader _plates;
+    private readonly PrintThumbnails _thumbnails;
     private readonly PrinterStatusText _statusText;
     private readonly PrinterIntentText _intents;
     private readonly RelativeTimeText _ages;
@@ -104,6 +105,7 @@ public class DetailModel : PageModel
                        PrintStopService stops,
                        PrintObjectService objects,
                        PrinterPlateReader plates,
+                       PrintThumbnails thumbnails,
                        PrinterStatusText statusText,
                        PrinterIntentText intents,
                        RelativeTimeText ages,
@@ -131,6 +133,7 @@ public class DetailModel : PageModel
         _stops = stops;
         _objects = objects;
         _plates = plates;
+        _thumbnails = thumbnails;
         _statusText = statusText;
         _intents = intents;
         _ages = ages;
@@ -172,6 +175,12 @@ public class DetailModel : PageModel
 
     /// <summary>The print running now, or null. A row still <c>Starting</c> counts - it has begun.</summary>
     public PrintJob? ActivePrint { get; private set; }
+
+    /// <summary>
+    /// Whether <see cref="ActivePrint"/>'s file carries a preview this page can show - see
+    /// <see cref="PrintThumbnails"/> for where it comes from and when there is none.
+    /// </summary>
+    public bool HasThumbnail { get; private set; }
 
     /// <summary>Finished prints, newest first.</summary>
     public IReadOnlyList<PrintJob> History { get; private set; } = [];
@@ -729,6 +738,7 @@ public class DetailModel : PageModel
 
         Cameras = await _cameraAccess.ListForPrinterAsync(Statistics.Printer.Id, caller, cancellationToken);
 
+        await LoadThumbnailAsync(cancellationToken);
         await LoadChartAsync(uuid, caller, cancellationToken);
 
         // Without waiting on the printer: a plate not yet read renders by number, and the plate's own
@@ -802,7 +812,62 @@ public class DetailModel : PageModel
             return NotFound();
         }
 
+        // The card carries the preview for the picture beside the camera, so a print that starts or
+        // ends while the page is open changes the picture with it.
+        await LoadThumbnailAsync(cancellationToken);
+
         return Partial("_PrinterStatus", this);
+    }
+
+    /// <summary>
+    /// The slicer's preview of one print on this printer, as the PNG it is stored as.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Addressed by the print rather than "whatever is printing now"</b>, so the address names one
+    /// picture for good and the browser may keep it: a preview is of one print and does not change.
+    /// </para>
+    /// <para>
+    /// <b>Readable by whoever may read this printer's history</b>, the same as the file name beside it.
+    /// The picture comes out of the file of whoever queued the print, which nobody else can otherwise
+    /// open - but it shows what the camera above it shows being built, and nothing else of the file.
+    /// </para>
+    /// <para>
+    /// <b>Always answered as <c>image/png</c></b>, because <see cref="GCodeThumbnailReader"/> refuses
+    /// anything that does not start as one; nothing the file says decides the type.
+    /// </para>
+    /// </remarks>
+    public async Task<IActionResult> OnGetThumbnailAsync(Guid uuid, Guid printUuid, CancellationToken cancellationToken)
+    {
+        HSUser? user = await _userManager.GetUserAsync(User);
+
+        if (user is null)
+        {
+            return Forbid();
+        }
+
+        Caller caller = CallerResolver.For(user, User);
+
+        Printer? printer = await _printerQueryService.GetPrinterForUserAsync(uuid, caller, cancellationToken);
+
+        if (printer is null ||
+            !await _access.AllowsAsync(printer.Id, caller, Capability.ViewHistory, cancellationToken))
+        {
+            return NotFound();
+        }
+
+        PrintJob? job = await _historyService.FindAsync(printer.Id, printUuid, caller, cancellationToken);
+
+        if (job is null || await _thumbnails.ForAsync(job, cancellationToken) is not { } image)
+        {
+            return NotFound();
+        }
+
+        // Private because it came through a sign-in; a day because the address never names another
+        // picture, and a print rarely runs longer.
+        Response.Headers.CacheControl = "private, max-age=86400";
+
+        return File(image, "image/png");
     }
 
     /// <summary>
@@ -900,6 +965,12 @@ public class DetailModel : PageModel
         await LoadPlateAsync(caller, PrinterPlateReader.RenderWait, cancellationToken);
 
         return Partial("_PrintPlate", this);
+    }
+
+    /// <summary>Whether the running print has a preview, for the picture beside the camera.</summary>
+    private async Task LoadThumbnailAsync(CancellationToken cancellationToken)
+    {
+        HasThumbnail = ActivePrint is { } job && await _thumbnails.ForAsync(job, cancellationToken) is not null;
     }
 
     /// <summary>Everything the status card shows. Shared by the page and its poll.</summary>

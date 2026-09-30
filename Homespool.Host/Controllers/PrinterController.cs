@@ -277,14 +277,12 @@ public class PrinterController : ControllerBase
     public async Task<Results<Ok<PrinterStorageReadDTO>, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem, BadGatewayProblem>>
         Storage(Guid uuid, string? path, CancellationToken cancellationToken)
     {
-        // Firmware rejects traversal itself; catching it here means an attempt never reaches the
-        // printer and the caller gets told why, rather than spending a command on a refusal.
-        if (path is not null && (path.Contains("/../", StringComparison.Ordinal) ||
-                                 path.StartsWith("../", StringComparison.Ordinal) ||
-                                 path.EndsWith("/..", StringComparison.Ordinal) ||
-                                 path == ".."))
+        // Both separators, because the printer's filesystem honours both: firmware refuses only a
+        // "/../" and walks "..\" to wherever it leads on the drive. Kestrel decodes %5C and removes
+        // dot segments only between slashes, so "..\" arrives here from any ordinary request.
+        if (path is not null && path.Split('/', '\\').Contains(".."))
         {
-            return this.BadRequestProblem("Path must contain no '/../' segment.");
+            return this.BadRequestProblem("Path must contain no '..' segment.");
         }
 
         (HSUser? user, Printer? printer) = await ResolveAsync(uuid, cancellationToken);

@@ -427,6 +427,37 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A path climbing out with a backslash is refused too - the printer's filesystem takes
+    /// <c>\</c> as a separator, and its own check looks only for <c>/../</c>.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the slash, this needs no unusual request: Kestrel decodes <c>%5C</c> and removes dot
+    /// segments only between slashes, so an ordinary <see cref="HttpClient"/> request delivers it.
+    /// </remarks>
+    /// <param name="path">The path after <c>storage/usb/</c>, as the client writes it.</param>
+    [Theory]
+    [InlineData("..%5Csecret")]
+    [InlineData("sub%5C..%5C..%5Csecret")]
+    [InlineData("sub/..%5Csecret")]
+    [InlineData("sub%5C..")]
+    public async Task ABackslashTraversalIsRefusedBeforeThePrinterIsAsked(string path)
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/api/v1/printers/{uuid}/storage/usb/{path}", null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await DetailOfAsync(response)).Should().Contain("'..'");
+
+        fake.ReceivedCommands.Should().BeEmpty("a traversal must not cost the printer a command");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// Another team's printer is not found by either endpoint - the same answer as a printer that
     /// does not exist - and hears nothing.
     /// </summary>

@@ -111,8 +111,9 @@ public class NotificationsModel : PageModel
 
         Destinations = [.. destinations.Select(DestinationRow.From)];
 
+        IReadOnlyList<NotificationKind> choosable = await _destinations.ChoosableAsync(user.Id, cancellationToken);
         IReadOnlySet<NotificationKind> muted = await _destinations.MutedAsync(user.Id, cancellationToken);
-        Kinds = [.. NotificationMutes.Choosable.Select(kind => new KindChoice(kind, LabelKey(kind), !muted.Contains(kind)))];
+        Kinds = [.. choosable.Select(kind => new KindChoice(kind, LabelKey(kind), !muted.Contains(kind)))];
 
         IReadOnlySet<Guid> mutedPrinters = await _destinations.MutedPrintersAsync(user.Id, cancellationToken);
         IReadOnlyList<Printer> visible = await _printers.ListPrintersForUserAsync(Caller.Unscoped(user.Id), cancellationToken);
@@ -140,8 +141,10 @@ public class NotificationsModel : PageModel
             return NotFound();
         }
 
+        IReadOnlyList<NotificationKind> choosable = await _destinations.ChoosableAsync(user.Id, cancellationToken);
+
         await _destinations.SetMutedAsync(user.Id,
-                                          NotificationMutes.Choosable.Where(kind => !enabled.Contains(kind)),
+                                          choosable.Where(kind => !enabled.Contains(kind)),
                                           cancellationToken);
 
         StatusMessage = _localiser["Notifications_KindsSaved"];
@@ -190,6 +193,7 @@ public class NotificationsModel : PageModel
             NotificationKind.PrintFinished => "Notifications_KindPrintFinished",
             NotificationKind.PrintDidNotFinish => "Notifications_KindPrintDidNotFinish",
             NotificationKind.QueueHeld => "Notifications_KindQueueHeld",
+            NotificationKind.ServiceHealth => "Notifications_KindServiceHealth",
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a kind a person can choose."),
         };
     }

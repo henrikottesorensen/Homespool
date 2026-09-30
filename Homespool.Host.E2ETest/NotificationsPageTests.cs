@@ -388,6 +388,47 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The health switch is an administrator's alone: offered to them, and saved off when unticked. An
+    /// ordinary account neither sees it nor stores it - the test above pins what its save writes.
+    /// </summary>
+    [Fact]
+    public async Task OnlyAnAdministratorIsOfferedTheHealthSwitch()
+    {
+        (HSUser _, HttpClient member) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "member@example.com");
+        (HSUser admin, HttpClient administrator) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "admin@example.com", AdminBootstrap.AdminRole);
+
+        using (member)
+        using (administrator)
+        {
+            string memberPage = await member.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            string adminPage = await administrator.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+
+            memberPage.Should().NotContain("id=\"kind-ServiceHealth\"");
+            Regex.IsMatch(adminPage, "id=\"kind-ServiceHealth\"[^>]*checked").Should().BeTrue("an administrator hears it until they turn it off");
+
+            using FormUrlEncodedContent form = new(
+            [
+                new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(adminPage)),
+                .. NotificationMutes.Choosable.Select(kind => new KeyValuePair<string, string>("enabled", kind.ToString())),
+            ]);
+
+            using HttpResponseMessage saved = await administrator.PostAsync("/Account/Manage/Notifications?handler=Kinds", form,
+                                                                            TestContext.Current.CancellationToken);
+
+            saved.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            string? muted = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                       .Users.Where(row => row.Id == admin.Id)
+                                       .Select(row => row.MutedNotifications)
+                                       .SingleAsync(TestContext.Current.CancellationToken);
+
+            muted.Should().Be("ServiceHealth");
+        }
+    }
+
+    /// <summary>
     /// The printers an account may see are listed, all ticked; an unticked one is muted, by its public
     /// id.
     /// </summary>

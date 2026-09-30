@@ -28,6 +28,18 @@ public static class NotificationMutes
         NotificationKind.QueueHeld,
     ];
 
+    /// <summary>What an administrator can turn off besides <see cref="Choosable"/>, listed after it.</summary>
+    public static readonly IReadOnlyList<NotificationKind> ChoosableByAdministrators =
+    [
+        NotificationKind.ServiceHealth,
+    ];
+
+    /// <summary>Every kind an account can turn off: <see cref="Choosable"/>, and more for an administrator.</summary>
+    public static IReadOnlyList<NotificationKind> ChoosableBy(bool administrator)
+    {
+        return administrator ? [.. Choosable, .. ChoosableByAdministrators] : Choosable;
+    }
+
     /// <summary>The kinds turned off in <paramref name="stored"/>.</summary>
     public static IReadOnlySet<NotificationKind> Parse(string? stored)
     {

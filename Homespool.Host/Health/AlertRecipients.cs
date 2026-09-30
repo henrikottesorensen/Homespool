@@ -11,12 +11,15 @@ using Microsoft.Extensions.Logging;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
+using Homespool.Host.Notifications;
+using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.Health;
 
 /// <summary>
-/// Who health alerts go to: every open administrator, re-read on every poll, and the last list read
-/// kept for when the read fails.
+/// Who health alerts go to: every open administrator with an address or a browser to reach, re-read on
+/// every poll, and the last list read kept for when the read fails.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,6 +36,12 @@ namespace Homespool.Host.Health;
 /// <b>The language is read in the same query as the address</b>, for the same reason: sending must
 /// not touch the database. Looking it up per recipient at send time made every alert during an
 /// outage fail on the lookup.
+/// </para>
+/// <para>
+/// <b>So are the browsers</b>, whole, where every other notification reads them when it is sent -
+/// and whether the administrator has turned health notifications off, which empties the list of
+/// browsers and leaves the address. Without a mail server the address reaches nobody, so an
+/// administrator who turns the switch off there hears nothing at all - the banner still shows it.
 /// </para>
 /// </remarks>
 public sealed class AlertRecipients
@@ -64,11 +73,25 @@ public sealed class AlertRecipients
 
             var rows = await dbContext.Users
                                       .Where(user => Administrators.Open(dbContext).Contains(user.Id))
-                                      .Select(user => new { user.Email, user.Language })
+                                      .Select(user => new { user.Id, user.Email, user.Language, user.MutedNotifications })
                                       .ToListAsync(cancellationToken);
 
-            _current = rows.Where(row => !string.IsNullOrWhiteSpace(row.Email))
-                           .Select(row => new AlertRecipient(row.Email!, SupportedLanguages.Resolve(row.Language)))
+            List<long> ids = [.. rows.Select(row => row.Id)];
+
+            ILookup<long, WebPushDestination> browsers = (await dbContext.WebPushDestinations
+                                                                         .AsNoTracking()
+                                                                         .Where(browser => ids.Contains(browser.UserId))
+                                                                         .ToListAsync(cancellationToken))
+                                                        .ToLookup(browser => browser.UserId);
+
+            _current = rows.Select(row => new AlertRecipient(
+                               row.Id,
+                               string.IsNullOrWhiteSpace(row.Email) ? null : row.Email,
+                               SupportedLanguages.Resolve(row.Language),
+                               NotificationMutes.Parse(row.MutedNotifications).Contains(NotificationKind.ServiceHealth) ?
+                                   [] :
+                                   [.. browsers[row.Id]]))
+                           .Where(recipient => recipient.Email is not null || recipient.Browsers.Count > 0)
                            .ToList();
         }
         catch (Exception e) when (e is not OperationCanceledException)

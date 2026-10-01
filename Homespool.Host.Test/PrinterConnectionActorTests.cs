@@ -281,6 +281,92 @@ public class PrinterConnectionActorTests
         await Eventually(actor.Completion);
     }
 
+    /// <summary>
+    /// A lighting change the printer finishes is recorded on the answering event as the brightness
+    /// the printer will now report - its own byte round trip, so 33 is recorded as 32.
+    /// </summary>
+    [Fact]
+    public async Task AFinishedLightingChangeRecordsTheBrightnessThePrinterWillReport()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(PrusaConnect.Commands.SetLedIntensity.For(33),
+                                                                  CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
+        await Eventually(sendTask);
+
+        // Assert
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
+        sink.EventCalls[0].eventRecord.LightingIntensity.Should().Be(32, "firmware stores 33% as 84/255 and reports that as 32%");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A lighting change the printer refuses records nothing: the brightness it reports is still
+    /// whatever it was.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedLightingChangeRecordsNoBrightness()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(PrusaConnect.Commands.SetLedIntensity.For(40),
+                                                                  CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected, "Missing or broken parameters"),
+                              CancellationToken.None);
+        await Eventually(sendTask);
+
+        // Assert
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
+        sink.EventCalls[0].eventRecord.LightingIntensity.Should().BeNull();
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// The answer to any other command says nothing about the light, however it is answered.
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerToAnotherCommandRecordsNoBrightness()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink);
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
+        await Eventually(sendTask);
+
+        // Assert
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
+        sink.EventCalls[0].eventRecord.LightingIntensity.Should().BeNull();
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
     [Fact]
     public async Task RejectionReasonComesBackVerbatim()
     {

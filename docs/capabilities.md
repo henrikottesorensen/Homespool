@@ -15,7 +15,7 @@ Twelve capabilities. Every permission decision in Homespool is one of them.
 | `ViewQueue` | See what a printer is going to print, and why the queue is waiting |
 | `ViewHistory` | See what a printer has printed |
 | `Print` | Queue a print — cancel your own queue entry or stop your own running print — and mark the printer ready, or withdraw that |
-| `ControlPrinter` | Stop, pause, resume, idle and preheat — on **anybody's** print — and reorder or cancel anybody's queue entry |
+| `ControlPrinter` | Stop, pause, resume, idle and preheat — on **anybody's** print — set the printer's light, and reorder or cancel anybody's queue entry |
 | `ManagePrinter` | Rename a printer, change its location, re-enrol it, and allow it to be readied remotely |
 | `ViewCamera` | See a camera and its picture |
 | `ManageCamera` | Add, change and remove cameras |

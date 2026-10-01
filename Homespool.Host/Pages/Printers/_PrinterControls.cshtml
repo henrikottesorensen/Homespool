@@ -1,3 +1,4 @@
+@using Homespool.Host.Printing
 @using Homespool.Host.PrusaConnect
 @model DetailModel
 @{
@@ -92,6 +93,22 @@
             }
         }
 
+        @* The light, in any state: firmware takes it mid-print, and nothing about a print depends on
+           it. A slider and a button rather than a slider that sends as it moves, because every send
+           is a write to the printer's configuration store. *@
+        @if (Model.CanControlPrinter && Model.LightingShown)
+        {
+            <form method="post" asp-page-handler="Lighting" asp-route-uuid="@uuid"
+                  class="d-flex align-items-center gap-2">
+                <label class="form-label mb-0" for="lighting">@Localiser["Printers_Lighting"]</label>
+                <input type="range" class="form-range printer-lighting-range" id="lighting" name="intensity"
+                       min="0" max="@PrinterLighting.MaxIntensity" step="1" value="@Model.LightingIntensity"
+                       data-range-output="lighting-value" />
+                <span class="text-nowrap"><output id="lighting-value" for="lighting">@Model.LightingIntensity</output>%</span>
+                <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_LightingApply"]</button>
+            </form>
+        }
+
         @* Setting ready is a person asserting the sheet is clear, which is why the walk to the
            machine was never pure friction - it forced somebody to look. Off unless this printer has
            been judged one whose sheet can be read from here, so the control is absent rather than
@@ -123,5 +140,12 @@
     @if (Model.CanControlPrinter && Model.UnloadShown)
     {
         <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
+    }
+
+    @* Said only where it is true: an XL takes the setting and never reports it, so the slider shows
+       the last value set from here, and a change made at the printer does not reach it. *@
+    @if (Model.CanControlPrinter && Model.LightingShown && Model.LightingUnreported)
+    {
+        <p class="text-body-secondary small">@Localiser["Printers_LightingUnreported"]</p>
     }
 }

@@ -27,6 +27,7 @@ public sealed class PrusaIntentTranslatorTests
         { new Printing.SetTemperatures(215, 60), "GCODE" },
         { new Printing.CancelObject(4), "CANCEL_OBJECT" },
         { new Printing.UncancelObject(4), "UNCANCEL_OBJECT" },
+        { new Printing.SetLighting(40), "SET_VALUE" },
     };
 
     [Theory]
@@ -92,6 +93,36 @@ public sealed class PrusaIntentTranslatorTests
     public void AnObjectIdOutsideFirmwaresRangeThrows(int objectId)
     {
         Action act = () => PrusaIntentTranslator.ToCommand(new Printing.CancelObject(objectId));
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    /// <summary>
+    /// The brightness crosses as the <see cref="sbyte"/> firmware parses it into, unchanged across the
+    /// whole range - both ends included.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(40)]
+    [InlineData(100)]
+    public void SetLightingCarriesItsIntensityUnchanged(int intensity)
+    {
+        PrusaConnect.Commands.ISendableCommand command = PrusaIntentTranslator.ToCommand(new Printing.SetLighting(intensity));
+
+        command.Arguments!["chamber.led_intensity"].Should().Be((sbyte)intensity);
+    }
+
+    /// <summary>
+    /// A brightness outside 0 to 100 is refused rather than sent: firmware does not check it, and
+    /// stores 101 as nearly off.
+    /// </summary>
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(101)]
+    [InlineData(356)]
+    public void ABrightnessOutsideThePercentageThrows(int intensity)
+    {
+        Action act = () => PrusaIntentTranslator.ToCommand(new Printing.SetLighting(intensity));
 
         act.Should().Throw<ArgumentOutOfRangeException>();
     }

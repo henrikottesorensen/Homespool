@@ -584,6 +584,12 @@ body.camera-maximised-open {
   color: var(--bs-warning-text-emphasis);
 }
 
+/* The lighting slider. Bootstrap's range fills its container, and in the control strip's row that
+   is whatever the buttons beside it leave over - so it gets a width of its own. */
+.printer-lighting-range {
+  width: 10rem;
+}
+
 /* The graph. Fills its column and keeps its aspect from the viewBox, so there is no second place
    where the drawing's proportions are decided. */
 .printer-graph-svg {

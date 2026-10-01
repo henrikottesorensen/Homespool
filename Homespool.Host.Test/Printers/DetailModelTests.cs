@@ -156,6 +156,10 @@ public sealed class DetailModelTests : IDisposable
                                 // command service, so a guard that stops firing fails at the send
                                 // rather than quietly pulling filament out of something.
                                 new PrinterFilamentService(commands: null!, access, snapshots, new ToolTargetReader(context, TestTelemetryContext.For(context))),
+
+                                // And again: a lighting change refused for the printer it is aimed at
+                                // never reaches the send, so one that does fails loudly here.
+                                new PrinterLightingService(commands: null!, access, TestTelemetryContext.For(context)),
                                 new ToolTargetReader(context, TestTelemetryContext.For(context)),
                                 history,
                                 new UserNameLookup(context),
@@ -357,6 +361,86 @@ public sealed class DetailModelTests : IDisposable
         // Assert
         result.Should().BeOfType<ForbidResult>();
         model.StatusMessage.Should().BeNull("nothing about the printer is said to a caller who may not act on it");
+    }
+
+    /// <summary>
+    /// A lighting change is refused for a printer with no lighting - an MK3.5 that has never reported
+    /// a brightness - and says so, rather than sending what firmware would answer "Missing or broken
+    /// parameters".
+    /// </summary>
+    /// <remarks>
+    /// The lighting service here has a null command service, so a guard that stopped firing fails at
+    /// the send rather than passing.
+    /// </remarks>
+    [Fact]
+    public async Task LightingIsRefusedForAPrinterWithout()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        printer.Model = "1.3.5";
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostLightingAsync(printer.Uuid, 40, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+        model.StatusMessage.Should().Contain("no light");
+    }
+
+    /// <summary>
+    /// A brightness past 100 is refused on the page, for a printer that does have lighting: firmware
+    /// would take 101 and store it as nearly off.
+    /// </summary>
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(101)]
+    public async Task ABrightnessOutsideThePercentageIsRefused(int intensity)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        printer.Model = "7.1.0";
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostLightingAsync(printer.Uuid, intensity, CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+        model.StatusMessage.Should().Contain("between 0 and 100");
+    }
+
+    /// <summary>
+    /// A member who may not control the printer is refused the light before anything about the
+    /// printer is read - not told whether it has one.
+    /// </summary>
+    [Fact]
+    public async Task LightingWithoutControlPrinterIsForbiddenBeforeThePrinterIsRead()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _, _) = await NewModelWithUsersAsync(context);
+        await SetCapabilitiesAsync(context, user.Id, CapabilityPresets.Contributor);
+
+        Printer printer = NewPrinter(team.Id);
+        printer.Model = "1.3.5";
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IActionResult result = await model.OnPostLightingAsync(printer.Uuid, 40, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
+        model.StatusMessage.Should().BeNull("whether the printer has a light is not said to a caller who may not set it");
     }
 
     /// <summary>

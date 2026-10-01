@@ -66,4 +66,17 @@ public sealed record PrinterEventRecord
     /// nothing about them</b> - not that there are none, which is an update with a zero count.
     /// </summary>
     public PrinterCancellableUpdate? Cancellable { get; init; }
+
+    /// <summary>
+    /// The lighting's brightness in percent, when this event is the printer accepting a new one.
+    /// <b>Null means the event said nothing about it.</b>
+    /// </summary>
+    /// <remarks>
+    /// <b>The command's value, attached by the edge that sent it</b>: the acknowledgement itself
+    /// carries no data, but it comes only after firmware has stored the setting. Recorded because the
+    /// printer is slow to say so itself - the brightness rides only in full telemetry, which a change
+    /// to it does not trigger, so an idle printer can go five minutes before reporting it. The next
+    /// report that does carry it replaces this one.
+    /// </remarks>
+    public int? LightingIntensity { get; init; }
 }

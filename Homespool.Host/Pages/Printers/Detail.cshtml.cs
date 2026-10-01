@@ -65,6 +65,7 @@ public class DetailModel : PageModel
     private readonly PrintQueueService _queueService;
     private readonly PrinterPreheatService _preheat;
     private readonly PrinterFilamentService _filament;
+    private readonly PrinterLightingService _lighting;
     private readonly ToolTargetReader _tools;
     private readonly PrintHistoryService _historyService;
     private readonly UserNameLookup _names;
@@ -93,6 +94,7 @@ public class DetailModel : PageModel
                        PrintQueueService queueService,
                        PrinterPreheatService preheat,
                        PrinterFilamentService filament,
+                       PrinterLightingService lighting,
                        ToolTargetReader tools,
                        PrintHistoryService historyService,
                        UserNameLookup names,
@@ -121,6 +123,7 @@ public class DetailModel : PageModel
         _queueService = queueService;
         _preheat = preheat;
         _filament = filament;
+        _lighting = lighting;
         _tools = tools;
         _historyService = historyService;
         _names = names;
@@ -670,6 +673,29 @@ public class DetailModel : PageModel
 
     /// <summary>Whether the choice is real, and therefore whether the picker is worth opening.</summary>
     public bool UnloadNeedsPicker => ToolStates.Count > 1;
+
+    /// <summary>
+    /// Whether the lighting control is offered: the printer is connected and has lighting that can be
+    /// set - see <see cref="PrinterLighting.Has"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Offered in any state, printing included</b>, because firmware takes it in any state. Not a
+    /// permission check: the view also asks <see cref="CanControlPrinter"/>, and
+    /// <see cref="PrinterLightingService"/> decides all of it again on the post.
+    /// </remarks>
+    public bool LightingShown => Connected && PrinterLighting.Has(Statistics.Printer.Model, Statistics.LiveState?.ChamberLedIntensity);
+
+    /// <summary>
+    /// The brightness the slider starts at: the printer's last word on it, or full - firmware's own
+    /// default - when it has never said.
+    /// </summary>
+    public int LightingIntensity => Statistics.LiveState?.ChamberLedIntensity ?? PrinterLighting.MaxIntensity;
+
+    /// <summary>
+    /// Whether this printer never reports its brightness, so the slider shows at most the last value
+    /// set from here - see <see cref="PrinterLighting.Unreported"/>.
+    /// </summary>
+    public bool LightingUnreported => PrinterLighting.Unreported(Statistics.Printer.Model);
 
     /// <summary>
     /// Which tool this printer's toolless gcode would act on.
@@ -1559,6 +1585,24 @@ public class DetailModel : PageModel
         }, cancellationToken);
     }
 
+    /// <summary>Sets how bright the printer's lighting is, in percent.</summary>
+    /// <remarks>
+    /// The slider bounds the value and the service checks it again: a post is not bounded by the
+    /// control that usually sends it, and firmware would wrap 101 into nearly off rather than refuse it.
+    /// </remarks>
+    /// <param name="uuid">The printer.</param>
+    /// <param name="intensity">Brightness in percent, 0 to <see cref="PrinterLighting.MaxIntensity"/>.</param>
+    /// <param name="cancellationToken">The request's own.</param>
+    public Task<IActionResult> OnPostLightingAsync(Guid uuid, int intensity, CancellationToken cancellationToken)
+    {
+        return ActAsync(uuid, async (caller, printer) =>
+        {
+            await _lighting.SetAsync(printer.Id, caller, intensity, cancellationToken);
+
+            return (_localiser["Printers_LightingSet", intensity].Value, true);
+        }, cancellationToken);
+    }
+
     /// <summary>
     /// Sends one of the three print-control intents and reports what the printer said back.
     /// </summary>
@@ -1645,7 +1689,8 @@ public class DetailModel : PageModel
                                       CommandResponseTimedOutException or CommandSendTimedOutException or
                                       NoToolPickedException or FilamentTypeUnknownException or
                                       PrinterHasQueuedWorkException or NoSuchToolException or
-                                      ToolNotSpecifiedException or NoSuchObjectException)
+                                      ToolNotSpecifiedException or NoSuchObjectException or
+                                      NoLightingException or LightingIntensityOutOfRangeException)
         {
             // These are refusals about what the printer is holding rather than what it is doing, and
             // every one is reachable from a rendered control: the queued-work case

@@ -77,12 +77,14 @@ public class PrinterController : ControllerBase
     private const string ReadyAct = "ready";
     private const string UnreadyAct = "unready";
     private const string IdleAct = "idle";
+    private const string LightingAct = "lighting";
 
     private readonly PrintFileCatalog _files;
     private readonly PrintFileSender _sender;
     private readonly PrinterDriveNames _driveNames;
     private readonly PrinterCommandService _commands;
     private readonly PrintStopService _stops;
+    private readonly PrinterLightingService _lighting;
     private readonly PrinterQueryService _printers;
     private readonly PrinterAccessService _access;
     private readonly UserManager<HSUser> _userManager;
@@ -93,6 +95,7 @@ public class PrinterController : ControllerBase
                              PrinterDriveNames driveNames,
                              PrinterCommandService commands,
                              PrintStopService stops,
+                             PrinterLightingService lighting,
                              PrinterQueryService printers,
                              PrinterAccessService access,
                              UserManager<HSUser> userManager,
@@ -103,6 +106,7 @@ public class PrinterController : ControllerBase
         _driveNames = driveNames;
         _commands = commands;
         _stops = stops;
+        _lighting = lighting;
         _printers = printers;
         _access = access;
         _userManager = userManager;
@@ -475,6 +479,76 @@ public class PrinterController : ControllerBase
         return SendJobControlAsync(uuid, IdleAct, new SetPrinterIdle(), cancellationToken);
     }
 
+    /// <summary>
+    /// Sets how bright the printer's own lighting is.
+    /// <c>PUT /api/v1/printers/{uuid}/command/lighting</c>, with <c>{"intensity": 0-100}</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Ours rather than Connect's, like <c>idle</c></b>, and shaped like its neighbours: 204 once the
+    /// printer has taken it, 409 when it will not or cannot. It is the one verb here with a body,
+    /// because it is the one that sets a value rather than moving a print along.
+    /// </para>
+    /// <para>
+    /// <b>The range is checked here</b>, because firmware does not: it stores the value in a byte and
+    /// wraps, so 101 would come out nearly off. A printer with no lighting is a 409 before anything is
+    /// sent - see <see cref="PrinterLighting"/>.
+    /// </para>
+    /// <para>
+    /// The brightness reads back as <c>lighting</c> on <c>GET printers/{uuid}/telemetry</c>, not
+    /// always as the number sent: firmware's round trip through a byte turns 33 into 32.
+    /// </para>
+    /// </remarks>
+    [HttpPut]
+    [Route("printers/{uuid:guid}/command/" + LightingAct)]
+    public async Task<Results<NoContent, BadRequestProblem, ForbiddenProblem, NotFoundProblem, ConflictProblem>> Lighting(
+        Guid uuid,
+        [FromBody] SetLightingRequest body,
+        CancellationToken cancellationToken)
+    {
+        (HSUser? user, Printer? printer) = await ResolveAsync(uuid, cancellationToken);
+
+        if (user is null)
+        {
+            return this.NoAccount();
+        }
+
+        if (printer is null)
+        {
+            return this.NotFoundProblem();
+        }
+
+        try
+        {
+            await _lighting.SetAsync(printer.Id, CallerResolver.For(user, User), body.Intensity, cancellationToken);
+
+            return TypedResults.NoContent();
+        }
+        catch (LightingIntensityOutOfRangeException e)
+        {
+            return this.BadRequestProblem(e.Message);
+        }
+        catch (NoLightingException e)
+        {
+            return this.ConflictProblem(e.Message);
+        }
+        catch (PrinterRefusedException e)
+        {
+            return this.CommandRefused(LightingAct, e.Reason ?? "The printer refused the command.", e.EventType.ToString());
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException)
+        {
+            _logger.LogInformation(e, "Setting the lighting of printer {PrinterId} did not complete", printer.Id);
+
+            return this.CommandRefused(LightingAct, e.Message);
+        }
+        catch (TeamAccessDeniedException e)
+        {
+            return this.ForbiddenProblem(e.Message);
+        }
+    }
+
     /// <summary>Resolves the printer, then sends - the whole body of every job-control verb above.</summary>
     private async Task<JobControlResult> SendJobControlAsync(Guid uuid,
                                                              string act,
@@ -585,6 +659,13 @@ public class PrinterController : ControllerBase
 
             return this.ForbiddenProblem(e.Message);
         }
+    }
+
+    /// <summary>Body of a lighting change.</summary>
+    public class SetLightingRequest
+    {
+        /// <summary>Brightness in percent, 0 to 100. Zero is off.</summary>
+        public required int Intensity { get; set; }
     }
 
     /// <summary>Body of a send: which of the caller's files to transfer.</summary>

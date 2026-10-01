@@ -192,6 +192,56 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The light is offered to a printer built with the strips or one that has reported a brightness,
+    /// starting at what it last reported - and an XL, which never reports one, says so.
+    /// </summary>
+    [Theory]
+    [InlineData("7.1.0", null, true, false, "100")]
+    [InlineData("7.1.0", 35, true, false, "35")]
+    [InlineData("3.1.0", null, true, true, "100")]
+    [InlineData(null, 35, true, false, "35")]
+    [InlineData("1.3.5", null, false, false, null)]
+    public async Task TheLightFollowsTheModelOrAReport(string? model, int? reported, bool offered, bool unreported, string? value)
+    {
+        PrinterLiveState state = Reading(PrinterStatus.Printing);
+        state.ChamberLedIntensity = reported;
+
+        (Guid uuid, HttpClient client) = await SeedAsync($"lighting-{model}-{reported}@example.com", state: state, model: model);
+
+        using (client)
+        {
+            await ConnectAsync(uuid);
+
+            string controls = CarriedControls(await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status"));
+
+            controls.Contains("handler=Lighting\"", StringComparison.Ordinal).Should().Be(offered, "offered mid-print too, as firmware takes it in any state");
+            controls.Contains("does not report how bright", StringComparison.Ordinal).Should().Be(unreported);
+
+            if (value is not null)
+            {
+                Regex.Match(controls, "<input[^>]*id=\"lighting\"[^>]*>").Value.Should().Contain($"value=\"{value}\"");
+            }
+        }
+    }
+
+    /// <summary>A printer that is not connected is offered no light, whatever it is.</summary>
+    [Fact]
+    public async Task ADisconnectedPrinterIsOfferedNoLight()
+    {
+        PrinterLiveState state = Reading(PrinterStatus.Idle);
+        state.ChamberLedIntensity = 35;
+
+        (Guid uuid, HttpClient client) = await SeedAsync("lighting-away@example.com", state: state, model: "7.1.0");
+
+        using (client)
+        {
+            string controls = CarriedControls(await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status"));
+
+            controls.Should().NotContain("handler=Lighting\"");
+        }
+    }
+
+    /// <summary>
     /// The strip the card carries offers the filament presets, which the full page load used to be
     /// the only thing to read.
     /// </summary>
@@ -550,7 +600,8 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
 
     private async Task<(Guid uuid, HttpClient client)> SeedAsync(string email,
                                                                  PrinterLiveState? state = null,
-                                                                 int samples = 0)
+                                                                 int samples = 0,
+                                                                 string? model = null)
     {
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, email);
 
@@ -567,6 +618,7 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
             Uuid = uuid,
             TeamId = membership.TeamId,
             Name = "Garage MK3.5",
+            Model = model,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

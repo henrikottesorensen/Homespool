@@ -103,6 +103,79 @@ public sealed class ControlStripTests(Browsers browsers)
         await Expect(strip.Handler("Stop")).ToBeVisibleAsync(new() { Timeout = 5_000 });
     }
 
+    /// <summary>
+    /// The lighting slider shows its number as it moves, before anything is sent.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task TheSliderShowsItsNumberAsItMoves(string engine)
+    {
+        await using Strip strip = await Strip.OpenAsync(browsers, engine, "strip-slider");
+
+        await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
+        strip.Connect();
+
+        await Expect(strip.Slider).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await Expect(strip.SliderNumber).ToHaveTextAsync("60");
+
+        await strip.Slider.FocusAsync();
+        await strip.Page.Keyboard.PressAsync("ArrowLeft");
+        await strip.Page.Keyboard.PressAsync("ArrowLeft");
+
+        await Expect(strip.Slider).ToHaveValueAsync("58");
+        await Expect(strip.SliderNumber).ToHaveTextAsync("58");
+    }
+
+    /// <summary>
+    /// A slider moved and not yet sent keeps its place, and its number, when the strip is redrawn
+    /// around it for something else.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task AMovedSliderSurvivesTheStripBeingRedrawn(string engine)
+    {
+        await using Strip strip = await Strip.OpenAsync(browsers, engine, "strip-moved");
+
+        await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
+        strip.Connect();
+
+        await Expect(strip.Slider).ToBeVisibleAsync(new() { Timeout = 15_000 });
+
+        await strip.Slider.FocusAsync();
+        await strip.Page.Keyboard.PressAsync("ArrowLeft");
+        await strip.LeaveAsync();
+
+        await strip.ReportAsync(PrinterStatus.Printing, lighting: 60);
+
+        await Expect(strip.Handler("Pause")).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await Expect(strip.Slider).ToHaveValueAsync("59");
+        await Expect(strip.SliderNumber).ToHaveTextAsync("59");
+    }
+
+    /// <summary>
+    /// A slider nobody has touched follows the printer's report - a change made at the panel, or the
+    /// brightness a press of Set left behind.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task AnUntouchedSliderFollowsTheReport(string engine)
+    {
+        await using Strip strip = await Strip.OpenAsync(browsers, engine, "strip-report");
+
+        await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
+        strip.Connect();
+
+        await Expect(strip.Slider).ToHaveValueAsync("60", new() { Timeout = 15_000 });
+
+        await strip.ReportAsync(PrinterStatus.Idle, lighting: 20);
+
+        await Expect(strip.Slider).ToHaveValueAsync("20", new() { Timeout = 15_000 });
+        await Expect(strip.SliderNumber).ToHaveTextAsync("20");
+    }
+
     /// <summary>A printer page open in a browser, for a printer that is not connected.</summary>
     private sealed class Strip : IAsyncDisposable
     {
@@ -121,6 +194,10 @@ public sealed class ControlStripTests(Browsers browsers)
         public IPage Page { get; }
 
         public ILocator Filament => Page.Locator("[data-live-target=\"printer-controls\"] #filament");
+
+        public ILocator Slider => Page.Locator("[data-live-target=\"printer-controls\"] #lighting");
+
+        public ILocator SliderNumber => Page.Locator("[data-live-target=\"printer-controls\"] #lighting-value");
 
         [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                          Justification = "The host is owned by the strip returned, which disposes it; the catch disposes it when there is none.")]
@@ -162,8 +239,11 @@ public sealed class ControlStripTests(Browsers browsers)
                  .Register(_printerId, new OpenLink(), overPlaintext: false);
         }
 
-        /// <summary>Writes the printer's live state as telemetry would: <paramref name="status"/>, with PLA loaded.</summary>
-        public async Task ReportAsync(PrinterStatus status)
+        /// <summary>
+        /// Writes the printer's live state as telemetry would: <paramref name="status"/>, with PLA
+        /// loaded, and the light at <paramref name="lighting"/> when there is one.
+        /// </summary>
+        public async Task ReportAsync(PrinterStatus status, int? lighting = null)
         {
             using IServiceScope scope = _host.Factory.Services.CreateScope();
             HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
@@ -180,6 +260,7 @@ public sealed class ControlStripTests(Browsers browsers)
 
             live.Status = status;
             live.Material = "PLA";
+            live.ChamberLedIntensity = lighting;
             live.LastSeenAt = DateTimeOffset.UtcNow;
 
             await context.SaveChangesAsync(TestContext.Current.CancellationToken);

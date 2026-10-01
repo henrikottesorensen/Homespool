@@ -61,6 +61,18 @@
             chosen.set(before[index].id, before[index].value);
         }
 
+        // So is a slider moved and not yet sent - but only one that has been moved. Its value
+        // attribute is the printer's last report, and carrying an untouched slider across would
+        // keep a newer report from ever showing.
+        const moved = new Map();
+        const sliders = target.querySelectorAll("input[type=range][id]");
+
+        for (let index = 0; index < sliders.length; index++) {
+            if (sliders[index].value !== sliders[index].defaultValue) {
+                moved.set(sliders[index].id, sliders[index].value);
+            }
+        }
+
         target.innerHTML = state.pending;
         state.shown = comparable(state.pending);
         state.pending = null;
@@ -77,6 +89,17 @@
                 select.value = value;
             }
         }
+
+        moved.forEach(function (value, id) {
+            const slider = document.getElementById(id);
+
+            if (slider && target.contains(slider)) {
+                slider.value = value;
+
+                // So anything showing the slider's number follows it, as it would have on a drag.
+                slider.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+        });
     }
 
     function targetOf(template) {

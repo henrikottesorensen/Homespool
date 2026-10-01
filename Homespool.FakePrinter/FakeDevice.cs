@@ -471,6 +471,36 @@ public sealed class FakeDevice
     public bool CancelObjectSupported { get; set; } = true;
 
     /// <summary>
+    /// Whether this build has the LED strips - firmware's <c>HAS_SIDE_LEDS</c>, the XL and the CORE
+    /// One. A build without them does not know <c>SET_VALUE</c>'s <c>chamber.led_intensity</c> and
+    /// refuses it as <c>"Missing or broken parameters"</c>.
+    /// </summary>
+    public bool SideLedsSupported { get; set; } = true;
+
+    /// <summary>
+    /// The strips' brightness ceiling as firmware stores it: a byte, 255 being full, which is its
+    /// default (<c>side_leds_max_brightness</c>).
+    /// </summary>
+    public byte SideLedBrightness { get; set; } = 255;
+
+    /// <summary>
+    /// The brightness in percent, as firmware reports it - <c>byte * 100 / 255</c>, so not always
+    /// the percentage that was set.
+    /// </summary>
+    public int LedIntensity => SideLedBrightness * 100 / 255;
+
+    /// <summary>
+    /// The state half of <c>SET_VALUE</c>'s <c>chamber.led_intensity</c>, with firmware's arithmetic
+    /// and none of its absent checks: <c>(uint8_t)percent * 255 / 100</c>, stored in a byte. So 101
+    /// wraps to nearly off and -1 to about half, as on hardware (<c>planner.cpp:1053</c>).
+    /// </summary>
+    /// <param name="percent">The value as parsed - firmware's <c>int8_t</c>.</param>
+    public void SetLedIntensity(sbyte percent)
+    {
+        SideLedBrightness = unchecked((byte)((byte)percent * 255 / 100));
+    }
+
+    /// <summary>
     /// Declares the running print's cancellable objects, as the <c>M486</c> labels in a gcode do once
     /// it starts - test/scenario setup - and reports them the way firmware does, unasked.
     /// </summary>

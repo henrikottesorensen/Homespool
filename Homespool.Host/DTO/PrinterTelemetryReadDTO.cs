@@ -48,6 +48,17 @@ public class PrinterTelemetryReadDTO
     public required FansReadDTO Fans { get; set; }
 
     /// <summary>
+    /// How bright the printer's own lighting is, percent - the CORE One's chamber strips. Null on a
+    /// printer that has never said, which is every XL until it is set from here: it has the strips and
+    /// does not report them.
+    /// </summary>
+    /// <remarks>
+    /// <b>Also set by a change made here</b>, as soon as the printer accepts it, because the printer
+    /// can take minutes to report one itself. For an XL that is the only way it gets a value.
+    /// </remarks>
+    public int? Lighting { get; set; }
+
+    /// <summary>
     /// Millimetres of filament this printer has ever extruded - a lifetime odometer, not this job's.
     /// </summary>
     /// <remarks>

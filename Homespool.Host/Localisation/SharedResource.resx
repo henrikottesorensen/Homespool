@@ -2714,6 +2714,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Label_Security_PasskeyServerDomain" xml:space="preserve">
     <value>Hostname passkeys are bound to (empty turns passkeys off)</value>
   </data>
+  <data name="Settings_Label_Security_RememberedSessionDays" xml:space="preserve">
+    <value>How many days a remembered sign-in lasts unused</value>
+  </data>
   <data name="Settings_Label_AttemptLimits_MaxFailedAttempts" xml:space="preserve">
     <value>Failed sign-ins before the account is locked</value>
   </data>

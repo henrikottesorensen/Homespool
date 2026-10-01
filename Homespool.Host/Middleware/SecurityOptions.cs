@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace Homespool.Host.Middleware;
 
 /// <summary>
@@ -66,4 +68,25 @@ public class SecurityOptions
     /// </para>
     /// </remarks>
     public string? PasskeyServerDomain { get; set; }
+
+    /// <summary>
+    /// How many days a sign-in made with "Remember me" lasts without being used. Each use past half
+    /// of it starts the whole length again. A sign-in without the box lasts a day, and its cookie goes
+    /// when the browser closes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Thirty by default, because a remembered session is what a phone's home-screen app lives
+    /// on</b>, and one opened every few days would otherwise lose its session between visits. A long
+    /// session costs little here: every request checks the session's row, so a revoke, a password
+    /// change or a removed passkey still ends it on its next request.
+    /// </para>
+    /// <para>
+    /// <b>A change reaches the next sign-in, not the sessions already made.</b> Each session slides
+    /// by the length it was issued with. The ceiling is the 400 days Chromium caps a cookie's expiry
+    /// at; anything longer would be quietly shortened by the browser.
+    /// </para>
+    /// </remarks>
+    [Range(1, 400)]
+    public int RememberedSessionDays { get; set; } = 30;
 }

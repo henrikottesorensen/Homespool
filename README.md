@@ -8,7 +8,8 @@ printers' data leaving your network.
 ## Features
 
 - **Print queue and history** — queue jobs per printer; the printer pulls the next one when it is
-  ready.
+  ready. A file sliced for a different printer model is refused, and history says how long each
+  print took, how much of that was warm-up, and what filament it used.
 - **Live telemetry** — temperatures, progress and printer state, kept in SQLite with a retention
   you choose, and a temperature graph per job.
 - **Files** — upload gcode in the browser, or send straight from PrusaSlicer, which sees Homespool
@@ -16,11 +17,21 @@ printers' data leaving your network.
 - **Cameras** — stills and live WebRTC view through a bundled [go2rtc](https://github.com/AlexxIT/go2rtc)
   sidecar. A network camera is added by its RTSP, HTTP or RTMP address — an ONVIF camera by the
   RTSP address it serves — and a USB camera plugged into the server is picked from a list.
-- **Remote control** — preheat and cool down per filament type, unload filament, set a printer
-  ready. Only the handful of gcode the UI can send is ever sent.
+- **Remote control** — pause, resume and stop a print, cancel single objects of a running one,
+  preheat and cool down per filament type, unload filament, set a printer ready. The printer page
+  shows the running print's preview and plate beside the camera. Only the handful of gcode the UI
+  can send is ever sent.
+- **Notifications** — Web Push to the browsers you enable: a printer waiting for someone, a print
+  finished, stopped or failed, a held queue, a filament change a few minutes away, a printer lost
+  mid-print. Chosen per kind, and any printer can be switched off. An iPhone or iPad needs
+  Homespool added to the Home Screen first. Firefox and Safari take notifications on the
+  self-signed certificate; Chrome needs one it trusts, for which see
+  [acme/README.md](acme/README.md).
 - **Accounts, teams and tokens** — local accounts, optional sign-in through an external OpenID
   Connect provider, passkeys, team-based sharing with per-capability permissions, and personal
   access tokens for the API.
+- **Health and administration** — a health report that reaches administrators by email and Web
+  Push when something breaks and when it clears, and a restart from the Admin menu.
 - **TLS out of the box** — browsers and printers each get their own TLS port and certificate,
   with nothing to buy or configure. A publicly trusted certificate for a name you own is optional.
 - **Localisable.** English and Danish translations currently exist.
@@ -61,10 +72,11 @@ docker compose up -d
 `setup-env.sh` is a wizard that writes `.env` for you; on Windows, run `setup-env.cmd`. See
 [Configuration](#configuration).
 
-`build.sh` builds the two container images with the git commit stamped in, so the admin pages can
-say what version is running, and pulls the current base images so a rebuild picks up their security
-updates. `docker compose build` works too, but the images then report an unknown commit and are
-built on whatever base images Docker already has. On Windows, use `docker compose build --pull`.
+`build.sh` builds the three container images — the application, the proxy and the camera sidecar —
+with the git commit stamped in, so the admin pages can say what version is running, and pulls the
+current base images so a rebuild picks up their security updates. `docker compose build` works too,
+but the images then report an unknown commit and are built on whatever base images Docker already
+has. On Windows, use `docker compose build --pull`.
 
 **Set `PRINTER_HOST` before the first start if you can.** The printer-facing certificate is issued
 on the first run and covers the addresses the machine has at that moment plus whatever
@@ -144,6 +156,11 @@ docker compose up -d
 
 The database and certificates live on named Docker volumes and survive container replacement.
 
+A deployment that pulls its images from a registry instead of building them can install
+[update-check](update-check/README.md), which reports once a day whether newer images are published
+and what they would bring. It only reports, and for images built here with `build.sh` it has
+nothing to compare.
+
 ### Backups
 
 Back up two things, and keep them apart:
@@ -184,6 +201,7 @@ Configuration lives in two places:
 | `CA_PASSPHRASE` | Encrypts the printer CA's private key and the sign-in key ring. Required; the wizard generates it. **Never change or lose it once set.** |
 | `PROXY_SUBNET` / `PROXY_NETWORK` | The private network between the proxy and the app. Change both together only if the default collides with your LAN; the wizard checks. |
 | `CAMERA_SUBNET` / `CERTS_SUBNET` | The sidecars' own networks. Same rule. |
+| `CLIENT_ADDRESSES_UNRELIABLE` | Whether Docker on this machine hides each client's address, as Docker Desktop, rootless Docker and WSL do. The wizard asks Docker and sets it. The per-address limits on sign-in and printer registration are on only where it is `false`. |
 
 [.env.example](.env.example) documents every setting in full, including the WebRTC settings for a
 deployment behind a router or tunnel and the plaintext listener for a printer that cannot do TLS.
@@ -222,6 +240,8 @@ printers on the older transport.
   front of the printer port. The firmware's TLS stack needs a record size and ciphersuite that
   proxies do not use by default, and the shipped nginx handles it; see
   [docs/printer-tls.md](docs/printer-tls.md) before replacing it.
+- **The shipped proxy's configuration** is built into its image from the files under `nginx/`.
+  After changing one, `docker compose up -d --build proxy`.
 
 ### Mail
 
@@ -269,6 +289,8 @@ listener; see `LEGACY_PRINTER_PORT` in [.env.example](.env.example) for what tha
   a print host.
 - [pi/README.md](pi/README.md) and [acme/README.md](acme/README.md) — the Pi image and public
   certificates.
+- [update-check/README.md](update-check/README.md) — the optional daily check for newer published
+  images.
 
 ## Building from source
 
@@ -280,8 +302,13 @@ dotnet test Homespool.Host.Test/Homespool.Host.Test.csproj
 dotnet test Homespool.Host.E2ETest/Homespool.Host.E2ETest.csproj
 ```
 
-`dotnet test` on the whole solution also needs a [Mailpit](https://mailpit.axllent.org/) instance
-running; the integration-test project talks to a real SMTP server. The solution includes a
+`dotnet test` on the whole solution needs more. The integration-test project talks to a real SMTP
+server and a real OpenID Connect provider: start [Mailpit](https://mailpit.axllent.org/) and
+[dex](https://dexidp.io/) with `start-mailpit-tls.sh` and `start-dex.sh` in
+`Homespool.Host.IntegrationTest`. The browser-test project drives Chromium and WebKit through
+Playwright and skips itself until `Homespool.Host.BrowserTest/install-browsers.sh` has run.
+
+The solution includes a
 FakePrinter library and CLI that emulate a Buddy-firmware printer against a running server, for
 development without hardware.
 

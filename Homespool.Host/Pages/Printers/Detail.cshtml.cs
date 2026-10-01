@@ -299,6 +299,34 @@ public class DetailModel : PageModel
     public bool CanStop => CanControlPrinter || (CanPrint && ActivePrint?.QueuedByUserId == _readerId);
 
     /// <summary>
+    /// Whether Pause is offered: the printer is connected and its last reading says it is printing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Firmware's own rule, not one composed here.</b> <c>MarlinPrinter::job_control</c> accepts a
+    /// pause only while the state it reports is <c>PRINTING</c>, and that is the state this reads - so
+    /// the button is on screen exactly when the printer would take it, as of the reading.
+    /// </para>
+    /// <para>
+    /// <b>Stop is deliberately not gated this way.</b> It is the control somebody reaches for when a
+    /// print is failing, and a reading a few seconds behind a print that has just begun would hide it
+    /// at the worst moment; a refused stop costs nothing. Not a permission check either: the view
+    /// asks <see cref="CanControlPrinter"/>, and the service decides again on the post.
+    /// </para>
+    /// </remarks>
+    public bool PauseShown => Connected && Statistics.LiveState?.Status == PrinterStatus.Printing;
+
+    /// <summary>
+    /// Whether Resume is offered: the printer is connected and its last reading says it is paused.
+    /// </summary>
+    /// <remarks>
+    /// <b>Firmware accepts a resume only while it reports <c>PAUSED</c></b>, which also covers pausing
+    /// and resuming - so the button stays for the moment a resume takes, where pressing it again is
+    /// accepted and changes nothing. See <see cref="PauseShown"/>.
+    /// </remarks>
+    public bool ResumeShown => Connected && Statistics.LiveState?.Status == PrinterStatus.Paused;
+
+    /// <summary>
     /// Whether the reader may cancel objects of the running print: it is theirs, and they hold
     /// <see cref="Capability.Print"/>.
     /// </summary>
@@ -729,8 +757,6 @@ public class DetailModel : PageModel
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{Statistics.Printer.Uuid}/";
 
-        Presets = FilamentPreset.For(Statistics.Printer.Model);
-
         Queue = await _queueService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
         History = await _historyService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
         StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
@@ -756,10 +782,9 @@ public class DetailModel : PageModel
     /// answered when it is <em>queued</em>, so the post returns and the page re-renders within about
     /// a hundred milliseconds while the printer still has minutes of unloading to do - capturing the
     /// tool as still loaded, which was true at that instant and wrong by the time the dialog is
-    /// reopened. The control strip is deliberately outside the polled region, so nothing corrects
-    /// it. Fetching on open is the narrowest
-    /// fix: fresh at the one moment somebody is choosing, and no markup replaced under an open
-    /// dialog.
+    /// reopened. The dialog sits outside every refreshed region, so nothing else corrects it.
+    /// Fetching on open is the narrowest fix: fresh at the one moment somebody is choosing, and no
+    /// markup replaced under an open dialog.
     /// </remarks>
     public async Task<IActionResult> OnGetToolsAsync(Guid uuid, CancellationToken cancellationToken)
     {
@@ -792,10 +817,13 @@ public class DetailModel : PageModel
     /// on the client.
     /// </para>
     /// <para>
-    /// <b>The control strip is deliberately not in this partial.</b> It carries a filament
-    /// <c>select</c>, and replacing the markup underneath somebody every two seconds would reset
-    /// their choice mid-press. Controls change what the printer does; this changes what the page
-    /// says.
+    /// <b>The control strip rides along, but is not replaced with the card.</b> It carries a filament
+    /// <c>select</c>, and replacing that under somebody every two seconds would reset their choice
+    /// mid-press. So the card carries a copy in a <c>template</c>, and the page puts it in place only
+    /// when it differs from the strip on screen - which is when the printer connects, drops, starts or
+    /// pauses, or reports other filament. A strip rendered once at load would go on offering what was
+    /// true then: opened while a printer was reconnecting, it showed no Stop for the whole print that
+    /// followed.
     /// </para>
     /// </remarks>
     public async Task<IActionResult> OnGetStatusAsync(Guid uuid, CancellationToken cancellationToken)
@@ -1007,6 +1035,10 @@ public class DetailModel : PageModel
         LoadedMaterial = LoadedFilament.Of(statistics.LiveState?.Material);
         Tools = await _tools.ReadAsync(statistics.Printer.Id, cancellationToken);
         ToolStates = await _tools.ReadToolsAsync(statistics.Printer.Id, cancellationToken);
+
+        // Here rather than on the full load only: the card carries the control strip, and a strip
+        // rendered without them would offer preheating with an empty list.
+        Presets = FilamentPreset.For(statistics.Printer.Model);
 
         ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken);
 

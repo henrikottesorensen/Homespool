@@ -1,0 +1,127 @@
+@using Homespool.Host.PrusaConnect
+@model DetailModel
+@{
+    var uuid = Model.Statistics.Printer.Uuid;
+}
+
+@* Rendered by the full page and by the status card's poll, so everything here must be loaded by
+   LoadStatusAsync - a value only the full page set would blank the strip on its first replacement.
+   Not replaced with the card, though: see OnGetStatusAsync.
+
+   Every control here reaches the machine, so each is hidden unless the reader holds what its
+   service checks, rather than rendered and refused: Set ready and stopping your own print are
+   Print's, the rest ControlPrinter's. *@
+@if (Model.CanPrint || Model.CanControlPrinter)
+{
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        @* Pause and Resume follow the printer's reported state, by firmware's own rule for each - see
+           PauseShown. Stop follows only the connection, because it is the one control that must not
+           go missing while a reading catches up; firmware's "No print to stop" is the guard. *@
+        @if (Model.CanControlPrinter && Model.PauseShown)
+        {
+            <form method="post" asp-page-handler="Pause" asp-route-uuid="@uuid" class="d-inline">
+                <button type="submit" class="btn btn-outline-secondary">@Localiser["Intent_PausePrint"]</button>
+            </form>
+        }
+        @if (Model.CanControlPrinter && Model.ResumeShown)
+        {
+            <form method="post" asp-page-handler="Resume" asp-route-uuid="@uuid" class="d-inline">
+                <button type="submit" class="btn btn-outline-secondary">@Localiser["Intent_ResumePrint"]</button>
+            </form>
+        }
+        @if (Model.Connected && Model.CanStop)
+        {
+            <form method="post" asp-page-handler="Stop" asp-route-uuid="@uuid" class="d-inline">
+                <button type="submit" class="btn btn-outline-danger">@Localiser["Intent_StopPrint"]</button>
+            </form>
+        }
+
+        @* Heaters, and only ever both together. The service can set either alone and nothing here
+           can: a page that could leave one heater on and the other off would be a way to make a
+           mistake quietly.
+
+           Absent on a toolchanger with nothing picked: M140 is the bed and would apply, M104 is the
+           nozzle and would not, so the pair half-lands while the frame is answered Accepted. *@
+        @if (Model.CanControlPrinter && Model.Tools.ReachesAHotend)
+        {
+        <form method="post" asp-page-handler="Preheat" asp-route-uuid="@uuid"
+              class="d-flex align-items-center gap-2">
+            <label class="visually-hidden" for="filament">@Localiser["Printers_PreheatFor"]</label>
+
+            <select class="form-select w-auto" id="filament" name="filament">
+                @foreach (FilamentPreset preset in Model.Presets)
+                {
+                    <option value="@preset.Name">
+                        @preset.Name &mdash; @preset.NozzleTemperature&deg;C / @preset.BedTemperature&deg;C
+                    </option>
+                }
+            </select>
+
+            <button type="submit" class="btn btn-outline-primary">@Localiser["Printers_Preheat"]</button>
+        </form>
+
+        <form method="post" asp-page-handler="Cooldown" asp-route-uuid="@uuid">
+            <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_CoolDown"]</button>
+        </form>
+        }
+
+        @* Absent unless the printer has named its filament, which is the same condition under which
+           firmware will run the unload without stopping at a dialog on the panel - and which usually
+           just means there is nothing in the machine to take out. No confirm dialog, matching
+           preheat: this changes the physical world, but harmlessly and on purpose. *@
+        @if (Model.CanControlPrinter && Model.UnloadShown)
+        {
+            @* One tool means no choice to make, so it stays a plain button; several means a real
+               one, so it opens a picker. Same rule either way - ask only when something is being
+               decided - rather than two philosophies by printer type. *@
+            @if (Model.UnloadNeedsPicker)
+            {
+                <button type="button" class="btn btn-outline-secondary"
+                        data-bs-toggle="modal" data-bs-target="#unload-tool">
+                    @Localiser["Printers_UnloadEllipsis"]
+                </button>
+            }
+            else
+            {
+                <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid">
+                    <input type="hidden" name="tool" value="@Model.UnloadableTools[0].ToolNumber" />
+                    <button type="submit" class="btn btn-outline-secondary">
+                        @Localiser["Printers_Unload", Model.UnloadableTools[0].Material!]
+                    </button>
+                </form>
+            }
+        }
+
+        @* Setting ready is a person asserting the sheet is clear, which is why the walk to the
+           machine was never pure friction - it forced somebody to look. Off unless this printer has
+           been judged one whose sheet can be read from here, so the control is absent rather than
+           refusing. *@
+        @if (Model.CanPrint && Model.Statistics.Printer.RemoteReadyAllowed)
+        {
+            <button type="button" class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#set-ready">
+                @Localiser["Intent_SetPrinterReady"]
+            </button>
+        }
+    </div>
+
+    @* Cooling is refused mid-print too, which reads as arbitrary unless it is said: the button looks
+       like a safety control and is not one. Said on the page rather than only in the refusal, so
+       nobody has to press it to find out.
+
+       It does not say where to stop a print: Stop is on this page, two controls to the left. *@
+    @if (Model.CanControlPrinter && Model.Tools.ReachesAHotend)
+    {
+        <p class="text-body-secondary small">
+            @Localiser["Printers_PreheatBoth"]
+            @HtmlLocaliser["Printers_PreheatWarning", Markup.Strong(Localiser["Printers_CoolingIncluded"].Value)]
+        </p>
+    }
+
+    @* Said beside the button rather than only after pressing it: the unload runs for minutes and
+       the printer declines other gcode while it does, so somebody who presses Cool down next and
+       meets a refusal should already know why. *@
+    @if (Model.CanControlPrinter && Model.UnloadShown)
+    {
+        <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
+    }
+}

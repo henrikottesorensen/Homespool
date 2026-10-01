@@ -16,9 +16,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Host.Authentication;
+using Homespool.Host.Middleware;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -266,6 +268,72 @@ public sealed class UserSessionTests : IDisposable
         (await late.AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeTrue();
 
         (await RowsAsync(rig)).Single().ExpiresAt.Should().Be(_clock.GetUtcNow() + length, "the handler renews the cookie past half its life, and the row follows it");
+    }
+
+    /// <summary>
+    /// A remembered session gets its own, longer life, and keeps it: it survives more idle days than an
+    /// unremembered one lasts at all, and slides by its own length rather than by the cookie's default.
+    /// </summary>
+    [Fact]
+    public async Task ARememberedSessionLastsItsOwnLifetimeAndSlidesByIt()
+    {
+        await using LocalSchemeRig rig = await RigAsync();
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        string cookie = await rig.SessionCookieAsync(user, isPersistent: true);
+        TimeSpan length = TimeSpan.FromDays(new SecurityOptions().RememberedSessionDays);
+        TimeSpan unremembered = rig.CookieOptions.ExpireTimeSpan;
+        DateTimeOffset signedIn = _clock.GetUtcNow();
+
+        (unremembered + TimeSpan.FromHours(1)).Should().BeLessThan(length / 2, "the first request has to fall past the unremembered life and before this one's half-life");
+        (await RowsAsync(rig)).Single().ExpiresAt.Should().Be(signedIn + length);
+
+        _clock.Advance(unremembered + TimeSpan.FromHours(1));
+        (await rig.NewRequest(cookie).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded
+            .Should().BeTrue("a remembered session outlives the unremembered lifetime");
+        (await RowsAsync(rig)).Single().ExpiresAt.Should().Be(signedIn + length, "not yet past half its own life, so nothing slid");
+
+        _clock.Advance(signedIn + (length * 3 / 4) - _clock.GetUtcNow());
+        (await rig.NewRequest(cookie).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeTrue();
+
+        (await RowsAsync(rig)).Single().ExpiresAt.Should().Be(_clock.GetUtcNow() + length, "it slides by its own length");
+    }
+
+    /// <summary>
+    /// The setting is read at each sign-in: a change reaches the next remembered session, and leaves
+    /// the one already made at the length it was issued with.
+    /// </summary>
+    [Fact]
+    public async Task AChangedRememberedLifetimeReachesTheNextSignInAndNotTheLastOne()
+    {
+        ChangeableMonitor<SecurityOptions> security = TestOptions.Monitor(new SecurityOptions());
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath, services =>
+        {
+            services.AddSingleton<TimeProvider>(_clock);
+            services.AddSingleton<IOptionsMonitor<SecurityOptions>>(security);
+        });
+        HSUser before = await rig.AddUserAsync("before@example.com");
+        HSUser after = await rig.AddUserAsync("after@example.com");
+        DateTimeOffset signedIn = _clock.GetUtcNow();
+
+        await rig.SessionCookieAsync(before, isPersistent: true);
+        security.Set(new SecurityOptions { RememberedSessionDays = 3 });
+        await rig.SessionCookieAsync(after, isPersistent: true);
+
+        List<UserSession> rows = await RowsAsync(rig);
+        rows.Single(row => row.UserId == before.Id).ExpiresAt.Should().Be(signedIn + TimeSpan.FromDays(new SecurityOptions().RememberedSessionDays));
+        rows.Single(row => row.UserId == after.Id).ExpiresAt.Should().Be(signedIn + TimeSpan.FromDays(3));
+    }
+
+    [Fact]
+    public async Task AnUnrememberedSessionEndsWithTheCookiesDefaultLifetime()
+    {
+        await using LocalSchemeRig rig = await RigAsync();
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        string cookie = await rig.SessionCookieAsync(user);
+
+        _clock.Advance(rig.CookieOptions.ExpireTimeSpan + TimeSpan.FromMinutes(1));
+
+        (await rig.NewRequest(cookie).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded.Should().BeFalse();
     }
 
     /// <summary>

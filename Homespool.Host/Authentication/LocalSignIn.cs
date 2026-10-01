@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Middleware;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Authentication;
@@ -64,6 +65,7 @@ public sealed class LocalSignIn
     private readonly UserSessionService _sessions;
     private readonly IdentityOptions _options;
     private readonly IOptionsMonitor<CookieAuthenticationOptions> _cookies;
+    private readonly IOptionsMonitor<SecurityOptions> _security;
     private readonly TimeProvider _time;
     private readonly ILogger<LocalSignIn> _logger;
 
@@ -74,6 +76,7 @@ public sealed class LocalSignIn
                        UserSessionService sessions,
                        IOptions<IdentityOptions> options,
                        IOptionsMonitor<CookieAuthenticationOptions> cookies,
+                       IOptionsMonitor<SecurityOptions> security,
                        TimeProvider time,
                        ILogger<LocalSignIn> logger)
     {
@@ -84,6 +87,7 @@ public sealed class LocalSignIn
         _sessions = sessions;
         _options = options.Value;
         _cookies = cookies;
+        _security = security;
         _time = time;
         _logger = logger;
     }
@@ -292,7 +296,10 @@ public sealed class LocalSignIn
     /// <summary>
     /// Records a new session for <paramref name="principal"/> and puts its secret on the principal,
     /// replacing any it arrived with, and fixes the cookie's issue and expiry times the row is kept in
-    /// step with.
+    /// step with: <see cref="SecurityOptions.RememberedSessionDays"/> for a remembered sign-in, read
+    /// now so a change reaches the next one, and the cookie's own lifetime otherwise. The span between
+    /// the two is what the handler slides by, so a session keeps its length through every renewal and
+    /// refresh.
     /// </summary>
     private async Task StartSessionAsync(HttpContext context, ClaimsPrincipal principal, AuthenticationProperties properties)
     {
@@ -306,7 +313,9 @@ public sealed class LocalSignIn
 
         DateTimeOffset issued = _time.GetUtcNow();
         properties.IssuedUtc = issued;
-        properties.ExpiresUtc = issued + _cookies.Get(IdentityConstants.ApplicationScheme).ExpireTimeSpan;
+        properties.ExpiresUtc = issued + (properties.IsPersistent ?
+                                              TimeSpan.FromDays(_security.CurrentValue.RememberedSessionDays) :
+                                              _cookies.Get(IdentityConstants.ApplicationScheme).ExpireTimeSpan);
 
         string secret = await _sessions.StartAsync(long.Parse(userId, CultureInfo.InvariantCulture),
                                                    StampOf(principal),

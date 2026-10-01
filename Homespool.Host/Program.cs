@@ -173,6 +173,9 @@ public static class Program
             {
                 // Cookie settings
                 options.Cookie.HttpOnly = true;
+
+                // A session nobody asked to be remembered; a remembered one lasts
+                // Security:RememberedSessionDays instead.
                 options.ExpireTimeSpan = TimeSpan.FromDays(1);
 
                 // Lax, written down rather than inherited. It is already the framework's default for
@@ -356,7 +359,10 @@ public static class Program
                             .ValidateDataAnnotations()
                             .ValidateOnStart();
 
-            builder.Services.Configure<Middleware.SecurityOptions>(builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName));
+            builder.Services.AddOptions<Middleware.SecurityOptions>()
+                            .Bind(builder.Configuration.GetSection(Middleware.SecurityOptions.SectionName))
+                            .ValidateDataAnnotations()
+                            .ValidateOnStart();
 
             Mail.SmtpOptions smtpOptions = new();
             builder.Configuration.GetSection(Mail.SmtpOptions.SectionName).Bind(smtpOptions);

@@ -175,11 +175,14 @@ internal sealed class LocalSchemeRig : IAsyncDisposable
         return CookieOf(request, IdentityConstants.TwoFactorUserIdScheme);
     }
 
-    /// <summary>The application cookie for <paramref name="user"/>, as a completed sign-in writes it.</summary>
-    public async Task<string> SessionCookieAsync(HSUser user)
+    /// <summary>
+    /// The application cookie for <paramref name="user"/>, as a completed sign-in writes it - one the
+    /// person asked to be remembered when <paramref name="isPersistent"/> is set.
+    /// </summary>
+    public async Task<string> SessionCookieAsync(HSUser user, bool isPersistent = false)
     {
         DefaultHttpContext request = NewRequest();
-        await SignInOf(request).SignInAsync(request, await PrincipalOf(user), isPersistent: false);
+        await SignInOf(request).SignInAsync(request, await PrincipalOf(user), isPersistent);
 
         return CookieOf(request, IdentityConstants.ApplicationScheme);
     }

@@ -62,6 +62,13 @@ public static class EditableSettings
             nameof(SecurityOptions.PasskeyServerDomain),
             SettingGrade.Restart),
 
+        // Read per sign-in at LocalSignIn.StartSessionAsync. A session already made keeps the
+        // length it was issued with, as an invitation already sent keeps its expiry.
+        new(typeof(SecurityOptions),
+            SecurityOptions.SectionName,
+            nameof(SecurityOptions.RememberedSessionDays),
+            SettingGrade.Live),
+
         // Attempt limits - read per check at AttemptLimiter:121,130.
         // Only the count. The two timing knobs are deliberately absent - see AttemptLimitOptions.
         // Shown under the account heading rather than its own: it is bound from a different class,

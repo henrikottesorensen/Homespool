@@ -1,7 +1,9 @@
 // Keeps a server-rendered block of the page current by re-fetching it.
 //
-// The printer page has two of these: the status card, which refreshes every couple of seconds, and
-// the temperature graph, which refreshes far more slowly because its window can be a whole print.
+// The printer page has several of these: the status card, which refreshes every couple of seconds,
+// the temperature graph, which refreshes far more slowly because its window can be a whole print, and
+// the plate and the queue between them. The control strip is not one - the card carries it, see
+// carry() below.
 //
 // Why HTML rather than JSON. Every word in these blocks is localised and every number is
 // culture-formatted, and both belong to the server - answering with data would mean a second copy of
@@ -31,6 +33,103 @@
         return html.replace(TOKEN_INPUT, function (tag) {
             return tag.replace(/value="[^"]*"/, 'value=""');
         });
+    }
+
+    // A region can also carry content for a part of the page that is not replaced with it: a
+    // <template data-live-for="name"> inside the region, for the element marked
+    // data-live-target="name". The printer page's control strip is the one there is. Its filament
+    // select would lose a choice if it were rebuilt with the status card every two seconds, but a
+    // strip drawn once at load goes on offering what was true then - opened while a printer was
+    // reconnecting, it had no Stop for the whole print that followed. So it is replaced only when
+    // what it would say now differs from what it says, and never while somebody is in it.
+    //
+    // What each target is showing, compared as comparable() compares, and anything still waiting for
+    // somebody to leave it.
+    const carried = new WeakMap();
+
+    function place(target, state) {
+        if (state.pending === null || target.contains(document.activeElement)) {
+            return;
+        }
+
+        // A filament chosen and not yet sent is the reader's, not the page's: carried across by id,
+        // where the new strip still offers it.
+        const chosen = new Map();
+        const before = target.querySelectorAll("select[id]");
+
+        for (let index = 0; index < before.length; index++) {
+            chosen.set(before[index].id, before[index].value);
+        }
+
+        target.innerHTML = state.pending;
+        state.shown = comparable(state.pending);
+        state.pending = null;
+
+        const after = target.querySelectorAll("select[id]");
+
+        for (let index = 0; index < after.length; index++) {
+            const select = after[index];
+            const value = chosen.get(select.id);
+
+            if (value !== undefined && Array.prototype.some.call(select.options, function (option) {
+                return option.value === value;
+            })) {
+                select.value = value;
+            }
+        }
+    }
+
+    function targetOf(template) {
+        return document.querySelector('[data-live-target="' + template.dataset.liveFor + '"]');
+    }
+
+    // On the first render, what the region carries and what the target shows were drawn by one request
+    // and say the same thing - but not in the same characters, since the target's markup is wrapped in
+    // the page's own indentation. So the template is what is remembered, not the target.
+    function remember(region) {
+        const templates = region.querySelectorAll("template[data-live-for]");
+
+        for (let index = 0; index < templates.length; index++) {
+            const target = targetOf(templates[index]);
+
+            if (!target || carried.has(target)) {
+                continue;
+            }
+
+            const state = { shown: comparable(templates[index].innerHTML), pending: null };
+
+            carried.set(target, state);
+
+            // Leaving the strip is when a change held back for its reader can land. Focus has not
+            // arrived anywhere yet when focusout fires, so the check waits a turn for it.
+            target.addEventListener("focusout", function () {
+                window.setTimeout(function () {
+                    place(target, state);
+                }, 0);
+            });
+        }
+    }
+
+    function carry(region) {
+        remember(region);
+
+        const templates = region.querySelectorAll("template[data-live-for]");
+
+        for (let index = 0; index < templates.length; index++) {
+            const target = targetOf(templates[index]);
+            const state = target ? carried.get(target) : null;
+
+            if (!state) {
+                continue;
+            }
+
+            const html = templates[index].innerHTML;
+
+            // Back to what is on screen: anything held back is moot.
+            state.pending = comparable(html) === state.shown ? null : html;
+
+            place(target, state);
+        }
     }
 
     function ready(fn) {
@@ -112,6 +211,8 @@
                 lastHtml = next;
                 region.innerHTML = html;
 
+                carry(region);
+
                 // For anything that takes its cue from what a region now says - the picture beside
                 // the camera follows the status card's print. Only on a real change, as above.
                 region.dispatchEvent(new CustomEvent("live-region-updated", { bubbles: true }));
@@ -133,6 +234,7 @@
             }
         });
 
+        remember(region);
         schedule();
     }
 

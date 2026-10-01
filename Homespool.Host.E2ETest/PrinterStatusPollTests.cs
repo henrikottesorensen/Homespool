@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -12,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Printing;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -130,6 +132,85 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
                                          "the ready switch is rendered from CanManagePrinter, which no poll sets");
             fragment.Should().NotContain("compat/octoprint",
                                          "the slicer address is rendered from SlicerUrl, which no poll sets");
+        }
+    }
+
+    /// <summary>
+    /// The card carries the control strip as it would be drawn now, so a page opened while the printer
+    /// was away gains the controls when it comes back.
+    /// </summary>
+    /// <remarks>
+    /// <b>The case the carrying exists for.</b> A strip drawn once at load, for a printer that was
+    /// reconnecting at that moment, offers Preheat, Cool down and Set ready and nothing else - and went
+    /// on offering only those through the whole print that followed, with no Stop on the page.
+    /// </remarks>
+    [Fact]
+    public async Task TheCardCarriesTheControlsOfAPrinterThatComesBack()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("controls-return@example.com", state: Reading(PrinterStatus.Printing));
+
+        using (client)
+        {
+            string away = CarriedControls(await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status"));
+
+            away.Should().Contain("handler=Preheat\"", "preheating is offered whether or not the printer is there");
+            away.Should().NotContain("handler=Stop\"", "a printer that is not connected cannot be sent a stop");
+            away.Should().NotContain("handler=Pause\"");
+
+            await ConnectAsync(uuid);
+
+            string back = CarriedControls(await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status"));
+
+            back.Should().Contain("handler=Stop\"", "the printer is back, mid-print");
+            back.Should().Contain("handler=Pause\"", "and printing, which is when firmware takes a pause");
+        }
+    }
+
+    /// <summary>
+    /// Pause and Resume are offered by firmware's own rule for each, read from the reported state;
+    /// Stop is offered whatever the state, for as long as the printer is connected.
+    /// </summary>
+    [Theory]
+    [InlineData(PrinterStatus.Printing, true, false)]
+    [InlineData(PrinterStatus.Paused, false, true)]
+    [InlineData(PrinterStatus.Attention, false, false)]
+    [InlineData(PrinterStatus.Idle, false, false)]
+    public async Task PauseAndResumeFollowTheReportedState(PrinterStatus status, bool pause, bool resume)
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync($"controls-{status}@example.com", state: Reading(status));
+
+        using (client)
+        {
+            await ConnectAsync(uuid);
+
+            string controls = CarriedControls(await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status"));
+
+            controls.Contains("handler=Pause\"", StringComparison.Ordinal).Should().Be(pause, $"firmware pauses only a printing printer, and this one is {status}");
+            controls.Contains("handler=Resume\"", StringComparison.Ordinal).Should().Be(resume, $"firmware resumes only a paused printer, and this one is {status}");
+            controls.Should().Contain("handler=Stop\"", "a stop is offered on the connection alone, and refused by the printer if it has nothing to stop");
+        }
+    }
+
+    /// <summary>
+    /// The strip the card carries offers the filament presets, which the full page load used to be
+    /// the only thing to read.
+    /// </summary>
+    /// <remarks>
+    /// A carried strip may only render what the status handler loads. Without the presets it would
+    /// draw the preheat control with an empty list, and put that in place of the working one the first
+    /// time anything else about the strip changed.
+    /// </remarks>
+    [Fact]
+    public async Task TheCarriedStripOffersThePresets()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("controls-presets@example.com", state: Reading(PrinterStatus.Idle));
+
+        using (client)
+        {
+            string controls = CarriedControls(await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status"));
+
+            controls.Should().Contain("<option value=\"PLA\"");
+            controls.Should().Contain("<option value=\"PETG\"");
         }
     }
 
@@ -374,6 +455,44 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
         }
     }
 
+    /// <summary>A single-tool printer's live state in <paramref name="status"/>, with PLA loaded.</summary>
+    private static PrinterLiveState Reading(PrinterStatus status)
+    {
+        return new PrinterLiveState
+        {
+            Status = status,
+            Material = "PLA",
+            LastSeenAt = DateTimeOffset.UtcNow,
+        };
+    }
+
+    /// <summary>The control strip a status fragment carries, as rendered.</summary>
+    private static string CarriedControls(string fragment)
+    {
+        Match carried = Regex.Match(fragment, "<template data-live-for=\"printer-controls\">(.*?)</template>", RegexOptions.Singleline);
+
+        carried.Success.Should().BeTrue("the card carries the control strip on every poll");
+
+        return carried.Groups[1].Value;
+    }
+
+    /// <summary>
+    /// Puts the printer in the connection registry, which is all the page asks of a connection. These
+    /// tests render a page and send the printer nothing.
+    /// </summary>
+    private async Task ConnectAsync(Guid uuid)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = await context.Printers
+                                     .Where(printer => printer.Uuid == uuid)
+                                     .Select(printer => printer.Id)
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        _factory.Services.GetRequiredService<PrinterConnectionRegistry>().Register(printerId, new OpenLink(), overPlaintext: false);
+    }
+
     /// <summary>A live state for an idle toolchanger holding <paramref name="materials"/>, one per head.</summary>
     private static PrinterLiveState Toolchanger(params string?[] materials)
     {
@@ -484,5 +603,19 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return (uuid, client);
+    }
+
+    private sealed class OpenLink : IPrinterLink
+    {
+        public bool IsOpen => true;
+
+        public Task<CommandSendResult> SendAsync(IPrinterIntent intent, CancellationToken cancellationToken)
+        {
+            throw new NotSupportedException("these tests render a page and send the printer nothing");
+        }
+
+        public void Complete()
+        {
+        }
     }
 }

@@ -410,14 +410,15 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     /// what the first permits: removing their own queue entry, and none of the machine controls.
     /// </summary>
     /// <remarks>
-    /// The printer is connected, has a hotend and reports PLA loaded, so each absent control is
-    /// absent for the capability and not because its other condition failed - the Operator test
-    /// below is the proof those conditions hold.
+    /// The printer is connected, has a hotend, reports PLA loaded and is printing - then paused, for
+    /// Resume - so each absent control is absent for the capability and not because its other
+    /// condition failed. The Operator test below, on the same printer, is the proof those conditions
+    /// hold.
     /// </remarks>
     [Fact]
     public async Task AContributorIsOfferedOnlyWhatPrintPermits()
     {
-        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ReportingPrinterAsync();
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await PrintingPrinterAsync();
         (HSUser contributor, HttpClient contributorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "detail-offer-contributor@example.com");
 
@@ -433,7 +434,7 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
 
             string html = await GetPageAsync(contributorClient, uuid);
 
-            foreach (string handler in (string[])["Pause", "Resume", "Stop", "Preheat", "Cooldown", "Unload", "Move"])
+            foreach (string handler in (string[])["Pause", "Stop", "Preheat", "Cooldown", "Unload", "Move"])
             {
                 html.Should().NotContain($"handler={handler}\"", $"{handler} needs ControlPrinter, which a Contributor lacks");
             }
@@ -441,18 +442,23 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
             html.Should().Contain($"value=\"{theirOwn}\"", "removing your own entry is what Print permits");
             html.Should().NotContain($"value=\"{theirs}\"", "removing somebody else's entry needs ControlPrinter");
 
+            await PausedAsync(uuid, fake);
+
+            (await GetPageAsync(contributorClient, uuid)).Should().NotContain(
+                "handler=Resume\"", "Resume needs ControlPrinter, which a Contributor lacks");
+
             await EndRunAsync(fake, run);
         }
     }
 
     /// <summary>
     /// An Operator holds <c>ControlPrinter</c>, so the page offers the machine controls and removing
-    /// anybody's queue entry.
+    /// anybody's queue entry - Pause while the printer prints, and Resume once it is paused.
     /// </summary>
     [Fact]
     public async Task AnOperatorIsOfferedTheMachineControls()
     {
-        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ReportingPrinterAsync();
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await PrintingPrinterAsync();
         (HSUser @operator, HttpClient operatorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "detail-offer-operator@example.com");
 
@@ -466,12 +472,20 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
 
             string html = await GetPageAsync(operatorClient, uuid);
 
-            foreach (string handler in (string[])["Pause", "Resume", "Stop", "Preheat", "Cooldown", "Unload", "Move", "Cancel"])
+            foreach (string handler in (string[])["Pause", "Stop", "Preheat", "Cooldown", "Unload", "Move", "Cancel"])
             {
                 html.Should().Contain($"handler={handler}\"", $"an Operator may {handler}");
             }
 
+            html.Should().NotContain("handler=Resume\"", "firmware resumes only a paused print");
             html.Should().Contain($"value=\"{theirs}\"", "ControlPrinter removes anybody's entry");
+
+            await PausedAsync(uuid, fake);
+
+            string paused = await GetPageAsync(operatorClient, uuid);
+
+            paused.Should().Contain("handler=Resume\"", "an Operator may resume a paused print");
+            paused.Should().NotContain("handler=Pause\"", "firmware pauses only a printing printer");
 
             await EndRunAsync(fake, run);
         }
@@ -791,6 +805,38 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
             "the first telemetry, sent on connect, names the loaded material");
 
         return connected;
+    }
+
+    /// <summary>
+    /// <see cref="ReportingPrinterAsync"/> mid-print, returning once the server has heard it is
+    /// printing - the page offers Pause only then.
+    /// </summary>
+    private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> PrintingPrinterAsync()
+    {
+        SyntheticTelemetrySource source = new()
+        {
+            IdleInterval = TimeSpan.FromMilliseconds(200),
+            PrintingInterval = TimeSpan.FromMilliseconds(200),
+        };
+
+        (Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run) connected =
+            await ReportingPrinterAsync(new FakePrinterOptions { TelemetrySource = source });
+
+        connected.fake.Device.StartPrint(jobId: 1, path: "/usb/A~1.BGC");
+
+        (await WaitForLiveStateAsync(connected.uuid, live => live.Status == PrinterStatus.Printing)).Should().BeTrue(
+            "the fake reports its state on every telemetry, a fifth of a second apart");
+
+        return connected;
+    }
+
+    /// <summary>Pauses the fake's print and waits for the server to hear it - the page offers Resume only then.</summary>
+    private async Task PausedAsync(Guid uuid, FakePrinterClient fake)
+    {
+        fake.Device.TryPause().Should().BeTrue("the print has to be running to be paused");
+
+        (await WaitForLiveStateAsync(uuid, live => live.Status == PrinterStatus.Paused)).Should().BeTrue(
+            "the fake reports its state on every telemetry, a fifth of a second apart");
     }
 
     /// <summary>Waits for the server's live state to say <paramref name="expected"/> is loaded; null is empty.</summary>

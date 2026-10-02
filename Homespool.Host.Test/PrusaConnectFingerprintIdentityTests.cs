@@ -174,7 +174,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
     /// </summary>
     private async Task<(Printer printer, string token)> EnrolByCodeExchangeAsync(HomespoolDbContext context,
                                                                                  Guid? teamUuid,
-                                                                                 long userId)
+                                                                                 Caller claimant)
     {
         PrusaConnectService service = NewService(context);
 
@@ -183,7 +183,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         PrusaConnectRegistration registration = await context.PrusaConnectRegistrations.SingleAsync();
         string code = registration.TemporaryCode;
 
-        Printer printer = await service.ClaimPrinterAsync(code, "MK3.5", null, teamUuid, Caller.Unscoped(userId));
+        Printer printer = await service.ClaimPrinterAsync(code, "MK3.5", null, teamUuid, claimant);
         string? token = await service.GetToken(code);
 
         token.Should().NotBeNull("the poll must issue a token once the code is claimed");
@@ -246,7 +246,7 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         TeamMember team = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         // Act
-        (Printer printer, string token) = await EnrolByCodeExchangeAsync(context, team.Team!.Uuid, userId: 1);
+        (Printer printer, string token) = await EnrolByCodeExchangeAsync(context, team.Team!.Uuid, Caller.Unscoped(1));
 
         AuthenticateResult result = await AuthenticateAsync(HeaderFingerprint, token);
 
@@ -296,8 +296,10 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
 
         (Printer printer, string original) = await EnrolByUsbKeyAsync(context, team.Team!.Uuid, userId: 1);
 
+        Caller managing = TestCallers.Scoped(1, Capability.ManagePrinter);
+
         // Act - the operator writes a fresh stick for the printer they already have
-        string reissued = await NewService(context).RegenerateProvisioningTokenAsync(printer.Id, caller: Caller.Unscoped(1));
+        string reissued = await NewService(context).RegenerateProvisioningTokenAsync(printer.Id, caller: managing);
 
         AuthenticateResult result = await AuthenticateAsync(HeaderFingerprint, reissued);
 
@@ -389,7 +391,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         await EnrolByUsbKeyAsync(context, team.Team!.Uuid, userId: 1);
 
         // Act - the same physical printer is put through Add Printer to Connect
-        (Printer _, string codeToken) = await EnrolByCodeExchangeAsync(context, team.Team!.Uuid, userId: 1);
+        (Printer _, string codeToken) = await EnrolByCodeExchangeAsync(context, team.Team!.Uuid,
+                                                                       TestCallers.Scoped(1, Capability.ManagePrinter));
 
         AuthenticateResult result = await AuthenticateAsync(HeaderFingerprint, codeToken);
 
@@ -411,7 +414,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         (Printer first, string _) = await EnrolByUsbKeyAsync(context, team.Team!.Uuid, userId: 1);
 
         // Act
-        (Printer second, string _) = await EnrolByCodeExchangeAsync(context, team.Team!.Uuid, userId: 1);
+        (Printer second, string _) = await EnrolByCodeExchangeAsync(context, team.Team!.Uuid,
+                                                                    TestCallers.Scoped(1, Capability.ManagePrinter));
 
         // Assert
         second.Id.Should().Be(first.Id, "both enrolments describe the same physical printer");
@@ -519,7 +523,8 @@ public sealed class PrusaConnectFingerprintIdentityTests : IDisposable
         (Printer enrolled, string originalToken) = await EnrolByUsbKeyAsync(context, owner.Team!.Uuid, userId: 1);
 
         // Act
-        (Printer claimed, string newToken) = await EnrolByCodeExchangeAsync(context, owner.Team!.Uuid, userId: 1);
+        (Printer claimed, string newToken) = await EnrolByCodeExchangeAsync(context, owner.Team!.Uuid,
+                                                                            TestCallers.Scoped(1, Capability.ManagePrinter));
 
         // Assert
         claimed.Id.Should().Be(enrolled.Id);

@@ -103,7 +103,7 @@ public sealed class CameraAccessServiceTests : IDisposable
         CameraAccessService access = NewService(context);
 
         // Act
-        Camera? found = await access.FindAsync(camera.Uuid, Caller.Unscoped(Alice), Capability.ViewCamera,
+        Camera? found = await access.FindAsync(camera.Uuid, TestCallers.Scoped(Alice, Capability.ViewCamera), Capability.ViewCamera,
                                                TestContext.Current.CancellationToken);
 
         // Assert

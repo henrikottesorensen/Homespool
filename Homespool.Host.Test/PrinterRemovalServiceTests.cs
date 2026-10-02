@@ -98,7 +98,9 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Act
         // A fresh context, so the camera is not tracked and the database's own rule is what runs.
         await using HomespoolDbContext serviceContext = NewContext();
-        string? name = await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        string? name = await NewService(serviceContext).RemovePrinterAsync(printer.Uuid,
+                                                                           TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                                           CancellationToken.None);
 
         // Assert
         name.Should().Be("Workshop");
@@ -149,7 +151,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Act
         // A fresh context, so the camera is not tracked and the database's own rule is what runs.
         await using HomespoolDbContext serviceContext = NewContext();
-        await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                            CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -193,7 +196,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
         // Act
         await NewService(context, telemetry: telemetry)
-            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), CancellationToken.None);
 
         // Assert
         await telemetry.Received(1).BeginEvictionAsync(printer.Id, Arg.Any<CancellationToken>());
@@ -229,7 +232,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
         // Act
         Func<Task> removing = () => NewService(context, telemetry: telemetry)
-                                        .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+                                        .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                            CancellationToken.None);
 
         // Assert
         await removing.Should().ThrowAsync<DbUpdateException>();
@@ -267,7 +271,9 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         });
 
         // Act
-        await NewService(context, telemetry: telemetry).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), request.Token);
+        await NewService(context, telemetry: telemetry).RemovePrinterAsync(printer.Uuid,
+                                                                           TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                                           request.Token);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -294,7 +300,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Idle);
 
         // Act
-        await NewService(context, registry).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context, registry).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                               CancellationToken.None);
 
         // Assert
         actor.Received(1).Complete();
@@ -319,7 +326,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
         // Act
         Func<Task> removing = () => NewService(context, registry)
-            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), CancellationToken.None);
 
         // Assert
         (await removing.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Printing);
@@ -350,7 +357,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
         // Act
         Func<Task> removing = () => NewService(context, registry)
-            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), CancellationToken.None);
 
         // Assert
         (await removing.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Unknown);
@@ -379,7 +386,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Printing);
 
         // Act - nothing registered, so nothing is connected.
-        await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                     CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -397,7 +405,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // Act
-        await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                     CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();

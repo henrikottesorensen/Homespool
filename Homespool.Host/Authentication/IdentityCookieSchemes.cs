@@ -170,9 +170,9 @@ public static class IdentityCookieSchemes
     /// passed, and forgets it.
     /// </summary>
     /// <remarks>
-    /// Not <see cref="StampValidator"/>, which ends the whole session on a mismatch. A browser can hold
-    /// one account's session and another's pending sign-in, and the pending one going stale says
-    /// nothing about the session - so only the pending cookie goes.
+    /// Only the pending cookie goes, as with <see cref="StampValidator"/>. A browser can hold one
+    /// account's session and another's pending sign-in, and the pending one going stale says nothing
+    /// about the session.
     /// </remarks>
     private static async Task ValidatePendingStampAsync(CookieValidatePrincipalContext context)
     {

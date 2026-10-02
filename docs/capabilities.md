@@ -11,12 +11,12 @@ Twelve capabilities. Every permission decision in Homespool is one of them.
 
 | capability | what it permits |
 |---|---|
-| `ViewPrinter` | See that a printer exists at all, and its name, state and telemetry |
+| `ViewPrinter` | See that a printer exists at all, and its name, state, telemetry and recent events — and choose it as your default printer |
 | `ViewQueue` | See what a printer is going to print, and why the queue is waiting |
 | `ViewHistory` | See what a printer has printed |
-| `Print` | Queue a print — cancel your own queue entry or stop your own running print — and mark the printer ready, or withdraw that |
-| `ControlPrinter` | Stop, pause, resume, idle and preheat — on **anybody's** print — set the printer's light, and reorder or cancel anybody's queue entry |
-| `ManagePrinter` | Rename a printer, change its location, re-enrol it, and allow it to be readied remotely |
+| `Print` | Queue a print, or send a file to the printer — cancel your own queue entry, stop your own running print or cancel single objects of it — and mark the printer ready, or withdraw that |
+| `ControlPrinter` | Stop, pause, resume and idle — on **anybody's** print — preheat and cool down, unload filament, browse the printer's USB drive, set its light, and reorder or cancel anybody's queue entry |
+| `ManagePrinter` | Rename a printer, change its location, re-enrol it, allow it to be readied remotely, and remove it |
 | `ViewCamera` | See a camera and its picture |
 | `ManageCamera` | Add, change and remove cameras |
 | `ViewOwnFiles` | List and download **your own** files |
@@ -43,6 +43,9 @@ see, and you cannot tell whether a camera is configured correctly without lookin
 |---|---|
 | `Print`, `ControlPrinter` or `ManagePrinter` | `ViewPrinter` |
 | `ManageCamera` | `ViewCamera` |
+
+Attaching a camera to a printer takes `ViewPrinter` on that printer as well as `ManageCamera`: you
+cannot name a printer you cannot see.
 
 The file capabilities and `ViewAccountDetails` imply nothing: a file is addressed by the name you already know, so deleting one
 does not require being able to list them.
@@ -108,7 +111,9 @@ queue waits for somebody to ready the printer.
 
 `GET /api/v1/user` answers any valid token, whatever its scope, so a script can call it to confirm the
 token before doing anything else. Without `ViewAccountDetails` the response leaves out your email
-address (`email` is `null`); the username, teams and default printer are still there.
+address (`email` is `null`), and without `ViewPrinter` it leaves out your default printer
+(`defaultPrinterUuid` is `null`), since the token cannot see it. The username and teams are always
+there.
 
 ### Revoking
 
@@ -140,6 +145,11 @@ way, because one queue is shared and moving your entry moves everybody's.
 
 This is the arrangement a print room has: you can withdraw your own work, and running the machine for
 everybody is a separate job.
+
+**Cancelling a single object of a running print is narrower still**: only the person who queued the
+print may, with `Print`. `ControlPrinter` does not extend to it, because choosing which of somebody's
+parts get made is editing their work rather than running the machine. An object of a print started at
+the panel is cancelled at the panel.
 
 ## Files are always your own
 

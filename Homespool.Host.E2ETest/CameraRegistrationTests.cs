@@ -1,3 +1,5 @@
+using System;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 
@@ -152,6 +154,42 @@ public sealed class CameraRegistrationTests : IAsyncLifetime
 
             (await CameraPage.AlertAsync(client, "warning")).Should().Be(
                 CameraPage.Localised(_factory, "Cameras_StreamServerConfigurationNotSaved"));
+        }
+    }
+
+    /// <summary>
+    /// Saving a camera without changing its source leaves the sidecar's stream alone: a replacement
+    /// would hand anybody already watching a second reader on the camera. Changing the source does
+    /// replace it.
+    /// </summary>
+    [Fact]
+    public async Task ASaveThatKeepsTheSourceLeavesTheStreamAlone()
+    {
+        _sidecar.AddCamera(Source, FakeCamera.H264);
+
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-renamed@example.com");
+
+        using (client)
+        {
+            Camera camera = await CameraPage.AddNetworkCameraAsync(_factory, client, user, "before", Source);
+            Registrations().Should().Be(1, "the camera must have been registered, or leaving it alone proves nothing");
+
+            await CameraPage.EditAsync(client, camera.Uuid, "after", Source);
+
+            Registrations().Should().Be(1, "the source did not change, so the stream did not need replacing");
+            _sidecar.Streams.Should().Contain(camera.Uuid.ToString(), Source);
+
+            const string Moved = "rtsp://cam:camera-secret@192.0.2.2/live"; // betterleaks:allow - a test fixture for a camera that does not exist
+            await CameraPage.EditAsync(client, camera.Uuid, "after", Moved);
+
+            Registrations().Should().Be(2);
+            _sidecar.Streams.Should().Contain(camera.Uuid.ToString(), Moved);
+        }
+
+        int Registrations()
+        {
+            return _sidecar.Requests.Count(request => request.StartsWith("PUT /api/streams", StringComparison.Ordinal));
         }
     }
 

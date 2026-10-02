@@ -2,16 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
-using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
@@ -24,21 +19,14 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// What the startup reconciler will and will not hand back to the stream server.
+/// What the startup reconciler will and will not hand back to the stream server, and which version of
+/// a camera it hands over.
 /// </summary>
 /// <remarks>
-/// <para>
-/// <b>This is the one path that registers a stored source without it passing through
-/// <c>CameraService</c>.</b> A row written before the composed-source rule existed, or by any future
-/// caller that goes round the service, would otherwise be pushed to the sidecar unchecked at every
-/// start - quietly, unattended, and with nobody watching, which is exactly the shape of thing this
-/// reconciler is for.
-/// </para>
-/// <para>
-/// The device list is empty here, because <c>LocalCameraDevices</c> reads a directory that exists
-/// only in the container. So every attached source is one naming a device this machine does not
-/// have, which is the same verdict a forged name earns on a real machine.
-/// </para>
+/// <b>It puts stored sources back at every start, quietly, unattended, and with nobody watching.</b>
+/// A row written before a rule existed, or by any future caller that goes round the service, would
+/// otherwise be pushed to the sidecar unchecked; and a camera changed while it waits for the sidecar
+/// would otherwise be pushed as it was before the change.
 /// </remarks>
 public sealed class CameraStreamReconcilerTests : IDisposable
 {
@@ -53,8 +41,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
             context,
             "ffmpeg:device?video=/dev/v4l/by-id/usb-camera-video-index0#raw=-i#raw=/etc/hostname");
 
-        using RecordingHandler handler = new();
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new();
+        await RunReconcilerAsync(handler);
 
         handler.Registered.Should().NotContain(forged,
                                                "a source the server did not compose is a command line for the sidecar, " +
@@ -71,8 +59,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid network = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
 
-        using RecordingHandler handler = new();
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new();
+        await RunReconcilerAsync(handler);
 
         handler.Registered.Should().Contain(network, "restoring these is the whole point of the reconciler");
     }
@@ -90,9 +78,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid rebound = await AddCameraAsync(context, "rtsp://camera.example/live");
 
-        using RecordingHandler handler = new();
-        await RunReconcilerAsync(context,
-                                 handler,
+        using SidecarHandler handler = new();
+        await RunReconcilerAsync(handler,
                                  CameraSourcePolicyTests.Build(resolvesTo: "172.28.0.3", containerNetwork: "172.28.0.0/16"));
 
         handler.Registered.Should().NotContain(rebound,
@@ -107,8 +94,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid unresolved = await AddCameraAsync(context, "rtsp://camera.example/live");
 
-        using RecordingHandler handler = new();
-        await RunReconcilerAsync(context, handler, CameraSourcePolicyTests.Build(unresolvable: true));
+        using SidecarHandler handler = new();
+        await RunReconcilerAsync(handler, CameraSourcePolicyTests.Build(unresolvable: true));
 
         handler.Registered.Should().Contain(unresolved,
                                             "DNS not answering at boot must not cost a camera its registration");
@@ -126,10 +113,10 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
 
-        using RecordingHandler handler = new() { ListingsToRefuse = 2 };
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new() { ListingsToRefuse = 2 };
+        await RunReconcilerAsync(handler);
 
-        handler.Listings.Should().Be(3);
+        handler.Listings.Should().Be(4, "three until the sidecar answered, then the sync asking whether it holds the camera");
         handler.Registered.Should().Contain(camera, "the sidecar answered once it was back");
     }
 
@@ -144,8 +131,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         _ = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
 
-        using RecordingHandler handler = new() { ListingsToRefuse = int.MaxValue };
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new() { ListingsToRefuse = int.MaxValue };
+        await RunReconcilerAsync(handler);
 
         handler.Listings.Should().BeInRange(2, 31, "asked again once a second for thirty seconds, not in a busy loop");
         handler.Attempted.Should().BeEmpty("with no listing, nothing is known to be missing");
@@ -163,8 +150,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid orphan = Guid.NewGuid();
 
-        using RecordingHandler handler = new() { ListingsToRefuse = 2, Held = [orphan.ToString("D")] };
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new(Held(orphan, "rtsp://192.0.2.99/orphan")) { ListingsToRefuse = 2 };
+        await RunReconcilerAsync(handler);
 
         handler.Deleted.Should().Equal([orphan.ToString("D")], "the sidecar answered once it was back, and the stream is no camera's");
         handler.Listings.Should().Be(3, "the sweep uses the listing the wait produced rather than asking again");
@@ -182,8 +169,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
 
-        using RecordingHandler handler = new() { RegistrationsToRefuse = 1 };
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new() { RegistrationsToRefuse = 1 };
+        await RunReconcilerAsync(handler);
 
         handler.Attempted.Should().Equal(camera, camera);
         handler.Registered.Should().Contain(camera);
@@ -201,8 +188,8 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
 
-        using RecordingHandler handler = new() { RegistrationsToDrop = 1 };
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new() { RegistrationsToDrop = 1 };
+        await RunReconcilerAsync(handler);
 
         handler.Attempted.Should().Equal(camera, camera);
         handler.Registered.Should().Contain(camera);
@@ -218,42 +205,162 @@ public sealed class CameraStreamReconcilerTests : IDisposable
 
         Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
 
-        using RecordingHandler handler = new() { RegistrationsToRefuse = int.MaxValue };
-        await RunReconcilerAsync(context, handler);
+        using SidecarHandler handler = new() { RegistrationsToRefuse = int.MaxValue };
+        await RunReconcilerAsync(handler);
 
         handler.Attempted.Should().Equal(camera, camera);
         handler.Registered.Should().BeEmpty();
     }
 
-    private static async Task RunReconcilerAsync(HomespoolDbContext context,
-                                                 RecordingHandler handler,
-                                                 CameraSourcePolicy? policy = null)
+    /// <summary>
+    /// A camera edited while the reconciler waits for a restarting sidecar reaches it as edited, not as
+    /// it was when the reconciler started - which the sidecar's file would otherwise keep for good.
+    /// </summary>
+    [Fact]
+    public async Task ACameraEditedWhileTheSidecarRestartsIsRegisteredAsEdited()
     {
-        IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
-        factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler, disposeHandler: false));
+        await using HomespoolDbContext context = await MigratedContextAsync();
 
-        Go2RtcClient streamServer = new(factory,
-                                        TestOptions.Monitor(new CameraOptions
-                                        {
-                                            ApiUsername = "homespool",
-                                            ApiPassword = "secret", // betterleaks:allow - the sidecar is a handler in this file
-                                        }),
-                                        NullLogger<Go2RtcClient>.Instance);
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
 
-        IServiceScopeFactory scopes = ScopeFactoryFor(context, streamServer);
+        using SidecarHandler handler = new()
+        {
+            ListingsToRefuse = 2,
+            OnListing = async before =>
+            {
+                if (before == 0)
+                {
+                    await SetSourceAsync(camera, "rtsp://192.0.2.20/edited");
+                }
+            },
+        };
+
+        await RunReconcilerAsync(handler);
+
+        handler.AttemptedSources.Should().Equal(["rtsp://192.0.2.20/edited"], "the camera as it is, not as it was");
+    }
+
+    /// <summary>
+    /// A camera removed while the reconciler waits is not put back - and the stream it had is removed.
+    /// </summary>
+    [Fact]
+    public async Task ACameraRemovedWhileTheSidecarRestartsIsNotPutBack()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new(Held(camera, "rtsp://192.0.2.10/live"))
+        {
+            ListingsToRefuse = 2,
+            OnListing = async before =>
+            {
+                if (before == 0)
+                {
+                    await RemoveCameraAsync(camera);
+                }
+            },
+        };
+
+        await RunReconcilerAsync(handler);
+
+        handler.Attempted.Should().BeEmpty("there is no camera left to register");
+        handler.Streams.Should().NotContainKey(camera.ToString("D"), "a stream no camera owns is removed");
+    }
+
+    /// <summary>
+    /// A camera edited between a refused registration and its retry is retried as edited.
+    /// </summary>
+    [Fact]
+    public async Task ACameraEditedBeforeItsRetryIsRetriedAsEdited()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new()
+        {
+            RegistrationsToRefuse = 1,
+            OnRegistration = async (before, _) =>
+            {
+                if (before == 0)
+                {
+                    await SetSourceAsync(camera, "rtsp://192.0.2.20/edited");
+                }
+            },
+        };
+
+        await RunReconcilerAsync(handler);
+
+        handler.AttemptedSources.Should().Equal("rtsp://192.0.2.10/live", "rtsp://192.0.2.20/edited");
+        handler.Streams[camera.ToString("D")].Should().Be("rtsp://192.0.2.20/edited");
+    }
+
+    /// <summary>
+    /// A stream already holding exactly the camera's source is left alone: replacing it would hand a
+    /// viewer who is already watching a second reader on the camera.
+    /// </summary>
+    [Fact]
+    public async Task AStreamAlreadyHoldingTheCamerasSourceIsLeftAlone()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new(Held(camera, "rtsp://192.0.2.10/live"));
+        await RunReconcilerAsync(handler);
+
+        handler.Attempted.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A stream the sidecar holds with a source the camera no longer has is replaced: every camera is
+    /// checked at start, not only the ones the sidecar is missing.
+    /// </summary>
+    [Fact]
+    public async Task AStreamHoldingAnOlderSourceIsReplaced()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        Guid camera = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new(Held(camera, "rtsp://192.0.2.10/older"));
+        await RunReconcilerAsync(handler);
+
+        handler.AttemptedSources.Should().Equal("rtsp://192.0.2.10/live");
+    }
+
+    /// <summary>
+    /// A stream the sidecar already holds, for a source a rule now refuses, is removed. Checking only
+    /// the cameras the sidecar was missing left such a stream in place for good.
+    /// </summary>
+    [Fact]
+    public async Task AHeldStreamWhoseSourceIsNowRefusedIsRemoved()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        const string Forged = "ffmpeg:device?video=/dev/v4l/by-id/usb-camera-video-index0#raw=-i#raw=/etc/hostname";
+        Guid camera = await AddCameraAsync(context, Forged);
+
+        using SidecarHandler handler = new(Held(camera, Forged));
+        await RunReconcilerAsync(handler);
+
+        handler.Attempted.Should().BeEmpty();
+        handler.Streams.Should().NotContainKey(camera.ToString("D"));
+    }
+
+    private async Task RunReconcilerAsync(SidecarHandler handler, CameraSourcePolicy? policy = null)
+    {
+        using StreamSyncRig rig = new(_databasePath, handler, policy);
+
         FakeTimeProvider time = new();
         handler.Clock = time;
 
         using CameraStreamReconciler reconciler = new(
-            scopes,
-            streamServer,
+            rig.Scopes,
+            rig.Client,
+            rig.Sync,
             new CameraLiveAvailability(Substitute.For<ICameraCodecProbe>()),
-            new CameraCredentialProtector(new EphemeralDataProtectionProvider(),
-                                          NullLogger<CameraCredentialProtector>.Instance),
-            new LocalCameraDevices(NullLogger<LocalCameraDevices>.Instance,
-                                   new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance),
-                                   TestOptions.Monitor(new CameraOptions())),
-            policy ?? CameraSourcePolicyTests.Build(),
             time,
             NullLogger<CameraStreamReconciler>.Instance);
 
@@ -273,17 +380,9 @@ public sealed class CameraStreamReconcilerTests : IDisposable
         await reconciler.StopAsync(TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// A scope factory over one already-migrated context, so the reconciler resolves the same
-    /// database this test seeded - and a sweeper over that database and the same sidecar.
-    /// </summary>
-    private static IServiceScopeFactory ScopeFactoryFor(HomespoolDbContext context, Go2RtcClient streamServer)
+    private static Dictionary<string, string> Held(Guid stream, string source)
     {
-        ServiceCollection services = [];
-        services.AddScoped(_ => context);
-        services.AddScoped(_ => new CameraStreamSweeper(context, streamServer, NullLogger<CameraStreamSweeper>.Instance));
-
-        return services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        return new Dictionary<string, string> { [stream.ToString("D")] = source };
     }
 
     private static async Task<Guid> AddCameraAsync(HomespoolDbContext context, string source)
@@ -308,13 +407,38 @@ public sealed class CameraStreamReconcilerTests : IDisposable
         return camera.Uuid;
     }
 
-    private async Task<HomespoolDbContext> MigratedContextAsync()
+    /// <summary>Changes a camera's source the way a save does, from a context of its own.</summary>
+    private async Task SetSourceAsync(Guid camera, string source)
+    {
+        await using HomespoolDbContext context = NewContext();
+
+        await context.Cameras
+                     .Where(row => row.Uuid == camera)
+                     .ExecuteUpdateAsync(row => row.SetProperty(c => c.Source, source), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Removes a camera's row the way a removal does, from a context of its own.</summary>
+    private async Task RemoveCameraAsync(Guid camera)
+    {
+        await using HomespoolDbContext context = NewContext();
+
+        await context.Cameras
+                     .Where(row => row.Uuid == camera)
+                     .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+    }
+
+    private HomespoolDbContext NewContext()
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
                                                        .UseSqlite($"Data Source={_databasePath}")
                                                        .Options;
 
-        HomespoolDbContext context = new(options);
+        return new HomespoolDbContext(options);
+    }
+
+    private async Task<HomespoolDbContext> MigratedContextAsync()
+    {
+        HomespoolDbContext context = NewContext();
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
@@ -327,103 +451,6 @@ public sealed class CameraStreamReconcilerTests : IDisposable
         if (File.Exists(_databasePath))
         {
             File.Delete(_databasePath);
-        }
-    }
-
-    /// <summary>
-    /// Answers the sidecar's calls and remembers which stream names were PUT.
-    /// </summary>
-    /// <remarks>
-    /// The listing answers with <see cref="Held"/>, empty unless a test says otherwise, so every
-    /// camera counts as missing and the registration loop is actually entered - which is the loop
-    /// under test. Anything else answers 200 with an empty
-    /// object, since the probe that follows is not what this is about.
-    /// </remarks>
-    private sealed class RecordingHandler : HttpMessageHandler
-    {
-        /// <summary>Listings refused before one is answered, the way a restarting sidecar's closed port refuses them.</summary>
-        public int ListingsToRefuse { get; init; }
-
-        /// <summary>
-        /// Registrations answered with go2rtc's refusal of a source before one is accepted, the way a
-        /// sidecar that has just come back refuses every source.
-        /// </summary>
-        public int RegistrationsToRefuse { get; init; }
-
-        /// <summary>Registrations whose connection is refused before one is answered at all.</summary>
-        public int RegistrationsToDrop { get; init; }
-
-        /// <summary>The clock <see cref="AttemptedAt"/> is read from.</summary>
-        public TimeProvider Clock { get; set; } = TimeProvider.System;
-
-        public int Listings { get; private set; }
-
-        /// <summary>The stream names the listing answers with.</summary>
-        public IReadOnlyList<string> Held { get; init; } = [];
-
-        /// <summary>Every stream name a delete was sent for.</summary>
-        public List<string> Deleted { get; } = [];
-
-        /// <summary>When each of <see cref="Attempted"/> was made.</summary>
-        public List<DateTimeOffset> AttemptedAt { get; } = [];
-
-        /// <summary>Every stream name PUT, answered or not.</summary>
-        public List<Guid> Attempted { get; } = [];
-
-        /// <summary>The stream names whose PUT was accepted.</summary>
-        public List<Guid> Registered { get; } = [];
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,
-                                                               CancellationToken cancellationToken)
-        {
-            if (request.Method == HttpMethod.Get && request.RequestUri!.AbsolutePath == "/api/streams")
-            {
-                if (Listings++ < ListingsToRefuse)
-                {
-                    throw new HttpRequestException("Connection refused");
-                }
-
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = new StringContent(
-                        System.Text.Json.JsonSerializer.Serialize(Held.ToDictionary(name => name, _ => new { }))),
-                });
-            }
-
-            if (request.Method == HttpMethod.Delete &&
-                System.Web.HttpUtility.ParseQueryString(request.RequestUri!.Query)["src"] is { } deleted)
-            {
-                Deleted.Add(deleted);
-            }
-
-            if (request.Method == HttpMethod.Put &&
-                request.RequestUri!.AbsolutePath == "/api/streams" &&
-                System.Web.HttpUtility.ParseQueryString(request.RequestUri.Query)["name"] is { } name &&
-                Guid.TryParse(name, out Guid uuid))
-            {
-                Attempted.Add(uuid);
-                AttemptedAt.Add(Clock.GetUtcNow());
-
-                if (Attempted.Count <= RegistrationsToDrop)
-                {
-                    throw new HttpRequestException("Connection refused");
-                }
-
-                if (Attempted.Count <= RegistrationsToDrop + (long)RegistrationsToRefuse)
-                {
-                    return Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
-                    {
-                        Content = new StringContent("streams: source not supported\n"),
-                    });
-                }
-
-                Registered.Add(uuid);
-            }
-
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("{}"),
-            });
         }
     }
 }

@@ -19,10 +19,10 @@ namespace Homespool.Host.Cameras;
 /// <para>
 /// <b>Why a camera can outlive its row in the sidecar.</b> Removing a camera deletes the row and then
 /// asks the sidecar to drop the stream, and that second step fails whenever the sidecar is restarting
-/// or unreachable - after which nothing remembers the uuid to ask again. Removing a printer takes its
-/// cameras by cascade and never asks at all. A stream left behind is not inert: for a camera attached
-/// to this machine, the device reads as free again, and re-adding it puts two streams on one device
-/// node - the loser retrying forever at a whole core, and the camera silently missing.
+/// or unreachable - after which nothing remembers the uuid to ask again. A stream left behind is not
+/// inert: for a camera attached to this machine, the device reads as free again, and re-adding it
+/// puts two streams on one device node - the loser retrying forever at a whole core, and the camera
+/// silently missing.
 /// </para>
 /// <para>
 /// <b>Only streams Homespool made, recognised by name.</b> Every stream this application registers is
@@ -33,10 +33,11 @@ namespace Homespool.Host.Cameras;
 /// was registered with, and a running producer on a contended device is exactly the case that matters.
 /// </para>
 /// <para>
-/// <b>The sidecar is listed before the cameras are read, and that order is what makes this safe to run
-/// beside a save.</b> A camera's row is committed before its stream is registered, so every uuid-named
-/// stream in the listing has its row committed by the time the rows are read. Read the other way
-/// round, a camera added in between would be listed without its row and have its new stream removed.
+/// <b>Each removal goes through <see cref="CameraStreamSync"/>, and that is what makes this safe to run
+/// beside a save.</b> The rows read here only choose which streams to ask about; the sync reads the
+/// camera's row again inside that camera's gate, and removes the stream only if there is still no row.
+/// The sidecar is listed before the rows are read all the same - a camera's row is committed before
+/// its stream is registered, so a listed stream whose row is missing here is one worth asking about.
 /// </para>
 /// <para>
 /// <b>More than one deployment sharing one sidecar would sweep each other's cameras.</b> No supported
@@ -48,14 +49,17 @@ public sealed class CameraStreamSweeper
 {
     private readonly HomespoolDbContext _dbContext;
     private readonly Go2RtcClient _streamServer;
+    private readonly CameraStreamSync _sync;
     private readonly ILogger<CameraStreamSweeper> _logger;
 
     public CameraStreamSweeper(HomespoolDbContext dbContext,
                                Go2RtcClient streamServer,
+                               CameraStreamSync sync,
                                ILogger<CameraStreamSweeper> logger)
     {
         _dbContext = dbContext;
         _streamServer = streamServer;
+        _sync = sync;
         _logger = logger;
     }
 
@@ -78,8 +82,7 @@ public sealed class CameraStreamSweeper
     /// </summary>
     /// <remarks>
     /// For a caller that had to wait for the sidecar to answer before it could list it, and would
-    /// otherwise ask twice. The listing must have been taken before this is called, and not from
-    /// rows read earlier - the order the class remarks give is what keeps a camera being added safe.
+    /// otherwise ask twice.
     /// </remarks>
     public async Task<int> SweepAsync(IReadOnlySet<string> names, CancellationToken cancellationToken)
     {
@@ -104,7 +107,8 @@ public sealed class CameraStreamSweeper
 
         foreach (Guid orphan in named.Except(owned))
         {
-            if (await _streamServer.DeleteStreamAsync(orphan, cancellationToken).ConfigureAwait(false))
+            if ((await _sync.SyncAsync(orphan, cancellationToken).ConfigureAwait(false)).Outcome ==
+                StreamSyncOutcome.Removed)
             {
                 _logger.LogInformation("Removed stream {Stream} from the stream server, which no camera owns.", orphan);
                 removed++;

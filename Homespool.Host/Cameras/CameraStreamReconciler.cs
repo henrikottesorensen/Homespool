@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +10,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
-using Homespool.Model.Entities;
 
 namespace Homespool.Host.Cameras;
 
@@ -20,16 +18,24 @@ namespace Homespool.Host.Cameras;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Not needed for an ordinary restart.</b> go2rtc writes what it is told into its own config and
-/// reloads it - measured 2026-08-08 - so streams survive on their own. This exists for the cases
-/// where they do not: its volume replaced, a camera added while the sidecar was down, or a stack
-/// brought up from a database restored onto a fresh sidecar.
+/// <b>Every camera, every start, and usually nothing to do.</b> go2rtc writes what it is told into
+/// its own config and reloads it - measured 2026-08-08 - so streams survive an ordinary restart and
+/// each one is left alone. What this catches is a sidecar that does not match the cameras: its file
+/// replaced or emptied, a camera saved while the sidecar was down, a stack brought up from a
+/// database restored onto a fresh sidecar, or a stream holding a source that a rule made since
+/// refuses - which the file would otherwise keep for good.
+/// </para>
+/// <para>
+/// <b>It writes nothing itself.</b> Each camera goes through <see cref="CameraStreamSync"/>, which
+/// reads the camera's row at the moment its stream is written. This waits for the sidecar for up to
+/// <see cref="ListingPatience"/>, and a camera edited or removed in that wait reaches the sidecar as
+/// it is after the edit, not as it was when this started.
 /// </para>
 /// <para>
 /// <b>It removes only what Homespool made.</b> A stream named after a camera uuid that no camera has
-/// is one this application lost track of - deleted while the sidecar could not be told, or taken with
-/// its printer - and <see cref="CameraStreamSweeper"/> removes those before anything is added. Any
-/// other stream the sidecar holds might be somebody's hand-added experiment, and is left alone.
+/// is one this application lost track of - deleted while the sidecar could not be told - and
+/// <see cref="CameraStreamSweeper"/> removes those before anything is added. Any other stream the
+/// sidecar holds might be somebody's hand-added experiment, and is left alone.
 /// </para>
 /// <para>
 /// <b>It also warms the codec memo</b>, because that memo is empty on every start and the first
@@ -76,28 +82,22 @@ public sealed class CameraStreamReconciler : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Go2RtcClient _streamServer;
+    private readonly CameraStreamSync _sync;
     private readonly CameraLiveAvailability _liveView;
-    private readonly CameraCredentialProtector _credentials;
-    private readonly LocalCameraDevices _devices;
-    private readonly CameraSourcePolicy _policy;
     private readonly TimeProvider _time;
     private readonly ILogger<CameraStreamReconciler> _logger;
 
     public CameraStreamReconciler(IServiceScopeFactory scopeFactory,
                                   Go2RtcClient streamServer,
+                                  CameraStreamSync sync,
                                   CameraLiveAvailability liveView,
-                                  CameraCredentialProtector credentials,
-                                  LocalCameraDevices devices,
-                                  CameraSourcePolicy policy,
                                   TimeProvider time,
                                   ILogger<CameraStreamReconciler> logger)
     {
         _scopeFactory = scopeFactory;
         _streamServer = streamServer;
+        _sync = sync;
         _liveView = liveView;
-        _credentials = credentials;
-        _devices = devices;
-        _policy = policy;
         _time = time;
         _logger = logger;
     }
@@ -106,17 +106,19 @@ public sealed class CameraStreamReconciler : BackgroundService
     {
         try
         {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-
-            List<Camera> cameras = await database.Cameras
-                                                 .AsNoTracking()
-                                                 .ToListAsync(stoppingToken)
-                                                 .ConfigureAwait(false);
-
             // Asked for even with no cameras, because the sweep below needs it: the removal of the
             // last camera is the one it would otherwise never see.
             IReadOnlySet<string>? known = await ListStreamNamesAsync(stoppingToken).ConfigureAwait(false);
+
+            using IServiceScope scope = _scopeFactory.CreateScope();
+            HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+            // After the wait, and only which cameras there are: each one's row is read again by the
+            // sync, at the moment its stream is written, so what a camera is comes from then.
+            List<Guid> cameras = await database.Cameras
+                                               .Select(camera => camera.Uuid)
+                                               .ToListAsync(stoppingToken)
+                                               .ConfigureAwait(false);
 
             // Null means the sidecar could not be asked, which is not the same as it knowing
             // nothing. Re-registering every camera against a server that is merely still starting
@@ -153,74 +155,26 @@ public sealed class CameraStreamReconciler : BackgroundService
                 return;
             }
 
-            IEnumerable<Camera> missing =
-                cameras.Where(camera => !known.Contains(camera.Uuid.ToString("D", CultureInfo.InvariantCulture)));
-
+            // Every camera, not only the ones the sidecar is missing: one it holds may hold a source
+            // the camera no longer has, or one a rule made since then refuses, and the sidecar's file
+            // keeps either across every restart until something writes over it.
             int restored = 0;
-            List<(Guid uuid, string source)> retry = [];
+            List<Guid> retry = [];
 
-            foreach (Camera camera in missing)
+            foreach (Guid camera in cameras)
             {
-                string source = _credentials.Reveal(camera);
-
-                // This is the one path that hands the stream server a stored source without it
-                // passing back through CameraService, so the rule about what an attached camera's
-                // source may be has to be applied here too. A row written before that rule existed,
-                // or by any future caller that goes round the service, would otherwise be registered
-                // unchecked at every start - which is exactly the shape of thing this reconciler
-                // exists to do quietly and unattended.
-                if (CameraSourcePolicy.IsLocalDevice(source) &&
-                    !LocalCameraDevices.CheckComposed(source,
-                                                         camera.Resolution,
-                                                         _devices.List().Select(device => device.Name))
-                                          .IsAcceptable)
+                switch ((await _sync.SyncAsync(camera, stoppingToken).ConfigureAwait(false)).Outcome)
                 {
-                    // The source itself is deliberately not logged: it is the thing under suspicion,
-                    // and a log line is a place it would then be read from.
-                    _logger.LogWarning(
-                        "Camera {Uuid} names an attached device this server did not compose, so it was not " +
-                        "registered. Open it on the cameras page and save it again to repair it.",
-                        camera.Uuid);
-                    continue;
-                }
-
-                // The network half of the same rule. What a name points at is decided by whoever
-                // controls the name, and can have changed since the save that checked it - so the
-                // check is asked again here, where a source is next handed over. An unresolvable
-                // name is kept: at start-up nobody can retry, and a name that resolves to nothing
-                // reaches nothing. See CameraSourcePolicy.CheckAsync for why the save answers that
-                // differently. The same check also refuses what a source holds, not only where it
-                // points, so a camera saved before one of those rules existed stops here too - which is
-                // why the log line names the rule rather than claiming an address.
-                if (!CameraSourcePolicy.IsLocalDevice(source))
-                {
-                    CameraSourceCheck check = await _policy.CheckAsync(source, acceptUnresolvable: true, stoppingToken)
-                                                           .ConfigureAwait(false);
-
-                    if (!check.IsAcceptable)
-                    {
-                        // The source itself is deliberately not logged, for the reason given above.
-                        _logger.LogWarning(
-                            "Camera {Uuid}'s source is not one this server accepts ({Reason}), so it was not " +
-                            "registered. Open it on the cameras page and save it to see why.",
-                            camera.Uuid,
-                            check.Error?.Key);
-                        continue;
-                    }
-                }
-
-                switch (await _streamServer.PutStreamAsync(camera.Uuid, source, stoppingToken).ConfigureAwait(false))
-                {
-                    case StreamRegistration.Registered:
+                    case StreamSyncOutcome.Registered:
                         restored++;
                         break;
 
                     // A sidecar that has only just come back refuses every source for a moment, in
                     // the same words it refuses a bad one, so a refusal here earns the retry too. A
                     // source that really is refused costs one more request and one more log line.
-                    case StreamRegistration.Unavailable:
-                    case StreamRegistration.SourceRefused:
-                        retry.Add((camera.Uuid, source));
+                    case StreamSyncOutcome.Unavailable:
+                    case StreamSyncOutcome.SourceRefused:
+                        retry.Add(camera);
                         break;
                 }
             }
@@ -229,10 +183,10 @@ public sealed class CameraStreamReconciler : BackgroundService
             {
                 await Task.Delay(ProbeRetryDelay, _time, stoppingToken).ConfigureAwait(false);
 
-                foreach ((Guid uuid, string source) in retry)
+                foreach (Guid camera in retry)
                 {
-                    if (await _streamServer.PutStreamAsync(uuid, source, stoppingToken).ConfigureAwait(false) ==
-                        StreamRegistration.Registered)
+                    if ((await _sync.SyncAsync(camera, stoppingToken).ConfigureAwait(false)).Outcome ==
+                        StreamSyncOutcome.Registered)
                     {
                         restored++;
                     }
@@ -241,14 +195,16 @@ public sealed class CameraStreamReconciler : BackgroundService
 
             if (restored > 0)
             {
-                _logger.LogInformation("Registered {Count} cameras the stream server did not have.", restored);
+                _logger.LogInformation(
+                    "Registered {Count} cameras the stream server was missing or held an older source for.",
+                    restored);
             }
 
             // Sequentially, deliberately: two probes against one USB device would contend for it,
             // and nobody is waiting on this path.
-            foreach (Camera camera in cameras)
+            foreach (Guid camera in cameras)
             {
-                if (await _liveView.HowToWatchAsync(camera.Uuid, stoppingToken).ConfigureAwait(false) !=
+                if (await _liveView.HowToWatchAsync(camera, stoppingToken).ConfigureAwait(false) !=
                     LiveTransport.None)
                 {
                     continue;
@@ -258,7 +214,7 @@ public sealed class CameraStreamReconciler : BackgroundService
                 // memo answers and the second ask costs nothing - or a camera that did not answer,
                 // most likely because it is still waking up alongside everything else.
                 await Task.Delay(ProbeRetryDelay, _time, stoppingToken).ConfigureAwait(false);
-                _ = await _liveView.HowToWatchAsync(camera.Uuid, stoppingToken).ConfigureAwait(false);
+                _ = await _liveView.HowToWatchAsync(camera, stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)

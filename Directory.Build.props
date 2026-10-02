@@ -140,7 +140,7 @@ done | tail -n +11 | while read -r old; do rm -f &quot;$old&quot;; done"
             blocks separated by a blank line. SA1210 has to be off for it, which .editorconfig says
             more about. Everywhere for the same reason StyleCop is everywhere.
         -->
-        <PackageReference Include="UsingLayoutAnalyser" Version="0.3.0">
+        <PackageReference Include="UsingLayoutAnalyser" Version="0.4.0">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
@@ -155,6 +155,25 @@ done | tail -n +11 | while read -r old; do rm -f &quot;$old&quot;; done"
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+    </ItemGroup>
+
+    <!--
+        What every test project needs, so the versions cannot drift apart. Selected by name for the
+        same reason VSTestLogger is. Packages only some of them use (coverlet, Mvc.Testing,
+        the *.Testing helpers) stay in the project that wants them.
+    -->
+    <ItemGroup Condition="$(MSBuildProjectName.EndsWith('Test'))">
+        <PackageReference Include="AwesomeAssertions" Version="9.6.0" />
+        <PackageReference Include="AwesomeAssertions.Analyzers" Version="9.0.8">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+        <PackageReference Include="xunit.v3" Version="3.2.2" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
     </ItemGroup>
 
     <!--

@@ -1451,7 +1451,7 @@ namespace Homespool.Data.Migrations
                     b.HasOne("Homespool.Model.Entities.Printer", "Printer")
                         .WithMany()
                         .HasForeignKey("PrinterId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Homespool.Model.Entities.Team", "Team")
                         .WithMany()

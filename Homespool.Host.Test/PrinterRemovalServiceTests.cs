@@ -62,10 +62,11 @@ public sealed class PrinterRemovalServiceTests : IDisposable
     }
 
     /// <summary>
-    /// Everything a printer owns, deleted in one go by the cascades rather than by hand here.
+    /// Everything a printer owns, deleted in one go by the cascades rather than by hand here - except
+    /// its cameras, which are unbound and stay, because the cascade would go round the camera rules.
     /// </summary>
     [Fact]
-    public async Task RemovingAPrinterTakesItsTelemetryEventsAndCamerasWithIt()
+    public async Task RemovingAPrinterTakesItsTelemetryAndEventsAndUnbindsItsCameras()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -81,9 +82,10 @@ public sealed class PrinterRemovalServiceTests : IDisposable
             Timestamp = DateTimeOffset.UtcNow,
             EventType = PrinterEventType.Info,
         });
+        Guid cameraUuid = Guid.NewGuid();
         context.Cameras.Add(new Camera
         {
-            Uuid = Guid.NewGuid(),
+            Uuid = cameraUuid,
             TeamId = membership.TeamId,
             PrinterId = printer.Id,
             Source = "http://camera.invalid/snapshot",
@@ -93,7 +95,9 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        string? name = await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        // A fresh context, so the camera is not tracked and the database's own rule is what runs.
+        await using HomespoolDbContext serviceContext = NewContext();
+        string? name = await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
 
         // Assert
         name.Should().Be("Workshop");
@@ -104,10 +108,54 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         verification.PrinterLiveStates.Should().BeEmpty();
         verification.TelemetrySamples.Should().BeEmpty();
         verification.PrinterEvents.Should().BeEmpty();
-        verification.Cameras.Should().BeEmpty();
+
+        // Not deleted: a Manager without ManageCamera, or a non-administrator with an attached device,
+        // could otherwise destroy a camera by removing its printer. Only the binding goes.
+        Camera camera = await verification.Cameras.SingleAsync(TestContext.Current.CancellationToken);
+        camera.Uuid.Should().Be(cameraUuid);
+        camera.PrinterId.Should().BeNull();
+        camera.TeamId.Should().Be(membership.TeamId);
 
         // The team is not a possession of the printer's and stays.
         verification.Teams.Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// The finding this closes: <c>ManagePrinter</c> alone removed an attached device's camera, which
+    /// <c>CameraService.DeleteAsync</c> refuses to anybody who is not an administrator.
+    /// </summary>
+    [Fact]
+    public async Task ManagePrinterAloneCannotDeleteAnAttachedCameraByRemovingItsPrinter()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(
+            context, userId: 1, [Capability.ViewPrinter, Capability.ManagePrinter]);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Workshop");
+
+        context.Cameras.Add(new Camera
+        {
+            Uuid = Guid.NewGuid(),
+            TeamId = membership.TeamId,
+            PrinterId = printer.Id,
+            Source = "ffmpeg:device?video=/dev/video0",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        // A fresh context, so the camera is not tracked and the database's own rule is what runs.
+        await using HomespoolDbContext serviceContext = NewContext();
+        await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+
+        // Assert
+        await using HomespoolDbContext verification = NewContext();
+
+        verification.Printers.Should().BeEmpty();
+        verification.Cameras.Should().ContainSingle()
+                    .Which.PrinterId.Should().BeNull();
     }
 
     /// <summary>

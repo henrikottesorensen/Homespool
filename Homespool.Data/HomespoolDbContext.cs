@@ -298,16 +298,19 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .HasForeignKey(e => e.TeamId)
                   .OnDelete(DeleteBehavior.Restrict);
 
-            // Cascade, and deliberately not SetNull. Null on PrinterId already means "not bound to
-            // a printer", so setting it null on delete would make a camera orphaned by a deletion
-            // indistinguishable from one left unbound on purpose - the same trap StoppedByUserId
-            // has, where null already means "stopped at the panel".
-            // Restrict was the other candidate and is worse here: it would block
-            // deleting a printer because a camera watches it.
+            // SetNull: removing a printer unbinds its cameras and deletes none of them. Cascade was
+            // the first choice and went round the camera rules - the removal needs ManagePrinter,
+            // and the cascade deleted cameras without ManageCamera and released an attached device
+            // that CameraService.DeleteAsync keeps for an administrator. It also never told the
+            // sidecar, which is what the stream sweep exists to mop up.
+            // The cost is that null on PrinterId already means "not bound to a printer", so a camera
+            // unbound by a removal is indistinguishable from one left unbound on purpose - accepted:
+            // it is a team's camera either way, and the team's members may remove it themselves.
+            // Restrict would block deleting a printer because a camera watches it.
             entity.HasOne(e => e.Printer)
                   .WithMany()
                   .HasForeignKey(e => e.PrinterId)
-                  .OnDelete(DeleteBehavior.Cascade);
+                  .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<PrusaConnectAuthenticationData>(entity =>

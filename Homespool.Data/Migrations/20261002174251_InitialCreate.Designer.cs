@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261002115044_InitialCreate")]
+    [Migration("20261002174251_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -1454,7 +1454,7 @@ namespace Homespool.Data.Migrations
                     b.HasOne("Homespool.Model.Entities.Printer", "Printer")
                         .WithMany()
                         .HasForeignKey("PrinterId")
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Homespool.Model.Entities.Team", "Team")
                         .WithMany()

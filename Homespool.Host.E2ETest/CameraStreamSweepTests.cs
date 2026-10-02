@@ -60,11 +60,11 @@ public sealed class CameraStreamSweepTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Removing a printer takes its cameras by cascade and never tells the sidecar. The next camera
-    /// saved removes the stream the removed one left - and only that one.
+    /// Removing a printer unbinds its cameras and deletes none, so the stream of a camera that was
+    /// bound to it is still owned by a row and the next save leaves it where it is.
     /// </summary>
     [Fact]
-    public async Task ACameraRemovedWithItsPrinterHasItsStreamRemovedByTheNextSave()
+    public async Task ACameraUnboundByItsPrintersRemovalKeepsItsStream()
     {
         Start();
 
@@ -79,15 +79,11 @@ public sealed class CameraStreamSweepTests : IAsyncLifetime
 
             await RemovePrinterAsync(user, printer);
 
-            _sidecar.Streams.Should().ContainKey(
-                bound.Uuid.ToString(),
-                "the printer's removal must have left the stream behind, or its absence below proves nothing");
-
             Camera added = await CameraPage.AddNetworkCameraAsync(_factory, client, user, "added", NewSource);
 
             _sidecar.Streams.Keys.Should().BeEquivalentTo(
-                [kept.Uuid.ToString(), added.Uuid.ToString()],
-                "the removed camera's stream goes, and the cameras that still exist keep theirs");
+                [bound.Uuid.ToString(), kept.Uuid.ToString(), added.Uuid.ToString()],
+                "the camera still exists, so the sweep has no reason to take its stream");
         }
     }
 

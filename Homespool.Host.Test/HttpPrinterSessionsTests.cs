@@ -33,11 +33,17 @@ public sealed class HttpPrinterSessionsTests : IDisposable
 {
     private const int PrinterId = 7;
 
-    private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+    private readonly PrinterConnectionRegistry _registry;
     private readonly RecordingActorFactory _actors = new();
     private readonly FakeLogger<HttpPrinterSessions> _logger = new();
     private readonly FakeTimeProvider _time = new();
+    private readonly FakeLogger<PrinterConnectionRegistry> _registryLogger = new();
     private readonly QueueSignal _queueSignal = new();
+
+    public HttpPrinterSessionsTests()
+    {
+        _registry = new PrinterConnectionRegistry(_time, _registryLogger);
+    }
 
     public void Dispose()
     {
@@ -96,6 +102,52 @@ public sealed class HttpPrinterSessionsTests : IDisposable
         await sessions.StopAsync(CancellationToken.None);
 
         Reasons().Should().BeEquivalentTo(["displaced", "shutting down"]);
+    }
+
+    /// <summary>
+    /// A printer that posts again after going quiet for the idle window is a new connection, even when
+    /// the reaper has not got to its old session yet.
+    /// </summary>
+    /// <remarks>
+    /// It was disconnected in between - the registry said so - and resuming the old session would keep
+    /// the old registration time, which is what the queue measures a stored status against: a
+    /// <c>Ready</c> said before the printer went would read as said since. Registered afresh instead,
+    /// without the second-connection error a displacement logs, and with the queue woken as for any
+    /// other arrival.
+    /// </remarks>
+    [Fact]
+    public async Task APrinterBackFromTheIdleWindowIsANewConnection()
+    {
+        // Arrange
+        using HttpPrinterSessions sessions = Build();
+
+        IPrinterConnectionActor first = sessions.GetOrCreate(PrinterId, overPlaintext: false);
+        DateTimeOffset? firstConnected = _registry.ConnectedSince(PrinterId);
+        await _queueSignal.WaitAsync(TimeSpan.Zero, TestContext.Current.CancellationToken);
+
+        _time.Advance(HttpPrinterConnection.IdleWindow + TimeSpan.FromSeconds(1));
+        _registry.IsConnected(PrinterId).Should().BeFalse("the precondition: quiet for the window is gone");
+
+        // Act
+        IPrinterConnectionActor second = sessions.GetOrCreate(PrinterId, overPlaintext: false);
+
+        // Assert
+        second.Should().NotBeSameAs(first);
+        _registry.TryGet(PrinterId, out IPrinterLink? live).Should().BeTrue();
+        live.Should().BeSameAs(second);
+
+        firstConnected.Should().NotBeNull();
+        _registry.ConnectedSince(PrinterId).Should().Be(_time.GetUtcNow(), "the connection began with this post, not the first one");
+
+        _registryLogger.Collector.GetSnapshot().Should().NotContain(record => record.Level == LogLevel.Error,
+                                                                      "a printer coming back is not a second connection");
+
+        _queueSignal.WaitAsync(TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken)
+                    .IsCompleted.Should().BeTrue("an arrival may have work waiting for it");
+
+        await sessions.StopAsync(CancellationToken.None);
+
+        Reasons().Should().BeEquivalentTo(["idle", "shutting down"]);
     }
 
     /// <summary>
@@ -163,6 +215,9 @@ public sealed class HttpPrinterSessionsTests : IDisposable
         {
             IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
             actor.Completion.Returns(Task.CompletedTask);
+
+            // As the real actor answers it, so the registry sees the printer go when it goes quiet.
+            actor.IsOpen.Returns(_ => connection.IsOpen);
 
             Created.Add(actor);
 

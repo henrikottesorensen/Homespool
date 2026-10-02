@@ -81,9 +81,14 @@ public sealed class QueueAdvancerTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-advancer-{Guid.NewGuid():N}.db");
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.UnixEpoch.AddYears(56));
-    private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+    private readonly PrinterConnectionRegistry _registry;
     private readonly QueueSignal _signal = new();
     private readonly string _storeRoot = Path.Combine(Path.GetTempPath(), "hs-advancer-" + Guid.NewGuid().ToString("N"));
+
+    public QueueAdvancerTests()
+    {
+        _registry = new PrinterConnectionRegistry(_clock, NullLogger<PrinterConnectionRegistry>.Instance);
+    }
 
     public void Dispose()
     {
@@ -2329,6 +2334,66 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         await ShouldStillBePrintingAsync(context, "an old report is not the printer speaking about now");
+    }
+
+    /// <summary>
+    /// A <c>Ready</c> said before the printer's current connection does not start the head.
+    /// </summary>
+    /// <remarks>
+    /// The starting side's twin of the case above, and the more dangerous one: the printer said
+    /// <c>Ready</c>, then the link dropped or the process restarted, and in the gap somebody printed at
+    /// the panel or power-cycled it. The stored <c>Ready</c> survives all of that, and both transports
+    /// wake the queue the instant the printer reconnects - before it has reported anything - so a pass
+    /// that read it as current would send <c>START_PRINT</c> onto whatever is on the bed.
+    /// </remarks>
+    [Fact]
+    public async Task AReadyFromBeforeTheConnectionDoesNotStartAPrint()
+    {
+        // Arrange - ready, with the file on the drive, and then gone for five minutes
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        _clock.Advance(TimeSpan.FromMinutes(5));
+
+        IPrinterConnectionActor actor = ConnectAccepting();
+
+        // Act - the pass a connection's poke runs, before its first report
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.DidNotReceive().SendAsync(Arg.Any<Printing.StartPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse(
+            "nothing has told this connection the printer is ready");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// The same printer starts the head once it says <c>Ready</c> again over the connection it holds.
+    /// </summary>
+    /// <remarks>
+    /// What keeps the guard above from being a queue that never starts after a reconnect: the wait is
+    /// for a report, and one arrives within seconds.
+    /// </remarks>
+    [Fact]
+    public async Task AReadySaidSinceConnectingStartsThePrint()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        _clock.Advance(TimeSpan.FromMinutes(5));
+
+        IPrinterConnectionActor actor = ConnectAccepting();
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, PrinterStatus.Ready, jobId: null);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.Received(1).SendAsync(new Printing.StartPrint("/usb/QUEUED~1.BGC"), Arg.Any<CancellationToken>());
     }
 
     /// <summary>

@@ -1,7 +1,10 @@
+using System;
+
 using AwesomeAssertions;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
@@ -17,6 +20,7 @@ namespace Homespool.Host.Test;
 public class PrinterConnectionRegistryTests
 {
     private readonly FakeLogger<PrinterConnectionRegistry> _logger = new();
+    private readonly FakeTimeProvider _clock = new(DateTimeOffset.UnixEpoch.AddYears(56));
 
     /// <summary>An open actor that does nothing - these tests only care about registry bookkeeping,
     /// never about what reaches the wire.</summary>
@@ -226,9 +230,67 @@ public class PrinterConnectionRegistryTests
         found.Should().BeSameAs(reconnected);
     }
 
+    /// <summary>
+    /// A connection is dated from when it registered, and keeps that date while it lasts.
+    /// </summary>
+    [Fact]
+    public void ConnectedSinceIsWhenTheConnectionRegistered()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+        DateTimeOffset registeredAt = _clock.GetUtcNow();
+        registry.Register(1, OpenActor(), overPlaintext: false);
+
+        // Act
+        _clock.Advance(TimeSpan.FromMinutes(3));
+
+        // Assert
+        registry.ConnectedSince(1).Should().Be(registeredAt);
+    }
+
+    /// <summary>
+    /// A connection that replaces another is dated afresh: what the printer told the one before is not
+    /// something it has said to this one.
+    /// </summary>
+    [Fact]
+    public void ADisplacingConnectionIsDatedFromItsOwnRegistration()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+        registry.Register(1, OpenActor(), overPlaintext: false);
+        _clock.Advance(TimeSpan.FromMinutes(3));
+
+        // Act
+        registry.Register(1, OpenActor(), overPlaintext: false);
+
+        // Assert
+        registry.ConnectedSince(1).Should().Be(_clock.GetUtcNow());
+    }
+
+    /// <summary>
+    /// No date for a printer that is not connected - never registered, or holding a link that has
+    /// closed - on exactly the terms <see cref="PrinterConnectionRegistry.IsConnected"/> answers false.
+    /// </summary>
+    [Fact]
+    public void ConnectedSinceIsNullWhileThePrinterIsNotConnected()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterConnectionActor actor = OpenActor();
+
+        // Act + Assert
+        registry.ConnectedSince(1).Should().BeNull("nothing has registered");
+
+        registry.Register(1, actor, overPlaintext: false);
+        actor.IsOpen.Returns(false);
+
+        registry.ConnectedSince(1).Should().BeNull("a closed link is not a connection");
+        registry.IsConnected(1).Should().BeFalse();
+    }
+
     private PrinterConnectionRegistry NewRegistry()
     {
-        return new(_logger);
+        return new(_clock, _logger);
     }
 
     /// <summary>

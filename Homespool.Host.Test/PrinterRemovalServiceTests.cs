@@ -11,6 +11,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Time.Testing;
 
 using NSubstitute;
 
@@ -148,12 +149,12 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Idle);
-
-        PrinterConnectionRegistry registry = new(_registryLogger);
+        PrinterConnectionRegistry registry = new(TimeProvider.System, _registryLogger);
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
         registry.Register(printer.Id, actor, overPlaintext: false);
+
+        await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Idle);
 
         // Act
         await NewService(context, registry).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
@@ -172,12 +173,12 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Printing);
-
-        PrinterConnectionRegistry registry = new(_registryLogger);
+        PrinterConnectionRegistry registry = new(TimeProvider.System, _registryLogger);
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
         registry.Register(printer.Id, actor, overPlaintext: false);
+
+        await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Printing);
 
         // Act
         Func<Task> removing = () => NewService(context, registry)
@@ -188,6 +189,35 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
         await using HomespoolDbContext verification = NewContext();
         verification.Printers.Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// A connected printer that has not reported since connecting refuses, as unknown: what it said
+    /// before is not what it is doing now.
+    /// </summary>
+    [Fact]
+    public async Task AConnectedPrinterNotYetHeardFromRefusesAsUnknown()
+    {
+        // Arrange - it said Idle, and then connected again
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Idle);
+
+        PrinterConnectionRegistry registry = new(new FakeTimeProvider(DateTimeOffset.UtcNow.AddMinutes(1)), _registryLogger);
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        registry.Register(printer.Id, actor, overPlaintext: false);
+
+        // Act
+        Func<Task> removing = () => NewService(context, registry)
+            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+
+        // Assert
+        (await removing.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Unknown);
+        actor.DidNotReceive().Complete();
     }
 
     /// <summary>
@@ -333,7 +363,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
                                               PrinterConnectionRegistry? registry = null,
                                               ITelemetryEviction? telemetry = null)
     {
-        registry ??= new PrinterConnectionRegistry(_registryLogger);
+        registry ??= new PrinterConnectionRegistry(TimeProvider.System, _registryLogger);
 
         return new PrinterRemovalService(
             context,
@@ -392,11 +422,12 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
     /// <summary>
     /// Writes the printer's <em>live</em> status, which is the only one that means anything -
-    /// <c>Printer.Status</c> is written once as <c>Unknown</c> and never updated.
+    /// <c>Printer.Status</c> is written once as <c>Unknown</c> and never updated. Received now, so it
+    /// counts for a connection registered before this call and not for one registered after.
     /// </summary>
     private static async Task SetLiveStatusAsync(HomespoolDbContext context, int printerId, PrinterStatus status)
     {
-        context.PrinterLiveStates.Add(new PrinterLiveState { PrinterId = printerId, Status = status });
+        context.PrinterLiveStates.Add(new PrinterLiveState { PrinterId = printerId, Status = status, LastSeenAt = DateTimeOffset.UtcNow });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 }

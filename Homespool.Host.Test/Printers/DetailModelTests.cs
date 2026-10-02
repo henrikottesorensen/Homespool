@@ -83,6 +83,17 @@ public sealed class DetailModelTests : IDisposable
     }
 
     /// <summary>
+    /// Connects the printer before the test writes what it reports, so that report counts as said to
+    /// this connection - a status from before the connection is not one the page may act on.
+    /// </summary>
+    private static void ConnectOpen(PrinterConnectionRegistry registry, int printerId)
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        registry.Register(printerId, actor, overPlaintext: false);
+    }
+
+    /// <summary>
     /// As <see cref="NewModelWithUsersAsync"/>, without the user manager - which most cases here do
     /// not need.
     /// </summary>
@@ -114,7 +125,7 @@ public sealed class DetailModelTests : IDisposable
 
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        PrinterConnectionRegistry connectionRegistry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+        PrinterConnectionRegistry connectionRegistry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
 
         // The page reads its printer's queue, so it needs the real service - and that needs a file
         // store. Rooted in a temp directory that no test here ever writes to: these cases are about
@@ -218,11 +229,12 @@ public sealed class DetailModelTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        ConnectOpen(registry, printer.Id);
 
         context.PrinterLiveStates.Add(new PrinterLiveState
         {
@@ -261,11 +273,12 @@ public sealed class DetailModelTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        ConnectOpen(registry, printer.Id);
 
         context.PrinterLiveStates.Add(new PrinterLiveState
         {
@@ -284,6 +297,43 @@ public sealed class DetailModelTests : IDisposable
     }
 
     /// <summary>
+    /// Preheating is refused while the printer's state is one it reported before its current connection.
+    /// </summary>
+    /// <remarks>
+    /// The <c>Idle</c> it last said may be hours old - the printer could be printing from its own panel
+    /// now, and a preheat would retarget the nozzle mid-print. The page says the state is not known yet,
+    /// which is true for the seconds before the printer reports again.
+    /// </remarks>
+    [Fact]
+    public async Task PreheatIsRefusedOnAStatusFromBeforeTheConnection()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        ConnectOpen(registry, printer.Id);
+
+        // Said two hours ago - before the connection registered just now.
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            LastSeenAt = DateTimeOffset.UtcNow.AddHours(-2),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostPreheatAsync(printer.Uuid, "PETG", CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+        model.StatusMessage.Should().Contain("known yet");
+    }
+
+    /// <summary>
     /// Unloading is refused mid-print, and the page says which state refused it.
     /// </summary>
     /// <remarks>
@@ -297,11 +347,12 @@ public sealed class DetailModelTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        ConnectOpen(registry, printer.Id);
 
         context.PrinterLiveStates.Add(new PrinterLiveState
         {
@@ -511,11 +562,12 @@ public sealed class DetailModelTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (DetailModel model, _, Team team, _) = await NewModelAsync(context);
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry) = await NewModelAsync(context);
 
         Printer printer = NewPrinter(team.Id);
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        ConnectOpen(registry, printer.Id);
 
         context.PrinterLiveStates.Add(new PrinterLiveState
         {

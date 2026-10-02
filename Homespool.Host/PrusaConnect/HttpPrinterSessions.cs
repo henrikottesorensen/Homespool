@@ -42,6 +42,12 @@ namespace Homespool.Host.PrusaConnect;
 /// tears the old one down.
 /// </para>
 /// <para>
+/// <b>Nor once the printer has gone idle</b>, even if the reaper has not got to it yet. A printer
+/// unheard for the idle window was disconnected, and its return is a new connection: registered
+/// afresh, so a status it reported before it went is not read as current, and the queue woken as it is
+/// for any other arrival.
+/// </para>
+/// <para>
 /// <b>Get-or-create and reap agree under one lock</b>, and that lock is the whole reason this is a
 /// class rather than a <c>ConcurrentDictionary</c>: the race worth closing is a POST arriving as
 /// the reaper decides the printer has gone. Under the lock, either the POST touches the session
@@ -75,10 +81,10 @@ public sealed class HttpPrinterSessions : BackgroundService
     private readonly ILogger<HttpPrinterSessions> _logger;
     private readonly Dictionary<int, Session> _sessions = new();
 
-    // Sessions GetOrCreate found displaced and replaced, waiting for the reaper. Not torn down there:
-    // the session's logging scope is disposed by whoever tears it down, and disposing it inside a
-    // printer's POST would rewrite that request's own scope.
-    private readonly List<(int printerId, Session session)> _displaced = [];
+    // Sessions GetOrCreate found displaced or lapsed and replaced, waiting for the reaper. Not torn
+    // down there: the session's logging scope is disposed by whoever tears it down, and disposing it
+    // inside a printer's POST would rewrite that request's own scope.
+    private readonly List<(int printerId, Session session, string reason)> _displaced = [];
     private readonly Lock _lock = new();
 
     public HttpPrinterSessions(PrinterConnectionRegistry registry,
@@ -115,7 +121,9 @@ public sealed class HttpPrinterSessions : BackgroundService
         {
             if (_sessions.TryGetValue(printerId, out Session? existing))
             {
-                if (IsRegistered(printerId, existing))
+                bool registered = IsRegistered(printerId, existing);
+
+                if (registered && existing.Connection.IsOpen)
                 {
                     existing.Connection.Touch();
                     existing.Connection.Announce(userAgent);
@@ -123,11 +131,22 @@ public sealed class HttpPrinterSessions : BackgroundService
                     return existing.Actor;
                 }
 
-                // Another connection registered under this printer since, and the registry has already
-                // completed this actor - see the class remarks. Set aside for the reaper and replaced
-                // below.
+                if (registered)
+                {
+                    // Gone past the idle window and back before the reaper noticed. The printer was
+                    // disconnected in between - IsConnected said so - and anything it reported before
+                    // it went says nothing about it now, so this is a new connection rather than the
+                    // old one resumed: a registration time the queue can measure its status against,
+                    // and a poke for the work that may be waiting. Out of the registry first, by
+                    // instance, so registering the new one below is not logged as a second connection.
+                    _registry.Unregister(printerId, existing.Actor);
+                }
+
+                // Otherwise another connection registered under this printer since, and the registry
+                // has already completed this actor - see the class remarks. Either way, set aside for
+                // the reaper and replaced below.
                 _sessions.Remove(printerId);
-                _displaced.Add((printerId, existing));
+                _displaced.Add((printerId, existing, registered ? "idle" : "displaced"));
             }
 
             // Opened before Create, and the ordering is the same trick PrinterConnectionSession
@@ -252,10 +271,7 @@ public sealed class HttpPrinterSessions : BackgroundService
             }
 
             // Already out of the map - GetOrCreate took them out when it replaced them.
-            foreach ((int printerId, Session session) in _displaced)
-            {
-                gone.Add((printerId, session, "displaced"));
-            }
+            gone.AddRange(_displaced);
 
             _displaced.Clear();
         }

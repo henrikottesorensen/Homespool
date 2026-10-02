@@ -105,6 +105,47 @@ public class QueueSnapshotReader
         return onPrinter.PrinterPath is not null || _offers.IsOffered(onPrinter.PrinterId, fileName);
     }
 
+    /// <summary>
+    /// The printer's status if it has said it to the connection it holds now, and
+    /// <see cref="PrinterStatus.Unknown"/> otherwise.
+    /// </summary>
+    /// <param name="live">The stored live state, or null when the printer has never reported.</param>
+    /// <param name="connectedSince">
+    /// When its current connection registered - <see cref="PrinterConnectionRegistry.ConnectedSince"/> -
+    /// or null when it is not connected.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>A stored status is the last thing the printer said, not what it is now.</b> Nothing resets it
+    /// when the link drops, and a restart restores it. In the gap somebody can print at the panel, take
+    /// the printer out of <c>Ready</c>, or power-cycle it, and the stored <c>Ready</c> still stands when
+    /// it comes back - while both transports wake the queue the instant it connects, before it has
+    /// reported anything. Read as current, that <c>Ready</c> starts the head onto whatever is on the bed.
+    /// </para>
+    /// <para>
+    /// <b>Tied to the connection rather than to the process</b>, unlike the advancer's guard on closing
+    /// an open print, because a dropped link loses the printer exactly as a restart does. Everything
+    /// that gates a command on this status - the queue, preheating, unloading, removal - waits for the
+    /// first report instead, which arrives within seconds of a connection.
+    /// </para>
+    /// <para>
+    /// <b>Compared in whole milliseconds</b>, the precision <see cref="PrinterLiveState.LastSeenAt"/> is
+    /// stored at. Against the registration's full precision, a report received after the connection
+    /// registered but within the same millisecond comes back from the database earlier than the
+    /// connection it arrived on, and is refused. The cost is admitting a report from the previous
+    /// connection made in that same millisecond, which a link that has dropped, or a process that has
+    /// restarted, cannot deliver.
+    /// </para>
+    /// </remarks>
+    public static PrinterStatus StatedSinceConnecting(PrinterLiveState? live, DateTimeOffset? connectedSince)
+    {
+        return live is not null &&
+               connectedSince is { } since &&
+               live.LastSeenAt.ToUnixTimeMilliseconds() >= since.ToUnixTimeMilliseconds() ?
+                   live.Status :
+                   PrinterStatus.Unknown;
+    }
+
     /// <summary>Reads the situation for one printer.</summary>
     public async Task<QueueSnapshot> ReadAsync(int printerId, CancellationToken cancellationToken)
     {
@@ -121,6 +162,10 @@ public class QueueSnapshotReader
                                                  .SingleOrDefaultAsync(state => state.PrinterId == printerId,
                                                                        cancellationToken);
 
+        DateTimeOffset? connectedSince = _registry.ConnectedSince(printerId);
+        bool connected = connectedSince is not null;
+        PrinterStatus status = StatedSinceConnecting(live, connectedSince);
+
         bool printInFlight = await _dbContext.PrintJobs
                                              .AsNoTracking()
                                              .AnyAsync(job => job.PrinterId == printerId && job.EndedAt == null,
@@ -128,8 +173,7 @@ public class QueueSnapshotReader
 
         if (head?.PrintFile is null)
         {
-            return new QueueSnapshot(_registry.IsConnected(printerId), live?.Status ?? PrinterStatus.Unknown,
-                                     Head: null, TransferInFlight: false, printInFlight);
+            return new QueueSnapshot(connected, status, Head: null, TransferInFlight: false, printInFlight);
         }
 
         PrintFileOnPrinter? onPrinter = await _dbContext.PrintFilesOnPrinters
@@ -162,8 +206,8 @@ public class QueueSnapshotReader
         bool current = PrinterDriveCopies.IsCurrent(onPrinter, head.PrintFile.Digest);
 
         return new QueueSnapshot(
-            _registry.IsConnected(printerId),
-            live?.Status ?? PrinterStatus.Unknown,
+            connected,
+            status,
             new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name, current && onPrinter!.Arrived,
                           current ? onPrinter!.PrinterPath : null),
             IsTransferInFlight(onPrinter, head.PrintFile.Name),

@@ -141,7 +141,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(result);
 
-        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+        PrinterConnectionRegistry registry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
         registry.Register(printerId, actor, overPlaintext: false);
 
         return (registry, actor);
@@ -496,7 +496,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                            new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
+                                            new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
         Func<Task> readying = () =>
@@ -553,7 +553,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
 
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                            new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
+                                            new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(999, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
@@ -573,7 +573,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // An empty registry: the printer has no live connection at all.
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                            new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance));
+                                            new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
         Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
@@ -659,7 +659,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         link.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
             .Returns(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Finished, null)));
 
-        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+        PrinterConnectionRegistry registry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
         registry.Register(printer.Id, link, overPlaintext: false);
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
         Printing.PausePrint intent = new();
@@ -686,7 +686,7 @@ public sealed class PrinterCommandServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Operator);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+        PrinterConnectionRegistry registry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
         registry.Register(printer.Id, Substitute.For<IPrinterLink>(), overPlaintext: false);
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
 

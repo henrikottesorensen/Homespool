@@ -79,7 +79,7 @@ public sealed class PrinterClientLogTests : IDisposable
     public void AnHttpPrinterIsAnnouncedInTheLogCleaned()
     {
         // Arrange
-        using HttpPrinterSessions sessions = new(new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
+        using HttpPrinterSessions sessions = new(new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance),
                                                  new StubActorFactory(),
                                                  _queueSignal,
                                                  TimeProvider.System,

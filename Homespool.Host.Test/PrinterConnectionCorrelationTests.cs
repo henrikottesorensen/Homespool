@@ -87,7 +87,7 @@ public sealed class PrinterConnectionCorrelationTests : IDisposable
     {
         PrinterConnectionSession session = new(
             new StubHandler(_factory.CreateLogger<WebSocketHandler>()),
-            new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
+            new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance),
             actorFactory,
             QueueSignal,
             _factory.CreateLogger<PrinterConnectionSession>())

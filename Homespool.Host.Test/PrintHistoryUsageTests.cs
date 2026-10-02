@@ -255,7 +255,7 @@ public sealed class PrintHistoryUsageTests : IDisposable
         return new PrintHistoryService(context,
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                        new QueueSnapshotReader(context, TestTelemetryContext.For(context),
-                                                               new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance),
+                                                               new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance),
                                                                TimeProvider.System,
                                                                new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                                                Substitute.For<ITransferOffers>()),

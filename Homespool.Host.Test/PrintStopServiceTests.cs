@@ -47,7 +47,12 @@ public sealed class PrintStopServiceTests : IDisposable
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.UnixEpoch.AddYears(56));
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-stop-{Guid.NewGuid():N}.db");
-    private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+    private readonly PrinterConnectionRegistry _registry;
+
+    public PrintStopServiceTests()
+    {
+        _registry = new PrinterConnectionRegistry(_clock, NullLogger<PrinterConnectionRegistry>.Instance);
+    }
 
     public void Dispose()
     {

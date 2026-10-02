@@ -121,7 +121,7 @@ public sealed class IndexModelTests : IDisposable
 
         PrusaConnectOptions options = new() { PrinterHost = "printers.example.com" };
 
-        connectionRegistry ??= new PrinterConnectionRegistry(NullLogger<PrinterConnectionRegistry>.Instance);
+        connectionRegistry ??= new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
 
         PrinterCertificateAuthority authority = new(
             Options.Create(new CertificateOptions { Directory = "certs", AuthorityPassphrase = "unit test passphrase" }),
@@ -415,7 +415,7 @@ public sealed class IndexModelTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
 
-        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+        PrinterConnectionRegistry registry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
         (IndexModel model, _, Team team) = await NewModelAsync(context, registry);
 
         Printer printer = NewPrinter(team.Id, "Boxed");

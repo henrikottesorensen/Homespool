@@ -10,7 +10,11 @@ namespace Homespool.Host.Queue;
 /// <see cref="PrinterStatus"/>, which is the most overloaded word in this codebase already.
 /// </remarks>
 /// <param name="Connected">Whether the printer has a live WebSocket right now.</param>
-/// <param name="Status">Its last-known state, from <c>PrinterLiveState</c>.</param>
+/// <param name="Status">
+/// Its state as reported over the connection it holds now, from <c>PrinterLiveState</c> - or
+/// <see cref="PrinterStatus.Unknown"/> when it is not connected or has not reported since connecting.
+/// See <see cref="QueueSnapshotReader.StatedSinceConnecting"/>.
+/// </param>
 /// <param name="Head">The queue's first entry, or null when the queue is empty.</param>
 /// <param name="TransferInFlight">Whether this printer is already pulling a file from us.</param>
 /// <param name="PrintInFlight">

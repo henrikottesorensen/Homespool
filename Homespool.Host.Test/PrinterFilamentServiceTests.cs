@@ -56,6 +56,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
     private readonly string _databasePath =
         Path.Combine(Path.GetTempPath(), $"hs-filament-{Guid.NewGuid():N}.db");
 
+    private readonly PrinterConnectionRegistry _registry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
+
     public void Dispose()
     {
         foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })
@@ -94,6 +96,32 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
 
         (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(status);
+    }
+
+    /// <summary>
+    /// An idle printer is refused as unknown when it said so before its current connection.
+    /// </summary>
+    /// <remarks>
+    /// The printer may have started a print at its own panel while the link was down, and a stored
+    /// <c>Idle</c> would let an unload retract the filament out from under it. It reports again within
+    /// seconds of connecting, and that report is the one to act on.
+    /// </remarks>
+    [Fact]
+    public async Task AStatusFromBeforeTheConnectionRefusesAsUnknown()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await SeedAsync(context, PrinterStatus.Idle, material: "PLA");
+
+        // Said two hours ago - before the connection registered just now.
+        await context.PrinterLiveStates
+                     .ExecuteUpdateAsync(setters => setters.SetProperty(state => state.LastSeenAt, DateTimeOffset.UtcNow.AddHours(-2)),
+                                         TestContext.Current.CancellationToken);
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+
+        (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Unknown);
     }
 
     /// <summary>
@@ -401,15 +429,13 @@ public sealed class PrinterFilamentServiceTests : IDisposable
                .Select(attribute => (PrinterStatus)attribute.Data[0]!);
     }
 
-    private static PrinterFilamentService NewService(HomespoolDbContext context)
+    private PrinterFilamentService NewService(HomespoolDbContext context)
     {
-        PrinterConnectionRegistry registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
-
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         return new PrinterFilamentService(commands: null!,
                                           access,
-                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System, access, Substitute.For<ITransferOffers>()),
+                                          new QueueSnapshotReader(context, TestTelemetryContext.For(context), _registry, TimeProvider.System, access, Substitute.For<ITransferOffers>()),
                                           new ToolTargetReader(context, TestTelemetryContext.For(context)));
     }
 
@@ -430,7 +456,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         return context;
     }
 
-    private static async Task SeedAsync(HomespoolDbContext context,
+    private async Task SeedAsync(HomespoolDbContext context,
                                         PrinterStatus? status,
                                         string? material,
                                         int? activeSlot = null,
@@ -458,6 +484,12 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         if (status is { } reported)
         {
+            // Connected first, so what it reports below is said to this connection - a status from
+            // before the connection is refused as unknown, which is not the guard these tests are about.
+            IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+            actor.IsOpen.Returns(true);
+            _registry.Register(PrinterId, actor, overPlaintext: false);
+
             context.PrinterLiveStates.Add(new PrinterLiveState
             {
                 PrinterId = PrinterId,

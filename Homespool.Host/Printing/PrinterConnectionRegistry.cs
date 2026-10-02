@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 
@@ -14,10 +15,12 @@ namespace Homespool.Host.Printing;
 public sealed class PrinterConnectionRegistry
 {
     private readonly ConcurrentDictionary<int, LiveConnection> _actors = new();
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<PrinterConnectionRegistry> _logger;
 
-    public PrinterConnectionRegistry(ILogger<PrinterConnectionRegistry> logger)
+    public PrinterConnectionRegistry(TimeProvider timeProvider, ILogger<PrinterConnectionRegistry> logger)
     {
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
@@ -69,7 +72,7 @@ public sealed class PrinterConnectionRegistry
     /// </param>
     public void Register(int printerId, IPrinterLink actor, bool overPlaintext)
     {
-        IPrinterLink? displaced = Swap(printerId, new LiveConnection(actor, overPlaintext));
+        IPrinterLink? displaced = Swap(printerId, new LiveConnection(actor, overPlaintext, _timeProvider.GetUtcNow()));
 
         if (displaced is null)
         {
@@ -212,8 +215,31 @@ public sealed class PrinterConnectionRegistry
     }
 
     /// <summary>
-    /// A live connection and the one thing about it that is not the link's business: which listener it
-    /// came in on.
+    /// When the connection this printer holds right now registered, or null when it is not connected.
     /// </summary>
-    private readonly record struct LiveConnection(IPrinterLink Link, bool OverPlaintext);
+    /// <remarks>
+    /// <para>
+    /// <b>What a stored status is measured against.</b> A printer's live state outlives the connection
+    /// that reported it - across a dropped link, and across a restart when telemetry is restored - and
+    /// nothing marks it stale when the printer goes. A status received before this instant was said to
+    /// an earlier connection, and the printer may have printed, been power-cycled or been taken out of
+    /// <c>Ready</c> at its own panel since. Only a report at or after it speaks for the printer now.
+    /// </para>
+    /// <para>
+    /// Null on exactly the terms <see cref="IsConnected"/> is false, so a caller reading both cannot be
+    /// told two different things.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? ConnectedSince(int printerId)
+    {
+        return _actors.TryGetValue(printerId, out LiveConnection connection) && connection.Link.IsOpen ?
+                   connection.RegisteredAt :
+                   null;
+    }
+
+    /// <summary>
+    /// A live connection and what about it is not the link's business: which listener it came in on,
+    /// and when it registered.
+    /// </summary>
+    private readonly record struct LiveConnection(IPrinterLink Link, bool OverPlaintext, DateTimeOffset RegisteredAt);
 }

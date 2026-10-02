@@ -59,7 +59,7 @@ public class PrinterConnectionSessionTests
     /// </summary>
     private static readonly TimeSpan DrainTimeout = TimeSpan.FromMilliseconds(150);
 
-    private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+    private readonly PrinterConnectionRegistry _registry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
     private readonly FakeLogger<PrinterConnectionSession> _logger = new();
 
     private IReadOnlyList<FakeLogRecord> LogRecords => _logger.Collector.GetSnapshot();

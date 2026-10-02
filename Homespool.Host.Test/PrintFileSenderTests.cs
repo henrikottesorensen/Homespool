@@ -43,7 +43,7 @@ public sealed class PrintFileSenderTests : IDisposable
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-sender-{Guid.NewGuid():N}.db");
     private readonly string _fileDirectory = Path.Combine(Path.GetTempPath(), $"hs-sender-files-{Guid.NewGuid():N}");
-    private readonly PrinterConnectionRegistry _registry = new(NullLogger<PrinterConnectionRegistry>.Instance);
+    private readonly PrinterConnectionRegistry _registry = new(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance);
     private readonly TransferOfferStore _offers = new(TimeProvider.System, TestOptions.Monitor(new PrusaConnectOptions()), NullLogger<TransferOfferStore>.Instance);
     private readonly EncryptedTransferOffers _encrypted;
 

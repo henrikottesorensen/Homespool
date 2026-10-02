@@ -248,16 +248,14 @@ public class OctoPrintCompatController : ControllerBase
             }
             catch (IncompatiblePrinterModelException e)
             {
-                // The one finding that is worth the slicer's own dialog rather than the printer's page,
-                // and the one where undoing the upload is right: the file was sent *to a printer*, and
-                // this printer will never print it. Keeping the bytes would leave a file nobody asked
-                // to store behind a message saying the send failed. Only ever this request's own file:
-                // a name that already existed was refused above, before a byte of it was stored.
-                await _files.DeleteAsync(CallerResolver.For(owner, User), stored.FileName, cancellationToken);
-
+                // The one finding that is worth the slicer's own dialog rather than the printer's page.
+                // The file stays: it was uploaded, and an upload is not undone because the print
+                // that came with it cannot start. Deleting it would also need ManipulateOwnFiles,
+                // which the documented slicer token deliberately lacks, and would reach only the
+                // last of several file parts. 409 because the send does conflict with the printer.
                 return Explain(StatusCodes.Status409Conflict,
-                               $"{e.Message} Nothing was uploaded - send it to the right printer, or " +
-                               "re-slice it for this one.");
+                               $"'{stored.FileName}' was uploaded, but not queued: {e.Message} Send it to the " +
+                               "right printer, or re-slice it for this one.");
             }
             catch (TeamAccessDeniedException)
             {

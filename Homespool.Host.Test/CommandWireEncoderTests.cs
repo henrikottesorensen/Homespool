@@ -254,6 +254,46 @@ public class CommandWireEncoderTests
         Encoding.UTF8.GetString(frame.AsSpan(9)).Should().Be("""{"command":"UNCANCEL_OBJECT","args":[],"kwargs":{"id":0}}""");
     }
 
+    /// <summary>
+    /// The lighting change is <c>SET_VALUE</c> with one dotted kwarg, a bare number - the frame
+    /// firmware's parser matches as <c>chamber.led_intensity</c> and reads as an <c>int8_t</c>
+    /// (<c>command.cpp:419</c>).
+    /// </summary>
+    [Fact]
+    public void EncodeWritesTheLedIntensityAsSetValuesOnlyKwarg()
+    {
+        // Act
+        byte[] frame = CommandWireEncoder.Encode(7, SetLedIntensity.For(40));
+
+        // Assert
+        Encoding.UTF8.GetString(frame.AsSpan(9)).Should().Be("""{"command":"SET_VALUE","args":[],"kwargs":{"chamber.led_intensity":40}}""");
+    }
+
+    /// <summary>
+    /// The command holds only 0 to 100, both ends included, whoever builds it: firmware stores what
+    /// it is sent without checking, so 101 would reach the printer as a light all but off.
+    /// </summary>
+    [Theory]
+    [InlineData(-1, false)]
+    [InlineData(0, true)]
+    [InlineData(100, true)]
+    [InlineData(101, false)]
+    public void TheLedIntensityCommandHoldsOnlyAPercentage(int percent, bool built)
+    {
+        // Act
+        Func<SetLedIntensity> build = () => SetLedIntensity.For(percent);
+
+        // Assert
+        if (built)
+        {
+            build().Intensity.Should().Be((sbyte)percent);
+        }
+        else
+        {
+            build.Should().Throw<ArgumentOutOfRangeException>();
+        }
+    }
+
     // ---------- escaping, which firmware only half decodes ----------
 
     /// <summary>

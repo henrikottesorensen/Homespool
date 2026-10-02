@@ -493,6 +493,18 @@
   <data name="Printers_UnloadNote" xml:space="preserve">
     <value>Udtagning varmer dysen op til det isatte filaments printtemperatur, skubber det ud og slukker så for varmelegemerne - så printeren er kold og tom, når du når frem til den. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
   </data>
+  <data name="Printers_Lighting" xml:space="preserve">
+    <value>Lys</value>
+  </data>
+  <data name="Printers_LightingApply" xml:space="preserve">
+    <value>Indstil</value>
+  </data>
+  <data name="Printers_LightingSet" xml:space="preserve">
+    <value>Lyset er sat til {0}%.</value>
+  </data>
+  <data name="Printers_LightingUnreported" xml:space="preserve">
+    <value>Denne printer oplyser ikke, hvor kraftigt dens lys er, så skyderen viser den lysstyrke, der sidst blev sat her. En ændring foretaget på selve printeren vises ikke.</value>
+  </data>
   <data name="Printers_SlicerHeading" xml:space="preserve">
     <value>Send fra en slicer</value>
   </data>
@@ -1965,6 +1977,12 @@
    <data name="Error_NoToolPicked" xml:space="preserve">
     <value>Der er ikke valgt et værktøj, så dette ville ikke nå frem til en dyse. Vælg et værktøj på printeren først.</value>
   </data>
+  <data name="Error_NoLighting" xml:space="preserve">
+    <value>Denne printer har intet lys, der kan indstilles herfra.</value>
+  </data>
+  <data name="Error_LightingOutOfRange" xml:space="preserve">
+    <value>Lysstyrken skal være mellem 0 og {0}%.</value>
+  </data>
   <data name="Error_FilamentTypeUnknown" xml:space="preserve">
     <value>Printeren har ikke oplyst, hvilket filament der er isat, så det kan ikke tages ud herfra.</value>
   </data>
@@ -3080,6 +3098,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Intent_UncancelObject" xml:space="preserve">
     <value>Fortryd annullering af objekt</value>
+  </data>
+  <data name="Intent_SetLighting" xml:space="preserve">
+    <value>Indstil lyset</value>
   </data>
   <data name="Notifications_Heading" xml:space="preserve">
     <value>Notifikationer</value>

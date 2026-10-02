@@ -791,6 +791,61 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// A brightness the printer has accepted lands on the live state at once, rather than when the
+    /// printer next sends full telemetry - which a change to it does not trigger.
+    /// </summary>
+    [Fact]
+    public async Task AnAcceptedBrightnessIsStoredAsTheLiveState()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, LightingAccepted(40));
+
+        // Assert
+        PrinterLiveState? state = await WaitForLiveStateAsync(s => s.ChamberLedIntensity is not null);
+
+        state.Should().NotBeNull();
+        state!.ChamberLedIntensity.Should().Be(40);
+    }
+
+    /// <summary>
+    /// A recorded brightness is the printer's word until it next gives one: another event leaves it
+    /// alone, and a report carrying a brightness replaces it.
+    /// </summary>
+    [Fact]
+    public async Task ARecordedBrightnessStandsUntilThePrinterReportsOne()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, LightingAccepted(40));
+        await WaitForLiveStateAsync(s => s.ChamberLedIntensity == 40);
+
+        // Act
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new EventDTO { EventType = PrinterEventType.StateChanged, Status = "PRINTING" });
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = 40 });
+
+        PrinterLiveState? afterOthers = await WaitForLiveStateAsync(s => s.Progress == 40);
+
+        // Assert
+        afterOthers!.ChamberLedIntensity.Should().Be(40, "neither said anything about the light");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO
+        {
+            Status = "PRINTING",
+            Chamber = new ChamberTelemetryDTO { Temperature = 30f, LedIntensity = 70 },
+        });
+
+        PrinterLiveState? afterReport = await WaitForLiveStateAsync(s => s.ChamberLedIntensity == 70);
+
+        afterReport!.ChamberLedIntensity.Should().Be(70, "a report carrying a brightness replaces the recorded one");
+    }
+
+    /// <summary>
     /// <b>Only a cancellable report changes the stored plate.</b> Firmware does not repeat it - not
     /// on a schedule, and not on reconnect - so a telemetry message or any other event clearing it
     /// would leave the page with nothing to show until an object next changed.
@@ -848,6 +903,22 @@ public sealed class TelemetryWriterTests : IDisposable
         PrinterEvent stored = await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Payload.Should().Contain("_truncated", "the premise of this test is that the log could not have served it");
+    }
+
+    /// <summary>
+    /// The <c>FINISHED</c> answering a lighting change, as the actor hands it on: the printer's ack,
+    /// with the brightness the command set beside it.
+    /// </summary>
+    private static PrinterEventRecord LightingAccepted(int intensity)
+    {
+        return new PrinterEventRecord
+        {
+            EventType = PrinterEventType.Finished,
+            WireType = "FINISHED",
+            Status = PrinterStatus.Idle,
+            CommandId = 7,
+            LightingIntensity = intensity,
+        };
     }
 
     /// <summary>A <c>CANCELABLE_CHANGED</c> as firmware renders it: every object, ids from zero.</summary>

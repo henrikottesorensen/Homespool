@@ -37,6 +37,7 @@ public static class PrusaIntentTranslator
             Printing.SetTemperatures t => new Commands.SetTemperatures(t.NozzleTemperature, t.BedTemperature),
             Printing.CancelObject c => new Commands.CancelObject { Id = ObjectId(c.ObjectId) },
             Printing.UncancelObject u => new Commands.UncancelObject { Id = ObjectId(u.ObjectId) },
+            Printing.SetLighting l => Commands.SetLedIntensity.For(l.Intensity),
             _ => throw new ArgumentOutOfRangeException(nameof(intent), intent.Name,
                                                        "No Prusa Connect command exists for this intent."),
         };

@@ -206,6 +206,7 @@ public class PrinterTelemetryController : ControllerBase
             Speed = live?.Speed,
             Flow = live?.Flow,
             Fans = new FansReadDTO { Extruder = live?.ExtruderFan, Print = live?.PrintFan },
+            Lighting = live?.ChamberLedIntensity,
             FilamentUsed = live?.FilamentUsed,
             Tools = [.. tools.OrderBy(tool => tool.ToolNumber).Select(ToolReadDTO.FromState)],
         };

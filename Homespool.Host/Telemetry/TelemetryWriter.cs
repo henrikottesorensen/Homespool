@@ -1342,6 +1342,20 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             dirtyPrinterIds.Add(item.PrinterId);
         }
 
+        if (record.LightingIntensity is { } intensity)
+        {
+            // Into the same column telemetry writes, so the next report carrying a brightness simply
+            // replaces it - there is no second source for a reader to reconcile.
+            if (!cache.TryGetValue(item.PrinterId, out LiveStateCacheEntry? entry))
+            {
+                entry = await HydrateAsync(item.PrinterId, cancellationToken);
+                cache[item.PrinterId] = entry;
+            }
+
+            entry.State.ChamberLedIntensity = intensity;
+            dirtyPrinterIds.Add(item.PrinterId);
+        }
+
         pendingEvents.Add(new PrinterEvent
         {
             PrinterId = item.PrinterId,

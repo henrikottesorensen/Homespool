@@ -47,6 +47,9 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
 {
     private const string FileContent = "G28 ; home\n";
 
+    /// <summary>A CORE One's <c>printer_type</c> - built with the LED strips, and reporting them.</summary>
+    private const string CoreOne = "7.1.0";
+
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("controller-dispatch");
     private HomespoolFactory _factory = null!;
 
@@ -753,6 +756,144 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
         await EndRunAsync(fake, run);
     }
 
+    /// <summary>
+    /// A token scoped to <c>ControlPrinter</c> sets a CORE One's light, and the brightness reads back
+    /// on the telemetry route straight away - not when the printer next sends full telemetry, which
+    /// a change to the light does not trigger.
+    /// </summary>
+    [Fact]
+    public async Task ATokenScopedToControlPrinterSetsTheLight()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(printerType: CoreOne);
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsJsonAsync($"/api/v1/printers/{uuid}/command/lighting",
+                                                                          new { intensity = 33 },
+                                                                          TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        fake.Device.LedIntensity.Should().Be(32, "a 204 means the printer stored it - and 33% reads back through its byte as 32%");
+
+        int? lighting = await LightingOfAsync(client, uuid);
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+
+        // Polled, because the writer flushes in batches: recorded at once, but not stored at once.
+        while (lighting != 32 && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+            lighting = await LightingOfAsync(client, uuid);
+        }
+
+        lighting.Should().Be(32, "the accepted brightness is recorded as the printer will report it");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A brightness past 100 is the caller's mistake, refused before the printer hears it - which
+    /// would store 101 as a light all but off.
+    /// </summary>
+    [Fact]
+    public async Task ABrightnessPastAHundredIsABadRequestAndReachesNoPrinter()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(printerType: CoreOne);
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsJsonAsync($"/api/v1/printers/{uuid}/command/lighting",
+                                                                          new { intensity = 101 },
+                                                                          TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame");
+        fake.Device.SideLedBrightness.Should().Be(255);
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A printer with no lighting - an MK3.5 that has never reported a brightness - is a conflict, and
+    /// is not sent what it would answer "Missing or broken parameters".
+    /// </summary>
+    [Fact]
+    public async Task APrinterWithoutLightingIsAConflictAndReachesNoPrinter()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.SideLedsSupported = false);
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsJsonAsync($"/api/v1/printers/{uuid}/command/lighting",
+                                                                          new { intensity = 40 },
+                                                                          TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        fake.ReceivedCommands.Should().BeEmpty("a printer without the strips is refused here, not by its firmware");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A printer that refuses the setting is a conflict carrying its own words, not a 204 - here a
+    /// CORE One whose build answers as one without the strips does.
+    /// </summary>
+    [Fact]
+    public async Task ALightThePrinterRefusesIsAConflictInItsOwnWords()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.SideLedsSupported = false, printerType: CoreOne);
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.ControlPrinter]);
+
+        using HttpResponseMessage response = await client.PutAsJsonAsync($"/api/v1/printers/{uuid}/command/lighting",
+                                                                          new { intensity = 40 },
+                                                                          TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await DetailOfAsync(response)).Should().Be("Missing or broken parameters", "the printer's own words");
+        (await CommandOfAsync(response)).Should().Be("lighting");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// A token whose scope does not name <c>ControlPrinter</c> is refused the light with a 403 naming
+    /// it, and the printer hears nothing.
+    /// </summary>
+    [Fact]
+    public async Task ATokenWithoutControlPrinterCannotSetTheLight()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(printerType: CoreOne);
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+
+        using HttpResponseMessage response = await client.PutAsJsonAsync($"/api/v1/printers/{uuid}/command/lighting",
+                                                                          new { intensity = 40 },
+                                                                          TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await DetailOfAsync(response)).Should().Contain("ControlPrinter",
+                                                         "a scope refusal names the capability, so the fix is a new token");
+        fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame, not after it");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>The <c>lighting</c> the telemetry route reports for a printer.</summary>
+    private static async Task<int?> LightingOfAsync(HttpClient client, Guid uuid)
+    {
+        using HttpResponseMessage response = await client.GetAsync($"/api/v1/printers/{uuid}/telemetry",
+                                                                   TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using JsonDocument payload =
+            JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        return payload.RootElement.GetProperty("lighting") is { ValueKind: JsonValueKind.Number } value ? value.GetInt32() : null;
+    }
+
     /// <summary>The <c>detail</c> of a ProblemDetails answer, where a refusal explains itself.</summary>
     private static async Task<string> DetailOfAsync(HttpResponseMessage response)
     {
@@ -860,12 +1001,23 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     /// about. Takes the identity because a policy wrapping <see cref="FirmwareFaithfulPolicy"/>
     /// needs it, and it does not exist until the printer is enrolled.
     /// </param>
+    /// <param name="printerType">
+    /// The model the printer reports, as a <c>printer_type</c> triple; an MK3.5 when null. Returns
+    /// only once the server has stored it, since a page or a service reading the model would
+    /// otherwise race the printer's <c>INFO</c>.
+    /// </param>
     private async Task<(Guid uuid, long userId, FakePrinterClient fake, Task run)> ConnectedPrinterAsync(
         Action<FakePrinterClient>? configure = null,
-        Func<PrinterIdentity, CommandAnswerPolicy>? policyFactory = null)
+        Func<PrinterIdentity, CommandAnswerPolicy>? policyFactory = null,
+        string? printerType = null)
     {
+        PrinterIdentity random = PrinterIdentity.CreateRandom();
+        PrinterIdentity? model = printerType is null ?
+            null :
+            new PrinterIdentity { Fingerprint = random.Fingerprint, SerialNumber = random.SerialNumber, PrinterType = printerType };
+
         (PrinterIdentity identity, string token, int printerId, long userId) =
-            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory, model);
 
         FakePrinterOptions options = new() { Policy = policyFactory?.Invoke(identity) };
 
@@ -877,6 +1029,12 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
 
         await FakePrinterConnections.WaitUntilConnectedAsync(_factory, printerId);
 
+        if (printerType is not null)
+        {
+            (await FakePrinterConnections.WaitUntilAsync(() => ModelOf(printerId) == printerType, TimeSpan.FromSeconds(10)))
+                .Should().BeTrue("the printer's INFO, sent on connecting, names its model");
+        }
+
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
@@ -884,6 +1042,15 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
                                                         TestContext.Current.CancellationToken)).Uuid;
 
         return (uuid, userId, fake, run);
+    }
+
+    /// <summary>The model the server has stored for a printer.</summary>
+    private string? ModelOf(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return context.Printers.AsNoTracking().Single(printer => printer.Id == printerId).Model;
     }
 
     private static async Task<FakeTransfer> WaitForTransferAsync(FakePrinterClient fake)

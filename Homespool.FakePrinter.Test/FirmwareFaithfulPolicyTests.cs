@@ -590,6 +590,67 @@ public class FirmwareFaithfulPolicyTests
         cleared.RootElement.TryGetProperty("command_id", out _).Should().BeFalse("nobody asked");
     }
 
+    /// <summary>
+    /// A brightness is stored and answered <c>FINISHED</c>, mid-print as readily as idle, and reads
+    /// back through firmware's byte - 33 as 32.
+    /// </summary>
+    [Fact]
+    public void ABrightnessIsStoredAndFinishedInAnyState()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.StartPrint(jobId: 3);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(LedCommand(70, "33"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("FINISHED");
+        reply.RootElement.GetProperty("command_id").GetUInt32().Should().Be(70);
+        _device.SideLedBrightness.Should().Be(84);
+        _device.LedIntensity.Should().Be(32);
+    }
+
+    /// <summary>
+    /// Out of range is not refused, because firmware does not refuse it: 101 wraps to a byte of 1,
+    /// which is a light all but off. What a server must not send, it must check itself.
+    /// </summary>
+    [Fact]
+    public void ABrightnessPastAHundredWrapsRatherThanBeingRefused()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(LedCommand(71, "101"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("FINISHED");
+        _device.SideLedBrightness.Should().Be(1);
+    }
+
+    /// <summary>
+    /// A build without the strips does not know the setting, and a value no <c>int8_t</c> holds is
+    /// refused with the macro's own wording; neither changes anything.
+    /// </summary>
+    [Theory]
+    [InlineData(false, "40", "Missing or broken parameters")]
+    [InlineData(true, "200", "Invalid int8_t value")]
+    [InlineData(true, "\"40\"", "Missing or broken parameters")]
+    public void ASettingTheBuildCannotTakeIsRefused(bool sideLeds, string value, string reason)
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.SideLedsSupported = sideLeds;
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(LedCommand(72, value), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        reply.RootElement.GetProperty("reason").GetString().Should().Be(reason);
+        _device.SideLedBrightness.Should().Be(255, "the default, untouched");
+    }
+
+    private static ServerCommandFrame LedCommand(uint id, string value)
+    {
+        return RawJsonFrame(id, $$$"""{"command": "SET_VALUE", "args": [], "kwargs": {"chamber.led_intensity": {{{value}}} }}""");
+    }
+
     private static ServerCommandFrame ObjectCommand(uint id, string name, int objectId)
     {
         return RawJsonFrame(id, $$$"""{"command": "{{{name}}}", "args": [], "kwargs": {"id": {{{objectId}}} }}""");

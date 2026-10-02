@@ -517,6 +517,21 @@
   <data name="Printers_UnloadNote" xml:space="preserve">
     <value>Unloading heats the nozzle to the loaded filament’s printing temperature, ejects it, then turns the heaters off - so the printer is cold and empty when you reach it. It takes a few minutes, and the printer will decline other commands while it runs.</value>
   </data>
+  <data name="Printers_Lighting" xml:space="preserve">
+    <value>Light</value>
+  </data>
+  <data name="Printers_LightingApply" xml:space="preserve">
+    <value>Set</value>
+    <comment>The button beside the lighting slider. Sends the brightness the slider is set to.</comment>
+  </data>
+  <data name="Printers_LightingSet" xml:space="preserve">
+    <value>Light set to {0}%.</value>
+    <comment>{0} is the brightness in percent, 0 to 100.</comment>
+  </data>
+  <data name="Printers_LightingUnreported" xml:space="preserve">
+    <value>This printer does not report how bright its light is, so the slider shows the last brightness set here. A change made on the printer itself will not show.</value>
+    <comment>XL only. Firmware reports the brightness only on the CORE One.</comment>
+  </data>
   <data name="Printers_SlicerHeading" xml:space="preserve">
     <value>Send from a slicer</value>
   </data>
@@ -2029,6 +2044,14 @@
     <value>No tool is picked, so this would not reach a hotend. Pick a tool at the printer first.</value>
     <comment>Multi-tool printers only. A gcode command without a tool argument acts on whichever tool is picked, and firmware declines silently when none is.</comment>
   </data>
+  <data name="Error_NoLighting" xml:space="preserve">
+    <value>This printer has no light that can be set from here.</value>
+    <comment>Only the XL and the CORE One family have LED strips firmware can set.</comment>
+  </data>
+  <data name="Error_LightingOutOfRange" xml:space="preserve">
+    <value>The brightness must be between 0 and {0}%.</value>
+    <comment>{0} is the maximum, 100.</comment>
+  </data>
   <data name="Error_FilamentTypeUnknown" xml:space="preserve">
     <value>The printer hasn’t said what filament is loaded, so it can’t be unloaded from here.</value>
     <comment>Firmware picks the unload temperature from its own stored filament type; with none set it opens a dialog on the panel and waits.</comment>
@@ -3196,6 +3219,9 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Intent_UncancelObject" xml:space="preserve">
     <value>Undo cancelling an object</value>
+  </data>
+  <data name="Intent_SetLighting" xml:space="preserve">
+    <value>Set the light</value>
   </data>
   <data name="Notifications_Heading" xml:space="preserve">
     <value>Notifications</value>

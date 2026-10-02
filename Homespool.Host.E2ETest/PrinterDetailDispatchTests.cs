@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -247,6 +248,77 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
 
             fake.Device.State.Should().Be(DeviceState.Printing, "the refusal must come before the frame");
             fake.ReceivedCommands.Should().BeEmpty();
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// Setting the light through the page reaches a CORE One mid-print, and the page then shows the
+    /// brightness the printer holds - without waiting for the printer to report it, which an idle
+    /// one can take five minutes to do.
+    /// </summary>
+    [Fact]
+    public async Task SettingTheLightThroughThePageReachesThePrinterAndThePageShowsIt()
+    {
+        (Guid uuid, long _, HttpClient client, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(printerType: "7.1.0");
+
+        using (client)
+        {
+            fake.Device.StartPrint(jobId: 1, path: "/usb/A~1.BGC");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, uuid, "Lighting", [new("intensity", "33")]);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            fake.Device.LedIntensity.Should().Be(32, "the printer stored it, and 33% reads back through its byte as 32%");
+
+            string page = await GetPageAsync(client, uuid);
+
+            page.Should().Contain("Light set to 33%.", "the page says what was asked for and that it was taken");
+
+            string slider = Slider(page);
+            DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+
+            // Polled, because the writer flushes in batches: recorded at once, but not stored at once.
+            while (!slider.Contains("value=\"32\"", StringComparison.Ordinal) && DateTime.UtcNow < deadline)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), TestContext.Current.CancellationToken);
+                slider = Slider(await GetPageAsync(client, uuid));
+            }
+
+            slider.Should().Contain("value=\"32\"", "the slider starts at what the printer now holds");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
+    /// A member who may print cannot set the light - it is <c>ControlPrinter</c>'s, like everything
+    /// else that steers the machine - and the printer hears nothing.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWithoutControlPrinterCannotSetTheLight()
+    {
+        (Guid uuid, long _, HttpClient ownerClient, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(printerType: "7.1.0");
+        (HSUser contributor, HttpClient contributorClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "detail-lighting-contributor@example.com");
+
+        using (ownerClient)
+        using (contributorClient)
+        {
+            await JoinAsync(contributor.Id, await TeamOfAsync(uuid), CapabilityPresets.Contributor);
+
+            string page = await GetPageAsync(contributorClient, uuid);
+
+            page.Should().NotContain("handler=Lighting\"", "a control is offered only to somebody it would work for");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(contributorClient, uuid, "Lighting", [new("intensity", "10")]);
+
+            AssertAccessDenied(posted);
+
+            fake.Device.SideLedBrightness.Should().Be(255);
+            fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame");
 
             await EndRunAsync(fake, run);
         }
@@ -1009,17 +1081,34 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
     /// An enrolled, connected printer whose owner is signed in - the intent tests need a live
     /// socket, both to pause and to prove nothing was sent.
     /// </summary>
+    /// <param name="options">The fake's options, when the defaults are not what the test is about.</param>
+    /// <param name="printerType">
+    /// The model the printer reports, as a <c>printer_type</c> triple; an MK3.5 when null. Returns
+    /// only once the server has stored it, since the page reads the model to decide its controls.
+    /// </param>
     private async Task<(Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run)> ConnectedPrinterAsync(
-        FakePrinterOptions? options = null)
+        FakePrinterOptions? options = null,
+        string? printerType = null)
     {
+        PrinterIdentity random = PrinterIdentity.CreateRandom();
+        PrinterIdentity? model = printerType is null ?
+            null :
+            new PrinterIdentity { Fingerprint = random.Fingerprint, SerialNumber = random.SerialNumber, PrinterType = printerType };
+
         (PrinterIdentity identity, string token, int printerId, long userId) =
-            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory, model);
 
         FakePrinterClient fake = new(identity, TimeProvider.System, options) { Token = token };
         await fake.ConnectAsync(FakePrinterConnections.ViaTestServerAsync(_factory), TestContext.Current.CancellationToken);
         Task run = fake.RunAsync(TestContext.Current.CancellationToken);
 
         await FakePrinterConnections.WaitUntilConnectedAsync(_factory, printerId);
+
+        if (printerType is not null)
+        {
+            (await FakePrinterConnections.WaitUntilAsync(() => ModelOf(printerId) == printerType, TimeSpan.FromSeconds(10)))
+                .Should().BeTrue("the printer's INFO, sent on connecting, names its model");
+        }
 
         Guid uuid;
 
@@ -1034,6 +1123,21 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
         HSUser owner = await EnrolmentFlowHelper.FindUserAsync(_factory, userId);
 
         return (uuid, userId, await EnrolmentFlowHelper.SignInAsAsync(_factory, owner), fake, run);
+    }
+
+    /// <summary>The lighting slider as the page renders it.</summary>
+    private static string Slider(string page)
+    {
+        return Regex.Match(page, "<input[^>]*id=\"lighting\"[^>]*>").Value;
+    }
+
+    /// <summary>The model the server has stored for a printer.</summary>
+    private string? ModelOf(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return context.Printers.AsNoTracking().Single(printer => printer.Id == printerId).Model;
     }
 
     private static async Task EndRunAsync(FakePrinterClient fake, Task run)

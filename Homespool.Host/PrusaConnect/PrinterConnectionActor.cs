@@ -14,6 +14,7 @@ using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
 using Homespool.Host.Telemetry;
+using Homespool.Model;
 
 namespace Homespool.Host.PrusaConnect;
 
@@ -75,7 +76,15 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// command has no response deadline, because it has not been delivered, and its bound is the
     /// session's idle window rather than the response timeout. Stamped by the loop at hand-over.
     /// </param>
-    private sealed record Pending(uint CommandId, string WireName, TaskCompletionSource<CommandSendResult> Completion, long? SentAt);
+    /// <param name="LightingIntensity">
+    /// The brightness the printer will report once it has finished this command, when it is a
+    /// <see cref="SetLedIntensity"/>; null for every other command.
+    /// </param>
+    private sealed record Pending(uint CommandId,
+                                  string WireName,
+                                  TaskCompletionSource<CommandSendResult> Completion,
+                                  long? SentAt,
+                                  int? LightingIntensity);
 
     /// <summary>
     /// The connection as a chunk carrier, for the transfer engine.
@@ -569,7 +578,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         _pending = new Pending(commandId,
                                send.Command.WireName,
                                send.Completion,
-                               handover == CommandHandover.Written ? Stopwatch.GetTimestamp() : null);
+                               handover == CommandHandover.Written ? Stopwatch.GetTimestamp() : null,
+                               send.Command is SetLedIntensity light ? PrinterLighting.ReadBack(light.Intensity) : null);
     }
 
     private void HandleEvent(InboundEventMessage message)
@@ -584,11 +594,21 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             _firmwareVersion = firmware;
         }
 
+        int? lightingIntensity = null;
+
         if (_pending is not null && eventDto.CommandId == _pending.CommandId)
         {
             Pending answered = _pending;
 
             _pending = null;
+
+            // Only an answer correlated to the command says the setting took. A FINISHED arriving
+            // after the response timeout has nothing to correlate with, and records nothing - the
+            // printer's own next report will.
+            if (eventDto.EventType == PrinterEventType.Finished)
+            {
+                lightingIntensity = answered.LightingIntensity;
+            }
 
             // The other half of the pair above, and the reason SentAt is on Pending at all: elapsed
             // is what separates a sluggish printer from a wedged one, and neither is visible from
@@ -623,7 +643,10 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // value's throw is the loop's throttled catch-all's business, costing one message and one
         // aggregated log line, never the connection. The ack correlation above already ran, so a
         // command's caller is unaffected either way.
-        _sink.Enqueue(_printerId, message.ReceivedAt, PrusaTelemetryMapping.ToRecord(eventDto, message.Identity));
+        _sink.Enqueue(_printerId, message.ReceivedAt, PrusaTelemetryMapping.ToRecord(eventDto, message.Identity) with
+        {
+            LightingIntensity = lightingIntensity,
+        });
     }
 
     /// <summary>

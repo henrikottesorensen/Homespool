@@ -427,7 +427,8 @@ public static class Program
                             .AddScoped<Printing.PrinterCommandService>()
                             .AddScoped<Printing.ToolTargetReader>()
                             .AddScoped<PrusaConnect.PrinterPreheatService>()
-                            .AddScoped<PrusaConnect.PrinterFilamentService>();
+                            .AddScoped<PrusaConnect.PrinterFilamentService>()
+                            .AddScoped<Printing.PrinterLightingService>();
 
             // Plain singletons, not TelemetryWriter's singleton-with-IServiceScopeFactory pattern below:
             // neither touches HomespoolDbContext, only in-memory state (the directory of live connection

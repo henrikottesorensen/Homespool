@@ -67,14 +67,20 @@ public static class EnrolmentFlowHelper
     /// (<see cref="EndToEndEnrolmentTests"/>) deliberately do not use this - they drive
     /// <see cref="SendPrinterRegisterAsync"/>/<see cref="SendPollAsync"/> directly.
     /// </remarks>
+    /// <param name="factory">The host to enrol against.</param>
+    /// <param name="identity">
+    /// The printer to enrol, for a test that needs a particular model; a random MK3.5 otherwise. The
+    /// model is what its <c>INFO</c> says on connecting, not anything sent here.
+    /// </param>
     /// <returns>
     /// The identity (its <see cref="PrinterIdentity.HeaderFingerprint"/> is what a real upgrade
     /// presents), the issued token, the claimed printer's id, and the claiming user's id.
     /// </returns>
     public static async Task<(PrinterIdentity identity, string token, int printerId, long userId)> EnrolAndClaimFakePrinterAsync(
-        WebApplicationFactory<PrinterAppController> factory)
+        WebApplicationFactory<PrinterAppController> factory,
+        PrinterIdentity? identity = null)
     {
-        PrinterIdentity identity = PrinterIdentity.CreateRandom();
+        identity ??= PrinterIdentity.CreateRandom();
         await using FakePrinterClient enrolling = new(identity, TimeProvider.System);
         using HttpClient anonymous = PrinterListener.CreateClient(factory);
 

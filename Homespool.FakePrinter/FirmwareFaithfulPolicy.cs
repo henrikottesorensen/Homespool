@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Homespool.FakePrinter;
@@ -373,6 +374,9 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
             case "UNCANCEL_OBJECT":
                 return CancelObject(frame, device, cancelled: false);
 
+            case "SET_VALUE":
+                return SetValue(frame, device);
+
             case "START_CONNECT_DOWNLOAD":
             case "START_INLINE_DOWNLOAD":
                 // Both spellings, one handler, because Connect sends whichever and the printer
@@ -540,6 +544,45 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
                                                              device.CancelledObjects, frame.CommandId,
                                                              device.JobId)),
         ];
+    }
+
+    /// <summary>
+    /// Answers a <c>SET_VALUE</c> - of its dozen settings, only the LED strips' brightness, the one this
+    /// application sends.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Three answers, all firmware's own.</b> A kwarg the build does not know leaves the command with
+    /// no setting at all, which is <i>"Missing or broken parameters"</i> (<c>command.cpp:425</c>); a
+    /// value that will not parse as an <c>int8_t</c> is <i>"Invalid int8_t value"</i>, the
+    /// <c>SET_VALUE_ARG</c> macro's <c>#type</c> spelled out; anything else is stored and answered
+    /// <c>FINISHED</c>, synchronously and in any state (<c>planner.cpp:979-1062</c>).
+    /// </para>
+    /// <para>
+    /// <b>No range check, because firmware has none</b> - see <see cref="FakeDevice.SetLedIntensity"/>.
+    /// A server that sends 101 here gets <c>FINISHED</c> and a light that is nearly off, as it would
+    /// from a printer.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<PlannedReply> SetValue(ServerCommandFrame frame, FakeDevice device)
+    {
+        JsonElement? value = LedIntensityArgument.TryFind(frame.Payload);
+
+        // A string is not the primitive the parser matches the kwarg against, so it is as unknown as
+        // a kwarg the build lacks.
+        if (value is not { ValueKind: JsonValueKind.Number } number || !device.SideLedsSupported)
+        {
+            return [Reject(frame.CommandId, device, "Missing or broken parameters")];
+        }
+
+        if (!number.TryGetSByte(out sbyte percent))
+        {
+            return [Reject(frame.CommandId, device, "Invalid int8_t value")];
+        }
+
+        device.SetLedIntensity(percent);
+
+        return [Reply(EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId))];
     }
 
     /// <summary>

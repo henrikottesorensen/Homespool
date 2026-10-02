@@ -509,6 +509,29 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A pass whose first query fails is logged and given up, not thrown.
+    /// </summary>
+    /// <remarks>
+    /// The query that picks the printers runs before any per-printer catch, and what escapes
+    /// <c>AdvanceAllAsync</c> ends the background service, which stops the host. An empty database
+    /// file is the failure here: the query finds no tables.
+    /// </remarks>
+    [Fact]
+    public async Task AFailedLookupOfPrintersEndsThePassWithoutThrowing()
+    {
+        // Arrange - nothing seeded, so the database has no schema
+        FakeLogger<QueueAdvancer> logger = new();
+        using QueueAdvancer advancer = NewAdvancer(logger);
+
+        // Act
+        Func<Task> pass = () => advancer.AdvanceAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        await pass.Should().NotThrowAsync("an exception here would fault ExecuteAsync and stop the host");
+        logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Error);
+    }
+
+    /// <summary>
     /// <c>File not found</c> is the drive correcting us: the belief that the file is there is cleared
     /// so it will be sent again, and the entry stays queued.
     /// </summary>

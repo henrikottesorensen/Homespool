@@ -154,7 +154,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
     [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
                      Justification =
                          "The handle is deliberately long-lived: PinnedOffer owns it, and closes it when the offer is revoked or swept and nothing is reading it. Disposing here would defeat the pinning this method exists for.")]
-    public bool Offer(string token, string path, int printerId)
+    public long? Offer(string token, string path, int printerId)
     {
         SweepIdle();
 
@@ -170,7 +170,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
             // a send. The caller can say so properly; here it is just "no".
             _logger.LogWarning(e, "Could not open a file to offer it for transfer");
 
-            return false;
+            return null;
         }
 
         // A stored file's name is its name on disk, so the path is all it takes to say which file this is.
@@ -186,7 +186,7 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
         _offers[token] = offer;
         _logger.LogDebug("Offered {Path} for transfer ({Length} bytes)", path, content.Length);
 
-        return true;
+        return content.Length;
     }
 
     /// <inheritdoc />

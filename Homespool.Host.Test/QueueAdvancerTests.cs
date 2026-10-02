@@ -3743,7 +3743,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await WriteFileOnDiskAsync("queued.bgcode");
         IPrinterConnectionActor actor = ConnectAccepting();
         ITransferOffers offers = Substitute.For<ITransferOffers>();
-        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>()).Returns(false);
+        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>()).Returns((long?)null);
 
         using QueueAdvancer advancer = NewAdvancer(offers: offers);
 
@@ -3786,7 +3786,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await WriteFileOnDiskAsync("queued.bgcode");
         IPrinterConnectionActor actor = ConnectAccepting();
         ITransferOffers offers = Substitute.For<ITransferOffers>();
-        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>()).Returns(false, true);
+        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>()).Returns(null, OnDiskLength);
 
         using QueueAdvancer advancer = NewAdvancer(offers: offers);
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
@@ -3823,7 +3823,7 @@ public sealed class QueueAdvancerTests : IDisposable
               {
                   File.Delete(call.ArgAt<string>(1));
 
-                  return false;
+                  return (long?)null;
               });
 
         using QueueAdvancer advancer = NewAdvancer(offers: offers);

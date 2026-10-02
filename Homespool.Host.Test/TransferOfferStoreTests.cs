@@ -131,7 +131,7 @@ public sealed class TransferOfferStoreTests : IDisposable
         // Act
         _store.Revoke(revoked);
         _store.Release(Printer, released);
-        _store.Offer(replaced, WriteFile(), Printer).Should().BeTrue();
+        _store.Offer(replaced, WriteFile(), Printer).Should().NotBeNull();
 
         // Assert
         retired.Should().Equal(revoked, released, replaced);
@@ -394,7 +394,7 @@ public sealed class TransferOfferStoreTests : IDisposable
         string resent = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 
         Offer(Printer, file);
-        _store.Offer(resent, file, Printer).Should().BeTrue();
+        _store.Offer(resent, file, Printer).Should().NotBeNull();
         string other = Offer(OtherPrinter, otherFile);
 
         // Act, Assert
@@ -495,7 +495,7 @@ public sealed class TransferOfferStoreTests : IDisposable
     {
         string token = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
 
-        _store.Offer(token, path, printerId).Should().BeTrue();
+        _store.Offer(token, path, printerId).Should().NotBeNull();
 
         return token;
     }

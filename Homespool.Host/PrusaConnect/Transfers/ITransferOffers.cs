@@ -9,8 +9,9 @@ public interface ITransferOffers
 {
     /// <summary>
     /// Offers the file at <paramref name="path"/> under <paramref name="token"/>, which is what the
-    /// printer will quote back on the first range request of the transfer. Returns false if the file
-    /// could not be opened, which a caller that just looked it up should treat as it vanishing.
+    /// printer will quote back on the first range request of the transfer. Returns the length of the
+    /// bytes pinned, or null if the file could not be opened, which a caller that just looked it up
+    /// should treat as it vanishing.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -18,6 +19,12 @@ public interface ITransferOffers
     /// transfer: an overwrite replaces the name, and this offer keeps serving what the command
     /// declared. See <see cref="TransferOfferStore"/> for why the lazy version was a silent
     /// corruption rather than a lesser guarantee.
+    /// </para>
+    /// <para>
+    /// <b>The length is returned because the command has to declare it.</b> The printer fetches
+    /// exactly the size it is told, so a size taken from an earlier look at the file - before an
+    /// overwrite replaced it - would cut the newer bytes short or send the printer past their end.
+    /// Read from the handle, it is the size of what this offer serves, whatever the name holds now.
     /// </para>
     /// <para>
     /// The token is supplied rather than generated here because the caller has to put it in the
@@ -33,7 +40,7 @@ public interface ITransferOffers
     /// went to closes that without changing what any printer sends.
     /// </para>
     /// </remarks>
-    bool Offer(string token, string path, int printerId);
+    long? Offer(string token, string path, int printerId);
 
     /// <summary>
     /// Withdraws an offer and closes what it held. Idempotent - an already-withdrawn or never-known

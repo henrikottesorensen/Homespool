@@ -103,6 +103,44 @@ public sealed class PrintFileSenderTests : IDisposable
     }
 
     /// <summary>
+    /// The size the command declares is the size of the bytes the offer pinned, not the one read
+    /// when the file was looked up - so a file overwritten in between is neither cut short nor read
+    /// past its end.
+    /// </summary>
+    /// <remarks>
+    /// The printer fetches exactly the size it is told. Declared from the earlier look, a longer
+    /// replacement arrived truncated and was reported finished; a shorter one sent the printer past
+    /// its end and failed the transfer.
+    /// </remarks>
+    [Theory]
+    [InlineData(true, 8192)]
+    [InlineData(true, 1024)]
+    [InlineData(false, 8192)]
+    [InlineData(false, 1024)]
+    public async Task TheDeclaredSizeIsTheSizeOfTheBytesOffered(bool canStreamChunks, int onDisk)
+    {
+        // Arrange - looked up at 4096 bytes, then overwritten before the send opens it
+        await using HomespoolDbContext context = await SeedAsync();
+        StoredFile file = WriteFile("model.gcode", 4096);
+        await File.WriteAllBytesAsync(file.Path, new byte[onDisk], TestContext.Current.CancellationToken);
+        IPrinterConnectionActor actor = Connect(canStreamChunks, PrinterEventType.Finished);
+
+        // Act
+        await NewSender(context).SendAsync(await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+                                           file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+
+        // Assert
+        long declared = SentCommand(actor) switch
+        {
+            StartConnectDownload inline => inline.OriginalSize,
+            StartEncryptedDownload encrypted => encrypted.OriginalSize,
+            ISendableCommand other => throw new InvalidOperationException($"Unexpected {other.WireName}"),
+        };
+
+        declared.Should().Be(onDisk, "the printer fetches exactly what it is told, and these are the bytes it will be served");
+    }
+
+    /// <summary>
     /// An offer opens only for the printer the command went to. The token is unguessable but not
     /// secret - the encrypted path puts it in a plain-HTTP URL as the IV - so without this any
     /// enrolled printer that had seen one could open the bytes through the raw route. The refusal

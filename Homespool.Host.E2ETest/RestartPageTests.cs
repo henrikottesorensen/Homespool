@@ -154,8 +154,8 @@ public sealed class RestartPageTests : IAsyncLifetime
         int printer = SeedPrinter(administrator.Id, "Workshop MK4", status: null);
 
         TransferOfferStore offers = _factory.Services.GetRequiredService<TransferOfferStore>();
-        offers.Offer("0123456789abcdef", await WriteFileAsync("bracket.gcode"), printer).Should().BeTrue();
-        offers.Offer("fedcba9876543210", await WriteFileAsync("orphan.gcode"), int.MaxValue).Should().BeTrue();
+        offers.Offer("0123456789abcdef", await WriteFileAsync("bracket.gcode"), printer).Should().NotBeNull();
+        offers.Offer("fedcba9876543210", await WriteFileAsync("orphan.gcode"), int.MaxValue).Should().NotBeNull();
 
         string page = await admin.GetStringAsync("/Admin/Restart", TestContext.Current.CancellationToken);
 

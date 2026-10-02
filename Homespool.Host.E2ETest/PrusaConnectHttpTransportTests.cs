@@ -778,7 +778,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
 
         string hash = Guid.NewGuid().ToString("N")[..27];
-        _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path, intendedId).Should().BeTrue();
+        _factory.Services.GetRequiredService<ITransferOffers>().Offer(hash, path, intendedId).Should().NotBeNull();
 
         using HttpClient printer = PrinterListener.CreateClient(_factory);
 

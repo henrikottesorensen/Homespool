@@ -243,7 +243,7 @@ public sealed class EncryptedTransferEndpointTests : IAsyncLifetime
         // registration carries, and no printer exists in this suite's database to match it against.
         const int offeredTo = 1;
 
-        _factory.Services.GetRequiredService<ITransferOffers>().Offer(ivHex, path, offeredTo).Should().BeTrue();
+        _factory.Services.GetRequiredService<ITransferOffers>().Offer(ivHex, path, offeredTo).Should().NotBeNull();
         _factory.Services.GetRequiredService<EncryptedTransferOffers>().Register(ivHex, key, ivHex, offeredTo);
 
         return (ivHex, key, iv);

@@ -51,6 +51,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private Pending? _pending;
     private uint _lastCommandId;
 
+    // Set when a parked command is withdrawn uncollected, cleared by the printer's next collect poll.
+    // A client posting only to /p/events would otherwise cost every send the whole collect timeout,
+    // and the queue, which awaits printers one after another, would pay it for every printer.
+    private bool _uncollected;
+
     /// <summary>
     /// The one transfer this printer may have in progress. One, because firmware allocates a single
     /// system-wide transfer slot (<c>Monitor</c>, monitor.hpp:85-98) and requests are strictly
@@ -473,6 +478,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </remarks>
     private void HandleTakePending(TakePendingCommandMessage take)
     {
+        // Polling at all, even with nothing to collect, is a printer collecting again.
+        _uncollected = false;
+
         PendingCommand? parked = _connection.TakeParkedCommand();
 
         if (parked is not null && _pending is { SentAt: null } && _pending.CommandId == parked.CommandId)
@@ -525,6 +533,15 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         if (!_connection.IsOpen)
         {
+            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
+
+            return;
+        }
+
+        if (_uncollected)
+        {
+            // The last command parked here was withdrawn uncollected and the printer has not polled
+            // since, so this one would only wait out the same timeout. Nothing is parked.
             send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
 
             return;
@@ -937,6 +954,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         Pending withdrawn = _pending!;
 
         _pending = null;
+        _uncollected = true;
         _connection.TakeParkedCommand();
         _logger.LogWarning("command {CommandId} ({Command}) was not collected within {CollectTimeout}; withdrawn",
                            withdrawn.CommandId, withdrawn.WireName, CollectTimeout);

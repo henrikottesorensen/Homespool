@@ -150,16 +150,27 @@ public class PrinterRemovalService
         //    the enrolment tables this delete cascades away, so its next attempt is a 401.
         _registry.Close(printer.Id);
 
+        // From here on the request's token is not used. The socket is already closed, so abandoning
+        // the rest when the browser goes away would bounce the printer and leave the person who
+        // confirmed the removal with no way to tell whether it happened. Every remaining step is
+        // bounded: the writer's acknowledgement by its own timeout, the delete by the busy timeout.
+
         // 2. Wait for the writer to drop what it still holds for this printer. A flush commits its
         //    whole batch in one transaction and keeps the buffers when it fails, so one row pointing
         //    at a deleted printer stops telemetry persisting for *every* printer until the buffer
         //    ceilings trim it out. This is the step that makes the removal safe rather than usually
         //    fine; see ITelemetryEviction.
-        await _telemetry.ForgetPrinterAsync(printer.Id, cancellationToken);
+        //
+        //    Held, not final: if the delete below throws, disposing the eviction lets the writer hear
+        //    the printer again - it keeps its credential, so it reconnects.
+        await using IPrinterEviction eviction = await _telemetry.BeginEvictionAsync(printer.Id, CancellationToken.None);
 
         // 3. And only now the row, whose cascades take the rest.
         _dbContext.Printers.Remove(printer);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _dbContext.SaveChangesAsync(CancellationToken.None);
+
+        // 4. The printer is gone: refused for good, and the telemetry store emptied of it.
+        await eviction.CompleteAsync(CancellationToken.None);
 
         _logger.LogInformation("[{PrinterId}] removed by {Caller}.", printer.Id, caller.UserId);
 

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -248,9 +249,20 @@ public sealed class PrusaConnectWebSocketTests : IAsyncLifetime
         // Act
         await socket.SendAsync(opening, WebSocketMessageType.Text, endOfMessage: false, CancellationToken.None);
 
-        for (int i = 0; i < 20 && socket.State == WebSocketState.Open; i++)
+        // The server can pass the ceiling and close while chunks are still going out, and the next send
+        // then throws. That is the close this test is waiting for, so it ends the sending rather than
+        // the test: the close frame is already queued for the receive below. socket.State cannot stop
+        // the loop sooner - this side reads Open until it has received that frame.
+        for (int i = 0; i < 20; i++)
         {
-            await socket.SendAsync(filler, WebSocketMessageType.Text, endOfMessage: false, CancellationToken.None);
+            try
+            {
+                await socket.SendAsync(filler, WebSocketMessageType.Text, endOfMessage: false, CancellationToken.None);
+            }
+            catch (IOException)
+            {
+                break;
+            }
         }
 
         byte[] buffer = new byte[256];

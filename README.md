@@ -27,6 +27,8 @@ printers' data leaving your network.
   Homespool added to the Home Screen first. Firefox and Safari take notifications on the
   self-signed certificate; Chrome needs one it trusts, for which see
   [acme/README.md](acme/README.md).
+- **Installable** — add Homespool to a phone's Home Screen, or install it from the browser, and it
+  opens as its own app.
 - **Accounts, teams and tokens** — local accounts, optional sign-in through an external OpenID
   Connect provider, passkeys, team-based sharing with per-capability permissions, and personal
   access tokens for the API.

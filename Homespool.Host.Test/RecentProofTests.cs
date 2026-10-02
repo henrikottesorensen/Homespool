@@ -97,13 +97,36 @@ public sealed class RecentProofTests
 
         rig.Time.Advance(RecentProof.Window - TimeSpan.FromMinutes(1));
         DefaultHttpContext first = rig.Next(granting);
-        bool live = rig.Proof.IsProved(first, Account);
+        bool live = rig.Proof.Renew(first, Account);
 
         rig.Time.Advance(RecentProof.Window - TimeSpan.FromMinutes(1));
-        bool stillLive = rig.Proof.IsProved(rig.Next(first), Account);
+        bool stillLive = rig.Proof.Renew(rig.Next(first), Account);
 
         live.Should().BeTrue();
-        stillLive.Should().BeTrue("each request reissues the cookie, so the window runs from the last one");
+        stillLive.Should().BeTrue("each renewal reissues the cookie, so the window runs from the last one");
+    }
+
+    /// <summary>
+    /// A page that only asks - to decide whether to show a gated control - does not carry the proof
+    /// forward, or browsing pages that act on nothing would keep an unattended browser proved.
+    /// </summary>
+    [Fact]
+    public void AskingDoesNotCarryItForward()
+    {
+        Rig rig = new();
+        DefaultHttpContext granting = Rig.Request();
+        rig.Proof.Grant(granting, Account, "pwd");
+
+        rig.Time.Advance(RecentProof.Window - TimeSpan.FromMinutes(1));
+        DefaultHttpContext asking = rig.Next(granting);
+        bool live = rig.Proof.IsProved(asking, Account);
+
+        rig.Time.Advance(TimeSpan.FromMinutes(2));
+        bool afterwards = rig.Proof.IsProved(rig.Next(granting), Account);
+
+        live.Should().BeTrue();
+        asking.Response.Headers.SetCookie.Should().BeEmpty("asking reissues nothing");
+        afterwards.Should().BeFalse("the window still runs from the grant");
     }
 
     /// <summary>A page may ask for a shorter window than the shared one, and the shorter one is what it gets.</summary>
@@ -170,6 +193,22 @@ public sealed class RecentProofTests
 
         next.Called.Should().BeTrue();
         context.Result.Should().BeNull();
+    }
+
+    /// <summary>The gate is where the window slides: a request it lets through leaves with the proof reissued.</summary>
+    [Fact]
+    public async Task APassedGateCarriesTheProofForward()
+    {
+        Rig rig = new();
+        (RecentProofPageFilter filter, PageHandlerExecutingContext context, Next next) =
+            rig.Filter(new GatedPage(), nameof(GatedPage.OnGet), proved: true, provedAgo: RecentProof.Window - TimeSpan.FromMinutes(1));
+
+        await filter.OnPageHandlerExecutionAsync(context, next.Invoke);
+        DefaultHttpContext passed = (DefaultHttpContext)context.HttpContext;
+        rig.Time.Advance(TimeSpan.FromMinutes(2));
+
+        next.Called.Should().BeTrue();
+        rig.Proof.IsProved(rig.Next(passed), Account).Should().BeTrue("the gate reissued the proof, so its window runs from the gated request");
     }
 
     [Fact]

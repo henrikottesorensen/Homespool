@@ -92,9 +92,14 @@ fetch() {
     curl -fsSL --max-time 60 "$1" || die "could not fetch $1"
 }
 
+# Empty when the service has no container; a failed docker ps is not that, and dies. Not piped into head
+# for the same reason as fetch: the pipeline would report head's success. Always called as the whole of an
+# assignment, so the failure reaches set -e.
 running_container() {
-    docker ps --filter "label=com.docker.compose.project=$project" \
-        --filter "label=com.docker.compose.service=$1" --format '{{.ID}}' | head -n 1
+    ids="$(docker ps --filter "label=com.docker.compose.project=$project" \
+        --filter "label=com.docker.compose.service=$1" --format '{{.ID}}')" ||
+        die "docker ps failed, so whether $1 is running is not known"
+    printf '%s\n' "$ids" | head -n 1
 }
 
 # What watch compares: a line per service, its name and its container's image id, or - when none runs.
@@ -381,7 +386,13 @@ publish() {
 
 watch() {
     require docker systemctl
-    current="$(for service in $services; do image_line "$service" "$(running_container "$service")"; done)"
+    current=""
+    for service in $services; do
+        container="$(running_container "$service")"
+        current="$current$(image_line "$service" "$container")
+"
+    done
+    current="${current%?}"
 
     if [ -f "$watch_dir/images" ] && [ "$current" = "$(cat "$watch_dir/images")" ]; then
         return 0

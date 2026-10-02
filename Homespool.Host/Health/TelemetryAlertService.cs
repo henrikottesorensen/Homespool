@@ -52,13 +52,6 @@ public sealed class TelemetryAlertService : BackgroundService
     public const string HealthTag = "homespool-health";
 
     /// <summary>
-    /// The most of the list of problems a push carries. A notification shows a few lines of it, the
-    /// page it opens shows the banner, and the email has all of it; a push service takes 4 KB at most,
-    /// and a character outside ASCII costs six bytes of that once the payload's JSON has escaped it.
-    /// </summary>
-    public const int MaxPushBodyLength = 500;
-
-    /// <summary>
     /// Where a health notification leads: the front page, which carries the banner an administrator
     /// is shown on every page.
     /// </summary>
@@ -133,29 +126,14 @@ public sealed class TelemetryAlertService : BackgroundService
 
     /// <summary>
     /// The same list as <see cref="Describe"/>, as plain text for a notification - one problem a line,
-    /// cut at <see cref="MaxPushBodyLength"/>. Not encoded: a browser shows a notification's body as
-    /// text, so an entity would be shown as one.
+    /// which the channel cuts to fit. Not encoded: a browser shows a notification's body as text, so an
+    /// entity would be shown as one.
     /// </summary>
     public static string DescribeForPush(HealthReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
 
-        string text = string.Join('\n', Problems(report));
-
-        if (text.Length <= MaxPushBodyLength)
-        {
-            return text;
-        }
-
-        int cut = MaxPushBodyLength - 1;
-
-        // Never between the two halves of a character outside the Basic Multilingual Plane.
-        if (char.IsHighSurrogate(text[cut - 1]))
-        {
-            cut--;
-        }
-
-        return string.Concat(text.AsSpan(0, cut), "…");
+        return string.Join('\n', Problems(report));
     }
 
     private static IEnumerable<string> Problems(HealthReport report)

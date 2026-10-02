@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
+using Homespool.Host.PrusaConnect;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -50,9 +51,11 @@ public sealed class WebPushChannelTests : IAsyncLifetime
         WebPushRig.Delete(_databasePath);
     }
 
-    private static NotificationMessage Message(string body = "Replace filament.")
+    private static NotificationMessage Message(string title = "Core One needs you",
+                                               string body = "Replace filament.",
+                                               string url = "/Printers/Detail/3")
     {
-        return new NotificationMessage("Core One needs you", body, "/Printers/Detail/3", "printer-3",
+        return new NotificationMessage(title, body, url, "printer-3",
                                        NotificationUrgency.High, TimeSpan.FromMinutes(10));
     }
 
@@ -183,14 +186,15 @@ public sealed class WebPushChannelTests : IAsyncLifetime
 
     /// <summary>
     /// A payload the push service would refuse is refused here instead, where the reason can be
-    /// logged, rather than sent and answered with a 413 that says nothing about why.
+    /// logged, rather than sent and answered with a 413 that says nothing about why. Only the address
+    /// and the tag are left to make one that large: the title and body are cut first.
     /// </summary>
     [Fact]
     public async Task AMessageTooLargeToDeliverIsRefusedWithoutARequest()
     {
         using FakePushBrowser browser = FakePushService.NewBrowser();
 
-        DeliveryOutcome outcome = await DeliverAsync(Destination(browser), Message(body: new string('x', WebPushChannel.MaxPayloadBytes)));
+        DeliveryOutcome outcome = await DeliverAsync(Destination(browser), Message(url: new string('x', WebPushChannel.MaxPayloadBytes)));
 
         outcome.Should().Be(DeliveryOutcome.Refused);
         _rig.PushService.Received.Should().BeEmpty();
@@ -204,13 +208,74 @@ public sealed class WebPushChannelTests : IAsyncLifetime
     {
         using FakePushBrowser browser = FakePushService.NewBrowser();
 
-        int overhead = JsonSerializer.SerializeToUtf8Bytes(new { title = "Core One needs you", body = string.Empty, url = "/Printers/Detail/3", tag = "printer-3" }).Length;
-        string body = new('x', WebPushChannel.MaxPayloadBytes - overhead);
+        int overhead = JsonSerializer.SerializeToUtf8Bytes(new { title = "Core One needs you", body = "Replace filament.", url = string.Empty, tag = "printer-3" }).Length;
+        string url = new('x', WebPushChannel.MaxPayloadBytes - overhead);
 
-        DeliveryOutcome outcome = await DeliverAsync(Destination(browser), Message(body: body));
+        DeliveryOutcome outcome = await DeliverAsync(Destination(browser), Message(url: url));
 
         outcome.Should().Be(DeliveryOutcome.Delivered);
         _rig.PushService.Received.Single().Body.Length.Should().Be(4096, "RFC 8030 obliges a push service to take 4096 bytes and no more");
+    }
+
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(WebPushChannel.MaxTitleLength, WebPushChannel.MaxTitleLength)]
+    [InlineData(WebPushChannel.MaxTitleLength + 1, WebPushChannel.MaxTitleLength)]
+    public async Task ATitleIsCutToFit(int length, int expectedLength)
+    {
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        await DeliverAsync(Destination(browser), Message(title: new string('x', length)));
+
+        string title = browser.DecryptJson(_rig.PushService.Received.Single().Body).GetProperty("title").GetString()!;
+        title.Length.Should().Be(expectedLength);
+        title.EndsWith('…').Should().Be(length > WebPushChannel.MaxTitleLength);
+    }
+
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(WebPushChannel.MaxBodyLength, WebPushChannel.MaxBodyLength)]
+    [InlineData(WebPushChannel.MaxBodyLength + 1, WebPushChannel.MaxBodyLength)]
+    public async Task ABodyIsCutToFit(int length, int expectedLength)
+    {
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        await DeliverAsync(Destination(browser), Message(body: new string('x', length)));
+
+        string body = browser.DecryptJson(_rig.PushService.Received.Single().Body).GetProperty("body").GetString()!;
+        body.Length.Should().Be(expectedLength);
+        body.EndsWith('…').Should().Be(length > WebPushChannel.MaxBodyLength);
+    }
+
+    /// <summary>
+    /// The longest a printer can make a notification: its longest name in the title and its longest
+    /// attention text as the body, all of both outside ASCII, so each character is six bytes of JSON.
+    /// Uncut it is over 4 KB, and refusing it five times running would remove the browser.
+    /// </summary>
+    [Fact]
+    public async Task ThePrintersLongestMessageIsDelivered()
+    {
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        string name = new('ø', Printer.NameMaxLength);
+        string attention = new('ø', PrusaConnectConstants.AttentionTextMaxLength);
+
+        DeliveryOutcome outcome = await DeliverAsync(Destination(browser),
+                                                     Message(title: $"{name} stopper snart for et filamentskift",
+                                                             body: attention,
+                                                             url: $"/Printers/Detail/{Guid.Empty}"));
+
+        outcome.Should().Be(DeliveryOutcome.Delivered);
+    }
+
+    [Fact]
+    public void ACutNeverEndsHalfWayThroughACharacter()
+    {
+        // An emoji, two UTF-16 units, straddling the cut.
+        string text = new string('x', WebPushChannel.MaxBodyLength - 2) + "😀" + "tail";
+
+        WebPushChannel.Shorten(text, WebPushChannel.MaxBodyLength)
+                      .Should().Be(new string('x', WebPushChannel.MaxBodyLength - 2) + "…");
     }
 
     /// <summary>

@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.StaticAssets;
 using Microsoft.Extensions.Options;
 
 using Homespool.Model.Entities;
@@ -102,7 +103,8 @@ public sealed class TwoFactorEnrolmentMiddleware
 
         PathString path = context.Request.Path;
 
-        if (Allowed.Any(allowed => path.StartsWithSegments(allowed, StringComparison.OrdinalIgnoreCase)))
+        if (IsStaticAsset(context) ||
+            Allowed.Any(allowed => path.StartsWithSegments(allowed, StringComparison.OrdinalIgnoreCase)))
         {
             await _next(context);
 
@@ -128,6 +130,23 @@ public sealed class TwoFactorEnrolmentMiddleware
         }
 
         context.Response.Redirect(EnrolmentPath);
+    }
+
+    /// <summary>
+    /// Whether the request resolved to a file <c>MapStaticAssets</c> serves.
+    /// </summary>
+    /// <remarks>
+    /// The test is the endpoint's own metadata, not the path. The enrolment page is allowed, but it
+    /// is made of a stylesheet, scripts and icons, and held back they arrive as the enrolment page in
+    /// their place: <c>nosniff</c> makes the browser refuse HTML as CSS or JS, so the page renders bare
+    /// and the passkey button, which a script draws, never appears. A prefix list would have to follow
+    /// every directory <c>wwwroot</c> ever grows, and would exempt a path under it that serves nothing;
+    /// this follows what is actually served, and a request for a file that does not exist has no such
+    /// endpoint and is held like any other. Runs after routing, which is what resolves the endpoint.
+    /// </remarks>
+    private static bool IsStaticAsset(HttpContext context)
+    {
+        return context.GetEndpoint()?.Metadata.GetMetadata<StaticAssetDescriptor>() is not null;
     }
 
     /// <summary>

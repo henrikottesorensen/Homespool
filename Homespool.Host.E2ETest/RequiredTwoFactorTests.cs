@@ -1,7 +1,10 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,7 +39,7 @@ namespace Homespool.Host.E2ETest;
 /// already live, and the unit test for the scheme check is in <c>Homespool.Host.Test</c>.
 /// </para>
 /// </remarks>
-public sealed class RequiredTwoFactorTests : IAsyncLifetime
+public sealed partial class RequiredTwoFactorTests : IAsyncLifetime
 {
     private const string Password = "Correct-Horse-Battery-Staple-1!"; // betterleaks:allow
     private const string Address = "no-authenticator@example.com";
@@ -134,6 +137,81 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime
         enrolAgain.StatusCode.Should().Be(HttpStatusCode.OK, "and enrolment then renders, rather than asking again");
     }
 
+    /// <summary>
+    /// Every stylesheet, script and icon a page the hold serves refers to is served as itself, not as the
+    /// enrolment page.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The URLs come from the page, not from a list here.</b> A list written here would pass for as
+    /// long as it matched what the layout referenced, and the failure it exists to catch is the layout
+    /// gaining an asset the hold does not know about.
+    /// </para>
+    /// <para>
+    /// Redirected to the enrolment page, a stylesheet arrives as HTML, and <c>nosniff</c> makes the
+    /// browser refuse it: the page renders bare and its scripts - the passkey button's among them - never
+    /// run. The status alone would not say so, since the browser follows the redirect to a 200.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AHeldAccountIsServedTheAssetsOfThePagesItMayReach()
+    {
+        using HttpClient client = await SignedInAsync();
+
+        string html = await client.GetStringAsync("/Account/Reauthenticate", TestContext.Current.CancellationToken);
+
+        List<string> assets = [.. AssetUrl().Matches(html).Select(match => WebUtility.HtmlDecode(match.Groups["url"].Value))
+                                            .Where(url => url.StartsWith('/') && !url.StartsWith("//", StringComparison.Ordinal))
+                                            .Distinct(StringComparer.Ordinal)];
+
+        // What an anonymous visitor is served is what exists in this checkout: wwwroot/lib is libman's
+        // output and is not there until it has been restored, so a file the page names that nobody is
+        // served is not a file the hold withheld.
+        using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        List<string> served = [];
+
+        foreach (string asset in assets)
+        {
+            using HttpResponseMessage open = await anonymous.GetAsync(asset, TestContext.Current.CancellationToken);
+
+            if (open.StatusCode == HttpStatusCode.OK)
+            {
+                served.Add(asset);
+            }
+        }
+
+        // By extension: the layout fingerprints its own files, so the name is not stable.
+        served.Should().Contain(url => url.Contains(".css", StringComparison.Ordinal),
+                                "the page links a stylesheet that exists, or this test is reading nothing");
+        served.Should().Contain(url => url.Contains(".js", StringComparison.Ordinal),
+                                "and a script");
+
+        foreach (string asset in served)
+        {
+            using HttpResponseMessage response = await client.GetAsync(asset, TestContext.Current.CancellationToken);
+
+            response.StatusCode.Should().Be(HttpStatusCode.OK, "{0} is part of a page the hold serves", asset);
+            response.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html",
+                "{0} must arrive as itself, not as the enrolment page in its place", asset);
+        }
+    }
+
+    /// <summary>
+    /// The exemption is for what is served from <c>wwwroot</c>, not for a path that looks like it: a
+    /// route under a static prefix is still held.
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownPathUnderAStaticPrefixIsStillHeld()
+    {
+        using HttpClient client = await SignedInAsync();
+
+        using HttpResponseMessage response = await client.GetAsync("/css/not-a-file.css", TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect, "nothing static is served there, so it is an ordinary request");
+        response.Headers.Location!.OriginalString.Should().Contain("EnableAuthenticator");
+    }
+
     /// <summary>A signed-in browser call to the API is refused rather than redirected to a page.</summary>
     /// <remarks>
     /// A redirect to HTML arrives at a script as a 200 with a login form in it, which is the reasoning
@@ -188,6 +266,9 @@ public sealed class RequiredTwoFactorTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "nothing is wrong with the token itself");
     }
+
+    [GeneratedRegex("""<(?:link\b[^>]*\bhref|script\b[^>]*\bsrc)="(?<url>[^"]+)""")]
+    private static partial Regex AssetUrl();
 
     private async Task<string> MintTokenAsync()
     {

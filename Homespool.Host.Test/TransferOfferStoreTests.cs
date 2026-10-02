@@ -158,6 +158,29 @@ public sealed class TransferOfferStoreTests : IDisposable
     }
 
     /// <summary>
+    /// A fetch holds its key from the lookup until its body has been written, and a revoke in that
+    /// time - a cancelled send, the printer refusing the command - must not change the key under it:
+    /// zeroed, it would encrypt the file under key 0.
+    /// </summary>
+    [Fact]
+    public void AKeyFoundBeforeARevokeIsNotZeroedByIt()
+    {
+        // Arrange
+        EncryptedTransferOffers keys = new(_store);
+        string ivHex = Offer(Printer);
+        byte[] key = RandomNumberGenerator.GetBytes(TransferCipher.KeyLength);
+        keys.Register(ivHex, key, ivHex, Printer);
+        EncryptedTransfer found = keys.Find(ivHex)!;
+
+        // Act
+        _store.Revoke(ivHex);
+
+        // Assert
+        keys.Find(ivHex).Should().BeNull();
+        found.Key.Should().Equal(key, "the request that found the key owns its own copy");
+    }
+
+    /// <summary>
     /// A printer fetches as soon as it has accepted the command, so an offer nobody has opened
     /// within minutes belongs to a printer that went away - and it takes its key with it.
     /// </summary>

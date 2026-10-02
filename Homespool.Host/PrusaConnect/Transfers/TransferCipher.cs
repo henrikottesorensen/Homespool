@@ -85,7 +85,11 @@ public sealed class TransferCipher : IDisposable
     /// <summary>
     /// Seeds the cipher for a stream that begins at <paramref name="offset"/> bytes into the file.
     /// </summary>
-    /// <param name="key">16 bytes, sent to the printer as hex in the command's <c>key</c> kwarg.</param>
+    /// <param name="key">
+    /// 16 bytes, sent to the printer as hex in the command's <c>key</c> kwarg. Never all zeroes: that
+    /// is what a key looks like after it has been revoked, and a keystream anyone holding the IV from
+    /// the URL can compute. A random key is all zeroes once in 2^128, so refusing it costs nothing.
+    /// </param>
     /// <param name="iv">16 bytes, sent as the <c>iv</c> kwarg and echoed back in the request URL.</param>
     /// <param name="offset">
     /// Where in the plaintext this stream starts. Must be a multiple of <see cref="BlockSize"/> -
@@ -93,13 +97,18 @@ public sealed class TransferCipher : IDisposable
     /// only ever asks for sector-aligned ranges (transfer.cpp:205-206), so an unaligned offset means
     /// a bug on our side and not a case to support.
     /// </param>
-    /// <exception cref="ArgumentException">A key or IV of the wrong length.</exception>
+    /// <exception cref="ArgumentException">A key or IV of the wrong length, or a key of all zeroes.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A negative or unaligned offset.</exception>
     public TransferCipher(ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv, long offset)
     {
         if (key.Length != KeyLength)
         {
             throw new ArgumentException($"The key must be exactly {KeyLength} bytes, not {key.Length}.", nameof(key));
+        }
+
+        if (!key.ContainsAnyExcept((byte)0))
+        {
+            throw new ArgumentException("The key is all zeroes, which is a revoked key and not a secret.", nameof(key));
         }
 
         if (iv.Length != IvLength)
@@ -118,7 +127,7 @@ public sealed class TransferCipher : IDisposable
         }
 
         _aes = Aes.Create();
-        _aes.Key = key.ToArray();
+        _aes.SetKey(key);
 
         iv.CopyTo(_counter);
 

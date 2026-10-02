@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Linq;
 using System.Net.Mime;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -102,13 +103,15 @@ public sealed class EncryptedTransferController : ControllerBase
         if (!TryReadRange(Request.Headers.Range, length, out long start, out long endInclusive))
         {
             content.Dispose();
+            CryptographicOperations.ZeroMemory(transfer.Key);
             Response.Headers.ContentRange = $"bytes */{length}";
 
             return new StatusCodeResult<Status.RangeNotSatisfiable>();
         }
 
-        // Ownership of the content passes to the result, which disposes it when the body has been
-        // written - or abandoned. Nothing here holds it past this return.
+        // Ownership of the content and of the key's copy passes to the result, which disposes the
+        // one when the body has been written - or abandoned - and zeroes the other once its cipher
+        // holds the key. Nothing here holds either past this return.
         return new EncryptedBodyResult(content, transfer.Key, Convert.FromHexString(ivHex), start, endInclusive, _logger);
     }
 
@@ -176,6 +179,8 @@ public sealed class EncryptedTransferController : ControllerBase
                 }
 
                 using TransferCipher cipher = new(_key, _iv, _start);
+
+                CryptographicOperations.ZeroMemory(_key);
 
                 byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
 

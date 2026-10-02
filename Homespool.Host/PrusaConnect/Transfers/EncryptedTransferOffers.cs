@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
+using System.Threading;
 
 namespace Homespool.Host.PrusaConnect.Transfers;
 
@@ -81,10 +82,16 @@ public sealed class EncryptedTransferOffers
     /// registered under it - or when it has since been revoked, which to a fetching printer is the
     /// same 404.
     /// </summary>
+    /// <remarks>
+    /// The key is a copy, taken under the same lock <see cref="Revoke"/> zeroes under. The request
+    /// that asked holds it until its body has been written, and a revoke in that time must not change
+    /// it: a key zeroed under a cipher that has not yet copied it encrypts the file under key 0, which
+    /// anyone holding the IV from the URL can undo.
+    /// </remarks>
     public EncryptedTransfer? Find(string ivHex)
     {
-        return _entries.TryGetValue(ivHex, out Entry? entry) ?
-            new EncryptedTransfer(entry.Key, entry.OfferToken, entry.PrinterId) :
+        return _entries.TryGetValue(ivHex, out Entry? entry) && entry.CopyKey() is byte[] key ?
+            new EncryptedTransfer(key, entry.OfferToken, entry.PrinterId) :
             null;
     }
 
@@ -99,29 +106,44 @@ public sealed class EncryptedTransferOffers
 
     private sealed class Entry
     {
+        private readonly Lock _gate = new();
+        private readonly byte[] _key;
+        private bool _zeroed;
+
         public Entry(byte[] key, string offerToken, int printerId)
         {
-            Key = key;
+            _key = key;
             OfferToken = offerToken;
             PrinterId = printerId;
         }
-
-        public byte[] Key { get; }
 
         public string OfferToken { get; }
 
         public int PrinterId { get; }
 
+        /// <summary>The key, or null once it has been zeroed - never a key part-way through it.</summary>
+        public byte[]? CopyKey()
+        {
+            lock (_gate)
+            {
+                return _zeroed ? null : (byte[])_key.Clone();
+            }
+        }
+
         public void Zero()
         {
-            CryptographicOperations.ZeroMemory(Key);
+            lock (_gate)
+            {
+                _zeroed = true;
+                CryptographicOperations.ZeroMemory(_key);
+            }
         }
     }
 }
 
 /// <summary>What a printer's <c>/f/&lt;iv&gt;/raw</c> request resolves to: the key it was told, and
 /// the offer holding the bytes.</summary>
-/// <param name="Key">The AES-128 key. Not a copy - do not retain it past the request.</param>
+/// <param name="Key">The AES-128 key. A copy, and the caller's - zero it once the cipher has it.</param>
 /// <param name="OfferToken">The <see cref="ITransferContentStore"/> token to open the bytes under.</param>
 /// <param name="PrinterId">The printer the offer was made to, which the open has to name.</param>
 public sealed record EncryptedTransfer(byte[] Key, string OfferToken, int PrinterId);

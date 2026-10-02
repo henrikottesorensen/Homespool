@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text.Json;
 
 using AwesomeAssertions;
@@ -128,7 +129,7 @@ public class KeystreamFixtureTests
     [Fact]
     public void AnUnalignedOffsetIsRefused()
     {
-        byte[] key = new byte[TransferCipher.KeyLength];
+        byte[] key = RandomNumberGenerator.GetBytes(TransferCipher.KeyLength);
         byte[] iv = new byte[TransferCipher.IvLength];
 
         Action construct = () =>
@@ -150,6 +151,23 @@ public class KeystreamFixtureTests
         };
 
         construct.Should().Throw<ArgumentException>();
+    }
+
+    /// <summary>
+    /// An all-zero key is what a revoked one looks like, and its keystream is anyone's to compute
+    /// from the IV in the URL - so the cipher will not run under it, whoever handed it over.
+    /// </summary>
+    [Fact]
+    public void AnAllZeroKeyIsRefused()
+    {
+        byte[] iv = RandomNumberGenerator.GetBytes(TransferCipher.IvLength);
+
+        Action construct = () =>
+        {
+            using TransferCipher cipher = new(new byte[TransferCipher.KeyLength], iv, 0);
+        };
+
+        construct.Should().Throw<ArgumentException>().WithParameterName("key");
     }
 
     private static IReadOnlyList<KeystreamFixture> LoadFixtures()

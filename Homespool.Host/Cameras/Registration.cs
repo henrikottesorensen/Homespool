@@ -76,6 +76,10 @@ public static class Registration
         // Singleton because it is the count of what is open across every request.
         services.AddSingleton<MjpegStreamLimiter>();
 
+        // The one writer of camera streams to the sidecar. Singleton because it holds the per-camera
+        // gates, and a gate only serialises the callers that share it.
+        services.AddSingleton<CameraStreamSync>();
+
         // Writes the sidecar's WebRTC configuration. Singleton because it holds nothing per request
         // and both its callers - startup, and the settings page - want the same one.
         services.AddSingleton<WebRtcSidecarWriter>();

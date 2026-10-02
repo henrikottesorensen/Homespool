@@ -146,6 +146,7 @@ public sealed class CameraServiceTests : IDisposable
                                  sourcePolicy: null!,
                                  streamServer: null!,
                                  sweeper: null!,
+                                 sync: null!,
                                  fetcher: null!,
                                  frames: null!,
                                  liveView: null!,

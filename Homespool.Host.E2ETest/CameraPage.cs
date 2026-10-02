@@ -18,8 +18,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.E2ETest;
 
 /// <summary>
-/// Driving the real Cameras page as a browser would: adding and removing a camera, and reading what
-/// the page said about it afterwards.
+/// Driving the real Cameras page as a browser would: adding, changing and removing a camera, and
+/// reading what the page said about it afterwards.
 /// </summary>
 public static class CameraPage
 {
@@ -58,6 +58,26 @@ public static class CameraPage
         return await context.Cameras
                             .AsNoTracking()
                             .SingleAsync(camera => camera.Name == name, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Changes a network camera's name and source through the page, unbound from any printer.</summary>
+    public static async Task EditAsync(HttpClient client, Guid uuid, string name, string source)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+
+        string page = await GetAsync(client, $"/Cameras?edit={uuid}");
+
+        using FormUrlEncodedContent form = new(
+        [
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+            new("uuid", uuid.ToString()),
+            new("name", name),
+            new("source", source),
+            new("printerUuid", string.Empty),
+        ]);
+
+        using HttpResponseMessage response =
+            await client.PostAsync("/Cameras?handler=Edit", form, TestContext.Current.CancellationToken);
     }
 
     /// <summary>Removes a camera through the page.</summary>

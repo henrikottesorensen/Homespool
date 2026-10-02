@@ -328,13 +328,15 @@ public sealed class CameraSourcePolicy
     /// cannot resolve chosen by the caller.
     /// </summary>
     /// <remarks>
-    /// <b>A save refuses; the reconciler accepts.</b> The resolver cannot tell "no such name" from
-    /// "DNS is unhappy right now", so the two callers answer that ambiguity differently. At a save
-    /// there is a person at the keyboard who can read the refusal and try again, and an unchecked
-    /// name is exactly what a rebinding attacker offers first: one that fails the lookup here and
-    /// succeeds at the sidecar. At start-up there is nobody to retry, DNS is the service most likely
-    /// to still be waking up beside this one, and a name that resolves to nothing reaches nothing -
-    /// so a stored camera is kept rather than silently dropped until somebody saves it again.
+    /// <b>A save refuses; handing a stored source to the sidecar accepts.</b> The resolver cannot tell
+    /// "no such name" from "DNS is unhappy right now", so the two callers answer that ambiguity
+    /// differently. At a save there is a person at the keyboard who can read the refusal and try
+    /// again, and an unchecked name is exactly what a rebinding attacker offers first: one that fails
+    /// the lookup here and succeeds at the sidecar. <see cref="CameraStreamSync"/> checks a source
+    /// again each time it writes one, at start-up among others, where there is nobody to retry, DNS is
+    /// the service most likely to still be waking up beside this one, and a name that resolves to
+    /// nothing reaches nothing - so a stored camera is kept rather than silently dropped until
+    /// somebody saves it again.
     /// </remarks>
     public async Task<CameraSourceCheck> CheckAsync(string? source, bool acceptUnresolvable, CancellationToken cancellationToken)
     {

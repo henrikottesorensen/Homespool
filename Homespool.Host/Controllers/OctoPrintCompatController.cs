@@ -20,6 +20,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Controllers;
@@ -73,18 +74,21 @@ public class OctoPrintCompatController : ControllerBase
 
     private readonly PrintFileCatalog _files;
     private readonly PrintQueueService _queue;
+    private readonly PrinterAccessService _access;
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrintFileStorageOptions _options;
 
     public OctoPrintCompatController(PrintFileCatalog files,
                                      PrintQueueService queue,
+                                     PrinterAccessService access,
                                      PrinterQueryService printers,
                                      UserManager<HSUser> userManager,
                                      IOptionsSnapshot<PrintFileStorageOptions> options)
     {
         _files = files;
         _queue = queue;
+        _access = access;
         _printers = printers;
         _userManager = userManager;
         _options = options.Value;
@@ -181,6 +185,12 @@ public class OctoPrintCompatController : ControllerBase
 
         MultipartReader reader = new(boundary, Request.Body);
         bool print = false;
+        Caller caller = CallerResolver.For(owner, User);
+
+        // The file is staged, not stored: it becomes a file in the library only once the print, if one
+        // was asked for, is known to be allowed. Refusing after storing would mean deleting, which
+        // needs a capability the slicer key does not hold.
+        PendingUpload? pending = null;
         StoredFile? stored = null;
 
         // Held outside the loop so a failure can name the file it was reading.
@@ -199,14 +209,48 @@ public class OctoPrintCompatController : ControllerBase
 
                 if (disposition.IsFileDisposition())
                 {
-                    stored = await ReadFileSectionAsync(section, disposition, owner, cancellationToken);
+                    if (pending is not null)
+                    {
+                        throw new ArgumentException("Expected one file part.");
+                    }
+
+                    pending = await StageFileSectionAsync(section, disposition, caller, cancellationToken);
                 }
                 else if (disposition.IsFormDisposition() &&
                          string.Equals(disposition.Name.Value, "print", StringComparison.OrdinalIgnoreCase))
                 {
                     print = await ReadPrintFlagAsync(section, cancellationToken);
+
+                    // PrusaSlicer sends this ahead of the file, so a refusal here means the file is
+                    // never read. A client that sends it after the file is refused below instead.
+                    if (print && pending is null)
+                    {
+                        await _access.RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
+                    }
                 }
             }
+
+            if (pending is not null)
+            {
+                if (print)
+                {
+                    await _access.RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
+                }
+
+                stored = await _files.PublishAsync(caller, pending.Token, overwrite: false, cancellationToken,
+                                                   owner.UserName);
+            }
+        }
+        catch (CredentialScopeDeniedException)
+        {
+            return Explain(StatusCodes.Status403Forbidden,
+                           "This key may not print, so nothing was uploaded. Use Upload instead of " +
+                           "Upload and Print, or a key that may print.");
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return Explain(StatusCodes.Status403Forbidden,
+                           "You may not print on this printer, so nothing was uploaded.");
         }
         catch (UploadTooLargeException)
         {
@@ -226,6 +270,15 @@ public class OctoPrintCompatController : ControllerBase
         {
             return Explain(StatusCodes.Status400BadRequest, e.Message);
         }
+        finally
+        {
+            // Whatever ended before publishing leaves nothing behind: a refusal, a conflict, a
+            // dropped connection. Discarding a staged upload needs only the upload capability.
+            if (stored is null && pending is not null)
+            {
+                _files.Discard(caller, pending.Token);
+            }
+        }
 
         if (stored is null)
         {
@@ -240,7 +293,7 @@ public class OctoPrintCompatController : ControllerBase
                 // whose response shape is not ours to extend and whose caller is a slicer rather than a
                 // reader. A holding finding still stops the print at the loop, and the person sees it on
                 // the printer's page - which is where they would look after pressing Send anyway.
-                await _queue.EnqueueAsync(printer.Id, CallerResolver.For(owner, User), stored.FileName, cancellationToken);
+                await _queue.EnqueueAsync(printer.Id, caller, stored.FileName, cancellationToken);
             }
             catch (IncompatiblePrinterModelException e)
             {
@@ -253,10 +306,10 @@ public class OctoPrintCompatController : ControllerBase
                                $"'{stored.FileName}' was uploaded, but not queued: {e.Message} Send it to the " +
                                "right printer, or re-slice it for this one.");
             }
-            catch (TeamAccessDeniedException)
+            catch (Exception e) when (e is TeamAccessDeniedException or CredentialScopeDeniedException)
             {
-                // The file is already stored, so this is a partial success: say what happened rather
-                // than implying nothing did.
+                // Only if the permission changed since the check above: the file is stored by now, so
+                // say what happened rather than implying nothing did.
                 return Explain(StatusCodes.Status403Forbidden,
                                $"'{stored.FileName}' was uploaded, but you may not change this printer's queue.");
             }
@@ -368,10 +421,10 @@ public class OctoPrintCompatController : ControllerBase
     /// name faces the same allowlist and the same per-user tree as an <c>/api/v1</c> upload.
     /// </para>
     /// </remarks>
-    private async Task<StoredFile> ReadFileSectionAsync(MultipartSection section,
-                                                        ContentDispositionHeaderValue disposition,
-                                                        HSUser owner,
-                                                        CancellationToken cancellationToken)
+    private async Task<PendingUpload> StageFileSectionAsync(MultipartSection section,
+                                                            ContentDispositionHeaderValue disposition,
+                                                            Caller caller,
+                                                            CancellationToken cancellationToken)
     {
         string fileName = Path.GetFileName(HeaderUtilities.RemoveQuotes(disposition.FileName).Value ?? string.Empty);
 
@@ -384,8 +437,7 @@ public class OctoPrintCompatController : ControllerBase
 
         await using LengthLimitingStream limited = new(section.Body, _options.MaxUploadBytes);
 
-        return await _files.SaveAsync(CallerResolver.For(owner, User), fileName, limited, overwrite: false, cancellationToken,
-                                      owner.UserName);
+        return await _files.StageAsync(caller, fileName, limited, cancellationToken);
     }
 
     /// <summary>

@@ -305,6 +305,82 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Upload and Print from a key that may not print is refused whole: nothing is stored.
+    /// </summary>
+    /// <remarks>
+    /// PrusaSlicer sends <c>print</c> ahead of the file, so the refusal comes before a byte is kept,
+    /// and in the plain text its dialog shows rather than a problem document.
+    /// </remarks>
+    [Fact]
+    public async Task UploadAndPrintFromAKeyWithoutPrintIsRefusedAndStoresNothing()
+    {
+        // Arrange - a slicer key with upload and view, and no Print
+        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+            "noprint@example.com", CapabilitySet.Parse("UploadOwnFiles ViewPrinter"));
+
+        // Act
+        using MultipartFormDataContent body = SlicerUpload("noprint.gcode", print: true);
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("text/plain");
+
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("nothing was uploaded");
+
+        using HttpClient native = NativeClient(token);
+
+        using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
+                                                                TestContext.Current.CancellationToken);
+
+        (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().NotContain("noprint.gcode", "a refused Upload and Print stores nothing");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// The same refusal when a client sends the <c>print</c> flag after the file: the file has been
+    /// read by then, and it is still not kept.
+    /// </summary>
+    [Fact]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification = "Ownership of each part passes to the MultipartFormDataContent, which the test disposes.")]
+    public async Task UploadAndPrintWithTheFlagAfterTheFileStoresNothingEither()
+    {
+        // Arrange
+        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+            "lateflag@example.com", CapabilitySet.Parse("UploadOwnFiles ViewPrinter"));
+
+        using MultipartFormDataContent body = new();
+        body.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("G28 ; home\n")), "file", "late.gcode");
+        body.Add(new StringContent("true"), "print");
+
+        // Act
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("nothing was uploaded");
+
+        using HttpClient native = NativeClient(token);
+
+        using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
+                                                                TestContext.Current.CancellationToken);
+
+        (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().NotContain("late.gcode", "the file was read before the flag, and is still not kept");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Plain <b>Upload</b> stores the file and leaves the queue alone - the distinction the whole
     /// <c>print</c> field exists to make.
     /// </summary>

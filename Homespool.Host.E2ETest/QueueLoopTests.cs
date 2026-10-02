@@ -57,6 +57,12 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class QueueLoopTests : IAsyncLifetime
 {
+    /// <summary>
+    /// What a slicer's key holds for printing, and all the loop should need: it acts later with the
+    /// scope recorded at queueing, so work queued with more would pass a step that asks for more.
+    /// </summary>
+    private static readonly CapabilitySet PrintOnly = CapabilitySet.Parse("Print");
+
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("queueloop");
     private HomespoolFactory _root = null!;
     private WebApplicationFactory<PrinterAppController> _factory = null!;
@@ -193,7 +199,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
         (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10))).Should().BeTrue();
 
         await UploadAsync(userId, "benchy.bgcode");
-        await EnqueueAsync(printerId, userId, "benchy.bgcode");
+        await EnqueueAsync(printerId, userId, "benchy.bgcode", PrintOnly);
 
         // Act 1 - the loop offers the file without anyone making the printer ready. Pipelining: a
         // transfer is not gated on availability.
@@ -251,8 +257,8 @@ public sealed class QueueLoopTests : IAsyncLifetime
         (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10))).Should().BeTrue();
 
         await UploadAsync(userId, "twice.bgcode");
-        await EnqueueAsync(printerId, userId, "twice.bgcode");
-        await EnqueueAsync(printerId, userId, "twice.bgcode");
+        await EnqueueAsync(printerId, userId, "twice.bgcode", PrintOnly);
+        await EnqueueAsync(printerId, userId, "twice.bgcode", PrintOnly);
 
         // Act
         await AdvanceAsync(printerId);
@@ -298,7 +304,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "history.bgcode");
-        Guid handle = await EnqueueAsync(printerId, userId, "history.bgcode");
+        Guid handle = await EnqueueAsync(printerId, userId, "history.bgcode", PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -376,7 +382,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "odometer.bgcode");
-        await EnqueueAsync(printerId, userId, "odometer.bgcode");
+        await EnqueueAsync(printerId, userId, "odometer.bgcode", PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -453,7 +459,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "across.bgcode");
-        await EnqueueAsync(printerId, userId, "across.bgcode");
+        await EnqueueAsync(printerId, userId, "across.bgcode", PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -541,7 +547,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
 
         // While it is away: taken out of Ready at the panel, and the file queued again here
         fake.Device.CancelReady();
-        await EnqueueAsync(printerId, userId, "dropped.bgcode");
+        await EnqueueAsync(printerId, userId, "dropped.bgcode", PrintOnly);
 
         // Act - back, and not yet reporting
         await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
@@ -589,7 +595,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
 
         // While it is away: taken out of Ready at the panel, and the file queued again here
         fake.Device.CancelReady();
-        await EnqueueAsync(printerId, userId, "restarted.bgcode");
+        await EnqueueAsync(printerId, userId, "restarted.bgcode", PrintOnly);
 
         // Act - back, and not yet reporting
         await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
@@ -658,7 +664,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "late.bgcode");
-        await EnqueueAsync(printerId, userId, "late.bgcode");
+        await EnqueueAsync(printerId, userId, "late.bgcode", PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -754,7 +760,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "phantom.bgcode");
-        await EnqueueAsync(printerId, userId, "phantom.bgcode");
+        await EnqueueAsync(printerId, userId, "phantom.bgcode", PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -848,7 +854,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "puck.bgcode");
-        Guid handle = await EnqueueAsync(printerId, userId, "puck.bgcode");
+        Guid handle = await EnqueueAsync(printerId, userId, "puck.bgcode", PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -923,7 +929,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "toobig.bgcode");
-        await EnqueueAsync(printerId, userId, "toobig.bgcode");
+        await EnqueueAsync(printerId, userId, "toobig.bgcode", PrintOnly);
 
         // Act - the loop asks, is told there is no room, and holds.
         //
@@ -1011,7 +1017,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, "abandoned.bgcode");
-        await EnqueueAsync(printerId, userId, "abandoned.bgcode");
+        await EnqueueAsync(printerId, userId, "abandoned.bgcode", PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -1029,7 +1035,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",
-                                                                                   await IssueTokenAsync(userId));
+                                                                                   await IssueTokenAsync(userId, PrintOnly));
 
         using HttpResponseMessage response = await client.PutAsync(
             $"/api/v1/printers/{await UuidAsync(printerId)}/command/stop", content: null,
@@ -1052,12 +1058,12 @@ public sealed class QueueLoopTests : IAsyncLifetime
         await EndRunAsync(fake, run);
     }
 
-    private async Task<string> IssueTokenAsync(long userId)
+    private async Task<string> IssueTokenAsync(long userId, CapabilitySet scope)
     {
-        using IServiceScope scope = _factory.Services.CreateScope();
+        using IServiceScope services = _factory.Services.CreateScope();
 
-        (_, string plaintext) = await scope.ServiceProvider.GetRequiredService<ApiTokenService>()
-                                           .CreateAsync(userId, "e2e", CapabilitySet.Everything, TestContext.Current.CancellationToken);
+        (_, string plaintext) = await services.ServiceProvider.GetRequiredService<ApiTokenService>()
+                                              .CreateAsync(userId, "e2e", scope, TestContext.Current.CancellationToken);
 
         return plaintext;
     }
@@ -1135,7 +1141,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
         await SlicedForAsync("corexy.bgcode", "COREONE");
 
         // Act
-        Func<Task> queueing = () => EnqueueAsync(printerId, userId, "corexy.bgcode");
+        Func<Task> queueing = () => EnqueueAsync(printerId, userId, "corexy.bgcode", PrintOnly);
 
         // Assert
         IncompatiblePrinterModelException refusal =
@@ -1176,7 +1182,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
             .Should().BeTrue();
 
         await UploadAsync(userId, name);
-        Guid queued = await EnqueueAsync(printerId, userId, name);
+        Guid queued = await EnqueueAsync(printerId, userId, name, PrintOnly);
 
         await AdvanceAsync(printerId);
         (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
@@ -1250,13 +1256,14 @@ public sealed class QueueLoopTests : IAsyncLifetime
                           .PrintJobs.AnyAsync(job => job.PrinterId == printerId, TestContext.Current.CancellationToken);
     }
 
-    private async Task<Guid> EnqueueAsync(int printerId, long userId, string name)
+    /// <summary>Queues <paramref name="name"/> as <paramref name="userId"/> holding <paramref name="scope"/>, which the loop then acts with.</summary>
+    private async Task<Guid> EnqueueAsync(int printerId, long userId, string name, CapabilitySet scope)
     {
-        using IServiceScope scope = _factory.Services.CreateScope();
+        using IServiceScope services = _factory.Services.CreateScope();
 
-        EnqueueOutcome outcome = await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
-                                             .EnqueueAsync(printerId, Caller.Unscoped(userId), name,
-                                                           TestContext.Current.CancellationToken);
+        EnqueueOutcome outcome = await services.ServiceProvider.GetRequiredService<PrintQueueService>()
+                                               .EnqueueAsync(printerId, Caller.Scoped(userId, scope), name,
+                                                             TestContext.Current.CancellationToken);
 
         return outcome.Queued.PrintUuid;
     }

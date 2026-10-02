@@ -76,6 +76,12 @@ public sealed class QueueAdvancerTests : IDisposable
     /// <summary>The seeded file's digest after <see cref="OverwriteSeededFileAsync"/>.</summary>
     private const string OverwrittenDigest = "overwritten-digest";
 
+    /// <summary>
+    /// The scope every seeded row records: what a slicer's key holds for printing, and all the loop
+    /// should need. The loop acts with it, so a row recording more would pass a step that asks for more.
+    /// </summary>
+    private static readonly string PrintOnly = CapabilitySet.Format([Capability.Print]);
+
     /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
     private static readonly Guid QueuedPrintUuid = new("11111111-2222-3333-4444-555555555555");
 
@@ -169,7 +175,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             FileName = "stuck.bgcode",
             QueuedByUserId = 1,
-            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedByScope = PrintOnly,
             StartedAt = _clock.GetUtcNow(),
             State = PrintState.Starting,
             FirmwareJobId = 752,
@@ -2604,7 +2610,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             FileName = "frame.bgcode",
             QueuedByUserId = 1,
-            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedByScope = PrintOnly,
             StartedAt = _clock.GetUtcNow(),
             CommandedAt = _clock.GetUtcNow(),
             FirmwareJobId = 790,
@@ -2902,7 +2908,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             FileName = "frame.bgcode",
             QueuedByUserId = 1,
-            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedByScope = PrintOnly,
             StartedAt = _clock.GetUtcNow(),
             CommandedAt = _clock.GetUtcNow(),
             FirmwareJobId = 790,
@@ -3158,7 +3164,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             FileName = "stuck.bgcode",
             QueuedByUserId = 1,
-            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedByScope = PrintOnly,
             StartedAt = _clock.GetUtcNow(),
             State = PrintState.Starting,
             FirmwareJobId = 753,
@@ -3955,7 +3961,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrintUuid = Guid.NewGuid(),
             Position = 0,
             QueuedByUserId = 1,
-            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedByScope = PrintOnly,
             QueuedAt = _clock.GetUtcNow(),
         });
         context.PrinterLiveStates.Add(new PrinterLiveState
@@ -4691,7 +4697,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrintUuid = QueuedPrintUuid,
             Position = 0,
             QueuedByUserId = 1,
-            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedByScope = PrintOnly,
             QueuedAt = _clock.GetUtcNow(),
         });
 

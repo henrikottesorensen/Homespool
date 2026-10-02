@@ -65,7 +65,8 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
             await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "subject@example.com");
         using HttpClient signedIn = subjectClient;
 
-        string token = await MintTokenAsync(subject.Id);
+        // Unrestricted on purpose: the strongest key there is, so the refusal can only be the closure.
+        string token = await MintTokenAsync(subject.Id, CapabilitySet.Everything);
 
         using HttpClient bearer = _factory.CreateClient();
         bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -122,7 +123,8 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
             await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "subject@example.com");
         subjectClient.Dispose();
 
-        string token = await MintTokenAsync(subject.Id);
+        // Unrestricted on purpose: the strongest key there is, so the refusal can only be the closure.
+        string token = await MintTokenAsync(subject.Id, CapabilitySet.Everything);
 
         (_, HttpClient admin) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, "admin@example.com", AdminBootstrap.AdminRole);
@@ -328,12 +330,12 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         return AntiforgeryTestHelper.ExtractToken(html);
     }
 
-    private async Task<string> MintTokenAsync(long userId)
+    private async Task<string> MintTokenAsync(long userId, CapabilitySet scope)
     {
-        using IServiceScope scope = _factory.Services.CreateScope();
+        using IServiceScope services = _factory.Services.CreateScope();
 
-        ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-        (_, string plaintext) = await tokens.CreateAsync(userId, "laptop", CapabilitySet.Everything, CancellationToken.None);
+        ApiTokenService tokens = services.ServiceProvider.GetRequiredService<ApiTokenService>();
+        (_, string plaintext) = await tokens.CreateAsync(userId, "laptop", scope, CancellationToken.None);
 
         return plaintext;
     }

@@ -416,6 +416,54 @@ public class FirmwareFaithfulPolicyTests
              .GetProperty("free_space").GetInt64().Should().Be(4096);
     }
 
+    // ---------- DELETE_FILE (planner.cpp:882-900, marlin_printer.cpp:549-560) ----------
+
+    /// <summary>
+    /// A delete that took is answered <c>FILE_CHANGED</c> under the command's id, naming the old path,
+    /// and the file is gone from the drive.
+    /// </summary>
+    [Fact]
+    public void DeleteFileAnswersFileChangedAndTakesTheFileOffTheDrive()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/OLD.BGC", 1024, 0);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(DeleteFileCommand(80, "/usb/OLD.BGC"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("FILE_CHANGED", "firmware never sends a verdict for a delete");
+        reply.RootElement.GetProperty("command_id").GetUInt32().Should().Be(80);
+        reply.RootElement.GetProperty("data").GetProperty("old_path").GetString().Should().Be("/usb/OLD.BGC");
+        _device.Storage.Find("/usb/OLD.BGC").Should().BeNull();
+    }
+
+    /// <summary>
+    /// A file in use is kept, with the word for how it is in use; a path with nothing at it, or a
+    /// folder, is not found; and the path is checked before any of that.
+    /// </summary>
+    [Theory]
+    [InlineData("/usb/PRINTING.BGC", "File is busy")]
+    [InlineData("/usb/ARRIVING.BGC", "File is being transferred")]
+    [InlineData("/usb/MISSING.BGC", "File not found")]
+    [InlineData("/usb/models", "File not found")]
+    [InlineData("/sdcard/A.BGC", "Forbidden path")]
+    [InlineData("/usb/../etc/passwd", "Forbidden path")]
+    public void DeleteFileRefusesWhatFirmwareRefuses(string path, string expected)
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/PRINTING.BGC", 1024, 0);
+        _device.Storage.AddFolder("/usb/models");
+        _device.StartPrint(jobId: 4, path: "/usb/PRINTING.BGC");
+        _device.TryBeginTransfer("hash", 1, "/usb/ARRIVING.BGC", 4096, startCommandId: 1);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(DeleteFileCommand(81, path), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        reply.RootElement.GetProperty("reason").GetString().Should().Be(expected);
+        _device.Storage.Find("/usb/PRINTING.BGC").Should().NotBeNull("a refused delete deletes nothing");
+    }
+
     // ---------- SEND_JOB_INFO (planner.cpp, and the four render fixtures) ----------
 
     /// <summary>
@@ -668,6 +716,12 @@ public class FirmwareFaithfulPolicyTests
         // keyword arguments, which is where firmware reads "path" from.
         return RawJsonFrame(id,
                             $$$"""{"command": "START_PRINT", "args": [], "kwargs": {"path": "{{{path}}}"}}""");
+    }
+
+    private static ServerCommandFrame DeleteFileCommand(uint id, string path)
+    {
+        return RawJsonFrame(id,
+                            $$$"""{"command": "DELETE_FILE", "args": [], "kwargs": {"path": "{{{path}}}"}}""");
     }
 
     private static ServerCommandFrame JsonCommand(uint id, string name)

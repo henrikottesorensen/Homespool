@@ -216,6 +216,84 @@ public sealed class PrintFileCatalog
     }
 
     /// <summary>
+    /// The digest of the bytes about to be sent to a printer: the row's, or read from the file now
+    /// when the row has none yet.
+    /// </summary>
+    /// <exception cref="PrintFileUnreadableException">The file could not be read.</exception>
+    /// <remarks>
+    /// <para>
+    /// <b>No file is sent without one</b>, because the digest is what a printer's copy is later told
+    /// apart from a newer version by. Waiting for the reconciler's backfill would hold a print for up
+    /// to a recheck interval, so the send reads the file itself - once, since the row keeps it.
+    /// </para>
+    /// <para>
+    /// <b>Called before the file is opened for the offer, and the order is the safe one.</b> An
+    /// overwrite landing between the two sends newer bytes than this digest describes, which only
+    /// makes the copy look outdated and costs one more transfer; the other order could record a new
+    /// digest against old bytes, which is the defect this exists to prevent.
+    /// </para>
+    /// <para>
+    /// <b>Written to the row only while the row still describes the bytes that were read</b> - the
+    /// reconciler's backfill condition, for the same reason: an upload replacing the file mid-read
+    /// writes its own digest, and this must not overwrite it. <paramref name="row"/> itself is not
+    /// changed, so a caller holding it tracked does not write the value back unconditionally.
+    /// Takes no caller because it decides nothing; whoever is sending was gated already.
+    /// </para>
+    /// </remarks>
+    public async Task<string> DigestForSendingAsync(PrintFile row, StoredFile file, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        ArgumentNullException.ThrowIfNull(file);
+
+        if (row.Digest is { } known)
+        {
+            return known;
+        }
+
+        string digest;
+        long length;
+        DateTimeOffset writtenAt;
+
+        try
+        {
+            // Shared for writing and deleting, as the reconciler reads: an upload replacing the file
+            // goes ahead, and the conditional write below sorts it out.
+            await using FileStream stream = new(file.Path, new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.ReadWrite | FileShare.Delete,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+                BufferSize = 0,
+            });
+
+            digest = await PrintFileDigest.ComputeAsync(stream, copyTo: null, cancellationToken);
+
+            // From the handle, after the read: the path may already name a replacement.
+            length = RandomAccess.GetLength(stream.SafeFileHandle);
+            writtenAt = new DateTimeOffset(File.GetLastWriteTimeUtc(stream.SafeFileHandle));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(e, "Could not read {FileName} (user {UserId}) for its digest", row.Name, row.UserId);
+
+            throw new PrintFileUnreadableException(file.FileName);
+        }
+
+        await _dbContext.PrintFiles
+                        .Where(candidate => candidate.Id == row.Id &&
+                                            candidate.Digest == null &&
+                                            candidate.Size == length &&
+                                            candidate.UploadedAt == writtenAt)
+                        .ExecuteUpdateAsync(set => set.SetProperty(candidate => candidate.Digest, digest),
+                                            cancellationToken);
+
+        _logger.LogInformation("Read {FileName} (user {UserId}) for its digest before sending it", row.Name, row.UserId);
+
+        return digest;
+    }
+
+    /// <summary>
     /// Stores an upload and indexes it in one go - the API's upload path.
     /// </summary>
     /// <exception cref="ArgumentException">The name is empty, or not one a printer would accept.</exception>
@@ -382,8 +460,10 @@ public sealed class PrintFileCatalog
 
         // An overwrite reaches here with the existing row: same name, same row, different bytes.
         // Keeping the row is what lets a queued print print the replacement, which is the behaviour
-        // "overwrite" promises - and it is also why the metadata below must be rewritten rather than
-        // filled only when absent, since the new bytes may have been sliced for something else.
+        // "overwrite" promises. A printer still holding the old bytes is not touched here: its copy
+        // carries the digest it was sent with, and the new one below is what marks it outdated. It
+        // is also why the metadata below must be rewritten rather than filled only when absent,
+        // since the new bytes may have been sliced for something else.
         row.Name = published.File.FileName;
         row.Size = published.File.Length;
         row.Digest = published.Digest;

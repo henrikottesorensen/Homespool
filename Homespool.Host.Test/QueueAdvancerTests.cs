@@ -67,6 +67,15 @@ public sealed class QueueAdvancerTests : IDisposable
     /// <summary>The seeded file's name with its owner's added - what a second file of its name is sent as.</summary>
     private const string OwnersName = "queued (owner@example.com).bgcode";
 
+    /// <summary>
+    /// The seeded file's digest, and its arrived copy's - the copy is of the file as it is. Not the
+    /// digest of what <see cref="WriteFileOnDiskAsync"/> writes, which nothing here compares.
+    /// </summary>
+    private const string SeededDigest = "seeded-digest";
+
+    /// <summary>The seeded file's digest after <see cref="OverwriteSeededFileAsync"/>.</summary>
+    private const string OverwrittenDigest = "overwritten-digest";
+
     /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
     private static readonly Guid QueuedPrintUuid = new("11111111-2222-3333-4444-555555555555");
 
@@ -933,13 +942,45 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
-    /// The bytes are already where we wanted them, so the transfer is not an error to retry - it is
-    /// our own bookkeeping being wrong, and the file is adopted under the name the printer uses.
+    /// A copy of these very bytes that Homespool sent and never heard arrive - a direct send - is
+    /// adopted under the name the printer uses, rather than refused as somebody else's.
     /// </summary>
     [Fact]
-    public async Task AFileAlreadyOnTheDriveAtTheSameSizeIsAdopted()
+    public async Task OurOwnCopyAlreadyOnTheDriveIsAdopted()
     {
-        // Arrange - we do not think it has arrived; the drive disagrees, at the same size.
+        // Arrange - the printer took a transfer of these bytes; the end of it was never seen.
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await AddTakenCopyAsync(context);
+        ConnectRefusingTransferAsExisting(existingSize: OnDiskLength);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().NotBeNull("these bytes are on the drive, and the digest says so");
+        row.PrinterPath.Should().Be("/usb/SHAPE-~1.BGC",
+                                    "the alias the printer answered with is what START_PRINT has to use, and it is unguessable from here");
+        row.HoldReason.Should().BeNull("nothing is in the way");
+    }
+
+    /// <summary>
+    /// A file of the same name and size that nobody recorded sending is not adopted - it could be any
+    /// version of anything - and ours goes on under the next name.
+    /// </summary>
+    /// <remarks>
+    /// <b>The rule that closes the overwrite's second road.</b> A re-slice that changes one
+    /// temperature keeps its length, so a size match adopted the older version of a file as the newer
+    /// one. <c>FILE_INFO</c> carries no digest; only what Homespool recorded sending can vouch for bytes.
+    /// </remarks>
+    [Fact]
+    public async Task AFileNobodyRecordedIsNotAdoptedEvenAtTheSameSize()
+    {
+        // Arrange - nothing recorded; the drive holds something of our name at our size.
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
         ConnectRefusingTransferAsExisting(existingSize: OnDiskLength);
@@ -952,10 +993,9 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
-        row.ArrivedAt.Should().NotBeNull("the file is on the drive, whoever put it there");
-        row.PrinterPath.Should().Be("/usb/SHAPE-~1.BGC",
-                                    "the alias the printer answered with is what START_PRINT has to use, and it is unguessable from here");
-        row.HoldReason.Should().BeNull("nothing is in the way");
+        row.ArrivedAt.Should().BeNull("a matching size is not matching content");
+        row.PrinterPath.Should().BeNull();
+        row.DriveName.Should().Be(OwnersName, "ours goes on under the next name, as for any file that is not ours");
     }
 
     /// <summary>
@@ -981,6 +1021,33 @@ public sealed class QueueAdvancerTests : IDisposable
         row.ArrivedAt.Should().BeNull("a partial at its preallocated size is not the file");
         row.PrinterPath.Should().BeNull();
         row.DriveName.Should().Be(OwnersName, "ours goes on under the next name, as for any file that is not ours");
+    }
+
+    /// <summary>
+    /// Our own copy, read-only - still arriving, or being printed - is waited for under its name, not
+    /// abandoned for a second copy under another.
+    /// </summary>
+    [Fact]
+    public async Task OurOwnCopyStillInUseIsWaitedForUnderItsName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await AddTakenCopyAsync(context);
+        ConnectRefusingTransferAsExisting(existingSize: OnDiskLength, readOnly: true);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.DriveName.Should().Be("queued.bgcode", "the bytes under it are ours and this version");
+        row.ArrivedAt.Should().BeNull("in use is not arrived");
+        row.Digest.Should().Be(SeededDigest);
+        row.HoldReason.Should().BeNull("it ends by itself");
     }
 
     /// <summary>
@@ -1094,6 +1161,334 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
             .DriveName.Should().Be("queued.bgcode", "the printer's reports about it will carry this name");
+    }
+
+    /// <summary>
+    /// A file overwritten since its copy arrived is sent again, the older copy deleted first, rather
+    /// than printed from that copy under the newer file's name.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect</b>: the copy stayed marked arrived through the overwrite, so the queue skipped
+    /// the transfer, printed the old bytes and recorded the new digest in history - every time, until
+    /// somebody deleted the copy at the printer.
+    /// </remarks>
+    [Fact]
+    public async Task AnOverwrittenFileIsSentAgainRatherThanPrintedFromTheOlderCopy()
+    {
+        // Arrange - the copy arrived, and then the file was overwritten with other bytes
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await OverwriteSeededFileAsync(context);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.Finished));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        object[] sent = CommandsSent(actor);
+
+        sent.OfType<Homespool.Host.Printing.StartPrint>().Should().BeEmpty("the copy on the drive is the older version");
+        sent.OfType<DeleteFile>().Select(command => command.Path).Should().Equal(["/usb/queued.bgcode"]);
+        Array.FindIndex(sent, command => command is DeleteFile).Should()
+             .BeLessThan(Array.FindIndex(sent, command => command is StartConnectDownload or StartEncryptedDownload),
+                         "the printer refuses a transfer onto a name it already holds");
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"], "the newer version goes where the older one was");
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.Digest.Should().Be(OverwrittenDigest, "the printer took the newer bytes");
+        row.ArrivedAt.Should().BeNull("and they have not arrived yet");
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "nothing printed, so history claims nothing");
+    }
+
+    /// <summary>
+    /// A file overwritten while its older version is still arriving is neither printed from the partial
+    /// nor offered again until that transfer ends - and is then replaced.
+    /// </summary>
+    /// <remarks>
+    /// The offer opened the file before the overwrite, so the older bytes are what arrives. Printing on
+    /// the printer's first report, which the queue otherwise does, would print them.
+    /// </remarks>
+    [Fact]
+    public async Task AFileOverwrittenWhileItsTransferRunsIsReplacedOnceThatTransferEnds()
+    {
+        // Arrange - the older version arriving and named by the printer; then the overwrite
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+            PrinterPath = "/usb/QUEUED~1.BGC",
+            DriveName = file.Name,
+            Digest = SeededDigest,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await OverwriteSeededFileAsync(context);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.Finished));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - a pass while it runs
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        CommandsSent(actor).Should().BeEmpty("the partial is the older version, and the one transfer slot is taken");
+
+        // Act - the older version finishes arriving, and the next pass
+        await AddTransferEndAsync(PrinterEventType.TransferFinished, "/usb/queued.bgcode");
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        object[] sent = CommandsSent(actor);
+
+        sent.OfType<Homespool.Host.Printing.StartPrint>().Should().BeEmpty("what arrived is the older version");
+        sent.OfType<DeleteFile>().Should().ContainSingle();
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
+    }
+
+    /// <summary>
+    /// An older copy the printer is using is asked about again on the next pass, and never counts
+    /// against the file or holds the queue.
+    /// </summary>
+    /// <remarks>
+    /// Both end by themselves - a print of the copy finishes, a transfer of it completes - as a busy
+    /// transfer slot frees up, and the queue waits on them the same way.
+    /// </remarks>
+    [Theory]
+    [InlineData("File is busy")]
+    [InlineData("File is being transferred")]
+    [InlineData("This file is currently printed")]
+    public async Task AnOlderCopyInUseIsWaitedForWithoutCountingAgainstTheFile(string reason)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await OverwriteSeededFileAsync(context);
+        IPrinterConnectionActor actor = ConnectAnswering(command => command is DeleteFile ?
+                                                             Answered(PrinterEventType.Rejected, reason) :
+                                                             Answered(PrinterEventType.Finished));
+        using QueueAdvancer advancer = NewAdvancer();
+        int passes = TransferRetryRules.HoldAfter * 2;
+
+        // Act
+        for (int pass = 0; pass < passes; pass++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(QueueAdvancer.PollInterval);
+        }
+
+        // Assert
+        CommandsSent(actor).OfType<DeleteFile>().Should().HaveCount(passes, "asked again every pass, as a busy slot is");
+        OfferedPaths(actor).Should().BeEmpty("the name is still taken");
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.TransferRefusalCount.Should().BeNull("a copy in use says nothing about this file");
+        row.HoldReason.Should().BeNull();
+        row.Digest.Should().Be(SeededDigest, "the older copy is still there, and still recorded as older");
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// An older copy the printer will not delete for any other reason is counted like a refused
+    /// transfer - the file cannot be sent while it is there - and the next attempt waits.
+    /// </summary>
+    [Fact]
+    public async Task AnOlderCopyThePrinterWillNotDeleteIsCountedLikeARefusedTransfer()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await OverwriteSeededFileAsync(context);
+        IPrinterConnectionActor actor = ConnectAnswering(command => command is DeleteFile ?
+                                                             Answered(PrinterEventType.Rejected, "Error deleting file") :
+                                                             Answered(PrinterEventType.Finished));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - refused, then a pass before the wait has run out
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        CommandsSent(actor).OfType<DeleteFile>().Should().ContainSingle("the second pass waits, as after any refusal");
+        OfferedPaths(actor).Should().BeEmpty();
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.TransferRefusalCount.Should().Be(1);
+        row.TransferRefusalReason.Should().Be("Error deleting file", "the printer's words are the useful part");
+    }
+
+    /// <summary>An older copy already gone from the drive is no obstacle: the newer one is sent at once.</summary>
+    [Fact]
+    public async Task AnOlderCopyAlreadyGoneFromTheDriveIsNotWaitedFor()
+    {
+        // Arrange - deleted at the panel since it arrived
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await OverwriteSeededFileAsync(context);
+        IPrinterConnectionActor actor = ConnectAnswering(command => command is DeleteFile ?
+                                                             Answered(PrinterEventType.Rejected, "File not found") :
+                                                             Answered(PrinterEventType.Finished));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
+
+        context.ChangeTracker.Clear();
+        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+            .TransferRefusalCount.Should().BeNull("gone is what the delete was for");
+    }
+
+    /// <summary>
+    /// A file whose digest the reconciler has not filled yet is read for one before it is sent, and
+    /// the transfer records it.
+    /// </summary>
+    [Fact]
+    public async Task AFileWithNoDigestYetIsReadForOneBeforeItIsSent()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        file.Digest = null;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = ConnectAccepting();
+        string expected = await PrintFileDigest.ComputeAsync(new MemoryStream("G28 ; home\n"u8.ToArray()), copyTo: null,
+                                                              TestContext.Current.CancellationToken);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
+
+        context.ChangeTracker.Clear();
+        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+            .Digest.Should().Be(expected, "no file is sent without one");
+    }
+
+    /// <summary>
+    /// Our own copy found at another size is not adopted, and the digest recorded for its name does not
+    /// follow the file to the next one - where it would vouch for whatever turned up.
+    /// </summary>
+    [Fact]
+    public async Task OurOwnCopyAtAnotherSizeIsSentUnderTheNextNameWithoutItsDigest()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await AddTakenCopyAsync(context);
+        ConnectRefusingTransferAsExisting(existingSize: OnDiskLength + 4096);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.DriveName.Should().Be(OwnersName);
+        row.Digest.Should().BeNull("it described the bytes under the old name");
+        row.ArrivedAt.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A transfer that ends without finishing leaves nothing under the name, so the digest it recorded
+    /// goes with the path.
+    /// </summary>
+    [Fact]
+    public async Task AnAbortedTransferForgetsTheDigestItRecorded()
+    {
+        // Arrange - a transfer the printer took and named, then abandoned
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+            PrinterPath = "/usb/QUEUED~1.BGC",
+            DriveName = file.Name,
+            Digest = SeededDigest,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await AddTransferEndAsync(PrinterEventType.TransferAborted, "/usb/queued.bgcode");
+        ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.PrinterPath.Should().BeNull("firmware removes the partial");
+        row.Digest.Should().BeNull("and with it the bytes the digest described");
+    }
+
+    /// <summary>A refused transfer put nothing on the drive, so it records no digest.</summary>
+    [Fact]
+    public async Task ARefusedTransferRecordsNoDigest()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectRefusingTransfer(_ => ("STORAGE_FAILURE", "Failed to create directory"));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+            .Digest.Should().BeNull("a digest here would vouch for whatever is under the name");
+    }
+
+    /// <summary>
+    /// A print started at the panel from an older copy is not taken for the queued entry, which wants
+    /// the file as it is now.
+    /// </summary>
+    [Fact]
+    public async Task APanelPrintOfAnOlderCopyIsNotAdoptedAsTheEntry()
+    {
+        // Arrange - staged, overwritten since, and the printer printing the staged path
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Idle);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await OverwriteSeededFileAsync(context);
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 741);
+        ConnectAnsweringJobInfo("/usb/QUEUED~1.BGC");
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "adopting it would record the newer file as printed");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "the entry still wants the newer version");
     }
 
     /// <summary>A file sent under its owner's name is reported under that name, and is matched by it.</summary>
@@ -2669,6 +3064,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrintFileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             PrinterPath = "/usb/QUEUED~1.BGC",
+            Digest = SeededDigest,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -3506,6 +3902,45 @@ public sealed class QueueAdvancerTests : IDisposable
         await telemetry.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
+    /// <summary>The seeded file overwritten with other bytes, as an upload's index leaves its row.</summary>
+    private async Task OverwriteSeededFileAsync(HomespoolDbContext context)
+    {
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        file.Digest = OverwrittenDigest;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Every command and intent the printer was sent, in order.</summary>
+    private static object[] CommandsSent(IPrinterConnectionActor actor)
+    {
+        return [.. actor.ReceivedCalls()
+                        .Select(call => call.GetArguments().FirstOrDefault())
+                        .Where(argument => argument is ISendableCommand or IPrinterIntent)
+                        .OfType<object>()];
+    }
+
+    /// <summary>
+    /// The seeded file's row as a direct send leaves it: sent under its own name, the printer took
+    /// these bytes, and nothing has said they arrived.
+    /// </summary>
+    private async Task<PrintFileOnPrinter> AddTakenCopyAsync(HomespoolDbContext context)
+    {
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        PrintFileOnPrinter row = new()
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            DriveName = file.Name,
+            Digest = file.Digest,
+        };
+
+        context.PrintFilesOnPrinters.Add(row);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return row;
+    }
+
     /// <summary>
     /// The seeded file's row as a transfer in flight that the printer has named - the state its end
     /// event finds it in.
@@ -3560,6 +3995,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             PrintFileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
+            Digest = SeededDigest,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -3714,6 +4150,7 @@ public sealed class QueueAdvancerTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
+        await AddTakenCopyAsync(context);
         ConnectRefusingTransferAsExisting(existingSize: OnDiskLength, existingPath: DirtyPathJson);
         FakeLogger<QueueAdvancer> logger = new();
 
@@ -3818,6 +4255,7 @@ public sealed class QueueAdvancerTests : IDisposable
         services.AddSingleton(Options.Create(new PrusaConnectOptions()));
         services.AddScoped<PrintFileSender>();
         services.AddScoped<PrinterDriveNames>();
+        services.AddScoped<PrinterDriveCopies>();
         services.AddLogging();
 
         return new QueueAdvancer(
@@ -3894,6 +4332,7 @@ public sealed class QueueAdvancerTests : IDisposable
             UserId = 1,
             Name = "queued.bgcode",
             Size = 1024,
+            Digest = SeededDigest,
             UploadedAt = _clock.GetUtcNow(),
         };
 
@@ -3919,6 +4358,8 @@ public sealed class QueueAdvancerTests : IDisposable
                 PrintFileId = file.Id,
                 ArrivedAt = _clock.GetUtcNow(),
                 PrinterPath = "/usb/QUEUED~1.BGC",
+                DriveName = file.Name,
+                Digest = SeededDigest,
             });
         }
 

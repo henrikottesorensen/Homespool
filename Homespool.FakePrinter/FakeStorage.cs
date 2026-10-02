@@ -57,6 +57,12 @@ public sealed class FakeStorage
         _entries[path] = new FakeStorageEntry(path, Size: 0, Modified: 0, IsFolder: true);
     }
 
+    /// <summary>Takes the file at <paramref name="path"/> off the drive; false when there was none.</summary>
+    public bool Remove(string path)
+    {
+        return _entries.TryGetValue(path, out FakeStorageEntry? entry) && !entry.IsFolder && _entries.Remove(path);
+    }
+
     /// <summary>The entry at <paramref name="path"/>, or null when nothing is there.</summary>
     /// <remarks>
     /// <see cref="Root"/> itself is always present without being added: a printer with an empty stick

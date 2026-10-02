@@ -217,6 +217,91 @@ public sealed class PrintFileCatalogTests : IDisposable
     }
 
     /// <summary>
+    /// A file with no digest yet is read for one before it is sent, and the row keeps it, so the next
+    /// send does not read it again.
+    /// </summary>
+    [Fact]
+    public async Task SendingAFileWithNoDigestReadsOneAndKeepsIt()
+    {
+        // Arrange - indexed on the way to a print, so the row has no digest
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        UserFileStore store = NewStore();
+        PrintFileCatalog catalog = NewCatalog(context, store);
+        byte[] content = [1, 2, 3];
+
+        await store.SaveAsync(Alice, "orphan.gcode", new MemoryStream(content), overwrite: false,
+                              TestContext.Current.CancellationToken);
+        PrintFile row = (await catalog.ResolveAsync(Alice, "orphan.gcode", TestContext.Current.CancellationToken))!;
+
+        // Act
+        string digest = await catalog.DigestForSendingAsync(row, store.Find(Alice, "orphan.gcode")!,
+                                                            TestContext.Current.CancellationToken);
+
+        // Assert
+        digest.Should().Be(Base64Url.EncodeToString(SHA384.HashData(content)), "the same digest an upload records");
+
+        context.ChangeTracker.Clear();
+        (await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken)).Digest.Should().Be(digest);
+    }
+
+    /// <summary>
+    /// A row that no longer describes the bytes that were read - replaced meanwhile - is not given
+    /// their digest, though the send still is.
+    /// </summary>
+    [Fact]
+    public async Task SendingDoesNotWriteADigestOverARowThatMovedOn()
+    {
+        // Arrange - the row says another size than the bytes on disk
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        UserFileStore store = NewStore();
+        PrintFileCatalog catalog = NewCatalog(context, store);
+
+        await store.SaveAsync(Alice, "orphan.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+                              TestContext.Current.CancellationToken);
+        PrintFile row = (await catalog.ResolveAsync(Alice, "orphan.gcode", TestContext.Current.CancellationToken))!;
+
+        await context.PrintFiles.ExecuteUpdateAsync(set => set.SetProperty(candidate => candidate.Size, 4096),
+                                                    TestContext.Current.CancellationToken);
+
+        // Act
+        string digest = await catalog.DigestForSendingAsync(row, store.Find(Alice, "orphan.gcode")!,
+                                                            TestContext.Current.CancellationToken);
+
+        // Assert
+        digest.Should().NotBeNullOrEmpty("the bytes about to be sent are what it describes");
+
+        context.ChangeTracker.Clear();
+        (await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken)).Digest
+            .Should().BeNull("the row describes other bytes now");
+    }
+
+    /// <summary>A digest the row already has is the answer, and the file is not read for it.</summary>
+    [Fact]
+    public async Task SendingAFileWithADigestDoesNotReadIt()
+    {
+        // Arrange - a row with a digest, and the file gone, so a read would throw
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        UserFileStore store = NewStore();
+        PrintFileCatalog catalog = NewCatalog(context, store);
+
+        await store.SaveAsync(Alice, "kept.gcode", new MemoryStream([1, 2, 3]), overwrite: false,
+                              TestContext.Current.CancellationToken);
+        StoredFile file = store.Find(Alice, "kept.gcode")!;
+        File.Delete(file.Path);
+
+        PrintFile row = new() { UserId = Alice, Name = "kept.gcode", Digest = "known" };
+
+        // Act
+        string digest = await catalog.DigestForSendingAsync(row, file, TestContext.Current.CancellationToken);
+
+        // Assert
+        digest.Should().Be("known");
+    }
+
+    /// <summary>
     /// An overwrite spelled with a different case of a non-ASCII letter replaces the one file, so it
     /// must keep the one row. SQLite's <c>NOCASE</c> folds ASCII only, so a row lookup it answered
     /// missed <c>ærø</c> for <c>Ærø</c> and inserted a second row beside the first.

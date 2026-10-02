@@ -1728,6 +1728,9 @@
   <data name="Files_Refused" xml:space="preserve">
     <value>{0} afviste den: {1}</value>
   </data>
+  <data name="Files_OlderCopyKept" xml:space="preserve">
+    <value>En ældre version af {0} ligger på {1} og kunne ikke erstattes: {2}</value>
+  </data>
   <data name="Files_Sending" xml:space="preserve">
     <value>{0} sendes til {1}. Det går i printerens tempo.</value>
   </data>

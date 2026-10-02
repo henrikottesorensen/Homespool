@@ -727,6 +727,38 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A token scoped to <c>Print</c> cannot stop a teammate's print, and the refusal names
+    /// <c>ControlPrinter</c> - the owner's team grants it, so a replacement token is the fix, and the
+    /// team's refusal would send them to ask for access they already have.
+    /// </summary>
+    [Fact]
+    public async Task ATokenWithoutControlPrinterCannotStopATeammatesPrintAndTheRefusalNamesIt()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync(
+            configure: f => f.Device.StartPrint(jobId: 7));
+        (HSUser teammate, HttpClient teammateCookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "controller-stop-teammate@example.com");
+        teammateCookieClient.Dispose();
+
+        await JoinAsync(teammate.Id, await TeamOfAsync(uuid), CapabilityPresets.Operator);
+        await OpenPrintAsync(uuid, queuedBy: teammate.Id);
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+
+        using HttpResponseMessage response = await client.PutAsync($"/api/v1/printers/{uuid}/command/stop",
+                                                                   null, TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await DetailOfAsync(response)).Should().Contain("ControlPrinter",
+                                                         "the team grants it and the key does not, so the fix is a new token");
+
+        fake.Device.State.Should().Be(DeviceState.Printing);
+        fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the command, not after it");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// Nothing over the API readies a printer - the route is absent, not refusing - and a finished
     /// printer that would accept the command stays finished having heard nothing.
     /// </summary>
@@ -964,6 +996,31 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
             await client.PutAsync($"/api/v1/files/{name}", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the upload is setup for this test, not what it verifies");
+    }
+
+    /// <summary>An open print on the printer, queued by <paramref name="queuedBy"/>, as the queue's loop writes one.</summary>
+    private async Task OpenPrintAsync(Guid uuid, long queuedBy)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        int printerId = await context.Printers
+                                     .Where(printer => printer.Uuid == uuid)
+                                     .Select(printer => printer.Id)
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            PrintUuid = Guid.NewGuid(),
+            FileName = "theirs.gcode",
+            QueuedByUserId = queuedBy,
+            State = PrintState.Printing,
+            StartedAt = DateTimeOffset.UtcNow,
+            CommandedAt = DateTimeOffset.UtcNow,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task<int> TeamOfAsync(Guid uuid)

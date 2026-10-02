@@ -135,22 +135,40 @@ public class PrinterAccessService
                                                    long queuedByUserId,
                                                    CancellationToken cancellationToken)
     {
-        return await WithdrawingCapabilityAsync(printerId, caller, queuedByUserId, cancellationToken) is not null;
+        ArgumentNullException.ThrowIfNull(caller);
+
+        Capability[] candidates = WithdrawingCandidates(caller, queuedByUserId);
+        CapabilitySet? membership = await MembershipOfAsync(printerId, caller.UserId, cancellationToken);
+
+        return Allowing(candidates, caller, membership) is not null;
     }
 
     /// <summary>
     /// <see cref="AllowsWithdrawingAsync"/>, throwing the refusal the services here already speak.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>It answers which capability allowed it</b>, so that a command sent next can be checked
     /// against the same one. A token scoped to <see cref="Capability.ControlPrinter"/> alone is
     /// allowed here, and a send that then asked for <see cref="Capability.Print"/> would refuse it.
+    /// </para>
+    /// <para>
+    /// <b>A refusal says which half refused</b>, as <see cref="RequireAsync"/> does - and with two
+    /// capabilities in play that takes asking the credential and the team separately. A key holding
+    /// <see cref="Capability.Print"/> whose owner's team grants <see cref="Capability.ControlPrinter"/>
+    /// is refused somebody else's work by the key, not the team, and a replacement token is the fix.
+    /// Where both refuse, the credential is reported first, as <see cref="RequireAsync"/> reports it.
+    /// </para>
     /// </remarks>
     /// <returns>
     /// <see cref="Capability.ControlPrinter"/> when the caller holds it, whoever's work it is;
     /// otherwise <see cref="Capability.Print"/>, for the caller's own.
     /// </returns>
-    /// <exception cref="TeamAccessDeniedException">The caller may not withdraw this work.</exception>
+    /// <exception cref="CredentialScopeDeniedException">
+    /// The team would allow it and the credential does not, or neither does; names the capability a
+    /// replacement credential needs.
+    /// </exception>
+    /// <exception cref="TeamAccessDeniedException">The credential would allow it and the team does not.</exception>
     public async Task<Capability> RequireWithdrawingAsync(int printerId,
                                                           Caller caller,
                                                           long queuedByUserId,
@@ -158,35 +176,66 @@ public class PrinterAccessService
     {
         ArgumentNullException.ThrowIfNull(caller);
 
-        // Withdrawing needs one of two capabilities, so the credential only refuses when it names
-        // neither - and the one worth reporting is Print, since it is what withdrawing your own work
-        // needs and therefore what a narrowed token is missing.
-        if (!caller.Allows(Capability.ControlPrinter) && !caller.Allows(Capability.Print))
+        Capability[] candidates = WithdrawingCandidates(caller, queuedByUserId);
+        CapabilitySet? membership = await MembershipOfAsync(printerId, caller.UserId, cancellationToken);
+
+        if (Allowing(candidates, caller, membership) is { } allowedBy)
         {
-            throw CredentialScopeDeniedException.For(Capability.Print);
+            return allowedBy;
         }
 
-        return await WithdrawingCapabilityAsync(printerId, caller, queuedByUserId, cancellationToken) ??
-               throw new TeamAccessDeniedException();
+        // The team grants one the key does not lend: a replacement token fixes it. Named narrowest
+        // first, because that is the least a person has to tick.
+        foreach (Capability candidate in candidates.Reverse())
+        {
+            if (membership?.Allows(candidate) == true)
+            {
+                throw CredentialScopeDeniedException.For(candidate);
+            }
+        }
+
+        // The key lends one the team does not grant: no token helps, only the team can.
+        if (candidates.Any(caller.Allows))
+        {
+            throw new TeamAccessDeniedException();
+        }
+
+        // Neither: the credential first, naming what this act itself needs - Print for your own work,
+        // ControlPrinter for anybody else's.
+        throw CredentialScopeDeniedException.For(candidates[^1]);
     }
 
-    private async Task<Capability?> WithdrawingCapabilityAsync(int printerId,
-                                                               Caller caller,
-                                                               long queuedByUserId,
-                                                               CancellationToken cancellationToken)
+    /// <summary>
+    /// What would let this caller withdraw this work, preferred first: <see cref="Capability.ControlPrinter"/>
+    /// for anyone's, and <see cref="Capability.Print"/> as well when it is the caller's own.
+    /// </summary>
+    private static Capability[] WithdrawingCandidates(Caller caller, long queuedByUserId)
     {
-        if (await AllowsAsync(printerId, caller, Capability.ControlPrinter, cancellationToken))
-        {
-            return Capability.ControlPrinter;
-        }
+        return queuedByUserId == caller.UserId ?
+            [Capability.ControlPrinter, Capability.Print] :
+            [Capability.ControlPrinter];
+    }
 
-        if (queuedByUserId == caller.UserId &&
-            await AllowsAsync(printerId, caller, Capability.Print, cancellationToken))
+    /// <summary>The first candidate both the credential and the team allow, or <c>null</c>.</summary>
+    private static Capability? Allowing(Capability[] candidates, Caller caller, CapabilitySet? membership)
+    {
+        foreach (Capability candidate in candidates)
         {
-            return Capability.Print;
+            if (caller.Allows(candidate) && membership?.Allows(candidate) == true)
+            {
+                return candidate;
+            }
         }
 
         return null;
+    }
+
+    /// <summary>The caller's capabilities on this printer's team: <c>null</c> for no such printer, or no membership.</summary>
+    private async Task<CapabilitySet?> MembershipOfAsync(int printerId, long userId, CancellationToken cancellationToken)
+    {
+        Printer? printer = await PrinterAsync(printerId, cancellationToken);
+
+        return printer is null ? null : await MembershipAsync(printerId, printer.TeamId, userId, cancellationToken);
     }
 
     /// <summary>

@@ -268,16 +268,28 @@ public sealed class QueueAdvancer : BackgroundService
     /// start one, and a slow pass outlives its own tick. That is what <see cref="_perPrinter"/> is
     /// for, and assuming otherwise was a real defect.
     /// </para>
+    /// <para>
+    /// <b>Throws only on cancellation.</b> Anything else escaping here ends <see cref="ExecuteAsync"/>,
+    /// and a faulted background service stops the host - so a busy database would restart the whole
+    /// app, and every printer would reconnect, where it should only have cost one tick.
+    /// </para>
     /// </remarks>
     public async Task AdvanceAllAsync(CancellationToken cancellationToken)
     {
         List<int> printerIds;
 
-        await using (AsyncServiceScope scope = _scopeFactory.CreateAsyncScope())
+        try
         {
+            await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
             HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
             printerIds = await PrintersNeedingAPassAsync(dbContext, cancellationToken);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            _logger.LogError(e, "Finding the printers that need a queue pass failed.");
+
+            return;
         }
 
         foreach (int printerId in printerIds)

@@ -133,7 +133,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         await AddPrinterAsync(context, membership.TeamId);
 
         // The membership sees everything; the credential named only the queue.
-        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewQueue])));
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewQueue);
 
         // Act
         IReadOnlyList<Printer> printers =

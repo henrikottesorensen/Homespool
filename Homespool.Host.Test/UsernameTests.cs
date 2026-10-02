@@ -239,9 +239,9 @@ public sealed class UsernameTests : IDisposable
     {
         HSUser user = new() { UserName = "henrik", Email = "rig@example.com" };
 
-        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Scoped(Capability.ViewPrinter))
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, TestCallers.Scoped(1, Capability.ViewPrinter))
                    .Email.Should().BeNull();
-        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Scoped(Capability.ViewAccountDetails))
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, TestCallers.Scoped(1, Capability.ViewAccountDetails))
                    .Email.Should().Be("rig@example.com");
     }
 
@@ -253,13 +253,8 @@ public sealed class UsernameTests : IDisposable
     {
         HSUser user = new() { Email = "rig@example.com" };
 
-        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, Scoped(Capability.ViewPrinter))
+        UserReadDTO.FromEntity(user, [], defaultPrinterUuid: null, TestCallers.Scoped(1, Capability.ViewPrinter))
                    .Name.Should().BeEmpty();
-    }
-
-    private static Caller Scoped(params Capability[] scope)
-    {
-        return Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format(scope)));
     }
 
     private static UserManager<HSUser> Users(HomespoolDbContext context)

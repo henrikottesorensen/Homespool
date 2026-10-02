@@ -467,7 +467,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewPrinter);
 
         // Act
         Func<Task> removing = () => NewService(context).RemovePrinterAsync(printer.Uuid, scoped, CancellationToken.None);

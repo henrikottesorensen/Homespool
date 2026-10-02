@@ -418,7 +418,7 @@ public sealed class PrintFileSenderTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         StoredFile file = WriteFile("model.gcode", 4096);
         IPrinterConnectionActor actor = Connect(canStreamChunks, PrinterEventType.Finished);
-        Caller slicer = Caller.Scoped(Owner, CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+        Caller slicer = TestCallers.Scoped(Owner, Capability.UploadOwnFiles, Capability.Print);
 
         // Act
         FileSendResult result = await NewSender(context).SendAsync(

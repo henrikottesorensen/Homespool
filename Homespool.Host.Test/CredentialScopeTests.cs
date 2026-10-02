@@ -27,7 +27,7 @@ public sealed class CredentialScopeTests
     public void TheRefusalNamesTheCapabilityTheCredentialLeftOut()
     {
         // Arrange
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         FluentActions.Invoking(() => CredentialScope.Require(printing, Capability.ManageCamera))
@@ -44,7 +44,7 @@ public sealed class CredentialScopeTests
     public void ACredentialThatNamesItIsNotRefused()
     {
         // Arrange
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         FluentActions.Invoking(() => CredentialScope.Require(printing, Capability.Print))
@@ -65,7 +65,7 @@ public sealed class CredentialScopeTests
     public void AnImpliedCapabilityPassesToo()
     {
         // Arrange
-        Caller managing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.ManageCamera])));
+        Caller managing = TestCallers.Scoped(Alice, Capability.ManageCamera);
 
         // Act & Assert
         FluentActions.Invoking(() => CredentialScope.Require(managing, Capability.ViewCamera))

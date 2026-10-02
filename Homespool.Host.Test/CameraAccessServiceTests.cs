@@ -47,7 +47,7 @@ public sealed class CameraAccessServiceTests : IDisposable
         Camera camera = await AddTeamWithCameraAsync(context, Alice, CapabilityPresets.Manager);
 
         CameraAccessService access = NewService(context);
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         await FluentActions

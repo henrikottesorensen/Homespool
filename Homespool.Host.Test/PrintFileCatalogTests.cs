@@ -493,7 +493,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", Content(), overwrite: false,
                                 TestContext.Current.CancellationToken);
 
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         FluentActions.Invoking(() => catalog.List(printing))
@@ -552,7 +552,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
-        Caller uploader = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles])));
+        Caller uploader = TestCallers.Scoped(Alice, Capability.UploadOwnFiles);
 
         // Act
         await catalog.SaveAsync(uploader, "benchy.gcode", Content(), overwrite: false,
@@ -606,7 +606,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         await FluentActions.Awaiting(() => catalog.StageAsync(printing, "benchy.gcode", Content(),
@@ -627,7 +627,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         await AddUserAsync(context);
         PrintFileCatalog catalog = NewCatalog(context);
 
-        Caller uploader = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles])));
+        Caller uploader = TestCallers.Scoped(Alice, Capability.UploadOwnFiles);
 
         PendingUpload staged = await catalog.StageAsync(uploader, "benchy.gcode", Content(),
                                                         TestContext.Current.CancellationToken);

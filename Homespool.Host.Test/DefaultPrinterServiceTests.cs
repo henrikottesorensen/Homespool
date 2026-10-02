@@ -154,9 +154,7 @@ public sealed class DefaultPrinterServiceTests : IDisposable
 
         await defaults.SetAsync(user, Caller.Unscoped(user.Id), 1, TestContext.Current.CancellationToken);
 
-        Caller narrowed = Caller.Scoped(
-            user.Id,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewOwnFiles])));
+        Caller narrowed = TestCallers.Scoped(user.Id, Capability.ViewOwnFiles);
 
         (await defaults.ResolveAsync(user, narrowed, TestContext.Current.CancellationToken))
             .Should().BeNull();

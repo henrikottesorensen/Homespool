@@ -52,7 +52,7 @@ public sealed class CameraServiceTests : IDisposable
         Team team = await AddTeamAsync(context);
 
         CameraService cameras = NewService(context);
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         await FluentActions
@@ -84,7 +84,7 @@ public sealed class CameraServiceTests : IDisposable
         Team team = await AddTeamAsync(context);
 
         CameraService cameras = NewService(context);
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         await FluentActions

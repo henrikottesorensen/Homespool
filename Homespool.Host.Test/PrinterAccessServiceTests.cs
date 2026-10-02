@@ -227,9 +227,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        Caller scoped = Caller.Scoped(
-            Manager,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+        Caller scoped = TestCallers.Scoped(Manager, Capability.ViewPrinter);
 
         // Act & Assert
         (await access.AllowsAsync(1, scoped, Capability.ViewPrinter, TestContext.Current.CancellationToken))
@@ -253,9 +251,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Reader holds the viewer preset; the credential asks for far more.
-        Caller overreaching = Caller.Scoped(
-            Reader,
-            CapabilitySet.Parse(CapabilitySet.Format(CapabilityPresets.Manager)));
+        Caller overreaching = TestCallers.Scoped(Reader, CapabilityPresets.Manager);
 
         // Act & Assert
         (await access.AllowsAsync(1, overreaching, Capability.ViewPrinter, TestContext.Current.CancellationToken))
@@ -276,9 +272,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        Caller viewerScope = Caller.Scoped(
-            User,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+        Caller viewerScope = TestCallers.Scoped(User, Capability.ViewPrinter);
 
         // Act - their own work, and their membership would allow it
         bool allowed = await access.AllowsWithdrawingAsync(1, viewerScope, User, TestContext.Current.CancellationToken);

@@ -267,8 +267,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle);
-        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format(
-                                             [Capability.ViewQueue, Capability.Print, Capability.UploadOwnFiles])));
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewQueue, Capability.Print, Capability.UploadOwnFiles);
         PrinterQueryService service = new(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System);
 
         // Act
@@ -294,7 +293,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await AddPrinterAsync(context, userId: 1, liveStatus: PrinterStatus.Idle);
-        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ManagePrinter])));
+        Caller scoped = TestCallers.Scoped(1, Capability.ManagePrinter);
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)

@@ -913,6 +913,35 @@ public sealed class QueueAdvancer : BackgroundService
             // identified it is the telemetry that says the printer is printing.
         }
 
+        // A different job id is a different print, whatever the status says. Firmware assigns one
+        // per print, before the preview's questions, and keeps it through pauses, attention and a
+        // power-panic resume - so the row's print ended in a gap (a restart, a dropped connection,
+        // a start backed out of at the preview) and the printer has since started another. Left
+        // open, the row would hand that print to its owner, to stop and to cancel objects in, and
+        // close on its outcome; a Starting row would be promoted onto it. Asked before anything
+        // else reads the live state, so neither the odometer nor the status below is credited to
+        // this row.
+        if (active.State is PrintState.Starting or PrintState.Printing &&
+            active.FirmwareJobId is { } recorded &&
+            live is not null &&
+            live.LastSeenAt >= _startedAt &&
+            live.JobId is { } running &&
+            running != recorded)
+        {
+            // Not the filament reading, which belongs to the print now running.
+            PrintState settled = await AskPriorOutcomeAsync(scope, printerId, active, cancellationToken) ??
+                                 PrintState.Unknown;
+
+            _logger.LogInformation("[{PrinterId}] {FileName} was firmware job {JobId} and the printer is running job {RunningJobId}; " +
+                                   "it ended while nobody here was listening: {Outcome}",
+                                   printerId, active.FileName, recorded, running, settled);
+
+            Close(active, settled, now);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return await TryAdoptPanelPrintAsync(scope, dbContext, printerId, live, cancellationToken);
+        }
+
         if (ObserveFilament(printerId, active, live, now))
         {
             await dbContext.SaveChangesAsync(cancellationToken);

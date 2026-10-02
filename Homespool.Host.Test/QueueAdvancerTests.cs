@@ -2017,6 +2017,165 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A printer running a different job than the open row's has ended the row's print, and the
+    /// printer is asked how - about the row's job, not the one running now.
+    /// </summary>
+    /// <remarks>
+    /// The gap: the print finished while the printer was out of reach, and somebody started another
+    /// at the panel before it came back. Left open, the row hands the new print to its owner - and a
+    /// <see cref="PrintState.Starting"/> row, whose print was backed out of at the preview, would be
+    /// promoted onto it.
+    /// </remarks>
+    [Theory]
+    [InlineData(PrintState.Printing)]
+    [InlineData(PrintState.Starting)]
+    public async Task ARunningPrintWithAnotherJobIdEndsTheOpenRow(PrintState state)
+    {
+        // Arrange - the row is job 790; the printer comes back printing job 791
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing, state);
+        IPrinterConnectionActor actor = ConnectRememberingJobOutcome("FIN_OK");
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 791);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.EndedAt.Should().NotBeNull("job 791 is somebody's print, not this row's");
+        job.State.Should().Be(PrintState.Finished, "the printer remembered how job 790 ended");
+
+        await actor.Received().SendCommandAsync(Arg.Is<ISendableCommand>(command => command is SendJobInfo && ((SendJobInfo)command).JobId == 790),
+                                                Arg.Any<CancellationToken>());
+        await actor.DidNotReceive().SendCommandAsync(Arg.Is<ISendableCommand>(command => command is SendJobInfo && ((SendJobInfo)command).JobId == 791),
+                                                     Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Another job's ending is not the open row's: a different job reporting <c>Finished</c> closes
+    /// the row without that outcome.
+    /// </summary>
+    [Theory]
+    [InlineData(PrinterStatus.Finished, PrintState.Printing)]
+    [InlineData(PrinterStatus.Stopped, PrintState.Printing)]
+    [InlineData(PrinterStatus.Paused, PrintState.Printing)]
+    [InlineData(PrinterStatus.Attention, PrintState.Printing)]
+    [InlineData(PrinterStatus.Finished, PrintState.Starting)]
+    [InlineData(PrinterStatus.Stopped, PrintState.Starting)]
+    [InlineData(PrinterStatus.Paused, PrintState.Starting)]
+    [InlineData(PrinterStatus.Attention, PrintState.Starting)]
+    public async Task AnotherJobsStatusIsNotTheOpenRows(PrinterStatus status, PrintState state)
+    {
+        // Arrange - nothing connected, so the row's own outcome cannot be asked
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing, state);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, status, jobId: 791);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        job.EndedAt.Should().NotBeNull();
+        job.State.Should().Be(PrintState.Unknown, "how job 790 ended was never said, and job 791's state is not it");
+    }
+
+    /// <summary>
+    /// The same job id through a stall is the same print, and an absent one is not another.
+    /// </summary>
+    [Theory]
+    [InlineData(PrinterStatus.Paused, 790)]
+    [InlineData(PrinterStatus.Attention, 790)]
+    [InlineData(PrinterStatus.Printing, 790)]
+    [InlineData(PrinterStatus.Busy, null)]
+    public async Task TheOpenRowsOwnJobIdKeepsItOpen(PrinterStatus status, int? jobId)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, status, jobId);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await ShouldStillBePrintingAsync(context, "nothing says this is another print");
+    }
+
+    /// <summary>
+    /// A job id left over from before this process started does not end a print.
+    /// </summary>
+    [Fact]
+    public async Task AJobIdLeftOverFromBeforeStartupDoesNotEndAPrint()
+    {
+        // Arrange - the printer last said job 791, and then the process restarted
+        await using HomespoolDbContext context = await OpenPrintAsync(PrinterStatus.Printing);
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 791);
+        _clock.Advance(TimeSpan.FromMinutes(5));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await ShouldStillBePrintingAsync(context, "an old report is not the printer speaking about now");
+    }
+
+    /// <summary>
+    /// The print that replaced the open row's is adopted in the same pass when it is a file we
+    /// staged, so it is attributed to its own entry rather than to nobody until the next pass.
+    /// </summary>
+    [Fact]
+    public async Task ThePrintThatReplacedTheOpenRowsIsAdoptedWhenItIsOurs()
+    {
+        // Arrange - job 790 open for another file; queued.bgcode is staged and the panel starts it
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Printing);
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "frame.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            StartedAt = _clock.GetUtcNow(),
+            CommandedAt = _clock.GetUtcNow(),
+            FirmwareJobId = 790,
+            State = PrintState.Printing,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectAnsweringJobInfo("/usb/QUEUED~1.BGC");
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 791);
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob[] rows = await context.PrintJobs.OrderBy(job => job.Id).ToArrayAsync(TestContext.Current.CancellationToken);
+
+        rows.Should().HaveCount(2);
+        rows[0].FileName.Should().Be("frame.bgcode");
+        rows[0].EndedAt.Should().NotBeNull();
+        rows[1].FileName.Should().Be("queued.bgcode");
+        rows[1].FirmwareJobId.Should().Be(791);
+        rows[1].EndedAt.Should().BeNull();
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
     /// A print begins when the filament odometer first rises past the reading it opened with, not when
     /// the printer says <c>PRINTING</c> - and what it extruded is the reading at the end less that one.
     /// </summary>
@@ -2271,7 +2430,9 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>One open print on the test printer, with the firmware job id and authority a promoted row carries.</summary>
-    private async Task<HomespoolDbContext> OpenPrintAsync(PrinterStatus status)
+    /// <param name="status">What the printer last said.</param>
+    /// <param name="state">The row's phase - <see cref="PrintState.Starting"/> for one whose id was offered and not yet promoted.</param>
+    private async Task<HomespoolDbContext> OpenPrintAsync(PrinterStatus status, PrintState state = PrintState.Printing)
     {
         HomespoolDbContext context = await SeedAsync(arrived: true, status: status);
 
@@ -2285,7 +2446,7 @@ public sealed class QueueAdvancerTests : IDisposable
             StartedAt = _clock.GetUtcNow(),
             CommandedAt = _clock.GetUtcNow(),
             FirmwareJobId = 790,
-            State = PrintState.Printing,
+            State = state,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 

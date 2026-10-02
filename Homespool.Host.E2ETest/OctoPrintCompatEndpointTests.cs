@@ -257,15 +257,13 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A file sliced for a faster machine is refused in the slicer's own dialog, and nothing is kept.
+    /// A file sliced for a faster machine is refused in the slicer's own dialog, and the upload stays.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The upload is undone, which is the opposite of what every other refusal here does.</b>
-    /// Elsewhere a stored file plus a failed queue is a partial success worth reporting as one - the
-    /// bytes are in the caller's own tree and they may want them. Here the send named a printer that
-    /// will never print this file, so keeping it would leave a file nobody asked to store behind a
-    /// message saying the send failed.
+    /// <b>The upload is not undone.</b> The file was uploaded; only the print could not start. Undoing
+    /// it needed <c>ManipulateOwnFiles</c>, which the documented slicer token does not hold, so the
+    /// refusal arrived as a 403 and the file stayed anyway.
     /// </para>
     /// <para>
     /// <b>Answered where the person is looking.</b> PrusaSlicer renders this body verbatim in a
@@ -274,10 +272,11 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task AnUploadForTheWrongModelIsRefusedAndKeepsNothing()
+    public async Task AnUploadForTheWrongModelIsRefusedAndKeepsTheFile()
     {
         // Arrange - a printer that has reported itself as an MK3.5, as INFO spells it
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync("wrongmodel@example.com");
+        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+            "wrongmodel@example.com", CapabilitySet.Parse("UploadOwnFiles Print"));
         await ReportsModelAsync(uuid, "1.3.5");
 
         // Act
@@ -292,7 +291,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         string explanation = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         explanation.Should().Contain("MK3.5", "the machine is named, not the triple it reported");
-        explanation.Should().Contain("Nothing was uploaded");
+        explanation.Should().Contain("was uploaded, but not queued");
 
         using HttpClient native = NativeClient(token);
 
@@ -300,7 +299,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
                                                                 TestContext.Current.CancellationToken);
 
         (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
-            .Should().NotContain("corexy.gcode", "a refused send leaves no file behind");
+            .Should().Contain("corexy.gcode", "the upload is kept when only the print is refused");
 
         client.Dispose();
     }
@@ -671,7 +670,8 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     /// A user with a printer and a token, and a client that carries <b>only</b> <c>X-Api-Key</c> - no
     /// cookie, so nothing but the header can be authenticating anything below.
     /// </summary>
-    private async Task<(Guid uuid, string token, HttpClient client)> SetUpAsync(string email)
+    private async Task<(Guid uuid, string token, HttpClient client)> SetUpAsync(string email,
+                                                                                CapabilitySet? slicerScope = null)
     {
         (HSUser user, HttpClient cookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, email);
@@ -680,16 +680,22 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         Guid uuid = await AddPrinterAsync(user.Id);
 
         string plaintext;
+        string slicerKey;
 
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
             (_, plaintext) = await tokens.CreateAsync(user.Id, "slicer", CapabilitySet.Everything, CancellationToken.None);
+
+            // A narrower key for the slicer itself, with the full one kept for verifying afterwards.
+            slicerKey = slicerScope is null ?
+                plaintext :
+                (await tokens.CreateAsync(user.Id, "scoped slicer", slicerScope, CancellationToken.None)).plaintext;
         }
 
         HttpClient client = _factory.CreateClient(
             new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Add(XApiKeyAuthenticationHandler.HeaderName, plaintext);
+        client.DefaultRequestHeaders.Add(XApiKeyAuthenticationHandler.HeaderName, slicerKey);
 
         return (uuid, plaintext, client);
     }

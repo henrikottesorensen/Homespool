@@ -149,18 +149,14 @@ public class OctoPrintCompatController : ControllerBase
     /// </para>
     /// </remarks>
     [HttpPost]
-    [Route("api/files/local")]
-
-    // Was [RequestSizeLimit(long.MaxValue)], which removed Kestrel's ceiling and put nothing in its
-    // place: the file section was bounded by LengthLimitingStream and every other section was not.
-    // The configured form, so this endpoint and the Files page move together with one setting.
     [BoundedUpload]
+    [Route("api/files/local")]
 
     // Without this MVC buffers the whole body into Request.Form before this method runs, and the
     // MultipartReader below then reads an exhausted stream. See the attribute's own documentation.
     [DisableFormValueModelBinding]
-    public async Task<Results<Created, ContentHttpResult, ForbiddenProblem, NotFoundProblem>> Upload(Guid uuid,
-                                                                                                    CancellationToken cancellationToken)
+    public async Task<Results<Created, ContentHttpResult, ForbiddenProblem, NotFoundProblem>> Upload(
+        Guid uuid, CancellationToken cancellationToken)
     {
         // Before a byte of the body is read: with Expect: 100-continue - which libcurl adds to every
         // upload this size - Kestrel withholds the 100 until something reads the body, so refusing
@@ -248,16 +244,14 @@ public class OctoPrintCompatController : ControllerBase
             }
             catch (IncompatiblePrinterModelException e)
             {
-                // The one finding that is worth the slicer's own dialog rather than the printer's page,
-                // and the one where undoing the upload is right: the file was sent *to a printer*, and
-                // this printer will never print it. Keeping the bytes would leave a file nobody asked
-                // to store behind a message saying the send failed. Only ever this request's own file:
-                // a name that already existed was refused above, before a byte of it was stored.
-                await _files.DeleteAsync(CallerResolver.For(owner, User), stored.FileName, cancellationToken);
-
+                // The one finding that is worth the slicer's own dialog rather than the printer's page.
+                // The file stays: it was uploaded, and an upload is not undone because the print
+                // that came with it cannot start. Deleting it would also need ManipulateOwnFiles,
+                // which the documented slicer token deliberately lacks, and would reach only the
+                // last of several file parts. 409 because the send does conflict with the printer.
                 return Explain(StatusCodes.Status409Conflict,
-                               $"{e.Message} Nothing was uploaded - send it to the right printer, or " +
-                               "re-slice it for this one.");
+                               $"'{stored.FileName}' was uploaded, but not queued: {e.Message} Send it to the " +
+                               "right printer, or re-slice it for this one.");
             }
             catch (TeamAccessDeniedException)
             {

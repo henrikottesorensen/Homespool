@@ -463,7 +463,7 @@ namespace Homespool.Data.Migrations
                         column: x => x.PrinterId,
                         principalTable: "Printers",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.SetNull);
                     table.ForeignKey(
                         name: "FK_Cameras_Teams_TeamId",
                         column: x => x.TeamId,

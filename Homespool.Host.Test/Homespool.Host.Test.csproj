@@ -105,6 +105,13 @@
         <Content Include="metadata-mk35-binary-named-gcode.gcode">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </Content>
+        <!-- Real offers from Playwright's Chromium 153, Firefox 148 and WebKit 26.6, each made by
+             the page's own call: one video transceiver, recvonly. Kept byte for byte, CRLF included,
+             except the DTLS fingerprint, zeroed because the secret scanner reads its colon-separated
+             bytes as MAC addresses. See WebRtcOfferDirectionTests. -->
+        <Content Include="webrtc-offer-*.sdp">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </Content>
     </ItemGroup>
 
 </Project>

@@ -434,9 +434,12 @@ public class CameraController : ControllerBase
     /// unhelpfully, that the gateway is at fault.
     /// </para>
     /// <para>
-    /// <b>The offer is not read.</b> It comes from a browser and goes to the sidecar, both of which
-    /// understand it; parsing it here would only add a third opinion about a negotiation Homespool
-    /// takes no part in.
+    /// <b>The offer is read for its directions and nothing else.</b> The sidecar takes its role from
+    /// them, so an offer that sends would make a viewer a source of the camera's stream, or put a
+    /// microphone on its speaker; <see cref="WebRtcOfferDirection"/> has why. The codecs and
+    /// addresses in it are a negotiation between the browser and the sidecar, and are left to them.
+    /// The check comes last, after the camera and its transport, so a refusal for those still
+    /// answers as it would for any offer.
     /// </para>
     /// </remarks>
     [HttpPost]
@@ -475,6 +478,11 @@ public class CameraController : ControllerBase
             LiveTransport.Webrtc)
         {
             return this.ConflictProblem("This camera cannot be watched over WebRTC.");
+        }
+
+        if (!WebRtcOfferDirection.OnlyReceives(offer.Sdp))
+        {
+            return this.BadRequestProblem("An offer to watch a camera may only receive.");
         }
 
         WebRtcOffer answer = await _streamServer.OfferAsync(camera.Uuid, offer.Sdp, cancellationToken)

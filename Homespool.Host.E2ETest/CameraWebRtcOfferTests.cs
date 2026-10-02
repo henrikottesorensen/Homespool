@@ -31,7 +31,10 @@ namespace Homespool.Host.E2ETest;
 public sealed class CameraWebRtcOfferTests : IAsyncLifetime
 {
     private const string Source = "rtsp://192.0.2.1/h264";
-    private const string OfferSdp = "v=0\r\no=browser 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n";
+    private const string Session = "v=0\r\no=browser 1 1 IN IP4 0.0.0.0\r\ns=-\r\nt=0 0\r\n";
+    private const string Video = "m=video 9 UDP/TLS/RTP/SAVPF 96\r\nc=IN IP4 0.0.0.0\r\na=mid:0\r\na=rtpmap:96 H264/90000\r\n";
+    private const string Audio = "m=audio 9 UDP/TLS/RTP/SAVPF 111\r\nc=IN IP4 0.0.0.0\r\na=mid:1\r\na=rtpmap:111 opus/48000/2\r\n";
+    private const string OfferSdp = Session + Video + "a=recvonly\r\n";
 
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("camera-webrtc");
     private FakeGo2Rtc _sidecar = null!;
@@ -83,7 +86,7 @@ public sealed class CameraWebRtcOfferTests : IAsyncLifetime
                 TestContext.Current.CancellationToken);
 
             answer.Should().Be(new WebRtcDescription("answer", FakeCamera.AnswerSdp));
-            _sidecar.Offers.Should().Equal([OfferSdp], "the offer is the browser's and passes through unread");
+            _sidecar.Offers.Should().Equal([OfferSdp], "the offer is the browser's and passes through as it came");
         }
     }
 
@@ -131,11 +134,36 @@ public sealed class CameraWebRtcOfferTests : IAsyncLifetime
         }
     }
 
-    private static async Task<HttpResponseMessage> OfferAsync(HttpClient client, Camera camera)
+    /// <summary>
+    /// An offer that sends anything is refused before the sidecar sees it, which would otherwise
+    /// take the browser for a source of the camera's stream, or hand its audio to the camera.
+    /// </summary>
+    [Theory]
+    [InlineData(Session + Video + "a=sendonly\r\n")]
+    [InlineData(Session + Video + "a=recvonly\r\n" + Audio + "a=sendrecv\r\n")]
+    public async Task AnOfferThatSendsIsRefusedBeforeTheSidecar(string sdp)
+    {
+        _sidecar.AddCamera(Source, FakeCamera.H264);
+
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "webrtc-sending@example.com");
+
+        using (client)
+        {
+            Camera camera = await CameraPage.AddNetworkCameraAsync(_factory, client, user, "sending", Source);
+
+            using HttpResponseMessage response = await OfferAsync(client, camera, sdp);
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            _sidecar.Offers.Should().BeEmpty();
+        }
+    }
+
+    private static async Task<HttpResponseMessage> OfferAsync(HttpClient client, Camera camera, string sdp = OfferSdp)
     {
         return await client.PostAsJsonAsync(
             $"/api/v1/cameras/{camera.Uuid}/webrtc",
-            new WebRtcDescription("offer", OfferSdp),
+            new WebRtcDescription("offer", sdp),
             TestContext.Current.CancellationToken);
     }
 }

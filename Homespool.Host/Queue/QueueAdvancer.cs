@@ -1567,6 +1567,32 @@ public sealed class QueueAdvancer : BackgroundService
         PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
         StoredFile? file = catalog.FindForPrinting(head.QueuedByUserId, head.PrintFile!.Name);
 
+        if (file is null && !catalog.HasStorageFor(head.QueuedByUserId))
+        {
+            // Not a file that went: the owner's whole directory is missing, which no delete leaves
+            // behind - an unmounted volume, an empty mount point. Dropping would cancel every entry
+            // in turn on a disk that is not there, so it is held like a file that cannot be opened,
+            // and the first pass that finds the storage back sends it.
+            onPrinter ??= new PrintFileOnPrinter { PrinterId = printerId, PrintFileId = head.PrintFileId };
+
+            if (onPrinter.Id == 0)
+            {
+                dbContext.PrintFilesOnPrinters.Add(onPrinter);
+            }
+            else if (onPrinter is { HoldReason: PrintHoldReason.FileUnreadable, BlockedAt: { } blockedAt } &&
+                     _timeProvider.GetUtcNow() - blockedAt < BlockRecheckAfter)
+            {
+                // Asked recently enough, as the space hold is: re-holding every tick would write a row
+                // every few seconds for as long as the storage stays away.
+                return;
+            }
+
+            HoldUnreadable(dbContext, printerId, head, onPrinter, null);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return;
+        }
+
         if (file is null)
         {
             // The bytes went while the entry waited. Nothing to send and nothing to wait for, so the
@@ -1844,7 +1870,8 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
-    /// Holds the queue behind a file that is still in storage and could not be opened to send it.
+    /// Holds the queue behind a file that is still in storage and could not be opened to send it, or
+    /// whose owner's storage is not there to look in.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1863,7 +1890,7 @@ public sealed class QueueAdvancer : BackgroundService
                                 int printerId,
                                 QueuedPrint head,
                                 PrintFileOnPrinter onPrinter,
-                                PrintFileUnreadableException unreadable)
+                                PrintFileUnreadableException? unreadable)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
         bool newlyHeld = onPrinter.HoldReason != PrintHoldReason.FileUnreadable;

@@ -217,6 +217,17 @@ public sealed class UserFileStore
         return path is null ? null : Describe(path);
     }
 
+    /// <summary>Whether <paramref name="userId"/> has a directory in the store, empty or not.</summary>
+    /// <remarks>
+    /// Tells a deleted file from storage that is not there. Deleting a file leaves its directory
+    /// behind, and nothing here ever removes one, so a user who has had files and has no directory is
+    /// looking at an unmounted volume or an empty mount point, not at an empty store.
+    /// </remarks>
+    public bool HasDirectory(long userId)
+    {
+        return Directory.Exists(DirectoryFor(userId));
+    }
+
     /// <summary>
     /// Streams <paramref name="content"/> into <paramref name="userId"/>'s directory under
     /// <paramref name="fileName"/>.

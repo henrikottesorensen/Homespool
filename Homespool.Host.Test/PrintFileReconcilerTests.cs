@@ -94,6 +94,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
+        Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
 
         context.PrintFiles.Add(new PrintFile
         {
@@ -124,6 +125,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
+        Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
 
         PrintFile row = new()
         {
@@ -163,6 +165,70 @@ public sealed class PrintFileReconcilerTests : IDisposable
         context.ChangeTracker.Clear();
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Storage that did not come up is not a store that was emptied: with no directory for the user -
+    /// the root missing, or present but empty like an unmounted mount point - the rows and the queue
+    /// entries pointing at them are kept, and the gap is reported.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RowsAreKeptWhenTheUsersDirectoryIsMissing(bool rootExists)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+
+        if (rootExists)
+        {
+            Directory.CreateDirectory(_root);
+        }
+
+        PrintFile row = new()
+        {
+            UserId = Alice,
+            Name = "unmounted.gcode",
+            Size = 3,
+            UploadedAt = DateTimeOffset.UnixEpoch,
+        };
+
+        context.PrintFiles.Add(row);
+
+        Team team = new() { Name = "team" };
+        context.Teams.Add(team);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = team.Id };
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.QueuedPrints.Add(new QueuedPrint
+        {
+            PrinterId = printer.Id,
+            PrintFileId = row.Id,
+            Position = 0,
+            QueuedByUserId = Alice,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedAt = DateTimeOffset.UnixEpoch,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        FakeLogger<PrintFileReconciler> logger = new();
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler(logger);
+        await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        logger.Collector.GetSnapshot()
+              .Should().ContainSingle(record => record.Level == LogLevel.Warning)
+              .Which.StructuredState.Should().Contain(property => property.Key == "UserId" && property.Value == "1");
     }
 
     /// <summary>

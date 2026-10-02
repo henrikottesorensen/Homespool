@@ -23,14 +23,17 @@ namespace Homespool.Host.Pages.Account.Manage;
 public class IndexModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
+    private readonly LocalSignInRules _rules;
     private readonly LocalSignIn _signIn;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public IndexModel(UserManager<HSUser> userManager,
+                      LocalSignInRules rules,
                       LocalSignIn signIn,
                       IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
+        _rules = rules;
         _signIn = signIn;
         _localiser = localiser;
     }
@@ -90,6 +93,10 @@ public class IndexModel : PageModel
         string? userName = await _userManager.GetUserNameAsync(user);
         string requested = Usernames.Prepare(Input.Username.Trim());
 
+        // Read before the rename, which moves the stamp the remembered cookie was written under:
+        // reading it afterwards would forget this browser rather than report it.
+        bool remembered = await _rules.IsTwoFactorClientRememberedAsync(HttpContext, user);
+
         // Ordinal rather than case-insensitive: 'henrik' to 'Henrik' normalises to the same name, so
         // Identity would accept it silently, but it changes what every page renders - which makes it
         // a change the person asked for and should see happen.
@@ -116,6 +123,15 @@ public class IndexModel : PageModel
         // username lives for rendering, so the header - and every other reader of the sign-in
         // identity - would otherwise show the old name.
         await _signIn.RefreshSignInAsync(HttpContext, user);
+
+        // A new name leaves the second factor where it was, so a browser remembered after one stays
+        // remembered, on the new stamp. Every other browser is forgotten by the stamp change, as it is
+        // signed out.
+        if (remembered)
+        {
+            await _signIn.RememberClientAsync(HttpContext, user);
+        }
+
         StatusMessage = _localiser["Manage_ProfileUpdated"];
         return RedirectToPage();
     }

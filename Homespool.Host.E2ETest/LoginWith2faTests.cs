@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Text;
+using System.Text.Encodings.Web;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,11 +12,14 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 
 using OtpNet;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Localisation;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -409,5 +414,148 @@ public sealed class LoginWith2faTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.Redirect, "nothing is pending, so there is no account to present the code for");
         response.Headers.Location!.OriginalString.Should().Be("/Account/Login");
         IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, response).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A password changed from a remembered browser keeps that browser signed in. The change moves the
+    /// stamp, so the browser is no longer remembered - but finding that out, which the two-factor page
+    /// does, must not end the session the change just refreshed.
+    /// </summary>
+    [Fact]
+    public async Task AChangedPasswordForgetsTheRememberedBrowserAndKeepsTheSession()
+    {
+        // Arrange
+        await CreateTwoFactorEnabledUserAsync();
+        using HttpClient client = await SignInRememberedAsync();
+
+        string form = await client.GetStringAsync("/Account/Manage/ChangePassword", TestContext.Current.CancellationToken);
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(form),
+            ["Input.OldPassword"] = Password,
+            ["Input.NewPassword"] = Password + "-changed",
+            ["Input.ConfirmPassword"] = Password + "-changed",
+        });
+        HttpResponseMessage changed = await client.PostAsync("/Account/Manage/ChangePassword", body, TestContext.Current.CancellationToken);
+        changed.StatusCode.Should().Be(HttpStatusCode.Redirect, "the change itself is setup");
+
+        // Act
+        bool remembered = await IsRememberedAsync(client);
+
+        // Assert
+        remembered.Should().BeFalse("a password change moves the stamp the remembered cookie was written under");
+        (await client.GetAsync("/Account/Manage", TestContext.Current.CancellationToken)).StatusCode
+            .Should().Be(HttpStatusCode.OK, "forgetting the browser is not signing it out");
+    }
+
+    /// <summary>
+    /// A rename moves the stamp but leaves the second factor where it was, so the browser that made it
+    /// stays remembered, and stays signed in.
+    /// </summary>
+    [Fact]
+    public async Task ARenameKeepsTheBrowserRemembered()
+    {
+        // Arrange
+        await CreateTwoFactorEnabledUserAsync();
+        using HttpClient client = await SignInRememberedAsync();
+
+        string form = await client.GetStringAsync("/Account/Manage", TestContext.Current.CancellationToken);
+        using FormUrlEncodedContent body = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(form),
+            ["Input.Username"] = "renamed",
+        });
+        HttpResponseMessage renamed = await client.PostAsync("/Account/Manage", body, TestContext.Current.CancellationToken);
+        renamed.StatusCode.Should().Be(HttpStatusCode.Redirect, "the rename itself is setup");
+
+        // Act
+        bool remembered = await IsRememberedAsync(client);
+
+        // Assert
+        remembered.Should().BeTrue("the remembered cookie was re-issued on the new stamp");
+        (await client.GetAsync("/Account/Manage", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>
+    /// An address change confirmed in the remembered browser moves the stamp but leaves the second factor
+    /// where it was, so that browser stays remembered, and stays signed in.
+    /// </summary>
+    [Fact]
+    public async Task AConfirmedEmailChangeKeepsTheBrowserRemembered()
+    {
+        // Arrange
+        await CreateTwoFactorEnabledUserAsync();
+        using HttpClient client = await SignInRememberedAsync();
+
+        HttpResponseMessage confirmed = await client.GetAsync(await ConfirmEmailChangeUrlAsync("moved@example.com"), TestContext.Current.CancellationToken);
+        confirmed.StatusCode.Should().Be(HttpStatusCode.OK, "the confirmation itself is setup");
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>().FindByEmailAsync("moved@example.com"))
+                .Should().NotBeNull("a refused change renders the same page, so the address is checked");
+        }
+
+        // Act
+        bool remembered = await IsRememberedAsync(client);
+
+        // Assert
+        remembered.Should().BeTrue("the remembered cookie was re-issued on the new stamp");
+        (await client.GetAsync("/Account/Manage", TestContext.Current.CancellationToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>
+    /// Signs the seeded user in with the password and a code, asking for the browser to be remembered,
+    /// and returns the signed-in client.
+    /// </summary>
+    private async Task<HttpClient> SignInRememberedAsync()
+    {
+        (HttpClient client, string antiforgeryToken) = await SignInWithPasswordAsync();
+
+        using FormUrlEncodedContent remembered = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = antiforgeryToken,
+            ["RememberMe"] = "false",
+            ["Input.TwoFactorCode"] = await GenerateValidAuthenticatorCodeAsync(),
+            ["Input.RememberMachine"] = "true",
+        });
+        HttpResponseMessage completed = await client.PostAsync("/Account/LoginWith2fa", remembered, TestContext.Current.CancellationToken);
+        completed.StatusCode.Should().Be(HttpStatusCode.Redirect, "the code was right, so this is setup rather than what the test verifies");
+        (await IsRememberedAsync(client)).Should().BeTrue("the browser asked to be remembered");
+
+        return client;
+    }
+
+    /// <summary>
+    /// Whether the two-factor page tells <paramref name="client"/> its browser is remembered, which it
+    /// does by offering to forget it. The page must render: the client has to be signed in.
+    /// </summary>
+    private async Task<bool> IsRememberedAsync(HttpClient client)
+    {
+        HttpResponseMessage response = await client.GetAsync("/Account/Manage/TwoFactorAuthentication", TestContext.Current.CancellationToken);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "the two-factor page is read signed in");
+
+        string page = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        string forget;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            forget = scope.ServiceProvider.GetRequiredService<IStringLocalizer<SharedResource>>()["TwoFactor_ForgetBrowser"].Value;
+        }
+
+        return page.Contains(_factory.Services.GetRequiredService<HtmlEncoder>().Encode(forget), StringComparison.Ordinal);
+    }
+
+    /// <summary>The link the email page mails to confirm the seeded user's move to <paramref name="newEmail"/>.</summary>
+    private async Task<string> ConfirmEmailChangeUrlAsync(string newEmail)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> users = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        HSUser user = await users.FindByEmailAsync(Email) ??
+                      throw new InvalidOperationException($"No user seeded for {Email}.");
+
+        string code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(await users.GenerateChangeEmailTokenAsync(user, newEmail)));
+
+        return $"/Account/ConfirmEmailChange?userUuid={user.Uuid}&email={Uri.EscapeDataString(newEmail)}&code={code}";
     }
 }

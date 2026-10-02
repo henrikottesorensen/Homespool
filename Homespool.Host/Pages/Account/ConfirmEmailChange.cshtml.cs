@@ -50,6 +50,7 @@ public class ConfirmEmailChangeModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly HomespoolDbContext _dbContext;
+    private readonly LocalSignInRules _rules;
     private readonly LocalSignIn _signIn;
     private readonly IOptions<SmtpOptions> _smtp;
     private readonly IEmailSender _emailSender;
@@ -58,6 +59,7 @@ public class ConfirmEmailChangeModel : PageModel
 
     public ConfirmEmailChangeModel(UserManager<HSUser> userManager,
                                    HomespoolDbContext dbContext,
+                                   LocalSignInRules rules,
                                    LocalSignIn signIn,
                                    IOptions<SmtpOptions> smtp,
                                    IEmailSender emailSender,
@@ -66,6 +68,7 @@ public class ConfirmEmailChangeModel : PageModel
     {
         _userManager = userManager;
         _dbContext = dbContext;
+        _rules = rules;
         _signIn = signIn;
         _smtp = smtp;
         _emailSender = emailSender;
@@ -117,6 +120,10 @@ public class ConfirmEmailChangeModel : PageModel
         // Read before the change, which overwrites it: the notice goes to the address being left.
         string? previous = user.Email;
 
+        // Read before the change too, which moves the stamp the remembered cookie was written under:
+        // reading it afterwards would forget this browser rather than report it.
+        bool remembered = await _rules.IsTwoFactorClientRememberedAsync(HttpContext, user);
+
         // One round trip, so no transaction: SaveChangesAsync is already transactional.
         // It used to need one because the username was the email and had to
         // move with it - two UserManager calls that could half-land, leaving an account signing in
@@ -151,6 +158,14 @@ public class ConfirmEmailChangeModel : PageModel
         // Refreshes the cookie so the session reflects the new address rather than going stale
         // against a principal that no longer matches the user.
         await _signIn.RefreshSignInAsync(HttpContext, user);
+
+        // A new address leaves the second factor where it was, so a browser remembered after one for
+        // this account stays remembered, on the new stamp - whether or not it holds the session the
+        // link was opened in. Every other browser is forgotten by the stamp change.
+        if (remembered)
+        {
+            await _signIn.RememberClientAsync(HttpContext, user);
+        }
 
         await TellThePreviousAddressAsync(user, previous, email);
 

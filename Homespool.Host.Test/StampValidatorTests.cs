@@ -150,8 +150,8 @@ public sealed class StampValidatorTests : IDisposable
 
     /// <summary>
     /// The remembered cookie carries the stamp, so it is still honoured while the account is unchanged.
-    /// Without the stamp claim the check would fail on the first read and, as the framework's validator
-    /// does, end the session with it.
+    /// Without the stamp claim the check would fail on the first read, and every browser would be
+    /// forgotten as soon as it was remembered.
     /// </summary>
     [Fact]
     public async Task ARememberedBrowserWithTheSameStampIsStillRemembered()
@@ -172,7 +172,7 @@ public sealed class StampValidatorTests : IDisposable
     /// passed. The clock does not move here: a browser remembered a minute ago is the case that matters.
     /// </summary>
     [Fact]
-    public async Task ARememberedBrowserWithAChangedStampIsForgottenAtOnceAndTheSessionEnded()
+    public async Task ARememberedBrowserWithAChangedStampIsForgottenAtOnce()
     {
         await using LocalSchemeRig rig = await RigAsync();
         HSUser user = await rig.AddUserAsync("owner@example.com");
@@ -185,7 +185,84 @@ public sealed class StampValidatorTests : IDisposable
 
         (await LocalSchemeRig.RulesOf(later).IsTwoFactorClientRememberedAsync(later, user)).Should().BeFalse();
         rig.Cleared(later, IdentityConstants.TwoFactorRememberMeScheme).Should().BeTrue();
-        rig.Cleared(later, IdentityConstants.ApplicationScheme).Should().BeTrue("the framework ends the session on a stale remembered browser, and so does this");
+        rig.Cleared(later, IdentityConstants.ApplicationScheme).Should().BeFalse("the session answers to its own validator, not to the remembered browser");
+    }
+
+    /// <summary>
+    /// A password changed from a remembered browser: the refresh keeps this browser's session on the
+    /// new stamp and leaves the remembered cookie on the old one. Reading that cookie afterwards - the
+    /// two-factor page does, and is where turning two-factor off lands - forgets the browser and leaves
+    /// the session the refresh kept.
+    /// </summary>
+    [Fact]
+    public async Task AStaleRememberedBrowserLeavesTheSessionARefreshKeptSignedIn()
+    {
+        await using LocalSchemeRig rig = await RigAsync();
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        string session = await rig.SessionCookieAsync(user);
+        string remembered = await rig.RememberedMachineCookieAsync(user);
+
+        DefaultHttpContext change = rig.NewRequest(session, remembered);
+        (await SignedInAsync(change)).Succeeded.Should().BeTrue();
+        (await change.RequestServices.GetRequiredService<UserManager<HSUser>>().UpdateSecurityStampAsync(user)).Succeeded.Should().BeTrue();
+        (await LocalSchemeRig.SignInOf(change).RefreshSignInAsync(change, user)).Should().BeTrue();
+        string refreshed = rig.CookieOf(change, IdentityConstants.ApplicationScheme);
+
+        // Act
+        DefaultHttpContext next = rig.NewRequest(refreshed, remembered);
+        (await SignedInAsync(next)).Succeeded.Should().BeTrue("the refresh carried the session onto the new stamp");
+        bool stillRemembered = await LocalSchemeRig.RulesOf(next).IsTwoFactorClientRememberedAsync(next, user);
+
+        // Assert
+        stillRemembered.Should().BeFalse("the remembered cookie was written under the old stamp");
+        rig.Cleared(next, IdentityConstants.TwoFactorRememberMeScheme).Should().BeTrue();
+        rig.Cleared(next, IdentityConstants.ApplicationScheme).Should().BeFalse();
+        (await rig.NewRequest(refreshed).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded
+            .Should().BeTrue("reading a stale remembered cookie must not end the session beside it");
+    }
+
+    /// <summary>
+    /// A browser shared between two accounts: one is signed in, the other's remembered cookie has gone
+    /// stale. Reading it forgets it, and the account signed in stays signed in.
+    /// </summary>
+    [Fact]
+    public async Task AnotherAccountsStaleRememberedBrowserLeavesThisSessionSignedIn()
+    {
+        await using LocalSchemeRig rig = await RigAsync();
+        HSUser owner = await rig.AddUserAsync("owner@example.com");
+        HSUser guest = await rig.AddUserAsync("guest@example.com");
+        string ownersRemembered = await rig.RememberedMachineCookieAsync(owner);
+        string guestsSession = await rig.SessionCookieAsync(guest);
+
+        (await rig.Users.UpdateSecurityStampAsync(owner)).Succeeded.Should().BeTrue();
+
+        // Act
+        DefaultHttpContext request = rig.NewRequest(guestsSession, ownersRemembered);
+        (await SignedInAsync(request)).Succeeded.Should().BeTrue();
+        bool remembered = await LocalSchemeRig.RulesOf(request).IsTwoFactorClientRememberedAsync(request, guest);
+
+        // Assert
+        remembered.Should().BeFalse();
+        rig.Cleared(request, IdentityConstants.TwoFactorRememberMeScheme).Should().BeTrue("the owner's cookie is stale");
+        rig.Cleared(request, IdentityConstants.ApplicationScheme).Should().BeFalse();
+        (await rig.NewRequest(guestsSession).AuthenticateAsync(IdentityConstants.ApplicationScheme)).Succeeded
+            .Should().BeTrue("the owner's stale cookie says nothing about the guest's session");
+    }
+
+    /// <summary>
+    /// Authenticates <paramref name="request"/>'s application cookie and makes it the request's user,
+    /// as the authentication middleware does before a page runs.
+    /// </summary>
+    private static async Task<AuthenticateResult> SignedInAsync(DefaultHttpContext request)
+    {
+        AuthenticateResult result = await request.AuthenticateAsync(IdentityConstants.ApplicationScheme);
+
+        if (result.Succeeded)
+        {
+            request.User = result.Principal!;
+        }
+
+        return result;
     }
 
     /// <summary>

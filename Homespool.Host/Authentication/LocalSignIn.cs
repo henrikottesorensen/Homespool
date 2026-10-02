@@ -242,7 +242,9 @@ public sealed class LocalSignIn
 
     /// <summary>
     /// Remembers this browser for <paramref name="user"/>, so the next sign-in owes no second factor.
-    /// The cookie carries the account's security stamp, so a stamp change forgets every browser.
+    /// The cookie carries the account's security stamp, so a stamp change forgets every browser - bar
+    /// one a page remembers again after its own change, as the rename and the address change do for a
+    /// browser that was remembered before it.
     /// </summary>
     public async Task RememberClientAsync(HttpContext context, HSUser user)
     {

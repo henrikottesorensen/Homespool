@@ -123,6 +123,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
     {
         return new ConfirmEmailChangeModel(users,
                                            context,
+                                           httpContext.RequestServices.GetRequiredService<LocalSignInRules>(),
                                            signIn,
                                            Options.Create(new SmtpOptions()),
                                            Mail,

@@ -33,8 +33,8 @@ namespace Homespool.Host.Authentication;
 /// and its siblings, exactly as it was when the framework did the registering. <b>What the events resolve is
 /// not the framework's any more</b>: the two validators are <see cref="SessionStampValidator"/>, which
 /// holds the application cookie to a live session row on every request, and
-/// <see cref="RememberedBrowserStampValidator"/>, which ends the session when the remembered-browser
-/// cookie's stamp is stale as well. What the transcription buys is
+/// <see cref="RememberedBrowserStampValidator"/>, which forgets the remembered browser, and only that,
+/// when its stamp is stale. What the transcription buys is
 /// that the scheme list, the cookie names, the lifetimes and the events are readable in one place
 /// alongside the printer, token and OpenID Connect schemes - and that a fifth cookie scheme, when one
 /// is needed, is added next to its four peers rather than bolted onto a black box.

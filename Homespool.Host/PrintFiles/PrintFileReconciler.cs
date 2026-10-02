@@ -31,6 +31,12 @@ namespace Homespool.Host.PrintFiles;
 /// data directory a supported thing to do rather than a way to corrupt state.
 /// </para>
 /// <para>
+/// <b>A file is gone only from a directory that is there.</b> A user with rows and no directory, or a
+/// storage root that is missing or empty, is read as storage that did not come up, and their rows
+/// are kept: the app never removes a directory, and the cost of guessing wrong the other way is every
+/// queued print cancelled.
+/// </para>
+/// <para>
 /// <b>Reading comes after each pass, and nothing waits for it.</b> Once the index agrees with the
 /// disk, <see cref="BackfillAsync"/> reads every file whose row has no <see cref="PrintFile.Digest"/>
 /// or has not had its slicer metadata read - one that arrived outside the app, one indexed on the way
@@ -215,9 +221,22 @@ public sealed class PrintFileReconciler : BackgroundService
             }
         }
 
+        foreach (IGrouping<long, PrintFile> unreachable in rows.Where(row => !onDisk.ContainsKey(row.UserId))
+                                                               .GroupBy(row => row.UserId))
+        {
+            _logger.LogWarning(
+                "User {UserId} has {Count} indexed file(s) but no storage directory under {Root}; keeping them " +
+                "and their queued prints. Check that the storage is mounted.",
+                unreachable.Key, unreachable.Count(), _root);
+        }
+
         foreach (PrintFile row in rows)
         {
-            if (onDisk.TryGetValue(row.UserId, out List<StoredFile>? files) &&
+            // No directory is not the same as no files. Nothing here ever removes a user's directory,
+            // so its absence says the storage is missing - an unmounted volume, an empty mount point -
+            // and removing the rows would cancel every queued print on the strength of a disk that is
+            // not there.
+            if (!onDisk.TryGetValue(row.UserId, out List<StoredFile>? files) ||
                 files.Exists(file => string.Equals(file.FileName, row.Name, StringComparison.OrdinalIgnoreCase)))
             {
                 continue;
@@ -503,11 +522,18 @@ public sealed class PrintFileReconciler : BackgroundService
     /// What is actually on disk, per user - skipping directories that are not a user's.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>A user is in the map exactly when their directory exists</b>, with an empty list when it holds
+    /// no files. The two read differently: an empty directory is files deleted, a missing one is
+    /// storage that is not there, and a missing root is every user missing.
+    /// </para>
+    /// <para>
     /// <b>A directory whose user no longer exists is left entirely alone</b>, neither indexed nor
     /// deleted. Indexing it would violate the row's foreign key, and deleting the files would be this
     /// class writing to the disk, which it does not do. So the bytes of a removed account sit there
     /// until somebody clears them out by hand - visible, which is the right failure for something
     /// nothing in the app currently handles.
+    /// </para>
     /// </remarks>
     private Dictionary<long, List<StoredFile>> ReadDisk(HashSet<long> users)
     {

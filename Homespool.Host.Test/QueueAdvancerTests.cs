@@ -3451,6 +3451,99 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// With the owner's whole directory missing - storage that did not come up, not a file that went -
+    /// the entry is held rather than dropped, with one line of history, and the hold is not rewritten
+    /// every tick.
+    /// </summary>
+    [Fact]
+    public async Task AFileWhoseStorageIsMissingIsHeldRatherThanDropped()
+    {
+        // Arrange - queued, and no directory for the owner at all
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        Directory.Delete(_storeRoot, recursive: true);
+        IPrinterConnectionActor actor = ConnectAccepting();
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - the first pass, and a tick inside the recheck window
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        DateTimeOffset? heldAt = (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken)).BlockedAt;
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().BeEmpty("there is nothing to offer");
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().Be(PrintHoldReason.FileUnreadable, "the storage is a fault on this side");
+        row.BlockedAt.Should().Be(heldAt, "a hold asked about recently is left alone");
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "history says it once");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "a disk that is not there is no evidence the file was deleted");
+    }
+
+    /// <summary>
+    /// When the storage comes back, the next recheck finds the file and sends it, and the hold lifts
+    /// with nobody pressing anything.
+    /// </summary>
+    [Fact]
+    public async Task AFileHeldForMissingStorageIsSentOnceTheStorageIsBack()
+    {
+        // Arrange - the storage is not there
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        Directory.Delete(_storeRoot, recursive: true);
+        IPrinterConnectionActor actor = ConnectAccepting();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Act
+        await WriteFileOnDiskAsync("queued.bgcode");
+        _clock.Advance(QueueAdvancer.BlockRecheckAfter + TimeSpan.FromSeconds(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().ContainSingle("the file is offered once it can be found");
+
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().BeNull("the storage is back");
+        row.TransferStartedAt.Should().NotBeNull("the transfer is under way");
+    }
+
+    /// <summary>
+    /// A file missing from a directory that is there is a file that went, so the entry is dropped -
+    /// the hold above is for missing storage only.
+    /// </summary>
+    [Fact]
+    public async Task AFileMissingFromItsDirectoryIsDropped()
+    {
+        // Arrange - the owner's directory is there, the queued file is not
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("other.bgcode");
+        ConnectAccepting();
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "there is nothing left to print");
+        (await context.PrintFilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "nothing was held");
+    }
+
+    /// <summary>
     /// A printer that answers each command, on either face of the actor, with whatever
     /// <paramref name="answer"/> gives for it. Returned so a test can see what it was asked.
     /// </summary>
@@ -3866,6 +3959,9 @@ public sealed class QueueAdvancerTests : IDisposable
 
         HomespoolDbContext context = new(options);
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+
+        // The owner has uploaded, so their directory is there whether or not the queued file still is.
+        Directory.CreateDirectory(Path.Combine(_storeRoot, "1-owner"));
 
         const string email = "owner@example.com";
         context.Users.Add(new HSUser(email)

@@ -145,6 +145,12 @@ public enum PrintHoldReason
     /// dropped instead, as it is for a file found missing before the send.
     /// </para>
     /// <para>
+    /// <b>Storage that is not there at all comes here too.</b> When the owner's whole directory is
+    /// missing - an unmounted volume, an empty mount point - the file is not taken to be deleted,
+    /// since deleting a file never removes its directory, and the entry waits for the storage instead
+    /// of being dropped.
+    /// </para>
+    /// <para>
     /// <b>Clears by itself, like the space hold.</b> Whatever fixes it happens outside Homespool, so
     /// the loop tries the file again every <c>QueueAdvancer.BlockRecheckAfter</c>, and the first send
     /// that can open it lifts the hold. Waiting for a person to re-queue as well would make fixing the

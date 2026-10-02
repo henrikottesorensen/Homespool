@@ -137,6 +137,15 @@ public sealed class PrintFileCatalog
     }
 
     /// <summary>
+    /// Whether the user's storage is there at all, so a file <see cref="FindForPrinting"/> missed can
+    /// be told apart from storage that did not come up. Straight through.
+    /// </summary>
+    public bool HasStorageFor(long userId)
+    {
+        return _store.HasDirectory(userId);
+    }
+
+    /// <summary>
     /// Streams an upload to disk without naming it yet. Straight through - a staged upload has no row
     /// because it is not yet a file anyone has.
     /// </summary>

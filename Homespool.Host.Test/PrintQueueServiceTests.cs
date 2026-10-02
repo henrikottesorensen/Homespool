@@ -78,9 +78,12 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode", "two.gcode", "three.gcode");
 
         // Act
-        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "one.gcode",
+                                 TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "two.gcode",
+                                 TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "three.gcode",
+                                 TestContext.Current.CancellationToken);
 
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
@@ -107,7 +110,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                      TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool moved = await queue.MoveAsync(printer.Id, third.PrintUuid, Caller.Unscoped(Alice), 0, TestContext.Current.CancellationToken);
+        bool moved = await queue.MoveAsync(printer.Id, third.PrintUuid, TestCallers.Scoped(Alice, Capability.ControlPrinter), 0,
+                                           TestContext.Current.CancellationToken);
 
         // Assert
         moved.Should().BeTrue();
@@ -133,7 +137,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode", TestContext.Current.CancellationToken);
 
         // Act
-        await queue.MoveAsync(printer.Id, first.PrintUuid, Caller.Unscoped(Alice), 99, TestContext.Current.CancellationToken);
+        await queue.MoveAsync(printer.Id, first.PrintUuid, TestCallers.Scoped(Alice, Capability.ControlPrinter), 99,
+                              TestContext.Current.CancellationToken);
 
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
@@ -160,7 +165,8 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         // Act
         await queue.CancelAsync(printer.Id, second.PrintUuid, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "three.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "three.gcode",
+                                 TestContext.Current.CancellationToken);
 
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
@@ -180,8 +186,10 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode");
 
         // Act
-        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
-        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "one.gcode",
+                                 TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "one.gcode",
+                                 TestContext.Current.CancellationToken);
 
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
@@ -238,7 +246,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "one.gcode",
+                                 TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -265,7 +274,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        Func<Task> act = () => queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "nothing.gcode",
+        Func<Task> act = () => queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "nothing.gcode",
                                                   TestContext.Current.CancellationToken);
 
         // Assert
@@ -328,7 +337,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, TestCallers.Scoped(Bob, Capability.ControlPrinter),
+                                                 TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeTrue();
@@ -354,7 +364,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, Caller.Unscoped(Bob), TestContext.Current.CancellationToken);
+        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, TestCallers.Scoped(Bob, Capability.Print),
+                                                 TestContext.Current.CancellationToken);
 
         // Assert
         cancelled.Should().BeTrue();
@@ -396,7 +407,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        bool cancelled = await queue.CancelAsync(printer.Id, Guid.NewGuid(), Caller.Unscoped(Alice),
+        bool cancelled = await queue.CancelAsync(printer.Id, Guid.NewGuid(), TestCallers.Scoped(Alice, Capability.Print),
                                                  TestContext.Current.CancellationToken);
 
         // Assert
@@ -427,7 +438,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                       TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool moved = await queue.MoveAsync(other.Id, second.PrintUuid, Caller.Unscoped(Alice), 0,
+        bool moved = await queue.MoveAsync(other.Id, second.PrintUuid, TestCallers.Scoped(Alice, Capability.ControlPrinter), 0,
                                            TestContext.Current.CancellationToken);
 
         // Assert
@@ -460,7 +471,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(other.Id, job.PrintUuid, Caller.Unscoped(Alice),
+        bool cancelled = await queue.CancelAsync(other.Id, job.PrintUuid, TestCallers.Scoped(Alice, Capability.Print),
                                                  TestContext.Current.CancellationToken);
 
         // Assert
@@ -537,7 +548,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        EnqueueOutcome outcome = await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "abrasive.gcode",
+        EnqueueOutcome outcome = await queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "abrasive.gcode",
                                                           TestContext.Current.CancellationToken);
 
         // Assert
@@ -586,7 +597,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        Func<Task> queueing = () => queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "corexy.bgcode",
+        Func<Task> queueing = () => queue.EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print), "corexy.bgcode",
                                                        TestContext.Current.CancellationToken);
 
         // Assert
@@ -627,8 +638,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         file.RequiresHighFlowNozzle = false;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        EnqueueOutcome outcome = await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "fine.gcode",
-                                                                     TestContext.Current.CancellationToken);
+        EnqueueOutcome outcome = await NewQueue(context).EnqueueAsync(printer.Id, TestCallers.Scoped(Alice, Capability.Print),
+                                                                     "fine.gcode", TestContext.Current.CancellationToken);
 
         outcome.Findings.Should().BeEmpty();
         outcome.Warnings.Should().BeEmpty();
@@ -675,7 +686,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "abrasive.gcode",
                                              TestContext.Current.CancellationToken);
 
-        MessageKey? hold = await NewHistory(context).GetHoldReasonAsync(printer.Id, Caller.Unscoped(Alice),
+        Caller viewing = TestCallers.Scoped(Alice, Capability.ViewPrinter, Capability.ViewQueue);
+        MessageKey? hold = await NewHistory(context).GetHoldReasonAsync(printer.Id, viewing,
                                                                         TestContext.Current.CancellationToken);
 
         hold.Should().NotBeNull("a held queue that explains nothing is the failure this exists to prevent");
@@ -717,7 +729,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        MessageKey? hold = await NewHistory(context).GetHoldReasonAsync(printer.Id, Caller.Unscoped(Alice),
+        Caller viewing = TestCallers.Scoped(Alice, Capability.ViewPrinter, Capability.ViewQueue);
+        MessageKey? hold = await NewHistory(context).GetHoldReasonAsync(printer.Id, viewing,
                                                                         TestContext.Current.CancellationToken);
 
         hold.Should().NotBeNull();
@@ -744,7 +757,8 @@ public sealed class PrintQueueServiceTests : IDisposable
         await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "fine.gcode",
                                              TestContext.Current.CancellationToken);
 
-        (await NewHistory(context).GetHoldReasonAsync(printer.Id, Caller.Unscoped(Alice),
+        (await NewHistory(context).GetHoldReasonAsync(printer.Id,
+                                                      TestCallers.Scoped(Alice, Capability.ViewPrinter, Capability.ViewQueue),
                                                       TestContext.Current.CancellationToken))
             .Should().BeNull();
     }

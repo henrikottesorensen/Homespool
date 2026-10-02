@@ -98,7 +98,8 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         PrinterQueryService service = ServiceFor(context);
 
         // Act
-        bool? allowed = await service.SetRemoteReadyAllowedAsync(_printerUuid, Caller.Unscoped(Manager), true,
+        bool? allowed = await service.SetRemoteReadyAllowedAsync(_printerUuid,
+                                                                 TestCallers.Scoped(Manager, Capability.ManagePrinter), true,
                                                                  TestContext.Current.CancellationToken);
 
         // Assert
@@ -106,7 +107,7 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         (await ReadFlagAsync(context)).Should().BeTrue();
 
         // Act
-        await service.SetRemoteReadyAllowedAsync(_printerUuid, Caller.Unscoped(Manager), false,
+        await service.SetRemoteReadyAllowedAsync(_printerUuid, TestCallers.Scoped(Manager, Capability.ManagePrinter), false,
                                                  TestContext.Current.CancellationToken);
 
         // Assert
@@ -146,7 +147,8 @@ public sealed class RemoteReadyAllowedTests : IDisposable
         PrinterQueryService service = ServiceFor(context);
 
         // Act
-        bool? unknown = await service.SetRemoteReadyAllowedAsync(Guid.NewGuid(), Caller.Unscoped(Manager), true,
+        bool? unknown = await service.SetRemoteReadyAllowedAsync(Guid.NewGuid(),
+                                                                 TestCallers.Scoped(Manager, Capability.ManagePrinter), true,
                                                                  TestContext.Current.CancellationToken);
 
         // Assert

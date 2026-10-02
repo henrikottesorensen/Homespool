@@ -67,8 +67,8 @@ public sealed class PrintFileCatalogTests : IDisposable
         byte[] content = Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n");
 
         // Act
-        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream(content), overwrite: false,
-                                TestContext.Current.CancellationToken);
+        await catalog.SaveAsync(TestCallers.Scoped(Alice, Capability.UploadOwnFiles), "benchy.gcode", new MemoryStream(content),
+                                overwrite: false, TestContext.Current.CancellationToken);
 
         // Assert
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -96,7 +96,8 @@ public sealed class PrintFileCatalogTests : IDisposable
         long queuedPrintId = await AddQueuedPrintAsync(context, row.Id);
 
         // Act
-        await catalog.RenameAsync(Caller.Unscoped(Alice), "benchy.gcode", "boat.gcode", TestContext.Current.CancellationToken);
+        await catalog.RenameAsync(TestCallers.Scoped(Alice, Capability.ManipulateOwnFiles), "benchy.gcode", "boat.gcode",
+                                  TestContext.Current.CancellationToken);
 
         // Assert
         PrintFile renamed = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -129,8 +130,8 @@ public sealed class PrintFileCatalogTests : IDisposable
         long originalId = (await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken)).Id;
 
         // Act
-        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream(replacement), overwrite: true,
-                                TestContext.Current.CancellationToken);
+        await catalog.SaveAsync(TestCallers.Scoped(Alice, Capability.ManipulateOwnFiles), "benchy.gcode",
+                                new MemoryStream(replacement), overwrite: true, TestContext.Current.CancellationToken);
 
         // Assert
         PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
@@ -159,7 +160,8 @@ public sealed class PrintFileCatalogTests : IDisposable
 
         // Act
         PrintFileDeletion result =
-            await catalog.DeleteAsync(Caller.Unscoped(Alice), "benchy.gcode", TestContext.Current.CancellationToken);
+            await catalog.DeleteAsync(TestCallers.Scoped(Alice, Capability.ManipulateOwnFiles), "benchy.gcode",
+                                      TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(PrintFileDeletion.Queued);
@@ -181,7 +183,8 @@ public sealed class PrintFileCatalogTests : IDisposable
 
         // Act
         PrintFileDeletion result =
-            await catalog.DeleteAsync(Caller.Unscoped(Alice), "benchy.gcode", TestContext.Current.CancellationToken);
+            await catalog.DeleteAsync(TestCallers.Scoped(Alice, Capability.ManipulateOwnFiles), "benchy.gcode",
+                                      TestContext.Current.CancellationToken);
 
         // Assert
         result.Should().Be(PrintFileDeletion.Deleted);
@@ -321,8 +324,8 @@ public sealed class PrintFileCatalogTests : IDisposable
         long queuedPrintId = await AddQueuedPrintAsync(context, original.Id);
 
         // Act
-        await catalog.SaveAsync(Caller.Unscoped(Alice), "Ærø.gcode", new MemoryStream([4, 5, 6, 7]), overwrite: true,
-                                TestContext.Current.CancellationToken);
+        await catalog.SaveAsync(TestCallers.Scoped(Alice, Capability.ManipulateOwnFiles), "Ærø.gcode",
+                                new MemoryStream([4, 5, 6, 7]), overwrite: true, TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -391,7 +394,8 @@ public sealed class PrintFileCatalogTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        IReadOnlyList<CataloguedFile> listed = await catalog.ListAsync(Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+        IReadOnlyList<CataloguedFile> listed = await catalog.ListAsync(TestCallers.Scoped(Alice, Capability.ViewOwnFiles),
+                                                                       TestContext.Current.CancellationToken);
 
         // Assert
         listed.Should().ContainSingle().Which.Row!.Name.Should().Be("Ærø.gcode");

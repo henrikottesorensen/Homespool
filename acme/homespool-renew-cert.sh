@@ -45,8 +45,12 @@ compose() {
 # derived from the compose project, which is derived from the directory name, and a deployment in a
 # differently-named directory would otherwise have this script quietly create and inspect an empty
 # volume of its own.
+#
+# Its stderr is NOT discarded. A daemon that is down, a dns.env compose cannot open and a missing
+# image all fail here, and the message is the only thing that says which; the journal is where the
+# timer's output goes, and it is read exactly when something is wrong.
 in_certs() {
-    compose run --rm --entrypoint sh certs -c "$1" 2>/dev/null
+    compose run --rm --entrypoint sh certs -c "$1"
 }
 
 # Every issued certificate, hashed. Read as the proxy's uid deliberately: "root can read it" is not
@@ -60,7 +64,16 @@ fingerprint() {
 # same thing - compose applies defaults, and a value exported in the environment beats the file - and
 # a list read one way and used another is the kind of disagreement that produces a certificate for a
 # name nobody asked for.
-acme_hosts="$(in_certs 'printf %s "${ACME_HOSTS:-}"' | tr -d '\r' || true)"
+#
+# A failed read is not an empty answer. Both used to arrive here as "", and "" means "no ACME
+# configured" and exits 0 - so a daemon error, or a dns.env the compose CLI could not open, left the
+# unit green and the certificate to expire. The status is taken before anything is piped, because a
+# pipeline reports its last command and `tr` does not fail.
+if ! raw_hosts="$(in_certs 'printf %s "${ACME_HOSTS:-}"')"; then
+    echo "ERROR: could not read ACME_HOSTS through compose - not renewing, and not assuming it is empty." >&2
+    exit 1
+fi
+acme_hosts="$(printf %s "$raw_hosts" | tr -d '\r')"
 
 if [ -z "$acme_hosts" ]; then
     echo "ACME_HOSTS is empty - nothing to renew."

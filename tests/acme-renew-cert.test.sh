@@ -99,6 +99,12 @@ for a in "$@"; do payload="$a"; done
 
 case "$payload" in
     'printf %s "${ACME_HOSTS:-}"')
+        # A daemon that errors, or a dns.env compose cannot open: nothing on stdout, a message on
+        # stderr, a failing status - which must not be mistaken for an empty ACME_HOSTS.
+        if [ -n "${STUB_HOSTS_FAIL:-}" ]; then
+            echo "permission denied reading /etc/lego/dns.env" >&2
+            exit 1
+        fi
         printf %s "$STUB_ACME_HOSTS"
         ;;
     'cd /certs/certificates'*)
@@ -138,6 +144,7 @@ renew() {
         STUB_ACME_HOSTS="$1" \
         STUB_CERTS_CHANGE="${2:-}" \
         STUB_PULL_FAILS="${3:-}" \
+        STUB_HOSTS_FAIL="${4:-}" \
             "$posix_sh" "$script" 2>&1
     )"
     status=$?
@@ -242,6 +249,17 @@ if test_case "an empty ACME_HOSTS is not a fault"; then
     renew ""
     assert_status "$status" 0 "a deployment with no public name is a complete configuration"
     assert_contains "$out" "nothing to renew" "and is told so"
+    assert_not_contains "$(asked)" "LEGO_DOMAINS" "with nothing asked of any authority"
+fi
+
+if test_case "a failed read of ACME_HOSTS fails the unit rather than reading as an empty one"; then
+    # The two used to look the same: "" meant no ACME configured, so a daemon error or an
+    # unreadable dns.env exited 0 with the certificate left to expire.
+    renew "homespool.example.com" "" "" 1
+    assert_status "$status" 1 "an unreadable configuration is a failure"
+    assert_contains "$out" "could not read ACME_HOSTS" "and says so"
+    assert_contains "$out" "permission denied reading /etc/lego/dns.env" "with the reason compose gave"
+    assert_not_contains "$out" "nothing to renew" "and is not reported as nothing to do"
     assert_not_contains "$(asked)" "LEGO_DOMAINS" "with nothing asked of any authority"
 fi
 

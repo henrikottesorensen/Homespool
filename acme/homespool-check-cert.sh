@@ -34,8 +34,18 @@ WARN_DAYS="${WARN_DAYS:-21}"
 
 cd "$COMPOSE_DIR"
 
-acme_hosts="$(docker compose --profile certs run --rm --entrypoint sh certs \
-    -c 'printf %s "${ACME_HOSTS:-}"' 2>/dev/null | tr -d '\r' || true)"
+# A failed read is not an empty answer. "No ACME_HOSTS" exits 0 below because there is nothing to
+# expire, so reading a failure as one would turn a daemon error or an unreadable dns.env into the
+# one outcome this unit exists to prevent: a certificate expiring with nobody told. The status is
+# taken before anything is piped, because a pipeline reports its last command and `tr` does not
+# fail. stderr is left alone so the reason reaches the journal.
+if ! raw_hosts="$(docker compose --profile certs run --rm --entrypoint sh certs \
+    -c 'printf %s "${ACME_HOSTS:-}"')"; then
+    echo "CRITICAL: could not read ACME_HOSTS through compose, so nothing was checked."
+    echo "          Check: docker compose ps; docker compose --profile certs config"
+    exit 2
+fi
+acme_hosts="$(printf %s "$raw_hosts" | tr -d '\r')"
 
 if [ -z "$acme_hosts" ]; then
     # Not a fault. A deployment with no ACME_HOSTS serves self-signed certificates valid for ten
@@ -68,7 +78,9 @@ done
 # One pass inside the proxy image: for each name, print `host<space>notAfter` or `host MISSING`.
 # --no-deps matters - the proxy declares depends_on, and without it this would start the whole
 # application stack to read a file.
-report="$(docker compose run --rm --no-deps --entrypoint sh proxy -c '
+#
+# Status before pipe, and stderr kept, for the reason given at the ACME_HOSTS read above.
+if ! raw_report="$(docker compose run --rm --no-deps --entrypoint sh proxy -c '
     for h in '"$checked"'; do
         c="/etc/nginx/certs/certificates/$h.crt"
         if [ -s "$c" ] && d=$(openssl x509 -in "$c" -noout -enddate 2>/dev/null); then
@@ -76,11 +88,16 @@ report="$(docker compose run --rm --no-deps --entrypoint sh proxy -c '
         else
             echo "$h MISSING"
         fi
-    done' 2>/dev/null | tr -d '\r' || true)"
+    done')"; then
+    echo "CRITICAL: could not run the proxy image to read the certificates."
+    echo "          Is the stack built? Check: docker compose ps"
+    exit 2
+fi
+report="$(printf %s "$raw_report" | tr -d '\r')"
 
 if [ -z "$report" ]; then
-    echo "CRITICAL: could not read any certificate through the proxy image."
-    echo "          Is the stack built? Check: docker compose ps"
+    echo "CRITICAL: the proxy image answered but reported no certificate."
+    echo "          Check: docker compose ps"
     exit 2
 fi
 

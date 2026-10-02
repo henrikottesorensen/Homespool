@@ -93,10 +93,19 @@ which is wrong on a network whose DNS answers differently from the public intern
 
 ## When it goes wrong
 
-Two timers. `homespool-renew-cert` does the work; `homespool-check-cert` exists because **every way
-the renewal can fail is quiet** — a revoked credential, a renamed provider variable, a timer nobody
-enabled. None of them produce a symptom until the certificate expires and every browser refuses the
-site at once. The check warns 21 days ahead and fails its unit, so `systemctl --failed` reports it.
+**Every way the renewal can fail is quiet** — a revoked credential, a renamed provider variable, a
+timer nobody enabled. None of them produce a symptom until the certificate expires and every browser
+refuses the site at once. So Homespool itself asks the proxy, once an hour, what it serves for each
+name in `ACME_HOSTS`, and says so where you will see it:
+
+- **21 days or fewer left:** the warning banner administrators see, and `/health` reports Degraded.
+- **7 days or fewer, expired, or a certificate browsers do not trust:** mail and a push to every
+  administrator, and `/health` answers 503. A name still on the self-signed certificate counts as
+  untrusted, so this also fires between setting `ACME_HOSTS` and the first certificate arriving.
+
+On the host, two timers. `homespool-renew-cert` does the work; `homespool-check-cert` checks the
+certificate files the same way and fails its unit when one is close to expiry, for anyone who
+watches `systemctl --failed`.
 
 ```bash
 systemctl list-timers 'homespool-*'

@@ -85,9 +85,15 @@ public static class HealthEndpoints
                 // administrators only: Degraded here means "this deployment is behind a published fix",
                 // which the anonymous status would otherwise tell anybody who asks. The check keeps the
                 // last report it read, so it is the one singleton among them.
-                .AddCheck<UpdateReportHealthCheck>("update-check", tags: [AdministratorsOnlyTag]);
+                .AddCheck<UpdateReportHealthCheck>("update-check", tags: [AdministratorsOnlyTag])
+
+                // Untagged: a restart serves the same certificate. And not administrators only, since
+                // the certificate a name is served is public to anyone who connects to it.
+                .AddCheck<PublicCertificateHealthCheck>("public-certificate");
 
         services.AddSingleton<UpdateReportHealthCheck>();
+        services.AddSingleton<PublicCertificateHealthCheck>();
+        services.AddSingleton<IPublicCertificateProbe, TlsPublicCertificateProbe>();
         services.AddSingleton(provider => RunningImage.From(
             BuildInformation.Revision,
             provider.GetRequiredService<IConfiguration>()[RunningImage.ImageBaseVariable]));
@@ -104,11 +110,11 @@ public static class HealthEndpoints
     /// <b>Anonymous, but only the status is.</b> A monitoring system holds no credentials, so both
     /// endpoints are mapped outside authentication - and a monitor alerts on the status code, which is
     /// all it needs. The report behind it is for the people who run the deployment: a check describes
-    /// what an operator would need in order to act, which across the seven here means the configured
+    /// what an operator would need in order to act, which across the eight here means the configured
     /// printer host and the addresses it resolves to, the names the printer certificate covers against
-    /// the names this machine now answers to, the WebRTC candidate browsers are handed, sentences
-    /// saying which part of the deployment is exposed and how, and whether it is running behind a
-    /// published fix. That is a map of the network and a list of its weak points, and anybody on the
+    /// the names this machine now answers to, the public names and when their certificates expire, the
+    /// WebRTC candidate browsers are handed, sentences saying which part of the deployment is exposed
+    /// and how, and whether it is running behind a published fix. That is a map of the network and a list of its weak points, and anybody on the
     /// same network can ask. So <see cref="HealthEndpointPath"/>
     /// answers an administrator's cookie with the whole report and everybody else with the overall
     /// status alone - not even each check's own status, since which check is failing is itself a

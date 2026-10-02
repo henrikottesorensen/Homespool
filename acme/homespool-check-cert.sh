@@ -4,8 +4,12 @@
 # Run daily from homespool-check-cert.timer. The renewal runs unattended and every way it can fail
 # is quiet: a revoked provider credential, a certificate written where the proxy does not look, a
 # provider that renamed an environment variable, a timer that was never enabled. None of those
-# produce a symptom until the certificate expires and every browser refuses the site at once. This
-# is the thing that notices.
+# produce a symptom until the certificate expires and every browser refuses the site at once.
+#
+# This is the host's half of noticing, for whoever watches systemd. The half that tells people is in
+# the application: PublicCertificateHealthCheck asks the proxy what it serves for each name and puts
+# the answer in the administrators' banner, and in their mail once a certificate is a week from
+# expiry or untrusted.
 #
 # Exit 0 = fine, 1 = inside the warning window, 2 = expired, missing or unreadable. Quiet on
 # success, so the timer only speaks when something is wrong.

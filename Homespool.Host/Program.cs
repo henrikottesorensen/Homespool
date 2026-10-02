@@ -314,6 +314,8 @@ public static class Program
 
             builder.Services.Configure<Health.UpdateReportOptions>(builder.Configuration.GetSection(Health.UpdateReportOptions.SectionName));
 
+            builder.Services.Configure<Certificates.PublicCertificateOptions>(builder.Configuration.GetSection(Certificates.PublicCertificateOptions.SectionName));
+
             // Needed by anything that takes a clock from the container rather than reading
             // TimeProvider.System statically. One is resolvable anyway - something in the
             // Identity/EF/hosting graph provides it - but depending on an incidental registration by

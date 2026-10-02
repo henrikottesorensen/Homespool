@@ -28,8 +28,8 @@ namespace Homespool.Host.Notifications.WebPush;
 /// the encryption and the signature. Three of its defaults are unsafe for us and are overridden or
 /// covered here: it retries a 429 as often as told to with no cap, so that is turned off and a 429 is
 /// <see cref="DeliveryOutcome.Transient"/>; it sends a payload of any size, so the title and body are
-/// cut to fit and the size is checked first; and it reads an error body whole and without a
-/// cancellation token, which <see cref="BoundedErrorBodyHandler"/> takes care of on the named client.
+/// cut to fit first; and it reads an error body whole and without a cancellation token, which
+/// <see cref="BoundedErrorBodyHandler"/> takes care of on the named client.
 /// </para>
 /// <para>
 /// <b>An endpoint is never logged.</b> It is a capability URL, and the library's exception carries it -
@@ -63,8 +63,9 @@ public sealed class WebPushChannel : INotificationChannel
     /// <remarks>
     /// <b>Together with <see cref="MaxTitleLength"/>, small enough that any message fits.</b> A
     /// character outside ASCII costs six bytes once the payload's JSON has escaped it, so the two at
-    /// their longest take 3600 of <see cref="MaxPayloadBytes"/> and leave the rest for the address and
-    /// the tag. A notification shows a few lines of either, and the page it opens shows all of it.
+    /// their longest take 3600 of <see cref="MaxPayloadBytes"/>; the address and the tag take at most
+    /// 256 more, being plain and bounded by <see cref="NotificationMessage"/>, and the JSON around them
+    /// about 40. A notification shows a few lines of either, and the page it opens shows all of it.
     /// </remarks>
     public const int MaxBodyLength = 500;
 
@@ -116,20 +117,17 @@ public sealed class WebPushChannel : INotificationChannel
             return DeliveryOutcome.Refused;
         }
 
-        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(
-            new WebPushPayload(Shorten(message.Title, MaxTitleLength),
-                               Shorten(message.Body, MaxBodyLength),
-                               message.Url,
-                               message.Tag),
-            PayloadJson);
+        string title = Shorten(message.Title, MaxTitleLength);
+        string body = Shorten(message.Body, MaxBodyLength);
+        string fitted = FitBody(title, body, message.Url, message.Tag, MaxPayloadBytes);
 
-        if (payload.Length > MaxPayloadBytes)
+        if (fitted.Length < body.Length)
         {
-            _logger.LogWarning("Not sending to browser subscription {DestinationId}: the message is {PayloadBytes} bytes, more than a push service accepts.",
-                               browser.Uuid, payload.Length);
-
-            return DeliveryOutcome.Refused;
+            _logger.LogWarning("The message to browser subscription {DestinationId} did not fit with its body at {BodyLength} characters; the body was cut to {FittedLength}.",
+                               browser.Uuid, body.Length, fitted.Length);
         }
+
+        byte[] payload = Serialize(title, fitted, message.Url, message.Tag);
 
         VapidCredentials credentials = await _keys.GetAsync(cancellationToken).ConfigureAwait(false);
 
@@ -225,21 +223,69 @@ public sealed class WebPushChannel : INotificationChannel
     public static string Shorten(string text, int maxLength)
     {
         ArgumentNullException.ThrowIfNull(text);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxLength);
 
         if (text.Length <= maxLength)
         {
             return text;
         }
 
+        if (maxLength == 0)
+        {
+            return string.Empty;
+        }
+
         int cut = maxLength - 1;
 
         // Never between the two halves of a character outside the Basic Multilingual Plane.
-        if (char.IsHighSurrogate(text[cut - 1]))
+        if (cut > 0 && char.IsHighSurrogate(text[cut - 1]))
         {
             cut--;
         }
 
         return string.Concat(text.AsSpan(0, cut), "…");
+    }
+
+    /// <summary>
+    /// <paramref name="body"/>, cut further until the payload it makes is no larger than
+    /// <paramref name="maxBytes"/>, or the same body back when it already fits.
+    /// </summary>
+    /// <remarks>
+    /// <b>A fallback the limits make unreachable</b>: with <see cref="MaxTitleLength"/>,
+    /// <see cref="MaxBodyLength"/> and <see cref="NotificationMessage"/>'s bounds every message fits as
+    /// it is. It is here so that loosening one of them costs a shorter body rather than a refusal, which
+    /// would count toward removing the browser.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// The rest of the payload is too large even with no body - a mistake in those limits.
+    /// </exception>
+    public static string FitBody(string title, string body, string url, string tag, int maxBytes)
+    {
+        ArgumentNullException.ThrowIfNull(body);
+
+        string fitted = body;
+        int over = Serialize(title, fitted, url, tag).Length - maxBytes;
+
+        while (over > 0)
+        {
+            if (fitted.Length == 0)
+            {
+                throw new InvalidOperationException($"A push's title, address and tag alone are {over} bytes over {maxBytes}.");
+            }
+
+            // A character is one to six bytes once escaped, so at least this many have to go.
+            int length = Math.Max(0, fitted.Length - Math.Max(1, over / 6));
+
+            fitted = Shorten(body, length);
+            over = Serialize(title, fitted, url, tag).Length - maxBytes;
+        }
+
+        return fitted;
+    }
+
+    private static byte[] Serialize(string title, string body, string url, string tag)
+    {
+        return JsonSerializer.SerializeToUtf8Bytes(new WebPushPayload(title, body, url, tag), PayloadJson);
     }
 
     private static PushMessageUrgency ToPushUrgency(NotificationUrgency urgency)

@@ -62,6 +62,7 @@ namespace Homespool.Host.Controllers;
 [ApiController]
 [Route("/compat/octoprint/{uuid:guid}")]
 [Authorize(Policy = Authorisation.Policies.Compat)]
+[PlainTextScopeRefusal]
 [ApiExplorerSettings(IgnoreApi = true)]
 public class OctoPrintCompatController : ControllerBase
 {

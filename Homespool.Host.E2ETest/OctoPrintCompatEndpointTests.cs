@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -47,6 +48,9 @@ namespace Homespool.Host.E2ETest;
 /// </remarks>
 public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
 {
+    /// <summary>The key the documentation tells a person to give PrusaSlicer: upload and print, nothing else.</summary>
+    private static readonly CapabilitySet SlicerScope = CapabilitySet.Parse("UploadOwnFiles Print");
+
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("octo-e2e");
     private HomespoolFactory _factory = null!;
 
@@ -85,7 +89,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task TheVersionProbeAnswersWithApiAndNamesNobody()
     {
         // Arrange
-        (Guid uuid, string _, HttpClient client) = await SetUpAsync("prober@example.com");
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("prober@example.com", SlicerScope);
 
         // Act
         using HttpResponseMessage response = await client.GetAsync($"/compat/octoprint/{uuid}/api/version",
@@ -113,7 +117,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task TheVersionProbe404sForAPrinterTheCallerCannotSee()
     {
         // Arrange
-        (Guid _, string _, HttpClient client) = await SetUpAsync("stranger@example.com");
+        (Guid _, string _, HttpClient client) = await SetUpAsync("stranger@example.com", SlicerScope);
 
         // Act
         using HttpResponseMessage response = await client.GetAsync(
@@ -197,13 +201,15 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task TheApiKeyHeaderIsRefusedByTheNativeApi()
     {
         // Arrange
-        (Guid _, string token, HttpClient client) = await SetUpAsync("scoped@example.com");
+        // ViewOwnFiles, so that /api/v1/files accepts the key once it is in the right header.
+        (Guid _, string _, HttpClient client) = await SetUpAsync("scoped@example.com", CapabilitySet.Parse("ViewOwnFiles"));
+        string key = client.DefaultRequestHeaders.GetValues(XApiKeyAuthenticationHandler.HeaderName).Single();
 
         // Act
         using HttpResponseMessage refused = await client.GetAsync("/api/v1/files",
                                                                   TestContext.Current.CancellationToken);
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(key);
         using HttpResponseMessage allowed = await native.GetAsync("/api/v1/files",
                                                                   TestContext.Current.CancellationToken);
 
@@ -229,7 +235,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AnUploadWithPrintTrueStoresTheFileAndQueuesIt()
     {
         // Arrange
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync("sender@example.com");
+        (Guid uuid, string verifier, HttpClient client) = await SetUpAsync("sender@example.com", SlicerScope);
 
         // Act
         using MultipartFormDataContent body = SlicerUpload("benchy.bgcode", print: true);
@@ -241,7 +247,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         response.IsSuccessStatusCode.Should().BeTrue(
             "any 2xx is success to the client, which discards the body entirely");
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(verifier);
 
         using HttpResponseMessage listed = await native.GetAsync($"/api/v1/printers/{uuid}/queue",
                                                                  TestContext.Current.CancellationToken);
@@ -275,8 +281,8 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AnUploadForTheWrongModelIsRefusedAndKeepsTheFile()
     {
         // Arrange - a printer that has reported itself as an MK3.5, as INFO spells it
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
-            "wrongmodel@example.com", CapabilitySet.Parse("UploadOwnFiles Print"));
+        (Guid uuid, string verifier, HttpClient client) = await SetUpAsync(
+            "wrongmodel@example.com", SlicerScope);
         await ReportsModelAsync(uuid, "1.3.5");
 
         // Act
@@ -293,7 +299,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         explanation.Should().Contain("MK3.5", "the machine is named, not the triple it reported");
         explanation.Should().Contain("was uploaded, but not queued");
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(verifier);
 
         using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
                                                                 TestContext.Current.CancellationToken);
@@ -315,7 +321,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task UploadAndPrintFromAKeyWithoutPrintIsRefusedAndStoresNothing()
     {
         // Arrange - a slicer key with upload and view, and no Print
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+        (Guid uuid, string verifier, HttpClient client) = await SetUpAsync(
             "noprint@example.com", CapabilitySet.Parse("UploadOwnFiles ViewPrinter"));
 
         // Act
@@ -331,7 +337,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .Should().Contain("nothing was uploaded");
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(verifier);
 
         using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
                                                                 TestContext.Current.CancellationToken);
@@ -352,7 +358,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task UploadAndPrintWithTheFlagAfterTheFileStoresNothingEither()
     {
         // Arrange
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+        (Guid uuid, string verifier, HttpClient client) = await SetUpAsync(
             "lateflag@example.com", CapabilitySet.Parse("UploadOwnFiles ViewPrinter"));
 
         using MultipartFormDataContent body = new();
@@ -369,7 +375,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .Should().Contain("nothing was uploaded");
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(verifier);
 
         using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
                                                                 TestContext.Current.CancellationToken);
@@ -387,7 +393,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AnUploadFromAKeyWithoutUploadIsRefusedNamingUploadNotPrint()
     {
         // Arrange - view only, so staging itself is refused
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+        (Guid uuid, string verifier, HttpClient client) = await SetUpAsync(
             "noupload@example.com", CapabilitySet.Parse("ViewPrinter"));
 
         // Act
@@ -404,7 +410,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
 
         explanation.Should().Contain("UploadOwnFiles").And.NotContain("may not print");
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(verifier);
 
         using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
                                                                 TestContext.Current.CancellationToken);
@@ -468,7 +474,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AnUploadWithPrintFalseQueuesNothing()
     {
         // Arrange
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync("uploader@example.com");
+        (Guid uuid, string verifier, HttpClient client) = await SetUpAsync("uploader@example.com", SlicerScope);
 
         // Act
         using MultipartFormDataContent body = SlicerUpload("shelf.gcode", print: false);
@@ -479,7 +485,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue();
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(verifier);
 
         using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
                                                                 TestContext.Current.CancellationToken);
@@ -510,7 +516,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task TheUnescapedPathPartIsIgnored()
     {
         // Arrange
-        (Guid uuid, string token, HttpClient client) = await SetUpAsync("traverser@example.com");
+        (Guid uuid, string verifier, HttpClient client) = await SetUpAsync("traverser@example.com", SlicerScope);
 
         // Act
         using MultipartFormDataContent body = SlicerUpload("plain.gcode", print: false, path: "../../../etc");
@@ -521,7 +527,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         // Assert
         response.IsSuccessStatusCode.Should().BeTrue();
 
-        using HttpClient native = NativeClient(token);
+        using HttpClient native = NativeClient(verifier);
 
         using HttpResponseMessage stored = await native.GetAsync("/api/v1/files/plain.gcode",
                                                                  TestContext.Current.CancellationToken);
@@ -546,7 +552,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AnExistingNameIsRefusedWithoutReadingTheFile()
     {
         // Arrange
-        (Guid uuid, string _, HttpClient client) = await SetUpAsync("clasher@example.com");
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("clasher@example.com", SlicerScope);
 
         using MultipartFormDataContent original = SlicerUpload("same.bgcode", print: false);
 
@@ -592,7 +598,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AFailureBodyIsProseRatherThanProblemDetails()
     {
         // Arrange
-        (Guid uuid, string _, HttpClient client) = await SetUpAsync("reader@example.com");
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("reader@example.com", SlicerScope);
 
         using MultipartFormDataContent body = SlicerUpload("notes.txt", print: false);
 
@@ -620,7 +626,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AFileThePrinterWouldRefuseIsRefusedHere()
     {
         // Arrange
-        (Guid uuid, string _, HttpClient client) = await SetUpAsync("wrongtype@example.com");
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("wrongtype@example.com", SlicerScope);
 
         // Act
         using MultipartFormDataContent body = SlicerUpload("notes.txt", print: false);
@@ -636,10 +642,12 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
 
     /// <summary>A body carrying no file part is a 400 rather than a silent success.</summary>
     [Fact]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification = "Ownership of each part passes to the MultipartFormDataContent, which the test disposes.")]
     public async Task ABodyWithNoFilePartIsRefused()
     {
         // Arrange
-        (Guid uuid, string _, HttpClient client) = await SetUpAsync("emptyhanded@example.com");
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("emptyhanded@example.com", SlicerScope);
 
         using MultipartFormDataContent body = new();
         body.Add(new StringContent("true"), "print");
@@ -739,10 +747,12 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     /// </para>
     /// </remarks>
     [Fact]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification = "Ownership of each part passes to the MultipartFormDataContent, which the test disposes.")]
     public async Task AnOversizedPrintPartIsRefusedRatherThanBuffered()
     {
         // Arrange
-        (Guid uuid, string _, HttpClient client) = await SetUpAsync("flagstuffer@example.com");
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("flagstuffer@example.com", SlicerScope);
 
         using MultipartFormDataContent body = new()
         {
@@ -773,7 +783,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     public async Task AnOrdinaryPrintFlagIsStillAccepted()
     {
         // Arrange
-        (Guid uuid, string _, HttpClient client) = await SetUpAsync("ordinaryflag@example.com");
+        (Guid uuid, string _, HttpClient client) = await SetUpAsync("ordinaryflag@example.com", SlicerScope);
 
         using MultipartFormDataContent body = SlicerUpload("ordinary.gcode", print: false);
 
@@ -823,11 +833,21 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A user with a printer and a token, and a client that carries <b>only</b> <c>X-Api-Key</c> - no
-    /// cookie, so nothing but the header can be authenticating anything below.
+    /// A user with a printer, a client that carries <b>only</b> <c>X-Api-Key</c> - no cookie, so
+    /// nothing but the header can be authenticating anything below - holding a key scoped to
+    /// <paramref name="slicerScope"/>, and a second, unrestricted key for verifying afterwards.
     /// </summary>
-    private async Task<(Guid uuid, string token, HttpClient client)> SetUpAsync(string email,
-                                                                                CapabilitySet? slicerScope = null)
+    /// <param name="email">The user's address.</param>
+    /// <param name="slicerScope">
+    /// What the slicer's key may do. No default: a key scoped to everything passes every gate, so a
+    /// path needing more than a slicer holds would pass here and fail in a slicer. Usually
+    /// <see cref="SlicerScope"/>.
+    /// </param>
+    /// <returns>
+    /// The printer, the verifying key - for <see cref="NativeClient"/>, never for the request under
+    /// test - and the slicer's client.
+    /// </returns>
+    private async Task<(Guid uuid, string verifier, HttpClient client)> SetUpAsync(string email, CapabilitySet slicerScope)
     {
         (HSUser user, HttpClient cookieClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
             _factory, email);
@@ -835,30 +855,26 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
 
         Guid uuid = await AddPrinterAsync(user.Id);
 
-        string plaintext;
+        string verifier;
         string slicerKey;
 
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, plaintext) = await tokens.CreateAsync(user.Id, "slicer", CapabilitySet.Everything, CancellationToken.None);
-
-            // A narrower key for the slicer itself, with the full one kept for verifying afterwards.
-            slicerKey = slicerScope is null ?
-                plaintext :
-                (await tokens.CreateAsync(user.Id, "scoped slicer", slicerScope, CancellationToken.None)).plaintext;
+            (_, verifier) = await tokens.CreateAsync(user.Id, "verifier", CapabilitySet.Everything, CancellationToken.None);
+            (_, slicerKey) = await tokens.CreateAsync(user.Id, "slicer", slicerScope, CancellationToken.None);
         }
 
         HttpClient client = _factory.CreateClient(
             new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Add(XApiKeyAuthenticationHandler.HeaderName, slicerKey);
 
-        return (uuid, plaintext, client);
+        return (uuid, verifier, client);
     }
 
     /// <summary>
-    /// A client carrying the same token the slicer holds, in the header <c>/api/v1</c> accepts. Used
-    /// only to <em>verify</em> what an upload did, never to perform one.
+    /// A client carrying <paramref name="token"/> in the header <c>/api/v1</c> accepts. Used only to
+    /// <em>verify</em> what an upload did, never to perform one.
     /// </summary>
     private HttpClient NativeClient(string token)
     {

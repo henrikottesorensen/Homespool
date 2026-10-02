@@ -323,7 +323,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, plaintext) = await tokens.CreateAsync(user.Id, "e2e", CapabilitySet.Everything, CancellationToken.None);
+            (_, plaintext) = await tokens.CreateAsync(user.Id, "e2e", [Capability.UploadOwnFiles], CancellationToken.None);
         }
 
         // A client with no cookie at all, so nothing but the header can be authenticating this.

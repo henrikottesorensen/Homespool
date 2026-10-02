@@ -1115,7 +1115,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
                 f.Device.Storage.AddFile("/usb/sub/deep.bgcode", 4242, 1764805000);
             });
 
-        (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId);
+        (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId, CapabilitySet.Parse("ControlPrinter"));
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -1175,7 +1175,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         // Arrange
         (FakePrinterClient fake, Task run, int printerId, long userId) = await StartConnectedFakeAsync();
 
-        (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId);
+        (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId, CapabilitySet.Parse("ControlPrinter"));
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -1199,15 +1199,15 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         await EndRunAsync(fake, run);
     }
 
-    /// <summary>The printer's uuid and a personal access token for its owner.</summary>
-    private async Task<(Guid uuid, string token)> UuidAndTokenAsync(int printerId, long userId)
+    /// <summary>The printer's uuid and a personal access token for its owner, holding exactly <paramref name="scope"/>.</summary>
+    private async Task<(Guid uuid, string token)> UuidAndTokenAsync(int printerId, long userId, CapabilitySet scope)
     {
-        using IServiceScope scope = _factory.Services.CreateScope();
-        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+        using IServiceScope services = _factory.Services.CreateScope();
+        HomespoolDbContext context = services.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         Guid uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
-        ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-        (_, string token) = await tokens.CreateAsync(userId, "storage-e2e", CapabilitySet.Everything, CancellationToken.None);
+        ApiTokenService tokens = services.ServiceProvider.GetRequiredService<ApiTokenService>();
+        (_, string token) = await tokens.CreateAsync(userId, "storage-e2e", scope, CancellationToken.None);
 
         return (uuid, token);
     }
@@ -1281,7 +1281,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
             uuid = (await context.Printers.SingleAsync(p => p.Id == printerId, TestContext.Current.CancellationToken)).Uuid;
 
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, token) = await tokens.CreateAsync(userId, "e2e", CapabilitySet.Everything, CancellationToken.None);
+            (_, token) = await tokens.CreateAsync(userId, "e2e", CapabilitySet.Parse("ControlPrinter"), CancellationToken.None);
         }
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

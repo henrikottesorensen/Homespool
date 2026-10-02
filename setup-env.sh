@@ -2111,6 +2111,29 @@ summarise() {
     say $"Every other line - comments, blank lines, and any key not listed - is left as it is."
 }
 
+# The name of the group owning a file, or nothing. GNU stat first, because `stat -f` there means
+# "describe the filesystem" and would answer with a block report rather than a name.
+file_group() {
+    stat -c '%G' "$1" 2>/dev/null || stat -f '%Sg' "$1" 2>/dev/null || true
+}
+
+# What .env is narrowed to before secrets go into it: 600, unless its group is docker, which keeps
+# read. Anyone in the docker group can already read any file on the host by mounting it into a
+# container, so letting that group read .env shows the secrets to nobody new - and `docker compose`
+# opens .env for every command, logs and ps included, so without it a docker-group user who is not
+# the owner cannot run any of them. The Raspberry Pi image gives .env this group for its device user.
+#
+# Never chosen here: the group is set by whoever deployed the file, and this only declines to take
+# the read away. Keeping whatever group read a file arrives with would not do - a .env copied from
+# .env.example by hand is 664 in the copier's group, which on a Mac is every user.
+env_file_mode() {
+    if [ "$(file_group "$1")" = docker ]; then
+        echo 640
+    else
+        echo 600
+    fi
+}
+
 apply() {
     # Seeded from the example rather than written from nothing, so that somebody who opens this file
     # later still finds the documentation for the twenty-odd settings the wizard never asked about.
@@ -2232,7 +2255,7 @@ apply() {
     # at their mode under umask 077 and never depended on this.
     #
     # $tmp is mktemp's, which is 0600, so the rendered copy was never wide either.
-    chmod 600 "$env_file" 2>/dev/null || true
+    chmod "$(env_file_mode "$env_file")" "$env_file" 2>/dev/null || true
 
     # Copied over rather than moved, so an existing file keeps its own ownership - and, now that the
     # line above has set it, the mode this wrote rather than mktemp's.

@@ -86,8 +86,10 @@ certificate). **Give the board a static lease** before enrolling a printer you c
 the boot that finds `PRINTER_HOST` empty and never rewritten afterwards, so `.env` cannot drift away
 from the certificate on its own. A board that genuinely moved needs the reissue either way.
 
-The same script is how you change anything later — `cd /opt/homespool && ./setup-env.sh` over SSH
-walks through the settings and leaves everything it did not ask about untouched.
+The same script is how you change anything later — `cd /opt/homespool && sudo ./setup-env.sh` over
+SSH walks through the settings and leaves everything it did not ask about untouched. `sudo` because
+`/opt/homespool` and `.env` belong to root; `pi` can read `.env` through the docker group, which is
+what lets it run `docker compose` there, but not change it.
 
 **The card serves TLS with certificates it signs itself**, one per name in `USER_HOSTS`, and browsers
 warn about them because nobody vouches for them. That is the honest state of an appliance on a home

@@ -198,6 +198,22 @@ mmdebstrap:
     # device user cannot write the moment it is not.
     - chown -R 0:0 $1/opt/homespool
 
+    # Setgid to the docker group, so the .env first boot creates here is root:docker - and
+    # setup-env.sh gives a docker-group .env 640 rather than 600, before any secret goes in. The
+    # device user can then run docker compose here, which opens .env for every command, logs and ps
+    # included. That shows the secrets to nobody new: the docker group can read any file on this box
+    # by mounting it into a container. Writing stays root's - 2755 has no group write, so .env, the
+    # stack files and the directory itself still need sudo.
+    #
+    # Not by shipping .env with that ownership: the wizard moves the compose networks off a colliding
+    # LAN range only while it is creating .env, and a card that arrived with one would never do it.
+    #
+    # Through chroot, so the name is resolved against this image's /etc/group, where docker-ce's
+    # postinst created it at install; the builder's own gid for docker, if it has one, is unrelated.
+    # After the chown above, which would otherwise take the group back.
+    - chroot $1 chgrp docker /opt/homespool
+    - chmod 2755 $1/opt/homespool
+
     # The camera sidecar's configuration, shipped empty so the card has it before anything runs.
     # compose.yaml bind-mounts this ONE FILE, and Docker invents a DIRECTORY at a bind-mount path
     # that is missing - which go2rtc then fails on, reporting a directory where it wanted its

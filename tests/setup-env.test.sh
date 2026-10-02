@@ -918,6 +918,51 @@ if test_case "apply tightens the mode on a file holding a password"; then
     assert_eq "600" "$mode" "not world-readable"
 fi
 
+if test_case "apply leaves a docker-group .env readable by the group"; then
+    # The Pi image's .env is root:docker so the device user can run docker compose, which opens .env
+    # for every command. The image makes it so only by the group, and leaves the mode to this - so a
+    # first boot that wrote 600 would lock the device user out, and nothing would put it back. No
+    # docker group exists on a Mac, so the group is what is stubbed;
+    # reset_state re-sources the script, so the override restores itself.
+    use_temp_env "GO2RTC_PASSWORD=" "GO2RTC_PASSWORD="
+    chmod 600 "$env_file"
+    file_group() { echo docker; }
+    plan_set GO2RTC_PASSWORD hunter2
+    apply >/dev/null 2>&1
+    mode="$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")"
+    assert_eq "640" "$mode" "group read, and nothing for anyone else"
+fi
+
+if test_case "apply still narrows a docker-group .env copied by hand"; then
+    use_temp_env "GO2RTC_PASSWORD=" "GO2RTC_PASSWORD="
+    chmod 664 "$env_file"
+    file_group() { echo docker; }
+    plan_set GO2RTC_PASSWORD hunter2
+    apply >/dev/null 2>&1
+    mode="$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")"
+    assert_eq "640" "$mode" "neither group write nor world read survives"
+fi
+
+if test_case "apply takes group read away from any other group"; then
+    # The case the docker exception must not widen into: a 664 copy of .env.example keeps nothing
+    # for its group, which on a Mac is staff - every user on the machine.
+    use_temp_env "GO2RTC_PASSWORD=" "GO2RTC_PASSWORD="
+    chmod 664 "$env_file"
+    file_group() { echo staff; }
+    plan_set GO2RTC_PASSWORD hunter2
+    apply >/dev/null 2>&1
+    mode="$(stat -c '%a' "$env_file" 2>/dev/null || stat -f '%Lp' "$env_file")"
+    assert_eq "600" "$mode" "owner only"
+fi
+
+if test_case "file_group names the group a file has"; then
+    # Against the real stat, on the stock tools this suite runs with, because the cases above stub
+    # it. The group is set first: on a Mac a new file takes its directory's group, not the user's.
+    use_temp_env "X=" "X="
+    chgrp "$(id -g)" "$env_file"
+    assert_eq "$(id -gn)" "$(file_group "$env_file")" "the owning group, by name"
+fi
+
 if test_case "the seeded .env is not world-readable even before the chmod"; then
     # The mode after apply proves nothing about this: the chmod at the bottom sets it either way,
     # and the test above passes whether the file spent the run at 600 or arrived at 664 and was

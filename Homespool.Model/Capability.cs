@@ -79,14 +79,14 @@ public enum Capability
     Print = 5,
 
     /// <summary>
-    /// Steer the machine, whoever is using it: stop, pause, resume, ready, unready, idle and preheat,
-    /// on anyone's print, and cancel anyone's queue entry.
+    /// Steer the machine, whoever is using it: stop, pause, resume, idle, preheat, unload, set the
+    /// light and browse its storage, on anyone's print, and cancel or reorder anyone's queue entry.
     /// </summary>
     /// <remarks>
     /// Distinct from <see cref="Print"/> because running a printer is not the same act as putting
-    /// work on it. Note the pairing with <see cref="ManagePrinter"/> that already exists: pressing
-    /// <i>Set ready</i> is this, while allowing the button to be pressed remotely at all is a policy
-    /// decision and belongs to the manager.
+    /// work on it. <b>Readying and standing down are not here</b>: they are <see cref="Print"/>,
+    /// because somebody able to queue work must be able to start it. Whether readying may be done
+    /// remotely at all is a policy decision, and belongs to <see cref="ManagePrinter"/>.
     /// </remarks>
     ControlPrinter = 6,
 
@@ -131,8 +131,8 @@ public enum Capability
     /// <remarks>
     /// <b>Overwrite belongs here rather than with <see cref="UploadOwnFiles"/></b>: replacing the bytes
     /// under a name that already exists is manipulation whatever the verb says, and
-    /// <i>upload own files</i> should not sound like it destroys one. Without this an overwriting
-    /// upload is refused, which is the 409 an existing name already gives.
+    /// <i>upload own files</i> should not sound like it destroys one. Without this an upload asking
+    /// to overwrite is refused as the credential's 403, whether or not the name exists.
     /// </remarks>
     ManipulateOwnFiles = 11,
 

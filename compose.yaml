@@ -236,6 +236,14 @@ services:
       # so they cannot drift.
       PrusaConnect__TransferPort: "${TRANSFER_PORT:-15080}"
 
+      # The names acme/ obtains a publicly-trusted certificate for, so the application can ask the
+      # proxy what it serves for each and say so in the banner, and by mail once one is a week from
+      # expiry. The renewal's own list, so the two cannot disagree; empty, nothing is checked. The
+      # proxy by the same name XForwarded__ProxyHost uses, and its user listener's port inside its
+      # container.
+      PublicCertificate__Hosts: "${ACME_HOSTS:-}"
+      PublicCertificate__ProxyHost: "proxy"
+      PublicCertificate__ProxyPort: "8443"
 
     volumes:
       - homespool-data:/app/data

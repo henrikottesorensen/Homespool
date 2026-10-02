@@ -166,10 +166,6 @@ public sealed class MinimumScopeTests : IAsyncLifetime
                 response.StatusCode.Should().Be(HttpStatusCode.Forbidden, because);
                 break;
 
-            case ScopeRefusal.NotFound:
-                response.StatusCode.Should().Be(HttpStatusCode.NotFound, because);
-                break;
-
             case ScopeRefusal.EmptyList:
                 response.StatusCode.Should().Be(HttpStatusCode.OK, because);
                 (await CountOfAsync(response)).Should().Be(0, because);

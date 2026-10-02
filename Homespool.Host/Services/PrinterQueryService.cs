@@ -125,8 +125,14 @@ public class PrinterQueryService
     /// <see cref="ListPrintersWithStateForUserAsync"/> for why the join is necessary rather than
     /// convenient.
     /// </summary>
+    /// <exception cref="CredentialScopeDeniedException">The credential's scope does not name <see cref="Capability.ViewPrinter"/>.</exception>
     public async Task<PrinterWithState?> GetPrinterWithStateForUserAsync(Guid uuid, Caller caller, CancellationToken cancellationToken)
     {
+        // The credential's half first, and out loud, as PrinterAccessService.FindAsync asks it. Left to
+        // the team filter below, a scope without ViewPrinter matches no teams and so no row - a 404 for
+        // a refusal the caller can act on, since the token is theirs to replace.
+        CredentialScope.Require(caller, Capability.ViewPrinter);
+
         IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
         IQueryable<TeamMember> members = Memberships.Open(_dbContext);
 
@@ -331,10 +337,14 @@ public class PrinterQueryService
     /// "doesn't exist or caller can't even read it" rule as <see cref="GetPrinterForUserAsync"/> -
     /// both cases return <c>null</c> so a 404 never confirms a UUID belongs to someone else's team.
     /// </summary>
+    /// <exception cref="CredentialScopeDeniedException">The credential's scope does not name <see cref="Capability.ViewPrinter"/>.</exception>
     public async Task<PrinterStatistics?> GetPrinterStatisticsForUserAsync(Guid uuid,
                                                                            Caller caller,
                                                                            CancellationToken cancellationToken)
     {
+        // Ahead of the lookup for the reason GetPrinterWithStateForUserAsync gives.
+        CredentialScope.Require(caller, Capability.ViewPrinter);
+
         IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
         Printer? printer = await _dbContext.Printers
@@ -392,12 +402,16 @@ public class PrinterQueryService
     /// temperature is averaged and a setpoint is not.
     /// </para>
     /// </remarks>
+    /// <exception cref="CredentialScopeDeniedException">The credential's scope does not name <see cref="Capability.ViewPrinter"/>.</exception>
     public async Task<TemperatureSeries?> GetTemperatureSeriesAsync(Guid uuid,
                                                                     Caller caller,
                                                                     DateTimeOffset from,
                                                                     DateTimeOffset to,
                                                                     CancellationToken cancellationToken)
     {
+        // Ahead of the lookup for the reason GetPrinterWithStateForUserAsync gives.
+        CredentialScope.Require(caller, Capability.ViewPrinter);
+
         IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken);
 
         int printerId = await _dbContext.Printers

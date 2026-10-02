@@ -135,7 +135,7 @@ public static class MinimumScopeRoutes
               [Capability.ViewPrinter],
               world => world.AddPrinterAsync(),
               world => Get($"/api/v1/printers/{world.Printer}"),
-              HttpStatusCode.OK, ScopeRefusal.NotFound),
+              HttpStatusCode.OK, ScopeRefusal.Forbidden),
 
         Route(typeof(PrinterAppController), nameof(PrinterAppController.PatchPrinter), null,
               [Capability.ManagePrinter],
@@ -297,13 +297,13 @@ public static class MinimumScopeRoutes
               [Capability.ViewPrinter],
               world => world.AddPrinterAsync(),
               world => Get($"/api/v1/printers/{world.Printer}/telemetry"),
-              HttpStatusCode.OK, ScopeRefusal.NotFound),
+              HttpStatusCode.OK, ScopeRefusal.Forbidden),
 
         Route(typeof(PrinterTelemetryController), nameof(PrinterTelemetryController.Temperatures), null,
               [Capability.ViewPrinter],
               world => world.AddPrinterAsync(),
               world => Get($"/api/v1/printers/{world.Printer}/telemetry/temperatures"),
-              HttpStatusCode.OK, ScopeRefusal.NotFound),
+              HttpStatusCode.OK, ScopeRefusal.Forbidden),
 
         Route(typeof(CameraController), nameof(CameraController.List), null,
               [Capability.ViewCamera],
@@ -411,9 +411,6 @@ public enum ScopeRefusal
 
     /// <summary>403, the scope refusal.</summary>
     Forbidden,
-
-    /// <summary>404 - the resource is hidden rather than refused.</summary>
-    NotFound,
 
     /// <summary>200 with an empty list - a listing narrows rather than refuses.</summary>
     EmptyList,

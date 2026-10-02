@@ -773,8 +773,8 @@ public class DetailModel : PageModel
 
         CanManagePrinter = await _access.AllowsAsync(Statistics.Printer.Id, caller, Capability.ManagePrinter, cancellationToken);
 
-        // Only read when the control it gates would be rendered; reading slides the window, and an
-        // account that cannot manage the printer never sees the removal disclosure.
+        // Only read when the control it gates would be rendered: an account that cannot manage the
+        // printer never sees the removal disclosure.
         RemovalProved = CanManagePrinter && _proof.IsProved(HttpContext, user.Id);
 
         // Compared against what is stored, not resolved: the printer in front of us is one the caller

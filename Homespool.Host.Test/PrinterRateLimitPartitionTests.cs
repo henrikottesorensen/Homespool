@@ -24,7 +24,7 @@ public sealed class PrinterRateLimitPartitionTests
 {
     private const string Address = "203.0.113.7";
 
-    private static HttpContext Request(bool trustsProxy, bool? unreliable, string? fingerprint = null)
+    private static HttpContext Request(bool trustsProxy, bool? unreliable, string? fingerprint = null, string address = Address)
     {
         ServiceCollection services = new();
 
@@ -36,7 +36,7 @@ public sealed class PrinterRateLimitPartitionTests
 
         DefaultHttpContext context = new() { RequestServices = services.BuildServiceProvider() };
 
-        context.Connection.RemoteIpAddress = IPAddress.Parse(Address);
+        context.Connection.RemoteIpAddress = IPAddress.Parse(address);
 
         if (fingerprint is not null)
         {
@@ -56,6 +56,20 @@ public sealed class PrinterRateLimitPartitionTests
     public void RegistrationIsPartitionedByAddressWhereAddressesAreClients(string policy)
     {
         PrinterRateLimits.DemandOf(policy, Request(trustsProxy: true, unreliable: false)).Caller.Should().Be(Address);
+    }
+
+    /// <summary>
+    /// An IPv6 client is its /64, so a host rotating addresses inside it cannot spend the ceiling one
+    /// fresh window at a time.
+    /// </summary>
+    [Theory]
+    [InlineData(RateLimitPolicies.PrinterRegistrationStart)]
+    [InlineData(RateLimitPolicies.PrinterRegistrationPoll)]
+    public void RegistrationIsPartitionedPerSlash64ForAnIPv6Client(string policy)
+    {
+        HttpContext context = Request(trustsProxy: true, unreliable: false, address: "2001:db8:1:2::abcd");
+
+        PrinterRateLimits.DemandOf(policy, context).Caller.Should().Be("2001:db8:1:2::/64");
     }
 
     /// <summary>

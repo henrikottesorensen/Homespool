@@ -131,6 +131,28 @@ public sealed class SignInRateLimitTests
     }
 
     /// <summary>
+    /// An IPv6 client is its /64: every address a host can pick inside it is one window, so rotating
+    /// addresses buys no more attempts.
+    /// </summary>
+    [Fact]
+    public void AnIPv6PostIsLimitedPerSlash64()
+    {
+        HttpContext context = Request(HttpMethods.Post, trustsProxy: true, address: "2001:db8:1:2::abcd");
+
+        SignInRateLimit.Partition(context).PartitionKey.Should().Be("2001:db8:1:2::/64");
+    }
+
+    /// <summary>The login page's challenge is keyed the same way as the credential handlers.</summary>
+    [Fact]
+    public void AnIPv6ChallengeIsLimitedPerSlash64()
+    {
+        HttpContext context = Request(HttpMethods.Post, trustsProxy: false, address: "2001:db8:1:2::abcd",
+                                      handler: LoginModel.PasskeyOptionsHandler);
+
+        SignInRateLimit.Partition(context).PartitionKey.Should().Be("2001:db8:1:2::/64");
+    }
+
+    /// <summary>
     /// An address the connection cannot name still partitions rather than throwing - one shared
     /// window, which is what a test host and a unix socket both look like.
     /// </summary>

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261002174251_InitialCreate")]
+    [Migration("20261002221113_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -395,6 +395,9 @@ namespace Homespool.Data.Migrations
 
                     b.Property<string>("PrinterPath")
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("TransferCommandId")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("TransferRefusalCode")
                         .HasMaxLength(64)

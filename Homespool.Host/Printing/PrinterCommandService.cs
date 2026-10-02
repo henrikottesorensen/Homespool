@@ -39,7 +39,7 @@ public class PrinterCommandService
         {
             CommandSendOutcome.NotConnected => throw new PrinterNotConnectedException(printerId),
             CommandSendOutcome.AlreadyInFlight => throw new CommandAlreadyInFlightException(printerId),
-            CommandSendOutcome.ResponseTimedOut => throw new CommandResponseTimedOutException(printerId),
+            CommandSendOutcome.ResponseTimedOut => throw new CommandResponseTimedOutException(printerId, result.CommandId),
             CommandSendOutcome.SendTimedOut => throw new CommandSendTimedOutException(printerId),
             _ => result,
         };
@@ -83,7 +83,7 @@ public class PrinterCommandService
 
         // Written, and nothing will answer it. Null rather than an invented event: there is no
         // outcome to report, and fabricating one would misrepresent the wire.
-        return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response!;
+        return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response! with { CommandId = result.CommandId };
     }
 
     /// <summary>
@@ -120,7 +120,7 @@ public class PrinterCommandService
         IPrinterLink link = RequireLink(printerId);
         CommandSendResult result = Check(printerId, await link.SendAsync(intent, cancellationToken));
 
-        return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response!;
+        return result.Outcome == CommandSendOutcome.Dispatched ? null : result.Response! with { CommandId = result.CommandId };
     }
 
     /// <summary>

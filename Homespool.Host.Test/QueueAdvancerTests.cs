@@ -76,6 +76,12 @@ public sealed class QueueAdvancerTests : IDisposable
     /// <summary>The seeded file's digest after <see cref="OverwriteSeededFileAsync"/>.</summary>
     private const string OverwrittenDigest = "overwritten-digest";
 
+    /// <summary>
+    /// The command a seeded transfer was started by, and the first id <see cref="ConnectAccepting"/>
+    /// hands out.
+    /// </summary>
+    private const uint StartCommandId = 7001;
+
     /// <summary>The handle the seeded entry is enqueued under - fixed, so assertions can name it.</summary>
     private static readonly Guid QueuedPrintUuid = new("11111111-2222-3333-4444-555555555555");
 
@@ -894,17 +900,28 @@ public sealed class QueueAdvancerTests : IDisposable
         _registry.Register(PrinterId, actor, overPlaintext: false);
     }
 
-    /// <summary>A printer that accepts whatever it is sent, so a refusal can only be ours.</summary>
+    /// <summary>
+    /// A printer that accepts whatever it is sent, so a refusal can only be ours - each command under
+    /// an id of its own, from <see cref="StartCommandId"/> up, as the actor numbers them.
+    /// </summary>
     private IPrinterConnectionActor ConnectAccepting()
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        uint nextCommandId = StartCommandId;
+
         actor.IsOpen.Returns(true);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
-             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                                                            new CommandOutcome(PrinterEventType.Finished, null))));
+             .Returns(_ => Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                                 new CommandOutcome(PrinterEventType.Finished, null))
+             {
+                 CommandId = nextCommandId++,
+             }));
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
-             .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
-                                                            new CommandOutcome(PrinterEventType.Finished, null))));
+             .Returns(_ => Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                                 new CommandOutcome(PrinterEventType.Finished, null))
+             {
+                 CommandId = nextCommandId++,
+             }));
 
         _registry.Register(PrinterId, actor, overPlaintext: false);
 
@@ -1253,6 +1270,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             PrintFileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
+            TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~1.BGC",
             DriveName = file.Name,
             Digest = SeededDigest,
@@ -1453,6 +1471,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             PrintFileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
+            TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~1.BGC",
             DriveName = file.Name,
             Digest = SeededDigest,
@@ -3348,6 +3367,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             PrintFileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
+            TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~2.BGC",
             DriveName = OwnersName,
         });
@@ -3390,6 +3410,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             PrintFileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
+            TransferCommandId = StartCommandId,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -3471,7 +3492,7 @@ public sealed class QueueAdvancerTests : IDisposable
         for (uint attempt = 1; attempt <= TransferRetryRules.HoldAfter; attempt++)
         {
             await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
-            await AddTransferEndAsync(PrinterEventType.TransferAborted, "/usb/queued.bgcode", startCommandId: 7000 + attempt);
+            await EndRecordedTransferAsync(context, PrinterEventType.TransferAborted);
             await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
             _clock.Advance(TransferRetryRules.WaitAfter((int)attempt));
@@ -3665,12 +3686,12 @@ public sealed class QueueAdvancerTests : IDisposable
 
     /// <summary>
     /// The end of an earlier attempt, read late, does not end the attempt that replaced it: the command
-    /// it points back at was answered before this one began.
+    /// it points back at is not the one the row is waiting on.
     /// </summary>
     [Fact]
     public async Task TheEndOfAnEarlierAttemptDoesNotEndTheOneThatReplacedIt()
     {
-        // Arrange
+        // Arrange - the row waits on the second attempt; the first one's end arrives
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
         PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
         DateTimeOffset started = _clock.GetUtcNow();
@@ -3680,12 +3701,12 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             PrintFileId = file.Id,
             TransferStartedAt = started,
+            TransferCommandId = StartCommandId + 1,
             PrinterPath = "/usb/QUEUED~1.BGC",
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        await AddTransferEndAsync(PrinterEventType.TransferAborted, "/usb/queued.bgcode",
-                                  answeredAt: started - TimeSpan.FromMinutes(1));
+        await AddTransferEndAsync(PrinterEventType.TransferAborted, "/usb/queued.bgcode", StartCommandId);
 
         // Act
         using QueueAdvancer advancer = NewAdvancer();
@@ -3697,6 +3718,211 @@ public sealed class QueueAdvancerTests : IDisposable
 
         row.TransferStartedAt.Should().Be(started, "this attempt has not ended");
         row.PrinterPath.Should().Be("/usb/QUEUED~1.BGC");
+    }
+
+    /// <summary>
+    /// The event log read again from the start - a restart forgets the watermark - finds the aborts it
+    /// already counted, and counts none of them again: a printer that gave a file up three times has
+    /// not given it up six.
+    /// </summary>
+    [Fact]
+    public async Task AbortsReadAgainAfterARestartAreNotCountedAgain()
+    {
+        // Arrange - three attempts, each taken and given up, read by the advancer that sent them
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectAccepting();
+        const int aborts = 3;
+
+        using (QueueAdvancer before = NewAdvancer())
+        {
+            for (int attempt = 1; attempt <= aborts; attempt++)
+            {
+                await before.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+                await EndRecordedTransferAsync(context, PrinterEventType.TransferAborted);
+                await before.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+                _clock.Advance(TransferRetryRules.WaitAfter(attempt));
+            }
+        }
+
+        // Act - a fresh advancer, as after a restart
+        using QueueAdvancer after = NewAdvancer();
+        await after.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.TransferRefusalCount.Should().Be(aborts, "each abort was counted once, when it happened");
+        row.HoldReason.Should().BeNull();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// A direct send somebody stopped at the panel does not hold a print of the same file queued
+    /// afterwards, though its stop is only read once the queue has the printer to visit.
+    /// </summary>
+    [Fact]
+    public async Task AStoppedDirectSendDoesNotHoldAPrintQueuedAfterIt()
+    {
+        // Arrange - a direct send's row, its stop in the log, and the seeded entry queued since
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferCommandId = StartCommandId,
+            DriveName = file.Name,
+            Digest = SeededDigest,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await AddTransferEndAsync(PrinterEventType.TransferStopped, "/usb/queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().BeNull("nobody stopped the queued print");
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"], "the partial went with the stop, so the file is sent");
+    }
+
+    /// <summary>
+    /// The finish of an earlier copy's transfer, read while a later copy of the same file is arriving
+    /// under the same name, does not make the later copy arrived - it would be printed half-sent.
+    /// </summary>
+    [Fact]
+    public async Task AnEarlierCopysFinishDoesNotArriveTheCopyArrivingNow()
+    {
+        // Arrange - a copy arriving by a direct send, and an earlier copy's finish in the log
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferCommandId = StartCommandId + 1,
+            DriveName = file.Name,
+            Digest = SeededDigest,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await AddTransferEndAsync(PrinterEventType.TransferFinished, "/usb/queued.bgcode", StartCommandId);
+
+        // Act - no connection, so the pass only reads the log
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().BeNull("the finish was of another transfer");
+        row.TransferCommandId.Should().Be(StartCommandId + 1, "the later copy's transfer is still awaited");
+    }
+
+    /// <summary>
+    /// An offer the printer did not answer in time is still the attempt its transfer's end settles: the
+    /// command's id is known from the send, answered or not.
+    /// </summary>
+    [Fact]
+    public async Task AnUnansweredOffersTransferIsSettledByItsEnd()
+    {
+        // Arrange - room on the drive, and the offer going out under an id with no answer
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectAnswering(command => command is SendInfo ?
+                             Answered(PrinterEventType.Info) :
+                             Unanswered(CommandSendOutcome.ResponseTimedOut) with { CommandId = StartCommandId });
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - the unanswered offer, the transfer finishing, and the pass that reads it
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await AddTransferEndAsync(PrinterEventType.TransferFinished, "/usb/queued.bgcode");
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().NotBeNull("the printer was fetching all along");
+        row.TransferCommandId.Should().BeNull("nothing is awaited any more");
+    }
+
+    /// <summary>
+    /// An offer the sender revoked - the send fell short - leaves nothing awaited, so the abort a
+    /// printer that had taken it reports is not counted against the file: the abort was ours.
+    /// </summary>
+    [Fact]
+    public async Task TheAbortOfARevokedOfferIsNotCounted()
+    {
+        // Arrange - room on the drive, and the offer falling short, so the sender revokes it
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        ConnectAnswering(command => command is SendInfo ?
+                             Answered(PrinterEventType.Info) :
+                             Unanswered(CommandSendOutcome.NotConnected));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - the send, the printer giving up the download it could no longer fetch, and the next pass
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await AddTransferEndAsync(PrinterEventType.TransferAborted, "/usb/queued.bgcode");
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.TransferRefusalCount.Should().BeNull("revoking the offer is what ended the transfer");
+    }
+
+    /// <summary>
+    /// A report received before the attempt in flight began - an earlier copy's, read again after a
+    /// restart - does not name the copy arriving now, which the queue would then print while it
+    /// downloads.
+    /// </summary>
+    [Fact]
+    public async Task AReportFromBeforeTheAttemptInFlightDoesNotNameIt()
+    {
+        // Arrange - an attempt started now, and an earlier copy's report from a minute ago
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            TransferStartedAt = _clock.GetUtcNow(),
+            TransferCommandId = StartCommandId,
+            DriveName = file.Name,
+            Digest = SeededDigest,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await AddEventAsync(PrinterEventType.FileInfo,
+                            $"{{\"display_name\":\"{file.Name}\",\"path\":\"/usb/QUEUED~2.BGC\"}}",
+                            at: _clock.GetUtcNow() - TimeSpan.FromMinutes(1));
+
+        // Act - no connection, so the pass only reads the log
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.PrinterPath.Should().BeNull("the report describes a copy this transfer replaced");
     }
 
     /// <summary>
@@ -4296,6 +4522,7 @@ public sealed class QueueAdvancerTests : IDisposable
             PrinterId = PrinterId,
             PrintFileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
+            TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~1.BGC",
         };
 
@@ -4311,17 +4538,30 @@ public sealed class QueueAdvancerTests : IDisposable
     /// </summary>
     /// <param name="ending">Finished, aborted or stopped.</param>
     /// <param name="sentTo">The drive path the command sent the file to.</param>
-    /// <param name="answeredAt">When the command was answered; now, by default.</param>
     /// <param name="startCommandId">The id of the command that started it.</param>
     private async Task AddTransferEndAsync(PrinterEventType ending,
                                            string sentTo,
-                                           DateTimeOffset? answeredAt = null,
-                                           uint startCommandId = 7001)
+                                           uint startCommandId = StartCommandId)
     {
         await AddEventAsync(PrinterEventType.TransferInfo,
                             $"{{\"path\":\"{sentTo}\",\"start_cmd_id\":{startCommandId},\"type\":\"FROM_CONNECT\"}}",
-                            startCommandId, answeredAt);
+                            startCommandId);
         await AddEventAsync(ending, $"{{\"start_cmd_id\":{startCommandId}}}");
+    }
+
+    /// <summary>
+    /// The end of the transfer the seeded file's row is waiting on - whichever command the advancer's
+    /// own send recorded.
+    /// </summary>
+    /// <param name="context">The test's context, read fresh.</param>
+    /// <param name="ending">Finished, aborted or stopped.</param>
+    private async Task EndRecordedTransferAsync(HomespoolDbContext context, PrinterEventType ending)
+    {
+        context.ChangeTracker.Clear();
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.TransferCommandId.Should().NotBeNull("the printer took the transfer, so its command was recorded");
+        await AddTransferEndAsync(ending, "/usb/queued.bgcode", (uint)row.TransferCommandId!.Value);
     }
 
     // ---- what the printer wrote, in the log ----

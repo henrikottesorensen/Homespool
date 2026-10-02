@@ -36,4 +36,17 @@ namespace Homespool.Host.Printing;
 /// it.
 /// </para>
 /// </param>
-public sealed record CommandSendResult(CommandSendOutcome Outcome, CommandOutcome? Response, JsonElement? Data = null);
+public sealed record CommandSendResult(CommandSendOutcome Outcome, CommandOutcome? Response, JsonElement? Data = null)
+{
+    /// <summary>
+    /// The id the command went out under, whenever it reached the printer - answered, dispatched, or
+    /// unanswered in time - and null when it never left.
+    /// </summary>
+    /// <remarks>
+    /// <b>Firmware quotes it back long after the answer.</b> A transfer's terminal event names the
+    /// command that started it as <c>start_cmd_id</c>, minutes later, and that is the only thing tying
+    /// the ending to the attempt. An unanswered send carries it too, because a download acknowledged
+    /// late is often running anyway.
+    /// </remarks>
+    public uint? CommandId { get; init; }
+}

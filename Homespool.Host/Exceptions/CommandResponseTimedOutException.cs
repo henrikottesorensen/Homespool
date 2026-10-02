@@ -17,6 +17,15 @@ public class CommandResponseTimedOutException : Exception, ILocalisableError
     {
     }
 
+    /// <summary>For a command known to have gone out under <paramref name="commandId"/>.</summary>
+    /// <param name="printerId">The printer that did not answer.</param>
+    /// <param name="commandId">The id it went out under, when the transport knows it.</param>
+    public CommandResponseTimedOutException(int printerId, uint? commandId)
+        : this(printerId)
+    {
+        CommandId = commandId;
+    }
+
     // The three constructors every public exception type is expected to carry (CA1032). See
     // PrinterNotConnectedException for why they are here despite nothing calling them.
     public CommandResponseTimedOutException()
@@ -32,6 +41,12 @@ public class CommandResponseTimedOutException : Exception, ILocalisableError
         : base(message, innerException)
     {
     }
+
+    /// <summary>
+    /// The id the unanswered command went out under, when known. A download the printer acknowledges
+    /// late is often running anyway, and its end will quote this id back.
+    /// </summary>
+    public uint? CommandId { get; }
 
     /// <inheritdoc />
     public string ResourceKey => "Error_CommandNoAnswer";

@@ -73,18 +73,23 @@ public sealed class PrinterDriveCopies
 
     /// <summary>
     /// Records that the printer took a transfer of the bytes whose digest is <paramref name="digest"/>
-    /// to the row's name. Not saved.
+    /// to the row's name, started by the command <paramref name="commandId"/>. Not saved.
     /// </summary>
     /// <remarks>
     /// <b>Whatever the row said had arrived is forgotten with it</b>: the drive now holds a transfer of
-    /// these bytes in progress, not what was there before, and only its own end says it has arrived.
+    /// these bytes in progress, not what was there before, and only its own end says it has arrived -
+    /// the end naming <paramref name="commandId"/>, and no earlier one.
     /// </remarks>
-    public static void RecordTaken(PrintFileOnPrinter row, string digest)
+    /// <param name="row">The <i>(file, printer)</i> row.</param>
+    /// <param name="digest">The digest of the bytes offered.</param>
+    /// <param name="commandId">The id the download command went out under, or null when the transport did not say.</param>
+    public static void RecordTaken(PrintFileOnPrinter row, string digest, uint? commandId)
     {
         ArgumentNullException.ThrowIfNull(row);
 
         row.Digest = digest;
         row.ArrivedAt = null;
+        row.TransferCommandId = commandId;
     }
 
     /// <summary>
@@ -150,6 +155,7 @@ public sealed class PrinterDriveCopies
         row.Digest = null;
         row.ArrivedAt = null;
         row.PrinterPath = null;
+        row.TransferCommandId = null;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new OutdatedCopyOutcome(OutdatedCopyRemoval.Removed);
@@ -203,9 +209,9 @@ public sealed class PrinterDriveCopies
         {
             sent = await _sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(row.DriveName!), caller, cancellationToken);
         }
-        catch (CommandResponseTimedOutException)
+        catch (CommandResponseTimedOutException e)
         {
-            RecordTaken(row, digest);
+            RecordTaken(row, digest, e.CommandId);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
             throw;
@@ -213,7 +219,7 @@ public sealed class PrinterDriveCopies
 
         if (sent.Outcome?.EventType is not (PrinterEventType.Rejected or PrinterEventType.Failed))
         {
-            RecordTaken(row, digest);
+            RecordTaken(row, digest, sent.Outcome?.CommandId);
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 

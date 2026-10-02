@@ -25,7 +25,8 @@ namespace Homespool.Host.Printing;
 /// what sits on a drive under a name Homespool chose can always be attributed.
 /// </para>
 /// <para>
-/// <b>A reservation, not a transfer.</b> The row a direct send leaves carries a drive name and no
+/// <b>A reservation, not a transfer.</b> The row a direct send leaves carries a drive name and, once
+/// the printer takes the file, the command id its ending will name - but no
 /// <see cref="PrintFileOnPrinter.TransferStartedAt"/>: the queue tracks arrivals only for printers
 /// with queued work, so an in-flight mark nobody would clear could leave a queued print of the same
 /// file waiting on it. The name is what the next transfer needs to see.

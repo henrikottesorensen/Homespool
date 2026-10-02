@@ -45,7 +45,9 @@ namespace Homespool.Host.Queue;
 /// <para>
 /// <b>Everything it needs is persisted, so a tick is stateless.</b> It holds no per-printer memory
 /// between passes beyond the event watermark and the last panel job examined, both optimisations
-/// rather than state: losing either costs a re-scan or a repeated question, not correctness. A
+/// rather than state: losing either costs a re-scan or a repeated question, not correctness - the
+/// watermark because every event it guards is safe to apply twice (see
+/// <see cref="ReconcileArrivalsAsync"/>). A
 /// restart therefore resumes without ceremony, and the design's "nudged on enqueue and on connect"
 /// is a latency improvement over the timer rather than the mechanism. The one exception is whether
 /// this run has watched the open print's filament before it moved, and a restart forgetting it
@@ -595,10 +597,15 @@ public sealed class QueueAdvancer : BackgroundService
     /// name we sent.
     /// </para>
     /// <para>
-    /// <b>A terminal event is matched through the command that started it.</b> It carries only
-    /// <c>start_cmd_id</c>; the <c>TRANSFER_INFO</c> answering that command carries the path. An event
-    /// without one ended a transfer nothing here commanded - a PrusaLink upload - and is not ours to
-    /// read.
+    /// <b>A terminal event is matched by the command that started it.</b> It carries only
+    /// <c>start_cmd_id</c>, and the row that recorded that command when the printer took the transfer
+    /// is the one it ends. An event without one ended a transfer nothing here commanded - a PrusaLink
+    /// upload - and is not ours to read.
+    /// </para>
+    /// <para>
+    /// <b>Reading an event twice changes nothing</b>, which is what lets the watermark be memory. An
+    /// ending already applied names an attempt no row is waiting on, and a report from before the
+    /// attempt in flight began is not taken as naming it.
     /// </para>
     /// </remarks>
     private async Task ReconcileArrivalsAsync(HomespoolDbContext dbContext,
@@ -641,7 +648,7 @@ public sealed class QueueAdvancer : BackgroundService
         {
             changed |= printerEvent.EventType == PrinterEventType.FileInfo ?
                 await RecordReportedPathAsync(dbContext, printerId, printerEvent, cancellationToken) :
-                await EndTransferAsync(dbContext, telemetry, printerId, printerEvent, cancellationToken);
+                await EndTransferAsync(dbContext, printerId, printerEvent, cancellationToken);
         }
 
         if (changed)
@@ -672,6 +679,10 @@ public sealed class QueueAdvancer : BackgroundService
         // abandons every pass for the printer before the watermark moves. Of several, the transfer
         // in flight is the one a report describes - the printer has one transfer slot - and the
         // latest start wins over a stale one.
+        //
+        // Never a report received before the attempt in flight began. The log is read again from the
+        // start after a restart, and the report of an earlier copy under the same name would hand a
+        // transfer still arriving that copy's path - which the queue would print while it downloads.
         List<PrintFileOnPrinter> waiting = await dbContext.PrintFilesOnPrinters
                                                           .Include(candidate => candidate.PrintFile)
                                                           .Where(candidate => candidate.PrinterId == printerId &&
@@ -680,7 +691,9 @@ public sealed class QueueAdvancer : BackgroundService
                                                           .ToListAsync(cancellationToken);
 
         PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
-                                                                             displayName))
+                                                                             displayName) &&
+                                                             (candidate.TransferStartedAt is not { } startedAt ||
+                                                              printerEvent.Timestamp >= startedAt))
                                          .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
                                          .ThenByDescending(candidate => candidate.TransferStartedAt)
                                          .FirstOrDefault();
@@ -714,18 +727,24 @@ public sealed class QueueAdvancer : BackgroundService
     /// <returns>Whether a row changed.</returns>
     /// <remarks>
     /// <para>
+    /// <b>Only the attempt the row is waiting on.</b> The ending's <c>start_cmd_id</c> must be the row's
+    /// <see cref="PrintFileOnPrinter.TransferCommandId"/>, and settling clears it in the same save. So
+    /// an ending read twice - the watermark is memory, and a restart reads the log again - finds
+    /// nothing the second time, and the end of an attempt a later one replaced finds nothing at all.
+    /// </para>
+    /// <para>
     /// <b>An ending that is not a finish clears the path and the digest as well as the stamp.</b>
     /// Firmware removes the partial when a transfer fails, so the name no longer holds anything of
     /// ours, and a path left behind would let the queue print it. A print already started on the
     /// partial fails on the printer, and the print's own row records that like any other failure.
     /// </para>
     /// <para>
-    /// <b>Only the attempt that is running.</b> The command's answer must postdate the row's stamp,
-    /// so the end of an earlier attempt, read late, cannot end the one that replaced it.
+    /// <b>Only the queue's own attempts are counted or held</b> - the ones carrying its stamp. A direct
+    /// send's abort or stop says nothing about a print somebody queued since, and holding that print
+    /// on it would replay a person's decision at the panel onto a file they never stopped.
     /// </para>
     /// </remarks>
     private async Task<bool> EndTransferAsync(HomespoolDbContext dbContext,
-                                              TelemetryDbContext telemetry,
                                               int printerId,
                                               PrinterEvent printerEvent,
                                               CancellationToken cancellationToken)
@@ -735,43 +754,23 @@ public sealed class QueueAdvancer : BackgroundService
             return false;
         }
 
-        PrinterEvent? answer = await telemetry.PrinterEvents
-                                              .AsNoTracking()
-                                              .Where(candidate => candidate.PrinterId == printerId &&
-                                                                  candidate.EventType == PrinterEventType.TransferInfo &&
-                                                                  candidate.CommandId == startCommandId)
-                                              .OrderByDescending(candidate => candidate.Id)
-                                              .FirstOrDefaultAsync(cancellationToken);
-
-        if (Deserialize<TransferEventDataDTO>(answer)?.Path is not { } sentTo)
-        {
-            _logger.LogDebug("[{PrinterId}] {EventType} for command {StartCommandId}, whose answer was not seen",
-                             printerId, printerEvent.EventType, startCommandId);
-
-            return false;
-        }
-
-        string driveName = sentTo[(sentTo.LastIndexOf('/') + 1)..];
-
-        List<PrintFileOnPrinter> waiting = await dbContext.PrintFilesOnPrinters
-                                                          .Include(candidate => candidate.PrintFile)
-                                                          .Where(candidate => candidate.PrinterId == printerId &&
-                                                                              candidate.ArrivedAt == null)
-                                                          .ToListAsync(cancellationToken);
-
-        PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
-                                                                             driveName) &&
-                                                             (candidate.TransferStartedAt is not { } startedAt ||
-                                                              answer!.Timestamp >= startedAt))
-                                         .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
-                                         .ThenByDescending(candidate => candidate.TransferStartedAt)
-                                         .FirstOrDefault();
+        // First rather than Single: ids restart at random on every connection, so two rows could in
+        // principle each hold the same one, and a throw here abandons every pass for the printer.
+        PrintFileOnPrinter? row = await dbContext.PrintFilesOnPrinters
+                                                 .Include(candidate => candidate.PrintFile)
+                                                 .Where(candidate => candidate.PrinterId == printerId &&
+                                                                     candidate.TransferCommandId == startCommandId)
+                                                 .FirstOrDefaultAsync(cancellationToken);
 
         if (row is null)
         {
             return false;
         }
 
+        string driveName = row.DriveName ?? row.PrintFile!.Name;
+        bool queued = row.TransferStartedAt is not null;
+
+        row.TransferCommandId = null;
         row.TransferStartedAt = null;
 
         if (printerEvent.EventType == PrinterEventType.TransferFinished)
@@ -789,15 +788,18 @@ public sealed class QueueAdvancer : BackgroundService
         row.PrinterPath = null;
         row.Digest = null;
 
-        // The entry decides what happens next, and a direct send has none: then the row only stops
-        // claiming a partial that has gone.
-        QueuedPrint? head = await dbContext.QueuedPrints
-                                           .Include(queued => queued.PrintFile)
-                                           .Where(queued => queued.PrinterId == printerId &&
-                                                            queued.PrintFileId == row.PrintFileId)
-                                           .OrderBy(queued => queued.Position)
-                                           .ThenBy(queued => queued.Id)
-                                           .FirstOrDefaultAsync(cancellationToken);
+        // The entry decides what happens next. A direct send has none of its own, and an entry that
+        // has gone since the queue sent the file has nothing left to retry or hold: then the row only
+        // stops claiming a partial that has gone.
+        QueuedPrint? head = queued ?
+            await dbContext.QueuedPrints
+                           .Include(queuedPrint => queuedPrint.PrintFile)
+                           .Where(queuedPrint => queuedPrint.PrinterId == printerId &&
+                                                 queuedPrint.PrintFileId == row.PrintFileId)
+                           .OrderBy(queuedPrint => queuedPrint.Position)
+                           .ThenBy(queuedPrint => queuedPrint.Id)
+                           .FirstOrDefaultAsync(cancellationToken) :
+            null;
 
         if (head is null)
         {
@@ -1675,8 +1677,10 @@ public sealed class QueueAdvancer : BackgroundService
         // instant it accepts, and a row written afterwards would leave a window in which the next tick
         // saw no transfer and offered the file again. A path left from an attempt that went stale is
         // cleared with it: it names nothing this transfer has reported, and would count as a report.
+        // So is the attempt it was waiting on, whose ending, read late, must not end this one.
         onPrinter.TransferStartedAt = _timeProvider.GetUtcNow();
         onPrinter.PrinterPath = null;
+        onPrinter.TransferCommandId = null;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         try
@@ -1725,7 +1729,7 @@ public sealed class QueueAdvancer : BackgroundService
             {
                 // Taken: the drive now holds these bytes under this name, arriving. Recorded only on
                 // acceptance, because a refused offer put nothing there.
-                PrinterDriveCopies.RecordTaken(onPrinter, digest);
+                PrinterDriveCopies.RecordTaken(onPrinter, digest, outcome?.CommandId);
 
                 if (outcome is not null && onPrinter.TransferRefusalCount is not null &&
                     !TransferRetryRules.IsCountingAborts(onPrinter))
@@ -1740,7 +1744,7 @@ public sealed class QueueAdvancer : BackgroundService
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
         }
-        catch (CommandResponseTimedOutException)
+        catch (CommandResponseTimedOutException e)
         {
             // Not an answer, and the stamp stays. Firmware acknowledges a download late when it is
             // busy and starts fetching either way, so this is as likely a transfer running as one that
@@ -1749,8 +1753,9 @@ public sealed class QueueAdvancer : BackgroundService
             // uncollected.
             //
             // The digest is recorded for the same reason: if these bytes are arriving, an older digest
-            // beside them would have them deleted and sent again for nothing.
-            PrinterDriveCopies.RecordTaken(onPrinter, digest);
+            // beside them would have them deleted and sent again for nothing. So is the command's id,
+            // which the transfer's end will name.
+            PrinterDriveCopies.RecordTaken(onPrinter, digest, e.CommandId);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(

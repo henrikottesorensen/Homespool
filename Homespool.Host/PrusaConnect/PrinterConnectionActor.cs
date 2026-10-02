@@ -611,7 +611,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // for a command that succeeded.
             //
             // So this one logs "sent" and never logs an answer. That is the protocol, not a lost ack.
-            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Dispatched, null));
+            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Dispatched, null) { CommandId = commandId });
 
             return;
         }
@@ -680,7 +680,10 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                                                    {
                                                                        MachineReason = eventDto.MachineReason,
                                                                    },
-                                                                   eventDto.Data));
+                                                                   eventDto.Data)
+            {
+                CommandId = answered.CommandId,
+            });
         }
 
         EndTransferIfTerminal(eventDto);
@@ -968,6 +971,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         _pending = null;
         _logger.LogWarning("command {CommandId} ({Command}) timed out waiting for a reply",
                            expired.CommandId, expired.WireName);
-        expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null));
+        expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)
+        {
+            CommandId = expired.CommandId,
+        });
     }
 }

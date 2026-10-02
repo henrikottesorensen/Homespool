@@ -504,6 +504,108 @@ public sealed class QueueLoopTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A <c>Ready</c> said before the link dropped does not start a file queued while the printer was
+    /// gone - not until the printer says <c>Ready</c> again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The starting side's twin of the restart test above</b>, over a dropped link rather than a
+    /// restart. While the printer was away somebody took it out of <c>Ready</c> at its panel; the
+    /// stored status still says <c>Ready</c>, the file is already on its drive, and the connection
+    /// wakes the queue before the printer has said anything.
+    /// </para>
+    /// <para>
+    /// <b>The gap is held open on purpose</b>: the fake has connected but is not run, so it has sent
+    /// nothing - not even <c>INFO</c> - when the pass looks. A pass that read the stored <c>Ready</c>
+    /// would send <c>START_PRINT</c> into a socket nobody is reading, and the print job and the empty
+    /// queue would say so.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AReadyFromBeforeTheLinkDroppedDoesNotStartAPrintOnReconnecting()
+    {
+        // Arrange - ready, a file on its drive, nothing queued, and then the link drops
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        await ReadyWithAFileOnTheDriveAndNothingQueuedAsync(fake, printerId, userId, "dropped.bgcode");
+
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        (await WaitUntilAsync(() => Task.FromResult(!Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        // While it is away: taken out of Ready at the panel, and the file queued again here
+        fake.Device.CancelReady();
+        await EnqueueAsync(printerId, userId, "dropped.bgcode");
+
+        // Act - back, and not yet reporting
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        // Assert
+        (await AnyJobAsync(printerId)).Should().BeFalse("nothing has told this connection the printer is ready");
+        (await QueueDepthAsync(printerId)).Should().Be(1);
+
+        await ItStartsOnlyOnceItSaysReadyAgainAsync(fake, printerId);
+    }
+
+    /// <summary>
+    /// A <c>Ready</c> restored after a restart does not start a file queued since - not until the
+    /// printer says <c>Ready</c> again.
+    /// </summary>
+    /// <remarks>
+    /// Telemetry held in memory, as the appliance holds it: the shutdown saves the live state and the
+    /// next process restores it, so the stored <c>Ready</c> outlives the process as well as the
+    /// connection. The precondition asserts that it did, or the test would prove nothing.
+    /// </remarks>
+    [Fact]
+    public async Task AReadyRestoredAfterARestartDoesNotStartAPrintOnReconnecting()
+    {
+        // Arrange - ready, a file on its drive, nothing queued, and then a restart
+        await RestartHostAsync(telemetryInMemory: true);
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        await ReadyWithAFileOnTheDriveAndNothingQueuedAsync(fake, printerId, userId, "restarted.bgcode");
+
+        await RestartHostAsync(telemetryInMemory: true);
+        await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+
+        Registry.IsConnected(printerId).Should().BeFalse("the printer has to be gone across the restart");
+        (await StatusIsAsync(printerId, PrinterStatus.Ready)).Should().BeTrue("the restart restores the Ready this test is about");
+
+        // While it is away: taken out of Ready at the panel, and the file queued again here
+        fake.Device.CancelReady();
+        await EnqueueAsync(printerId, userId, "restarted.bgcode");
+
+        // Act - back, and not yet reporting
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        // Assert
+        (await AnyJobAsync(printerId)).Should().BeFalse("a status from before the restart is not the printer speaking now");
+        (await QueueDepthAsync(printerId)).Should().Be(1);
+
+        await ItStartsOnlyOnceItSaysReadyAgainAsync(fake, printerId);
+    }
+
+    /// <summary>
     /// A printer that takes the print and answers too late is not treated as having refused it - and
     /// the file is not printed a second time.
     /// </summary>
@@ -1053,6 +1155,99 @@ public sealed class QueueLoopTests : IAsyncLifetime
 
         await catalog.SaveAsync(Caller.Unscoped(userId), name, new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\nG1 X10\n")),
                                 overwrite: false, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Leaves the printer <c>Ready</c>, with <paramref name="name"/> on its drive and its queue empty.
+    /// </summary>
+    /// <remarks>
+    /// <b>In this order so the hosted loop cannot start anything</b>: it runs alongside the passes
+    /// these tests drive, so a printer made ready with an arrived file at the head would print at the
+    /// loop's next look. The file reaches the drive while the printer is <c>Idle</c>, its entry is
+    /// withdrawn - which leaves the file on the drive and known to have arrived - and only then is the
+    /// printer made ready, with nothing for any pass to start.
+    /// </remarks>
+    private async Task ReadyWithAFileOnTheDriveAndNothingQueuedAsync(FakePrinterClient fake,
+                                                                     int printerId,
+                                                                     long userId,
+                                                                     string name)
+    {
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+
+        await UploadAsync(userId, name);
+        Guid queued = await EnqueueAsync(printerId, userId, name);
+
+        await AdvanceAsync(printerId);
+        (await WaitUntilAsync(async () => await ArrivedAsync(printerId), TimeSpan.FromSeconds(30))).Should().BeTrue();
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            (await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
+                        .CancelAsync(printerId, queued, Caller.Unscoped(userId), TestContext.Current.CancellationToken))
+                .Should().BeTrue();
+        }
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        (await AnyJobAsync(printerId)).Should().BeFalse("the arrangement must not print before the printer goes away");
+    }
+
+    /// <summary>
+    /// Lets the reconnected fake report, and shows the queue waits through its <c>Idle</c> and starts
+    /// once it is made ready - the wait was for a report, not a queue that never starts again.
+    /// </summary>
+    /// <remarks>
+    /// <b>The fake's own count of <c>START_PRINT</c> is the decisive check</b>, not the print job: the
+    /// hosted loop's pass at the reconnect can send one and still be waiting for the answer the
+    /// silent fake never gives, with no job written yet. Once the fake reads, that frame reaches it -
+    /// and frames are read in order, so when the legitimate print has started at the end, anything
+    /// sent in the gap has certainly been counted.
+    /// </remarks>
+    private async Task ItStartsOnlyOnceItSaysReadyAgainAsync(FakePrinterClient fake, int printerId)
+    {
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(async () => await StatusIsAsync(printerId, PrinterStatus.Idle) ||
+                                          await StatusIsAsync(printerId, PrinterStatus.Printing),
+                              TimeSpan.FromSeconds(30)))
+            .Should().BeTrue("the printer reports what it is now");
+
+        StartPrintsReceived(fake).Should().Be(0, "nothing may be started before the printer has said it is ready");
+        fake.Device.State.Should().Be(DeviceState.Idle);
+
+        await AdvanceAsync(printerId);
+        (await AnyJobAsync(printerId)).Should().BeFalse("Idle is not Ready");
+
+        fake.Device.TrySetReady().Should().BeTrue();
+        (await WaitUntilAsync(() => StatusIsAsync(printerId, PrinterStatus.Ready), TimeSpan.FromSeconds(30)))
+            .Should().BeTrue();
+
+        await AdvanceAsync(printerId);
+
+        (await WaitUntilAsync(() => Task.FromResult(fake.Device.State == DeviceState.Printing),
+                              TimeSpan.FromSeconds(10))).Should().BeTrue();
+        (await QueueDepthAsync(printerId)).Should().Be(0, "the entry is consumed once the printer takes the print");
+        StartPrintsReceived(fake).Should().Be(1, "the one start is the one asked for after the printer said Ready");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>How many <c>START_PRINT</c> commands have reached the fake.</summary>
+    private static int StartPrintsReceived(FakePrinterClient fake)
+    {
+        return fake.ReceivedCommands.Count(frame => frame.Kind == ServerCommandKind.Json &&
+                                                    Encoding.UTF8.GetString(frame.Payload.Span).Contains("\"START_PRINT\"", StringComparison.Ordinal));
+    }
+
+    private async Task<bool> AnyJobAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                          .PrintJobs.AnyAsync(job => job.PrinterId == printerId, TestContext.Current.CancellationToken);
     }
 
     private async Task<Guid> EnqueueAsync(int printerId, long userId, string name)

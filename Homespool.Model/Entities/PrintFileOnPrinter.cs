@@ -224,4 +224,31 @@ public class PrintFileOnPrinter
     /// </para>
     /// </remarks>
     public string? DriveName { get; set; }
+
+    /// <summary>
+    /// The <see cref="PrintFile.Digest"/> of the bytes sent to <see cref="DriveName"/>, or null when
+    /// nothing Homespool can vouch for is there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What makes the rest of this row about one version of the file.</b> An overwrite keeps the
+    /// <see cref="PrintFile"/> row and changes its digest, while the drive keeps the old bytes under
+    /// the same name - so <see cref="Arrived"/> and <see cref="PrinterPath"/> describe the file only
+    /// while this equals the file's digest. Where the two differ, the copy is an older version and is
+    /// never printed as the file: it is deleted and the file sent again.
+    /// </para>
+    /// <para>
+    /// <b>Written when the printer takes the transfer, not when it is offered.</b> A refused offer -
+    /// <c>FILE_EXISTS</c> above all - put nothing on the drive, and a digest written before the answer
+    /// would claim whatever was already there as these bytes. Cleared with <see cref="PrinterPath"/>
+    /// when a transfer ends without finishing, and when the copy is deleted.
+    /// </para>
+    /// <para>
+    /// <b>Null means unattributable, not unknown-but-probably-fine.</b> A file found on the drive that
+    /// Homespool did not send has no digest to record, so it is never adopted as the file; and a row
+    /// written before this column existed is treated the same way, which costs that file one more
+    /// transfer.
+    /// </para>
+    /// </remarks>
+    public string? Digest { get; set; }
 }

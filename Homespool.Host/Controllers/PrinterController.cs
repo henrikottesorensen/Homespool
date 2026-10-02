@@ -80,8 +80,7 @@ public class PrinterController : ControllerBase
     private const string LightingAct = "lighting";
 
     private readonly PrintFileCatalog _files;
-    private readonly PrintFileSender _sender;
-    private readonly PrinterDriveNames _driveNames;
+    private readonly PrinterDriveCopies _copies;
     private readonly PrinterCommandService _commands;
     private readonly PrintStopService _stops;
     private readonly PrinterLightingService _lighting;
@@ -91,8 +90,7 @@ public class PrinterController : ControllerBase
     private readonly ILogger<PrinterController> _logger;
 
     public PrinterController(PrintFileCatalog files,
-                             PrintFileSender sender,
-                             PrinterDriveNames driveNames,
+                             PrinterDriveCopies copies,
                              PrinterCommandService commands,
                              PrintStopService stops,
                              PrinterLightingService lighting,
@@ -102,8 +100,7 @@ public class PrinterController : ControllerBase
                              ILogger<PrinterController> logger)
     {
         _files = files;
-        _sender = sender;
-        _driveNames = driveNames;
+        _copies = copies;
         _commands = commands;
         _stops = stops;
         _lighting = lighting;
@@ -133,6 +130,11 @@ public class PrinterController : ControllerBase
     /// Answers as soon as the printer accepts the command, which is not when the transfer finishes:
     /// the printer then pulls the bytes at its own pace over the same WebSocket, and a full-size
     /// model takes minutes. Watch for <c>TRANSFER_FINISHED</c>, or the transfer fields in telemetry.
+    /// </para>
+    /// <para>
+    /// <b>An older version of the file already on that drive is deleted first</b> - one Homespool sent
+    /// before the file was overwritten - since the printer refuses a transfer onto a name it holds.
+    /// While the printer is using that copy it keeps it, and this answers <c>409</c> with its words.
     /// </para>
     /// </remarks>
     [HttpPost]
@@ -184,9 +186,6 @@ public class PrinterController : ControllerBase
             return this.BadRequestProblem("Files must be under 4 GiB - a printer cannot be sent anything larger.");
         }
 
-        // The name on the printer's drive is reserved before the send, as the queue reserves it, so
-        // the next transfer there - queued or direct, anyone's - sees it taken rather than finding a
-        // file it has no record of and adopting it as its own.
         PrintFile? indexed = await _files.ResolveAsync(user.Id, file.FileName, cancellationToken);
 
         if (indexed is null)
@@ -194,15 +193,23 @@ public class PrinterController : ControllerBase
             return this.NotFoundProblem($"You have no file named {body.Name}.");
         }
 
-        PrintFileOnPrinter onPrinter = await _driveNames.ReserveAsync(printer.Id, indexed, cancellationToken);
-
-        // Minting the token, offering the bytes and cleaning up after a send that did not take all
-        // live in PrintFileSender, because the Files page needs exactly the same three things and
-        // the cleanup rule is the one worth having a single copy of.
+        // Naming the file on the drive, clearing an older version of it there, offering the bytes and
+        // cleaning up after a send that did not take all live in PrinterDriveCopies, because the Files
+        // page needs exactly the same steps in the same order.
         try
         {
-            FileSendResult sent = await _sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName!),
-                                                          CallerResolver.For(user, User), cancellationToken);
+            DirectSendResult result = await _copies.SendAsync(printer, indexed, file, CallerResolver.For(user, User),
+                                                              cancellationToken);
+
+            if (result.Sent is not { } sent)
+            {
+                // Said as the printer refusing the send, which is what it amounts to: the newer
+                // version cannot go where the older one still is.
+                return this.CommandRefused(SendAct,
+                                           $"An older version of {file.FileName} is on the printer and could not be " +
+                                           $"replaced: {result.Cleared.Reason}");
+            }
+
             CommandOutcome? outcome = sent.Outcome;
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)

@@ -4,8 +4,11 @@ namespace Homespool.Host.Queue;
 /// <param name="QueuedPrintId">The queue entry.</param>
 /// <param name="PrintFileId">The file it wants.</param>
 /// <param name="FileName">Its name, for logs and for matching the printer's <c>FILE_INFO</c>.</param>
-/// <param name="FileHasArrived">Whether the whole file is believed to be on the drive - its transfer reported finished.</param>
-/// <param name="PrinterPath">What the printer calls it, once a <c>FILE_INFO</c> has said.</param>
+/// <param name="FileHasArrived">
+/// Whether the whole file is believed to be on the drive - its transfer reported finished - <b>in this
+/// version</b>: a copy of bytes the file has since been overwritten from has not arrived.
+/// </param>
+/// <param name="PrinterPath">What the printer calls it, once a <c>FILE_INFO</c> has said - for this version only.</param>
 public sealed record QueueHead(
     long QueuedPrintId,
     long PrintFileId,

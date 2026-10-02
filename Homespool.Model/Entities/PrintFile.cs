@@ -86,12 +86,15 @@ public class PrintFile
     /// <b>Nullable, and a null is ordinary but temporary.</b> An upload computes it on the pass that
     /// writes the bytes. Anything else - a file copied in by hand, a row indexed on the way to a print,
     /// a file whose bytes moved - starts with a null, which the reconciler's background pass fills by
-    /// reading the file, after the startup reconcile and after each recheck while running.
+    /// reading the file, after the startup reconcile and after each recheck while running. Sending the
+    /// file to a printer fills it first if the reconciler has not, because no file is sent without one.
     /// </para>
     /// <para>
     /// <b>What reads it:</b> reprinting warns when the file has changed since that print ran, by
     /// comparing this with the digest <c>PrintJob</c> copied from it when the print opened. With
-    /// either side null the check says nothing, so a null costs exactly that warning.
+    /// either side null the check says nothing, so a null costs exactly that warning. And a printer's
+    /// copy is the file only while <see cref="PrintFileOnPrinter.Digest"/> equals this - an overwrite
+    /// changes it, and the queue then replaces the copy rather than printing it.
     /// </para>
     /// <para>
     /// <b>SHA-384 rather than SHA-256.</b> Interop was the only argument for 256 and it did not

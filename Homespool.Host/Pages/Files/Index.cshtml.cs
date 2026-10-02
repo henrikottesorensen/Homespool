@@ -53,8 +53,7 @@ public class IndexModel : PageModel
     private readonly PrintFileStorageOptions _options;
     private readonly PrinterQueryService _printers;
     private readonly DefaultPrinterService _defaults;
-    private readonly PrintFileSender _sender;
-    private readonly PrinterDriveNames _driveNames;
+    private readonly PrinterDriveCopies _copies;
     private readonly PrintQueueService _queue;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ErrorText _errors;
@@ -65,8 +64,7 @@ public class IndexModel : PageModel
                       IOptionsSnapshot<PrintFileStorageOptions> options,
                       PrinterQueryService printers,
                       DefaultPrinterService defaults,
-                      PrintFileSender sender,
-                      PrinterDriveNames driveNames,
+                      PrinterDriveCopies copies,
                       PrintQueueService queue,
                       IStringLocalizer<SharedResource> localiser,
                       ErrorText errors,
@@ -77,8 +75,7 @@ public class IndexModel : PageModel
         _options = options.Value;
         _printers = printers;
         _defaults = defaults;
-        _sender = sender;
-        _driveNames = driveNames;
+        _copies = copies;
         _queue = queue;
         _localiser = localiser;
         _errors = errors;
@@ -478,9 +475,10 @@ public class IndexModel : PageModel
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The same three steps the API endpoint takes, through the same
-    /// <see cref="PrintFileSender"/> - so the rule that a send which did not take leaves no offer
-    /// behind has one implementation rather than two that drift.
+    /// The same steps the API endpoint takes, through the same
+    /// <see cref="PrinterDriveCopies"/> - so clearing an older version of the file off the drive, and
+    /// the rule that a send which did not take leaves no offer behind, each have one implementation
+    /// rather than two that drift.
     /// </para>
     /// <para>
     /// <b>Answers when the printer accepts the command, not when the transfer finishes.</b> A
@@ -535,8 +533,6 @@ public class IndexModel : PageModel
 
         try
         {
-            // Reserved before the send, as the queue reserves it, so the next transfer to this
-            // printer sees the name taken rather than adopting a file it has no record of.
             PrintFile? indexed = await _files.ResolveAsync(userId.Value, file.FileName, cancellationToken);
 
             if (indexed is null)
@@ -546,12 +542,13 @@ public class IndexModel : PageModel
                 return RedirectToSelf(sort, desc, printerUuid, compatible);
             }
 
-            PrintFileOnPrinter onPrinter = await _driveNames.ReserveAsync(printer.Id, indexed, cancellationToken);
-
-            CommandOutcome? outcome = (await _sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName!),
-                                                               CallerResolver.For(userId.Value, User), cancellationToken)).Outcome;
+            DirectSendResult result = await _copies.SendAsync(printer, indexed, file,
+                                                              CallerResolver.For(userId.Value, User), cancellationToken);
+            CommandOutcome? outcome = result.Sent?.Outcome;
 
             (StatusMessage, StatusSuccess) =
+                result.Sent is null ?
+                    (_localiser["Files_OlderCopyKept", file.FileName, PrinterName(printer), result.Cleared.Reason ?? string.Empty], false) :
                 outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed ?
                     (_localiser["Files_Refused", PrinterName(printer), outcome!.Reason ?? string.Empty], false) :
                     (_localiser["Files_Sending", file.FileName, PrinterName(printer)], true);

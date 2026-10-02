@@ -227,6 +227,41 @@ public static class EventMessageBuilder
     }
 
     /// <summary>
+    /// <c>FILE_CHANGED</c> for a deleted file - firmware's only answer to a <c>DELETE_FILE</c> that
+    /// took, carrying the command's id (planner.cpp:882-900).
+    /// </summary>
+    /// <param name="state">The wire device state.</param>
+    /// <param name="oldPath">The path that was deleted.</param>
+    /// <param name="freeSpace">Bytes free on the drive afterwards.</param>
+    /// <param name="commandId">The <c>DELETE_FILE</c> this answers.</param>
+    /// <remarks>
+    /// Field order is render.cpp:545-555's deleted arm. <b>The <c>file</c> object firmware appends is
+    /// left out</b>: it describes the path by <c>stat</c>, which for a deleted file finds nothing, and
+    /// no reader here looks at it.
+    /// </remarks>
+    public static byte[] BuildFileDeleted(string state, string oldPath, long freeSpace, uint commandId)
+    {
+        ArrayBufferWriter<byte> buffer = new();
+
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+
+            writer.WriteStartObject("data");
+            writer.WriteNumber("free_space", freeSpace);
+            writer.WriteString("old_path", oldPath);
+            writer.WriteEndObject();
+
+            writer.WriteString("state", state);
+            writer.WriteNumber("command_id", commandId);
+            writer.WriteString("event", "FILE_CHANGED");
+            writer.WriteEndObject();
+        }
+
+        return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
     /// <c>FILE_INFO</c> for a single file - what a printer reports when a file appears, and what a
     /// completed transfer produces.
     /// </summary>

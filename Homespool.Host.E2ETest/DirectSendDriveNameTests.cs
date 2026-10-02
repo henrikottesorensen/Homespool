@@ -23,7 +23,8 @@ namespace Homespool.Host.E2ETest;
 
 /// <summary>
 /// A file sent straight to a printer - from the API or the Files page - goes under the same drive
-/// name the queue would give it, so two members' files of one name never share a path.
+/// name the queue would give it, so two members' files of one name never share a path; and a file
+/// overwritten since it was sent replaces its older copy under that name.
 /// </summary>
 /// <remarks>
 /// <b>The case this pins is the one a direct send used to leave open.</b> It put a file on the drive
@@ -35,6 +36,9 @@ namespace Homespool.Host.E2ETest;
 public sealed class DirectSendDriveNameTests : IAsyncLifetime
 {
     private const string FileContent = "G28 ; home\n";
+
+    /// <summary>What the file is overwritten with - a different length, so the drive can tell them apart.</summary>
+    private const string NewerContent = "G28 ; home\nG1 Z10 ; lift\n";
 
     private readonly ScratchDirectory _scratch = ScratchDirectory.Create("direct-send-names");
     private HomespoolFactory _factory = null!;
@@ -130,6 +134,75 @@ public sealed class DirectSendDriveNameTests : IAsyncLifetime
         await EndRunAsync(fake, run);
     }
 
+    /// <summary>
+    /// A file overwritten since it was sent is sent again over the API: the printer's older copy is
+    /// deleted first, and the newer bytes are what arrive.
+    /// </summary>
+    /// <remarks>
+    /// <b>The delete is the assertion that matters here.</b> Firmware refuses a transfer onto a name
+    /// it already holds, which used to leave no way to get the newer version there at all; this fake
+    /// replaces the file instead, so only the delete it was sent shows the server doing its part.
+    /// </remarks>
+    [Fact]
+    public async Task AnOverwrittenFileReplacesItsOlderCopyOnTheDrive()
+    {
+        // Arrange - sent and arrived, then overwritten
+        (Guid uuid, long ownerId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        await UploadAsOwnerAsync(ownerId, "part.gcode");
+        await SendOverApiAsync(ownerId, uuid, "part.gcode");
+        (await WaitForTransferToAsync(fake, "/usb/part.gcode")).Should().BeTrue();
+        FakeTransfer first = fake.Device.LastTransfer!;
+
+        await UploadAsOwnerAsync(ownerId, "part.gcode", NewerContent, overwrite: true);
+
+        // Act
+        await SendOverApiAsync(ownerId, uuid, "part.gcode");
+
+        // Assert
+        (await FakePrinterConnections.WaitUntilAsync(
+                () => fake.Device.LastTransfer is { } last && !ReferenceEquals(last, first) && last.Path == "/usb/part.gcode",
+                TimeSpan.FromSeconds(30)))
+            .Should().BeTrue("the newer version is sent under the same name");
+
+        fake.Device.LastTransfer!.TotalSize.Should().Be(NewerContent.Length, "what arrived is the newer version");
+        fake.ReceivedCommands.Where(frame => frame.TryGetJsonCommandName() == "DELETE_FILE")
+            .Select(frame => PathArgument.TryParse(frame.Payload))
+            .Should().Equal(["/usb/part.gcode"], "the older copy is deleted before the newer one is offered");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
+    /// An older copy the printer is printing is kept, and the send is refused with the printer's words
+    /// rather than sent anywhere else.
+    /// </summary>
+    [Fact]
+    public async Task AnOlderCopyThePrinterIsPrintingIsKeptAndTheSendRefused()
+    {
+        // Arrange - sent, arrived, now printing, and overwritten meanwhile
+        (Guid uuid, long ownerId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+        await UploadAsOwnerAsync(ownerId, "part.gcode");
+        await SendOverApiAsync(ownerId, uuid, "part.gcode");
+        (await WaitForTransferToAsync(fake, "/usb/part.gcode")).Should().BeTrue();
+
+        fake.Device.StartPrint(jobId: 5, path: "/usb/part.gcode");
+        await UploadAsOwnerAsync(ownerId, "part.gcode", NewerContent, overwrite: true);
+
+        // Act
+        using HttpClient client = await ScopedClientAsync(ownerId, [Capability.Print]);
+        using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                          new { name = "part.gcode" },
+                                                                          TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("File is busy", "the printer's own reason is what tells somebody to wait");
+        fake.Device.Storage.Find("/usb/part.gcode").Should().NotBeNull("the copy being printed is not touched");
+
+        await EndRunAsync(fake, run);
+    }
+
     private async Task SendOverApiAsync(long userId, Guid uuid, string name)
     {
         using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
@@ -164,21 +237,22 @@ public sealed class DirectSendDriveNameTests : IAsyncLifetime
         return client;
     }
 
-    private async Task UploadAsOwnerAsync(long userId, string name)
+    private async Task UploadAsOwnerAsync(long userId, string name, string content = FileContent, bool overwrite = false)
     {
         HSUser owner = await EnrolmentFlowHelper.FindUserAsync(_factory, userId);
 
         using HttpClient client = await EnrolmentFlowHelper.SignInAsAsync(_factory, owner);
 
-        await UploadAsync(client, name);
+        await UploadAsync(client, name, content, overwrite);
     }
 
-    private static async Task UploadAsync(HttpClient client, string name)
+    private static async Task UploadAsync(HttpClient client, string name, string content = FileContent, bool overwrite = false)
     {
-        using StringContent body = new(FileContent);
+        using StringContent body = new(content);
 
         using HttpResponseMessage response =
-            await client.PutAsync($"/api/v1/files/{name}", body, TestContext.Current.CancellationToken);
+            await client.PutAsync($"/api/v1/files/{name}{(overwrite ? "?overwrite=true" : string.Empty)}", body,
+                                  TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the upload is setup for this test, not what it verifies");
     }

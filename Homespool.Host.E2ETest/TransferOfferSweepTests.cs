@@ -78,7 +78,7 @@ public sealed class TransferOfferSweepTests : IAsyncLifetime
         string path = Path.Combine(_scratch.Path, "abandoned.gcode");
         await File.WriteAllBytesAsync(path, new byte[64], TestContext.Current.CancellationToken);
 
-        store.Offer("abandoned", path, printerId: 1).Should().BeTrue();
+        store.Offer("abandoned", path, printerId: 1).Should().NotBeNull();
 
         // Act
         DateTime giveUpAt = DateTime.UtcNow + TimeSpan.FromSeconds(30);

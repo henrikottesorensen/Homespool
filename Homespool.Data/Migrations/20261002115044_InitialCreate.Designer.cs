@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20260929175346_InitialCreate")]
+    [Migration("20261002115044_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -371,6 +371,9 @@ namespace Homespool.Data.Migrations
 
                     b.Property<long?>("BlockedAt")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Digest")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("DriveName")
                         .HasColumnType("TEXT");

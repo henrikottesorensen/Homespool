@@ -154,11 +154,18 @@ public class QueueSnapshotReader
         bool authorityLapsed = !await _access.AllowsAsync(printerId, QueueAdvancer.CallerFor(head),
                                                           Capability.Print, cancellationToken);
 
+        // The copy on the drive counts only while it is this version of the file. An overwrite leaves
+        // the old bytes arrived and named under the new digest, and a copy nobody recorded a digest
+        // for may be anything - so either reads as nothing there, and the rules send the file instead
+        // of printing what is. A transfer of an older version still running is left to finish: the
+        // printer has one transfer slot, and its path is hidden so nothing prints the partial.
+        bool current = PrinterDriveCopies.IsCurrent(onPrinter, head.PrintFile.Digest);
+
         return new QueueSnapshot(
             _registry.IsConnected(printerId),
             live?.Status ?? PrinterStatus.Unknown,
-            new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name, onPrinter?.Arrived ?? false,
-                          onPrinter?.PrinterPath),
+            new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name, current && onPrinter!.Arrived,
+                          current ? onPrinter!.PrinterPath : null),
             IsTransferInFlight(onPrinter, head.PrintFile.Name),
             printInFlight,
             CompatibilityHold(head.PrintFile, printer, tools) ?? onPrinter?.HoldReason,

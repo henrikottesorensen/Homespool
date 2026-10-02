@@ -368,6 +368,9 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 // outside /usb is refused rather than answered.
                 return SendFileInfo(frame, device);
 
+            case "DELETE_FILE":
+                return DeleteFile(frame, device);
+
             case "CANCEL_OBJECT":
                 return CancelObject(frame, device, cancelled: true);
 
@@ -628,6 +631,60 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 Reply(EventMessageBuilder.BuildFileInfo(device.WireState, path, entry.Size, entry.Modified,
                                                         frame.CommandId, entry.ObjectsInfo, entry.BedShape))
             ];
+    }
+
+    /// <summary>
+    /// Answers a <c>DELETE_FILE</c>: the path is checked, then whether the file is in use, and success
+    /// is a <c>FILE_CHANGED</c> under the command's id.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The order is the planner's</b> (planner.cpp:882-900): <c>path_allowed</c>, then
+    /// <c>is_valid_file_or_transfer</c> - which accepts the path of a transfer still running - and
+    /// only then <c>delete_file</c>, which refuses a file being printed as <c>File is busy</c> and one
+    /// still arriving as <c>File is being transferred</c> (marlin_printer.cpp:549-560).
+    /// </para>
+    /// <para>
+    /// <b>Never <c>FINISHED</c></b>: firmware leaves the answer to the change it reports, so a server
+    /// waiting for a verdict waits out its timeout on a delete that worked.
+    /// </para>
+    /// </remarks>
+    private IReadOnlyList<PlannedReply> DeleteFile(ServerCommandFrame frame, FakeDevice device)
+    {
+        string? path = PathArgument.TryParse(frame.Payload);
+
+        if (path is null)
+        {
+            return [Reject(frame.CommandId, device, "Missing or broken parameters")];
+        }
+
+        if (!path.StartsWith(FakeStorage.Root + "/", StringComparison.Ordinal) ||
+            path.Contains("/../", StringComparison.Ordinal))
+        {
+            return [Reject(frame.CommandId, device, "Forbidden path")];
+        }
+
+        FakeStorageEntry? entry = device.Storage.Find(path);
+        bool arriving = string.Equals(device.Transfer?.Path, path, StringComparison.Ordinal);
+
+        if ((entry is null && !arriving) || entry?.IsFolder == true)
+        {
+            return [Reject(frame.CommandId, device, "File not found")];
+        }
+
+        if (string.Equals(device.JobPath, path, StringComparison.Ordinal))
+        {
+            return [Reject(frame.CommandId, device, "File is busy")];
+        }
+
+        if (arriving)
+        {
+            return [Reject(frame.CommandId, device, "File is being transferred")];
+        }
+
+        device.Storage.Remove(path);
+
+        return [Reply(EventMessageBuilder.BuildFileDeleted(device.WireState, path, device.FreeSpace, frame.CommandId))];
     }
 
     /// <summary>

@@ -1781,6 +1781,9 @@
   <data name="Files_Refused" xml:space="preserve">
     <value>{0} refused it: {1}</value>
   </data>
+  <data name="Files_OlderCopyKept" xml:space="preserve">
+    <value>An older version of {0} is on {1} and could not be replaced: {2}</value>
+  </data>
   <data name="Files_Sending" xml:space="preserve">
     <value>Sending {0} to {1}. It moves at the printer’s pace.</value>
   </data>

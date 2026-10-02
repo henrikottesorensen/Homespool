@@ -369,6 +369,9 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("BlockedAt")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Digest")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DriveName")
                         .HasColumnType("TEXT");
 

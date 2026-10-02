@@ -158,8 +158,10 @@ public class PrintFileSender
     {
         string token = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(TransferTokenBytes));
 
-        // Opening the file is what pins these bytes for the whole transfer - see ITransferOffers.
-        if (!_offers.Offer(token, file.Path, printer.Id))
+        // Opening the file is what pins these bytes for the whole transfer - see ITransferOffers. The
+        // size declared is theirs, not the stored file's: that was read when the file was looked up,
+        // and an overwrite since would have the printer fetch the newer bytes to the older length.
+        if (_offers.Offer(token, file.Path, printer.Id) is not { } length)
         {
             throw new PrintFileUnreadableException(file.FileName);
         }
@@ -169,7 +171,7 @@ public class PrintFileSender
             Path = printerPath,
             Hash = token,
             TeamId = (ulong)printer.TeamId,
-            OriginalSize = file.Length,
+            OriginalSize = length,
         };
 
         return await SendAndCleanUpAsync(printer, command, caller, () => _offers.Revoke(token), cancellationToken);
@@ -212,7 +214,8 @@ public class PrintFileSender
 
         try
         {
-            if (!_offers.Offer(ivHex, file.Path, printer.Id))
+            // The size of the bytes pinned, as for the inline transfer.
+            if (_offers.Offer(ivHex, file.Path, printer.Id) is not { } length)
             {
                 throw new PrintFileUnreadableException(file.FileName);
             }
@@ -227,7 +230,7 @@ public class PrintFileSender
                 Path = printerPath,
                 Key = (byte[])key.Clone(),
                 Iv = (byte[])iv.Clone(),
-                OriginalSize = file.Length,
+                OriginalSize = length,
                 Port = checked((ushort)_options.CurrentValue.TransferPort),
             };
 

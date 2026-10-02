@@ -29,6 +29,7 @@ using Homespool.Host.Localisation;
 using Homespool.Host.Middleware;
 using Homespool.Host.Notifications;
 using Homespool.Host.Pages.Account;
+using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
@@ -588,6 +589,10 @@ public static class Program
             // is process-wide by nature, and the advancer opens its own scope per pass because a
             // DbContext must not outlive one.
             builder.Services.AddSingleton<QueueSignal>();
+
+            // Everything about getting a file onto a printer's drive, which the advancer sends through -
+            // so added before it, to stop after it. In Printing/Registration.cs.
+            builder.Services.AddTransfers();
 
             // Resolvable as itself as well as a hosted service, following TelemetryWriter: a test
             // needs to drive one pass deterministically rather than wait out a poll interval.

@@ -4805,7 +4805,10 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>An advancer over this test's database, clock, registry and file store.</summary>
-    /// <param name="logger">Where the advancer logs, when a test reads it.</param>
+    /// <param name="logger">
+    /// Where the advancer logs, when a test reads it. A <see cref="FakeLogger{T}"/>'s collector also
+    /// takes what the transfer service logs, since the queue's sends and their reports are read there.
+    /// </param>
     /// <param name="offers">Stands in for the offer store the sender opens files through, when a test needs it to fail.</param>
     private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null, ITransferOffers? offers = null)
     {
@@ -4839,10 +4842,21 @@ public sealed class QueueAdvancerTests : IDisposable
         services.AddScoped<PrinterDriveNames>();
         services.AddScoped<PrinterDriveCopies>();
         services.AddLogging();
+        services.AddSingleton(logger ?? NullLogger<QueueAdvancer>.Instance);
+
+        if (logger is FakeLogger<QueueAdvancer> fake)
+        {
+            services.AddSingleton<ILogger<TransferService>>(new FakeLogger<TransferService>(fake.Collector));
+        }
+
+        services.AddTransfers();
+
+        ServiceProvider provider = services.BuildServiceProvider();
 
         return new QueueAdvancer(
-            services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+            provider.GetRequiredService<IServiceScopeFactory>(),
             _registry,
+            provider.GetRequiredService<TransferService>(),
             _signal,
             _clock,
             logger ?? NullLogger<QueueAdvancer>.Instance);

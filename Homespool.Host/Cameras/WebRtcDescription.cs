@@ -18,7 +18,8 @@ namespace Homespool.Host.Cameras;
 /// </para>
 /// </remarks>
 /// <param name="Type">The description's kind — <c>offer</c> or <c>answer</c>.</param>
-/// <param name="Sdp">The session description itself, opaque to everything here.</param>
+/// <param name="Sdp">The session description itself, read here only for an offer's directions
+/// (<see cref="WebRtcOfferDirection"/>).</param>
 public sealed record WebRtcDescription(
     [property: JsonPropertyName("type")] string Type,
     [property: JsonPropertyName("sdp")] string Sdp);

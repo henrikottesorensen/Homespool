@@ -566,9 +566,10 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// <c>CameraController.WebRtc</c>, which is the only caller.
     /// </para>
     /// <para>
-    /// <b>The offer is passed through unread.</b> It comes from a browser and goes to the sidecar,
-    /// and Homespool has no opinion about its contents — parsing it here would only create a second
-    /// place able to disagree with the two ends that actually negotiate.
+    /// <b>The offer is passed through as it came.</b> Its directions are checked by the caller before
+    /// it gets here (<see cref="WebRtcOfferDirection"/>); the rest is a negotiation between the
+    /// browser and the sidecar, and a second reading of it here would only be one more place able to
+    /// disagree with the two ends that negotiate.
     /// </para>
     /// <para>
     /// <b>The contract is measured, not assumed</b> (Pi 3, 1.9.14, 2026-08-18):

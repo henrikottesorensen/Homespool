@@ -15,6 +15,10 @@
 *.capture -text
 *.cap -text
 
+# Browsers' WebRTC offers, as the browser wrote them: SDP lines end in CRLF, and
+# the offer check splits on that, so normalising them would test a different input.
+*.sdp -text
+
 # Vendored client assets, restored by LibMan from libman.json. Third-party
 # bytes we do not own, so they are left exactly as shipped rather than
 # normalised. (Note: .gitignore lists this directory, but some files under it

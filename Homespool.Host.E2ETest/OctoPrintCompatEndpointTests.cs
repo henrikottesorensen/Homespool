@@ -416,6 +416,51 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A key that cannot see the printer is refused in plain text on both requests the slicer makes,
+    /// not in the problem document <c>/api/v1</c> answers with.
+    /// </summary>
+    /// <remarks>
+    /// Both go through the same printer lookup, which refuses on scope before anything is read, so the
+    /// upload stores nothing.
+    /// </remarks>
+    [Fact]
+    public async Task AKeyWithoutViewPrinterIsRefusedInPlainTextOnVersionAndUpload()
+    {
+        // Arrange - the upload capability alone, so the printer cannot be looked at
+        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+            "noview@example.com", CapabilitySet.Parse("UploadOwnFiles"));
+
+        // Act
+        using HttpResponseMessage version = await client.GetAsync($"/compat/octoprint/{uuid}/api/version",
+                                                                  TestContext.Current.CancellationToken);
+
+        using MultipartFormDataContent body = SlicerUpload("noview.gcode", print: false);
+
+        using HttpResponseMessage upload = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        foreach (HttpResponseMessage response in new[] { version, upload })
+        {
+            response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            response.Content.Headers.ContentType?.MediaType.Should().Be("text/plain");
+
+            (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+                .Should().Contain("ViewPrinter");
+        }
+
+        using HttpClient native = NativeClient(token);
+
+        using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
+                                                                TestContext.Current.CancellationToken);
+
+        (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().NotContain("noview.gcode");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Plain <b>Upload</b> stores the file and leaves the queue alone - the distinction the whole
     /// <c>print</c> field exists to make.
     /// </summary>

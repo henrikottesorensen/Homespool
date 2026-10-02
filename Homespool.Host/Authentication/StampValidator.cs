@@ -21,14 +21,19 @@ namespace Homespool.Host.Authentication;
 /// <para>
 /// <b>Transcribed from the framework's <c>SecurityStampValidator&lt;TUser&gt;</c> at v10.0.11</b>, which
 /// took a <c>SignInManager</c> for three things: to find the account the principal names, to compare
-/// the stamp, and to sign out on a mismatch. Those are <see cref="UserManager{TUser}"/> and
-/// <see cref="LocalSignIn"/> here. The <c>OnRefreshingPrincipal</c> hook is not carried over; nothing
-/// in the application set it. Nor is the framework's validation interval, below.
+/// the stamp, and to sign out on a mismatch. The first two are <see cref="UserManager{TUser}"/> here;
+/// the third is not kept, below. The <c>OnRefreshingPrincipal</c> hook is not carried over; nothing in
+/// the application set it. Nor is the framework's validation interval, below.
 /// </para>
 /// <para>
-/// <b>A mismatch ends the whole session, not just the cookie being checked</b>: the session's row, the
-/// application, external and pending cookies go, and the remembered browser with them. That is the
-/// framework's behaviour, kept: a stale stamp means the account changed underneath this browser.
+/// <b>A mismatch forgets only the cookie being checked, not the session beside it.</b> The framework
+/// signs the whole browser out, and that has nothing to add here: the application cookie answers to
+/// <see cref="SessionStampValidator"/> on every request, which already ends a session when the stamp
+/// moved anywhere but in that session's own request. What signing out would add is harm. A page that
+/// moves the stamp refreshes its own session through <see cref="LocalSignIn.RefreshSignInAsync"/> and
+/// leaves the remembered cookie on the old stamp, so the next read of it would end the session the
+/// refresh had just kept; and a browser shared by two accounts would sign one out over the other's
+/// stale cookie.
 /// </para>
 /// <para>
 /// <b>Only the remembered-browser cookie is checked this way now.</b> The application cookie is checked
@@ -39,30 +44,27 @@ namespace Homespool.Host.Authentication;
 /// <b>Every read, not once an interval has passed.</b> A remembered browser is what spares a sign-in its
 /// second factor, so any interval is a window after an authenticator is reset or turned off in which a
 /// browser remembered before that still skips the code, and the password alone signs in. It is read
-/// only when a sign-in asks whether a second factor is owed and by the two-factor settings page, so
-/// checking it every time costs one account read on each.
+/// only when a sign-in asks whether a second factor is owed, by the two-factor settings page, and by
+/// the rename and the address change before they re-issue it, so checking it every time costs one
+/// account read on each.
 /// </para>
 /// </remarks>
 public abstract class StampValidator : ISecurityStampValidator
 {
     protected StampValidator(IOptions<IdentityOptions> identity,
                              UserManager<HSUser> users,
-                             LocalSignIn signIn,
                              ILogger logger)
     {
         ArgumentNullException.ThrowIfNull(identity);
 
         Identity = identity.Value;
         Users = users;
-        SignIn = signIn;
         Logger = logger;
     }
 
     protected IdentityOptions Identity { get; }
 
     protected UserManager<HSUser> Users { get; }
-
-    protected LocalSignIn SignIn { get; }
 
     protected ILogger Logger { get; }
 
@@ -75,11 +77,10 @@ public abstract class StampValidator : ISecurityStampValidator
 
         if (user is null)
         {
-            Logger.LogDebug("Security stamp validation failed; rejecting the cookie and ending the session.");
+            Logger.LogDebug("Security stamp validation failed; rejecting the cookie and forgetting it.");
 
             context.RejectPrincipal();
-            await SignIn.SignOutAsync(context.HttpContext);
-            await context.HttpContext.SignOutAsync(IdentityConstants.TwoFactorRememberMeScheme);
+            await context.HttpContext.SignOutAsync(context.Scheme.Name);
 
             return;
         }

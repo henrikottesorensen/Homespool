@@ -15,7 +15,8 @@ namespace Homespool.Host.Authentication;
 /// <summary>
 /// The stamp check on the remembered-browser cookie: the account it names, by
 /// <see cref="JwtClaimTypes.Subject"/>, must still carry the stamp the cookie was written with. A
-/// verified cookie is left as it is; a stale one ends the session along with itself.
+/// verified cookie is left as it is; a stale one is forgotten, and the session beside it is left to
+/// <see cref="SessionStampValidator"/>.
 /// </summary>
 /// <remarks>
 /// Transcribed from the framework's <c>TwoFactorSecurityStampValidator&lt;TUser&gt;</c> at v10.0.11,
@@ -26,9 +27,8 @@ public sealed class RememberedBrowserStampValidator : StampValidator, ITwoFactor
 {
     public RememberedBrowserStampValidator(IOptions<IdentityOptions> identity,
                                            UserManager<HSUser> users,
-                                           LocalSignIn signIn,
                                            ILogger<RememberedBrowserStampValidator> logger)
-        : base(identity, users, signIn, logger)
+        : base(identity, users, logger)
     {
     }
 

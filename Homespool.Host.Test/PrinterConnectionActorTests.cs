@@ -106,13 +106,15 @@ public class PrinterConnectionActorTests
                                                    int printerId = 1,
                                                    TimeSpan? sendTimeout = null,
                                                    ILogger<PrinterConnectionActor>? logger = null,
-                                                   ITransferContentStore? contentStore = null)
+                                                   ITransferContentStore? contentStore = null,
+                                                   TimeSpan? collectTimeout = null)
     {
         return new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
                    logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10),
                    contentStore ?? Substitute.For<ITransferContentStore>())
         {
             SendTimeout = sendTimeout ?? TimeSpan.FromSeconds(30),
+            CollectTimeout = collectTimeout ?? HttpPrinterConnection.IdleWindow,
         };
     }
 
@@ -1107,6 +1109,105 @@ public class PrinterConnectionActorTests
         // Assert
         CommandSendResult result = await Eventually(send);
         result.Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A parked command the printer never collects is withdrawn once the collect timeout passes, and
+    /// its caller told it never left - not left waiting for as long as the printer keeps posting.
+    /// </summary>
+    /// <remarks>
+    /// The session stays alive on any authenticated POST, and <c>/p/events</c> is one that never
+    /// collects, so nothing outside the actor ends this wait. Withdrawn rather than merely answered:
+    /// a later poll must not hand over a command whose caller has already been told it failed, and
+    /// the in-flight slot must be free for the next one.
+    /// </remarks>
+    [Fact]
+    public async Task AParkedCommandNobodyCollectsIsWithdrawnAsNotConnected()
+    {
+        // Arrange
+        HttpPrinterConnection connection = new(TimeProvider.System);
+        PrinterConnectionActor actor = NewActor(connection, collectTimeout: TimeSpan.FromMilliseconds(50));
+
+        // Act
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+
+        // Assert
+        CommandSendResult result = await Eventually(send);
+        result.Outcome.Should().Be(CommandSendOutcome.NotConnected, "nothing reached the printer, so nothing happened");
+
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+        (await Eventually(take.Task)).Should().BeNull("a withdrawn command must not be handed over to a late poll");
+
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        (await Eventually(next)).Outcome.Should().NotBe(CommandSendOutcome.AlreadyInFlight, "the withdrawn command no longer holds the slot");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// After a withdrawal, a printer that has not polled since is refused at once rather than handed
+    /// another command to sit on for the whole collect timeout.
+    /// </summary>
+    /// <remarks>
+    /// The collect poll is posted straight after the send, so it is processed before any deadline
+    /// could matter: a command parked by the send would be handed over here, and nothing is.
+    /// </remarks>
+    [Fact]
+    public async Task AfterAWithdrawalASendIsRefusedUntilThePrinterNextPolls()
+    {
+        // Arrange
+        HttpPrinterConnection connection = new(TimeProvider.System);
+        PrinterConnectionActor actor = NewActor(connection, collectTimeout: TimeSpan.FromSeconds(1));
+
+        CommandSendResult withdrawn = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
+        withdrawn.Outcome.Should().Be(CommandSendOutcome.NotConnected);
+
+        // Act
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+
+        // Assert
+        (await Eventually(take.Task)).Should().BeNull("a printer that left the last command uncollected is not given another");
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// The refusal lasts only until the printer polls: a collect, even of nothing, shows it is
+    /// collecting again, and the next command is parked and delivered as usual.
+    /// </summary>
+    [Fact]
+    public async Task APollAfterAWithdrawalLetsTheNextCommandThrough()
+    {
+        // Arrange
+        HttpPrinterConnection connection = new(TimeProvider.System);
+        PrinterConnectionActor actor = NewActor(connection, collectTimeout: TimeSpan.FromSeconds(1));
+
+        CommandSendResult withdrawn = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
+        withdrawn.Outcome.Should().Be(CommandSendOutcome.NotConnected);
+
+        TaskCompletionSource<PendingCommand?> emptyPoll = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(emptyPoll), CancellationToken.None);
+        (await Eventually(emptyPoll.Task)).Should().BeNull();
+
+        // Act
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+        PendingCommand collected = (await Eventually(take.Task))!;
+
+        await actor.PostAsync(EventAnswering(collected.CommandId), CancellationToken.None);
+
+        // Assert
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed);
 
         actor.Complete();
         await Eventually(actor.Completion);

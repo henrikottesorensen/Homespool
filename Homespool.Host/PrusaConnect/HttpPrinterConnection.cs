@@ -92,7 +92,8 @@ public sealed class HttpPrinterConnection : IPrinterConnection
     /// The one-in-flight rule is the actor's (<c>_pending</c>), so a second park while one is waiting
     /// cannot happen from the loop that owns both. It is asserted rather than tolerated because
     /// silently overwriting a parked command would lose it with no trace - the printer would collect
-    /// the second and the caller of the first would wait out the reaper.
+    /// the second, and the caller of the first would be told, a collect timeout later, that nothing
+    /// was sent.
     /// <para>
     /// <b>The dialect is ignored here because nothing is encoded here.</b> The command is parked as an
     /// object and <c>PrusaConnectPrinterController</c> encodes it when the printer collects, passing

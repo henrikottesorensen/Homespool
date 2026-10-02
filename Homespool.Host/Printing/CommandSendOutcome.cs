@@ -51,8 +51,10 @@ public enum CommandSendOutcome
     /// </summary>
     /// <remarks>
     /// Either the printer was absent from <see cref="PrinterConnectionRegistry"/> when the send was
-    /// attempted, or its connection was torn down while the command sat in the actor's mailbox. The
-    /// strongest negative claim in this enum: nothing was written, so nothing happened.
+    /// attempted, its connection was torn down while the command sat in the actor's mailbox, or - on
+    /// the HTTP transport - the command was parked and withdrawn again because the printer never
+    /// collected it. The strongest negative claim in this enum: nothing was written, so nothing
+    /// happened.
     /// </remarks>
     NotConnected = 3,
 

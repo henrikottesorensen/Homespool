@@ -55,8 +55,9 @@ public class PrinterCommandService
     /// Caller lacks the command's own <see cref="ISendableCommand.RequiredCapability"/> on the printer's team.
     /// </exception>
     /// <exception cref="PrinterNotConnectedException">
-    /// The printer has no live WebSocket - either absent from the registry when the send was
-    /// attempted, or its connection torn down while the command was in the actor's mailbox.
+    /// The printer has no live connection - absent from the registry when the send was attempted, its
+    /// connection torn down while the command was in the actor's mailbox, or, on the HTTP transport,
+    /// the command never collected.
     /// </exception>
     /// <exception cref="CommandAlreadyInFlightException">
     /// Another command is still awaiting its reply. One in flight per printer is deliberate: replies

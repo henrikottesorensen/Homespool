@@ -51,6 +51,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private Pending? _pending;
     private uint _lastCommandId;
 
+    // Set when a parked command is withdrawn uncollected, cleared by the printer's next collect poll.
+    // A client posting only to /p/events would otherwise cost every send the whole collect timeout,
+    // and the queue, which awaits printers one after another, would pay it for every printer.
+    private bool _uncollected;
+
     /// <summary>
     /// The one transfer this printer may have in progress. One, because firmware allocates a single
     /// system-wide transfer slot (<c>Monitor</c>, monitor.hpp:85-98) and requests are strictly
@@ -73,8 +78,13 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// <param name="SentAt">
     /// When the printer received it, as a <see cref="Stopwatch"/> timestamp - the moment the response
     /// clock starts. <b>Null while parked</b> on the HTTP transport, waiting to be collected: a parked
-    /// command has no response deadline, because it has not been delivered, and its bound is the
-    /// session's idle window rather than the response timeout. Stamped by the loop at hand-over.
+    /// command has no response deadline, because it has not been delivered. Stamped by the loop at
+    /// hand-over.
+    /// </param>
+    /// <param name="ParkedAt">
+    /// When a parked command was parked, as a <see cref="Stopwatch"/> timestamp - the moment the
+    /// collect clock starts, bounded by <see cref="CollectTimeout"/>. Null exactly when
+    /// <paramref name="SentAt"/> was set at the send, so one of the two clocks is always running.
     /// </param>
     /// <param name="LightingIntensity">
     /// The brightness the printer will report once it has finished this command, when it is a
@@ -84,6 +94,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                   string WireName,
                                   TaskCompletionSource<CommandSendResult> Completion,
                                   long? SentAt,
+                                  long? ParkedAt,
                                   int? LightingIntensity);
 
     /// <summary>
@@ -168,6 +179,25 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </para>
     /// </remarks>
     public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How long a parked command may wait to be collected before it is withdrawn and its caller told
+    /// it never left.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The session's idle window, because that is the printer's own cadence: three idle polls missed
+    /// is a printer that is not collecting, not one that is slow. The response timeout is the wrong
+    /// measure - it would start counting before the printer had seen anything.
+    /// </para>
+    /// <para>
+    /// Nothing outside the actor bounds this wait. A session stays alive on any authenticated POST,
+    /// and <c>/p/events</c> is one that never collects, so a client posting only events keeps a
+    /// command parked - and its caller waiting - for as long as it likes. The queue awaits printers
+    /// one after another, so that caller would otherwise be every printer's queue.
+    /// </para>
+    /// </remarks>
+    public TimeSpan CollectTimeout { get; init; } = HttpPrinterConnection.IdleWindow;
 
     /// <summary>
     /// The optional traffic log, which records each command's arguments where the log line below
@@ -317,9 +347,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 // messages that genuinely arrived first can come between.
                 if (!_mailbox.Reader.TryRead(out ConnectionMessage? message))
                 {
-                    // Undelivered is the same as none for the deadline: nothing has been sent, so
-                    // nothing can be late. The reaper bounds a command nobody ever collects.
-                    if (_pending is null || _pending.SentAt is null)
+                    if (_pending is null)
                     {
                         if (!await _mailbox.Reader.WaitToReadAsync())
                         {
@@ -328,15 +356,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                     }
                     else
                     {
-                        // The one place a deadline exists: while a command is in flight, wait for
-                        // the next message only until the response timeout expires. The token never
+                        // The one place a deadline exists: while a command is pending, wait for the
+                        // next message only until its clock runs out - the response timeout once it
+                        // is delivered, the collect timeout while it is parked. The token never
                         // touches the work itself - expiry is just "stop waiting", handled in one
                         // place, by the one owner of the pending state.
-                        TimeSpan remaining = _responseTimeout - Stopwatch.GetElapsedTime(_pending.SentAt.Value);
+                        TimeSpan remaining = _pending.SentAt is long sentAt ?
+                            _responseTimeout - Stopwatch.GetElapsedTime(sentAt) :
+                            CollectTimeout - Stopwatch.GetElapsedTime(_pending.ParkedAt!.Value);
 
                         if (remaining <= TimeSpan.Zero)
                         {
-                            TimeOutPending();
+                            ExpirePending();
                             continue;
                         }
 
@@ -350,7 +381,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                         }
                         catch (OperationCanceledException)
                         {
-                            TimeOutPending();
+                            ExpirePending();
                             continue;
                         }
 
@@ -447,6 +478,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </remarks>
     private void HandleTakePending(TakePendingCommandMessage take)
     {
+        // Polling at all, even with nothing to collect, is a printer collecting again.
+        _uncollected = false;
+
         PendingCommand? parked = _connection.TakeParkedCommand();
 
         if (parked is not null && _pending is { SentAt: null } && _pending.CommandId == parked.CommandId)
@@ -499,6 +533,15 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         if (!_connection.IsOpen)
         {
+            send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
+
+            return;
+        }
+
+        if (_uncollected)
+        {
+            // The last command parked here was withdrawn uncollected and the printer has not polled
+            // since, so this one would only wait out the same timeout. Nothing is parked.
             send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
 
             return;
@@ -573,12 +616,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
-        // Written: the clock starts now. Parked: it starts when the printer collects, in
-        // HandleTakePending, on this same loop.
+        // Written: the response clock starts now. Otherwise the collect clock starts now, and the
+        // response clock when the printer collects, in HandleTakePending, on this same loop. Every
+        // pending command has exactly one clock running, so none is ever waited on without a bound.
+        long now = Stopwatch.GetTimestamp();
+        bool written = handover == CommandHandover.Written;
+
         _pending = new Pending(commandId,
                                send.Command.WireName,
                                send.Completion,
-                               handover == CommandHandover.Written ? Stopwatch.GetTimestamp() : null,
+                               written ? now : null,
+                               written ? null : now,
                                send.Command is SetLedIntensity light ? PrinterLighting.ReadBack(light.Intensity) : null);
     }
 
@@ -877,6 +925,40 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private static double ElapsedMilliseconds(Pending answered)
     {
         return answered.SentAt is long sentAt ? Stopwatch.GetElapsedTime(sentAt).TotalMilliseconds : -1;
+    }
+
+    private void ExpirePending()
+    {
+        if (_pending!.SentAt is null)
+        {
+            WithdrawParked();
+        }
+        else
+        {
+            TimeOutPending();
+        }
+    }
+
+    /// <summary>
+    /// Takes back a parked command the printer has not collected within <see cref="CollectTimeout"/>,
+    /// and tells its caller it never left.
+    /// </summary>
+    /// <remarks>
+    /// Taken off the connection, not just forgotten here: a poll arriving later must find nothing,
+    /// or the printer would act on a command whose caller has already been told it did not happen.
+    /// Both slots are loop-owned, so the withdrawal and a collect cannot interleave - a collect
+    /// already in the mailbox is drained before the deadline is looked at, and wins.
+    /// </remarks>
+    private void WithdrawParked()
+    {
+        Pending withdrawn = _pending!;
+
+        _pending = null;
+        _uncollected = true;
+        _connection.TakeParkedCommand();
+        _logger.LogWarning("command {CommandId} ({Command}) was not collected within {CollectTimeout}; withdrawn",
+                           withdrawn.CommandId, withdrawn.WireName, CollectTimeout);
+        withdrawn.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
     }
 
     private void TimeOutPending()

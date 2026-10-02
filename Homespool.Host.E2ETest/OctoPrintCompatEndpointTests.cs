@@ -381,6 +381,41 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A key that may not upload is told so, in plain text, and not that it may not print.
+    /// </summary>
+    [Fact]
+    public async Task AnUploadFromAKeyWithoutUploadIsRefusedNamingUploadNotPrint()
+    {
+        // Arrange - view only, so staging itself is refused
+        (Guid uuid, string token, HttpClient client) = await SetUpAsync(
+            "noupload@example.com", CapabilitySet.Parse("ViewPrinter"));
+
+        // Act
+        using MultipartFormDataContent body = SlicerUpload("noupload.gcode", print: false);
+
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("text/plain");
+
+        string explanation = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        explanation.Should().Contain("UploadOwnFiles").And.NotContain("may not print");
+
+        using HttpClient native = NativeClient(token);
+
+        using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
+                                                                TestContext.Current.CancellationToken);
+
+        (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().NotContain("noupload.gcode");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// Plain <b>Upload</b> stores the file and leaves the queue alone - the distinction the whole
     /// <c>print</c> field exists to make.
     /// </summary>

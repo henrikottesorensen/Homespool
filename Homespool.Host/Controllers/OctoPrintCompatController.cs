@@ -241,11 +241,15 @@ public class OctoPrintCompatController : ControllerBase
                                                    owner.UserName);
             }
         }
-        catch (CredentialScopeDeniedException)
+        catch (CredentialScopeDeniedException e)
         {
+            // Staging refuses on the upload capability and the print check on Print: two different
+            // things for a person to fix, so the answer names the one that was missing.
             return Explain(StatusCodes.Status403Forbidden,
-                           "This key may not print, so nothing was uploaded. Use Upload instead of " +
-                           "Upload and Print, or a key that may print.");
+                           e.Missing == Capability.Print ?
+                               "This key may not print, so nothing was uploaded. Use Upload instead of " +
+                               "Upload and Print, or a key that may print." :
+                               $"{e.Message} Nothing was uploaded.");
         }
         catch (TeamAccessDeniedException)
         {

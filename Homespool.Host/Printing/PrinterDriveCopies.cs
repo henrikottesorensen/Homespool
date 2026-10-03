@@ -5,8 +5,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
-using Homespool.Host.Exceptions;
-using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -20,8 +18,8 @@ namespace Homespool.Host.Printing;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>One place for the queue and both direct sends</b>, as <see cref="PrinterDriveNames"/> is for the
-/// name. An overwrite keeps the file's row and changes its digest while the drive keeps the old bytes
+/// <b>One place for every send</b>, which <see cref="TransferService"/> makes, as
+/// <see cref="PrinterDriveNames"/> is for the name. An overwrite keeps the file's row and changes its digest while the drive keeps the old bytes
 /// under the same name, and the printer refuses a transfer onto a name already taken - so every send
 /// has to clear an older copy first, or the newer version can never get there.
 /// </para>
@@ -38,23 +36,14 @@ public sealed class PrinterDriveCopies
 
     private readonly HomespoolDbContext _dbContext;
     private readonly PrinterCommandService _commands;
-    private readonly PrintFileCatalog _catalog;
-    private readonly PrinterDriveNames _driveNames;
-    private readonly PrintFileSender _sender;
     private readonly ILogger<PrinterDriveCopies> _logger;
 
     public PrinterDriveCopies(HomespoolDbContext dbContext,
                               PrinterCommandService commands,
-                              PrintFileCatalog catalog,
-                              PrinterDriveNames driveNames,
-                              PrintFileSender sender,
                               ILogger<PrinterDriveCopies> logger)
     {
         _dbContext = dbContext;
         _commands = commands;
-        _catalog = catalog;
-        _driveNames = driveNames;
-        _sender = sender;
         _logger = logger;
     }
 
@@ -73,18 +62,23 @@ public sealed class PrinterDriveCopies
 
     /// <summary>
     /// Records that the printer took a transfer of the bytes whose digest is <paramref name="digest"/>
-    /// to the row's name. Not saved.
+    /// to the row's name, started by the command <paramref name="commandId"/>. Not saved.
     /// </summary>
     /// <remarks>
     /// <b>Whatever the row said had arrived is forgotten with it</b>: the drive now holds a transfer of
-    /// these bytes in progress, not what was there before, and only its own end says it has arrived.
+    /// these bytes in progress, not what was there before, and only its own end says it has arrived -
+    /// the end naming <paramref name="commandId"/>, and no earlier one.
     /// </remarks>
-    public static void RecordTaken(PrintFileOnPrinter row, string digest)
+    /// <param name="row">The <i>(file, printer)</i> row.</param>
+    /// <param name="digest">The digest of the bytes offered.</param>
+    /// <param name="commandId">The id the download command went out under, or null when the transport did not say.</param>
+    public static void RecordTaken(PrintFileOnPrinter row, string digest, uint? commandId)
     {
         ArgumentNullException.ThrowIfNull(row);
 
         row.Digest = digest;
         row.ArrivedAt = null;
+        row.TransferCommandId = commandId;
     }
 
     /// <summary>
@@ -150,73 +144,9 @@ public sealed class PrinterDriveCopies
         row.Digest = null;
         row.ArrivedAt = null;
         row.PrinterPath = null;
+        row.TransferCommandId = null;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new OutdatedCopyOutcome(OutdatedCopyRemoval.Removed);
-    }
-
-    /// <summary>
-    /// Sends one of a user's files to a printer outside the queue: names it there, clears an older
-    /// copy of it, sends it, and records what was sent.
-    /// </summary>
-    /// <param name="printer">The printer, already resolved and authorised by the caller.</param>
-    /// <param name="indexed">The file's row.</param>
-    /// <param name="file">The file's bytes, as the store holds them.</param>
-    /// <param name="caller">The authority the send is made under.</param>
-    /// <param name="cancellationToken">Cancels the send, not a transfer the printer has accepted.</param>
-    /// <exception cref="PrintFileUnreadableException">The file could not be read.</exception>
-    /// <remarks>
-    /// <para>
-    /// <b>The API and the Files page both send this way</b>, and the part worth having once is the
-    /// order: the digest is settled before anything is offered, the older copy is gone before the
-    /// transfer is asked for, and the digest is recorded only once the printer has taken it.
-    /// </para>
-    /// <para>
-    /// <b>A response that never came still records the digest</b>, because the printer may well be
-    /// fetching - firmware acknowledges a download late when it is busy - and a copy of these bytes
-    /// arriving with an older digest beside it would be deleted and sent again for nothing.
-    /// </para>
-    /// </remarks>
-    public async Task<DirectSendResult> SendAsync(Printer printer,
-                                                  PrintFile indexed,
-                                                  StoredFile file,
-                                                  Caller caller,
-                                                  CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(printer);
-
-        // The name on the printer's drive is reserved before the send, as the queue reserves it, so
-        // the next transfer there - queued or direct, anyone's - sees it taken.
-        PrintFileOnPrinter row = await _driveNames.ReserveAsync(printer.Id, indexed, cancellationToken);
-        string digest = await _catalog.DigestForSendingAsync(indexed, file, cancellationToken);
-
-        OutdatedCopyOutcome cleared = await RemoveOutdatedAsync(printer.Id, row, digest, caller, cancellationToken);
-
-        if (!cleared.Cleared)
-        {
-            return new DirectSendResult(cleared, Sent: null);
-        }
-
-        FileSendResult sent;
-
-        try
-        {
-            sent = await _sender.SendAsync(printer, file, PrinterDriveNames.OnDrive(row.DriveName!), caller, cancellationToken);
-        }
-        catch (CommandResponseTimedOutException)
-        {
-            RecordTaken(row, digest);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-
-            throw;
-        }
-
-        if (sent.Outcome?.EventType is not (PrinterEventType.Rejected or PrinterEventType.Failed))
-        {
-            RecordTaken(row, digest);
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-
-        return new DirectSendResult(cleared, sent);
     }
 }

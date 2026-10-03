@@ -610,6 +610,7 @@ namespace Homespool.Data.Migrations
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
                     PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
                     TransferStartedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    TransferCommandId = table.Column<long>(type: "INTEGER", nullable: true),
                     HoldReason = table.Column<string>(type: "TEXT", nullable: true),
                     HoldPrinterFreeBytes = table.Column<long>(type: "INTEGER", nullable: true),
                     HoldPrinterFileBytes = table.Column<long>(type: "INTEGER", nullable: true),

@@ -79,6 +79,29 @@ public class PrintFileOnPrinter
     public DateTimeOffset? TransferStartedAt { get; set; }
 
     /// <summary>
+    /// The id of the command whose transfer this row is waiting to hear the end of, or null when it
+    /// is waiting on none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The one thing that ties an ending to an attempt.</b> Firmware's <c>TRANSFER_FINISHED</c>,
+    /// <c>TRANSFER_ABORTED</c> and <c>TRANSFER_STOPPED</c> carry nothing about the file - only the
+    /// <c>start_cmd_id</c> of the command that started the transfer - so an ending settles the row
+    /// holding that id, and nothing else.
+    /// </para>
+    /// <para>
+    /// <b>Cleared in the same save as the ending's effect</b>, which is what makes reading the event
+    /// log twice harmless: an ending already applied names an attempt no row is waiting on any more,
+    /// and so does the ending of an attempt a later one replaced. Written when the printer takes the
+    /// transfer or leaves the offer unanswered, by both the queue and a direct send.
+    /// </para>
+    /// <para>
+    /// Firmware's ids are 32-bit; stored widened, as <see cref="PrinterEvent.CommandId"/> is.
+    /// </para>
+    /// </remarks>
+    public long? TransferCommandId { get; set; }
+
+    /// <summary>
     /// Why this file cannot be sent to this printer, or null when nothing is in the way.
     /// </summary>
     /// <remarks>

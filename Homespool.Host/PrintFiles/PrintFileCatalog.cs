@@ -152,11 +152,12 @@ public sealed class PrintFileCatalog
     public Task<PendingUpload> StageAsync(Caller caller,
                                           string fileName,
                                           Stream content,
-                                          CancellationToken cancellationToken)
+                                          CancellationToken cancellationToken,
+                                          bool refuseTakenName = false)
     {
         CredentialScope.Require(caller, Capability.UploadOwnFiles);
 
-        return _store.StageAsync(caller.UserId, fileName, content, cancellationToken);
+        return _store.StageAsync(caller.UserId, fileName, content, cancellationToken, refuseTakenName);
     }
 
     /// <summary>Throws a staged upload away. Straight through, for the same reason.</summary>

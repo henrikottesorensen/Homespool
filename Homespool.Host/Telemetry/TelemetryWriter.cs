@@ -190,6 +190,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly ILiveStateObserver[] _observers;
     private readonly Services.LogThrottle _observerFailures = new(TimeSpan.FromSeconds(10));
 
+    // Told which printers' events a flush saved - see IPrinterEventObserver. Optional for the same
+    // reason.
+    private readonly IPrinterEventObserver[] _eventObservers;
+
     // Both wire-rate log sites in this class go through a LogThrottle: drops are recorded on
     // whatever producer thread hit the full channel, processing failures on the drain loop, and
     // either can arrive at wire rate (the second is attacker-driveable - a stream of deliberately
@@ -227,10 +231,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                            IOptionsMonitor<StorageOptions> options,
                            ILogger<TelemetryWriter> logger,
                            TimeProvider timeProvider,
-                           IEnumerable<ILiveStateObserver>? observers = null)
+                           IEnumerable<ILiveStateObserver>? observers = null,
+                           IEnumerable<IPrinterEventObserver>? eventObservers = null)
     {
         _scopeFactory = scopeFactory;
         _observers = [.. observers ?? []];
+        _eventObservers = [.. eventObservers ?? []];
         _storage = options;
 
         // Captured, deliberately, and not read from the monitor at the point of use like the ingest
@@ -1318,6 +1324,40 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
     }
 
+    /// <summary>Tells each event observer which printers' events of which kinds a flush has saved.</summary>
+    /// <remarks>
+    /// Once per printer and kind rather than per row: an observer reads the log, and one read covers
+    /// every row of a flush. Failures are caught and throttled as <see cref="Tell"/>'s are, since the
+    /// rows are saved whatever an observer does about them.
+    /// </remarks>
+    private void TellSaved(List<PrinterEvent> saved)
+    {
+        if (_eventObservers.Length == 0)
+        {
+            return;
+        }
+
+        foreach ((int printerId, Model.PrinterEventType eventType) in saved.Select(row => (row.PrinterId, row.EventType)).Distinct())
+        {
+            foreach (IPrinterEventObserver observer in _eventObservers)
+            {
+                try
+                {
+                    observer.Saved(printerId, eventType);
+                }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    if (_observerFailures.Record() is { } window)
+                    {
+                        _logger.LogError(e,
+                                         "[{PrinterId}] an event observer failed - {Count} time(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. Telemetry is unaffected.",
+                                         printerId, window.Count, window.Elapsed.TotalSeconds, window.Total);
+                    }
+                }
+            }
+        }
+    }
+
     /// <summary>
     /// A drive listing waiting for the next flush, with the moment it was heard - which the wire does
     /// not carry and only the writer knows, since the edge that parsed it has no clock in scope.
@@ -1751,6 +1791,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 entry.ExistingSlotNumbers.Add(slotNumber);
             }
         }
+
+        // Now that the rows are there to be read, and before the buffer that says which they were is
+        // cleared.
+        TellSaved(pendingEvents);
 
         // Cleared here rather than at the end, so a failure in the durable half below cannot cause
         // these rows to be written a second time. The dirty set is carried forward first: the durable

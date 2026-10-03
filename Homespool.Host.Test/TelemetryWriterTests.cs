@@ -176,9 +176,10 @@ public sealed class TelemetryWriterTests : IDisposable
     /// everything else the host registers.
     /// </summary>
     private async Task<TelemetryWriter> StartWriterAsync(StorageOptions options,
-                                                         TimeSpan? trimWarningInterval = null)
+                                                         TimeSpan? trimWarningInterval = null,
+                                                         IPrinterEventObserver? eventObserver = null)
     {
-        TelemetryWriter writer = await BuildWriterAsync(options, trimWarningInterval);
+        TelemetryWriter writer = await BuildWriterAsync(options, trimWarningInterval, eventObserver);
 
         await writer.StartAsync(CancellationToken.None);
 
@@ -190,7 +191,8 @@ public sealed class TelemetryWriterTests : IDisposable
     /// its drain loop has run.
     /// </summary>
     private async Task<TelemetryWriter> BuildWriterAsync(StorageOptions options,
-                                                         TimeSpan? trimWarningInterval = null)
+                                                         TimeSpan? trimWarningInterval = null,
+                                                         IPrinterEventObserver? eventObserver = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
@@ -209,7 +211,8 @@ public sealed class TelemetryWriterTests : IDisposable
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
                                       TestOptions.Monitor(options),
                                       _fakeLogger,
-                                      TimeProvider.System)
+                                      TimeProvider.System,
+                                      eventObservers: eventObserver is null ? null : [eventObserver])
         {
             SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
             EventTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
@@ -699,6 +702,33 @@ public sealed class TelemetryWriterTests : IDisposable
         // And the live state reflects the last message merged, not an arbitrary earlier one.
         PrinterLiveState state = await verify.PrinterLiveStates.SingleAsync(TestContext.Current.CancellationToken);
         state.Progress.Should().Be(24);
+    }
+
+    /// <summary>
+    /// An event observer is told which kinds of event each printer had saved - once per kind however
+    /// many rows - and only once the rows are there to be read.
+    /// </summary>
+    [Fact]
+    public async Task AnEventObserverIsToldOnceTheEventsAreInTheLog()
+    {
+        // Arrange - nothing flushes until shutdown, so all three events are saved together
+        RecordingEventObserver observer = new(NewVerificationContext);
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30),
+                                                        eventObserver: observer);
+        await SeedPrinterAsync();
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        writer.Enqueue(printerId: 1, now, new EventDTO { EventType = PrinterEventType.TransferFinished, Status = "IDLE", CommandId = 41 });
+        writer.Enqueue(printerId: 1, now.AddSeconds(1), new EventDTO { EventType = PrinterEventType.TransferFinished, Status = "IDLE", CommandId = 42 });
+        writer.Enqueue(printerId: 1, now.AddSeconds(2), new EventDTO { EventType = PrinterEventType.FileInfo, Status = "IDLE" });
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert - each told with all three rows already in the log
+        observer.Told.Should().BeEquivalentTo([(1, PrinterEventType.TransferFinished, 3), (1, PrinterEventType.FileInfo, 3)],
+                                              $"told once per kind, after the save.\n{LogDump()}");
     }
 
     [Fact]
@@ -2625,6 +2655,29 @@ public sealed class TelemetryWriterTests : IDisposable
         await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.PrinterDriveListings.AnyAsync(TestContext.Current.CancellationToken))
             .Should().BeFalse("a file is not a listing");
+    }
+
+    /// <summary>
+    /// Records each telling, with how many events the log held at that moment - so a telling that came
+    /// before the save shows up as a count too low.
+    /// </summary>
+    private sealed class RecordingEventObserver : IPrinterEventObserver
+    {
+        private readonly Func<HomespoolDbContext> _openContext;
+
+        public RecordingEventObserver(Func<HomespoolDbContext> openContext)
+        {
+            _openContext = openContext;
+        }
+
+        public System.Collections.Concurrent.ConcurrentQueue<(int printerId, PrinterEventType eventType, int rowsInLog)> Told { get; } = new();
+
+        public void Saved(int printerId, PrinterEventType eventType)
+        {
+            using HomespoolDbContext context = _openContext();
+
+            Told.Enqueue((printerId, eventType, context.PrinterEvents.Count()));
+        }
     }
 }
 

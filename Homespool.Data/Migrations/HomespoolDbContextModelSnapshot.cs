@@ -396,6 +396,9 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("PrinterPath")
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("TransferCommandId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("TransferRefusalCode")
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");

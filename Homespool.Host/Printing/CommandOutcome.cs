@@ -38,6 +38,13 @@ public sealed record CommandOutcome(Model.PrinterEventType EventType, string? Re
     /// </para>
     /// </remarks>
     public string? MachineReason { get; init; }
+
+    /// <summary>The id the answered command went out under.</summary>
+    /// <remarks>
+    /// What a transfer's terminal event quotes back as <c>start_cmd_id</c>, so it is how an attempt
+    /// the printer accepted is recognised when it ends. Null only for an outcome built by hand.
+    /// </remarks>
+    public uint? CommandId { get; init; }
 }
 
 /// <summary>

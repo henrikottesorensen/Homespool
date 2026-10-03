@@ -25,10 +25,11 @@ namespace Homespool.Host.Printing;
 /// what sits on a drive under a name Homespool chose can always be attributed.
 /// </para>
 /// <para>
-/// <b>A reservation, not a transfer.</b> The row a direct send leaves carries a drive name and no
-/// <see cref="PrintFileOnPrinter.TransferStartedAt"/>: the queue tracks arrivals only for printers
-/// with queued work, so an in-flight mark nobody would clear could leave a queued print of the same
-/// file waiting on it. The name is what the next transfer needs to see.
+/// <b>A reservation, not a transfer the queue waits on.</b> The row a direct send leaves carries a drive
+/// name and, once the printer takes the file, the command id its ending will name - but no
+/// <see cref="PrintFileOnPrinter.TransferStartedAt"/>, which is the queue's mark on an attempt of its
+/// own: one it waits on before sending again, and whose failure it counts. The name is what the next
+/// transfer needs to see.
 /// </para>
 /// </remarks>
 public sealed class PrinterDriveNames
@@ -44,32 +45,6 @@ public sealed class PrinterDriveNames
     public static string OnDrive(string driveName)
     {
         return $"/usb/{driveName}";
-    }
-
-    /// <summary>
-    /// The row for <paramref name="file"/> on <paramref name="printerId"/>, created when there is none,
-    /// with its drive name chosen when it has none - saved, so the next transfer sees it.
-    /// </summary>
-    public async Task<PrintFileOnPrinter> ReserveAsync(int printerId, PrintFile file, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-
-        PrintFileOnPrinter? row = await _dbContext.PrintFilesOnPrinters
-                                                  .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId &&
-                                                                                     candidate.PrintFileId == file.Id,
-                                                                        cancellationToken);
-
-        if (row is null)
-        {
-            row = new PrintFileOnPrinter { PrinterId = printerId, PrintFileId = file.Id };
-            _dbContext.PrintFilesOnPrinters.Add(row);
-        }
-
-        row.DriveName ??= await FirstAsync(printerId, file, file.Name, cancellationToken);
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return row;
     }
 
     /// <summary>

@@ -56,10 +56,31 @@ internal static class BinaryGCodeMetadataReader
     /// this is not a readable binary G-code file.
     /// </summary>
     /// <param name="stream">Positioned at the start of the file. Must be seekable.</param>
+    /// <remarks>
+    /// <b>Whatever the library throws about the bytes is "unreadable", not an error.</b> The file is
+    /// somebody's upload, so a malformed one can make the library throw rather than return null. Left
+    /// to escape, that is a 500 after the file was already published, and in the reconciler it ends
+    /// the backfill at that row on every pass. A failure of the stream itself is not a statement about
+    /// the bytes and still propagates, for the callers that already skip such a file.
+    /// </remarks>
     public static GCodeMetadata? Read(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
 
+        try
+        {
+            return Walk(stream);
+        }
+        catch (Exception e) when (e is EndOfStreamException ||
+                                  e is not (IOException or UnauthorizedAccessException or OperationCanceledException or
+                                            OutOfMemoryException))
+        {
+            return null;
+        }
+    }
+
+    private static GCodeMetadata? Walk(Stream stream)
+    {
         BgcodeReader? reader = BgcodeReader.Open(stream, Options);
 
         if (reader is null)

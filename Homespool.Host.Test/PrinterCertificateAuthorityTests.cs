@@ -688,6 +688,36 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     }
 
     /// <summary>
+    /// A power cut during first boot never leaves the "key lost, restore from backup" state: the
+    /// certificate PEM is written only after the key, so the interrupted states are a clean slate or
+    /// a repairable one.
+    /// </summary>
+    [Fact]
+    public void AnInterruptedFirstMintNeverLeavesACertificateWithoutItsKey()
+    {
+        // Arrange
+        PrinterCertificateAuthority authority = NewAuthority();
+        using X509Certificate2 minted = authority.EnsureAuthority();
+
+        // Act + Assert - cut after the DER, before the key: the DER alone reads as "not minted".
+        File.Delete(authority.AuthorityCertificatePemPath);
+        File.Delete(authority.AuthorityKeyPemPath);
+
+        using (X509Certificate2 remint = NewAuthority().EnsureAuthority())
+        {
+            remint.GetECDsaPrivateKey().Should().NotBeNull();
+        }
+
+        // Cut after the key, before the PEM: heals from the DER with the same authority.
+        File.Delete(authority.AuthorityCertificatePemPath);
+
+        using X509Certificate2 healed = NewAuthority().EnsureAuthority();
+
+        File.Exists(authority.AuthorityCertificatePemPath).Should().BeTrue();
+        healed.GetECDsaPrivateKey().Should().NotBeNull();
+    }
+
+    /// <summary>
     /// An authority stored by an earlier version as passwordless PKCS#12 migrates to the PEM pair -
     /// encrypted, when a passphrase is configured - and the PKCS#12 is deleted.
     /// </summary>

@@ -44,7 +44,7 @@ public static class RestrictedFile
 
         if (OperatingSystem.IsWindows())
         {
-            File.WriteAllBytes(path, contents);
+            WriteDurably(path, contents);
             return;
         }
 
@@ -58,9 +58,30 @@ public static class RestrictedFile
         using (FileStream stream = new(path, options))
         {
             stream.Write(contents);
+
+            // To the platter, not just the page cache: callers stage a key here and then rename it
+            // into place, and a rename that outlives its contents across a power cut leaves an empty
+            // file under the real name.
+            stream.Flush(flushToDisk: true);
         }
 
         File.SetUnixFileMode(path, mode);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="contents"/> and flushes them to the device before returning, with no
+    /// mode applied.
+    /// </summary>
+    /// <param name="path">File to write. Created if absent, truncated if not.</param>
+    /// <param name="contents">The bytes to store.</param>
+    public static void WriteDurably(string path, byte[] contents)
+    {
+        ArgumentNullException.ThrowIfNull(contents);
+
+        using FileStream stream = new(path, FileMode.Create, FileAccess.Write);
+
+        stream.Write(contents);
+        stream.Flush(flushToDisk: true);
     }
 
     /// <summary>

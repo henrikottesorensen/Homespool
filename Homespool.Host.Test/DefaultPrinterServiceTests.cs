@@ -201,6 +201,61 @@ public sealed class DefaultPrinterServiceTests : IDisposable
             .Should().BeNull("a printer nobody picked is not a default");
     }
 
+    /// <summary>
+    /// The printer itself, for a surface that answers with more than an id - <c>GET /api/v1/user</c>
+    /// names the default by its uuid - read with the one capability that makes it visible.
+    /// </summary>
+    [Fact]
+    public async Task ThePrinterResolvesForAKeyThatCanSeeIt()
+    {
+        await using HomespoolDbContext context = await SeedAsync();
+        (DefaultPrinterService defaults, UserManager<HSUser> users) = Build(context);
+
+        HSUser user = await SeedUserAsync(users, "resolver@example.com");
+        await JoinAsync(context, user.Id);
+        await defaults.SetAsync(user, Caller.Unscoped(user.Id), 1, TestContext.Current.CancellationToken);
+
+        Printer? printer = await defaults.ResolvePrinterAsync(user, TestCallers.Scoped(user.Id, Capability.ViewPrinter),
+                                                              TestContext.Current.CancellationToken);
+
+        printer.Should().NotBeNull();
+        printer!.Id.Should().Be(1);
+    }
+
+    /// <summary>
+    /// A key that cannot see the printer gets no printer, which is what lets the user endpoint answer
+    /// every token and still leave the default out of a narrowed one's answer.
+    /// </summary>
+    [Fact]
+    public async Task NoPrinterResolvesForAKeyThatCannotSeeIt()
+    {
+        await using HomespoolDbContext context = await SeedAsync();
+        (DefaultPrinterService defaults, UserManager<HSUser> users) = Build(context);
+
+        HSUser user = await SeedUserAsync(users, "narrowed-resolver@example.com");
+        await JoinAsync(context, user.Id);
+        await defaults.SetAsync(user, Caller.Unscoped(user.Id), 1, TestContext.Current.CancellationToken);
+
+        (await defaults.ResolvePrinterAsync(user, TestCallers.Scoped(user.Id, Capability.ViewOwnFiles),
+                                            TestContext.Current.CancellationToken))
+            .Should().BeNull();
+    }
+
+    /// <summary>Nothing chosen resolves to no printer.</summary>
+    [Fact]
+    public async Task NoPrinterResolvesForAnAccountThatHasChosenNothing()
+    {
+        await using HomespoolDbContext context = await SeedAsync();
+        (DefaultPrinterService defaults, UserManager<HSUser> users) = Build(context);
+
+        HSUser user = await SeedUserAsync(users, "undecided-resolver@example.com");
+        await JoinAsync(context, user.Id);
+
+        (await defaults.ResolvePrinterAsync(user, TestCallers.Scoped(user.Id, Capability.ViewPrinter),
+                                            TestContext.Current.CancellationToken))
+            .Should().BeNull();
+    }
+
     private static (DefaultPrinterService defaults, UserManager<HSUser> users) Build(HomespoolDbContext context)
     {
         (UserManager<HSUser> users, _, _, _) = IdentityTestHarness.BuildIdentityServices(context);

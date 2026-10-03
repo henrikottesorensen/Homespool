@@ -55,6 +55,20 @@ public abstract class TransferPolicy
         return Task.FromResult(false);
     }
 
+    /// <summary>
+    /// Answers a file too large for a printer to be sent. True when handled - the procedure saves and
+    /// sends nothing; false, the default, to have the exception reach the caller.
+    /// </summary>
+    /// <param name="context">The procedure's context; <see cref="TransferContext.Row"/> is set.</param>
+    /// <param name="tooLarge">What was found.</param>
+    /// <param name="cancellationToken">Cancels anything the policy asks.</param>
+    public virtual Task<bool> TooLargeAsync(TransferContext context,
+                                            PrintFileTooLargeException tooLarge,
+                                            CancellationToken cancellationToken)
+    {
+        return Task.FromResult(false);
+    }
+
     /// <summary>The older copy under the file's name was kept, so nothing is sent. Not saved.</summary>
     /// <param name="context">The procedure's context; <see cref="TransferContext.Row"/> is set.</param>
     /// <param name="kept">Why the printer kept it.</param>

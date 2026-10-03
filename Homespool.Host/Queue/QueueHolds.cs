@@ -169,6 +169,44 @@ internal sealed class QueueHolds
     }
 
     /// <summary>
+    /// Holds the queue behind a file too large for a printer to be sent.
+    /// </summary>
+    /// <remarks>
+    /// A fact about the file rather than a fault, so nothing re-attempts it: see
+    /// <see cref="PrintHoldReason.FileTooLarge"/>. History gets one row, as for the other holds, in
+    /// English - the column records what happened, the banner says it in the reader's language.
+    /// </remarks>
+    public void HoldTooLarge(HomespoolDbContext dbContext, int printerId, QueuedPrint head, PrintFileOnPrinter onPrinter)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        onPrinter.HoldReason = PrintHoldReason.FileTooLarge;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = now;
+        TransferRetryRules.Forget(onPrinter);
+
+        string recorded = $"{head.PrintFile!.Name} is 4 GiB or more, which is larger than a printer can be sent.";
+
+        dbContext.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            PrintUuid = head.PrintUuid,
+            FileName = head.PrintFile.Name,
+            Digest = head.PrintFile.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
+            StartedAt = now,
+            EndedAt = now,
+            State = PrintState.Failed,
+            Reason = recorded,
+        });
+
+        _logger.LogWarning("[{PrinterId}] {Reason} Holding the queue until somebody cancels or re-queues it.",
+                           printerId, recorded);
+    }
+
+    /// <summary>
     /// Holds the queue behind a file that is still in storage and could not be opened to send it, or
     /// whose owner's storage is not there to look in.
     /// </summary>

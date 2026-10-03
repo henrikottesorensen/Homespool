@@ -110,6 +110,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
                 PrintHoldReason.FileUnreadable => "Queue_HoldFileUnreadable",
                 PrintHoldReason.TransferStopped => "Queue_HoldTransferStopped",
                 PrintHoldReason.TransferAborted => "Queue_HoldTransferAborted",
+                PrintHoldReason.FileTooLarge => "Queue_HoldFileTooLarge",
                 _ => throw new InvalidOperationException($"{reason} has no key; add one to PrintHistoryService too."),
             };
 

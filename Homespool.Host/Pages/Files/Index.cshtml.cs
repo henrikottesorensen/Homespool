@@ -509,14 +509,6 @@ public class IndexModel : PageModel
             return RedirectToSelf(sort, desc, printerUuid, compatible);
         }
 
-        if (file.Length >= uint.MaxValue)
-        {
-            // orig_size is uint32 on the wire; a file this large cannot be described at all.
-            (StatusMessage, StatusSuccess) = (_localiser["Files_OverFourGiB"], false);
-
-            return RedirectToSelf(sort, desc, printerUuid, compatible);
-        }
-
         // Looked up in the caller's own list rather than fetched by the uuid the form supplied. That
         // list is already scoped to them, so this *is* the ownership check - a printer uuid typed into
         // the form by hand finds nothing rather than someone else's machine.
@@ -555,6 +547,12 @@ public class IndexModel : PageModel
         }
         catch (PrintFileUnreadableException e)
         {
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+        }
+        catch (PrintFileTooLargeException e)
+        {
+            // orig_size is uint32 on the wire; a file this large cannot be described at all. The
+            // service refuses it for every sender, before anything is offered or deleted.
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }
         catch (PrinterNotConnectedException)

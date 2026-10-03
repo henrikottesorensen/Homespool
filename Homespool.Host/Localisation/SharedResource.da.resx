@@ -2097,6 +2097,9 @@
   <data name="Queue_HoldFileUnreadable" xml:space="preserve">
     <value>{0} ligger stadig her, men kunne ikke læses, så den kan ikke sendes til printeren. Det er et problem med denne server, ikke med printeren - filens rettigheder eller disken, den ligger på - og køen fortsætter af sig selv, så snart filen kan læses.</value>
   </data>
+  <data name="Queue_HoldFileTooLarge" xml:space="preserve">
+    <value>{0} fylder 4 GiB eller mere, og det er mere, end en printer kan modtage, så køen er gået i stå. Annuller dette print, eller erstat filen med en mindre under samme navn, og sæt den i kø igen.</value>
+  </data>
   <data name="Queue_HoldTransferStopped" xml:space="preserve">
     <value>Overførslen af {0} blev stoppet på printeren, så køen er også stoppet i stedet for at sende den igen. Annuller dette print, eller sæt det i kø igen for at sende det.</value>
   </data>

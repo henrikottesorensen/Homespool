@@ -30,9 +30,16 @@ namespace Homespool.Host.Printing;
 /// sweep.
 /// </para>
 /// <para>
-/// What is deliberately <i>not</i> here: resolving the printer, checking the file exists, and the
-/// 4 GiB ceiling. Those are preconditions each caller already has in hand and phrases its own way -
-/// a status code on one side, a sentence on a page on the other.
+/// What is deliberately <i>not</i> here: resolving the printer and checking the file exists. Those
+/// are preconditions each caller already has in hand and phrases its own way - a status code on one
+/// side, a sentence on a page on the other.
+/// </para>
+/// <para>
+/// <b>The 4 GiB ceiling is here, and in <see cref="TransferService"/> before it.</b> It was once left
+/// to each caller, and the third - the queue - had none: its sends went out with a size firmware
+/// cannot read, were refused, counted, and held as the printer's doing. The size declared is the one
+/// the offer reports for the bytes it pinned, so this is where it is certain; the service asks
+/// earlier, before an older copy is deleted for a file that could not be sent anyway.
 /// </para>
 /// </remarks>
 public class PrintFileSender
@@ -65,6 +72,16 @@ public class PrintFileSender
     /// </remarks>
     private const int TransferTokenBytes = StartConnectDownload.MaxHashLength * 6 / 8;
 
+    /// <summary>
+    /// The size no file may reach: <c>orig_size</c> is a <c>uint32</c> on the wire, and a value that
+    /// does not fit is not stored by firmware, so the command arrives without a size.
+    /// </summary>
+    /// <remarks>
+    /// <b>Exclusive, as it always was</b> - a file of exactly <see cref="uint.MaxValue"/> bytes would
+    /// fit, and the callers' checks refused it all the same. Kept as they were.
+    /// </remarks>
+    public const long SizeLimit = uint.MaxValue;
+
     private readonly ITransferOffers _offers;
     private readonly EncryptedTransferOffers _encrypted;
     private readonly PrinterCommandService _commands;
@@ -89,6 +106,7 @@ public class PrintFileSender
     /// The file could not be opened, which means it was deleted between being found and being
     /// offered - a delete racing this send rather than anything the caller did wrong.
     /// </exception>
+    /// <exception cref="PrintFileTooLargeException">The bytes offered reach <see cref="SizeLimit"/>.</exception>
     /// <remarks>
     /// Returns as soon as the printer accepts the command, which is not when the transfer finishes:
     /// it then pulls the bytes at its own pace over the same WebSocket, and a full-size model takes
@@ -114,6 +132,7 @@ public class PrintFileSender
     /// <param name="caller">The authority the send is made under.</param>
     /// <param name="cancellationToken">Cancels the send, not a transfer the printer has accepted.</param>
     /// <exception cref="PrintFileUnreadableException">The file could not be opened.</exception>
+    /// <exception cref="PrintFileTooLargeException">The bytes offered reach <see cref="SizeLimit"/>.</exception>
     /// <remarks>
     /// The queue's path: two users' files of one name share a printer's drive, so the queue chooses
     /// the name each is stored under there.
@@ -164,6 +183,13 @@ public class PrintFileSender
         if (_offers.Offer(token, file.Path, printer.Id) is not { } length)
         {
             throw new PrintFileUnreadableException(file.FileName);
+        }
+
+        if (length >= SizeLimit)
+        {
+            _offers.Revoke(token);
+
+            throw new PrintFileTooLargeException();
         }
 
         StartConnectDownload command = new()
@@ -218,6 +244,13 @@ public class PrintFileSender
             if (_offers.Offer(ivHex, file.Path, printer.Id) is not { } length)
             {
                 throw new PrintFileUnreadableException(file.FileName);
+            }
+
+            if (length >= SizeLimit)
+            {
+                _offers.Revoke(ivHex);
+
+                throw new PrintFileTooLargeException();
             }
 
             _encrypted.Register(ivHex, key, ivHex, printer.Id);

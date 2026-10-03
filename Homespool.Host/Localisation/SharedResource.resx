@@ -2191,6 +2191,10 @@
     <value>{0} is still stored here but could not be read to send it to the printer. This is a problem with this server, not the printer - the file's permissions or the disk it is on - and the queue carries on by itself once the file can be read.</value>
     <comment>{0} is the file name. Names no action on the printer page because none there helps: the fix is on the server, and the hold lifts itself within a minute of it.</comment>
   </data>
+  <data name="Queue_HoldFileTooLarge" xml:space="preserve">
+    <value>{0} is 4 GiB or more, which is larger than a printer can be sent, so the queue has stopped behind it. Cancel this print, or replace the file with a smaller one under the same name and queue it again.</value>
+    <comment>{0} is the file name. A printer is told a file's size as a 32-bit number, so nothing of 4 GiB or more can be sent however often it is tried. Queueing the file again is what lifts this hold.</comment>
+  </data>
   <data name="Queue_HoldTransferStopped" xml:space="preserve">
     <value>The transfer of {0} was stopped at the printer, so the queue has stopped too rather than send it again. Cancel this print, or queue it again to send it.</value>
     <comment>{0} is the file name. Somebody stopped the download on the printer itself, so the queue does not argue with them. Queueing it again is what lifts this hold.</comment>

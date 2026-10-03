@@ -215,6 +215,31 @@ public sealed class FilesPageDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A file of 4 GiB or more is reported on the page, in the reader's language, and the printer is
+    /// sent nothing: firmware is told a file's size as a 32-bit number.
+    /// </summary>
+    [Fact]
+    public async Task AFileTooLargeForAPrinterIsReportedOnThePageAndReachesNoPrinter()
+    {
+        (Guid uuid, long userId, HttpClient client, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        using (client)
+        {
+            await UploadAsync(client, "benchy.gcode");
+            OversizedStoredFile.Make(_factory, userId, "benchy.gcode");
+
+            using HttpResponseMessage posted = await PostHandlerAsync(client, "Send", "benchy.gcode", uuid);
+
+            posted.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+            (await StatusShownAsync(client, uuid)).Should().Be("That file is over 4 GiB - a printer cannot be sent anything larger.");
+            fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame, not after it");
+
+            await EndRunAsync(fake, run);
+        }
+    }
+
+    /// <summary>
     /// Posts one of the page's per-file dispatch forms the way the rendered form does: route values
     /// in the query string, the antiforgery token in the body.
     /// </summary>

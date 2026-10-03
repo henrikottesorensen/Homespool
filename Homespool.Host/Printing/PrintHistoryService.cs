@@ -354,6 +354,8 @@ public class PrintHistoryService
 
             PrintHoldReason.TransferStopped => MessageKey.For("Queue_HoldTransferStopped", hold.FileName),
 
+            PrintHoldReason.FileTooLarge => MessageKey.For("Queue_HoldFileTooLarge", hold.FileName),
+
             PrintHoldReason.TransferAborted => MessageKey.For(
                 "Queue_HoldTransferAborted", hold.FileName, hold.TransferRefusalCount ?? 0),
 

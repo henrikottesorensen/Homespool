@@ -139,6 +139,20 @@ internal sealed class QueueTransferPolicy : TransferPolicy
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Held until a person acts, with one history row on the way in. Asked again by nothing - the
+    /// rules keep the entry out of the transfer path - so the hold is written once, not once a tick.
+    /// </remarks>
+    public override Task<bool> TooLargeAsync(TransferContext context,
+                                             PrintFileTooLargeException tooLarge,
+                                             CancellationToken cancellationToken)
+    {
+        _holds.HoldTooLarge(context.DbContext, context.PrinterId, Head, context.Row!);
+
+        return Task.FromResult(true);
+    }
+
+    /// <inheritdoc />
     /// <remarks>Gone, or held until it can be read again.</remarks>
     public override Task<bool> UnreadableAsync(TransferContext context,
                                                PrintFileUnreadableException unreadable,

@@ -3934,6 +3934,54 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A file of 4 GiB or more cannot be sent - firmware is told its size as a 32-bit number - so the
+    /// queue holds on it, once, saying why, and offers nothing: not the file, and not a delete of the
+    /// copy the printer already has. Not the refusals it once ran into, counted and held as the
+    /// printer's doing.
+    /// </summary>
+    [Fact]
+    public async Task AFileTooLargeForAPrinterHoldsTheQueueWithoutOfferingIt()
+    {
+        // Arrange - the head's file, sparse and one byte under 4 GiB more than it can be, with an
+        // older copy of the name on the drive that a send would have deleted first
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        await using (FileStream stream = File.OpenWrite(Path.Combine(_storeRoot, "1-owner", "queued.bgcode")))
+        {
+            stream.SetLength(uint.MaxValue);
+        }
+
+        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        row.Digest = "an-older-digest";
+        row.ArrivedAt = _clock.GetUtcNow();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = ConnectAccepting();
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - the pass that finds it, and the ones after
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().Be(PrintHoldReason.FileTooLarge, "a person has to be told, or the queue stalls silently");
+        row.TransferRefusalCount.Should().BeNull("this is the file's doing, not a printer's refusal");
+        OfferedPaths(actor).Should().BeEmpty("nothing could be offered");
+        actor.ReceivedCalls().Where(call => call.GetMethodInfo().Name is nameof(IPrinterConnectionActor.SendCommandAsync) or nameof(IPrinterConnectionActor.SendAsync))
+             .Should().BeEmpty("no command at all - least of all one deleting the older copy for a file that cannot follow it");
+
+        PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        recorded.State.Should().Be(PrintState.Failed);
+        recorded.Reason.Should().Contain("queued.bgcode", "history says which file, once, however many passes find the hold");
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "somebody still wants this printed");
+    }
+
+    /// <summary>
     /// A printer that never answers holds up its own queue and no other, and does not hold a permit to
     /// work while it does - with a budget of one, the other printer's pass still gets its turn.
     /// </summary>

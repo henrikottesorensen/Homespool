@@ -204,9 +204,9 @@ public sealed class PrintQueueServiceTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Four holds say "look, then decide"</b>: an unresolved print start, a transfer the printer
-    /// kept refusing or kept abandoning, and one somebody stopped at the printer. Asking for the file
-    /// again is that decision. The other holds are conditions the
+    /// <b>Five holds say "look, then decide"</b>: an unresolved print start, a transfer the printer
+    /// kept refusing or kept abandoning, one somebody stopped at the printer, and a file too large to
+    /// send. Asking for the file again is that decision. The other holds are conditions the
     /// loop re-checks itself, and wanting the file more changes none of them, so they stay.
     /// </para>
     /// <para>
@@ -219,6 +219,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     [InlineData(PrintHoldReason.TransferRefused, true)]
     [InlineData(PrintHoldReason.TransferAborted, true)]
     [InlineData(PrintHoldReason.TransferStopped, true)]
+    [InlineData(PrintHoldReason.FileTooLarge, true)]
     [InlineData(PrintHoldReason.InsufficientSpace, false)]
     [InlineData(PrintHoldReason.FileExistsDifferentSize, false)]
     public async Task QueueingAgainLiftsOnlyTheHoldsAPersonClears(PrintHoldReason hold, bool lifted)

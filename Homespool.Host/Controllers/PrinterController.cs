@@ -180,12 +180,6 @@ public class PrinterController : ControllerBase
             return this.NotFoundProblem($"You have no file named {body.Name}.");
         }
 
-        if (file.Length >= uint.MaxValue)
-        {
-            // orig_size is uint32 on the wire; a file this large cannot be described at all.
-            return this.BadRequestProblem("Files must be under 4 GiB - a printer cannot be sent anything larger.");
-        }
-
         PrintFile? indexed = await _files.ResolveAsync(user.Id, file.FileName, cancellationToken);
 
         if (indexed is null)
@@ -228,6 +222,12 @@ public class PrinterController : ControllerBase
         catch (PrintFileUnreadableException e)
         {
             return this.ConflictProblem(e.Message);
+        }
+        catch (PrintFileTooLargeException e)
+        {
+            // orig_size is uint32 on the wire; a file this large cannot be described at all. The
+            // service refuses it for every sender, before anything is offered or deleted.
+            return this.BadRequestProblem(e.Message);
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
                                       CommandResponseTimedOutException or CommandSendTimedOutException)

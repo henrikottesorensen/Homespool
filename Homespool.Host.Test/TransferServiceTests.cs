@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,6 +41,9 @@ public sealed class TransferServiceTests : IDisposable
     private const int PrinterId = 1;
 
     private const string FileName = "part.bgcode";
+
+    /// <summary>The digest of the older copy of the seeded file that the tests leave on the drive.</summary>
+    private const string OlderDigest = "an-older-digest";
 
     /// <summary>The id the substituted actor's download command goes out under.</summary>
     private const uint DownloadCommandId = 4242;
@@ -493,7 +497,114 @@ public sealed class TransferServiceTests : IDisposable
         ended.TransferRefusalCount.Should().BeNull("a person's send counts against nothing");
     }
 
+    /// <summary>
+    /// A file of 4 GiB or more is refused for any sender - firmware is told its size as a 32-bit
+    /// number - before anything is offered, and before an older copy of it on the drive is deleted
+    /// to make room for a file that could never follow it.
+    /// </summary>
+    /// <param name="direct">Whether the send is a person's, through <see cref="TransferService.SendDirectAsync"/>.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AFileTooLargeToSendIsRefusedBeforeAnythingIsAskedOfThePrinter(bool direct)
+    {
+        // Arrange - a sparse file at the ceiling, and an older copy of the name on the drive
+        PrintFile file = await SeedAsync();
+        MakeStoredFileSparse(uint.MaxValue);
+        await AddArrivedOlderCopyAsync(file);
+        IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        // Act
+        Func<Task> send = async () =>
+        {
+            if (direct)
+            {
+                await await SendDirectAsync(transfers, file);
+            }
+            else
+            {
+                await transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
+            }
+        };
+
+        // Assert
+        await send.Should().ThrowAsync<PrintFileTooLargeException>();
+        actor.ReceivedCalls().Where(call => call.GetMethodInfo().Name is nameof(IPrinterConnectionActor.SendCommandAsync) or nameof(IPrinterConnectionActor.SendAsync))
+             .Should().BeEmpty("nothing was asked of the printer - least of all deleting the copy it has");
+        (await ReadRowAsync()).Digest.Should().Be(OlderDigest, "the older copy is still recorded as there");
+    }
+
+    /// <summary>
+    /// A file one byte under the ceiling is sent: the ceiling is where firmware's number ends, not a
+    /// byte before it.
+    /// </summary>
+    [Fact]
+    public async Task AFileJustUnderTheCeilingIsSent()
+    {
+        // Arrange
+        PrintFile file = await SeedAsync();
+        MakeStoredFileSparse(uint.MaxValue - 1);
+        IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        // Act
+        await transfers.SendAsync(Request(file), TestContext.Current.CancellationToken)
+                       .WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Assert
+        DownloadsOffered(actor).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A file that grew past the ceiling between being found and being offered is caught where its
+    /// size is declared - the offer reports the bytes it pinned - and nothing is sent.
+    /// </summary>
+    [Fact]
+    public async Task AFileThatGrewPastTheCeilingAfterItWasFoundIsNotOffered()
+    {
+        // Arrange - found at a small size, and large by the time it is opened
+        PrintFile file = await SeedAsync();
+        MakeStoredFileSparse(uint.MaxValue);
+        IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        // Act
+        Func<Task> send = () => transfers.SendAsync(new TransferRequest(PrinterId, file.Id, Owner, new FoundSmall()),
+                                                    TestContext.Current.CancellationToken);
+
+        // Assert
+        await send.Should().ThrowAsync<PrintFileTooLargeException>();
+        DownloadsOffered(actor).Should().Be(0, "the offer was revoked and the command never went out");
+    }
+
     private static Caller Owner => Caller.Scoped(1, CapabilitySet.Everything);
+
+    /// <summary>Makes the seeded file <paramref name="length"/> bytes long without writing them.</summary>
+    private void MakeStoredFileSparse(long length)
+    {
+        using FileStream stream = File.OpenWrite(Path.Combine(_storeRoot, "1-owner", FileName));
+        stream.SetLength(length);
+    }
+
+    /// <summary>The seeded file's older copy on the drive, which a send of different bytes would delete first.</summary>
+    private async Task AddArrivedOlderCopyAsync(PrintFile file)
+    {
+        await using AsyncServiceScope scope = _services.CreateAsyncScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = PrinterId,
+            PrintFileId = file.Id,
+            DriveName = FileName,
+            PrinterPath = "/usb/PART~1.BGC",
+            Digest = OlderDigest,
+            ArrivedAt = _clock.GetUtcNow(),
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
 
     /// <summary>The printer's answer to a download it took, under <paramref name="commandId"/>.</summary>
     private static CommandSendResult TakenAs(uint commandId)
@@ -690,6 +801,18 @@ public sealed class TransferServiceTests : IDisposable
         {
             return Task.FromResult(context.Services.GetRequiredService<PrintFileCatalog>()
                                           .FindForPrinting(context.PrintFile.UserId, context.PrintFile.Name));
+        }
+    }
+
+    /// <summary>A sender that finds the file as it was when it was small: the stored bytes, under a stale length.</summary>
+    private sealed class FoundSmall : TransferPolicy
+    {
+        public override Task<StoredFile?> FindFileAsync(TransferContext context, CancellationToken cancellationToken)
+        {
+            StoredFile? found = context.Services.GetRequiredService<PrintFileCatalog>()
+                                       .FindForPrinting(context.PrintFile.UserId, context.PrintFile.Name);
+
+            return Task.FromResult(found is null ? null : found with { Length = 11 });
         }
     }
 

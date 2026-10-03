@@ -183,4 +183,11 @@ public enum QueueWaitReason
     /// because the sentence differs: the printer did not refuse anything.
     /// </remarks>
     TransferAbortRetrying = 15,
+
+    /// <summary>
+    /// The head's file is too large for a printer to be sent, and the queue holds until a person
+    /// acts - see <see cref="PrintHoldReason.FileTooLarge"/>.
+    /// </summary>
+    /// <remarks>Not routed back into the transfer path: the file is no smaller the next time. The hold banner carries the sentence.</remarks>
+    FileTooLarge = 16,
 }

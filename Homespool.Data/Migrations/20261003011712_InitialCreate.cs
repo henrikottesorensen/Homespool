@@ -38,6 +38,7 @@ namespace Homespool.Data.Migrations
                     MutedPrinters = table.Column<string>(type: "TEXT", maxLength: 2048, nullable: true),
                     DefaultPrinterId = table.Column<int>(type: "INTEGER", nullable: true),
                     DeactivatedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    AuthenticatorStepUsed = table.Column<long>(type: "INTEGER", nullable: true),
                     UserName = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
                     Email = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),

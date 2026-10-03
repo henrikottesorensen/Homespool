@@ -159,6 +159,17 @@ public class HSUser : IdentityUser<long>
     /// </remarks>
     public DateTimeOffset? DeactivatedAt { get; set; }
 
+    /// <summary>
+    /// The latest time step an authenticator code has been accepted for, counted in 30-second steps
+    /// from the Unix epoch, or null when none has been since the authenticator key was set.
+    /// </summary>
+    /// <remarks>
+    /// A code is accepted only for a later step than this one, which is what makes it one-time: an
+    /// authenticator code is valid for several steps either side of now, and without a record of the
+    /// last one used it signs in as often as it is presented until it expires.
+    /// </remarks>
+    public long? AuthenticatorStepUsed { get; set; }
+
     public HSUser(string userName)
         : this()
     {

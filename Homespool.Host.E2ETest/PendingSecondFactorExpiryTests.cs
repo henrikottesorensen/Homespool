@@ -86,7 +86,7 @@ public sealed class PendingSecondFactorExpiryTests : IAsyncLifetime
         _clock.Advance(TimeSpan.FromMinutes(3));
         string token = await CodePageTokenAsync(client);
         _clock.Advance(TimeSpan.FromMinutes(3));
-        HttpResponseMessage answer = await PostCodeAsync(client, token, new Totp(secret).ComputeTotp());
+        HttpResponseMessage answer = await PostCodeAsync(client, token, new Totp(secret).ComputeTotp(_clock.GetUtcNow().UtcDateTime));
 
         // Assert
         answer.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -106,7 +106,7 @@ public sealed class PendingSecondFactorExpiryTests : IAsyncLifetime
         _clock.Advance(TimeSpan.FromMinutes(3));
         string token = await CodePageTokenAsync(client);
         _clock.Advance(TimeSpan.FromMinutes(1));
-        HttpResponseMessage answer = await PostCodeAsync(client, token, new Totp(secret).ComputeTotp());
+        HttpResponseMessage answer = await PostCodeAsync(client, token, new Totp(secret).ComputeTotp(_clock.GetUtcNow().UtcDateTime));
 
         // Assert
         answer.StatusCode.Should().Be(HttpStatusCode.Redirect);

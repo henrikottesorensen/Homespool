@@ -82,12 +82,15 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         await ShouldShowLiveCodesAndCarryNoneAsync(post, user.Id);
 
-        // A refresh of that response is the same post again. The codes are only ever shown once, so it
-        // must land on the two-factor page rather than mint or show a second set.
+        // A refresh of that response is the same post again, with the same code. The codes are only
+        // ever shown once, and the code was spent by the first post, so it is refused before anything
+        // is minted or shown.
         using HttpResponseMessage refresh = await PostAsync(client, jar, "/Account/Manage/EnableAuthenticator", form);
 
-        refresh.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        refresh.Headers.Location!.OriginalString.Should().Contain("/Account/Manage/TwoFactorAuthentication");
+        refresh.StatusCode.Should().Be(HttpStatusCode.OK, "the form comes back with the spent code refused");
+        RecoveryCodesIn(await refresh.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().BeEmpty("a second set is never shown");
+        (await StoredRecoveryCodeCountAsync(user.Id)).Should().Be(9, "the first set stands, less the one the check above redeemed");
     }
 
     /// <summary>
@@ -335,6 +338,17 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         (await userManager.RedeemTwoFactorRecoveryCodeAsync(user, codes[0])).Succeeded
             .Should().BeTrue("the codes shown have to be the codes stored, or showing them was worth nothing");
+    }
+
+    private async Task<int> StoredRecoveryCodeCountAsync(long userId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+
+        HSUser user = await userManager.FindByIdAsync(userId.ToString(CultureInfo.InvariantCulture)) ??
+                      throw new InvalidOperationException("the account should exist");
+
+        return await userManager.CountRecoveryCodesAsync(user);
     }
 
     private async Task<bool> TwoFactorEnabledAsync(long userId)

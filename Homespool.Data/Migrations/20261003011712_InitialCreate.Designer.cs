@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261002221113_InitialCreate")]
+    [Migration("20261003011712_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -123,6 +123,9 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("AccessFailedCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("AuthenticatorStepUsed")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("ConcurrencyStamp")

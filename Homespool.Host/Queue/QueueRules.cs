@@ -140,6 +140,9 @@ public static class QueueRules
                 // Out of it above all: somebody at the printer stopped this transfer.
                 PrintHoldReason.TransferStopped => QueueWaitReason.TransferStopped,
                 PrintHoldReason.FileUnreadable => QueueWaitReason.FileUnreadable,
+
+                // Out of the transfer branch: the file is no smaller the next time it is asked about.
+                PrintHoldReason.FileTooLarge => QueueWaitReason.FileTooLarge,
                 _ => QueueWaitReason.InsufficientSpace,
             });
         }

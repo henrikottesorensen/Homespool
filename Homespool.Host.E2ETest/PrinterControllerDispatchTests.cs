@@ -275,6 +275,32 @@ public sealed class PrinterControllerDispatchTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A file of 4 GiB or more is a 400 saying so, and no command leaves: firmware is told a file's
+    /// size as a 32-bit number, so the printer could only refuse it.
+    /// </summary>
+    [Fact]
+    public async Task AFileTooLargeForAPrinterIsABadRequestAndReachesNoPrinter()
+    {
+        (Guid uuid, long userId, FakePrinterClient fake, Task run) = await ConnectedPrinterAsync();
+
+        await UploadAsOwnerAsync(userId, "benchy.gcode");
+        OversizedStoredFile.Make(_factory, userId, "benchy.gcode");
+
+        using HttpClient client = await ScopedClientAsync(userId, [Capability.Print]);
+
+        using HttpResponseMessage response = await client.PostAsJsonAsync($"/api/v1/printers/{uuid}/files",
+                                                                          new { name = "benchy.gcode" },
+                                                                          TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await DetailOfAsync(response)).Should().Be("Files must be under 4 GiB - a printer cannot be sent anything larger.");
+
+        fake.ReceivedCommands.Should().BeEmpty("the refusal must come before the frame, not after it");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// Nothing over the API starts a print directly - not a slicer's key, and not an unrestricted
     /// one - and the printer hears nothing.
     /// </summary>

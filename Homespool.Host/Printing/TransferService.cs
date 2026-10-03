@@ -197,6 +197,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// <param name="cancellationToken">Cancels the send until the offer goes out, and the caller's wait.</param>
     /// <returns>What became of an older copy, and the printer's answer when the file was offered.</returns>
     /// <exception cref="PrintFileUnreadableException">The file could not be read.</exception>
+    /// <exception cref="PrintFileTooLargeException">The file is too large for a printer to be sent.</exception>
     /// <remarks>
     /// Through the printer's mailbox like the queue's sends, so the attempt is recorded before its end
     /// can be read, and the end settles it whether or not the queue ever visits this printer.
@@ -555,6 +556,23 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
             return new TransferResult(Cleared: null, Sent: null);
         }
 
+        // Before the drive name is chosen and before an older copy is deleted, so that a file that can
+        // never be sent costs the printer nothing - least of all the copy it already has.
+        if (file.Length >= PrintFileSender.SizeLimit)
+        {
+            PrintFileTooLargeException tooLarge = new();
+            context.EnsureRow();
+
+            if (!await policy.TooLargeAsync(context, tooLarge, cancellationToken))
+            {
+                throw tooLarge;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return new TransferResult(Cleared: null, Sent: null);
+        }
+
         Printer printer = await dbContext.Printers.SingleAsync(candidate => candidate.Id == printerId, cancellationToken);
         PrintFileOnPrinter onPrinter = context.EnsureRow();
 
@@ -647,6 +665,24 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
             ClearOwnStamp(policy, onPrinter);
 
             bool handled = await policy.UnreadableAsync(context, e, cancellationToken);
+
+            await dbContext.SaveChangesAsync(CancellationToken.None);
+
+            if (!handled)
+            {
+                throw;
+            }
+
+            return new TransferResult(cleared, Sent: null);
+        }
+        catch (PrintFileTooLargeException e)
+        {
+            // The file grew past the ceiling between being found and being offered. The sender
+            // revoked the offer, so nothing is running; the stamp goes as it does for a send that
+            // fell short.
+            ClearOwnStamp(policy, onPrinter);
+
+            bool handled = await policy.TooLargeAsync(context, e, cancellationToken);
 
             await dbContext.SaveChangesAsync(CancellationToken.None);
 

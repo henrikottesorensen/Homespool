@@ -194,4 +194,22 @@ public enum PrintHoldReason
     /// </para>
     /// </remarks>
     TransferAborted = 10,
+
+    /// <summary>
+    /// The file is too large for a printer to be sent: 4 GiB or more, which firmware cannot be told
+    /// the size of.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A fact about the file, so waiting cannot change it.</b> Without this hold the send went out
+    /// anyway with a size firmware cannot read, the printer refused it, and the refusals were counted
+    /// and held as <see cref="TransferRefused"/> - a hold that blamed the printer for a file it was
+    /// never going to take. Nothing is offered, and no older copy on the drive is deleted for it.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person, like <see cref="TransferStopped"/>.</b> Cancelling the entry moves the
+    /// queue past it; queueing the file again - after replacing it with a smaller one - clears it.
+    /// </para>
+    /// </remarks>
+    FileTooLarge = 11,
 }

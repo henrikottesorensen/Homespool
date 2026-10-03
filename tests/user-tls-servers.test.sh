@@ -125,6 +125,14 @@ if test_case "hsts is off when the setting is empty, even on an issued name"; th
     assert_not_contains "$(block homespool.example.com)" "Strict-Transport-Security" "empty means off"
 fi
 
+if test_case "hsts is off for 0, false and no - only 1 turns it on"; then
+    issued homespool.example.com
+    for v in 0 false no off; do
+        generate "homespool.example.com" "$v" >/dev/null
+        assert_not_contains "$(block homespool.example.com)" "Strict-Transport-Security" "HSTS=$v means off"
+    done
+fi
+
 if test_case "a name with no certificate at all is skipped, whatever HSTS says"; then
     out="$(generate "nowhere.lan" 1)"
     [ -f "$scratch/conf.d/homespool-user-nowhere.lan.conf" ] && fail "a block was written for a name with no certificate" || passed=$((passed + 1))

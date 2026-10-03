@@ -301,6 +301,10 @@ public class PrintQueueService
             return null;
         }
 
+        // Before the two refusals below, which are about the job rather than the caller: a key that
+        // cannot print is told so, not that the print is somebody else's or that the file changed.
+        await _access.RequireAsync(printerId, caller, Capability.Print, cancellationToken);
+
         if (job.QueuedByUserId != caller.UserId)
         {
             throw new PrintNotYoursException();
@@ -372,6 +376,11 @@ public class PrintQueueService
     /// moved - otherwise the request would change one printer's queue under a URL naming another.
     /// <see cref="CancelAsync"/> is scoped the same way.
     /// </para>
+    /// <para>
+    /// <b>Refused before the entry is looked up</b>, so a caller who may not reorder this queue gets
+    /// the same answer whether or not the handle names an entry - a refusal for one and
+    /// <see langword="false"/> for the other would say which handles are live.
+    /// </para>
     /// </remarks>
     /// <returns>False if there is no such queued print on that printer.</returns>
     public async Task<bool> MoveAsync(int printerId,
@@ -380,16 +389,16 @@ public class PrintQueueService
                                       int targetIndex,
                                       CancellationToken cancellationToken)
     {
+        // Reordering moves other people's work as well as your own - there is one queue - so it is
+        // the same right as withdrawing somebody else's, not the same right as adding your own.
+        await _access.RequireAsync(printerId, caller, Capability.ControlPrinter, cancellationToken);
+
         QueuedPrint? job = await FindAsync(printerId, printUuid, cancellationToken);
 
         if (job is null)
         {
             return false;
         }
-
-        // Reordering moves other people's work as well as your own - there is one queue - so it is
-        // the same right as withdrawing somebody else's, not the same right as adding your own.
-        await _access.RequireAsync(job.PrinterId, caller, Capability.ControlPrinter, cancellationToken);
 
         List<QueuedPrint> queue = await _dbContext.QueuedPrints
                                                   .Where(candidate => candidate.PrinterId == job.PrinterId)
@@ -435,6 +444,11 @@ public class PrintQueueService
                                         Caller caller,
                                         CancellationToken cancellationToken)
     {
+        // Whether this caller may withdraw anything here - their own work being the least - asked
+        // before the lookup, so somebody who may withdraw nothing is refused alike for a live handle
+        // and a dead one. Whose entry it is can only be asked once it is found.
+        await _access.RequireWithdrawingAsync(printerId, caller, caller.UserId, cancellationToken);
+
         QueuedPrint? job = await FindAsync(printerId, printUuid, cancellationToken);
 
         if (job is null)

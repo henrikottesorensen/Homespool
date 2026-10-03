@@ -479,6 +479,246 @@ public sealed class PrintQueueServiceTests : IDisposable
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
+    /// <summary>
+    /// Reordering is <c>ControlPrinter</c>, whoever's entry it is: a key that may only print is refused
+    /// by the key, and the queue keeps its order.
+    /// </summary>
+    [Fact]
+    public async Task AKeyThatMayOnlyPrintCannotMoveAnEntry()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode", "two.gcode");
+
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        QueuedPrint second = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode",
+                                                      TestContext.Current.CancellationToken)).Queued;
+
+        // Act - the entry is Alice's own, and still the key may not move it
+        Func<Task> move = () => queue.MoveAsync(printer.Id, second.PrintUuid, TestCallers.Scoped(Alice, Capability.Print), 0,
+                                                TestContext.Current.CancellationToken);
+
+        // Assert
+        (await move.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Missing.Should().Be(Capability.ControlPrinter);
+
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+
+        jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "two.gcode");
+    }
+
+    /// <summary>The team half of the same rule: a member who may only print is refused by the team.</summary>
+    [Fact]
+    public async Task AMemberWhoMayOnlyPrintCannotMoveAnEntry()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Contributor);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode", "two.gcode");
+
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+        QueuedPrint second = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "two.gcode",
+                                                      TestContext.Current.CancellationToken)).Queued;
+
+        // Act
+        Func<Task> move = () => queue.MoveAsync(printer.Id, second.PrintUuid, Caller.Unscoped(Alice), 0,
+                                                TestContext.Current.CancellationToken);
+
+        // Assert
+        await move.Should().ThrowAsync<TeamAccessDeniedException>();
+    }
+
+    /// <summary>
+    /// A caller who may not reorder this queue gets one answer whether the handle names an entry or
+    /// not, so a refusal cannot be told from <see langword="false"/> to learn which handles are live.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MovingIsRefusedAlikeForALiveAndADeadHandle(bool live)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Contributor);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode");
+
+        QueuedPrint entry = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                     TestContext.Current.CancellationToken)).Queued;
+        Guid handle = live ? entry.PrintUuid : Guid.NewGuid();
+
+        // Act
+        Func<Task> move = () => queue.MoveAsync(printer.Id, handle, Caller.Unscoped(Alice), 0, TestContext.Current.CancellationToken);
+
+        // Assert
+        await move.Should().ThrowAsync<TeamAccessDeniedException>();
+    }
+
+    /// <summary>
+    /// The cancelling half: somebody who may withdraw nothing on this printer - a viewer by the team,
+    /// or a key naming neither <c>Print</c> nor <c>ControlPrinter</c> - is refused the same way for a
+    /// live handle and a dead one, each by the half that refuses.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task CancellingIsRefusedAlikeForALiveAndADeadHandle(bool live, bool refusedByTheKey)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, refusedByTheKey ? CapabilityPresets.Operator : CapabilityPresets.Viewer);
+        await AddMemberAsync(context, printer.TeamId, Bob, [.. CapabilityPresets.Operator]);
+        PrintQueueService queue = NewQueue(context);
+        await UploadForAsync(context, Bob, "one.gcode");
+
+        QueuedPrint entry = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Bob), "one.gcode",
+                                                     TestContext.Current.CancellationToken)).Queued;
+        Guid handle = live ? entry.PrintUuid : Guid.NewGuid();
+        Caller caller = refusedByTheKey ? TestCallers.Scoped(Alice, Capability.ViewPrinter, Capability.ViewQueue) : Caller.Unscoped(Alice);
+
+        // Act
+        Func<Task> cancel = () => queue.CancelAsync(printer.Id, handle, caller, TestContext.Current.CancellationToken);
+
+        // Assert
+        if (refusedByTheKey)
+        {
+            (await cancel.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Missing.Should().Be(Capability.Print);
+        }
+        else
+        {
+            await cancel.Should().ThrowAsync<TeamAccessDeniedException>();
+        }
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A reprint is queued again from the history row, by a key holding exactly what it needs: seeing
+    /// the history, and printing.
+    /// </summary>
+    [Fact]
+    public async Task AReprintQueuesTheFileThatPrintedAgain()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Manager);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "benchy.gcode");
+        PrintJob printed = await AddPrintedAsync(context, printer.Id, Alice, "benchy.gcode");
+
+        // Act
+        EnqueueOutcome? outcome = await queue.ReprintAsync(printer.Id, printed.PrintUuid,
+                                                           TestCallers.Scoped(Alice, Capability.ViewHistory, Capability.Print),
+                                                           acceptChanged: false, TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome.Should().NotBeNull();
+        outcome!.Queued.PrintUuid.Should().NotBe(printed.PrintUuid, "a reprint is a new entry with a handle of its own");
+
+        IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+
+        jobs.Select(job => job.PrintFile!.Name).Should().Equal("benchy.gcode");
+    }
+
+    /// <summary>A handle this printer has no print under answers null, not a refusal.</summary>
+    [Fact]
+    public async Task AReprintOfAHandleThePrinterNeverPrintedIsNull()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Manager);
+        PrintQueueService queue = NewQueue(context);
+
+        // Act
+        EnqueueOutcome? outcome = await queue.ReprintAsync(printer.Id, Guid.NewGuid(),
+                                                           TestCallers.Scoped(Alice, Capability.ViewHistory, Capability.Print),
+                                                           acceptChanged: false, TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome.Should().BeNull();
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Finding the print is reading the history, so a key without <c>ViewHistory</c> is refused
+    /// naming it.
+    /// </summary>
+    [Fact]
+    public async Task AReprintFromAKeyThatCannotSeeTheHistoryIsRefusedNamingIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Manager);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "benchy.gcode");
+        PrintJob printed = await AddPrintedAsync(context, printer.Id, Alice, "benchy.gcode");
+
+        // Act
+        Func<Task> reprint = () => queue.ReprintAsync(printer.Id, printed.PrintUuid, TestCallers.Scoped(Alice, Capability.Print),
+                                                      acceptChanged: false, TestContext.Current.CancellationToken);
+
+        // Assert
+        (await reprint.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Missing.Should().Be(Capability.ViewHistory);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// A key that cannot print is told that, before anything about the print itself: not that it is
+    /// somebody else's, and not that the file has changed since. Those answers are about the job, and
+    /// a replacement key is what this caller needs to hear about.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AReprintFromAKeyThatCannotPrintIsToldThatFirst(bool somebodyElses)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Manager);
+        await AddMemberAsync(context, printer.TeamId, Bob, [.. CapabilityPresets.Operator]);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "benchy.gcode");
+
+        // Alice's own print of a file whose bytes have changed since, or Bob's print of that name.
+        PrintJob printed = await AddPrintedAsync(context, printer.Id, somebodyElses ? Bob : Alice, "benchy.gcode",
+                                                 digest: "not-what-is-on-disk-now");
+
+        // Act
+        Func<Task> reprint = () => queue.ReprintAsync(printer.Id, printed.PrintUuid, TestCallers.Scoped(Alice, Capability.ViewHistory),
+                                                      acceptChanged: false, TestContext.Current.CancellationToken);
+
+        // Assert
+        (await reprint.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Missing.Should().Be(Capability.Print);
+    }
+
+    /// <summary>A finished print in the printer's history, as the queue loop leaves one.</summary>
+    private static async Task<PrintJob> AddPrintedAsync(HomespoolDbContext context,
+                                                        int printerId,
+                                                        long queuedBy,
+                                                        string fileName,
+                                                        string? digest = null)
+    {
+        PrintJob job = new()
+        {
+            PrintUuid = Guid.NewGuid(),
+            PrinterId = printerId,
+            FileName = fileName,
+            Digest = digest,
+            QueuedByUserId = queuedBy,
+            StartedAt = DateTimeOffset.UtcNow.AddHours(-2),
+            EndedAt = DateTimeOffset.UtcNow.AddHours(-1),
+        };
+
+        context.PrintJobs.Add(job);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return job;
+    }
+
     /// <summary>A second account, needed before that person can own a file.</summary>
     private static async Task AddUserAsync(HomespoolDbContext context, long userId, string email)
     {

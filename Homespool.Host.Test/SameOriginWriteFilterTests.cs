@@ -30,7 +30,7 @@ namespace Homespool.Host.Test;
 /// word alone, and only when that word is <c>same-origin</c>.
 /// </summary>
 /// <remarks>
-/// The rule is a pure function of three things, so the first half drives it directly and each row
+/// The rule is a pure function of its inputs, so the first half drives it directly and each row
 /// that refuses is paired with the nearest row that admits, so a change to any one input is caught by
 /// the case that names it. The second half goes through the filter with the cookie scheme stubbed,
 /// which is where the two decisions the rule cannot see live: that the cookie is asked rather than
@@ -103,6 +103,95 @@ public class SameOriginWriteFilterTests
     public void AWriteTheCookieDidNotAuthenticateIsAdmittedWithoutTheHeader()
     {
         SameOriginWriteFilter.Refuses("PUT", StringValues.Empty, cookieAuthenticated: false).Should().BeFalse();
+    }
+
+    private const string PlainOrigin = "http://192.0.2.10:8080";
+
+    /// <summary>
+    /// <b>Over plain HTTP no browser sends the header</b>, to its own origin included, so the
+    /// browser's <c>Origin</c> stands in - and admits when it names exactly this origin.
+    /// </summary>
+    [Theory]
+    [InlineData("POST", PlainOrigin)]
+    [InlineData("DELETE", PlainOrigin)]
+    [InlineData("POST", "HTTP://192.0.2.10:8080")]
+    public void APlainHttpCookieWriteWithoutTheHeaderFromThisOriginIsAdmitted(string method, string origin)
+    {
+        SameOriginWriteFilter.Refuses(method, StringValues.Empty, cookieAuthenticated: true, origin, PlainOrigin).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The sibling port and subdomain are the same-site gap again, and name themselves in
+    /// <c>Origin</c>; <c>null</c> is an opaque origin, and absent is no word at all.
+    /// </summary>
+    [Theory]
+    [InlineData("http://192.0.2.10:8081")]
+    [InlineData("http://192.0.2.10")]
+    [InlineData("https://192.0.2.10:8080")]
+    [InlineData("http://other.192.0.2.10:8080")]
+    [InlineData("http://192.0.2.10:8080/")]
+    [InlineData("null")]
+    [InlineData("")]
+    public void APlainHttpCookieWriteWithoutTheHeaderFromAnotherOriginIsRefused(string origin)
+    {
+        SameOriginWriteFilter.Refuses("POST", StringValues.Empty, cookieAuthenticated: true, origin, PlainOrigin).Should().BeTrue();
+    }
+
+    /// <summary>No <c>Origin</c> at all, and two of them, are refused like the header's own edges.</summary>
+    [Fact]
+    public void APlainHttpCookieWriteWithNoneOrTwoOriginsIsRefused()
+    {
+        StringValues two = new([PlainOrigin, PlainOrigin]);
+
+        SameOriginWriteFilter.Refuses("POST", StringValues.Empty, cookieAuthenticated: true, StringValues.Empty, PlainOrigin).Should().BeTrue();
+        SameOriginWriteFilter.Refuses("POST", StringValues.Empty, cookieAuthenticated: true, two, PlainOrigin).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// <b>Over HTTPS <c>Origin</c> is never consulted</b>: there absent means a browser too old to
+    /// send the header, and the floor stays the header.
+    /// </summary>
+    [Fact]
+    public void AnHttpsCookieWriteWithoutTheHeaderIsRefusedWhateverItsOrigin()
+    {
+        SameOriginWriteFilter.Refuses("POST", StringValues.Empty, cookieAuthenticated: true, "https://homespool.example", plainHttpOrigin: null)
+                             .Should().BeTrue();
+    }
+
+    /// <summary><b>A header that is present is believed</b>, even where <c>Origin</c> would have admitted.</summary>
+    [Fact]
+    public void APlainHttpCookieWriteTheHeaderRefusesIsNotRescuedByItsOrigin()
+    {
+        SameOriginWriteFilter.Refuses("POST", "same-site", cookieAuthenticated: true, PlainOrigin, PlainOrigin).Should().BeTrue();
+    }
+
+    /// <summary>The origin is the browser's spelling of the request's own: scheme, host and any port.</summary>
+    [Theory]
+    [InlineData("192.0.2.10:8080", "http://192.0.2.10:8080")]
+    [InlineData("homespool.lan", "http://homespool.lan")]
+    [InlineData("[2001:db8::1]:8080", "http://[2001:db8::1]:8080")]
+    public void APlainHttpRequestsOriginIsBuiltFromItsHost(string host, string expected)
+    {
+        DefaultHttpContext httpContext = new();
+        httpContext.Request.Scheme = Uri.UriSchemeHttp;
+        httpContext.Request.Host = new HostString(host);
+
+        SameOriginWriteFilter.PlainHttpOrigin(httpContext.Request).Should().Be(expected);
+    }
+
+    /// <summary>Over HTTPS there is no plain origin to compare with, and a request naming no host has none either.</summary>
+    [Fact]
+    public void AnHttpsRequestOrOneWithoutAHostHasNoPlainOrigin()
+    {
+        DefaultHttpContext https = new();
+        https.Request.Scheme = Uri.UriSchemeHttps;
+        https.Request.Host = new HostString("192.0.2.10:8080");
+
+        DefaultHttpContext hostless = new();
+        hostless.Request.Scheme = Uri.UriSchemeHttp;
+
+        SameOriginWriteFilter.PlainHttpOrigin(https.Request).Should().BeNull();
+        SameOriginWriteFilter.PlainHttpOrigin(hostless.Request).Should().BeNull();
     }
 
     private static AuthorizationFilterContext Context(ActionDescriptor action,
@@ -182,6 +271,71 @@ public class SameOriginWriteFilterTests
                     pair.Value!.StartsWith("cross-site\uFFFD[2Jx", StringComparison.Ordinal) &&
                     pair.Value.EndsWith("<514 characters in all>", StringComparison.Ordinal));
         refusal.StructuredState.Should().Contain(pair => pair.Key == "Path" && pair.Value == "/api/v1/files/a%1B%5B2J.gcode");
+    }
+
+    /// <summary>
+    /// The refusal names the scheme, which says which rule applied, and the <c>Origin</c> - cleaned
+    /// and cut like the header, since only a browser is obliged to write it honestly.
+    /// </summary>
+    [Fact]
+    public async Task ARefusalLogsTheSchemeAndTheOriginCleaned()
+    {
+        // Arrange
+        FakeLogger<SameOriginWriteFilter> logger = new();
+        AuthorizationFilterContext context = Context(new ControllerActionDescriptor(), "PUT", CookieSucceeded());
+        context.HttpContext.Request.Scheme = Uri.UriSchemeHttp;
+        context.HttpContext.Request.Host = new HostString("192.0.2.10:8080");
+        context.HttpContext.Request.Headers[SameOriginWriteFilter.OriginHeaderName] = "http://evil\u001B[2J" + new string('x', 500);
+
+        // Act
+        await new SameOriginWriteFilter(logger).OnAuthorizationAsync(context);
+
+        // Assert
+        FakeLogRecord refusal = logger.Collector.GetSnapshot().Should().ContainSingle().Subject;
+
+        refusal.StructuredState.Should().Contain(pair => pair.Key == "Scheme" && pair.Value == Uri.UriSchemeHttp);
+        refusal.StructuredState.Should().Contain(pair => pair.Key == "SecFetchSite" && pair.Value == "absent");
+        refusal.StructuredState.Should().Contain(
+            pair => pair.Key == "Origin" &&
+                    pair.Value!.StartsWith("http://evil\uFFFD[2Jx", StringComparison.Ordinal) &&
+                    pair.Value.EndsWith("<515 characters in all>", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// <b>The request's own origin is what the filter compares with</b>: a plain-HTTP write whose
+    /// <c>Origin</c> names this host is admitted through the filter, not only by the rule.
+    /// </summary>
+    [Fact]
+    public async Task APlainHttpWriteFromThisOriginIsAdmittedThroughTheFilter()
+    {
+        // Arrange
+        AuthorizationFilterContext context = Context(new ControllerActionDescriptor(), "POST", CookieSucceeded());
+        context.HttpContext.Request.Scheme = Uri.UriSchemeHttp;
+        context.HttpContext.Request.Host = new HostString("192.0.2.10:8080");
+        context.HttpContext.Request.Headers[SameOriginWriteFilter.OriginHeaderName] = PlainOrigin;
+
+        // Act
+        await Filter().OnAuthorizationAsync(context);
+
+        // Assert
+        context.Result.Should().BeNull();
+    }
+
+    /// <summary>The same write over HTTPS is refused: there the header is the only word taken.</summary>
+    [Fact]
+    public async Task AnHttpsWriteFromThisOriginWithoutTheHeaderIsRefusedThroughTheFilter()
+    {
+        // Arrange
+        AuthorizationFilterContext context = Context(new ControllerActionDescriptor(), "POST", CookieSucceeded());
+        context.HttpContext.Request.Scheme = Uri.UriSchemeHttps;
+        context.HttpContext.Request.Host = new HostString("192.0.2.10:8080");
+        context.HttpContext.Request.Headers[SameOriginWriteFilter.OriginHeaderName] = "https://192.0.2.10:8080";
+
+        // Act
+        await Filter().OnAuthorizationAsync(context);
+
+        // Assert
+        context.Result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
     /// <summary>And an admitted request leaves no result behind, so the action runs.</summary>

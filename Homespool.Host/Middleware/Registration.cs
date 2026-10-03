@@ -30,8 +30,9 @@ public static class Registration
     /// selection is exactly where this class of bug lives.
     /// </para>
     /// <para>
-    /// <b>An unconfigured deployment is safe but inert</b>, because the framework then trusts loopback
-    /// alone and a container proxy is not on loopback. That failure is silent - mail keeps saying
+    /// <b>An unconfigured deployment is safe but inert</b>, because the middleware is not registered at
+    /// all, so no forwarded header is honoured from any peer - loopback included - and a container proxy
+    /// gets no more credit than anybody else. That failure is silent - mail keeps saying
     /// <c>http://</c> - so it is logged rather than left to be discovered. This repository has
     /// declared a rule and never run it four times over; this is the same shape, caught at startup.
     /// </para>
@@ -97,7 +98,8 @@ public static class Registration
         else
         {
             Log.Warning("No proxy is trusted (XForwarded:KnownProxies and :KnownNetworks are both empty), so " +
-                        "forwarded headers are ignored except from loopback. If this deployment sits behind a " +
+                        "the forwarded-headers middleware is not registered and forwarded headers are ignored " +
+                        "from every peer, loopback included. If this deployment sits behind a " +
                         "reverse proxy, links in outgoing mail will say http://, client addresses in the log " +
                         "will be the proxy's, and the sign-in and printer-registration limits per address are " +
                         "off - they need an address that names one client, and every visitor would otherwise " +

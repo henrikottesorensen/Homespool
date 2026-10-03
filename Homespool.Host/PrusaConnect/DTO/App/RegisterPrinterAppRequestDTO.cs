@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
 
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.PrusaConnect.DTO.App;
@@ -20,9 +21,11 @@ namespace Homespool.Host.PrusaConnect.DTO.App;
 public class RegisterPrinterAppRequestDTO
 {
     [StringLength(Printer.NameMaxLength)]
+    [PrintableText]
     public string? Name { get; set; }
 
     [StringLength(Printer.LocationMaxLength)]
+    [PrintableText]
     public string? Location { get; set; }
 
     public required string Code { get; set; }

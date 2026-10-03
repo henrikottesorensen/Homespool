@@ -55,6 +55,22 @@ public class PrintableTextTests
     [InlineData('\u200D')]
     [InlineData('\u2060')]
     [InlineData('\u2064')]
+    [InlineData('\u206A')]
+    [InlineData('\u206F')]
+    [InlineData('\uFFF9')]
+    [InlineData('\uFFFB')]
+    [InlineData('\u115F')]
+    [InlineData('\u1160')]
+    [InlineData('\u3164')]
+    [InlineData('\uFFA0')]
+    [InlineData('\u2800')]
+    [InlineData('\u00A0')]
+    [InlineData('\u1680')]
+    [InlineData('\u2000')]
+    [InlineData('\u200A')]
+    [InlineData('\u202F')]
+    [InlineData('\u205F')]
+    [InlineData('\u3000')]
     public void EveryMemberOfEachGroupIsUnprintable(char character)
     {
         PrintableText.IsUnprintable(character).Should().BeTrue();
@@ -66,11 +82,13 @@ public class PrintableTextTests
     /// </summary>
     [Theory]
     [InlineData('\u0600')]
-    [InlineData('\u200A')]
     [InlineData('\u2010')]
     [InlineData('\u2027')]
-    [InlineData('\u202F')]
-    [InlineData('\u205F')]
+    [InlineData('\u2070')]
+    [InlineData('\uFFF8')]
+    [InlineData('\uFFFC')]
+    [InlineData('\u2801')]
+    [InlineData(' ')]
     [InlineData('\u00AE')]
     public void WhatStandsBesideAGroupIsNotInIt(char character)
     {

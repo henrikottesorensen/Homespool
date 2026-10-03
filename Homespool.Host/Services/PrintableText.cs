@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Text;
 
 namespace Homespool.Host.Services;
@@ -34,12 +35,14 @@ public static class PrintableText
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Four groups, each listed whole rather than by the members somebody happened to think of:
+    /// Five groups, each listed whole rather than by the members somebody happened to think of:
     /// the controls, which is <see cref="char.IsControl(char)"/> - C0, <c>DEL</c> and C1; the line
     /// and paragraph separators, which break a line as surely as a newline and are not controls;
-    /// every character Unicode gives the <c>Bidi_Control</c> property; and the ones with no width or
+    /// every character Unicode gives the <c>Bidi_Control</c> property; the ones with no width or
     /// no ink - the soft hyphen, the Mongolian vowel separator, the zero-width space and joiners,
-    /// the word joiner and the invisible operators after it, and the byte-order mark.
+    /// the word joiner and the invisible operators after it, the deprecated format characters, the
+    /// interlinear annotation marks, the Hangul fillers, the blank braille pattern and the byte-order
+    /// mark; and every space separator but the ASCII space, which only look like one.
     /// </para>
     /// <para>
     /// <b>Listed, not taken by category.</b> The <c>Format</c> category would be shorter to write
@@ -71,7 +74,23 @@ public static class PrintableText
                // No width, or no ink.
                character is '\u00AD' or '\u180E' or '\uFEFF' ||
                character is >= '\u200B' and <= '\u200D' ||
-               character is >= '\u2060' and <= '\u2064';
+               character is >= '\u2060' and <= '\u2064' ||
+
+               // The deprecated format characters after the invisible operators (swapping, shaping,
+               // digit shapes) and the interlinear annotation marks, which hide a second text between
+               // them.
+               character is >= '\u206a' and <= '\u206f' ||
+               character is >= '\ufff9' and <= '\ufffb' ||
+
+               // Drawn as nothing, or as a blank cell, though they are letters or symbols to Unicode:
+               // the Hangul choseong and jungseong fillers, and the Hangul fillers of the compatibility
+               // and halfwidth blocks, and the blank braille pattern.
+               character is '\u115f' or '\u1160' or '\u3164' or '\uffa0' or '\u2800' ||
+
+               // Every space but the ASCII one: the no-break space, the en and em spaces, the ideographic
+               // space and the rest look like a space and are not one, so two names that read the same
+               // can differ, and a name can be made of nothing visible.
+               (char.GetUnicodeCategory(character) == UnicodeCategory.SpaceSeparator && character != ' ');
     }
 
     /// <summary>

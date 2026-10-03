@@ -1573,6 +1573,57 @@ ask_public_tls() {
 # The checks nobody is asked about
 # ------------------------------------------------------------------------------------------------
 
+# Whether a GO2RTC_USERNAME and GO2RTC_PASSWORD reach the camera sidecar as they are written. Both are
+# pasted as text into a YAML block scalar in the sidecar's configuration, and only the password is
+# then read back by go2rtc from a file of its own:
+#
+#   - A line break or another control character but a tab ends the scalar or is refused outright,
+#     and go2rtc skips the whole file: no API, so no cameras. So do LS, PS, U+FFFE and U+FFFF.
+#   - White space at the start of either is taken for indentation, and go2rtc trims the password's
+#     at the end too. Homespool keeps it, so the two disagree and every request answers 401.
+#   - The username is pasted before go2rtc resolves its own ${NAME} placeholders, so a ${ in it may be
+#     replaced. And HTTP Basic authentication splits the pair at the first colon, so the username
+#     cannot hold one.
+#
+# CameraOptions.CredentialSurvivesTransport applies the same rule at runtime. Matched as bytes under
+# the C locale, so the answer is the same whatever locale this runs in; the white space is Unicode's,
+# which is what go2rtc trims.
+go2rtc_unreadable=$'[\x01-\x08\x0b-\x1f\x7f]|\xc2[\x80-\x9f]|\xe2\x80[\xa8\xa9]|\xef\xbf[\xbe\xbf]'
+go2rtc_white_space=$'([\x09 ]|\xc2\xa0|\xe1\x9a\x80|\xe2\x80[\x80-\x8a\xa8\xa9\xaf]|\xe2\x81\x9f|\xe3\x80\x80)'
+
+# A value as compose reads it out of .env, which is not as this script does: compose strips one pair
+# of quotes from a quoted value and trims an unquoted one.
+compose_reads() {
+    local value="$1"
+    case $value in
+        \"*\"|\'*\')
+            printf '%s' "${value:1:${#value}-2}"
+            ;;
+        *)
+            value="${value#"${value%%[![:space:]]*}"}"
+            printf '%s' "${value%"${value##*[![:space:]]}"}"
+            ;;
+    esac
+}
+
+go2rtc_credential_survives() {
+    local username="$1" password="$2"
+
+    if printf '%s\n%s\n' "$username" "$password" | LC_ALL=C grep -Eq "$go2rtc_unreadable"; then
+        return 1
+    fi
+
+    if printf '%s\n' "$username" | LC_ALL=C grep -Eq "^$go2rtc_white_space|:|[$][{]"; then
+        return 1
+    fi
+
+    if printf '%s\n' "$password" | LC_ALL=C grep -Eq "^$go2rtc_white_space|$go2rtc_white_space\$"; then
+        return 1
+    fi
+
+    return 0
+}
+
 # go2rtc has one credential for its whole API and no notion of which cameras a caller may see, so
 # this is defence in depth rather than the access control - Homespool still proxies every viewing
 # path and applies the camera's own permission check. It costs nothing and there is no decision in
@@ -1582,20 +1633,17 @@ ensure_go2rtc_credential() {
     password="$(env_get GO2RTC_PASSWORD)"
 
     if [ -n "$password" ]; then
-        # Set by hand, so it never went through random_password's alphabet. A " or a \ cannot reach
-        # the sidecar intact - it is substituted into a quoted line of YAML in that container's
-        # configuration - and the failure is quiet either way: the sidecar receives a different
-        # value than Homespool does, or no usable configuration at all, and answers 401 to
-        # everything while both halves look correctly configured.
+        # Set by hand, so it never went through random_password's alphabet - and the failure is
+        # quiet: the sidecar is given a different value than Homespool is, or no usable configuration
+        # at all, and cameras stop working while both halves look correctly configured.
         #
         # Warned rather than replaced. Overwriting a credential somebody chose is not this script's
         # call, and it patches rather than regenerates by design. Homespool's own health check says
         # the same thing at runtime, for the .env this script never sees.
-        case $password in
-            *\"*|*\\*)
-                warn $"GO2RTC_PASSWORD contains a double quote or a backslash. Neither can reach the camera sidecar intact, so every camera will answer 401 while the setting looks correct. Replace it with the output of: openssl rand -base64 24"
-                ;;
-        esac
+        if ! go2rtc_credential_survives "$(compose_reads "$(env_get GO2RTC_USERNAME)")" \
+                                        "$(compose_reads "$password")"; then
+            warn $"GO2RTC_USERNAME or GO2RTC_PASSWORD cannot reach the camera sidecar as written: neither may hold a line break or another control character, the username may not hold a colon or \${ or start with a space, and the password may not start or end with one. Cameras will not work while the setting looks correct. Set GO2RTC_USERNAME to homespool and GO2RTC_PASSWORD to the output of: openssl rand -base64 24"
+        fi
 
         return 0
     fi
@@ -1607,7 +1655,7 @@ ensure_go2rtc_credential() {
     fi
 
     # Both or neither, always. A username with an empty password switches the sidecar's
-    # authentication on with an empty key and locks Homespool out along with everyone else.
+    # authentication on and locks Homespool out along with everyone else.
     plan_set GO2RTC_USERNAME homespool
     plan_set GO2RTC_PASSWORD "$password"
     say $"Generated a credential for the camera sidecar."
@@ -1757,9 +1805,9 @@ ensure_ca_passphrase() {
 }
 
 random_password() {
-    # Base64 of 24 random bytes. Its alphabet has no quote, backslash or dollar, so the result is
-    # safe unquoted in .env, through compose's own ${...} interpolation, and inside the JSON the
-    # go2rtc service is started with.
+    # Base64 of 24 random bytes. Its alphabet has no dollar, white space or control character, so the
+    # result is safe unquoted in .env, through compose's own ${...} interpolation, and inside the YAML
+    # the go2rtc service is given it in.
     if command -v openssl >/dev/null 2>&1; then
         openssl rand -base64 24
     elif [ -r /dev/urandom ]; then

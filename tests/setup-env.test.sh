@@ -1764,6 +1764,40 @@ if test_case "a real passphrase says nothing, whitespace around it included"; th
 fi
 
 # ------------------------------------------------------------------------------------------------
+# The camera sidecar's credential
+#
+# Set by hand, it never went through the generator's alphabet, and the sidecar is given it pasted into
+# YAML. What it cannot hold fails quietly at a distance, so it is named here - and what it can hold,
+# quotes and backslashes included, must not be.
+# ------------------------------------------------------------------------------------------------
+
+if test_case "a hand-made sidecar credential with quotes and backslashes says nothing"; then
+    use_temp_env $'GO2RTC_USERNAME=\nGO2RTC_PASSWORD=' \
+        $'GO2RTC_USERNAME=contract"user\\\nGO2RTC_PASSWORD=\'contract "sidecar" \\password: #1\''
+    out="$(ensure_go2rtc_credential 2>&1)"
+    assert_eq "" "$out" "silent"
+    assert_eq "" "$pending" "and untouched"
+fi
+
+if test_case "white space compose trims from a sidecar password says nothing"; then
+    use_temp_env $'GO2RTC_USERNAME=\nGO2RTC_PASSWORD=' $'GO2RTC_USERNAME=homespool\nGO2RTC_PASSWORD=secret   '
+    out="$(ensure_go2rtc_credential 2>&1)"
+    assert_eq "" "$out" "compose reads it as secret"
+fi
+
+if test_case "a sidecar credential that cannot reach the sidecar is warned about and left alone"; then
+    for pair in $'homespool\n"secret "' $'homespool\nesc\033ape' $'homespool\nline\xe2\x80\xa8separator' \
+                $'home:spool\nsecret' $'a$${GO2RTC_PASSWORD}b\nsecret' $'" homespool"\nsecret'; do
+        reset_state
+        use_temp_env $'GO2RTC_USERNAME=\nGO2RTC_PASSWORD=' \
+            "GO2RTC_USERNAME=${pair%%$'\n'*}"$'\n'"GO2RTC_PASSWORD=${pair#*$'\n'}"
+        out="$(ensure_go2rtc_credential 2>&1)"
+        assert_says "$out" "GO2RTC_PASSWORD cannot reach the camera sidecar" "warned for [$pair]"
+        assert_eq "" "$pending" "and not replaced"
+    done
+fi
+
+# ------------------------------------------------------------------------------------------------
 # The camera sidecar's configuration file
 #
 # It is bind-mounted as a single file into a container that does not run as root, so its absence and

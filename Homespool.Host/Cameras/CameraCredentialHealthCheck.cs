@@ -57,15 +57,16 @@ public sealed class CameraCredentialHealthCheck : IHealthCheck
         {
             // Checked before the happy answer, because this state looks exactly like health from
             // every other angle: the credential is set, this process holds it, and only the sidecar
-            // disagrees - by answering 401 to everything, with nothing saying why.
+            // disagrees - by answering 401 to everything or by starting no API, with nothing saying why.
             if (!_options.CurrentValue.CredentialSurvivesTransport)
             {
                 return HealthCheckResult.Degraded(
-                    "The camera stream server's credential contains a double quote or a backslash, which cannot " +
-                    "survive the configuration file it reaches the sidecar in - the sidecar receives a different " +
-                    "value than this process does, so every camera will answer 401 while both halves look " +
-                    "correctly configured. Regenerate it with `openssl rand -base64 24`, whose output contains " +
-                    "neither.");
+                    "The camera stream server's credential cannot reach the sidecar as written: neither half may " +
+                    "hold a line break or another control character, the username may not hold a colon or ${ " +
+                    "or start with white space, and the password may not start or end with it. The sidecar " +
+                    "is given a different value than this process is, or no usable configuration at all, so no " +
+                    "camera will work while both halves look correctly configured. Set GO2RTC_USERNAME to " +
+                    "homespool and GO2RTC_PASSWORD to the output of `openssl rand -base64 24`.");
             }
 
             return HealthCheckResult.Healthy("The camera stream server has a credential.");

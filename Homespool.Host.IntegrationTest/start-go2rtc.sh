@@ -2,9 +2,12 @@
 # Starts the camera sidecar - Homespool's own go2rtc image - as a throwaway, for the contract tests
 # that hold FakeGo2Rtc to what the real one does.
 #
-# Run the way compose.yaml runs it: three -c sources in the same order, the API line read out of
-# compose.yaml itself so its allow_paths cannot drift from what a deployment gets, and the password
-# as a file under CREDENTIALS_DIRECTORY rather than on the command line.
+# Run the way compose.yaml runs it: three -c sources in the same order, the API line and the
+# credential file both read out of compose.yaml itself so neither can drift from what a deployment
+# gets, and the password as a file under CREDENTIALS_DIRECTORY rather than on the command line.
+#
+# The credential carries a quote, a backslash, `: ` and ` #` in each half, so every contract test is
+# also the test that a credential nobody would choose still reaches the sidecar unchanged.
 #
 # :latest, pulled every time, rather than a pinned digest. For somebody else's image a change
 # underneath the suite is noise; for this one it is the thing under test, and :latest is what a
@@ -25,8 +28,8 @@ container_name="homespool-go2rtc-contract"
 run_record="${TMPDIR:-/tmp}/homespool-go2rtc-contract.dir"
 
 # Must match Go2RtcFixture.cs.
-username="homespool"
-password="contract-sidecar-password" # betterleaks:allow - the credential of a sidecar that lives only for a test run
+username='contract"user\'
+password='contract "sidecar" \password: #1' # betterleaks:allow - the credential of a sidecar that lives only for a test run
 api_port=11984
 rtsp_port=18554
 
@@ -39,8 +42,8 @@ else
 fi
 
 # The uncommented line carrying allow_paths - the developer's alternative below it in compose.yaml is
-# commented out and carries none. Compose's own substitutions are resolved the way a deployment with
-# a credential resolves them.
+# commented out and carries none. It takes nothing from .env, and is refused if it does: a value
+# spliced into it that JSON cannot hold makes go2rtc skip the line and open its whole API.
 api_line="$(grep -v '^[[:space:]]*#' "$compose" | grep -o "'{\"api\":{.*allow_paths[^']*'" | head -n 1 | tr -d "'")"
 
 if [ -z "$api_line" ]; then
@@ -48,8 +51,31 @@ if [ -z "$api_line" ]; then
     exit 1
 fi
 
-api_line="${api_line//'${GO2RTC_USERNAME:+:1984}'/:1984}"
-api_line="${api_line//'${GO2RTC_USERNAME:-}'/$username}"
+case $api_line in
+    *'${'*)
+        echo "The go2rtc api line in $compose takes a value from .env; it must not." >&2
+        exit 1
+        ;;
+esac
+
+# The go2rtc-api-credential config's content, unindented. Compose's own substitutions are resolved
+# the way a deployment with a credential resolves them, and its $$ escape undone, leaving go2rtc's
+# own placeholder for the password.
+credential="$(awk '
+    /^  go2rtc-api-credential:/ { found = 1; next }
+    found && /^    content: \|/ { inside = 1; next }
+    inside && /^      / { print substr($0, 7); next }
+    inside { exit }
+' "$compose")"
+
+if [ -z "$credential" ]; then
+    echo "No go2rtc-api-credential content found in $compose." >&2
+    exit 1
+fi
+
+credential="${credential//'${GO2RTC_USERNAME:+:1984}'/:1984}"
+credential="${credential//'${GO2RTC_USERNAME:-}'/"$username"}"
+credential="${credential//'$$'/'$'}"
 
 if docker ps -a --format '{{.Names}}' | grep -qx "$container_name"; then
     echo "Removing existing '$container_name' container..."
@@ -73,9 +99,7 @@ mkdir -p "$state_dir/config" "$state_dir/secrets"
 
 printf '%s' "$password" > "$state_dir/secrets/GO2RTC_PASSWORD"
 
-# go2rtc's own placeholder, resolved against CREDENTIALS_DIRECTORY - the file compose.yaml's
-# go2rtc-api-credential config holds, with compose's $$ escape undone.
-printf 'api:\n  password: "${GO2RTC_PASSWORD:}"\n' > "$state_dir/api-credential.yaml"
+printf '%s\n' "$credential" > "$state_dir/api-credential.yaml"
 
 # The sidecar runs as 65532 and rewrites its configuration on every stream it is given, so the
 # directory and the file must be writable by an identity this machine has never heard of.

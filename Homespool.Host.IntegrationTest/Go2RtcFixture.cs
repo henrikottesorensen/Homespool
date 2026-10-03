@@ -10,13 +10,20 @@ namespace Homespool.Host.IntegrationTest;
 /// The values must match the script's.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Neither port is go2rtc's default, so a sidecar a developer happens to be running for their own
 /// stack cannot answer in this one's place.
+/// </para>
+/// <para>
+/// The credential carries a quote, a backslash, <c>: </c> and <c> #</c>, none of which a quoted YAML
+/// or JSON string holds as written, so every test here is also the test that such a credential
+/// reaches the sidecar unchanged by the road <c>compose.yaml</c> gives it.
+/// </para>
 /// </remarks>
 internal static class Go2RtcFixture
 {
-    public const string Username = "homespool";
-    public const string Password = "contract-sidecar-password"; // betterleaks:allow - the credential of a sidecar that lives only for a test run
+    public const string Username = "contract\"user\\";
+    public const string Password = "contract \"sidecar\" \\password: #1"; // betterleaks:allow - the credential of a sidecar that lives only for a test run
 
     public const int RtspPort = 18554;
 

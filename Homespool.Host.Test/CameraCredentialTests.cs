@@ -35,9 +35,9 @@ public sealed class CameraCredentialTests : IDisposable
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-camcred-{Guid.NewGuid():N}.db");
 
     /// <summary>
-    /// Half a credential is worse than none - measured 2026-08-09, a username with an empty password
-    /// turns go2rtc's authentication on with an empty key and locks Homespool out with everyone else.
-    /// So the predicate demands both halves rather than either.
+    /// Half a credential is worse than none - a username with an empty password turns the sidecar's
+    /// authentication on and locks Homespool out with everyone else. So the predicate demands both
+    /// halves rather than either.
     /// </summary>
     [Theory]
     [InlineData("", "", false)]
@@ -117,17 +117,37 @@ public sealed class CameraCredentialTests : IDisposable
     }
 
     /// <summary>
-    /// The credential crosses two encodings - plain YAML to this process, JSON on the sidecar's
-    /// command line - and only some values survive both. The backslash row is the dangerous one: it
-    /// does not fail, it arrives different.
+    /// Each row was measured against the sidecar, given the credential as compose gives it: pasted into
+    /// a YAML block scalar, the password read back from a file. The quotes and backslashes a quoted
+    /// scalar could not hold arrive as written; what breaks is a line, a control character, white space
+    /// the sidecar trims or takes for indentation, and what the username cannot hold for HTTP's sake or
+    /// go2rtc's.
     /// </summary>
     [Theory]
     [InlineData("homespool", "Zm9vYmFyYmF6cXV4L4+9", true)]
     [InlineData("homespool", "sim=ple+/9", true)]
-    [InlineData("homespool", "has\"quote", false)]
-    [InlineData("homespool", "has\\back", false)]
-    [InlineData("has\\slash", "secret", false)]
-    public void OnlyACredentialThatSurvivesBothEncodingsIsUsable(string user, string password, bool expected)
+    [InlineData("contract\"user\\", "contract \"sidecar\" \\password: #1", true)]
+    [InlineData("homespool", "a${GO2RTC_USERNAME}b", true)]
+    [InlineData("homespool", "tab\tinside", true)]
+    [InlineData("homespool", "no\u00a0break inside", true)]
+    [InlineData("homespool ", "secret", true)]
+    [InlineData("homespool", "line\nbreak", false)]
+    [InlineData("homespool", "carriage\rreturn", false)]
+    [InlineData("homespool", "next\u0085line", false)]
+    [InlineData("homespool", "line\u2028separator", false)]
+    [InlineData("homespool", "paragraph\u2029separator", false)]
+    [InlineData("homespool", "escape\u001bcharacter", false)]
+    [InlineData("homespool", "delete\u007fcharacter", false)]
+    [InlineData("homespool", "non\ufffecharacter", false)]
+    [InlineData("escape\u001bcharacter", "secret", false)]
+    [InlineData("homespool", " leading", false)]
+    [InlineData("homespool", "trailing ", false)]
+    [InlineData("homespool", "trailing\u00a0", false)]
+    [InlineData(" homespool", "secret", false)]
+    [InlineData("\thomespool", "secret", false)]
+    [InlineData("home:spool", "secret", false)]
+    [InlineData("a${GO2RTC_PASSWORD}b", "secret", false)]
+    public void OnlyACredentialThatReachesTheSidecarAsWrittenIsUsable(string user, string password, bool expected)
     {
         CameraOptions options = new() { ApiUsername = user, ApiPassword = password };
 
@@ -144,7 +164,11 @@ public sealed class CameraCredentialTests : IDisposable
         await AddCameraAsync(context);
 
         CameraCredentialHealthCheck check = new(
-            TestOptions.Monitor(new CameraOptions { ApiUsername = "homespool", ApiPassword = "has\\back" }),
+            TestOptions.Monitor(new CameraOptions
+            {
+                ApiUsername = "homespool",
+                ApiPassword = "trailing ", // betterleaks:allow - a test value whose trailing space is the point
+            }),
             context);
 
         HealthCheckResult result = await check.CheckHealthAsync(
@@ -152,7 +176,7 @@ public sealed class CameraCredentialTests : IDisposable
 
         result.Status.Should().Be(HealthStatus.Degraded,
                                   "every camera answers 401 while both halves look correctly configured");
-        result.Description.Should().Contain("backslash");
+        result.Description.Should().Contain("cannot reach the sidecar as written");
     }
 
     [Fact]

@@ -453,6 +453,10 @@ services:
     # empty `listen` nothing binds 1984 and no "[api] listen" line appears; RTSP and WebRTC still
     # listen, and with no streams registered they serve nothing.
     #
+    # The line below sets `listen` empty, and only the credential file the third -c reads can set it
+    # to :1984 - the same file that carries the username and the password. go2rtc skips a file it
+    # cannot parse with a warning, so a credential that breaks it leaves the API off, never open.
+    #
     # local_auth applies the credential to requests reaching this API from inside this container
     # too. Without it go2rtc skips authentication entirely for anything arriving from 127.0.0.1, and
     # it follows HTTP redirects when it fetches a camera - so a camera address answering 302 with a
@@ -462,10 +466,11 @@ services:
     # request with no credential answers 200, with it 401, while a credentialled request from
     # either address still answers 200.
     #
-    # GO2RTC_PASSWORD comes from .env and is given to both containers, so the two cannot drift.
-    # An empty *username* is the off switch, and it has to be: measured 2026-08-09, a username with
-    # an empty password turns authentication ON with an empty key and answers 401 to everything,
-    # including Homespool. Set the pair together or not at all - half of it is worse than none.
+    # GO2RTC_USERNAME and GO2RTC_PASSWORD come from .env and are given to both containers, so the
+    # two cannot drift. An empty *username* is the off switch. A username with an empty password
+    # starts the API and refuses every request, Homespool's included - go2rtc/patches/0005 makes it
+    # so, since go2rtc itself lets in anyone who sends that username and an empty password. Set the
+    # pair together or not at all - half of it is worse than none.
     #
     # allow_paths lists exactly the endpoints Go2RtcClient calls. go2rtc applies the list by
     # never registering the
@@ -496,30 +501,36 @@ services:
       # the candidate and ice_servers are written by Homespool over /api/config at startup, because
       # a value frozen into a command line cannot follow this machine's address. ice_servers
       # defaults to empty: left alone, go2rtc contacts a third-party STUN server unprompted.
-      - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","local_auth":true,"allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
+      #
+      # NOTHING FROM .env BELONGS IN THIS LINE. A value spliced into it that JSON cannot hold as
+      # written - a quote, a backslash - makes go2rtc skip the whole line with a warning, and
+      # `listen` then falls back to go2rtc's default of :1984 with no username and no allow_paths:
+      # the whole API, open to anything that can reach it. Measured on 1.9.14.
+      - '{"api":{"listen":"","local_auth":true,"allow_paths":["/api/streams","/api/frame.jpeg","/api/stream.mjpeg","/api/webrtc","/api/config","/api/restart","/api/ffmpeg/devices"]}}'
 
       # DEVELOPER: swap the line above for this one to get the web interface back - it is how
       # stream types get tested by hand, and omitting allow_paths entirely is how go2rtc means
       # "unrestricted". One line swapped rather than a second -c, so that the two lines differ in
       # allow_paths and nothing else - dropping `listen` or `local_auth` while swapping would
       # quietly reopen the sidecar rather than widen it, which is not what this is meant to buy.
-      # - '{"api":{"listen":"${GO2RTC_USERNAME:+:1984}","username":"${GO2RTC_USERNAME:-}","local_auth":true}}'
+      # - '{"api":{"listen":"","local_auth":true}}'
 
-      # THE PASSWORD, and the only reason there is a third -c: it is the one value here worth
-      # keeping off a command line, where every account on the host can read it out of
+      # THE CREDENTIAL, and the reason there is a third -c: the password is the one value here
+      # worth keeping off a command line, where every account on the host can read it out of
       # /proc/<pid>/cmdline. Separate api: keys given on separate -c sources are merged rather than
-      # replaced (measured), so this fills in the password and changes nothing else above.
+      # replaced (measured), so this sets listen, username and password and changes nothing else
+      # above.
       #
-      # The file itself holds no secret - it holds go2rtc's own placeholder, which go2rtc resolves
-      # against $CREDENTIALS_DIRECTORY below. `$$` is how compose is told to leave a `$` alone, so
-      # what reaches the container is the literal ${GO2RTC_PASSWORD:}; the configs: block at the
-      # bottom of this file is where the text lives.
+      # The file itself holds no secret - for the password it holds go2rtc's own placeholder, which
+      # go2rtc resolves against $CREDENTIALS_DIRECTORY below. `$$` is how compose is told to leave a
+      # `$` alone, so what reaches the container is the literal ${GO2RTC_PASSWORD:}; the configs:
+      # block at the bottom of this file is where the text lives, and says why it is written as it is.
       #
       # THE EMPTY DEFAULT AFTER THE COLON IS LOAD-BEARING. An unresolvable ${VAR} is left standing
       # as literal text, and go2rtc would then accept the string "${GO2RTC_PASSWORD}" as the
       # password - a credential published in this file, for anyone who reads the repository. With
-      # the colon it resolves to empty instead, which is the lockout an empty password has always
-      # meant here. Measured on 1.9.14, both ways.
+      # the colon it resolves to empty instead, and an empty password locks everyone out. Measured
+      # on 1.9.14, both ways.
       - -c
       - /run/go2rtc/api-credential.yaml
 
@@ -1046,9 +1057,19 @@ secrets:
     environment: CA_PASSPHRASE
 
 configs:
-  # Read by the sidecar's third -c. It carries go2rtc's own placeholder and no value: `$$` keeps
+  # Read by the sidecar's third -c. The password is go2rtc's own placeholder and no value: `$$` keeps
   # compose from substituting, so the container receives the literal ${GO2RTC_PASSWORD:}, and
-  # go2rtc fills it from the file in $CREDENTIALS_DIRECTORY.
+  # go2rtc fills it from the file in $CREDENTIALS_DIRECTORY. The username is compose's to fill in,
+  # not go2rtc's: go2rtc treats every value it resolves as a secret and masks it, in its log and in
+  # its /api/streams answers alike, which a username that also appears in a camera's address would
+  # turn to *** where Homespool reads it back.
+  #
+  # BOTH VALUES ARE LITERAL BLOCK SCALARS, `|-`, because each is pasted into this YAML as text before
+  # it is parsed. A block scalar takes every character as written; a quoted one ends at the first `"`
+  # and reads a `\` as an escape, and the file then no longer parses. What a block scalar cannot hold
+  # is a line break or another control character: such a file is skipped, `listen` stays empty, and
+  # the API is off. Measured on 1.9.14 - CameraOptions.CredentialSurvivesTransport has the whole
+  # rule, and the health check reports a credential that breaks it.
   #
   # NEVER let this content go empty. Compose treats an empty `content:` as no content at all, falls
   # back to a `file:` source with an empty path, and mounts THE WHOLE PROJECT DIRECTORY - .env
@@ -1056,7 +1077,11 @@ configs:
   go2rtc-api-credential:
     content: |
       api:
-        password: "$${GO2RTC_PASSWORD:}"
+        listen: "${GO2RTC_USERNAME:+:1984}"
+        username: |-
+          ${GO2RTC_USERNAME:-}
+        password: |-
+          $${GO2RTC_PASSWORD:}
 
 networks:
   # THE PROXY AND THE APPLICATION, AND NOTHING ELSE JOINS THIS NETWORK. The application believes

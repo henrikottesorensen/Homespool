@@ -77,6 +77,11 @@ RUN actual="$(git rev-parse HEAD)" && \
 # one removed its neighbour. Homespool refuses such a source; the patch mends a file written before
 # it did.
 #
+# 0005: a username with an empty password let in anyone who sent that username and no password -
+# and the username is public. compose.yaml starts the API only when the file carrying the password
+# parses, but the password can still arrive empty, so it must lock everyone out, as it was always
+# taken to.
+#
 # Every patch by name, so one added to the directory cannot be skipped by accident; git apply fails
 # the build on a patch that no longer fits.
 COPY patches/0001-Add-missing-Huffman-tables-to-stream.mjpeg-frames.patch /patches/
@@ -87,6 +92,8 @@ COPY patches/0003-Merge-a-config-PATCH-into-an-empty-config-file.patch /patches/
 RUN git apply --verbose /patches/0003-Merge-a-config-PATCH-into-an-empty-config-file.patch
 COPY patches/0004-Break-lines-where-yaml.v3-does-when-splicing-the-config.patch /patches/
 RUN git apply --verbose /patches/0004-Break-lines-where-yaml.v3-does-when-splicing-the-config.patch
+COPY patches/0005-Refuse-every-request-when-the-API-password-is-empty.patch /patches/
+RUN git apply --verbose /patches/0005-Refuse-every-request-when-the-API-password-is-empty.patch
 
 # The two modules a scanner found fixes for, at their latest release - and only those two, because
 # they are the Go team's own and keep their API; the rest stay at what the release was tested with.

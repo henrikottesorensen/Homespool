@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.Linq;
 
 namespace Homespool.Host.Cameras;
 
@@ -87,8 +88,8 @@ public class CameraOptions
     /// <c>CameraAccessService</c>'s job, and every viewing path is still proxied by Homespool.
     /// </para>
     /// <para>
-    /// <b>Passed to the sidecar on its command line, never written into its config file</b>
-    /// (<c>compose.yaml</c>). That matters twice: the config is rewritten by the stream registration
+    /// <b>Passed to the sidecar in a file of its own, never written into <c>go2rtc.yaml</c></b>
+    /// (<c>compose.yaml</c>). That matters twice: that file is rewritten by the stream registration
     /// path, so a credential living there would have to survive every merge; and writing it there in
     /// the first place would require authenticating to a server that is not yet configured.
     /// </para>
@@ -110,10 +111,11 @@ public class CameraOptions
     /// briefly unreachable must not quietly change what this deployment permits.
     /// </para>
     /// <para>
-    /// <b>Both halves or neither, and that is measured rather than assumed</b> (2026-08-09): a
-    /// username with an empty password turns go2rtc's authentication <i>on</i> with an empty key and
-    /// answers 401 to everything, Homespool included. So half a credential is worse than none, and
-    /// this predicate is the one place that judgement is made.
+    /// <b>Both halves or neither.</b> A username with an empty password turns the sidecar's
+    /// authentication <i>on</i> and refuses everything, Homespool included - the sidecar's image is
+    /// patched to make it so, since go2rtc itself lets in anyone who sends that username and an
+    /// empty password. So half a credential is worse than none, and this predicate is the one place
+    /// that judgement is made.
     /// </para>
     /// <para>
     /// <b>Why an absent credential now stops cameras rather than merely omitting a header</b>
@@ -135,30 +137,41 @@ public class CameraOptions
     /// <remarks>
     /// <para>
     /// <b>The two halves travel by different roads and the roads disagree.</b> Compose writes the
-    /// value into both containers as a file, which this process reads whole and unaltered. The
-    /// sidecar instead substitutes its file into a double-quoted <i>YAML</i> scalar in its
-    /// configuration. A <c>"</c> ends that scalar early and the file no longer parses; a <c>\</c>
-    /// is read as a YAML escape, so <c>has\back</c> becomes something else there while arriving
-    /// here intact.
+    /// password into both containers as a file, which this process reads whole and unaltered, and
+    /// gives this process the username as it stands in <c>.env</c>. The sidecar is given both pasted
+    /// as text into a YAML block scalar in its configuration, and reads the password back from a file
+    /// of its own. A block scalar takes quotes, backslashes, <c>#</c> and <c>: </c> as written; what
+    /// it cannot take, measured against the sidecar:
     /// </para>
+    /// <list type="bullet">
+    /// <item>A line break or another control character but a tab, LS, PS, U+FFFE or U+FFFF. The
+    /// sidecar skips the whole file and starts no API, so cameras do not work at all.</item>
+    /// <item>White space at the start of either half, which is taken for indentation, or at the end
+    /// of the password, which the sidecar trims. Every request then answers 401.</item>
+    /// <item>A <c>${</c> in the username, which the sidecar resolves as its own placeholder after
+    /// compose has pasted it in, and a colon, which HTTP Basic authentication splits the pair at.
+    /// Every request answers 401 here too.</item>
+    /// </list>
     /// <para>
-    /// <b>The backslash case is why this is checked rather than documented alone.</b> It fails
-    /// silently: both halves look configured, this deployment believes it has a credential, and every
-    /// camera answers 401 with nothing saying why. Base64 output contains neither character, which is
-    /// why <c>openssl rand -base64 24</c> is what the documentation recommends — but a hand-edited
-    /// <c>.env</c> never passes through the wizard that would have said so.
+    /// <b>Why it is checked rather than documented alone.</b> Each of these fails silently: both
+    /// halves look configured, this deployment believes it has a credential, and cameras stop working
+    /// with nothing saying why. Base64 output holds none of them, which is why <c>openssl rand -base64
+    /// 24</c> is what the documentation recommends - but a hand-edited <c>.env</c> never passes
+    /// through the wizard that would have said so.
     /// </para>
     /// <para>
     /// This is a judgement about configuration, not a refusal: a credential that cannot survive the
     /// trip leaves cameras as broken as no credential would, so refusing here would add nothing that
-    /// the sidecar's own 401 does not already do. What it buys is the diagnosis.
+    /// the sidecar does not already do. What it buys is the diagnosis.
     /// </para>
     /// </remarks>
     public bool CredentialSurvivesTransport =>
-        !ApiUsername.Contains('"', StringComparison.Ordinal) &&
-        !ApiUsername.Contains('\\', StringComparison.Ordinal) &&
-        !ApiPassword.Contains('"', StringComparison.Ordinal) &&
-        !ApiPassword.Contains('\\', StringComparison.Ordinal);
+        !ApiUsername.Any(BreaksTheCredentialFile) &&
+        !ApiPassword.Any(BreaksTheCredentialFile) &&
+        ApiUsername.TrimStart() == ApiUsername &&
+        !ApiUsername.Contains(':', StringComparison.Ordinal) &&
+        !ApiUsername.Contains("${", StringComparison.Ordinal) &&
+        ApiPassword.Trim() == ApiPassword;
 
     /// <summary>
     /// Shortest gap between two fetches of the same camera, in seconds. Default 2.
@@ -376,4 +389,13 @@ public class CameraOptions
     /// </para>
     /// </remarks>
     public string WebRtcStunServer { get; set; } = "stun:stun.l.google.com:19302";
+
+    /// <summary>
+    /// Whether the sidecar's YAML reader refuses a character, or reads it as the end of a line.
+    /// </summary>
+    private static bool BreaksTheCredentialFile(char character)
+    {
+        return (char.IsControl(character) && character != '\t') ||
+               character is '\u2028' or '\u2029' or '\uFFFE' or '\uFFFF';
+    }
 }

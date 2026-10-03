@@ -31,6 +31,12 @@ BODY="${HOMESPOOL_TLS_BODY:-/etc/nginx/homespool-user-tls.conf}"
 #
 # No includeSubDomains, deliberately. A deployment reached as homespool.example.com and as
 # printers.homespool.example.com, the second self-signed, would have the first pin the second.
+# Only an explicit "1" turns it on. Any other value - unset, empty, 0, false, no - leaves it off, so
+# HSTS=0 cannot silently enable a header that browsers remember for two years.
+case "${HSTS:-}" in
+    1) HSTS_ON=1 ;;
+    *) HSTS_ON="" ;;
+esac
 HSTS_HEADER='add_header Strict-Transport-Security "max-age=63072000" always;'
 
 # The same list 25-self-signed-certificate.sh minted certificates from, derived once by
@@ -82,11 +88,11 @@ for host in "$@"; do
     if [ -s "$ACME_DIR/$host.crt" ] && [ -s "$ACME_DIR/$host.key" ]; then
         crt="$ACME_DIR/$host.crt"
         key="$ACME_DIR/$host.key"
-        [ -n "${HSTS:-}" ] && hsts="$HSTS_HEADER"
+        [ -n "$HSTS_ON" ] && hsts="$HSTS_HEADER"
     elif [ -s "$CERT_DIR/$host.crt" ] && [ -s "$CERT_DIR/$host.key" ]; then
         crt="$CERT_DIR/$host.crt"
         key="$CERT_DIR/$host.key"
-        if [ -n "${HSTS:-}" ]; then
+        if [ -n "$HSTS_ON" ]; then
             echo "$0: HSTS is set but $host has a self-signed certificate - not sent for this name." >&2
         fi
     else

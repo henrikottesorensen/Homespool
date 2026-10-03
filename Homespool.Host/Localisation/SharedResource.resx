@@ -1897,7 +1897,7 @@
     <value>Error confirming your email.</value>
   </data>
   <data name="Account_ExternalProviderError" xml:space="preserve">
-    <value>Error from external provider: {0}</value>
+    <value>Error from external provider.</value>
   </data>
   <data name="Manage_TokenRevoked" xml:space="preserve">
     <value>Token revoked.</value>

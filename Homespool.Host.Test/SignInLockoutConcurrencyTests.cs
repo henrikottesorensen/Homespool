@@ -13,9 +13,11 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 using OtpNet;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Model.Entities;
 
@@ -24,7 +26,8 @@ namespace Homespool.Host.Test;
 /// <summary>
 /// The account lockout under parallel sign-ins: a burst of wrong passwords compared no more often than
 /// a patient guesser's would be, and then locked out; a right password in the middle of one still
-/// signing in; and the attempt a right password was counted as given back.
+/// signing in; and the attempt a right password was counted as given back. And one authenticator code
+/// presented in parallel, which signs in once.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -206,6 +209,24 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
     }
 
     [Fact]
+    public async Task OfParallelPresentationsOfOneRightCodeExactlyOneSignsIn()
+    {
+        await using LocalSchemeRig rig = await SeededRigAsync(SharedKeys());
+        HSUser user = await rig.Users.FindByNameAsync("owner") ?? throw new InvalidOperationException("seeded above");
+        string code = LocalSchemeRig.CodeFor(await rig.EnableAuthenticatorAsync(user));
+        string pending = await rig.PendingTwoFactorCookieAsync(user);
+
+        AuthenticateResult[] results = await InParallelAsync(20,
+                                                             (worker, _) => LocalSchemeRig.AuthenticateAsync(worker.NewRequest(pending), Schemes.Totp, new TotpCredential(code)),
+                                                             SharedKeys());
+
+        results.Count(result => result.Succeeded).Should().Be(1, "the step is spent by one conditional update, which only one of them can make");
+        results.Where(result => !result.Succeeded)
+               .Should().AllSatisfy(result => result.Refusal().Should().BeOneOf([SignInRefusal.Invalid, SignInRefusal.LockedOut],
+                                                                                 "each spent code counts as a wrong one, and enough of them lock the account out"));
+    }
+
+    [Fact]
     public async Task ARightPasswordAmongParallelWrongOnesStillSignsIn()
     {
         await using LocalSchemeRig rig = await SeededRigAsync();
@@ -279,6 +300,43 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
     }
 
     [Fact]
+    public async Task ASaveOfACopyLoadedBeforeACodeIsSpentIsRefused()
+    {
+        await using LocalSchemeRig rig = await SeededRigAsync();
+        await using LocalSchemeRig other = await LocalSchemeRig.CreateAsync(_databasePath);
+        HSUser user = await rig.Users.FindByNameAsync("owner") ?? throw new InvalidOperationException("seeded above");
+        string code = LocalSchemeRig.CodeFor(await rig.EnableAuthenticatorAsync(user));
+        HSUser stale = await other.Users.FindByNameAsync("owner") ?? throw new InvalidOperationException("seeded above");
+
+        (await rig.Users.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, code)).Should().BeTrue();
+
+        stale.Language = "da";
+        IdentityResult saved = await other.Users.UpdateAsync(stale);
+
+        saved.Errors.Should().ContainSingle(error => error.Code == nameof(IdentityErrorDescriber.ConcurrencyFailure),
+                                            "the save writes every column, and would put the step back unspent");
+        (await rig.Users.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, code)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task TheCopyThatSpentACodeCanStillBeSaved()
+    {
+        await using LocalSchemeRig rig = await SeededRigAsync();
+        HSUser user = await rig.Users.FindByNameAsync("owner") ?? throw new InvalidOperationException("seeded above");
+        string code = LocalSchemeRig.CodeFor(await rig.EnableAuthenticatorAsync(user));
+
+        (await rig.Users.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, code)).Should().BeTrue();
+
+        user.Language = "da";
+        IdentityResult saved = await rig.Users.UpdateAsync(user);
+
+        saved.Succeeded.Should().BeTrue("nothing else wrote the row, so the copy that spent the code is current: {0}",
+                                        string.Join("; ", saved.Errors.Select(error => error.Code)));
+        (await rig.Users.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, code))
+            .Should().BeFalse("the save carried the spent step, not the one loaded before it");
+    }
+
+    [Fact]
     public async Task ACopyAlreadyStaleWhenItCountsAFailureStaysStale()
     {
         await using LocalSchemeRig rig = await SeededRigAsync();
@@ -330,18 +388,29 @@ public sealed class SignInLockoutConcurrencyTests : IDisposable
                          .First(candidate => !accepted.Contains(candidate));
     }
 
-    /// <summary>The framework's authenticator provider, counting the codes it is asked to compare.</summary>
-    private sealed class CodeCountingAuthenticator : AuthenticatorTokenProvider<HSUser>
+    /// <summary>The application's authenticator provider, counting the codes it is asked to compare.</summary>
+    private sealed class CodeCountingAuthenticator : IUserTwoFactorTokenProvider<HSUser>
     {
+        private readonly HSAuthenticatorTokenProvider _inner = new(TimeProvider.System, NullLogger<HSAuthenticatorTokenProvider>.Instance);
         private int _comparisons;
 
         public int Comparisons => Volatile.Read(ref _comparisons);
 
-        public override Task<bool> ValidateAsync(string purpose, string token, UserManager<HSUser> manager, HSUser user)
+        public Task<bool> CanGenerateTwoFactorTokenAsync(UserManager<HSUser> manager, HSUser user)
+        {
+            return _inner.CanGenerateTwoFactorTokenAsync(manager, user);
+        }
+
+        public Task<string> GenerateAsync(string purpose, UserManager<HSUser> manager, HSUser user)
+        {
+            return _inner.GenerateAsync(purpose, manager, user);
+        }
+
+        public Task<bool> ValidateAsync(string purpose, string token, UserManager<HSUser> manager, HSUser user)
         {
             Interlocked.Increment(ref _comparisons);
 
-            return base.ValidateAsync(purpose, token, manager, user);
+            return _inner.ValidateAsync(purpose, token, manager, user);
         }
     }
 

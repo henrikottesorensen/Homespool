@@ -147,7 +147,8 @@ public static class IdentityServices
     /// <summary>
     /// The four token providers behind password reset, address and phone confirmation, and the
     /// authenticator app: the framework's <c>AddDefaultTokenProviders</c>, resolved to
-    /// <see cref="HSUser"/>.
+    /// <see cref="HSUser"/>, with <see cref="HSAuthenticatorTokenProvider"/> for the authenticator so a
+    /// code is accepted once.
     /// </summary>
     /// <remarks>
     /// Each goes through <see cref="IdentityBuilder.AddTokenProvider(string, Type)"/> rather than a
@@ -163,6 +164,6 @@ public static class IdentityServices
         return builder.AddTokenProvider(TokenOptions.DefaultProvider, typeof(DataProtectorTokenProvider<HSUser>))
                       .AddTokenProvider(TokenOptions.DefaultEmailProvider, typeof(EmailTokenProvider<HSUser>))
                       .AddTokenProvider(TokenOptions.DefaultPhoneProvider, typeof(PhoneNumberTokenProvider<HSUser>))
-                      .AddTokenProvider(TokenOptions.DefaultAuthenticatorProvider, typeof(AuthenticatorTokenProvider<HSUser>));
+                      .AddTokenProvider(TokenOptions.DefaultAuthenticatorProvider, typeof(HSAuthenticatorTokenProvider));
     }
 }

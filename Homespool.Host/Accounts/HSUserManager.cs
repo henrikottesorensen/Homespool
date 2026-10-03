@@ -292,6 +292,22 @@ public sealed class HSUserManager : UserManager<HSUser>
     }
 
     /// <summary>
+    /// Spends <paramref name="step"/> for <paramref name="user"/>'s authenticator, when no code has been
+    /// accepted for it or a later one; whether it was. <see cref="HSAuthenticatorTokenProvider"/> calls
+    /// it for the step a right code matched.
+    /// </summary>
+    public Task<bool> SpendAuthenticatorStepAsync(HSUser user, long step)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+
+        HSUserStore store = Store as HSUserStore ??
+                            throw new NotSupportedException("Spending an authenticator code needs HSUserStore.");
+
+        return store.SpendAuthenticatorStepAsync(user, step, CancellationToken);
+    }
+
+    /// <summary>
     /// The security stamps a change made through this manager has replaced on <paramref name="user"/>
     /// - in the application, during this request, since the manager is scoped to one. Empty when it
     /// changed none, and always empty over a store other than <see cref="HSUserStore"/>.

@@ -91,11 +91,59 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Clears <see cref="HSUser.AuthenticatorStepUsed"/>: no code from the new key has been used, and
+    /// one from the old key cannot match it.
+    /// </remarks>
     public override Task SetAuthenticatorKeyAsync(HSUser user, string key, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(key);
 
+        user.AuthenticatorStepUsed = null;
+
         return base.SetAuthenticatorKeyAsync(user, _authenticatorKeys.Protect(key), cancellationToken);
+    }
+
+    /// <summary>
+    /// Records <paramref name="step"/> as the latest time step an authenticator code was accepted for,
+    /// when it is later than the one recorded; whether it was.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One conditional update, so the comparison and the write cannot be split.</b> Of parallel
+    /// requests presenting one code, exactly one changes the row and the rest find the step already
+    /// spent. Reading the step and saving the entity would let all of them read it unspent.
+    /// </para>
+    /// <para>
+    /// <b>The concurrency stamp moves with it</b>, as for the failed count: the framework's save writes
+    /// every column, and a copy loaded before this write would otherwise put the earlier step back and
+    /// make the code usable again.
+    /// </para>
+    /// <para>
+    /// <b>Refused inside a transaction</b>: a rollback would make the code usable again.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> SpendAuthenticatorStepAsync(HSUser user, long step, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+        OutsideTransaction.Require(Context);
+
+        (string? loaded, string fresh, string other) = NextStamps(user);
+
+        int spent = await Row(user).Where(u => u.AuthenticatorStepUsed == null || u.AuthenticatorStepUsed < step)
+                                   .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AuthenticatorStepUsed, step)
+                                                                         .SetProperty(u => u.ConcurrencyStamp, u => u.ConcurrencyStamp == loaded ? fresh : other),
+                                                       cancellationToken);
+
+        if (spent == 0)
+        {
+            return false;
+        }
+
+        await SettleAsync(user, fresh, cancellationToken);
+
+        return true;
     }
 
     /// <inheritdoc/>
@@ -317,8 +365,8 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
     }
 
     /// <summary>
-    /// The stamps a lockout write chooses between: <c>fresh</c> when the row still carries the stamp
-    /// this context loaded, <c>other</c> when something else wrote it since.
+    /// The stamps a lockout or spent-step write chooses between: <c>fresh</c> when the row still
+    /// carries the stamp this context loaded, <c>other</c> when something else wrote it since.
     /// </summary>
     /// <remarks>
     /// The stamp moves on as any save moves it, so a save of a copy loaded before this write is refused
@@ -334,11 +382,12 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
     }
 
     /// <summary>
-    /// Settles <paramref name="user"/> to the lockout columns as stored after a lockout write.
+    /// Settles <paramref name="user"/> to the columns this store writes as updates of the row - the
+    /// failed count, the lockout end and the spent authenticator step - as stored after one of them.
     /// </summary>
     /// <remarks>
-    /// The count and the lockout end are adopted as stored, whatever else wrote them since, since those
-    /// are the values the caller reads next. The stamp is adopted only when it is still
+    /// Those three are adopted as stored, whatever else wrote them since, since those are the values
+    /// the caller reads next. The stamp is adopted only when it is still
     /// <paramref name="fresh"/>: the row was as this context loaded it and nothing has written it after.
     /// Otherwise the entity is stale in columns this did not read, and a later save of it has to be
     /// refused as the framework would refuse it.
@@ -346,7 +395,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
     private async Task SettleAsync(HSUser user, string fresh, CancellationToken cancellationToken)
     {
         var stored = await Row(user).AsNoTracking()
-                                    .Select(u => new { u.AccessFailedCount, u.LockoutEnd, u.ConcurrencyStamp })
+                                    .Select(u => new { u.AccessFailedCount, u.LockoutEnd, u.AuthenticatorStepUsed, u.ConcurrencyStamp })
                                     .SingleOrDefaultAsync(cancellationToken);
 
         if (stored is null)
@@ -361,6 +410,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
         {
             user.AccessFailedCount = stored.AccessFailedCount;
             user.LockoutEnd = stored.LockoutEnd;
+            user.AuthenticatorStepUsed = stored.AuthenticatorStepUsed;
 
             if (current)
             {
@@ -372,6 +422,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
 
         Settle(entry.Property(u => u.AccessFailedCount), stored.AccessFailedCount);
         Settle(entry.Property(u => u.LockoutEnd), stored.LockoutEnd);
+        Settle(entry.Property(u => u.AuthenticatorStepUsed), stored.AuthenticatorStepUsed);
 
         if (current)
         {

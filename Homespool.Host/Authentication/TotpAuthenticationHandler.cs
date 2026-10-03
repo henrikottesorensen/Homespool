@@ -39,7 +39,9 @@ namespace Homespool.Host.Authentication;
 /// against the lockout, a right one resetting it. What is left behind is the sign-in itself, the
 /// remembered-machine cookie and the clearing of the pending cookie - the page composes those. What
 /// changes is the order: the code is counted before it is compared and a right one gives the count
-/// back, so parallel codes cannot all be compared on a count none of them has written.
+/// back, so parallel codes cannot all be compared on a count none of them has written. A right code is
+/// spent by being compared - <see cref="HSAuthenticatorTokenProvider"/> refuses it, and any code for an
+/// earlier step, from then on - so a code presented again is a wrong one, and counted as one.
 /// <b>A step-up counts differently</b>: a code backs off the account's step-ups through
 /// <see cref="LocalSignInRules.TakeStepUpAsync"/> and never touches the account lockout, since a
 /// session holder guessing at a step-up must not be able to lock the owner out of signing in.

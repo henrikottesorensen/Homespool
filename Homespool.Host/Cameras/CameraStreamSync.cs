@@ -43,8 +43,9 @@ namespace Homespool.Host.Cameras;
 /// <b>The rules about what may be handed over are applied here, on every write.</b> A row written
 /// before a rule existed, or by anything that went round <see cref="CameraService"/>, is checked
 /// before it reaches the sidecar - and a stream the sidecar already holds for a source that now fails
-/// is removed rather than kept. A name that does not resolve is accepted, as the reconciler always
-/// accepted it; a save has already refused one before its row was written.
+/// is removed rather than kept. Two things a save refuses are accepted here, because neither says
+/// anything about the source and both are ordinary at start-up: a name that does not resolve, and an
+/// attached device that is not plugged in.
 /// </para>
 /// </remarks>
 public sealed class CameraStreamSync
@@ -52,7 +53,6 @@ public sealed class CameraStreamSync
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly Go2RtcClient _streamServer;
     private readonly CameraCredentialProtector _credentials;
-    private readonly LocalCameraDevices _devices;
     private readonly CameraSourcePolicy _policy;
     private readonly ILogger<CameraStreamSync> _logger;
 
@@ -62,14 +62,12 @@ public sealed class CameraStreamSync
     public CameraStreamSync(IServiceScopeFactory scopeFactory,
                             Go2RtcClient streamServer,
                             CameraCredentialProtector credentials,
-                            LocalCameraDevices devices,
                             CameraSourcePolicy policy,
                             ILogger<CameraStreamSync> logger)
     {
         _scopeFactory = scopeFactory;
         _streamServer = streamServer;
         _credentials = credentials;
-        _devices = devices;
         _policy = policy;
         _logger = logger;
     }
@@ -162,9 +160,9 @@ public sealed class CameraStreamSync
     {
         if (CameraSourcePolicy.IsLocalDevice(source))
         {
-            return LocalCameraDevices.CheckComposed(source,
-                                                    camera.Resolution,
-                                                    _devices.List().Select(device => device.Name));
+            // Whether or not the device is plugged in now: a camera missing at start-up is still the
+            // camera somebody saved, and its stream is only opened when it is watched.
+            return LocalCameraDevices.CheckComposed(source, camera.Resolution);
         }
 
         // What a name points at is decided by whoever controls the name, and can have changed since

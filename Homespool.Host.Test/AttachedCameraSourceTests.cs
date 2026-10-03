@@ -110,6 +110,64 @@ public class AttachedCameraSourceTests
     }
 
     /// <summary>
+    /// A stored camera is judged by its source alone: the device need not be plugged in now. A
+    /// camera missing when Homespool starts is still the camera somebody saved.
+    /// </summary>
+    [Fact]
+    public void TheComposedSourceOfADeviceNotPluggedInIsStillComposed()
+    {
+        LocalCameraDevices.CheckComposed(
+                              "ffmpeg:device?video=/dev/v4l/by-id/usb-somebody_elses_camera-video-index0&input_format=mjpeg",
+                              null)
+                          .IsAcceptable.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Without the device list to hold it to, the name is held to udev's alphabet instead - so the
+    /// name that carries an argument is refused whether or not anything by that name is attached.
+    /// </summary>
+    [Fact]
+    public void ADeviceNameCarryingAnFfmpegArgumentIsRefusedWithoutTheDeviceList()
+    {
+        LocalCameraDevices.CheckComposed(
+                              $"ffmpeg:device?video=/dev/v4l/by-id/{Attached}#raw=-i#raw=hosts&input_format=mjpeg",
+                              null)
+                          .IsAcceptable.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// <c>#</c> and <c>+</c> are in udev's alphabet and mean something to the stream server: the
+    /// first splits the source into ffmpeg arguments, the second becomes a space in the command line.
+    /// A device really named with either is refused, plugged in or not.
+    /// </summary>
+    [Theory]
+    [InlineData("usb-Odd_Cam_A#B-video-index0")]
+    [InlineData("usb-Odd_Cam_A+B-video-index0")]
+    public void ANameTheStreamServerWouldSplitIsRefusedEvenWhenPresent(string name)
+    {
+        LocalCameraDevices.CheckComposed($"ffmpeg:device?video=/dev/v4l/by-id/{name}&input_format=mjpeg", null, [name])
+                          .IsAcceptable.Should().BeFalse();
+    }
+
+    /// <summary>What udev writes, and what it would not.</summary>
+    [Theory]
+    [InlineData("usb-046d_0821_437242E0-video-index0", true)]
+    [InlineData("usb-Logitech_BRIO_5A3B-video-index0", true)]
+    [InlineData("usb-Vendor_Cam_v1.2:3=x@y-video-index0", true)]
+    [InlineData("usb-046d_0821_437242E0-video-index1", false)]
+    [InlineData("-video-index0", false)]
+    [InlineData("usb-Odd_Cam_A#B-video-index0", false)]
+    [InlineData("usb-Odd_Cam_A+B-video-index0", false)]
+    [InlineData("usb-Odd_Cam_A B-video-index0", false)]
+    [InlineData("usb-Odd_Cam_A&input_format=x-video-index0", false)]
+    [InlineData("usb-Odd_Cam_A\\x20B-video-index0", false)]
+    [InlineData("usb-Kamera_æøå-video-index0", false)]
+    public void ADeviceNameIsUdevsAlphabetLessWhatTheStreamServerSplitsOn(string name, bool expected)
+    {
+        LocalCameraDevices.IsDeviceName(name).Should().Be(expected);
+    }
+
+    /// <summary>
     /// Whitespace around a size is tidied rather than refused, because the composition tidies it
     /// too - and a size that only looks like one after trimming is still checked.
     /// </summary>

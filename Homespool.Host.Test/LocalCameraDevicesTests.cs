@@ -81,6 +81,19 @@ public sealed class LocalCameraDevicesTests : IDisposable
     }
 
     /// <summary>
+    /// A name the stream server would split into arguments is not offered, whatever udev allowed in
+    /// it: no source naming it could be saved.
+    /// </summary>
+    [Fact]
+    public void ANameTheStreamServerWouldSplitIsNotListed()
+    {
+        Link("usb-Odd_Cam_A+B-video-index0", "../../video4");
+        Link("usb-Odd_Cam_A#B-video-index0", "../../video5");
+
+        Build(_byId.FullName).List().Select(device => device.Name).Should().BeEquivalentTo([C910, Brio]);
+    }
+
+    /// <summary>
     /// A directory that is not there lists no cameras: most machines have none attached, and Docker
     /// creates the mount empty when the host has no <c>/dev/v4l</c> at all.
     /// </summary>

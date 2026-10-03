@@ -536,8 +536,10 @@ unreachable_ranges() {
     # A FILE, not a variable. unreachable_ranges is called from inside command substitutions -
     # $(lan_addresses) and friends - so a flag set here lives in a subshell and dies with it, and the
     # same three-line explanation was printed three times in one run.
-    if [ ! -e "$docker_warning_marker" ]; then
-        : > "$docker_warning_marker" 2>/dev/null || true
+    # Non-empty means already said. The file is created empty by mktemp at startup, so only the
+    # content, not its existence, is the flag.
+    if [ ! -s "$docker_warning_marker" ]; then
+        echo 1 > "$docker_warning_marker" 2>/dev/null || true
         # Two different situations, and blaming the daemon in the first one is nonsense: on the
         # Windows path this script runs INSIDE a container, which has no docker CLI and no socket,
         # so of course it cannot ask - while Docker is plainly working, since it is running this.
@@ -551,8 +553,11 @@ unreachable_ranges() {
 }
 
 # Per-run, per-process, and cleaned up on the way out: see unreachable_ranges for why it cannot be
-# a variable.
-docker_warning_marker="${TMPDIR:-/tmp}/setup-env-docker-warned.$$"
+# a variable. mktemp, not a name built from $$: a predictable path in a shared directory can be
+# pre-planted as a symlink, and the write then follows it. mktemp picks an unguessable name and
+# creates it with O_EXCL, so there is no check-then-write window. If it fails the marker is empty,
+# every write to it fails quietly, and the warning is merely repeated.
+docker_warning_marker="$(mktemp "${TMPDIR:-/tmp}/setup-env-docker-warned.XXXXXX" 2>/dev/null)" || docker_warning_marker=""
 
 # Temporary files to remove however the run ends, one path per line. EXIT rather than a trap per
 # signal, because bash runs the EXIT trap when TERM, HUP or a Ctrl+C ends the script too - checked

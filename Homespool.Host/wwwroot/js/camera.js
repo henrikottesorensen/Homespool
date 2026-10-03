@@ -48,6 +48,22 @@
         return element.dataset.labelSecondsAgo.replace("{0}", seconds);
     }
 
+    // When the frame was taken, on this page's clock. The server keeps serving its last frame while a
+    // camera is dead, so arrival says nothing about age. The age is measured against the server's own
+    // Date header, not this machine's clock, so a skewed clock cannot make a frame look old or new.
+    function captureTime(response) {
+        const taken = Date.parse(response.headers.get("X-Frame-Captured-At"));
+        const served = Date.parse(response.headers.get("Date"));
+
+        if (isNaN(taken)) {
+            return Date.now();
+        }
+
+        // Date has whole-second resolution, so the age can come out a second short; never negative.
+        const age = isNaN(served) ? Date.now() - taken : Math.max(0, served - taken);
+        return Date.now() - age;
+    }
+
     function attach(view) {
         const url = view.dataset.cameraFrame;
         const image = view.querySelector(".camera-image");
@@ -136,6 +152,7 @@
             }
 
             inFlight = true;
+            let capturedAt = startedAt;
 
             fetch(url, { cache: "no-store", credentials: "same-origin" })
                 .then(function (response) {
@@ -152,6 +169,7 @@
                         throw new Error("status " + response.status);
                     }
 
+                    capturedAt = captureTime(response);
                     return response.blob();
                 })
                 .then(function (blob) {
@@ -174,7 +192,7 @@
                         URL.revokeObjectURL(previous);
                     }
 
-                    lastFrameAt = Date.now();
+                    lastFrameAt = capturedAt;
                     hideStatus();
                 })
                 .catch(function () {

@@ -86,26 +86,17 @@ public sealed class PrintStopServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A print stopped before it ever began is closed here, as <c>Stopped</c>, rather than left for
-    /// the loop to characterise.
+    /// A print stopped before it ever began is attributed here and left open, for the queue's loop to
+    /// close.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// <b>Nothing about this one is ambiguous, which is why it does not wait.</b> An accepted
-    /// <c>STOP_PRINT</c> on a running print could have raced a natural completion, so its outcome is
-    /// the loop's to read from telemetry - but a <c>Starting</c> row never began, so there is no
-    /// completion to confuse it with. On hardware such a row stayed open for the full fifteen-minute
-    /// bound (901 s and 904 s, measured twice), holding a printer that had been idle within a second.
-    /// </para>
-    /// <para>
-    /// <b><c>Stopped</c> and not <c>Unknown</c> is the point.</b> The loop can only close it as
-    /// <c>Unknown</c>, since telemetry cannot say why a print that never started stopped being
-    /// reported. Here the reason is known, and a history row reading <c>Unknown</c> with a stopper
-    /// beside it describes a well-understood event as a mystery.
-    /// </para>
+    /// <b>The loop is the one writer of how a print ended</b>, and this case is no exception: it
+    /// closes a <c>Starting</c> row carrying a stopper as <c>Stopped</c> on its next pass. Closing
+    /// it here as well made two writers of one outcome, and the loop's save - holding a row it read
+    /// before this one closed it - overwrote <c>Stopped</c> with <c>Unknown</c>.
     /// </remarks>
     [Fact]
-    public async Task APrintStoppedBeforeItBeganIsClosedAsStopped()
+    public async Task APrintStoppedBeforeItBeganIsAttributedButNotClosedHere()
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
@@ -120,9 +111,9 @@ public sealed class PrintStopServiceTests : IDisposable
         context.ChangeTracker.Clear();
         PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
 
-        job.EndedAt.Should().Be(_clock.GetUtcNow(), "the stop settles it, so nothing is left to observe");
-        job.State.Should().Be(PrintState.Stopped, "a person stopped it, which Unknown would not say");
-        job.StoppedByUserId.Should().Be(Stopper);
+        job.EndedAt.Should().BeNull("closing it is the loop's, so that only one writer decides an outcome");
+        job.State.Should().Be(PrintState.Starting);
+        job.StoppedByUserId.Should().Be(Stopper, "the attribution is the evidence the loop closes it on");
     }
 
     /// <summary>
@@ -401,7 +392,6 @@ public sealed class PrintStopServiceTests : IDisposable
                                         new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                         _registry),
                                     new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                    _clock,
                                     NullLogger<PrintStopService>.Instance);
     }
 

@@ -147,25 +147,8 @@ public sealed class LocalCameraDevices
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Composing a source is not the same as controlling it, and that is what this closes.</b>
-    /// <see cref="SourceFor"/> builds the string rather than accepting one, but it builds it out of
-    /// a device name and a capture size that both arrive from a form. The stream server reads an
-    /// <c>ffmpeg:</c> source as a command line and splits it on <c>#</c>, making each fragment an
-    /// argument - so a device name carrying one adds arguments to the ffmpeg it runs, inside a
-    /// container that can open every video device on the machine.
-    /// </para>
-    /// <para>
-    /// <b>Equality against a fresh composition, rather than a list of things to refuse.</b> A
-    /// denylist has to anticipate every character that server's parser gives meaning to, and gains
-    /// holes as it learns new ones. This asks the question with a stable answer - is this the string
-    /// we would have written? - so anything smuggled through either part changes the answer whatever
-    /// syntax it used.
-    /// </para>
-    /// <para>
-    /// <b>A size is checked by shape, not against the sizes the camera offers.</b> That list comes
-    /// from the stream server and is empty whenever it is unreachable or has not enumerated the
-    /// device, so checking against it would refuse an ordinary edit every time the sidecar was down.
-    /// Two numbers cannot carry an argument, which is all this needs from it.
+    /// <see cref="CheckComposed(string, string?)"/>, and the device present on this machine as well -
+    /// the rule for a save, where the camera is picked from what is plugged in.
     /// </para>
     /// <para>
     /// Callers pass every device this machine has rather than the unclaimed ones: the camera being
@@ -185,6 +168,54 @@ public sealed class LocalCameraDevices
             return CameraSourceCheck.Refused("Cameras_AttachedDeviceUnknown");
         }
 
+        return CheckComposed(source, resolution);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="source"/> is exactly what <see cref="SourceFor"/> would write for a
+    /// device udev could have named, at <paramref name="resolution"/> - whether or not that device is
+    /// plugged in now.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Composing a source is not the same as controlling it, and that is what this closes.</b>
+    /// <see cref="SourceFor"/> builds the string rather than accepting one, but it builds it out of
+    /// a device name and a capture size that both arrive from a form. The stream server reads an
+    /// <c>ffmpeg:</c> source as a command line and splits it on <c>#</c>, making each fragment an
+    /// argument - so a device name carrying one adds arguments to the ffmpeg it runs, inside a
+    /// container that can open every video device on the machine.
+    /// </para>
+    /// <para>
+    /// <b>Equality against a fresh composition, rather than a list of things to refuse.</b> A
+    /// denylist has to anticipate every character that server's parser gives meaning to, and gains
+    /// holes as it learns new ones. This asks the question with a stable answer - is this the string
+    /// we would have written? - so anything smuggled through the size changes the answer whatever
+    /// syntax it used. The name is held to <see cref="IsDeviceName"/> for the same reason: the
+    /// composition interpolates it, so equality alone would let it through.
+    /// </para>
+    /// <para>
+    /// <b>Presence is not asked, and that is what makes this the rule for a stored camera.</b> A
+    /// camera unplugged, not yet enumerated, or behind a mount that is not there yet is still the
+    /// camera somebody saved, and handing its stream to the sidecar costs nothing until it is back:
+    /// go2rtc opens the device only when the stream is watched. Requiring presence here would remove
+    /// such a camera's stream at every start it missed.
+    /// </para>
+    /// <para>
+    /// <b>A size is checked by shape, not against the sizes the camera offers.</b> That list comes
+    /// from the stream server and is empty whenever it is unreachable or has not enumerated the
+    /// device, so checking against it would refuse an ordinary edit every time the sidecar was down.
+    /// Two numbers cannot carry an argument, which is all this needs from it.
+    /// </para>
+    /// </remarks>
+    public static CameraSourceCheck CheckComposed(string source, string? resolution)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        if (DeviceNameFrom(source) is not { } deviceName || !IsDeviceName(deviceName))
+        {
+            return CameraSourceCheck.Refused("Cameras_AttachedSourceNotComposed");
+        }
+
         string? size = string.IsNullOrWhiteSpace(resolution) ? null : resolution.Trim();
 
         if (size is not null && !Go2RtcClient.IsCaptureSize(size))
@@ -195,6 +226,34 @@ public sealed class LocalCameraDevices
         return string.Equals(source, SourceFor(deviceName, size), StringComparison.Ordinal) ?
             CameraSourceCheck.Accepted :
             CameraSourceCheck.Refused("Cameras_AttachedSourceNotComposed");
+    }
+
+    /// <summary>
+    /// Whether <paramref name="name"/> is a capture device's by-id name, spelled only with characters
+    /// that mean nothing to the stream server on the way to ffmpeg.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>udev's own alphabet, less two.</b> A by-id name is <c>ID_BUS-ID_SERIAL-video-indexN</c>
+    /// (systemd's <c>60-persistent-v4l.rules</c>), and <c>usb_id</c> passes each part through
+    /// <c>udev_replace_chars</c>, which keeps letters, digits and <c>#+-.:=@_</c>
+    /// (<c>allow_listed_char_for_devnode</c>, read at systemd v257). Of those, <c>#</c> splits
+    /// go2rtc's source into ffmpeg arguments, and <c>+</c> becomes a space when go2rtc 1.9.14 reads the
+    /// device query with <c>url.ParseQuery</c> and joins the input into a command line split on
+    /// spaces. So neither is accepted, even from a real device - which go2rtc could not open safely
+    /// anyway.
+    /// </para>
+    /// <para>
+    /// Every other character, a <c>\x</c> escape included, is one udev would not have written.
+    /// </para>
+    /// </remarks>
+    public static bool IsDeviceName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        return name.Length > CaptureSuffix.Length &&
+               name.EndsWith(CaptureSuffix, StringComparison.Ordinal) &&
+               name.All(c => char.IsAsciiLetterOrDigit(c) || "-.:=@_".Contains(c, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -229,7 +288,8 @@ public sealed class LocalCameraDevices
     /// </summary>
     /// <remarks>
     /// Not cached: a camera can be plugged in while the page is open, and the directory listing is
-    /// a handful of entries.
+    /// a handful of entries. A name <see cref="IsDeviceName"/> refuses is left out, since no source
+    /// naming it could be saved.
     /// </remarks>
     public IReadOnlyList<LocalCameraDevice> List()
     {
@@ -244,8 +304,9 @@ public sealed class LocalCameraDevices
 
             return Directory.EnumerateFileSystemEntries(directory)
                             .Select(Path.GetFileName)
-                            .Where(name => name is not null && name.EndsWith(CaptureSuffix, StringComparison.Ordinal))
-                            .Select(name => new LocalCameraDevice(name!, Describe(name!)))
+                            .OfType<string>()
+                            .Where(IsDeviceName)
+                            .Select(name => new LocalCameraDevice(name, Describe(name)))
                             .OrderBy(device => device.Description, StringComparer.OrdinalIgnoreCase)
                             .ToList();
         }

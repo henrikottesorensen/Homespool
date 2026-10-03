@@ -23,6 +23,9 @@ public sealed class CameraStreamSyncTests : IDisposable
     private const string Source = "rtsp://192.0.2.10/live";
     private const string Edited = "rtsp://192.0.2.20/edited";
 
+    /// <summary>An attached camera's source, for a device the rig's empty device list does not have.</summary>
+    private static readonly string Unplugged = LocalCameraDevices.SourceFor("usb-046d_0821_437242E0-video-index0");
+
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"stream-sync-{Guid.NewGuid():N}.sqlite");
 
     [Fact]
@@ -106,6 +109,41 @@ public sealed class CameraStreamSyncTests : IDisposable
         sync.Refusal.Should().NotBeNull();
         handler.Attempted.Should().BeEmpty();
         handler.Streams.Should().NotContainKey(Name(camera));
+    }
+
+    /// <summary>
+    /// An attached camera that is not plugged in keeps the stream go2rtc holds for it: it is still the
+    /// camera somebody saved, and go2rtc opens the device only when the stream is watched.
+    /// </summary>
+    [Fact]
+    public async Task AnAttachedCameraNotPluggedInKeepsItsStream()
+    {
+        Guid camera = await AddCameraAsync(Unplugged);
+
+        using SidecarHandler handler = new(Held(camera, Unplugged));
+        using StreamSyncRig rig = new(_databasePath, handler);
+
+        StreamSync sync = await rig.Sync.SyncAsync(camera, TestContext.Current.CancellationToken);
+
+        sync.Outcome.Should().Be(StreamSyncOutcome.Unchanged);
+        handler.Deleted.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// And one go2rtc does not hold is registered, so it works once the camera is plugged back in.
+    /// </summary>
+    [Fact]
+    public async Task AnAttachedCameraNotPluggedInIsRegistered()
+    {
+        Guid camera = await AddCameraAsync(Unplugged);
+
+        using SidecarHandler handler = new();
+        using StreamSyncRig rig = new(_databasePath, handler);
+
+        StreamSync sync = await rig.Sync.SyncAsync(camera, TestContext.Current.CancellationToken);
+
+        sync.Outcome.Should().Be(StreamSyncOutcome.Registered);
+        handler.Streams[Name(camera)].Should().Be(Unplugged);
     }
 
     /// <summary>

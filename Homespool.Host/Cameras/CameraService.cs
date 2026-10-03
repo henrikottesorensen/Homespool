@@ -498,8 +498,10 @@ public class CameraService
     /// the printer listeners.
     /// </para>
     /// <para>
-    /// The rule itself is <see cref="LocalCameraDevices.CheckComposed"/>, beside the composition it
-    /// checks. This supplies the devices and turns a refusal into a save outcome.
+    /// The rule itself is
+    /// <see cref="LocalCameraDevices.CheckComposed(string, string?, System.Collections.Generic.IEnumerable{string})"/>,
+    /// beside the composition it checks. This supplies the devices and turns a refusal into a save
+    /// outcome.
     /// </para>
     /// <para>
     /// Network sources are not this method's business and pass straight through -

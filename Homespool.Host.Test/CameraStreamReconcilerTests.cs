@@ -297,6 +297,26 @@ public sealed class CameraStreamReconcilerTests : IDisposable
     }
 
     /// <summary>
+    /// An attached camera missing when Homespool starts - unplugged, not yet enumerated, its mount not
+    /// there yet - keeps the stream go2rtc holds for it. The rig's device list is empty, so the camera
+    /// here is missing.
+    /// </summary>
+    [Fact]
+    public async Task AnAttachedCameraMissingAtStartKeepsItsStream()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        string source = LocalCameraDevices.SourceFor("usb-046d_0821_437242E0-video-index0");
+        Guid camera = await AddCameraAsync(context, source);
+
+        using SidecarHandler handler = new(Held(camera, source));
+        await RunReconcilerAsync(handler);
+
+        handler.Deleted.Should().BeEmpty();
+        handler.Streams[camera.ToString("D")].Should().Be(source);
+    }
+
+    /// <summary>
     /// A stream already holding exactly the camera's source is left alone: replacing it would hand a
     /// viewer who is already watching a second reader on the camera.
     /// </summary>

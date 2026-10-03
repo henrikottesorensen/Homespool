@@ -421,7 +421,21 @@ public sealed class PrintFileCatalog
             row.Name = renamed.FileName;
             row.UploadedAt = renamed.UploadedAt;
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // A concurrent publish indexed a row under the new name between the move and this
+                // write, and the unique (user, name) index refused ours. The rename itself succeeded
+                // on disk, which is the truth: leave the old row as it was and let the reconcile heal
+                // the pair rather than answering a completed rename with a 500.
+                _dbContext.Entry(row).State = EntityState.Detached;
+
+                _logger.LogWarning("Renamed {FileName} to {NewName} for user {UserId}, but a row for the new name already existed; leaving the index to the reconcile",
+                                   fileName, renamed.FileName, userId);
+            }
         }
 
         return renamed;

@@ -46,20 +46,23 @@ public sealed class TelemetryRetentionService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<StorageOptions> _options;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<TelemetryRetentionService> _logger;
 
     public TelemetryRetentionService(IServiceScopeFactory scopeFactory,
                                      IOptionsMonitor<StorageOptions> options,
+                                     TimeProvider timeProvider,
                                      ILogger<TelemetryRetentionService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using PeriodicTimer timer = new(SweepInterval);
+        using PeriodicTimer timer = new(SweepInterval, _timeProvider);
 
         try
         {
@@ -111,7 +114,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             return;
         }
 
-        DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.CurrentValue.TelemetryRetentionDays);
+        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - TimeSpan.FromDays(_options.CurrentValue.TelemetryRetentionDays);
 
         int deleted = await context.TelemetrySamples
                                    .Where(s => s.Timestamp < cutoff)
@@ -211,7 +214,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             return;
         }
 
-        DateTimeOffset cutoff = DateTimeOffset.UtcNow - TimeSpan.FromDays(_options.CurrentValue.EventRetentionDays);
+        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - TimeSpan.FromDays(_options.CurrentValue.EventRetentionDays);
 
         int deleted = await context.PrinterEvents
                                    .Where(e => e.Timestamp < cutoff)

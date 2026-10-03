@@ -17,10 +17,10 @@ public class TelemetryDTO
     public int? TransferId { get; set; }
 
     [JsonPropertyName("transfer_transferred")]
-    public int? TransferTransferred { get; set; }
+    public uint? TransferTransferred { get; set; }
 
     [JsonPropertyName("transfer_time_remaining")]
-    public int? TransferTimeRemaining { get; set; }
+    public uint? TransferTimeRemaining { get; set; }
 
     [JsonPropertyName("transfer_progress")]
     public double? TransferProgress { get; set; }

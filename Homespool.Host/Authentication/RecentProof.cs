@@ -53,10 +53,12 @@ public sealed class RecentProof
     /// manager.
     /// </summary>
     /// <remarks>
-    /// It <b>slides</b>: every request that finds a live proof reissues it, so the window is measured
-    /// from the last gated request rather than from the credential. A fixed window would interrupt the
-    /// middle of a job for no gain, since the risk being bounded is an unattended browser rather than a
-    /// long session.
+    /// It <b>slides</b>: every gated request that finds a live proof reissues it, so the window is
+    /// measured from the last gated request rather than from the credential. A fixed window would
+    /// interrupt the middle of a job for no gain, since the risk being bounded is an unattended browser
+    /// rather than a long session. Only <see cref="Renew"/> slides it; a page that merely asks
+    /// <see cref="IsProved"/> to decide what to render does not, or loading a page that acts on nothing
+    /// would keep the window open.
     /// </remarks>
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(10);
 
@@ -73,15 +75,37 @@ public sealed class RecentProof
 
     /// <summary>
     /// Whether <paramref name="userId"/> proved themselves on this browser within <paramref name="maxAge"/>
-    /// - <see cref="Window"/> when none is given - sliding the window when they did.
+    /// - <see cref="Window"/> when none is given. Reads only: the window is left where it was.
     /// </summary>
     public bool IsProved(HttpContext context, long userId, TimeSpan? maxAge = null)
+    {
+        return Read(context, userId, maxAge) is not null;
+    }
+
+    /// <summary>
+    /// As <see cref="IsProved"/>, and when the proof is live, starts its window again from now. For the
+    /// gate in front of a declared handler, which is the one request the window is measured from.
+    /// </summary>
+    public bool Renew(HttpContext context, long userId, TimeSpan? maxAge = null)
+    {
+        if (Read(context, userId, maxAge) is not { } method)
+        {
+            return false;
+        }
+
+        Grant(context, userId, method);
+
+        return true;
+    }
+
+    /// <summary>The method a live proof for <paramref name="userId"/> was earned by, or <see langword="null"/> when there is none.</summary>
+    private string? Read(HttpContext context, long userId, TimeSpan? maxAge)
     {
         ArgumentNullException.ThrowIfNull(context);
 
         if (!context.Request.Cookies.TryGetValue(CookieName, out string? cookie) || string.IsNullOrEmpty(cookie))
         {
-            return false;
+            return null;
         }
 
         string payload;
@@ -95,7 +119,7 @@ public sealed class RecentProof
             // Tampered, or protected by a key ring this instance no longer has. Either way it is not
             // a proof, and it is not an error worth showing anybody: the proof page is the answer to
             // both.
-            return false;
+            return null;
         }
 
         string[] parts = payload.Split('|');
@@ -104,12 +128,12 @@ public sealed class RecentProof
             !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out long proved) ||
             !long.TryParse(parts[1], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out long issuedTicks))
         {
-            return false;
+            return null;
         }
 
         if (proved != userId)
         {
-            return false;
+            return null;
         }
 
         DateTimeOffset issued = new(issuedTicks, TimeSpan.Zero);
@@ -117,13 +141,10 @@ public sealed class RecentProof
 
         if (age < TimeSpan.Zero || age > (maxAge ?? Window))
         {
-            return false;
+            return null;
         }
 
-        // Live, so the window starts again from now, with the method it was earned by.
-        Grant(context, userId, parts[2]);
-
-        return true;
+        return parts[2];
     }
 
     /// <summary>Records that <paramref name="userId"/> proved themselves by <paramref name="method"/> on this browser, for <see cref="Window"/>.</summary>

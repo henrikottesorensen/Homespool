@@ -143,7 +143,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
-    /// How long <see cref="ForgetPrinterAsync"/> waits for the drain loop to acknowledge a deletion.
+    /// How long <see cref="BeginEvictionAsync"/> waits for the drain loop to acknowledge a deletion.
     /// </summary>
     /// <remarks>
     /// Sized against the wait it is actually bounding, which is normally nothing: the removal wakes
@@ -153,7 +153,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// defaults to 5 s - so this is deliberately longer than one such stall and shorter than a person
     /// deciding the page has hung.
     /// </remarks>
-    private static readonly TimeSpan ForgetTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan EvictionTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// What one shutdown flush attempt may spend waiting on the database, ignoring
@@ -208,11 +208,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly Services.LogThrottle _sampleTrims = new(TimeSpan.FromSeconds(10));
     private readonly Services.LogThrottle _eventTrims = new(TimeSpan.FromSeconds(10));
 
-    // Printer deletions waiting for the drain loop to act on them. Deliberately NOT sent through
+    // Removal notices waiting for the drain loop to act on them. Deliberately NOT sent through
     // _channel: that channel is DropOldest, so a removal notice queued behind a busy printer's
     // stream could be discarded to make room for telemetry - silently losing the one message whose
     // whole purpose is to stop a foreign-key failure. A queue beside the channel cannot be dropped.
-    private readonly ConcurrentQueue<PrinterRemoval> _removals = new();
+    // One queue for all three kinds, so a release or completion is always applied after its hold.
+    private readonly ConcurrentQueue<RemovalNotice> _removals = new();
 
     // Wakes the drain loop for a removal, so a deletion costs a caller nothing when the deployment
     // is idle and the flush timer is minutes away. Replaced by the loop once fired; see the
@@ -343,61 +344,80 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// <b>The wait is the point.</b> A caller deletes the printer row the moment this returns, so
     /// returning early would leave exactly the rows this exists to remove sitting in a buffer that is
     /// about to become unwritable. The drain loop signals completion after it has purged them, and
-    /// after it has added the id to the set that refuses anything arriving later - the two together
-    /// are what make the delete safe rather than merely likely to work.
+    /// after it has started refusing anything arriving later - the two together are what make the
+    /// delete safe rather than merely likely to work.
     /// </para>
     /// <para>
     /// <b>It cannot wait for ever.</b> A writer that has already stopped will never drain anything,
     /// and a caller holding an HTTP request open on that would be worse than the failed flush this
     /// avoids - so a stopped writer returns immediately (its buffers died with it) and any other
-    /// stall gives up after <see cref="ForgetTimeout"/> and says so. Giving up does not fail the
+    /// stall gives up after <see cref="EvictionTimeout"/> and says so. Giving up does not fail the
     /// delete: the cost of proceeding is one logged flush failure, which the next flush recovers
     /// from, and refusing to delete a printer because a background service is wedged helps nobody.
+    /// The hold is still queued, so the loop applies it whenever it next runs, and a release or a
+    /// completion queued behind it is applied after it.
     /// </para>
     /// </remarks>
-    public async Task ForgetPrinterAsync(int printerId, CancellationToken cancellationToken)
+    public async Task<IPrinterEviction> BeginEvictionAsync(int printerId, CancellationToken cancellationToken)
     {
         if (_shuttingDown)
         {
-            return;
+            return StoppedWriterEviction.Instance;
         }
 
-        PrinterRemoval removal = new(printerId, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
+        RemovalNotice.Hold hold = new(printerId, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously));
 
-        _removals.Enqueue(removal);
-        _removalSignal.TrySetResult();
+        Notify(hold);
 
         try
         {
-            await removal.Completion.Task.WaitAsync(ForgetTimeout, _timeProvider, cancellationToken);
+            await hold.Acknowledged.Task.WaitAsync(EvictionTimeout, _timeProvider, cancellationToken);
         }
         catch (TimeoutException)
         {
             _logger.LogWarning(
                 "[{PrinterId}] the telemetry writer did not acknowledge the deletion within {Timeout}; deleting anyway, which may cost one failed flush.",
-                printerId, ForgetTimeout);
+                printerId, EvictionTimeout);
+        }
+        catch (OperationCanceledException)
+        {
+            // The caller gets no eviction to dispose, so the hold is released here or nowhere.
+            Notify(new RemovalNotice.Release(printerId));
+
+            throw;
         }
 
-        await DeleteStoredTelemetryAsync(printerId, cancellationToken);
+        return new PrinterEviction(this, printerId);
+    }
+
+    private void Notify(RemovalNotice notice)
+    {
+        _removals.Enqueue(notice);
+        _removalSignal.TrySetResult();
     }
 
     /// <summary>
-    /// Removes everything the telemetry store holds for a printer that is being deleted.
+    /// Removes everything the telemetry store holds for a printer whose row has been deleted.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>Only the buffers are the drain loop's business; the rows are this.</b>
-    /// <see cref="ForgetPrinterAsync"/> has already waited for the loop to purge what was queued and
+    /// <see cref="BeginEvictionAsync"/> has already waited for the loop to purge what was queued and
     /// to start refusing anything further, so by this point nothing can write a new row for this
     /// printer and the stored ones can be deleted without racing it.
+    /// </para>
+    /// <para>
+    /// <b>Only once the printer row is gone</b>, which is why <see cref="PrinterEviction.CompleteAsync"/>
+    /// calls it rather than <see cref="BeginEvictionAsync"/>. A delete that fails leaves the printer in
+    /// place, and its history and last-known state with it.
     /// </para>
     /// <para>
     /// <b>Explicit rather than left to the cascade, because in memory there is no cascade to leave it
     /// to.</b> A telemetry database holding these five tables alone has no <c>Printers</c> table and
     /// therefore no foreign key from it, so deleting the printer row would strand its history for the
-    /// life of the process. Run in both modes deliberately: against the file it does the work the
-    /// cascade was about to do anyway, a moment earlier, and one behaviour is worth more than the
-    /// saving of skipping it.
+    /// life of the process. Run in both modes deliberately: against the file the cascade has already
+    /// done the work and this finds nothing, and one behaviour is worth more than the saving of
+    /// skipping it.
     /// </para>
     /// <para>
     /// Slot rows are not deleted here. They cascade from their parent sample and live state, and both
@@ -426,10 +446,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            // Logged rather than thrown, on ForgetPrinterAsync's reasoning: refusing to delete a
-            // printer because its history would not go quietly helps nobody, and what is left behind
-            // is rows nothing can reach rather than a broken deployment.
-            _logger.LogError(e, "[{PrinterId}] could not delete stored telemetry for a printer being removed.", printerId);
+            // Logged rather than thrown: the printer is already gone, so throwing would report a
+            // removal that has happened as one that failed, and what is left behind is rows nothing
+            // can reach rather than a broken deployment.
+            _logger.LogError(e, "[{PrinterId}] could not delete stored telemetry for a removed printer.", printerId);
         }
     }
 
@@ -523,17 +543,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo = [];
         Dictionary<int, PendingDriveListing> pendingDriveListings = [];
 
-        // Printers deleted while this process was running. Purging the buffers is only half of it:
-        // the connection is closed before the delete, but its read loop can still be carrying a
-        // message or two, and one of those landing after the row is gone poisons the next flush
-        // exactly as the buffered rows would have. So the id is remembered and everything for it is
-        // refused from here on.
-        //
-        // It only ever grows, by one int per deletion, and that is safe rather than merely cheap:
-        // Printers.Id is INTEGER PRIMARY KEY AUTOINCREMENT, so SQLite never hands a deleted printer's
-        // id to a new row. Plain INTEGER PRIMARY KEY would reuse the highest one after a delete, and
-        // this set would then silently discard a new printer's telemetry.
-        HashSet<int> forgottenPrinterIds = [];
+        // Printers being removed, and removed, while this process was running. Purging the buffers is
+        // only half of it: the connection is closed before the delete, but its read loop can still be
+        // carrying a message or two, and one of those landing after the row is gone poisons the next
+        // flush exactly as the buffered rows would have. So everything for the id is refused.
+        RemovalLedger removals = new();
 
         using PeriodicTimer flushTimer = new(TimeSpan.FromSeconds(Math.Max(_options.WriteFlushIntervalSeconds, 0.05)));
 
@@ -573,7 +587,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 _removalSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             }
 
-            DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, forgottenPrinterIds);
+            DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, removals);
 
             if (completed == channelReadable)
             {
@@ -586,11 +600,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
                 while (_channel.Reader.TryRead(out TelemetryWriteItem? item))
                 {
-                    if (forgottenPrinterIds.Contains(item.PrinterId))
+                    if (removals.Refuses(item.PrinterId))
                     {
                         // In flight when the printer was deleted. Not logged: the socket is already
                         // closed by the time a deletion gets here, so this is a handful of messages
-                        // once, and a printer nobody can reach again cannot make it recur.
+                        // once, and a printer nobody can reach again cannot make it recur. A removal
+                        // that fails releases its hold, and the printer is heard again.
                         continue;
                     }
 
@@ -644,7 +659,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // One last drain, for a deletion that raced the loop exit. Two things need it: rows for a
         // deleted printer must not reach the final flush, and a caller still awaiting an
         // acknowledgement must not be left waiting for a loop that has stopped.
-        DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, forgottenPrinterIds);
+        DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, removals);
 
         // Whatever the last partial batch left buffered. Reached only via the break above, so the
         // channel is already empty - this is about the in-memory buffers, nothing else.
@@ -779,8 +794,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
-    /// Applies every deletion queued since the last pass: forgets the printer, and drops everything
-    /// buffered for it so the next flush cannot reference a row that is about to disappear.
+    /// Applies every removal notice queued since the last pass: a hold refuses the printer and drops
+    /// everything buffered for it so the next flush cannot reference a row that is about to
+    /// disappear; a release lifts that hold again; a completion refuses the printer for good.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -789,8 +805,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// deletion arrives as a queued notice rather than as a method that edits them directly.
     /// </para>
     /// <para>
-    /// <b>The acknowledgement is set last</b>, after every buffer has been purged, because the caller
-    /// deletes the printer row the moment it fires.
+    /// <b>A hold's acknowledgement is set last</b>, after every buffer has been purged, because the
+    /// caller deletes the printer row the moment it fires.
+    /// </para>
+    /// <para>
+    /// <b>A release does not put back what the hold purged.</b> Those rows are gone either way; what
+    /// it restores is the printer being heard. Its live-state cache entry is rebuilt from the stored
+    /// row on the next message, as after a restart.
     /// </para>
     /// </remarks>
     private void DrainRemovals(Dictionary<int, LiveStateCacheEntry> cache,
@@ -799,32 +820,54 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                HashSet<int> dirtyPrinterIds,
                                Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                Dictionary<int, PendingDriveListing> pendingDriveListings,
-                               HashSet<int> forgottenPrinterIds)
+                               RemovalLedger removals)
     {
-        while (_removals.TryDequeue(out PrinterRemoval? removal))
+        while (_removals.TryDequeue(out RemovalNotice? notice))
         {
-            int printerId = removal.PrinterId;
+            int printerId = notice.PrinterId;
 
-            forgottenPrinterIds.Add(printerId);
+            switch (notice)
+            {
+                case RemovalNotice.Hold hold:
+                    removals.Hold(printerId);
 
-            int samples = pendingSamples.RemoveAll(sample => sample.PrinterId == printerId);
-            int events = pendingEvents.RemoveAll(printerEvent => printerEvent.PrinterId == printerId);
+                    int samples = pendingSamples.RemoveAll(sample => sample.PrinterId == printerId);
+                    int events = pendingEvents.RemoveAll(printerEvent => printerEvent.PrinterId == printerId);
 
-            // The live-state cache entry has to go with them. It is what tells the flush whether to
-            // INSERT or UPDATE, and leaving it would have the next flush write live state for a
-            // printer that no longer exists - the same foreign-key failure by a quieter route.
-            cache.Remove(printerId);
-            dirtyPrinterIds.Remove(printerId);
-            pendingPrinterInfo.Remove(printerId);
-            pendingDriveListings.Remove(printerId);
+                    // The live-state cache entry has to go with them. It is what tells the flush whether
+                    // to INSERT or UPDATE, and leaving it would have the next flush write live state for
+                    // a printer that no longer exists - the same foreign-key failure by a quieter route.
+                    cache.Remove(printerId);
+                    dirtyPrinterIds.Remove(printerId);
+                    pendingPrinterInfo.Remove(printerId);
+                    pendingDriveListings.Remove(printerId);
 
-            // Information rather than a warning: this is a person deleting a printer, and the counts
-            // are the only record of what that cost. Not throttled - it is one line per deletion.
-            _logger.LogInformation(
-                "[{PrinterId}] deleted; discarded {SampleCount} buffered samples and {EventCount} buffered events.",
-                printerId, samples, events);
+                    // Information rather than a warning: this is a person removing a printer, and the
+                    // counts are the only record of what that cost. Not throttled - it is one line per
+                    // removal.
+                    _logger.LogInformation(
+                        "[{PrinterId}] being removed; discarded {SampleCount} buffered samples and {EventCount} buffered events.",
+                        printerId, samples, events);
 
-            removal.Completion.TrySetResult();
+                    hold.Acknowledged.TrySetResult();
+                    break;
+
+                case RemovalNotice.Release:
+                    removals.Release(printerId);
+
+                    // Only when this release is what lets the printer be heard again: a second removal
+                    // still in progress, or one that went through, keeps it refused, and neither is news.
+                    if (!removals.Refuses(printerId))
+                    {
+                        _logger.LogWarning("[{PrinterId}] was not removed after all; its telemetry is accepted again.", printerId);
+                    }
+
+                    break;
+
+                case RemovalNotice.Complete:
+                    removals.Complete(printerId);
+                    break;
+            }
         }
     }
 
@@ -1812,9 +1855,122 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
-    /// One printer deletion waiting to be applied, and the caller waiting to hear that it has been.
+    /// One step of a printer's removal, waiting for the drain loop to apply it.
     /// </summary>
-    private sealed record PrinterRemoval(int PrinterId, TaskCompletionSource Completion);
+    private abstract record RemovalNotice(int PrinterId)
+    {
+        /// <summary>Purge and refuse; <paramref name="Acknowledged"/> fires once both are done.</summary>
+        public sealed record Hold(int PrinterId, TaskCompletionSource Acknowledged) : RemovalNotice(PrinterId);
+
+        /// <summary>Lift one hold.</summary>
+        public sealed record Release(int PrinterId) : RemovalNotice(PrinterId);
+
+        /// <summary>The printer row is gone: refuse for good.</summary>
+        public sealed record Complete(int PrinterId) : RemovalNotice(PrinterId);
+    }
+
+    /// <summary>
+    /// Which printers the drain loop refuses telemetry for: any with a removal in progress, and any
+    /// removed. Owned by the drain loop and, like its buffers, not synchronised.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Holds are counted rather than flagged</b> so that two removals of one printer cannot release
+    /// each other's: the second to finish lifts only its own hold.
+    /// </para>
+    /// <para>
+    /// <b>The removed set only ever grows</b>, by one int per removal, and that is safe rather than
+    /// merely cheap: <c>Printers.Id</c> is <c>INTEGER PRIMARY KEY AUTOINCREMENT</c>, so SQLite never
+    /// hands a deleted printer's id to a new row. Plain <c>INTEGER PRIMARY KEY</c> would reuse the
+    /// highest one after a delete, and this set would then silently discard a new printer's telemetry.
+    /// </para>
+    /// </remarks>
+    private sealed class RemovalLedger
+    {
+        private readonly Dictionary<int, int> _holds = [];
+        private readonly HashSet<int> _removed = [];
+
+        public bool Refuses(int printerId)
+        {
+            return _removed.Contains(printerId) || _holds.ContainsKey(printerId);
+        }
+
+        public void Hold(int printerId)
+        {
+            _holds[printerId] = _holds.GetValueOrDefault(printerId) + 1;
+        }
+
+        public void Release(int printerId)
+        {
+            if (!_holds.TryGetValue(printerId, out int count))
+            {
+                return;
+            }
+
+            if (count > 1)
+            {
+                _holds[printerId] = count - 1;
+            }
+            else
+            {
+                _holds.Remove(printerId);
+            }
+        }
+
+        public void Complete(int printerId)
+        {
+            _removed.Add(printerId);
+        }
+    }
+
+    /// <summary>
+    /// The hold <see cref="BeginEvictionAsync"/> hands back. Every call goes through the removal
+    /// queue, so it is safe from any thread and applied in order behind the hold itself.
+    /// </summary>
+    private sealed class PrinterEviction(TelemetryWriter writer, int printerId) : IPrinterEviction
+    {
+        private int _released;
+
+        /// <inheritdoc />
+        public async Task CompleteAsync(CancellationToken cancellationToken)
+        {
+            writer.Notify(new RemovalNotice.Complete(printerId));
+
+            await writer.DeleteStoredTelemetryAsync(printerId, cancellationToken);
+        }
+
+        /// <summary>Releases the hold, once; after <see cref="CompleteAsync"/> that changes nothing.</summary>
+        public ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _released, 1) == 0)
+            {
+                writer.Notify(new RemovalNotice.Release(printerId));
+            }
+
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// What a writer that has stopped hands back: there is no loop to hold anything, and its buffers
+    /// died with it.
+    /// </summary>
+    private sealed class StoppedWriterEviction : IPrinterEviction
+    {
+        public static readonly StoppedWriterEviction Instance = new();
+
+        /// <inheritdoc />
+        public Task CompleteAsync(CancellationToken cancellationToken)
+        {
+            return Task.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public ValueTask DisposeAsync()
+        {
+            return ValueTask.CompletedTask;
+        }
+    }
 
     private sealed class LiveStateCacheEntry
     {

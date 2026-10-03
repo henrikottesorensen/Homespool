@@ -46,4 +46,10 @@ public sealed record CameraSaveOutcome(Camera? Camera, MessageKey? Error, Messag
     {
         return new CameraSaveOutcome(camera, null, MessageKey.For(key, arguments));
     }
+
+    /// <summary>Saved, but no picture yet, and a policy check already decided the wording.</summary>
+    public static CameraSaveOutcome Silent(Camera camera, MessageKey warning)
+    {
+        return new CameraSaveOutcome(camera, null, warning);
+    }
 }

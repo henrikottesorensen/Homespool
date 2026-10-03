@@ -133,7 +133,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         await AddPrinterAsync(context, membership.TeamId);
 
         // The membership sees everything; the credential named only the queue.
-        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewQueue])));
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewQueue);
 
         // Act
         IReadOnlyList<Printer> printers =
@@ -192,7 +192,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Act
         IReadOnlyList<Printer> printers =
             await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).ListPrintersForUserAsync(
-                Caller.Unscoped(1), CancellationToken.None);
+                TestCallers.Scoped(1, Capability.ViewPrinter), CancellationToken.None);
 
         // Assert
         printers.Select(p => p.Id).Should().ContainSingle().Which.Should().Be(visible.Id);
@@ -232,7 +232,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Act
         Printer? found =
             await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).GetPrinterForUserAsync(
-                printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+                printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), CancellationToken.None);
 
         // Assert
         found.Should().NotBeNull();
@@ -271,10 +271,102 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Act
         Printer? found =
             await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System).GetPrinterForUserAsync(
-                Guid.NewGuid(), Caller.Unscoped(1), CancellationToken.None);
+                Guid.NewGuid(), TestCallers.Scoped(1, Capability.ViewPrinter), CancellationToken.None);
 
         // Assert
         found.Should().BeNull();
+    }
+
+    // ---------- The credential's refusal on single-printer reads ----------
+
+    /// <summary>
+    /// <b>A scope without <c>ViewPrinter</c> is refused out loud, not hidden.</b> These reads filter
+    /// on the teams the caller may view, which for such a scope is none - so without the check ahead
+    /// of the query the refusal came back as <see langword="null"/>, a 404 for a token its holder
+    /// could simply replace. A UUID naming nothing is refused the same way, so it confirms nothing.
+    /// </summary>
+    [Fact]
+    public async Task GetPrinterWithStateForUserAsyncRefusesACredentialThatCannotView()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        PrinterQueryService service = NewService(context);
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewQueue);
+
+        // Act & Assert
+        await FluentActions
+              .Awaiting(() => service.GetPrinterWithStateForUserAsync(printer.Uuid, scoped, CancellationToken.None))
+              .Should()
+              .ThrowAsync<CredentialScopeDeniedException>("the membership sees it; the credential never named ViewPrinter");
+
+        await FluentActions
+              .Awaiting(() => service.GetPrinterWithStateForUserAsync(Guid.NewGuid(), scoped, CancellationToken.None))
+              .Should()
+              .ThrowAsync<CredentialScopeDeniedException>("and a UUID naming nothing answers the same way");
+    }
+
+    /// <summary>As <see cref="GetPrinterWithStateForUserAsyncRefusesACredentialThatCannotView"/>, for the detail page's history.</summary>
+    [Fact]
+    public async Task GetPrinterStatisticsForUserAsyncRefusesACredentialThatCannotView()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        PrinterQueryService service = NewService(context);
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewQueue);
+
+        // Act & Assert
+        await FluentActions
+              .Awaiting(() => service.GetPrinterStatisticsForUserAsync(printer.Uuid, scoped, CancellationToken.None))
+              .Should()
+              .ThrowAsync<CredentialScopeDeniedException>();
+
+        await FluentActions
+              .Awaiting(() => service.GetPrinterStatisticsForUserAsync(Guid.NewGuid(), scoped, CancellationToken.None))
+              .Should()
+              .ThrowAsync<CredentialScopeDeniedException>();
+    }
+
+    /// <summary>As <see cref="GetPrinterWithStateForUserAsyncRefusesACredentialThatCannotView"/>, for the temperature graph.</summary>
+    [Fact]
+    public async Task GetTemperatureSeriesAsyncRefusesACredentialThatCannotView()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        PrinterQueryService service = NewService(context);
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewQueue);
+        DateTimeOffset to = DateTimeOffset.UtcNow;
+        DateTimeOffset from = to.AddHours(-1);
+
+        // Act & Assert
+        await FluentActions
+              .Awaiting(() => service.GetTemperatureSeriesAsync(printer.Uuid, scoped, from, to, CancellationToken.None))
+              .Should()
+              .ThrowAsync<CredentialScopeDeniedException>();
+
+        await FluentActions
+              .Awaiting(() => service.GetTemperatureSeriesAsync(Guid.NewGuid(), scoped, from, to, CancellationToken.None))
+              .Should()
+              .ThrowAsync<CredentialScopeDeniedException>();
+    }
+
+    private static PrinterQueryService NewService(HomespoolDbContext context)
+    {
+        return new PrinterQueryService(context, TestTelemetryContext.For(context),
+                                       new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                       new TeamCapabilityLookup(context),
+                                       TimeProvider.System);
     }
 
     // ---------- UpdatePrinterAsync ----------
@@ -291,7 +383,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, Caller.Unscoped(1), "New name", "New location", CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), "New name", "New location",
+                                CancellationToken.None);
 
         // Assert
         updated.Should().NotBeNull();
@@ -355,7 +448,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(Guid.NewGuid(), Caller.Unscoped(1), "New name", null, CancellationToken.None);
+            .UpdatePrinterAsync(Guid.NewGuid(), TestCallers.Scoped(1, Capability.ManagePrinter), "New name", null,
+                                CancellationToken.None);
 
         // Assert
         updated.Should().BeNull();
@@ -377,7 +471,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, Caller.Unscoped(1), null, null, CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), null, null, CancellationToken.None);
 
         // Assert
         updated!.Printer.UpdatedAt.Should().BeOnOrAfter(before.AddSeconds(-1));
@@ -395,7 +489,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Act
         PrinterStatistics? statistics =
             await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-                .GetPrinterStatisticsForUserAsync(Guid.NewGuid(), Caller.Unscoped(1), CancellationToken.None);
+                .GetPrinterStatisticsForUserAsync(Guid.NewGuid(), TestCallers.Scoped(1, Capability.ViewPrinter),
+                                                  CancellationToken.None);
 
         // Assert
         statistics.Should().BeNull();
@@ -454,7 +549,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Act
         PrinterStatistics? statistics =
             await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-                .GetPrinterStatisticsForUserAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+                .GetPrinterStatisticsForUserAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter),
+                                                  CancellationToken.None);
 
         // Assert
         statistics.Should().NotBeNull();
@@ -502,7 +598,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Act
         PrinterStatistics? statistics =
             await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-                .GetPrinterStatisticsForUserAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+                .GetPrinterStatisticsForUserAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter),
+                                                  CancellationToken.None);
 
         // Assert
         statistics.Should().NotBeNull();
@@ -543,7 +640,8 @@ public sealed class PrinterQueryServiceTests : IDisposable
         // Act
         PrinterStatistics? statistics =
             await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-                .GetPrinterStatisticsForUserAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+                .GetPrinterStatisticsForUserAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter),
+                                                  CancellationToken.None);
 
         // Assert
         statistics!.RecentSamples.Should().HaveCount(50);

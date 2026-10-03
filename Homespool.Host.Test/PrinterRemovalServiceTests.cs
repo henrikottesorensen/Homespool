@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Time.Testing;
@@ -97,7 +98,9 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Act
         // A fresh context, so the camera is not tracked and the database's own rule is what runs.
         await using HomespoolDbContext serviceContext = NewContext();
-        string? name = await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        string? name = await NewService(serviceContext).RemovePrinterAsync(printer.Uuid,
+                                                                           TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                                           CancellationToken.None);
 
         // Assert
         name.Should().Be("Workshop");
@@ -148,7 +151,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         // Act
         // A fresh context, so the camera is not tracked and the database's own rule is what runs.
         await using HomespoolDbContext serviceContext = NewContext();
-        await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(serviceContext).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                            CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -159,17 +163,17 @@ public sealed class PrinterRemovalServiceTests : IDisposable
     }
 
     /// <summary>
-    /// The writer is told before the row goes, not after - which is the whole reason this service
-    /// exists rather than a <c>Remove</c> at the call site.
+    /// The writer is told before the row goes, and told the removal is final only after it has gone -
+    /// which is the whole reason this service exists rather than a <c>Remove</c> at the call site.
     /// </summary>
     /// <remarks>
     /// A flush commits its batch in one transaction and keeps the buffers when it fails, so a row
     /// still buffered for a deleted printer stops telemetry persisting for <em>every</em> printer.
-    /// Asserting the call is the cheap half; <c>TelemetryWriterTests</c> asserts that acting on it
+    /// Asserting the calls is the cheap half; <c>TelemetryWriterTests</c> asserts that acting on them
     /// actually clears the buffers.
     /// </remarks>
     [Fact]
-    public async Task RemovingAPrinterTellsTheTelemetryWriterToForgetIt()
+    public async Task RemovingAPrinterEvictsItAndCompletesTheEvictionOnceTheRowIsGone()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -177,14 +181,105 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
+        bool? rowPresentAtCompletion = null;
+        IPrinterEviction eviction = Substitute.For<IPrinterEviction>();
+        eviction.CompleteAsync(Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            using HomespoolDbContext probe = NewContext();
+            rowPresentAtCompletion = probe.Printers.Any(p => p.Id == printer.Id);
+
+            return Task.CompletedTask;
+        });
+
         ITelemetryEviction telemetry = Substitute.For<ITelemetryEviction>();
+        telemetry.BeginEvictionAsync(printer.Id, Arg.Any<CancellationToken>()).Returns(eviction);
 
         // Act
         await NewService(context, telemetry: telemetry)
-            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), CancellationToken.None);
 
         // Assert
-        await telemetry.Received(1).ForgetPrinterAsync(printer.Id, Arg.Any<CancellationToken>());
+        await telemetry.Received(1).BeginEvictionAsync(printer.Id, Arg.Any<CancellationToken>());
+        rowPresentAtCompletion.Should().BeFalse("completing tells the writer the printer is gone for good");
+        await eviction.Received(1).DisposeAsync();
+    }
+
+    /// <summary>
+    /// <b>A delete that fails releases the eviction</b>, so the printer it leaves behind is heard
+    /// again when it reconnects - which it will, since its credential went nowhere.
+    /// </summary>
+    /// <remarks>
+    /// Completing instead, or neither, leaves a connected printer whose every message the writer
+    /// drops, reading <c>Unknown</c> - and a connected printer reading <c>Unknown</c> refuses the
+    /// retry that would have cleared it up.
+    /// </remarks>
+    [Fact]
+    public async Task ADeleteThatFailsReleasesTheEvictionAndKeepsThePrinter()
+    {
+        // Arrange
+        await using (HomespoolDbContext seeding = await MigratedContextAsync())
+        {
+            TeamMember membership = await AddTeamAsync(seeding, userId: 1, CapabilityPresets.Manager);
+            await AddPrinterAsync(seeding, membership.TeamId);
+        }
+
+        await using HomespoolDbContext context = NewContext(new RefusingSaves());
+        Printer printer = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
+
+        IPrinterEviction eviction = Substitute.For<IPrinterEviction>();
+        ITelemetryEviction telemetry = Substitute.For<ITelemetryEviction>();
+        telemetry.BeginEvictionAsync(printer.Id, Arg.Any<CancellationToken>()).Returns(eviction);
+
+        // Act
+        Func<Task> removing = () => NewService(context, telemetry: telemetry)
+                                        .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                            CancellationToken.None);
+
+        // Assert
+        await removing.Should().ThrowAsync<DbUpdateException>();
+
+        await eviction.Received(1).DisposeAsync();
+        await eviction.DidNotReceive().CompleteAsync(Arg.Any<CancellationToken>());
+
+        await using HomespoolDbContext verification = NewContext();
+        verification.Printers.Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// <b>A request abandoned after the socket is closed still finishes the removal.</b> Stopping there
+    /// would bounce the printer and leave the person who confirmed it unable to tell what happened.
+    /// </summary>
+    [Fact]
+    public async Task ARequestAbandonedPartWayStillFinishesTheRemoval()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+
+        using CancellationTokenSource request = new();
+
+        IPrinterEviction eviction = Substitute.For<IPrinterEviction>();
+        ITelemetryEviction telemetry = Substitute.For<ITelemetryEviction>();
+        telemetry.BeginEvictionAsync(printer.Id, Arg.Any<CancellationToken>()).Returns(async _ =>
+        {
+            // The browser goes away while the writer is purging.
+            await request.CancelAsync();
+
+            return eviction;
+        });
+
+        // Act
+        await NewService(context, telemetry: telemetry).RemovePrinterAsync(printer.Uuid,
+                                                                           TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                                           request.Token);
+
+        // Assert
+        await using HomespoolDbContext verification = NewContext();
+        verification.Printers.Should().BeEmpty();
+
+        await eviction.Received(1).CompleteAsync(Arg.Is<CancellationToken>(token => !token.IsCancellationRequested));
     }
 
     /// <summary>A live connection is shut down, so the printer stops writing to a row that is going.</summary>
@@ -205,7 +300,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Idle);
 
         // Act
-        await NewService(context, registry).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context, registry).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                               CancellationToken.None);
 
         // Assert
         actor.Received(1).Complete();
@@ -230,7 +326,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
         // Act
         Func<Task> removing = () => NewService(context, registry)
-            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), CancellationToken.None);
 
         // Assert
         (await removing.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Printing);
@@ -261,7 +357,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
 
         // Act
         Func<Task> removing = () => NewService(context, registry)
-            .RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+            .RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), CancellationToken.None);
 
         // Assert
         (await removing.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Unknown);
@@ -290,7 +386,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         await SetLiveStatusAsync(context, printer.Id, PrinterStatus.Printing);
 
         // Act - nothing registered, so nothing is connected.
-        await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                     CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -308,7 +405,8 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
         // Act
-        await NewService(context).RemovePrinterAsync(printer.Uuid, Caller.Unscoped(1), CancellationToken.None);
+        await NewService(context).RemovePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter),
+                                                     CancellationToken.None);
 
         // Assert
         await using HomespoolDbContext verification = NewContext();
@@ -378,7 +476,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
         Printer printer = await AddPrinterAsync(context, membership.TeamId);
 
-        Caller scoped = Caller.Scoped(1, CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+        Caller scoped = TestCallers.Scoped(1, Capability.ViewPrinter);
 
         // Act
         Func<Task> removing = () => NewService(context).RemovePrinterAsync(printer.Uuid, scoped, CancellationToken.None);
@@ -390,10 +488,11 @@ public sealed class PrinterRemovalServiceTests : IDisposable
         verification.Printers.Should().ContainSingle();
     }
 
-    private HomespoolDbContext NewContext()
+    private HomespoolDbContext NewContext(params IInterceptor[] interceptors)
     {
         DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
                                                        .UseSqlite($"Data Source={_databasePath}")
+                                                       .AddInterceptors(interceptors)
                                                        .Options;
 
         return new HomespoolDbContext(options);
@@ -477,5 +576,16 @@ public sealed class PrinterRemovalServiceTests : IDisposable
     {
         context.PrinterLiveStates.Add(new PrinterLiveState { PrinterId = printerId, Status = status, LastSeenAt = DateTimeOffset.UtcNow });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>Fails every save, as a busy or failing database would.</summary>
+    private sealed class RefusingSaves : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+                                                                              InterceptionResult<int> result,
+                                                                              CancellationToken cancellationToken = default)
+        {
+            throw new DbUpdateException("Refused by the test.");
+        }
     }
 }

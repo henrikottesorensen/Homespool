@@ -56,8 +56,6 @@ public static class PasskeyChallengeRateLimit
 
     private const string HandlerQuery = "handler";
 
-    private const string UnknownAddress = "unknown";
-
     public static IServiceCollection AddPasskeyChallengeRateLimiting(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -66,17 +64,32 @@ public static class PasskeyChallengeRateLimit
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-            options.AddPolicy(RateLimitPolicies.PasskeyChallenge, context => IsChallenge(context) ?
-                RateLimitPartition.GetFixedWindowLimiter(AddressOf(context), _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = PermitLimit,
-                    Window = Window,
-                    QueueLimit = 0,
-                }) :
-                RateLimitPartition.GetNoLimiter(string.Empty));
+            options.AddPolicy(RateLimitPolicies.PasskeyChallenge, Partition);
         });
 
         return services;
+    }
+
+    /// <summary>
+    /// Which window <paramref name="context"/> falls in: its address's for a challenge, no limiter for
+    /// anything else.
+    /// </summary>
+    /// <remarks>
+    /// Public so the partition can be tested without a request going through the pipeline, as
+    /// <see cref="SignInRateLimit.Partition"/> is.
+    /// </remarks>
+    public static RateLimitPartition<string> Partition(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return IsChallenge(context) ?
+                   RateLimitPartition.GetFixedWindowLimiter(AddressOf(context), _ => new FixedWindowRateLimiterOptions
+                   {
+                       PermitLimit = PermitLimit,
+                       Window = Window,
+                       QueueLimit = 0,
+                   }) :
+                   RateLimitPartition.GetNoLimiter(string.Empty);
     }
 
     /// <summary>Whether <paramref name="context"/> asks one of the two pages for a ceremony.</summary>
@@ -117,6 +130,6 @@ public static class PasskeyChallengeRateLimit
 
     private static string AddressOf(HttpContext context)
     {
-        return context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress;
+        return ClientAddressKey.Of(context.Connection.RemoteIpAddress);
     }
 }

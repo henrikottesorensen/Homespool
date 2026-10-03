@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Http.Metadata;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Routing.Patterns;
 
+using Homespool.Host.Authorisation;
 using Homespool.Host.Controllers;
 
 namespace Homespool.Host.Test;
@@ -36,23 +38,25 @@ namespace Homespool.Host.Test;
 /// file result's 200 - and an arm that says nothing on its own is only allowed where one is present.
 /// </para>
 /// <para>
-/// <b>Scoped to the app API.</b> <see cref="PrusaConnectPrinterController"/> is excluded - <c>/p/*</c>
-/// is Prusa's protocol rather than ours, its only clients are printers running firmware that was
-/// written against Connect, and nobody will ever read our OpenAPI document to implement against it.
-/// So is <see cref="OctoPrintCompatController"/>, which is hidden from the document on purpose and
-/// answers its failures as prose.
+/// <b>Scoped to the app API, which is whatever <see cref="Policies.Api"/> guards.</b> The controllers
+/// are found by their <c>[Authorize]</c> rather than listed, so a new one is covered the moment it
+/// joins the API. That leaves out the protocol surfaces, which answer status codes rather than
+/// problems: <see cref="PrusaConnectPrinterController"/> and <see cref="EncryptedTransferController"/>
+/// are Prusa's protocol rather than ours, their only clients are printers running firmware that was
+/// written against Connect, and nobody will ever read our OpenAPI document to implement against
+/// them. <see cref="OctoPrintCompatController"/> is left out too - it is hidden from the document on
+/// purpose and answers its failures as prose.
 /// </para>
 /// </remarks>
 public class ControllerResponseDocumentationTests
 {
     private static IEnumerable<Type> AppApiControllers =>
-    [
-        typeof(PrinterController),
-        typeof(PrintFileController),
-        typeof(PrinterAppController),
-        typeof(PrintQueueController),
-        typeof(CameraController),
-    ];
+        typeof(PrinterController).Assembly
+                                 .GetTypes()
+                                 .Where(type => typeof(ControllerBase).IsAssignableFrom(type) &&
+                                                !type.IsAbstract &&
+                                                type.GetCustomAttributes<AuthorizeAttribute>(inherit: true)
+                                                    .Any(authorize => authorize.Policy == Policies.Api));
 
     private static IEnumerable<MethodInfo> Actions(Type controller)
     {
@@ -148,9 +152,31 @@ public class ControllerResponseDocumentationTests
             select $"{controller.Name}.{action.Name} documents {attribute.StatusCode} " +
                    $"as {attribute.Type.Name}").ToList();
 
+        List<string> fromControllerAttributes = (from controller in AppApiControllers
+            from attribute in controller.GetCustomAttributes<ProducesResponseTypeAttribute>(inherit: true)
+            where attribute.StatusCode >= 400 && attribute.Type != typeof(ProblemDetails)
+            select $"{controller.Name} documents {attribute.StatusCode} for every action " +
+                   $"as {attribute.Type.Name}").ToList();
+
         // Assert
         fromArms.Should().BeEmpty();
         fromAttributes.Should().BeEmpty();
+        fromControllerAttributes.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The search finds the app API and stops at it - pinned so that a search that finds nothing
+    /// fails here rather than passing every test above with nothing to check.
+    /// </summary>
+    [Fact]
+    public void TheAppApiIsFoundByItsPolicy()
+    {
+        AppApiControllers.Should().Contain(typeof(PrinterController), "the test below takes its action from it")
+                         .And.NotContain([
+                             typeof(PrusaConnectPrinterController),
+                             typeof(EncryptedTransferController),
+                             typeof(OctoPrintCompatController),
+                         ], "none of them is the app API, and none answers its failures as problems");
     }
 
     /// <summary>

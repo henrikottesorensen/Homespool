@@ -203,11 +203,6 @@ public static class PrinterRateLimits
     private const string Unattributed = "(none)";
 
     /// <summary>
-    /// The partition a connection with no address shares - a test host, or a unix socket.
-    /// </summary>
-    private const string UnknownAddress = "unknown";
-
-    /// <summary>
     /// Every policy this class wires, and the limits each one gets.
     /// </summary>
     /// <remarks>
@@ -322,7 +317,7 @@ public static class PrinterRateLimits
         if (limits.PerAddress is { } perAddress &&
             context.RequestServices.GetRequiredService<IOptions<XForwardedOptions>>().Value.AddressesAreClients)
         {
-            return new Demand(policy, limits.Ceiling, context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress, perAddress);
+            return new Demand(policy, limits.Ceiling, ClientAddressKey.Of(context.Connection.RemoteIpAddress), perAddress);
         }
 
         return new Demand(policy, limits.Ceiling, null, null);

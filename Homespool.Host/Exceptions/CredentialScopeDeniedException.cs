@@ -31,10 +31,19 @@ public class CredentialScopeDeniedException : Exception
     {
     }
 
+    /// <summary>
+    /// The capability the credential lacked, or null where the refusal did not name one. Lets a
+    /// caller that answers in its own words say which one without reading it out of the message.
+    /// </summary>
+    public Capability? Missing { get; private init; }
+
     /// <summary>The refusal naming what was missing, for a log or a diagnostic body.</summary>
     public static CredentialScopeDeniedException For(Capability capability)
     {
         return new CredentialScopeDeniedException(
-            $"The credential used for this request does not permit {capability}.");
+            $"The credential used for this request does not permit {capability}.")
+        {
+            Missing = capability,
+        };
     }
 }

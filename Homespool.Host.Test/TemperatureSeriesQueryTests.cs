@@ -162,7 +162,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
         await AddSamplesAsync(context, printer.Id, seconds: 3600, second => (215, 60, 215, 60));
 
         TemperatureSeries? series = await ServiceFor(context).GetTemperatureSeriesAsync(
-            printer.Uuid, Caller.Unscoped(1), Start, Start.AddHours(1), CancellationToken.None);
+            printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start, Start.AddHours(1), CancellationToken.None);
 
         series.Should().NotBeNull();
         series!.Points.Should().NotBeEmpty();
@@ -184,7 +184,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
                               second => (20 + (second / 18f), 60, 220, 60));
 
         TemperatureSeries series = (await ServiceFor(context).GetTemperatureSeriesAsync(
-            printer.Uuid, Caller.Unscoped(1), Start, Start.AddHours(1), CancellationToken.None))!;
+            printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start, Start.AddHours(1), CancellationToken.None))!;
 
         series.Points[0].Nozzle.Should().BeLessThan(40);
         series.Points[^1].Nozzle.Should().BeGreaterThan(200);
@@ -209,7 +209,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
                               second => (210, 60, second < 60 ? 200 : 240, 60));
 
         TemperatureSeries series = (await ServiceFor(context).GetTemperatureSeriesAsync(
-            printer.Uuid, Caller.Unscoped(1), Start, Start.AddMinutes(2), CancellationToken.None))!;
+            printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start, Start.AddMinutes(2), CancellationToken.None))!;
 
         series.Points.Select(point => point.TargetNozzle).Should().AllSatisfy(
             target => target.Should().BeOneOf(200d, 240d));
@@ -228,7 +228,8 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
         await AddSamplesAsync(context, printer.Id, seconds: 60, second => (215, 60, 215, 60));
 
         TemperatureSeries series = (await ServiceFor(context).GetTemperatureSeriesAsync(
-            printer.Uuid, Caller.Unscoped(1), Start.AddHours(5), Start.AddHours(6), CancellationToken.None))!;
+            printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start.AddHours(5), Start.AddHours(6),
+            CancellationToken.None))!;
 
         series.Points.Should().BeEmpty();
     }
@@ -247,7 +248,8 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
         await AddSamplesAsync(context, printer.Id, seconds: 600, second => (215, 60, 215, 60));
 
         TemperatureSeries series = (await ServiceFor(context).GetTemperatureSeriesAsync(
-            printer.Uuid, Caller.Unscoped(1), Start.AddMinutes(5), Start.AddMinutes(10), CancellationToken.None))!;
+            printer.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start.AddMinutes(5), Start.AddMinutes(10),
+            CancellationToken.None))!;
 
         series.Points.Should().NotBeEmpty();
         series.Points.Select(point => point.At).Should().AllSatisfy(at =>
@@ -295,7 +297,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
         await AddSamplesAsync(context, plain.Id, seconds: 120, second => (215, 60, 215, 60));
 
         TemperatureSeries chambered = (await ServiceFor(context).GetTemperatureSeriesAsync(
-            withChamber.Uuid, Caller.Unscoped(1), Start, Start.AddMinutes(2), CancellationToken.None))!;
+            withChamber.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start, Start.AddMinutes(2), CancellationToken.None))!;
 
         chambered.Points.Should().AllSatisfy(point =>
         {
@@ -305,7 +307,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
         });
 
         TemperatureSeries bare = (await ServiceFor(context).GetTemperatureSeriesAsync(
-            plain.Uuid, Caller.Unscoped(1), Start, Start.AddMinutes(2), CancellationToken.None))!;
+            plain.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start, Start.AddMinutes(2), CancellationToken.None))!;
 
         bare.Points.Should().AllSatisfy(point =>
         {
@@ -348,7 +350,7 @@ public sealed class TemperatureSeriesQueryTests : IDisposable
         await AddSamplesAsync(context, theirs.Id, seconds: 120, second => (60, 20, 60, 20));
 
         TemperatureSeries series = (await ServiceFor(context).GetTemperatureSeriesAsync(
-            mine.Uuid, Caller.Unscoped(1), Start, Start.AddMinutes(2), CancellationToken.None))!;
+            mine.Uuid, TestCallers.Scoped(1, Capability.ViewPrinter), Start, Start.AddMinutes(2), CancellationToken.None))!;
 
         series.Points.Select(point => point.Nozzle).Should().AllSatisfy(
             nozzle => nozzle.Should().BeApproximately(215, 0.001));

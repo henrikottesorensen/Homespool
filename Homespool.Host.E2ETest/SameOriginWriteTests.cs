@@ -166,7 +166,7 @@ public sealed class SameOriginWriteTests : IAsyncLifetime
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
             ApiTokenService tokens = scope.ServiceProvider.GetRequiredService<ApiTokenService>();
-            (_, plaintext) = await tokens.CreateAsync(user.Id, "e2e", CapabilitySet.Everything, CancellationToken.None);
+            (_, plaintext) = await tokens.CreateAsync(user.Id, "e2e", [Capability.UploadOwnFiles], CancellationToken.None);
         }
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });

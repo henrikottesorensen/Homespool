@@ -326,12 +326,14 @@ public sealed class PrintFileCatalog
 
     /// <summary>
     /// What a write needs: <see cref="Capability.UploadOwnFiles"/> for a new name,
-    /// <see cref="Capability.ManipulateOwnFiles"/> when it replaces one that exists.
+    /// <see cref="Capability.ManipulateOwnFiles"/> when it asks to overwrite.
     /// </summary>
     /// <remarks>
     /// <b>Overwriting is manipulation whatever the verb says</b> - it destroys bytes under a name
-    /// already in use - and <i>upload own files</i> must not sound like it does that. A credential
-    /// holding only the upload capability gets the same <c>409</c> an existing name already gives.
+    /// already in use - and <i>upload own files</i> must not sound like it does that. The flag
+    /// decides, not the name: a credential holding only the upload capability is refused any
+    /// overwrite as a <c>403</c> before the name is looked at, and without the flag an existing name
+    /// is the <c>409</c> every caller gets.
     /// </remarks>
     private static Capability RequiredToWrite(bool overwrite)
     {

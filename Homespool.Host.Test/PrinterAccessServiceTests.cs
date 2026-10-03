@@ -38,6 +38,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
     private const long User = 2;
     private const long Manager = 3;
     private const long Stranger = 4;
+    private const long Contributor = 5;
 
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-access-{Guid.NewGuid():N}.db");
 
@@ -227,9 +228,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        Caller scoped = Caller.Scoped(
-            Manager,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+        Caller scoped = TestCallers.Scoped(Manager, Capability.ViewPrinter);
 
         // Act & Assert
         (await access.AllowsAsync(1, scoped, Capability.ViewPrinter, TestContext.Current.CancellationToken))
@@ -253,9 +252,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
         // Reader holds the viewer preset; the credential asks for far more.
-        Caller overreaching = Caller.Scoped(
-            Reader,
-            CapabilitySet.Parse(CapabilitySet.Format(CapabilityPresets.Manager)));
+        Caller overreaching = TestCallers.Scoped(Reader, CapabilityPresets.Manager);
 
         // Act & Assert
         (await access.AllowsAsync(1, overreaching, Capability.ViewPrinter, TestContext.Current.CancellationToken))
@@ -276,9 +273,7 @@ public sealed class PrinterAccessServiceTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        Caller viewerScope = Caller.Scoped(
-            User,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewPrinter])));
+        Caller viewerScope = TestCallers.Scoped(User, Capability.ViewPrinter);
 
         // Act - their own work, and their membership would allow it
         bool allowed = await access.AllowsWithdrawingAsync(1, viewerScope, User, TestContext.Current.CancellationToken);
@@ -288,6 +283,98 @@ public sealed class PrinterAccessServiceTests : IDisposable
 
         (await access.AllowsWithdrawingAsync(1, Caller.Unscoped(User), User, TestContext.Current.CancellationToken))
             .Should().BeTrue("the same person on an unscoped credential withdraws their own work");
+    }
+
+    /// <summary>
+    /// <b>A withdrawal the team would allow and the key does not is the key's refusal</b>, naming the
+    /// capability a replacement token needs - not "your team does not permit it", which the
+    /// documentation tells a person no token can fix.
+    /// </summary>
+    /// <param name="caller">Who asks.</param>
+    /// <param name="scope">What their key holds.</param>
+    /// <param name="queuedBy">Whose work it is.</param>
+    /// <param name="missing">The capability the refusal should name.</param>
+    [Theory]
+
+    // The team grants ControlPrinter; the key holds Print, which only withdraws your own.
+    [InlineData(User, new[] { Capability.Print }, Manager, Capability.ControlPrinter)]
+
+    // The team grants Print only; the key holds ControlPrinter, which the team does not back.
+    [InlineData(Contributor, new[] { Capability.ControlPrinter }, Contributor, Capability.Print)]
+
+    // The key holds neither: named for the act - ControlPrinter for somebody else's work...
+    [InlineData(User, new[] { Capability.ViewPrinter }, Manager, Capability.ControlPrinter)]
+
+    // ...and Print for your own, the least a person has to tick.
+    [InlineData(User, new[] { Capability.ViewPrinter }, User, Capability.Print)]
+
+    // Key and team both lack ControlPrinter: the credential is reported first, as RequireAsync does.
+    [InlineData(Contributor, new[] { Capability.Print }, Manager, Capability.ControlPrinter)]
+    public async Task AWithdrawalTheKeyRefusesNamesWhatTheKeyIsMissing(long caller, Capability[] scope, long queuedBy, Capability missing)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
+        // Act
+        Func<Task> withdrawing = () => access.RequireWithdrawingAsync(1, TestCallers.Scoped(caller, scope), queuedBy,
+                                                                      TestContext.Current.CancellationToken);
+
+        // Assert
+        (await withdrawing.Should().ThrowAsync<CredentialScopeDeniedException>())
+            .Which.Missing.Should().Be(missing);
+    }
+
+    /// <summary>
+    /// A withdrawal the key would allow and the team does not is the team's refusal - no token helps.
+    /// </summary>
+    /// <param name="caller">Who asks, on an unscoped credential.</param>
+    /// <param name="queuedBy">Whose work it is.</param>
+    [Theory]
+    [InlineData(Contributor, Manager)]
+    [InlineData(Reader, Reader)]
+    public async Task AWithdrawalTheTeamRefusesIsTheTeamsRefusal(long caller, long queuedBy)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+
+        // Act
+        Func<Task> withdrawing = () => access.RequireWithdrawingAsync(1, Caller.Unscoped(caller), queuedBy,
+                                                                      TestContext.Current.CancellationToken);
+
+        // Assert
+        await withdrawing.Should().ThrowAsync<TeamAccessDeniedException>();
+    }
+
+    /// <summary>
+    /// What allowed a withdrawal is answered, because the command sent next is checked against it:
+    /// <see cref="Capability.ControlPrinter"/> wherever both key and team hold it, and
+    /// <see cref="Capability.Print"/> only for your own work without it.
+    /// </summary>
+    /// <param name="caller">Who asks.</param>
+    /// <param name="scope">What their key holds.</param>
+    /// <param name="queuedBy">Whose work it is.</param>
+    /// <param name="allowedBy">What the answer should name.</param>
+    [Theory]
+    [InlineData(User, new[] { Capability.Print }, User, Capability.Print)]
+    [InlineData(User, new[] { Capability.ControlPrinter }, Manager, Capability.ControlPrinter)]
+    [InlineData(User, new[] { Capability.Print, Capability.ControlPrinter }, User, Capability.ControlPrinter)]
+    [InlineData(Contributor, new[] { Capability.Print, Capability.ControlPrinter }, Contributor, Capability.Print)]
+    public async Task AnAllowedWithdrawalNamesWhatAllowedIt(long caller, Capability[] scope, long queuedBy, Capability allowedBy)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
+        Caller scoped = TestCallers.Scoped(caller, scope);
+
+        // Act
+        Capability answered = await access.RequireWithdrawingAsync(1, scoped, queuedBy, TestContext.Current.CancellationToken);
+
+        // Assert
+        answered.Should().Be(allowedBy);
+        (await access.AllowsWithdrawingAsync(1, scoped, queuedBy, TestContext.Current.CancellationToken))
+            .Should().BeTrue("the two entry points are one rule");
     }
 
     /// <summary>
@@ -364,10 +451,11 @@ public sealed class PrinterAccessServiceTests : IDisposable
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        TestAccounts.Add(context, Reader, User, Manager);
+        TestAccounts.Add(context, Reader, User, Manager, Contributor);
         context.TeamMembers.Add(TestMemberships.Viewer(team.Id, Reader));
         context.TeamMembers.Add(TestMemberships.Operator(team.Id, User));
         context.TeamMembers.Add(TestMemberships.Manager(team.Id, Manager));
+        context.TeamMembers.Add(TestMemberships.With(team.Id, Contributor, [.. CapabilityPresets.Contributor]));
 
         context.Printers.Add(new Printer { Id = 1, Uuid = Guid.NewGuid(), TeamId = team.Id });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

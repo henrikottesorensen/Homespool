@@ -122,7 +122,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        Printer printer = await service.ClaimPrinterAsync(code, "My printer", "Office", teamUuid: null, caller: Caller.Unscoped(1));
+        Printer printer = await service.ClaimPrinterAsync(code, "My printer", "Office", teamUuid: null,
+                                                          caller: TestCallers.Scoped(1, Capability.ManagePrinter));
 
         // Assert
         printer.TeamId.Should().Be(defaultTeam.TeamId);
@@ -153,7 +154,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        Printer printer = await service.ClaimPrinterAsync(code, null, null, teamUuid: managedTeam.Team!.Uuid, caller: Caller.Unscoped(1));
+        Printer printer = await service.ClaimPrinterAsync(code, null, null, teamUuid: managedTeam.Team!.Uuid,
+                                                          caller: TestCallers.Scoped(1, Capability.ManagePrinter));
 
         // Assert
         printer.TeamId.Should().Be(managedTeam.TeamId);
@@ -219,9 +221,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
-        Caller slicerKey = Caller.Scoped(
-            1,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+        Caller slicerKey = TestCallers.Scoped(1, Capability.UploadOwnFiles, Capability.Print);
 
         // Act
         Func<Task> claim = () => service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: slicerKey);
@@ -245,9 +245,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         TeamMember defaultTeam = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
-        Caller enrolling = Caller.Scoped(
-            1,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.ManagePrinter])));
+        Caller enrolling = TestCallers.Scoped(1, Capability.ManagePrinter);
 
         // Act
         Printer printer = await service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: enrolling);
@@ -272,9 +270,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         TeamMember managedTeam = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: false);
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
-        Caller slicerKey = Caller.Scoped(
-            1,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+        Caller slicerKey = TestCallers.Scoped(1, Capability.UploadOwnFiles, Capability.Print);
 
         // Act
         Func<Task> claim = () =>
@@ -301,9 +297,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Fails both halves: the team does not permit managing, and the credential never named it.
-        Caller slicerKey = Caller.Scoped(
-            1,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+        Caller slicerKey = TestCallers.Scoped(1, Capability.UploadOwnFiles, Capability.Print);
 
         // Act
         Func<Task> claim = () =>
@@ -354,7 +348,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: Caller.Unscoped(1));
 
         // Act
-        Func<Task> secondClaim = () => service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: Caller.Unscoped(2));
+        Func<Task> secondClaim = () => service.ClaimPrinterAsync(code, null, null, teamUuid: null,
+                                                                 caller: TestCallers.Scoped(2, Capability.ManagePrinter));
 
         // Assert
         await secondClaim.Should().ThrowAsync<RegistrationAlreadyClaimedException>();
@@ -379,7 +374,7 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
 
         // Act
-        await service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: Caller.Unscoped(1));
+        await service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: TestCallers.Scoped(1, Capability.ManagePrinter));
 
         // Assert
         (await service.GetToken(code)).Should().NotBeNullOrWhiteSpace("the printer still has to redeem the code itself");
@@ -399,7 +394,8 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
         await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
 
         // Act
-        Func<Task> unknown = () => service.ClaimPrinterAsync("NEVER-ISSUED", null, null, teamUuid: null, caller: Caller.Unscoped(1));
+        Func<Task> unknown = () => service.ClaimPrinterAsync("NEVER-ISSUED", null, null, teamUuid: null,
+                                                             caller: TestCallers.Scoped(1, Capability.ManagePrinter));
 
         // Assert
         await unknown.Should().ThrowAsync<PrinterNotFoundException>();

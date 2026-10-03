@@ -179,6 +179,21 @@ public sealed class TelemetryWriterTests : IDisposable
                                                          TimeSpan? trimWarningInterval = null,
                                                          IPrinterEventObserver? eventObserver = null)
     {
+        TelemetryWriter writer = await BuildWriterAsync(options, trimWarningInterval, eventObserver);
+
+        await writer.StartAsync(CancellationToken.None);
+
+        return writer;
+    }
+
+    /// <summary>
+    /// <see cref="StartWriterAsync"/> without the start, for a test about what the writer does before
+    /// its drain loop has run.
+    /// </summary>
+    private async Task<TelemetryWriter> BuildWriterAsync(StorageOptions options,
+                                                         TimeSpan? trimWarningInterval = null,
+                                                         IPrinterEventObserver? eventObserver = null)
+    {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
 
@@ -202,8 +217,6 @@ public sealed class TelemetryWriterTests : IDisposable
             SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
             EventTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
         };
-
-        await _writer.StartAsync(CancellationToken.None);
 
         return _writer;
     }
@@ -2135,7 +2148,7 @@ public sealed class TelemetryWriterTests : IDisposable
         trimmed.Should().BeTrue($"the pending event buffer must have a ceiling too, even a distant one. Log:\n{LogDump()}");
     }
 
-    // ---------- ForgetPrinterAsync ----------
+    // ---------- BeginEvictionAsync ----------
 
     /// <summary>
     /// <b>One printer reporting a temperature that is not a number does not stop anybody else
@@ -2212,7 +2225,7 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task ForgettingAPrinterLetsTheNextFlushSaveEverybodyElse()
+    public async Task EvictingAPrinterLetsTheNextFlushSaveEverybodyElse()
     {
         // Arrange - nothing may flush before the deletion, or there is nothing buffered left to
         // poison and this passes without testing anything. So: a batch size neither printer reaches
@@ -2237,7 +2250,7 @@ public sealed class TelemetryWriterTests : IDisposable
         await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
 
         // Act - the deletion sequence, in the order PrinterRemovalService performs it.
-        await writer.ForgetPrinterAsync(printerId: 1, CancellationToken.None);
+        await using IPrinterEviction eviction = await writer.BeginEvictionAsync(printerId: 1, CancellationToken.None);
 
         LogRecords.Should().Contain(
             record => record.StructuredState!.Any(kv => kv.Key == "SampleCount" && kv.Value == "5"),
@@ -2249,6 +2262,8 @@ public sealed class TelemetryWriterTests : IDisposable
             deleting.Printers.Remove(printer);
             await deleting.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
+
+        await eviction.CompleteAsync(CancellationToken.None);
 
         // The shutdown flush is the first and only write, and it happens with the printer gone.
         await writer.StopAsync(CancellationToken.None);
@@ -2264,14 +2279,16 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
-    /// Telemetry still in flight when the printer was deleted is dropped rather than buffered.
+    /// Telemetry still in flight when the printer was deleted is dropped rather than buffered - and
+    /// stays dropped once the eviction holding it is let go.
     /// </summary>
     /// <remarks>
     /// Purging the buffers is only half of it. The connection is closed before the delete, but its
     /// read loop can still be carrying a message - and one of those landing after the row is gone
     /// poisons the next flush exactly as a buffered row would have. So the id is remembered, which is
     /// what this asserts: enqueuing <em>after</em> the deletion has to be a no-op, not a delayed
-    /// failure.
+    /// failure. Disposed before the straggler arrives, because the caller's <c>await using</c> has
+    /// ended by then, and a completed eviction must outlive its own disposal.
     /// </remarks>
     [Fact]
     public async Task TelemetryArrivingAfterADeletionIsDropped()
@@ -2281,13 +2298,16 @@ public sealed class TelemetryWriterTests : IDisposable
         await SeedPrinterAsync(printerId: 1);
         await SeedPrinterAsync(printerId: 2);
 
-        await writer.ForgetPrinterAsync(printerId: 1, CancellationToken.None);
-
-        await using (HomespoolDbContext deleting = NewVerificationContext())
+        await using (IPrinterEviction eviction = await writer.BeginEvictionAsync(printerId: 1, CancellationToken.None))
         {
-            Printer printer = await deleting.Printers.SingleAsync(p => p.Id == 1, TestContext.Current.CancellationToken);
-            deleting.Printers.Remove(printer);
-            await deleting.SaveChangesAsync(TestContext.Current.CancellationToken);
+            await using (HomespoolDbContext deleting = NewVerificationContext())
+            {
+                Printer printer = await deleting.Printers.SingleAsync(p => p.Id == 1, TestContext.Current.CancellationToken);
+                deleting.Printers.Remove(printer);
+                await deleting.SaveChangesAsync(TestContext.Current.CancellationToken);
+            }
+
+            await eviction.CompleteAsync(CancellationToken.None);
         }
 
         // Act - a straggler from the closing socket, then a live printer behind it so the assertion
@@ -2310,11 +2330,177 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// <b>A removal that does not go through gives the printer back.</b> Released without being
+    /// completed, the eviction stops refusing, and the next message is stored as normal.
+    /// </summary>
+    /// <remarks>
+    /// The failure this prevents: the delete throws, the printer row and its credential survive, the
+    /// printer reconnects - and a refusal that outlived the removal would drop every message it ever
+    /// sends again, with nothing logged, until the process restarts.
+    /// </remarks>
+    [Fact]
+    public async Task ReleasingAnEvictionWithoutCompletingItLetsThePrinterBeHeardAgain()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync(printerId: 1);
+
+        IPrinterEviction eviction = await writer.BeginEvictionAsync(printerId: 1, CancellationToken.None);
+
+        // Act - the delete failed, so the row is still there and nothing completes.
+        await eviction.DisposeAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        // Assert
+        bool heard = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.AnyAsync(s => s.PrinterId == 1);
+        }, TimeSpan.FromSeconds(10));
+
+        heard.Should().BeTrue($"a printer that was not removed must be stored again. Log:\n{LogDump()}");
+
+        LogRecords.Should().Contain(record => record.Level == LogLevel.Warning && record.Message.Contains("not removed after all"),
+                                    $"Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// Two removals of one printer in progress at once: the one that fails releases only its own hold,
+    /// and the other's still refuses.
+    /// </summary>
+    /// <remarks>
+    /// The double-submitted form. A refusal that was a flag rather than a count would be lifted by
+    /// whichever finished first, and the one still about to delete the row would be deleting it under
+    /// a writer that had started accepting the printer's telemetry again.
+    /// </remarks>
+    [Fact]
+    public async Task ReleasingOneOfTwoEvictionsLeavesThePrinterRefused()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync(printerId: 1);
+        await SeedPrinterAsync(printerId: 2);
+
+        await using IPrinterEviction first = await writer.BeginEvictionAsync(printerId: 1, CancellationToken.None);
+        IPrinterEviction second = await writer.BeginEvictionAsync(printerId: 1, CancellationToken.None);
+
+        // Act
+        await second.DisposeAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+        writer.Enqueue(printerId: 2, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        // Assert - the second printer is the clock: once its sample is stored, the first's message
+        // has been through the loop ahead of it.
+        bool survivorSaved = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.AnyAsync(s => s.PrinterId == 2);
+        }, TimeSpan.FromSeconds(10));
+
+        survivorSaved.Should().BeTrue($"Log:\n{LogDump()}");
+
+        await using HomespoolDbContext verification = NewVerificationContext();
+
+        (await verification.TelemetrySamples.AnyAsync(s => s.PrinterId == 1, TestContext.Current.CancellationToken))
+            .Should().BeFalse($"the first removal still holds the printer. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// An eviction whose wait is cancelled releases its own hold - the caller never got an eviction to
+    /// dispose.
+    /// </summary>
+    /// <remarks>
+    /// Built and not started, so the hold cannot be acknowledged before the cancellation lands: the
+    /// loop meets the hold and its release together when it first runs.
+    /// </remarks>
+    [Fact]
+    public async Task CancellingTheWaitReleasesTheHold()
+    {
+        // Arrange
+        TelemetryWriter writer = await BuildWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync(printerId: 1);
+
+        using CancellationTokenSource cancelled = new();
+        await cancelled.CancelAsync();
+
+        // Act
+        Func<Task> evicting = () => writer.BeginEvictionAsync(printerId: 1, cancelled.Token);
+
+        await evicting.Should().ThrowAsync<OperationCanceledException>();
+
+        await writer.StartAsync(CancellationToken.None);
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        // Assert
+        bool heard = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.AnyAsync(s => s.PrinterId == 1);
+        }, TimeSpan.FromSeconds(10));
+
+        heard.Should().BeTrue($"a cancelled removal must not leave the printer refused. Log:\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// <b>Stored telemetry goes only when the eviction completes</b> - not when it begins, and not when
+    /// it is released.
+    /// </summary>
+    /// <remarks>
+    /// Deleting at the start would cost a removal that then fails the printer's whole history and its
+    /// last-known state, for a printer that is still there. The row is never deleted here, so the
+    /// cascade is not what empties the table: completing is.
+    /// </remarks>
+    [Fact]
+    public async Task StoredTelemetryIsDeletedOnlyWhenTheEvictionCompletes()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync(printerId: 1);
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        bool stored = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.AnyAsync(s => s.PrinterId == 1);
+        }, TimeSpan.FromSeconds(10));
+
+        stored.Should().BeTrue($"Log:\n{LogDump()}");
+
+        // Act
+        await using IPrinterEviction eviction = await writer.BeginEvictionAsync(printerId: 1, CancellationToken.None);
+
+        bool storedWhileHeld;
+
+        await using (HomespoolDbContext held = NewVerificationContext())
+        {
+            storedWhileHeld = await held.TelemetrySamples.AnyAsync(s => s.PrinterId == 1, TestContext.Current.CancellationToken) &&
+                              await held.PrinterLiveStates.AnyAsync(s => s.PrinterId == 1, TestContext.Current.CancellationToken);
+        }
+
+        await eviction.CompleteAsync(CancellationToken.None);
+
+        // Assert
+        storedWhileHeld.Should().BeTrue("a removal that has not happened yet must not have taken the history");
+
+        await using HomespoolDbContext verification = NewVerificationContext();
+
+        (await verification.TelemetrySamples.AnyAsync(s => s.PrinterId == 1, TestContext.Current.CancellationToken)).Should().BeFalse();
+        (await verification.PrinterLiveStates.AnyAsync(s => s.PrinterId == 1, TestContext.Current.CancellationToken)).Should().BeFalse();
+    }
+
+    /// <summary>
     /// A writer that has already been told to stop answers immediately rather than leaving a request
     /// waiting out the timeout for a drain loop that will never run again.
     /// </summary>
     [Fact]
-    public async Task ForgettingAfterShutdownReturnsRatherThanWaiting()
+    public async Task EvictingAfterShutdownReturnsRatherThanWaiting()
     {
         // Arrange
         TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
@@ -2323,11 +2509,11 @@ public sealed class TelemetryWriterTests : IDisposable
         await writer.StopAsync(CancellationToken.None);
 
         // Act
-        Task forgetting = writer.ForgetPrinterAsync(printerId: 1, CancellationToken.None);
+        Task<IPrinterEviction> evicting = writer.BeginEvictionAsync(printerId: 1, CancellationToken.None);
 
         // Assert - completed, not merely started. The timeout is 10 s, so a hang would show here.
-        (await Task.WhenAny(forgetting, Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken)))
-            .Should().BeSameAs(forgetting);
+        (await Task.WhenAny(evicting, Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken)))
+            .Should().BeSameAs(evicting);
     }
 
     /// <summary>

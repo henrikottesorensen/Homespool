@@ -252,17 +252,15 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
         }
     }
 
-    [Theory]
-    [InlineData(10, 10)]
-    [InlineData(TelemetryAlertService.MaxPushBodyLength, TelemetryAlertService.MaxPushBodyLength)]
-    [InlineData(TelemetryAlertService.MaxPushBodyLength + 1, TelemetryAlertService.MaxPushBodyLength)]
-    public void APushCarriesTheProblemsCutToFit(int descriptionLength, int expectedLength)
+    [Fact]
+    public void APushCarriesOnlyTheProblems()
     {
         // Arrange
         HealthReport report = new(
             new Dictionary<string, HealthReportEntry>
             {
-                ["broken"] = new(HealthStatus.Unhealthy, new string('x', descriptionLength), TimeSpan.Zero, null, null),
+                ["broken"] = new(HealthStatus.Unhealthy, "Database unreachable.", TimeSpan.Zero, null, null),
+                ["slow"] = new(HealthStatus.Degraded, "Queue behind.", TimeSpan.Zero, null, null),
                 ["fine"] = new(HealthStatus.Healthy, "All good.", TimeSpan.Zero, null, null),
             },
             TimeSpan.Zero);
@@ -271,9 +269,7 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
         string body = TelemetryAlertService.DescribeForPush(report);
 
         // Assert
-        body.Length.Should().Be(expectedLength);
-        body.Should().NotContain("All good.");
-        body.EndsWith('…').Should().Be(descriptionLength > TelemetryAlertService.MaxPushBodyLength);
+        body.Should().Be("Database unreachable.\nQueue behind.");
     }
 
     /// <summary>
@@ -296,25 +292,6 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
 
         // Assert
         body.Should().Be("Refused <b>everything</b> & gave up");
-    }
-
-    [Fact]
-    public void APushNeverEndsHalfWayThroughACharacter()
-    {
-        // Arrange - an emoji, two UTF-16 units, straddling the cut.
-        string description = new string('x', TelemetryAlertService.MaxPushBodyLength - 2) + "😀" + "tail";
-        HealthReport report = new(
-            new Dictionary<string, HealthReportEntry>
-            {
-                ["broken"] = new(HealthStatus.Unhealthy, description, TimeSpan.Zero, null, null),
-            },
-            TimeSpan.Zero);
-
-        // Act
-        string body = TelemetryAlertService.DescribeForPush(report);
-
-        // Assert
-        body.Should().Be(new string('x', TelemetryAlertService.MaxPushBodyLength - 2) + "…");
     }
 
     private TelemetryAlertService NewService(bool mailConfigured = false)

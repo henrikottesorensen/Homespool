@@ -83,7 +83,7 @@ public sealed class PrintFileSenderTests : IDisposable
         // Act
         FileSendResult result = await NewSender(context).SendAsync(
             await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+            file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
 
         // Assert
         ISendableCommand sent = SentCommand(actor);
@@ -127,7 +127,8 @@ public sealed class PrintFileSenderTests : IDisposable
 
         // Act
         await NewSender(context).SendAsync(await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-                                           file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+                                           file, TestCallers.Scoped(Owner, Capability.Print),
+                                           TestContext.Current.CancellationToken);
 
         // Assert
         long declared = SentCommand(actor) switch
@@ -157,7 +158,7 @@ public sealed class PrintFileSenderTests : IDisposable
         // Act
         await NewSender(context).SendAsync(
             await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+            file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
 
         // Assert
         StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
@@ -189,7 +190,7 @@ public sealed class PrintFileSenderTests : IDisposable
         // Act
         FileSendResult result = await NewSender(context).SendAsync(
             await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+            file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
 
         // Assert
         StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
@@ -231,8 +232,8 @@ public sealed class PrintFileSenderTests : IDisposable
         PrintFileSender sender = NewSender(context);
 
         // Act
-        await sender.SendAsync(printer, file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
-        await sender.SendAsync(printer, file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+        await sender.SendAsync(printer, file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
+        await sender.SendAsync(printer, file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
 
         // Assert
         StartEncryptedDownload[] sent = SentCommands(actor).Cast<StartEncryptedDownload>().ToArray();
@@ -257,7 +258,8 @@ public sealed class PrintFileSenderTests : IDisposable
 
         // Act
         await NewSender(context).SendAsync(await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-                                           file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+                                           file, TestCallers.Scoped(Owner, Capability.Print),
+                                           TestContext.Current.CancellationToken);
 
         // Assert
         StartEncryptedDownload encrypted = SentCommand(actor).Should().BeOfType<StartEncryptedDownload>().Which;
@@ -304,7 +306,7 @@ public sealed class PrintFileSenderTests : IDisposable
         // Act
         Func<Task> act = async () => await NewSender(context).SendAsync(
             await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+            file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().ThrowAsync<CommandResponseTimedOutException>("the caller still has to know");
@@ -341,7 +343,7 @@ public sealed class PrintFileSenderTests : IDisposable
         // Act
         Func<Task> act = async () => await NewSender(context).SendAsync(
             await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+            file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
 
         // Assert
         await act.Should().ThrowAsync<InvalidOperationException>();
@@ -386,7 +388,7 @@ public sealed class PrintFileSenderTests : IDisposable
         // Act
         FileSendResult result = await NewSender(context).SendAsync(
             await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
-            file, Caller.Unscoped(Owner), TestContext.Current.CancellationToken);
+            file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
 
         // Assert
         StartConnectDownload plain = SentCommand(actor).Should().BeOfType<StartConnectDownload>().Which;
@@ -418,7 +420,7 @@ public sealed class PrintFileSenderTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         StoredFile file = WriteFile("model.gcode", 4096);
         IPrinterConnectionActor actor = Connect(canStreamChunks, PrinterEventType.Finished);
-        Caller slicer = Caller.Scoped(Owner, CapabilitySet.Parse(CapabilitySet.Format([Capability.UploadOwnFiles, Capability.Print])));
+        Caller slicer = TestCallers.Scoped(Owner, Capability.UploadOwnFiles, Capability.Print);
 
         // Act
         FileSendResult result = await NewSender(context).SendAsync(

@@ -58,12 +58,14 @@ public sealed class DefaultPrinterServiceTests : IDisposable
         HSUser user = await SeedUserAsync(users, "chooser@example.com");
         await JoinAsync(context, user.Id);
 
-        (await defaults.SetAsync(user, Caller.Unscoped(user.Id), 1, TestContext.Current.CancellationToken))
+        (await defaults.SetAsync(user, TestCallers.Scoped(user.Id, Capability.ViewPrinter), 1,
+                                 TestContext.Current.CancellationToken))
             .Should().BeTrue();
 
         user.DefaultPrinterId.Should().Be(1);
 
-        (await defaults.ResolveAsync(user, Caller.Unscoped(user.Id), TestContext.Current.CancellationToken))
+        (await defaults.ResolveAsync(user, TestCallers.Scoped(user.Id, Capability.ViewPrinter),
+                                     TestContext.Current.CancellationToken))
             .Should().Be(1);
     }
 
@@ -112,7 +114,8 @@ public sealed class DefaultPrinterServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // A fresh request, for the memo reason given above.
-        (await NewService(context, users).ResolveAsync(user, Caller.Unscoped(user.Id), TestContext.Current.CancellationToken))
+        (await NewService(context, users).ResolveAsync(user, TestCallers.Scoped(user.Id, Capability.ViewPrinter),
+                                                       TestContext.Current.CancellationToken))
             .Should().BeNull();
     }
 
@@ -154,9 +157,7 @@ public sealed class DefaultPrinterServiceTests : IDisposable
 
         await defaults.SetAsync(user, Caller.Unscoped(user.Id), 1, TestContext.Current.CancellationToken);
 
-        Caller narrowed = Caller.Scoped(
-            user.Id,
-            CapabilitySet.Parse(CapabilitySet.Format([Capability.ViewOwnFiles])));
+        Caller narrowed = TestCallers.Scoped(user.Id, Capability.ViewOwnFiles);
 
         (await defaults.ResolveAsync(user, narrowed, TestContext.Current.CancellationToken))
             .Should().BeNull();
@@ -195,7 +196,8 @@ public sealed class DefaultPrinterServiceTests : IDisposable
         HSUser user = await SeedUserAsync(users, "undecided@example.com");
         await JoinAsync(context, user.Id);
 
-        (await defaults.ResolveAsync(user, Caller.Unscoped(user.Id), TestContext.Current.CancellationToken))
+        (await defaults.ResolveAsync(user, TestCallers.Scoped(user.Id, Capability.ViewPrinter),
+                                     TestContext.Current.CancellationToken))
             .Should().BeNull("a printer nobody picked is not a default");
     }
 

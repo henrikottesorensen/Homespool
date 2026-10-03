@@ -75,7 +75,8 @@ public sealed class PrintStopServiceTests : IDisposable
         Connect(PrinterEventType.Finished);
 
         // Act
-        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+        await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(Stopper, Capability.Print),
+                                            TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -112,7 +113,8 @@ public sealed class PrintStopServiceTests : IDisposable
         Connect(PrinterEventType.Finished);
 
         // Act
-        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+        await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(Stopper, Capability.Print),
+                                            TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -136,7 +138,8 @@ public sealed class PrintStopServiceTests : IDisposable
         Connect(PrinterEventType.Finished);
 
         // Act
-        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+        await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(Stopper, Capability.Print),
+                                            TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -160,7 +163,8 @@ public sealed class PrintStopServiceTests : IDisposable
         Connect(PrinterEventType.Rejected, "No print to stop");
 
         // Act
-        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+        await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(Stopper, Capability.Print),
+                                            TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -182,7 +186,8 @@ public sealed class PrintStopServiceTests : IDisposable
         ConnectClosingTheRowMidFlight(PrintState.Stopped);
 
         // Act
-        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+        await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(Stopper, Capability.Print),
+                                            TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -205,7 +210,8 @@ public sealed class PrintStopServiceTests : IDisposable
         ConnectClosingTheRowMidFlight(PrintState.Finished);
 
         // Act
-        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+        await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(Stopper, Capability.Print),
+                                            TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -226,7 +232,8 @@ public sealed class PrintStopServiceTests : IDisposable
         Connect(PrinterEventType.Finished);
 
         // Act
-        await NewService(context).StopAsync(PrinterId, Caller.Unscoped(SomebodyElse), TestContext.Current.CancellationToken);
+        await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(SomebodyElse, Capability.ControlPrinter),
+                                            TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
@@ -249,7 +256,8 @@ public sealed class PrintStopServiceTests : IDisposable
 
         // Act
         CommandOutcome? outcome =
-            await NewService(context).StopAsync(PrinterId, Caller.Unscoped(Stopper), TestContext.Current.CancellationToken);
+            await NewService(context).StopAsync(PrinterId, TestCallers.Scoped(Stopper, Capability.ControlPrinter),
+                                                TestContext.Current.CancellationToken);
 
         // Assert
         outcome!.EventType.Should().Be(PrinterEventType.Finished, "the send is not conditional on our own bookkeeping");
@@ -274,7 +282,7 @@ public sealed class PrintStopServiceTests : IDisposable
         // Arrange - nothing of ours running, as for a print started at the panel
         await using HomespoolDbContext context = await SeedAsync();
         IPrinterConnectionActor actor = ConnectRecording();
-        Caller slicerKey = Caller.Scoped(Stopper, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller slicerKey = TestCallers.Scoped(Stopper, Capability.Print);
 
         // Act
         Func<Task> stop = () => NewService(context).StopAsync(PrinterId, slicerKey, TestContext.Current.CancellationToken);
@@ -351,7 +359,7 @@ public sealed class PrintStopServiceTests : IDisposable
         }
 
         Connect(PrinterEventType.Finished);
-        Caller stopButton = Caller.Scoped(Stopper, CapabilitySet.Parse(CapabilitySet.Format([Capability.ControlPrinter])));
+        Caller stopButton = TestCallers.Scoped(Stopper, Capability.ControlPrinter);
 
         // Act
         CommandOutcome? outcome = await NewService(context).StopAsync(PrinterId, stopButton, TestContext.Current.CancellationToken);
@@ -377,7 +385,7 @@ public sealed class PrintStopServiceTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync();
         await AddPrintAsync(context, PrintState.Printing, ended: false, queuedBy: Stopper);
         Connect(PrinterEventType.Finished);
-        Caller slicerKey = Caller.Scoped(Stopper, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller slicerKey = TestCallers.Scoped(Stopper, Capability.Print);
 
         // Act
         CommandOutcome? outcome = await NewService(context).StopAsync(PrinterId, slicerKey, TestContext.Current.CancellationToken);

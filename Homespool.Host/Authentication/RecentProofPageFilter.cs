@@ -13,7 +13,8 @@ namespace Homespool.Host.Authentication;
 /// <summary>
 /// Acts on <see cref="RequireRecentProofAttribute"/>: a handler the page or the method declared runs
 /// only for a request carrying a live <see cref="RecentProof"/> for the signed-in account, and everyone
-/// else is sent to <c>Account/Reauthenticate</c> with the page's own path to come back to.
+/// else is sent to <c>Account/Reauthenticate</c> with the page's own path to come back to. A request it
+/// lets through renews the proof's window.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -64,7 +65,7 @@ public sealed class RecentProofPageFilter : IAsyncPageFilter
 
         if (subject is not null &&
             long.TryParse(subject, NumberStyles.None, CultureInfo.InvariantCulture, out long userId) &&
-            _proof.IsProved(context.HttpContext, userId, required.MaxAge))
+            _proof.Renew(context.HttpContext, userId, required.MaxAge))
         {
             await next();
 

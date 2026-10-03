@@ -58,8 +58,6 @@ public static class SignInRateLimit
     /// <summary>The window <see cref="PermitLimit"/> applies to.</summary>
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
-    private const string UnknownAddress = "unknown";
-
     public static IServiceCollection AddSignInRateLimiting(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
@@ -116,10 +114,11 @@ public static class SignInRateLimit
     }
 
     /// <summary>
-    /// The client's address as the forwarded-headers middleware has resolved it by now.
+    /// The client as the forwarded-headers middleware has resolved it by now, keyed by
+    /// <see cref="ClientAddressKey"/>.
     /// </summary>
     private static string AddressOf(HttpContext context)
     {
-        return context.Connection.RemoteIpAddress?.ToString() ?? UnknownAddress;
+        return ClientAddressKey.Of(context.Connection.RemoteIpAddress);
     }
 }

@@ -20,6 +20,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Controllers;
@@ -61,6 +62,7 @@ namespace Homespool.Host.Controllers;
 [ApiController]
 [Route("/compat/octoprint/{uuid:guid}")]
 [Authorize(Policy = Authorisation.Policies.Compat)]
+[PlainTextScopeRefusal]
 [ApiExplorerSettings(IgnoreApi = true)]
 public class OctoPrintCompatController : ControllerBase
 {
@@ -73,18 +75,21 @@ public class OctoPrintCompatController : ControllerBase
 
     private readonly PrintFileCatalog _files;
     private readonly PrintQueueService _queue;
+    private readonly PrinterAccessService _access;
     private readonly PrinterQueryService _printers;
     private readonly UserManager<HSUser> _userManager;
     private readonly PrintFileStorageOptions _options;
 
     public OctoPrintCompatController(PrintFileCatalog files,
                                      PrintQueueService queue,
+                                     PrinterAccessService access,
                                      PrinterQueryService printers,
                                      UserManager<HSUser> userManager,
                                      IOptionsSnapshot<PrintFileStorageOptions> options)
     {
         _files = files;
         _queue = queue;
+        _access = access;
         _printers = printers;
         _userManager = userManager;
         _options = options.Value;
@@ -149,18 +154,14 @@ public class OctoPrintCompatController : ControllerBase
     /// </para>
     /// </remarks>
     [HttpPost]
-    [Route("api/files/local")]
-
-    // Was [RequestSizeLimit(long.MaxValue)], which removed Kestrel's ceiling and put nothing in its
-    // place: the file section was bounded by LengthLimitingStream and every other section was not.
-    // The configured form, so this endpoint and the Files page move together with one setting.
     [BoundedUpload]
+    [Route("api/files/local")]
 
     // Without this MVC buffers the whole body into Request.Form before this method runs, and the
     // MultipartReader below then reads an exhausted stream. See the attribute's own documentation.
     [DisableFormValueModelBinding]
-    public async Task<Results<Created, ContentHttpResult, ForbiddenProblem, NotFoundProblem>> Upload(Guid uuid,
-                                                                                                    CancellationToken cancellationToken)
+    public async Task<Results<Created, ContentHttpResult, ForbiddenProblem, NotFoundProblem>> Upload(
+        Guid uuid, CancellationToken cancellationToken)
     {
         // Before a byte of the body is read: with Expect: 100-continue - which libcurl adds to every
         // upload this size - Kestrel withholds the 100 until something reads the body, so refusing
@@ -185,6 +186,12 @@ public class OctoPrintCompatController : ControllerBase
 
         MultipartReader reader = new(boundary, Request.Body);
         bool print = false;
+        Caller caller = CallerResolver.For(owner, User);
+
+        // The file is staged, not stored: it becomes a file in the library only once the print, if one
+        // was asked for, is known to be allowed. Refusing after storing would mean deleting, which
+        // needs a capability the slicer key does not hold.
+        PendingUpload? pending = null;
         StoredFile? stored = null;
 
         // Held outside the loop so a failure can name the file it was reading.
@@ -203,14 +210,52 @@ public class OctoPrintCompatController : ControllerBase
 
                 if (disposition.IsFileDisposition())
                 {
-                    stored = await ReadFileSectionAsync(section, disposition, owner, cancellationToken);
+                    if (pending is not null)
+                    {
+                        throw new ArgumentException("Expected one file part.");
+                    }
+
+                    pending = await StageFileSectionAsync(section, disposition, caller, cancellationToken);
                 }
                 else if (disposition.IsFormDisposition() &&
                          string.Equals(disposition.Name.Value, "print", StringComparison.OrdinalIgnoreCase))
                 {
                     print = await ReadPrintFlagAsync(section, cancellationToken);
+
+                    // PrusaSlicer sends this ahead of the file, so a refusal here means the file is
+                    // never read. A client that sends it after the file is refused below instead.
+                    if (print && pending is null)
+                    {
+                        await _access.RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
+                    }
                 }
             }
+
+            if (pending is not null)
+            {
+                if (print)
+                {
+                    await _access.RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
+                }
+
+                stored = await _files.PublishAsync(caller, pending.Token, overwrite: false, cancellationToken,
+                                                   owner.UserName);
+            }
+        }
+        catch (CredentialScopeDeniedException e)
+        {
+            // Staging refuses on the upload capability and the print check on Print: two different
+            // things for a person to fix, so the answer names the one that was missing.
+            return Explain(StatusCodes.Status403Forbidden,
+                           e.Missing == Capability.Print ?
+                               "This key may not print, so nothing was uploaded. Use Upload instead of " +
+                               "Upload and Print, or a key that may print." :
+                               $"{e.Message} Nothing was uploaded.");
+        }
+        catch (TeamAccessDeniedException)
+        {
+            return Explain(StatusCodes.Status403Forbidden,
+                           "You may not print on this printer, so nothing was uploaded.");
         }
         catch (UploadTooLargeException)
         {
@@ -230,6 +275,15 @@ public class OctoPrintCompatController : ControllerBase
         {
             return Explain(StatusCodes.Status400BadRequest, e.Message);
         }
+        finally
+        {
+            // Whatever ended before publishing leaves nothing behind: a refusal, a conflict, a
+            // dropped connection. Discarding a staged upload needs only the upload capability.
+            if (stored is null && pending is not null)
+            {
+                _files.Discard(caller, pending.Token);
+            }
+        }
 
         if (stored is null)
         {
@@ -244,25 +298,23 @@ public class OctoPrintCompatController : ControllerBase
                 // whose response shape is not ours to extend and whose caller is a slicer rather than a
                 // reader. A holding finding still stops the print at the loop, and the person sees it on
                 // the printer's page - which is where they would look after pressing Send anyway.
-                await _queue.EnqueueAsync(printer.Id, CallerResolver.For(owner, User), stored.FileName, cancellationToken);
+                await _queue.EnqueueAsync(printer.Id, caller, stored.FileName, cancellationToken);
             }
             catch (IncompatiblePrinterModelException e)
             {
-                // The one finding that is worth the slicer's own dialog rather than the printer's page,
-                // and the one where undoing the upload is right: the file was sent *to a printer*, and
-                // this printer will never print it. Keeping the bytes would leave a file nobody asked
-                // to store behind a message saying the send failed. Only ever this request's own file:
-                // a name that already existed was refused above, before a byte of it was stored.
-                await _files.DeleteAsync(CallerResolver.For(owner, User), stored.FileName, cancellationToken);
-
+                // The one finding that is worth the slicer's own dialog rather than the printer's page.
+                // The file stays: it was uploaded, and an upload is not undone because the print
+                // that came with it cannot start. Deleting it would also need ManipulateOwnFiles,
+                // which the documented slicer token deliberately lacks, and would reach only the
+                // last of several file parts. 409 because the send does conflict with the printer.
                 return Explain(StatusCodes.Status409Conflict,
-                               $"{e.Message} Nothing was uploaded - send it to the right printer, or " +
-                               "re-slice it for this one.");
+                               $"'{stored.FileName}' was uploaded, but not queued: {e.Message} Send it to the " +
+                               "right printer, or re-slice it for this one.");
             }
-            catch (TeamAccessDeniedException)
+            catch (Exception e) when (e is TeamAccessDeniedException or CredentialScopeDeniedException)
             {
-                // The file is already stored, so this is a partial success: say what happened rather
-                // than implying nothing did.
+                // Only if the permission changed since the check above: the file is stored by now, so
+                // say what happened rather than implying nothing did.
                 return Explain(StatusCodes.Status403Forbidden,
                                $"'{stored.FileName}' was uploaded, but you may not change this printer's queue.");
             }
@@ -374,10 +426,10 @@ public class OctoPrintCompatController : ControllerBase
     /// name faces the same allowlist and the same per-user tree as an <c>/api/v1</c> upload.
     /// </para>
     /// </remarks>
-    private async Task<StoredFile> ReadFileSectionAsync(MultipartSection section,
-                                                        ContentDispositionHeaderValue disposition,
-                                                        HSUser owner,
-                                                        CancellationToken cancellationToken)
+    private async Task<PendingUpload> StageFileSectionAsync(MultipartSection section,
+                                                            ContentDispositionHeaderValue disposition,
+                                                            Caller caller,
+                                                            CancellationToken cancellationToken)
     {
         string fileName = Path.GetFileName(HeaderUtilities.RemoveQuotes(disposition.FileName).Value ?? string.Empty);
 
@@ -390,8 +442,7 @@ public class OctoPrintCompatController : ControllerBase
 
         await using LengthLimitingStream limited = new(section.Body, _options.MaxUploadBytes);
 
-        return await _files.SaveAsync(CallerResolver.For(owner, User), fileName, limited, overwrite: false, cancellationToken,
-                                      owner.UserName);
+        return await _files.StageAsync(caller, fileName, limited, cancellationToken);
     }
 
     /// <summary>

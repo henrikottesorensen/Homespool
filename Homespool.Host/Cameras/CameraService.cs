@@ -43,6 +43,7 @@ public class CameraService
     private readonly CameraSourcePolicy _sourcePolicy;
     private readonly Go2RtcClient _streamServer;
     private readonly CameraStreamSweeper _sweeper;
+    private readonly CameraStreamSync _sync;
     private readonly ICameraSnapshotFetcher _fetcher;
     private readonly CameraFrameCache _frames;
     private readonly CameraLiveAvailability _liveView;
@@ -57,6 +58,7 @@ public class CameraService
                          CameraSourcePolicy sourcePolicy,
                          Go2RtcClient streamServer,
                          CameraStreamSweeper sweeper,
+                         CameraStreamSync sync,
                          ICameraSnapshotFetcher fetcher,
                          CameraFrameCache frames,
                          CameraLiveAvailability liveView,
@@ -71,6 +73,7 @@ public class CameraService
         _sourcePolicy = sourcePolicy;
         _streamServer = streamServer;
         _sweeper = sweeper;
+        _sync = sync;
         _fetcher = fetcher;
         _frames = frames;
         _liveView = liveView;
@@ -387,10 +390,10 @@ public class CameraService
         _frames.Forget(camera.Id);
         _liveView.Forget(camera.Uuid);
 
-        // After the row, so a sidecar that cannot be told leaves a stream no camera owns - which the
-        // sweep before the next save, or at the next start, removes. Refusing the removal instead would
-        // not help a camera taken by its printer's removal, which never comes through here.
-        _ = await _streamServer.DeleteStreamAsync(camera.Uuid, cancellationToken).ConfigureAwait(false);
+        // After the row, so the sync finds no row and removes the stream. A sidecar that cannot be told
+        // leaves a stream no camera owns, which the sweep before the next save, or at the next start,
+        // removes.
+        _ = await _sync.SyncAsync(camera.Uuid, cancellationToken).ConfigureAwait(false);
 
         return true;
     }
@@ -529,6 +532,11 @@ public class CameraService
     /// it did not.
     /// </para>
     /// <para>
+    /// <b>Registered from the row, not from <paramref name="camera"/>.</b> The sync reads the row again
+    /// inside the camera's gate, so of two saves of one camera the sidecar ends with whichever was
+    /// committed last, whatever order their registrations arrive in.
+    /// </para>
+    /// <para>
     /// <b>Streams no camera owns are removed first</b>, because this is the moment one starts to
     /// matter: a camera deleted while the sidecar could not be told leaves its device held, and the
     /// device is offered again as free - so a save naming it is the one that would lose to the
@@ -539,25 +547,29 @@ public class CameraService
     {
         _ = await _sweeper.SweepAsync(cancellationToken).ConfigureAwait(false);
 
-        StreamRegistration registration = await _streamServer
-                                                .PutStreamAsync(camera.Uuid, _credentials.Reveal(camera), cancellationToken)
-                                                .ConfigureAwait(false);
+        StreamSync sync = await _sync.SyncAsync(camera.Uuid, cancellationToken).ConfigureAwait(false);
 
         // Each has its own words because each sends somebody to a different place: the address, the
         // sidecar's configuration file, or whether the sidecar is running at all.
-        switch (registration)
+        switch (sync.Outcome)
         {
-            case StreamRegistration.Registered:
+            case StreamSyncOutcome.Registered:
+            case StreamSyncOutcome.Unchanged:
                 break;
-            case StreamRegistration.SourceRefused:
+            case StreamSyncOutcome.Withheld:
+                return CameraSaveOutcome.Silent(camera, sync.Refusal!);
+            case StreamSyncOutcome.Removed:
+                // Removed by somebody else between this save and its registration.
+                return CameraSaveOutcome.Refused("Cameras_NotFoundOrNotYours");
+            case StreamSyncOutcome.SourceRefused:
                 return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerRefused");
-            case StreamRegistration.ConfigurationNotSaved:
+            case StreamSyncOutcome.ConfigurationNotSaved:
                 return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerConfigurationNotSaved");
             default:
                 return CameraSaveOutcome.Silent(camera, "Cameras_StreamServerUnavailable");
         }
 
-        // Null only when the sidecar has no credential, which PutStreamAsync above has already
+        // Null only when the sidecar has no credential, which the sync above has already
         // refused for - so this is unreachable in practice and written as a fall-through rather than
         // a suppression, because "unreachable" is a claim about today's call order.
         Uri? frameUrl = _streamServer.FrameUrl(camera.Uuid);

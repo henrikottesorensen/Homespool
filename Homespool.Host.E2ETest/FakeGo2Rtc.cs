@@ -38,8 +38,10 @@ namespace Homespool.Host.E2ETest;
 /// says so. The facts it does reproduce: every path off <c>allow_paths</c> is a bare 404 - read
 /// from <c>compose.yaml</c> rather than copied, so an endpoint added to <c>Go2RtcClient</c> without
 /// being allowed fails here the way it would on a deployment; <c>DELETE /api/streams?name=</c>
-/// answers 200 and removes nothing, only <c>?src=</c> removes; a configuration write merges into
-/// the document, and every registered stream survives it and the restart after it; a WebRTC offer
+/// answers 200 and removes nothing, only <c>?src=</c> removes; a stream's source is in the
+/// configuration file exactly as it was registered, and stays there when the file cannot be written
+/// to; a configuration write merges into the document, and every registered stream survives it and
+/// the restart after it; a WebRTC offer
 /// the camera's codecs cannot meet is refused by a body saying <c>codecs not matched</c>, not by
 /// its status; a camera that is not there is answered by <c>frame.jpeg</c> and <c>stream.mjpeg</c>
 /// alike with a 200 and nothing in it; and <c>stream.mjpeg</c>'s frames carry their Huffman tables,
@@ -75,6 +77,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
 
     private readonly Lock _gate = new();
     private readonly Dictionary<string, string> _streams = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _savedStreams = new(StringComparer.Ordinal);
     private readonly Dictionary<string, FakeCamera> _cameras = new(StringComparer.Ordinal);
     private readonly HashSet<string> _refusedSources = new(StringComparer.Ordinal);
     private readonly List<string> _requests = [];
@@ -106,8 +109,9 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     public int RtspPort => ((IPEndPoint)_rtsp.LocalEndpoint).Port;
 
     /// <summary>
-    /// The configuration document, as <c>GET /api/config</c> hands it over. Settable so a test can
-    /// start from a sidecar that is already configured.
+    /// The configuration document apart from its streams, which <c>GET /api/config</c> hands over with
+    /// the saved streams after it. Settable so a test can start from a sidecar that is already
+    /// configured.
     /// </summary>
     public string Config
     {
@@ -264,6 +268,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         lock (_gate)
         {
             _streams[name] = source;
+            _savedStreams[name] = source;
         }
     }
 
@@ -447,6 +452,12 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
                 if (!refused)
                 {
                     _streams[name] = source;
+
+                    // A file go2rtc cannot write keeps whatever it held before.
+                    if (!unsaved)
+                    {
+                        _savedStreams[name] = source;
+                    }
                 }
             }
 
@@ -473,6 +484,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
                 lock (_gate)
                 {
                     _streams.Remove(source);
+                    _savedStreams.Remove(source);
                 }
             }
 
@@ -626,7 +638,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     {
         if (HttpMethods.IsGet(context.Request.Method))
         {
-            await AnswerAsync(context, StatusCodes.Status200OK, Config);
+            await AnswerAsync(context, StatusCodes.Status200OK, ConfigFile());
             return;
         }
 
@@ -648,6 +660,43 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         }
 
         await AnswerAsync(context, StatusCodes.Status400BadRequest, "bad request");
+    }
+
+    /// <summary>
+    /// The configuration file as go2rtc would hand it over: the rest of the document, then every saved
+    /// stream as a list of one source.
+    /// </summary>
+    /// <remarks>
+    /// Each source is written double-quoted, as JSON escapes it - valid YAML, and a different spelling
+    /// from go2rtc's own plain and single-quoted ones, so Homespool's reading is held to the meaning
+    /// rather than to one writer's choice of quoting.
+    /// </remarks>
+    private string ConfigFile()
+    {
+        lock (_gate)
+        {
+            if (_savedStreams.Count == 0)
+            {
+                return _config;
+            }
+
+            StringBuilder file = new(_config);
+
+            if (file.Length > 0 && file[^1] != '\n')
+            {
+                file.Append('\n');
+            }
+
+            file.Append("streams:\n");
+
+            foreach ((string name, string source) in _savedStreams)
+            {
+                file.Append("  ").Append(JsonSerializer.Serialize(name)).Append(":\n");
+                file.Append("    - ").Append(JsonSerializer.Serialize(source)).Append('\n');
+            }
+
+            return file.ToString();
+        }
     }
 
     private async Task RestartAsync(HttpContext context)

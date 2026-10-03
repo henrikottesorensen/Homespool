@@ -199,7 +199,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Act
         CommandOutcome<AskSomethingAnswer>? outcome =
-            await service.AskAsync(printer.Id, new AskSomething(), Caller.Unscoped(1), CancellationToken.None);
+            await service.AskAsync(printer.Id, new AskSomething(), TestCallers.Scoped(1, Capability.ControlPrinter),
+                                   CancellationToken.None);
 
         // Assert
         outcome.Should().NotBeNull();
@@ -227,7 +228,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Act
         CommandOutcome<AskSomethingAnswer>? outcome =
-            await service.AskAsync(printer.Id, new AskSomething(), Caller.Unscoped(1), CancellationToken.None);
+            await service.AskAsync(printer.Id, new AskSomething(), TestCallers.Scoped(1, Capability.ControlPrinter),
+                                   CancellationToken.None);
 
         // Assert
         outcome!.EventType.Should().Be(PrinterEventType.Rejected);
@@ -253,7 +255,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
 
         // Act
-        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> ask = () => service.AskAsync(printer.Id, new AskSomething(), TestCallers.Scoped(1, Capability.ControlPrinter),
+                                                CancellationToken.None);
 
         // Assert
         await ask.Should().ThrowAsync<CommandAnswerUnreadableException>()
@@ -300,7 +303,9 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PrusaConnect.Commands.PausePrint command = new();
 
         // Act
-        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, command, Caller.Unscoped(1), CancellationToken.None);
+        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, command,
+                                                                 TestCallers.Scoped(1, Capability.ControlPrinter),
+                                                                 CancellationToken.None);
 
         // Assert
         outcome.Should().NotBeNull("PAUSE_PRINT is answered - only unanswerable commands report null");
@@ -462,11 +467,12 @@ public sealed class PrinterCommandServiceTests : IDisposable
 
         // Act
         Func<Task> readying = () =>
-            service.SendCommandAsync(printer.Id, new Printing.SetPrinterReady(), Caller.Unscoped(1), CancellationToken.None);
+            service.SendCommandAsync(printer.Id, new Printing.SetPrinterReady(), TestCallers.Scoped(1, Capability.Print),
+                                     CancellationToken.None);
 
         // Withdrawing an assertion nobody made is harmless, so it is deliberately not gated.
         CommandOutcome? unreadying = await service.SendCommandAsync(
-            printer.Id, new Printing.CancelPrinterReady(), Caller.Unscoped(1), CancellationToken.None);
+            printer.Id, new Printing.CancelPrinterReady(), TestCallers.Scoped(1, Capability.Print), CancellationToken.None);
 
         // Assert
         await readying.Should()
@@ -556,7 +562,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(999, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(999, new PrusaConnect.Commands.PausePrint(),
+                                                        TestCallers.Scoped(1, Capability.ControlPrinter), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotFoundException>();
@@ -576,7 +583,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance));
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(),
+                                                        TestCallers.Scoped(1, Capability.ControlPrinter), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotConnectedException>();
@@ -597,7 +605,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.NotConnected).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(),
+                                                        TestCallers.Scoped(1, Capability.ControlPrinter), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterNotConnectedException>();
@@ -616,7 +625,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.AlreadyInFlight).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(),
+                                                        TestCallers.Scoped(1, Capability.ControlPrinter), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<CommandAlreadyInFlightException>();
@@ -635,7 +645,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
                                             RegistryWithActor(printer.Id, CommandSendOutcome.ResponseTimedOut).registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(),
+                                                        TestCallers.Scoped(1, Capability.ControlPrinter), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<CommandResponseTimedOutException>();
@@ -665,7 +676,9 @@ public sealed class PrinterCommandServiceTests : IDisposable
         Printing.PausePrint intent = new();
 
         // Act
-        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, intent, Caller.Unscoped(1), CancellationToken.None);
+        CommandOutcome? outcome = await service.SendCommandAsync(printer.Id, intent,
+                                                                 TestCallers.Scoped(1, Capability.ControlPrinter),
+                                                                 CancellationToken.None);
 
         // Assert
         outcome!.EventType.Should().Be(PrinterEventType.Finished);
@@ -691,7 +704,8 @@ public sealed class PrinterCommandServiceTests : IDisposable
         PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), registry);
 
         // Act
-        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(1), CancellationToken.None);
+        Func<Task> act = () => service.SendCommandAsync(printer.Id, new PrusaConnect.Commands.PausePrint(),
+                                                        TestCallers.Scoped(1, Capability.ControlPrinter), CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<PrinterProtocolUnsupportedException>();

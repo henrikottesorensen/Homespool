@@ -47,7 +47,7 @@ public sealed class CameraAccessServiceTests : IDisposable
         Camera camera = await AddTeamWithCameraAsync(context, Alice, CapabilityPresets.Manager);
 
         CameraAccessService access = NewService(context);
-        Caller printing = Caller.Scoped(Alice, CapabilitySet.Parse(CapabilitySet.Format([Capability.Print])));
+        Caller printing = TestCallers.Scoped(Alice, Capability.Print);
 
         // Act & Assert
         await FluentActions
@@ -103,7 +103,7 @@ public sealed class CameraAccessServiceTests : IDisposable
         CameraAccessService access = NewService(context);
 
         // Act
-        Camera? found = await access.FindAsync(camera.Uuid, Caller.Unscoped(Alice), Capability.ViewCamera,
+        Camera? found = await access.FindAsync(camera.Uuid, TestCallers.Scoped(Alice, Capability.ViewCamera), Capability.ViewCamera,
                                                TestContext.Current.CancellationToken);
 
         // Assert

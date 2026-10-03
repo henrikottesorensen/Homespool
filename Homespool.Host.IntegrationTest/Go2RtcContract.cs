@@ -182,6 +182,58 @@ public abstract class Go2RtcContract : IAsyncLifetime
             "a name the sidecar does not hold is answered 200, not an error");
     }
 
+    /// <summary>
+    /// A registered source reads back from the configuration file exactly as it was given, whichever
+    /// way the sidecar quotes it there - which is how a stream already holding a camera's source is
+    /// told apart from one that needs replacing. go2rtc writes these plain, and the one ending in a
+    /// colon single-quoted.
+    /// </summary>
+    [Theory]
+    [InlineData("rtsp://192.0.2.10/live")]
+    [InlineData("ffmpeg:device?video=/dev/v4l/by-id/usb-046d_HD_Pro_Webcam_C920_ABCDEF12-video-index0&input_format=mjpeg&video_size=1920x1080")]
+    [InlineData("rtsp://admin:p#ss'w\"o:rd@192.0.2.11:554/Streaming/Channels/101?transportmode=unicast&profile=Profile_1")]
+    [InlineData("rtsp://192.0.2.20/a:b:")]
+    [InlineData("rtsp://192.0.2.21/?a=[1,2]&b={c:d}&e=*f&g=!h&i=%25j")]
+    [InlineData("rtsp://192.0.2.14/kamera-æøå")]
+    [InlineData("http://192.0.2.15/x#")]
+    public async Task ARegisteredSourceReadsBackFromTheConfigurationAsGiven(string source)
+    {
+        RequireSidecar();
+        Guid stream = Guid.NewGuid();
+        (await Client.PutStreamAsync(stream, source, TestContext.Current.CancellationToken)).Should().Be(StreamRegistration.Registered);
+
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? saved =
+            await Client.ReadStreamSourcesAsync(TestContext.Current.CancellationToken);
+
+        saved.Should().NotBeNull();
+        saved![Name(stream)].Should().Equal(source);
+
+        (await Client.DeleteStreamAsync(stream, TestContext.Current.CancellationToken)).Should().BeTrue();
+
+        (await Client.ReadStreamSourcesAsync(TestContext.Current.CancellationToken))!.Should().NotContainKey(Name(stream));
+    }
+
+    /// <summary>
+    /// A stream being watched still reads back from the file as the source it was given. The listing
+    /// reports a watched stream by its running connection instead, which for an <c>ffmpeg:</c> source
+    /// is a command line - so the file is the only place the question can be asked of.
+    /// </summary>
+    [Fact]
+    public async Task AWatchedStreamStillReadsBackAsItsSource()
+    {
+        RequireSidecar();
+        Guid stream = Guid.NewGuid();
+        await Client.PutStreamAsync(stream, JpegSource, TestContext.Current.CancellationToken);
+
+        using LiveMjpegStream? live = await OpenStreamAsync(stream);
+        live.Should().NotBeNull("the stream must be running, or this asks nothing a cold stream does not");
+
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? saved =
+            await Client.ReadStreamSourcesAsync(TestContext.Current.CancellationToken);
+
+        saved![Name(stream)].Should().Equal(JpegSource);
+    }
+
     /// <summary>A stream the sidecar does not hold has no frame, in go2rtc's own words.</summary>
     [Fact]
     public async Task AnUnknownStreamHasNoFrame()

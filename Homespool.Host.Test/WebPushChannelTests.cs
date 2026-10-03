@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Testing;
 
 using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
+using Homespool.Host.PrusaConnect;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -32,7 +33,7 @@ namespace Homespool.Host.Test;
 /// <remarks>
 /// <b>Three of these exist because the library's defaults are unsafe</b>, and each would pass against a
 /// channel that forgot to override one: the 429 that must be sent once, the payload that must be
-/// measured before sending, and the error body that must not be read without a bound.
+/// cut to fit before sending, and the error body that must not be read without a bound.
 /// </remarks>
 public sealed class WebPushChannelTests : IAsyncLifetime
 {
@@ -50,9 +51,9 @@ public sealed class WebPushChannelTests : IAsyncLifetime
         WebPushRig.Delete(_databasePath);
     }
 
-    private static NotificationMessage Message(string body = "Replace filament.")
+    private static NotificationMessage Message(string title = "Core One needs you", string body = "Replace filament.")
     {
-        return new NotificationMessage("Core One needs you", body, "/Printers/Detail/3", "printer-3",
+        return new NotificationMessage(title, body, "/Printers/Detail/3", "printer-3",
                                        NotificationUrgency.High, TimeSpan.FromMinutes(10));
     }
 
@@ -182,35 +183,123 @@ public sealed class WebPushChannelTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// A payload the push service would refuse is refused here instead, where the reason can be
-    /// logged, rather than sent and answered with a 413 that says nothing about why.
+    /// The largest message the limits allow: title and body past their caps and all outside ASCII, so
+    /// every character is six bytes of JSON, and the address and tag at theirs. It is sent with the
+    /// body at its cap, cut no further, and fits the body a push service must accept.
     /// </summary>
     [Fact]
-    public async Task AMessageTooLargeToDeliverIsRefusedWithoutARequest()
+    public async Task TheLargestMessageTheLimitsAllowIsSentWhole()
     {
         using FakePushBrowser browser = FakePushService.NewBrowser();
 
-        DeliveryOutcome outcome = await DeliverAsync(Destination(browser), Message(body: new string('x', WebPushChannel.MaxPayloadBytes)));
+        NotificationMessage message = new(new string('ø', WebPushChannel.MaxTitleLength * 2),
+                                          new string('ø', WebPushChannel.MaxBodyLength * 2),
+                                          "/" + new string('x', NotificationMessage.MaxUrlLength - 1),
+                                          new string('x', NotificationMessage.MaxTagLength),
+                                          NotificationUrgency.High,
+                                          TimeSpan.FromMinutes(10));
 
-        outcome.Should().Be(DeliveryOutcome.Refused);
-        _rig.PushService.Received.Should().BeEmpty();
+        DeliveryOutcome outcome = await DeliverAsync(Destination(browser), message);
+
+        outcome.Should().Be(DeliveryOutcome.Delivered);
+
+        FakePush push = _rig.PushService.Received.Single();
+        push.Body.Length.Should().BeLessThanOrEqualTo(4096, "RFC 8030 obliges a push service to take 4096 bytes and no more");
+        browser.DecryptJson(push.Body).GetProperty("body").GetString().Should().HaveLength(WebPushChannel.MaxBodyLength);
+    }
+
+    [Fact]
+    public void ABodyThatFitsIsLeftAlone()
+    {
+        string body = new('ø', WebPushChannel.MaxBodyLength);
+
+        WebPushChannel.FitBody("Core One needs you", body, "/Printers/Detail/3", "printer-3", WebPushChannel.MaxPayloadBytes)
+                      .Should().BeSameAs(body);
     }
 
     /// <summary>
-    /// The largest message that fits does fit: the limit is the encrypted body's, not a guess.
+    /// What loosening a limit would cost: a body cut shorter, never a refusal that counts against the
+    /// browser.
     /// </summary>
     [Fact]
-    public async Task AMessageAtTheLimitIsSentAndFitsTheBody()
+    public void ABodyIsCutFurtherWhenTheRestLeavesItTooLittleRoom()
+    {
+        const int MaxBytes = 1000;
+        string body = new('ø', WebPushChannel.MaxBodyLength);
+
+        string fitted = WebPushChannel.FitBody("Core One needs you", body, "/Printers/Detail/3", "printer-3", MaxBytes);
+
+        fitted.Length.Should().BeLessThan(body.Length);
+        fitted.Should().EndWith("…");
+        JsonSerializer.SerializeToUtf8Bytes(new { title = "Core One needs you", body = fitted, url = "/Printers/Detail/3", tag = "printer-3" })
+                      .Length.Should().BeLessThanOrEqualTo(MaxBytes);
+    }
+
+    [Fact]
+    public void APayloadThatCannotFitWithNoBodyIsAProgrammingError()
+    {
+        Action fit = () => WebPushChannel.FitBody("Core One needs you", "Replace filament.", "/Printers/Detail/3", "printer-3", 20);
+
+        fit.Should().Throw<InvalidOperationException>();
+    }
+
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(WebPushChannel.MaxTitleLength, WebPushChannel.MaxTitleLength)]
+    [InlineData(WebPushChannel.MaxTitleLength + 1, WebPushChannel.MaxTitleLength)]
+    public async Task ATitleIsCutToFit(int length, int expectedLength)
     {
         using FakePushBrowser browser = FakePushService.NewBrowser();
 
-        int overhead = JsonSerializer.SerializeToUtf8Bytes(new { title = "Core One needs you", body = string.Empty, url = "/Printers/Detail/3", tag = "printer-3" }).Length;
-        string body = new('x', WebPushChannel.MaxPayloadBytes - overhead);
+        await DeliverAsync(Destination(browser), Message(title: new string('x', length)));
 
-        DeliveryOutcome outcome = await DeliverAsync(Destination(browser), Message(body: body));
+        string title = browser.DecryptJson(_rig.PushService.Received.Single().Body).GetProperty("title").GetString()!;
+        title.Length.Should().Be(expectedLength);
+        title.EndsWith('…').Should().Be(length > WebPushChannel.MaxTitleLength);
+    }
+
+    [Theory]
+    [InlineData(10, 10)]
+    [InlineData(WebPushChannel.MaxBodyLength, WebPushChannel.MaxBodyLength)]
+    [InlineData(WebPushChannel.MaxBodyLength + 1, WebPushChannel.MaxBodyLength)]
+    public async Task ABodyIsCutToFit(int length, int expectedLength)
+    {
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        await DeliverAsync(Destination(browser), Message(body: new string('x', length)));
+
+        string body = browser.DecryptJson(_rig.PushService.Received.Single().Body).GetProperty("body").GetString()!;
+        body.Length.Should().Be(expectedLength);
+        body.EndsWith('…').Should().Be(length > WebPushChannel.MaxBodyLength);
+    }
+
+    /// <summary>
+    /// The longest a printer can make a notification: its longest name in the title and its longest
+    /// attention text as the body, all of both outside ASCII, so each character is six bytes of JSON.
+    /// Uncut it is over 4 KB, and refusing it five times running would remove the browser.
+    /// </summary>
+    [Fact]
+    public async Task ThePrintersLongestMessageIsDelivered()
+    {
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+
+        string name = new('ø', Printer.NameMaxLength);
+        string attention = new('ø', PrusaConnectConstants.AttentionTextMaxLength);
+
+        DeliveryOutcome outcome = await DeliverAsync(Destination(browser),
+                                                     Message(title: $"{name} stopper snart for et filamentskift", body: attention));
 
         outcome.Should().Be(DeliveryOutcome.Delivered);
-        _rig.PushService.Received.Single().Body.Length.Should().Be(4096, "RFC 8030 obliges a push service to take 4096 bytes and no more");
+    }
+
+    [Fact]
+    public void ACutNeverEndsHalfWayThroughACharacter()
+    {
+        // An emoji, two UTF-16 units, straddling the cut.
+        string text = new string('x', WebPushChannel.MaxBodyLength - 2) + "😀" + "tail";
+
+        WebPushChannel.Shorten(text, WebPushChannel.MaxBodyLength)
+                      .Should().Be(new string('x', WebPushChannel.MaxBodyLength - 2) + "…");
     }
 
     /// <summary>

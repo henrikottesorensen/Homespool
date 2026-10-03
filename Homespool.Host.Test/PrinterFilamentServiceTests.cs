@@ -93,7 +93,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(status);
     }
@@ -119,7 +120,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Unknown);
     }
@@ -149,7 +151,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterBusyException>(
             "a runout is one of several things Attention means, and the others are mid-print");
@@ -175,7 +178,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "reaching the material check means the state was accepted");
@@ -225,7 +229,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterHasQueuedWorkException>();
     }
@@ -242,7 +247,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "an empty queue means Ready carries no instruction to start anything");
@@ -261,7 +267,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "an Idle printer is not going to start the queue on its own");
@@ -289,7 +296,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "firmware would stop at a preheat dialog nobody is standing at");
@@ -304,7 +312,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterBusyException>();
     }
@@ -329,7 +338,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: 2, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 2,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<NullReferenceException>(
             "every guard passed and the send was reached - nothing-picked is no longer a refusal");
@@ -350,7 +360,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: 4, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 4,
+                                                      CancellationToken.None);
 
         (await unload.Should().ThrowAsync<NoSuchToolException>()).Which.ToolNumber.Should().Be(4);
     }
@@ -365,7 +376,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: 2, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 2,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "with no stored filament type firmware would stop at a dialog on the panel");
@@ -386,7 +398,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
             "a picked tool is a target, so the tool gate has nothing to refuse");
@@ -410,7 +423,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, Caller.Unscoped(1), toolNumber: null, CancellationToken.None);
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      CancellationToken.None);
 
         await unload.Should().ThrowAsync<ToolNotSpecifiedException>();
     }

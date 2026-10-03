@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -13,6 +14,9 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 
 using Homespool.Host.Services;
 
@@ -31,9 +35,9 @@ namespace Homespool.Host.Cameras;
 /// </para>
 /// <para>
 /// <b>go2rtc persists what it is told</b>, measured 2026-08-08: a stream added over the API is
-/// written into its config file and survives a restart. So there is no shadow copy to keep in step
-/// and no write-back to schedule; the reconciler exists for the case where its volume is lost, not
-/// for ordinary restarts.
+/// written into its config file and survives a restart. That file is a copy of Homespool's cameras
+/// and never the other way round: what reaches it is decided by <see cref="CameraStreamSync"/>, from
+/// the camera's row, and nothing read from it decides what a camera is.
 /// </para>
 /// </remarks>
 public sealed class Go2RtcClient : ICameraCodecProbe
@@ -206,12 +210,19 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// Registers or replaces a stream, and says what became of it.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>A camera's stream is written through <see cref="CameraStreamSync"/>, not with this.</b> The
+    /// sync reads the camera's row inside that camera's gate; a caller handing a source in directly
+    /// goes round both, and can write one the row no longer holds.
+    /// </para>
+    /// <para>
     /// <b>A 400 means one of two things, and the body says which.</b> go2rtc refuses a source it will
     /// not serve with an error of its streams package - <c>streams: source not supported</c>,
     /// <c>streams: source from insecure producer</c> - and answers the same status when it took the
     /// source but could not save it: a YAML error from patching its configuration file, or the error
     /// of writing it. Read in go2rtc 1.9.14's PUT handler, which returns the error of streams.New
     /// and then of app.PatchConfig, each as its own text; measured for both.
+    /// </para>
     /// <para>
     /// <b>The body is logged, never shown.</b> None of go2rtc's texts for this repeats the source,
     /// but the source here carries the camera's password, so it is taken out of the text anyway
@@ -655,11 +666,10 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// read.
     /// </summary>
     /// <remarks>
-    /// <b>Text, deliberately, and never parsed.</b> The one question asked of it is whether it
-    /// already contains a particular candidate address, which a substring answers — so this works
-    /// whether the sidecar renders that document as YAML or as JSON, and keeps working if it changes
-    /// its mind. Parsing it would buy nothing and would be a second place that has to be right about
-    /// a format nobody here owns.
+    /// <b>Text, for the WebRTC candidate.</b> The question asked of it there is whether it already
+    /// contains a particular candidate address, which a substring answers — so that check works
+    /// whether the sidecar renders the document as YAML or as JSON. The streams are another matter,
+    /// and <see cref="ReadStreamSourcesAsync"/> parses them.
     /// </remarks>
     public async Task<string?> ReadConfigAsync(CancellationToken cancellationToken)
     {
@@ -692,6 +702,87 @@ public sealed class Go2RtcClient : ICameraCodecProbe
             _logger.LogDebug("The stream server's configuration could not be read: {Message}", exception.Message);
             return null;
         }
+    }
+
+    /// <summary>
+    /// The sources each stream in the sidecar's configuration file holds, by stream name - or
+    /// <see langword="null"/> if the file could not be read or parsed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>From the file, because the listing cannot say.</b> <c>/api/streams</c> reports a stream
+    /// nobody is watching by the source it was given, and one that is being watched by its running
+    /// connection instead - for an <c>ffmpeg:</c> source, the ffmpeg command line and the address
+    /// inside it. Measured on 1.9.14. The file holds what each <c>PUT</c> wrote, as it was written,
+    /// whatever is running.
+    /// </para>
+    /// <para>
+    /// <b>Why the answer matters.</b> A <c>PUT</c> replaces the stream even when its source is the
+    /// same, and a viewer already watching keeps the old one: the camera then has two readers, which
+    /// an attached camera cannot serve. Knowing what the sidecar holds is what lets an unchanged
+    /// camera be left alone. See <see cref="CameraStreamSync"/>.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>?> ReadStreamSourcesAsync(
+        CancellationToken cancellationToken)
+    {
+        string? document = await ReadConfigAsync(cancellationToken).ConfigureAwait(false);
+
+        return document is null ? null : ParseStreamSources(document);
+    }
+
+    /// <summary>
+    /// The <c>streams</c> section of a go2rtc configuration document, or <see langword="null"/> if the
+    /// document is not YAML.
+    /// </summary>
+    /// <remarks>
+    /// go2rtc takes a stream's value as one source or a list of them, which is what a <c>PUT</c>
+    /// writes. A value of any other shape - a map, a nested list - is returned with no sources, which
+    /// no camera's source equals, so the caller replaces it rather than trusting it.
+    /// </remarks>
+    public static IReadOnlyDictionary<string, IReadOnlyList<string>>? ParseStreamSources(string document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        YamlStream yaml = new();
+
+        try
+        {
+            using StringReader reader = new(document);
+            yaml.Load(reader);
+        }
+        catch (YamlException)
+        {
+            return null;
+        }
+
+        Dictionary<string, IReadOnlyList<string>> sources = new(StringComparer.Ordinal);
+
+        if (yaml.Documents.Count == 0 ||
+            yaml.Documents[0].RootNode is not YamlMappingNode root ||
+            !root.Children.TryGetValue(new YamlScalarNode("streams"), out YamlNode? streams) ||
+            streams is not YamlMappingNode named)
+        {
+            return sources;
+        }
+
+        foreach ((YamlNode key, YamlNode value) in named.Children)
+        {
+            if (key is not YamlScalarNode { Value: { } name })
+            {
+                continue;
+            }
+
+            sources[name] = value switch
+            {
+                YamlScalarNode { Value: { Length: > 0 } single } => [single],
+                YamlSequenceNode list when list.Children.All(item => item is YamlScalarNode { Value: not null }) =>
+                    list.Children.Select(item => ((YamlScalarNode)item).Value!).ToList(),
+                _ => [],
+            };
+        }
+
+        return sources;
     }
 
     /// <summary>

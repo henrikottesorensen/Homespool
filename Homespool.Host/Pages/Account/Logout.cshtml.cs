@@ -29,7 +29,7 @@ public class LogoutModel : PageModel
         await _signIn.SignOutAsync(HttpContext);
         _logger.LogInformation("User logged out.");
 
-        if (returnUrl != null)
+        if (returnUrl is not null && Url.IsLocalUrl(returnUrl))
         {
             return LocalRedirect(returnUrl);
         }

@@ -196,9 +196,16 @@ internal static class IdentityTestHarness
             return contentPath;
         }
 
+        /// <summary>
+        /// The framework's rule for an absolute path: a leading slash is not enough, because <c>//host</c>
+        /// and <c>/\host</c> are read by a browser as another site.
+        /// </summary>
         public bool IsLocalUrl(string? url)
         {
-            return url?.StartsWith('/') == true;
+            return !string.IsNullOrEmpty(url) &&
+                   url[0] == '/' &&
+                   (url.Length == 1 || (url[1] != '/' && url[1] != '\\')) &&
+                   !url.Any(char.IsControl);
         }
 
         public string? Link(string? routeName, object? values)

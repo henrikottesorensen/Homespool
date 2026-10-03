@@ -199,7 +199,7 @@ public class ExternalLoginModel : PageModel
     public async Task<IActionResult> OnGetCallbackAsync(CancellationToken cancellationToken, string? returnUrl = null,
                                                         string? remoteError = null)
     {
-        returnUrl = returnUrl ?? Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
         if (remoteError != null)
         {
             // The query value is whatever the requester typed, so it is logged and never shown: echoing
@@ -345,7 +345,7 @@ public class ExternalLoginModel : PageModel
 
     public async Task<IActionResult> OnPostConfirmationAsync(CancellationToken cancellationToken, string? returnUrl = null)
     {
-        returnUrl = returnUrl ?? Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
 
         // Get the information about the user from the external login provider
         ExternalLoginInfo? info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);

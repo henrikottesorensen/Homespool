@@ -96,7 +96,7 @@ public class LoginWith2faModel : PageModel
             return Page();
         }
 
-        returnUrl ??= Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
 
         // The scheme verifies the code for the pending account, counts a wrong one toward the lockout
         // and resets the count on a right one; the code is presented as typed and normalised there.

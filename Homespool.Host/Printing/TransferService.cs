@@ -524,6 +524,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
             // older digest beside them would have them deleted and sent again for nothing - and the
             // command's id, which the transfer's end will name.
             PrinterDriveCopies.RecordTaken(onPrinter, digest, e.CommandId);
+            ReplaceQueuedAttempt(policy, onPrinter);
             await dbContext.SaveChangesAsync(CancellationToken.None);
 
             throw;
@@ -532,14 +533,14 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
                                       CommandSendTimedOutException or TeamAccessDeniedException or
                                       CredentialScopeDeniedException)
         {
-            onPrinter.TransferStartedAt = null;
+            ClearOwnStamp(policy, onPrinter);
             await dbContext.SaveChangesAsync(CancellationToken.None);
 
             throw;
         }
         catch (PrintFileUnreadableException e)
         {
-            onPrinter.TransferStartedAt = null;
+            ClearOwnStamp(policy, onPrinter);
 
             bool handled = await policy.UnreadableAsync(context, e, cancellationToken);
 
@@ -559,19 +560,52 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         {
             // Cleared whatever the reason, so the queue's next pass decides afresh rather than waiting
             // out the staleness timeout on a transfer that never started.
-            onPrinter.TransferStartedAt = null;
+            ClearOwnStamp(policy, onPrinter);
             await policy.RefusedAsync(context, file, digest, refusal, cancellationToken);
         }
         else
         {
             // Taken: the drive now holds these bytes under this name, arriving.
             PrinterDriveCopies.RecordTaken(onPrinter, digest, sent.Outcome?.CommandId);
+            ReplaceQueuedAttempt(policy, onPrinter);
             policy.Taken(context, sent.Outcome);
         }
 
         await dbContext.SaveChangesAsync(CancellationToken.None);
 
         return new TransferResult(cleared, sent);
+    }
+
+    /// <summary>
+    /// Clears the stamp when this attempt set it. Not saved.
+    /// </summary>
+    /// <remarks>
+    /// <b>A direct send that falls short leaves the queue's attempt alone.</b> The stamp is the queue's
+    /// record of a transfer of its own still running, and a person's send of the same file being
+    /// refused - most often because that very transfer has the printer's slot - says nothing about it.
+    /// </remarks>
+    private static void ClearOwnStamp(TransferPolicy policy, PrintFileOnPrinter onPrinter)
+    {
+        if (policy.StampsAttempt)
+        {
+            onPrinter.TransferStartedAt = null;
+        }
+    }
+
+    /// <summary>
+    /// Ends the queue's claim on a row whose attempt a direct send has just replaced. Not saved.
+    /// </summary>
+    /// <remarks>
+    /// The printer has one transfer slot, so a download it has taken (or may have taken, unanswered)
+    /// is the one running: whatever the queue started is not. The row now awaits the direct send's
+    /// command, and that send's end must not be counted or held against the queue's entry.
+    /// </remarks>
+    private static void ReplaceQueuedAttempt(TransferPolicy policy, PrintFileOnPrinter onPrinter)
+    {
+        if (!policy.StampsAttempt)
+        {
+            onPrinter.TransferStartedAt = null;
+        }
     }
 
     /// <summary>

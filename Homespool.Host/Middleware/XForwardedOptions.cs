@@ -125,8 +125,8 @@ public class XForwardedOptions
     /// True once something has been configured to trust, i.e. the middleware can do anything at all.
     /// </summary>
     /// <remarks>
-    /// Used to warn at startup rather than to disable anything: the failure mode this catches is a
-    /// deployment behind a proxy where nothing is trusted, which is silent — mail keeps saying
+    /// Gates registering the forwarded-headers middleware, and drives the startup warning for the failure
+    /// mode that leaves: a deployment behind a proxy where nothing is trusted, which is silent — mail keeps saying
     /// <c>http://</c> and nobody connects that to a missing setting.
     /// </remarks>
     public bool TrustsAnything => KnownProxies.Length > 0 || KnownNetworks.Length > 0;

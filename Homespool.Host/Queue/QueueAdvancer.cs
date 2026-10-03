@@ -181,9 +181,10 @@ public sealed class QueueAdvancer : BackgroundService
     /// </summary>
     /// <remarks>
     /// Memory as an optimisation rather than state: losing it - a restart - costs one repeated
-    /// <c>SEND_JOB_INFO</c>, not correctness.
+    /// <c>SEND_JOB_INFO</c>, not correctness. Concurrent because the passes of different printers run
+    /// side by side; each printer's own pass is the only one that touches its entry.
     /// </remarks>
-    private readonly Dictionary<int, int> _examinedPanelJobs = [];
+    private readonly ConcurrentDictionary<int, int> _examinedPanelJobs = [];
 
     /// <summary>
     /// Per printer, the open print this run has seen with its filament odometer still at the opening
@@ -195,7 +196,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// <see cref="PrintJob.BegunAt"/> - that would be the moment of the restart, not of the extrusion.
     /// See <see cref="ObserveFilament"/>.
     /// </remarks>
-    private readonly Dictionary<int, long> _seenAtOpeningReading = [];
+    private readonly ConcurrentDictionary<int, long> _seenAtOpeningReading = [];
 
     /// <summary>
     /// One pass at a time per printer.
@@ -221,6 +222,9 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     private readonly ConcurrentDictionary<int, SemaphoreSlim> _perPrinter = new();
 
+    /// <summary>The pass each printer is in the middle of, as the producer loop started it. Read only by that loop.</summary>
+    private readonly Dictionary<int, Task> _running = [];
+
     public QueueAdvancer(IServiceScopeFactory scopeFactory,
                          PrinterConnectionRegistry registry,
                          TransferService transfers,
@@ -244,24 +248,26 @@ public sealed class QueueAdvancer : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 await _signal.WaitAsync(PollInterval, stoppingToken);
-                await AdvanceAllAsync(stoppingToken);
+                await StartPassesAsync(stoppingToken);
             }
         }
         catch (OperationCanceledException)
         {
             // Shutting down.
         }
+
+        await EndRunningPassesAsync();
     }
 
-    /// <summary>One pass over every printer that needs one. Public so a test can drive it.</summary>
+    /// <summary>
+    /// One pass over every printer that needs one, side by side, waiting for them all. Public so a
+    /// test can drive it.
+    /// </summary>
     /// <remarks>
-    /// Sequential rather than concurrent, deliberately. This is one-to-tens of printers, each pass is
-    /// a handful of queries and at most one command, and a command returns as soon as the printer
-    /// accepts it - a transfer's bytes move afterwards, on the actor's own loop, not here.
     /// <para>
-    /// Sequential here does <b>not</b> mean passes cannot overlap - a caller outside this loop can
-    /// start one, and a slow pass outlives its own tick. That is what <see cref="_perPrinter"/> is
-    /// for, and assuming otherwise was a real defect.
+    /// <b>The producer loop does not call this</b>: it starts the passes and goes back to waiting for
+    /// its next tick (<see cref="StartPassesAsync"/>), so a printer that takes half a minute to answer
+    /// holds up its own queue and no other. This is the same passes, awaited.
     /// </para>
     /// <para>
     /// <b>Throws only on cancellation.</b> Anything else escaping here ends <see cref="ExecuteAsync"/>,
@@ -271,23 +277,100 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     public async Task AdvanceAllAsync(CancellationToken cancellationToken)
     {
-        List<int> printerIds;
+        List<int>? printerIds = await FindPrintersAsync(cancellationToken);
 
+        if (printerIds is null)
+        {
+            return;
+        }
+
+        await Task.WhenAll(printerIds.Select(printerId => StartPass(printerId, cancellationToken)));
+    }
+
+    /// <summary>
+    /// Starts a pass for each printer that needs one and is not still in the middle of its last, and
+    /// leaves them to run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not awaited, so that no printer holds up another.</b> The passes used to run one printer
+    /// after another, and a send waiting out a silent printer's response timeout held up every queue
+    /// behind it - found in review (2026-10-02) for the transfers, and the same for any command. How
+    /// many passes <i>work</i> at once is the <see cref="QueueWorkBudget"/>'s to limit; how many
+    /// <i>wait</i> on printers is not limited, because waiting costs nothing.
+    /// </para>
+    /// <para>
+    /// A pass still running at the next tick is left to finish rather than given a second one. This
+    /// loop is the only thing that reads <see cref="_running"/>, so it takes no lock.
+    /// </para>
+    /// </remarks>
+    private async Task StartPassesAsync(CancellationToken cancellationToken)
+    {
+        foreach (int finished in _running.Where(pass => pass.Value.IsCompleted).Select(pass => pass.Key).ToList())
+        {
+            _running.Remove(finished);
+        }
+
+        List<int>? printerIds = await FindPrintersAsync(cancellationToken);
+
+        if (printerIds is null)
+        {
+            return;
+        }
+
+        foreach (int printerId in printerIds)
+        {
+            if (_running.ContainsKey(printerId))
+            {
+                _logger.LogDebug("[{PrinterId}] the last pass is still running; leaving it to that one", printerId);
+
+                continue;
+            }
+
+            _running[printerId] = StartPass(printerId, cancellationToken);
+        }
+    }
+
+    /// <summary>Waits for the passes still running at shutdown, which have been told to stop.</summary>
+    private async Task EndRunningPassesAsync()
+    {
+        try
+        {
+            await Task.WhenAll(_running.Values);
+        }
+        catch (OperationCanceledException)
+        {
+            // Told to stop, and did.
+        }
+
+        _running.Clear();
+    }
+
+    /// <summary>The printers that need a pass, or null - logged - when they could not be found.</summary>
+    private async Task<List<int>?> FindPrintersAsync(CancellationToken cancellationToken)
+    {
         try
         {
             await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
             HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-            printerIds = await PrintersNeedingAPassAsync(dbContext, cancellationToken);
+            return await PrintersNeedingAPassAsync(dbContext, cancellationToken);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             _logger.LogError(e, "Finding the printers that need a queue pass failed.");
 
-            return;
+            return null;
         }
+    }
 
-        foreach (int printerId in printerIds)
+    /// <summary>
+    /// One printer's pass, on the thread pool: the database's calls complete in place, so a pass not
+    /// moved off the caller would run to its first real wait before the next printer's began.
+    /// </summary>
+    private Task StartPass(int printerId, CancellationToken cancellationToken)
+    {
+        return Task.Run(async () =>
         {
             try
             {
@@ -300,7 +383,7 @@ public sealed class QueueAdvancer : BackgroundService
                 // go wrong here (a printer dropping mid-command, a transient database error).
                 _logger.LogError(e, "Advancing the queue for printer {PrinterId} failed.", printerId);
             }
-        }
+        }, CancellationToken.None);
     }
 
     /// <summary>
@@ -434,7 +517,7 @@ public sealed class QueueAdvancer : BackgroundService
             return false;
         }
 
-        if (!_seenAtOpeningReading.Remove(printerId, out long watched) || watched != active.Id)
+        if (!_seenAtOpeningReading.TryRemove(printerId, out long watched) || watched != active.Id)
         {
             return false;
         }
@@ -476,9 +559,24 @@ public sealed class QueueAdvancer : BackgroundService
         return LogText.Clean(printerWritten, MaxLoggedLength);
     }
 
+    /// <summary>
+    /// Waits for a printer's answer without holding the pass's permit - see
+    /// <see cref="QueueWorkBudget"/> - through the scope every step of a pass already carries.
+    /// </summary>
+    private static Task<T> WhilePrinterAnswersAsync<T>(AsyncServiceScope scope, Func<Task<T>> wait)
+    {
+        return scope.ServiceProvider.GetRequiredService<QueuePassWork>().WhilePrinterAnswersAsync(wait);
+    }
+
     private async Task AdvanceOnceAsync(int printerId, CancellationToken cancellationToken)
     {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+
+        // Before anything is read: this pass works only while it holds a permit, and hands it back
+        // whenever it waits on the printer. The scope gives it up if the pass ends any other way.
+        QueuePassWork work = scope.ServiceProvider.GetRequiredService<QueuePassWork>();
+        await work.BeginAsync(cancellationToken);
+
         HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         // What the printer has told us, which StorageOptions.TelemetryInMemory may keep in a database
@@ -525,7 +623,7 @@ public sealed class QueueAdvancer : BackgroundService
         switch (action.Kind)
         {
             case QueueActionKind.Transfer:
-                await TransferAsync(printerId, head, cancellationToken);
+                await TransferAsync(work, printerId, head, cancellationToken);
                 break;
 
             case QueueActionKind.Print:
@@ -541,7 +639,7 @@ public sealed class QueueAdvancer : BackgroundService
                 // Caught by the end-to-end test that frees space and expects the queue to resume.
                 // An unreadable file comes the same way, for the same reason: only trying to send it
                 // finds out that it can be read now.
-                await TransferAsync(printerId, head, cancellationToken);
+                await TransferAsync(work, printerId, head, cancellationToken);
                 break;
 
             case QueueActionKind.Wait:
@@ -887,10 +985,11 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            answer = await commands.AskAsync(printerId,
-                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
-                                             CallerFor(candidates[0].Entry),
-                                             cancellationToken);
+            answer = await WhilePrinterAnswersAsync(scope,
+                                                    () => commands.AskAsync(printerId,
+                                                                            new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
+                                                                            CallerFor(candidates[0].Entry),
+                                                                            cancellationToken));
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
                                       CommandResponseTimedOutException or CommandSendTimedOutException or
@@ -1105,10 +1204,11 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            answer = await commands.AskAsync(printerId,
-                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
-                                             CallerFor(entry),
-                                             cancellationToken);
+            answer = await WhilePrinterAnswersAsync(scope,
+                                                    () => commands.AskAsync(printerId,
+                                                                            new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
+                                                                            CallerFor(entry),
+                                                                            cancellationToken));
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
                                       CommandResponseTimedOutException or CommandSendTimedOutException or
@@ -1215,10 +1315,11 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            answer = await commands.AskAsync(printerId,
-                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
-                                             Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(recordedScope)),
-                                             cancellationToken);
+            answer = await WhilePrinterAnswersAsync(scope,
+                                                    () => commands.AskAsync(printerId,
+                                                                            new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
+                                                                            Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(recordedScope)),
+                                                                            cancellationToken));
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
                                       CommandResponseTimedOutException or CommandSendTimedOutException or
@@ -1308,15 +1409,15 @@ public sealed class QueueAdvancer : BackgroundService
     /// <see cref="QueueTransferPolicy"/>'s, run on the printer's transfer mailbox. Only failures that
     /// say nothing about the file come back here, to be logged and tried again on the next pass.
     /// </remarks>
-    private async Task TransferAsync(int printerId, QueuedPrint head, CancellationToken cancellationToken)
+    private async Task TransferAsync(QueuePassWork work, int printerId, QueuedPrint head, CancellationToken cancellationToken)
     {
         QueueTransferPolicy policy = new(head.Id, _timeProvider, _logger);
         string fileName = head.PrintFile!.Name;
 
         try
         {
-            await _transfers.SendAsync(new TransferRequest(printerId, head.PrintFileId, CallerFor(head), policy),
-                                       cancellationToken);
+            await work.WhilePrinterAnswersAsync(() => _transfers.SendAsync(new TransferRequest(printerId, head.PrintFileId, CallerFor(head), policy),
+                                                                           cancellationToken));
         }
         catch (CommandAlreadyInFlightException) when (!policy.Begun)
         {
@@ -1419,10 +1520,11 @@ public sealed class QueueAdvancer : BackgroundService
 
         try
         {
-            CommandOutcome? outcome = await commands.SendCommandAsync(printerId,
-                                                                      new StartPrint(printerPath),
-                                                                      CallerFor(head),
-                                                                      cancellationToken);
+            CommandOutcome? outcome = await WhilePrinterAnswersAsync(scope,
+                                                                     () => commands.SendCommandAsync(printerId,
+                                                                                                     new StartPrint(printerPath),
+                                                                                                     CallerFor(head),
+                                                                                                     cancellationToken));
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {

@@ -49,6 +49,7 @@ namespace Homespool.Host.Test;
 public sealed class QueueAdvancerTests : IDisposable
 {
     private const int PrinterId = 1;
+    private const int SecondPrinterId = 2;
 
     /// <summary>
     /// What <see cref="WriteFileOnDiskAsync"/> actually writes. The store reads the length off disk,
@@ -3933,6 +3934,222 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A printer that never answers holds up its own queue and no other, and does not hold a permit to
+    /// work while it does - with a budget of one, the other printer's pass still gets its turn.
+    /// </summary>
+    [Fact]
+    public async Task APrinterThatNeverAnswersHoldsUpNoOtherPrintersPass()
+    {
+        // Arrange - two printers, each with a print to start; the first never answers
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await AddSecondPrinterWithAPrintAsync(context);
+        using QueueWorkBudget budget = new(1);
+        SilentFirstPrinter printers = ConnectSilentFirstPrinter();
+        using QueueAdvancer advancer = NewAdvancer(budget: budget);
+
+        // Act - the loop's tick, as the signal brings it
+        await advancer.StartAsync(TestContext.Current.CancellationToken);
+        _signal.Poke();
+        await printers.SecondStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert - the first printer is still waiting, and the pass waiting on it holds no permit
+        printers.FirstAsked.Task.IsCompleted.Should().BeTrue("the first printer's pass was under way");
+        printers.FirstAnswer.Task.IsCompleted.Should().BeFalse();
+        SpinWait.SpinUntil(() => budget.Available == budget.Permits, TimeSpan.FromSeconds(10)).Should().BeTrue(
+            "the only passes alive are the first's, which waits on its printer, and the second's, which is done");
+
+        printers.FirstAnswer.SetResult(Answered(PrinterEventType.Finished));
+        await advancer.StopAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A pass still waiting on its printer when the next tick comes is left to finish, not given a
+    /// second pass to send the same command again.
+    /// </summary>
+    [Fact]
+    public async Task ATickLeavesAPrintersStillRunningPassAlone()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        FakeLogger<QueueAdvancer> logger = new();
+        SilentFirstPrinter printers = ConnectSilentFirstPrinter();
+        using QueueAdvancer advancer = NewAdvancer(logger);
+        await advancer.StartAsync(TestContext.Current.CancellationToken);
+        _signal.Poke();
+        await printers.FirstAsked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Act - the next tick, with the first still unanswered
+        _signal.Poke();
+
+        // Assert
+        SpinWait.SpinUntil(() => logger.Collector.GetSnapshot().Any(record => record.Message.Contains("still running", StringComparison.Ordinal)),
+                           TimeSpan.FromSeconds(10)).Should().BeTrue("the tick found the pass running and said so");
+        printers.FirstCalls.Should().Be(1, "no second pass was started to send the command again");
+
+        printers.FirstAnswer.SetResult(Answered(PrinterEventType.Finished));
+        await advancer.StopAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A stop reaches a pass waiting on a printer, ends it, and leaves the budget whole - the host's
+    /// shutdown does not hang on a printer that never answers.
+    /// </summary>
+    [Fact]
+    public async Task AStopEndsAPassWaitingOnAPrinterAndLeavesTheBudgetWhole()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        using QueueWorkBudget budget = new(2);
+        SilentFirstPrinter printers = ConnectSilentFirstPrinter();
+        using QueueAdvancer advancer = NewAdvancer(budget: budget);
+        await advancer.StartAsync(TestContext.Current.CancellationToken);
+        _signal.Poke();
+        await printers.FirstAsked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Act
+        Func<Task> stop = () => advancer.StopAsync(TestContext.Current.CancellationToken)
+                                        .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        await stop.Should().NotThrowAsync("the pass waiting on the printer was told to stop");
+        printers.FirstUnwound.Task.IsCompleted.Should().BeTrue("the stop waited for the pass to end");
+        budget.Available.Should().Be(budget.Permits);
+    }
+
+    /// <summary>
+    /// A pass does not begin its work while the budget's permits are taken - on a small machine, more
+    /// passes working than there are cores only makes every one of them slower.
+    /// </summary>
+    [Fact]
+    public async Task APassWaitsForAPermitBeforeItWorks()
+    {
+        // Arrange - the budget's only permit taken by another pass
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        using QueueWorkBudget budget = new(1);
+        using QueuePassWork holder = new(budget);
+        await holder.BeginAsync(TestContext.Current.CancellationToken);
+        IPrinterConnectionActor actor = ConnectAccepting();
+        using QueueAdvancer advancer = NewAdvancer(budget: budget);
+
+        // Act
+        Task pass = advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        pass.IsCompleted.Should().BeFalse("no permit was free for it to work under");
+        actor.ReceivedCalls().Should().BeEmpty("nothing was sent before the pass had a permit");
+
+        holder.Dispose();
+        await pass.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        actor.ReceivedCalls().Should().NotBeEmpty("the print was started once a permit was free");
+    }
+
+    /// <summary>The first printer never answers until told to; the second answers once the first has been asked.</summary>
+    private SilentFirstPrinter ConnectSilentFirstPrinter()
+    {
+        SilentFirstPrinter printers = new();
+
+        RegisterPrinter(PrinterId, token =>
+        {
+            printers.CountFirstCall();
+            printers.FirstAsked.TrySetResult();
+
+            return Unwind(printers, token);
+        });
+
+        // Answers only once the first printer has been asked, so that the first's pass is under way
+        // and waiting by the time this one is let through.
+        RegisterPrinter(SecondPrinterId, async token =>
+        {
+            await printers.FirstAsked.Task.WaitAsync(token);
+            printers.SecondStarted.TrySetResult();
+
+            return Answered(PrinterEventType.Finished);
+        });
+
+        return printers;
+    }
+
+    /// <summary>
+    /// Waits for the first printer's answer, and when told to stop takes a moment to give up - as a
+    /// real connection does - so a stop that did not wait for it can be told from one that did.
+    /// </summary>
+    private static async Task<CommandSendResult> Unwind(SilentFirstPrinter printers, CancellationToken token)
+    {
+        try
+        {
+            return await printers.FirstAnswer.Task.WaitAsync(token);
+        }
+        finally
+        {
+            if (token.IsCancellationRequested)
+            {
+                await Task.Delay(300, CancellationToken.None);
+                printers.FirstUnwound.TrySetResult();
+            }
+        }
+    }
+
+    private void RegisterPrinter(int printerId, Func<CancellationToken, Task<CommandSendResult>> answer)
+    {
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call => answer(call.Arg<CancellationToken>()));
+        actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+             .Returns(call => answer(call.Arg<CancellationToken>()));
+
+        _registry.Register(printerId, actor, overPlaintext: false);
+    }
+
+    /// <summary>A second printer on the seeded team, with its file on the drive and a print queued for it.</summary>
+    private async Task AddSecondPrinterWithAPrintAsync(HomespoolDbContext context)
+    {
+        int teamId = (await context.Printers.SingleAsync(TestContext.Current.CancellationToken)).TeamId;
+
+        context.Printers.Add(new Printer { Id = SecondPrinterId, Uuid = Guid.NewGuid(), TeamId = teamId });
+
+        PrintFile file = new()
+        {
+            UserId = 1,
+            Name = "second.bgcode",
+            Size = 1024,
+            Digest = SeededDigest,
+            UploadedAt = _clock.GetUtcNow(),
+        };
+
+        context.PrintFiles.Add(file);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.QueuedPrints.Add(new QueuedPrint
+        {
+            PrinterId = SecondPrinterId,
+            PrintFileId = file.Id,
+            PrintUuid = Guid.NewGuid(),
+            Position = 0,
+            QueuedByUserId = 1,
+            QueuedByScope = PrintOnly,
+            QueuedAt = _clock.GetUtcNow(),
+        });
+        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        {
+            PrinterId = SecondPrinterId,
+            PrintFileId = file.Id,
+            ArrivedAt = _clock.GetUtcNow(),
+            PrinterPath = "/usb/SECOND~1.BGC",
+            DriveName = file.Name,
+            Digest = SeededDigest,
+        });
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = SecondPrinterId,
+            Status = PrinterStatus.Ready,
+            LastSeenAt = _clock.GetUtcNow(),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
     /// An offer the sender revoked - the send fell short - leaves nothing awaited, so the abort a
     /// printer that had taken it reports is not counted against the file: the abort was ours.
     /// </summary>
@@ -4882,7 +5099,8 @@ public sealed class QueueAdvancerTests : IDisposable
     /// takes what the transfer service logs, since the queue's sends and their reports are read there.
     /// </param>
     /// <param name="offers">Stands in for the offer store the sender opens files through, when a test needs it to fail.</param>
-    private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null, ITransferOffers? offers = null)
+    /// <param name="budget">How many passes may work at once, when a test needs it smaller than the machine's.</param>
+    private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null, ITransferOffers? offers = null, QueueWorkBudget? budget = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
@@ -4922,6 +5140,13 @@ public sealed class QueueAdvancerTests : IDisposable
         }
 
         services.AddTransfers();
+
+        if (budget is not null)
+        {
+            services.AddSingleton(budget);
+        }
+
+        services.AddQueueWork();
 
         ServiceProvider provider = services.BuildServiceProvider();
         _advancerServices = provider;
@@ -5045,5 +5270,28 @@ public sealed class QueueAdvancerTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return context;
+    }
+
+    /// <summary>The two printers of a pass that must not wait: one that answers when told to, one once the first is asked.</summary>
+    private sealed class SilentFirstPrinter
+    {
+        private int _firstCalls;
+
+        public TaskCompletionSource FirstAsked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource<CommandSendResult> FirstAnswer { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Set once the first printer's wait has been given up on and has finished unwinding.</summary>
+        public TaskCompletionSource FirstUnwound { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource SecondStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int FirstCalls => Volatile.Read(ref _firstCalls);
+
+        /// <summary>Counts a command the first printer was sent; called from the printer's own handler.</summary>
+        public void CountFirstCall()
+        {
+            Interlocked.Increment(ref _firstCalls);
+        }
     }
 }

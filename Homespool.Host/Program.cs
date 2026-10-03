@@ -592,6 +592,10 @@ public static class Program
             // DbContext must not outlive one.
             builder.Services.AddSingleton<QueueSignal>();
 
+            // What the passes share: how many may work at once, and each pass's claim on it. The
+            // advancer starts one pass per printer, and only the work of a pass is limited.
+            builder.Services.AddQueueWork();
+
             // Everything about getting a file onto a printer's drive, which the advancer sends through -
             // so added before it, to stop after it. In Printing/Registration.cs.
             builder.Services.AddTransfers();

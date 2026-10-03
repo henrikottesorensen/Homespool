@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -462,6 +463,51 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
 
         (await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .Should().NotContain("noview.gcode");
+
+        client.Dispose();
+    }
+
+    /// <summary>
+    /// A body with two file parts is a 400, and the first part, already staged, is thrown away.
+    /// </summary>
+    /// <remarks>
+    /// A slicer sends one. The refusal is the only thing that stops a second part being staged beside
+    /// the first and neither being published, so what it leaves on disk is what the test checks.
+    /// </remarks>
+    [Fact]
+    [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
+                     Justification = "Ownership of each part passes to the MultipartFormDataContent, which the test disposes.")]
+    public async Task TwoFilePartsAreRefusedAndTheFirstIsDiscarded()
+    {
+        // Arrange
+        (Guid uuid, string token, HttpClient client) = await SetUpAsync("twoparts@example.com", SlicerScope);
+
+        using MultipartFormDataContent body = new();
+        body.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("G28\n")), "file", "first.gcode");
+        body.Add(new ByteArrayContent(Encoding.UTF8.GetBytes("G28\n")), "file", "second.gcode");
+
+        // Act
+        using HttpResponseMessage response = await client.PostAsync(
+            $"/compat/octoprint/{uuid}/api/files/local", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
+            .Should().Contain("one file part");
+
+        using HttpClient native = NativeClient(token);
+
+        using HttpResponseMessage files = await native.GetAsync("/api/v1/files",
+                                                                TestContext.Current.CancellationToken);
+
+        string listing = await files.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        listing.Should().NotContain("first.gcode").And.NotContain("second.gcode");
+
+        Directory.EnumerateDirectories(_scratch.Path, ".incoming", SearchOption.AllDirectories)
+                 .SelectMany(directory => Directory.EnumerateFiles(directory))
+                 .Should().BeEmpty("the staged first part is discarded, not left behind");
 
         client.Dispose();
     }

@@ -486,8 +486,14 @@ public sealed class QueueAdvancer : BackgroundService
         TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
 
         // The printer's own reports of its transfers first, so a transfer that finished since the
-        // last pass is known before anything is decided on the assumption that it has not.
-        await _transfers.SettleAsync(printerId, cancellationToken);
+        // last pass is known before anything is decided on the assumption that it has not - unless a
+        // send to the printer is waiting or under way, which this pass must never wait behind: the
+        // passes run one printer after another, so it would hold up every queue for the printer's
+        // response timeout. What is already settled will do; the reports are settled as they arrive.
+        if (!await _transfers.SettleUnlessSendingAsync(printerId, cancellationToken))
+        {
+            _logger.LogDebug("[{PrinterId}] a send is under way; deciding on the reports already settled", printerId);
+        }
 
         PrinterLiveState? live = await telemetry.PrinterLiveStates
                                                 .AsNoTracking()
@@ -1311,6 +1317,13 @@ public sealed class QueueAdvancer : BackgroundService
         {
             await _transfers.SendAsync(new TransferRequest(printerId, head.PrintFileId, CallerFor(head), policy),
                                        cancellationToken);
+        }
+        catch (CommandAlreadyInFlightException) when (!policy.Begun)
+        {
+            // Refused before anything was decided: another send to this printer - a person's - is
+            // waiting or under way, and the printer has one transfer slot. Tried again on the next pass.
+            _logger.LogDebug("[{PrinterId}] another send to the printer is under way; {FileName} waits for the next pass",
+                             printerId, fileName);
         }
         catch (Exception e) when (!policy.ReachedTheOffer &&
                                   e is PrinterNotConnectedException or CommandAlreadyInFlightException or

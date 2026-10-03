@@ -97,6 +97,9 @@ public sealed class QueueAdvancerTests : IDisposable
     private readonly QueueSignal _signal = new();
     private readonly string _storeRoot = Path.Combine(Path.GetTempPath(), "hs-advancer-" + Guid.NewGuid().ToString("N"));
 
+    // The container the last NewAdvancer built, for a test that has to reach the same TransferService.
+    private ServiceProvider? _advancerServices;
+
     public QueueAdvancerTests()
     {
         _registry = new PrinterConnectionRegistry(_clock, NullLogger<PrinterConnectionRegistry>.Instance);
@@ -105,6 +108,7 @@ public sealed class QueueAdvancerTests : IDisposable
     public void Dispose()
     {
         _signal.Dispose();
+        _advancerServices?.Dispose();
 
         if (Directory.Exists(_storeRoot))
         {
@@ -3867,6 +3871,68 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A pass over a printer with a person's send waiting on its answer neither waits for that answer -
+    /// the passes run one printer after another, so it would hold up every queue - nor offers the
+    /// queued file beside it: the send is refused and tried again on the next pass.
+    /// </summary>
+    [Fact]
+    public async Task APassDoesNotWaitBehindADirectSend()
+    {
+        // Arrange - the seeded entry waiting to be sent, and a person's send to the printer whose
+        // answer does not come
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        TaskCompletionSource<CommandSendResult> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource offered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call =>
+             {
+                 if (call.Arg<ISendableCommand>() is not (StartConnectDownload or StartEncryptedDownload))
+                 {
+                     return Task.FromResult(Answered(PrinterEventType.Info));
+                 }
+
+                 offered.TrySetResult();
+
+                 return answer.Task;
+             });
+        _registry.Register(PrinterId, actor, overPlaintext: false);
+
+        using QueueAdvancer advancer = NewAdvancer();
+        ServiceProvider services = _advancerServices!;
+        TransferService transfers = services.GetRequiredService<TransferService>();
+        Printer printer = await context.Printers.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        PrintFile file = await context.PrintFiles.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        StoredFile stored;
+
+        using (IServiceScope scope = services.CreateScope())
+        {
+            stored = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>().FindForPrinting(file.UserId, file.Name)!;
+        }
+
+        Task<DirectSendResult> direct = transfers.SendDirectAsync(printer, file, stored, Caller.Scoped(1, CapabilitySet.Everything),
+                                                                  TestContext.Current.CancellationToken);
+        await offered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Act - a pass while the person's send waits
+        Func<Task> pass = () => advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken)
+                                        .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        await pass.Should().NotThrowAsync("the pass must come back without the printer's answer");
+        OfferedPaths(actor).Should().HaveCount(1, "only the person's send was offered");
+
+        answer.SetResult(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.TransferInfo, null))
+        {
+            CommandId = StartCommandId,
+        });
+        await direct.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
     /// An offer the sender revoked - the send fell short - leaves nothing awaited, so the abort a
     /// printer that had taken it reports is not counted against the file: the abort was ours.
     /// </summary>
@@ -4858,6 +4924,7 @@ public sealed class QueueAdvancerTests : IDisposable
         services.AddTransfers();
 
         ServiceProvider provider = services.BuildServiceProvider();
+        _advancerServices = provider;
 
         return new QueueAdvancer(
             provider.GetRequiredService<IServiceScopeFactory>(),

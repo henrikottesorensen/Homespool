@@ -42,6 +42,14 @@ namespace Homespool.Host.Printing;
 /// printer has one transfer slot, so serialising its own costs it nothing.
 /// </para>
 /// <para>
+/// <b>One send per printer at a time, and a second is refused rather than queued.</b> A send can
+/// hold the mailbox for the printer's whole response timeout, so letting sends pile up would let
+/// one member keep a printer's mailbox busy for as long as they kept clicking - and the queue's
+/// pass, which settles first, waiting behind every one of them. Refused with
+/// <see cref="CommandAlreadyInFlightException"/>, what a second command to a busy printer has always
+/// got, and the queue settles only when no send is waiting (<see cref="SettleUnlessSendingAsync"/>).
+/// </para>
+/// <para>
 /// <b>Settled when the printer reports, not when the queue looks.</b> <see cref="TelemetryWriter"/>
 /// says when it has saved a <c>FILE_INFO</c> or <c>TRANSFER_*</c> event, so a printer that only ever
 /// takes direct sends has its transfers settled as they end. Every printer is settled once at start,
@@ -101,20 +109,81 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// <param name="request">What to send, where, and under whose authority.</param>
     /// <param name="cancellationToken">Cancels the caller's wait, and the send if it has not begun.</param>
     /// <returns>How far the send got, and what the printer answered.</returns>
+    /// <exception cref="CommandAlreadyInFlightException">Another send to this printer is waiting or under way.</exception>
     /// <remarks>
-    /// Waits its turn behind whatever else this printer's transfers are doing. Anything the procedure
-    /// throws reaches the caller, after what it has recorded is saved: an offer the printer did not
-    /// answer in time records the attempt first, since the printer may be fetching anyway.
+    /// Waits its turn behind a settle, which is quick, but never behind another send. Anything the
+    /// procedure throws reaches the caller, after what it has recorded is saved: an offer the printer
+    /// did not answer in time records the attempt first, since the printer may be fetching anyway.
     /// </remarks>
     public Task<TransferResult> SendAsync(TransferRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        TaskCompletionSource<TransferResult> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (_stoppingToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled<TransferResult>(_stoppingToken);
+        }
 
-        Post(request.PrinterId, new SendMessage(request, completion, cancellationToken));
+        TaskCompletionSource<TransferResult> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mailbox mailbox = MailboxFor(request.PrinterId);
+
+        // Admitted and posted under one lock, so a settle that must not wait behind a send cannot be
+        // posted between the check and the post.
+        lock (mailbox.Gate)
+        {
+            if (mailbox.SendPending)
+            {
+                return Task.FromException<TransferResult>(new CommandAlreadyInFlightException(request.PrinterId));
+            }
+
+            if (!mailbox.Messages.Writer.TryWrite(new SendMessage(request, completion, cancellationToken)))
+            {
+                // Completed: the service stopped since the check above.
+                return Task.FromCanceled<TransferResult>(_stoppingToken);
+            }
+
+            mailbox.SendPending = true;
+        }
 
         return completion.Task.WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Settles this printer's transfers and returns true once that is done - or returns false at once,
+    /// settling nothing, when a send to the printer is waiting or under way.
+    /// </summary>
+    /// <param name="printerId">The printer.</param>
+    /// <param name="cancellationToken">Cancels the caller's wait.</param>
+    /// <remarks>
+    /// <b>The queue's pass, which must never wait on a send</b>: the passes run one printer after
+    /// another, so a send waiting out a silent printer's response timeout would hold up every queue.
+    /// Deciding on what is already settled costs nothing the queue cannot absorb - the snapshot reads a
+    /// transfer in flight from the stamp and the offer, which are there before any report is - and the
+    /// printer's reports are settled anyway as they are saved.
+    /// </remarks>
+    public async Task<bool> SettleUnlessSendingAsync(int printerId, CancellationToken cancellationToken)
+    {
+        _stoppingToken.ThrowIfCancellationRequested();
+
+        TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Mailbox mailbox = MailboxFor(printerId);
+
+        lock (mailbox.Gate)
+        {
+            if (mailbox.SendPending)
+            {
+                return false;
+            }
+
+            if (!mailbox.Messages.Writer.TryWrite(new SettleMessage(completion)))
+            {
+                completion.TrySetCanceled(_stoppingToken);
+            }
+        }
+
+        await completion.Task.WaitAsync(cancellationToken);
+
+        return true;
     }
 
     /// <summary>
@@ -156,8 +225,8 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// <param name="printerId">The printer.</param>
     /// <param name="cancellationToken">Cancels the caller's wait.</param>
     /// <remarks>
-    /// The queue's pass begins with this, so a transfer that finished since its last pass is known
-    /// before it decides anything on the assumption that it has not.
+    /// Waits behind a send to the printer, if one is under way. The queue's pass must not, and uses
+    /// <see cref="SettleUnlessSendingAsync"/>.
     /// </remarks>
     public Task SettleAsync(int printerId, CancellationToken cancellationToken)
     {
@@ -322,25 +391,40 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     {
         await foreach (Message message in mailbox.Messages.Reader.ReadAllAsync())
         {
-            if (_stoppingToken.IsCancellationRequested)
+            try
             {
-                message.Cancel(_stoppingToken);
+                if (_stoppingToken.IsCancellationRequested)
+                {
+                    message.Cancel(_stoppingToken);
 
-                continue;
+                    continue;
+                }
+
+                switch (message)
+                {
+                    case SendMessage send:
+                        await HandleSendAsync(send);
+                        break;
+
+                    case SettleMessage settle:
+                        await HandleSettleAsync(printerId, mailbox, settle);
+                        break;
+
+                    default:
+                        break;
+                }
             }
-
-            switch (message)
+            finally
             {
-                case SendMessage send:
-                    await HandleSendAsync(send);
-                    break;
-
-                case SettleMessage settle:
-                    await HandleSettleAsync(printerId, mailbox, settle);
-                    break;
-
-                default:
-                    break;
+                // However the send ended - done, failed, given up on, or cancelled by a stop - the
+                // next one may be admitted.
+                if (message is SendMessage)
+                {
+                    lock (mailbox.Gate)
+                    {
+                        mailbox.SendPending = false;
+                    }
+                }
             }
         }
     }
@@ -899,6 +983,12 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         });
 
         public Task Loop { get; set; } = Task.CompletedTask;
+
+        /// <summary>Taken to admit a send, to post a settle that must not wait behind one, and to end a send.</summary>
+        public Lock Gate { get; } = new();
+
+        /// <summary>Whether a send is waiting or under way. Read and written under <see cref="Gate"/>.</summary>
+        public bool SendPending { get; set; }
 
         /// <summary>Last <c>PrinterEvent</c> id settled. Loop-only.</summary>
         public long Watermark { get; set; }

@@ -151,13 +151,14 @@ public sealed class TransferServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A send whose caller gave up while it waited its turn is never offered: the printer is not asked
-    /// for anything the caller will not hear the answer to.
+    /// A second send to a printer while one is under way is refused at once, as a second command to
+    /// a busy printer always was - not queued to wait out the first one's answer - and the next send
+    /// after the first has ended is let through.
     /// </summary>
     [Fact]
-    public async Task ASendItsCallerGaveUpOnBeforeItsTurnIsNotOffered()
+    public async Task ASecondSendWhileOneIsUnderWayIsRefusedAtOnce()
     {
-        // Arrange - a first send holding the mailbox on the printer's answer
+        // Arrange - a first send holding the printer's mailbox on its answer
         PrintFile file = await SeedAsync();
         TaskCompletionSource<CommandSendResult> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource offered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -165,23 +166,80 @@ public sealed class TransferServiceTests : IDisposable
         TransferService transfers = _services.GetRequiredService<TransferService>();
 
         Task<TransferResult> first = transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
-        await offered.Task.WaitAsync(TestContext.Current.CancellationToken);
+        await offered.Task.WaitAsync(Bound, TestContext.Current.CancellationToken);
 
-        // Act - a second send, given up on while it waits, and then the first one's answer
+        // Act
+        Func<Task> second = () => transfers.SendAsync(Request(file), TestContext.Current.CancellationToken)
+                                           .WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Assert - refused, not left waiting on the first one's answer
+        await second.Should().ThrowAsync<CommandAlreadyInFlightException>();
+
+        answer.SetResult(TakenAs(DownloadCommandId));
+        await first.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        await transfers.SendAsync(Request(file), TestContext.Current.CancellationToken)
+                       .WaitAsync(Bound, TestContext.Current.CancellationToken);
+        DownloadsOffered(actor).Should().Be(2, "the refused send offered nothing, and the one after the first was let through");
+    }
+
+    /// <summary>
+    /// A send whose caller had given up by the time its turn came is never offered: the printer is not
+    /// asked for anything nobody will hear the answer to.
+    /// </summary>
+    [Fact]
+    public async Task ASendWhoseCallerHasGivenUpIsNotOffered()
+    {
+        // Arrange
+        PrintFile file = await SeedAsync();
+        IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
         using CancellationTokenSource givenUp = new();
-        Task<TransferResult> second = transfers.SendAsync(Request(file), givenUp.Token);
         await givenUp.CancelAsync();
 
-        answer.SetResult(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.TransferInfo, null))
-        {
-            CommandId = DownloadCommandId,
-        });
-        await first;
-        await transfers.SettleAsync(PrinterId, TestContext.Current.CancellationToken);
+        // Act
+        Func<Task> send = () => transfers.SendAsync(Request(file), givenUp.Token);
 
         // Assert
-        await second.Invoking(task => task).Should().ThrowAsync<OperationCanceledException>();
-        DownloadsOffered(actor).Should().Be(1, "the second send was given up on before its turn");
+        await send.Should().ThrowAsync<OperationCanceledException>();
+        await transfers.SettleAsync(PrinterId, TestContext.Current.CancellationToken);
+        DownloadsOffered(actor).Should().Be(0);
+
+        await transfers.SendAsync(Request(file), TestContext.Current.CancellationToken)
+                       .WaitAsync(Bound, TestContext.Current.CancellationToken);
+        DownloadsOffered(actor).Should().Be(1, "the given-up send no longer counted as one under way");
+    }
+
+    /// <summary>
+    /// The queue's settle comes back at once, settling nothing, while a send is under way - its pass
+    /// must not wait out a silent printer's answer - and settles as usual once the send has ended.
+    /// </summary>
+    [Fact]
+    public async Task TheQueuesSettleDoesNotWaitBehindASend()
+    {
+        // Arrange - a send holding the printer's mailbox on its answer
+        PrintFile file = await SeedAsync();
+        TaskCompletionSource<CommandSendResult> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource offered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConnectAnsweringDownloadsWith(answer.Task, offered);
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        Task<TransferResult> send = transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
+        await offered.Task.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Act
+        bool settledWhileSending = await transfers.SettleUnlessSendingAsync(PrinterId, TestContext.Current.CancellationToken)
+                                                  .WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        answer.SetResult(TakenAs(DownloadCommandId));
+        await send.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        bool settledAfter = await transfers.SettleUnlessSendingAsync(PrinterId, TestContext.Current.CancellationToken)
+                                           .WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Assert
+        settledWhileSending.Should().BeFalse("a send was under way");
+        settledAfter.Should().BeTrue();
     }
 
     /// <summary>

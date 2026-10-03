@@ -669,6 +669,24 @@ public sealed class QueueAdvancer : BackgroundService
                 await dbContext.SaveChangesAsync(cancellationToken);
             }
 
+            // A stop the printer accepted, of a print that never began, is settled: there is no
+            // natural completion it could be confused with, so nothing is left to observe or ask.
+            // Decided here rather than by PrintStopService, which only records who stopped it, so
+            // this loop is the one writer of how a print ended. Ahead of the promotion, because a
+            // Printing sample read before the stop must not carry a stopped print into the
+            // running phase - and ahead of the withdrawn job id, because a stop in the first
+            // seconds can land before any pass has recorded one.
+            if (active.StoppedByUserId is not null)
+            {
+                _logger.LogInformation("[{PrinterId}] {FileName} was stopped before it began; closing it rather than holding the queue.",
+                                       printerId, active.FileName);
+
+                Close(active, PrintState.Stopped, now);
+                await dbContext.SaveChangesAsync(cancellationToken);
+
+                return null;
+            }
+
             if (status == PrinterStatus.Printing)
             {
                 active.State = PrintState.Printing;
@@ -697,23 +715,30 @@ public sealed class QueueAdvancer : BackgroundService
             }
 
             // Taken up, and now withdrawn: we hold a job id, the printer reports none, and it is not
-            // in any state that could still be starting. Whatever ended it - a stop of ours, an
-            // Abort at the panel, a refusal we never saw - it is over, and this is the only signal a
-            // panel abort gives us. It sends no event at all, unlike our own STOP_PRINT, which is
-            // why closing on the job id rather than on an event covers both.
+            // in any state that could still be starting. Whatever ended it - an Abort at the panel,
+            // a refusal we never saw, or a stop of ours whose attribution has not landed yet - it is
+            // over, and this is the only signal a panel abort gives us. It sends no event at all,
+            // unlike our own STOP_PRINT, which is why closing on the job id rather than on an event
+            // covers both.
             //
             // The FirmwareJobId guard is what keeps a legitimate start alive: firmware reports
             // Idle or Ready through PrintInit while it opens the file, and carries no job id yet -
             // so a row that has never seen one is still starting, not finished.
+            //
+            // Asked before settling for Unknown: firmware records an abort at the preview in the
+            // same two-job memory as a print that ran, and answers FIN_STOPPED for it.
             if (active.FirmwareJobId is not null &&
                 live?.JobId is null &&
                 status is PrinterStatus.Idle or PrinterStatus.Ready or PrinterStatus.Error)
             {
-                _logger.LogInformation("[{PrinterId}] {FileName} was accepted as firmware job {JobId} and never began; the printer " +
-                                       "is {Status} and reports no job, so it is over.",
-                                       printerId, active.FileName, active.FirmwareJobId, status);
+                PrintState withdrawn = await AskPriorOutcomeAsync(scope, printerId, active, cancellationToken) ??
+                                       PrintState.Unknown;
 
-                Close(active, PrintState.Unknown, now);
+                _logger.LogInformation("[{PrinterId}] {FileName} was accepted as firmware job {JobId} and never began; the printer " +
+                                       "is {Status} and reports no job, so it is over: {Outcome}",
+                                       printerId, active.FileName, active.FirmwareJobId, status, withdrawn);
+
+                Close(active, withdrawn, now);
                 await dbContext.SaveChangesAsync(cancellationToken);
 
                 return null;

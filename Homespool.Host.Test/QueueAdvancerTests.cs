@@ -468,6 +468,151 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A print stopped from here before it began is closed as <c>Stopped</c> on the next pass,
+    /// whatever the printer is reporting and whether or not a job id was ever seen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The stopper is the evidence.</b> <c>PrintStopService</c> writes it only when the printer
+    /// accepted the stop, and a print that never began has no natural completion to confuse that
+    /// with - so the outcome is settled, and nothing is asked. No printer is connected here, which is
+    /// what proves it.
+    /// </para>
+    /// <para>
+    /// <b>No job id is the case that needs it.</b> Telemetry lags the wire, so a stop in the first
+    /// seconds can land before any pass has recorded the job id, and the withdrawn-job rule cannot
+    /// fire on a row that never held one - it would wait out <see cref="QueueAdvancer.StartingStaleAfter"/>
+    /// and close as <c>Unknown</c>. <b>The <c>Printing</c> row is the other half</b>: a sample read
+    /// before the stop must not promote a stopped print into the running phase.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(PrinterStatus.Idle, null)]
+    [InlineData(PrinterStatus.Attention, 752)]
+    [InlineData(PrinterStatus.Printing, 752)]
+    public async Task APrintStoppedFromHereBeforeItBeganIsClosedAsStopped(PrinterStatus status, int? jobId)
+    {
+        // Arrange - accepted, never begun, and attributed by an accepted stop
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "stopped.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = PrintOnly,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+            StoppedByUserId = 1,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, status, jobId);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull("an accepted stop of a print that never began leaves nothing to wait for");
+        job.State.Should().Be(PrintState.Stopped, "a person here stopped it, which Unknown would not say");
+        job.StoppedByUserId.Should().Be(1);
+    }
+
+    /// <summary>
+    /// A withdrawn job is closed on what the printer remembers about it, not as <c>Unknown</c>.
+    /// </summary>
+    /// <remarks>
+    /// <b>The panel's Abort sends nothing</b>, so the withdrawn job id is all this loop sees of it -
+    /// but firmware records an abort at the preview in its two-job memory, and answers
+    /// <c>FIN_STOPPED</c> for it by id.
+    /// </remarks>
+    [Fact]
+    public async Task AWithdrawnJobThePrinterRemembersIsClosedOnItsAnswer()
+    {
+        // Arrange - taken up as job 752, then aborted at the panel
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "aborted.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = PrintOnly,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+            FirmwareJobId = 752,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = ConnectRememberingJobOutcome("FIN_STOPPED");
+        await ReportAsync(context, PrinterStatus.Idle, jobId: null);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.Received().SendCommandAsync(Arg.Any<SendJobInfo>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull();
+        job.State.Should().Be(PrintState.Stopped, "the printer remembered, so Unknown would be a guess it did not have to make");
+        job.StoppedByUserId.Should().BeNull("nobody here stopped it - that is what makes it the panel's");
+    }
+
+    /// <summary>
+    /// A withdrawn job the printer does not remember still closes, as <c>Unknown</c>.
+    /// </summary>
+    /// <remarks>
+    /// Asking can only make the close truthful, never prevent it: a row left open holds the
+    /// printer's one open-print slot, and the queue with it.
+    /// </remarks>
+    [Fact]
+    public async Task AWithdrawnJobThePrinterDoesNotRememberIsClosedAsUnknown()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = PrinterId,
+            FileName = "forgotten.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = PrintOnly,
+            StartedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+            FirmwareJobId = 752,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectRefusing("Job ID doesn't match");
+        await ReportAsync(context, PrinterStatus.Idle, jobId: null);
+        _clock.Advance(TimeSpan.FromSeconds(5));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob job = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        job.EndedAt.Should().NotBeNull("the job is gone from the printer, so the row cannot stay open");
+        job.State.Should().Be(PrintState.Unknown);
+    }
+
+    /// <summary>
     /// <c>Forbidden path</c> will not change by retrying, so the entry is dropped - and recorded, or a
     /// queued print would vanish with nowhere to find out why.
     /// </summary>

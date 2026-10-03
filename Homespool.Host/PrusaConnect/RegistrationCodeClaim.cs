@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore.Storage;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -82,7 +83,13 @@ public class RegistrationCodeClaim
         // unknown - and, being counted, cost an attempt for getting it right. Normalise also applies
         // Crockford's O/I/L substitutions, which is what makes a character misread off a
         // low-resolution LCD still resolve.
+        ArgumentNullException.ThrowIfNull(caller);
+
         string code = ClaimCode.Normalise(typedCode);
+
+        // Before an attempt is taken: a key that cannot enrol hardware is not guessing, so it neither
+        // spends the account's allowance nor is answered with a backoff that is not its problem.
+        CredentialScope.Require(caller, Capability.ManagePrinter);
 
         // Before the code is compared, so a backed-off account cannot learn whether a guess was right
         // from which refusal comes back - and counted as a wrong guess until it proves otherwise.

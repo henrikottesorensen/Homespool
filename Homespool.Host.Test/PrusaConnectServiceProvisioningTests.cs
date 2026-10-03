@@ -253,6 +253,25 @@ public sealed class PrusaConnectServiceProvisioningTests : IDisposable
     }
 
     /// <summary>
+    /// The same missing default, from a key that cannot enrol hardware: the key is reported, as on
+    /// every other branch, rather than the team the account does not have.
+    /// </summary>
+    [Fact]
+    public async Task ProvisioningWithNoDefaultTeamFromAKeyThatCannotEnrolIsRefusedByTheKey()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+        Caller slicerKey = TestCallers.Scoped(1, Capability.UploadOwnFiles, Capability.Print);
+
+        // Act
+        Func<Task> provision = () => service.ProvisionPrinterAsync(null, null, teamUuid: null, caller: slicerKey);
+
+        // Assert
+        (await provision.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Missing.Should().Be(Capability.ManagePrinter);
+    }
+
+    /// <summary>
     /// Provisioning does not touch the code-exchange tables at all: no registration is created, and
     /// nothing is enrolled until the printer actually presents the token.
     /// </summary>

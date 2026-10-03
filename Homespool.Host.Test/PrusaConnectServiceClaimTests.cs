@@ -14,6 +14,7 @@ using Homespool.Host.Accounts;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO;
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -228,6 +229,86 @@ public sealed class PrusaConnectServiceClaimTests : IDisposable
 
         // Assert
         await claim.Should().ThrowAsync<CredentialScopeDeniedException>();
+    }
+
+    /// <summary>
+    /// <b>A key that cannot enrol hardware learns nothing about the code it sent.</b> It is refused
+    /// naming <c>ManagePrinter</c> whether the code is live, unknown or already claimed - not told
+    /// which, as a 404 or a 409 in place of the 403 would.
+    /// </summary>
+    [Theory]
+    [InlineData("live")]
+    [InlineData("unknown")]
+    [InlineData("claimed")]
+    public async Task AKeyThatCannotEnrolIsRefusedWhateverTheCode(string state)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        PrusaConnectService service = NewService(context);
+
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+        string code = (await service.GetPrinterCode(PrinterRequest())).TemporaryCode;
+
+        if (state == "claimed")
+        {
+            await service.ClaimPrinterAsync(code, null, null, teamUuid: null, caller: TestCallers.Scoped(1, Capability.ManagePrinter));
+        }
+
+        string sent = state == "unknown" ? "NEVER-ISSUED" : code;
+        Caller slicerKey = TestCallers.Scoped(1, Capability.UploadOwnFiles, Capability.Print);
+
+        // Act
+        Func<Task> claim = () => service.ClaimPrinterAsync(sent, null, null, teamUuid: null, caller: slicerKey);
+
+        // Assert
+        (await claim.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Missing.Should().Be(Capability.ManagePrinter);
+    }
+
+    /// <summary>
+    /// <b>Nor is it answered with the account's backoff.</b> Claim codes are counted per account so
+    /// they cannot be guessed, and a key that may not claim at all is not guessing: while the account
+    /// is backed off it is still told what it lacks, where a key that may claim is told to wait. The
+    /// second half is what keeps the first from passing on an account that was never backed off.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ABackedOffAccountsKeyThatMayNotClaimIsToldWhatItLacks(bool mayClaim)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager, isDefault: true);
+
+        context.UserActionAttempts.Add(new UserActionAttempt
+        {
+            UserId = 1,
+            Action = LimitedAction.ClaimPrinter,
+            FailedCount = 5,
+            LockoutEnd = DateTimeOffset.UtcNow.AddHours(1),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        RegistrationCodeClaim claims = new(NewService(context), new UnitOfWork(context),
+                                           new AttemptLimiter(context, TestOptions.Snapshot(new AttemptLimitOptions()),
+                                                              NullLogger<AttemptLimiter>.Instance),
+                                           TimeProvider.System);
+        Caller key = mayClaim ?
+            TestCallers.Scoped(1, Capability.ManagePrinter) :
+            TestCallers.Scoped(1, Capability.UploadOwnFiles, Capability.Print);
+
+        // Act
+        Func<Task> claim = () => claims.ClaimAsync(1, "NEVER-ISSUED", null, null, teamUuid: null, key,
+                                                   TestContext.Current.CancellationToken);
+
+        // Assert
+        if (mayClaim)
+        {
+            await claim.Should().ThrowAsync<ClaimLockedOutException>();
+        }
+        else
+        {
+            (await claim.Should().ThrowAsync<CredentialScopeDeniedException>()).Which.Missing.Should().Be(Capability.ManagePrinter);
+        }
     }
 
     /// <summary>

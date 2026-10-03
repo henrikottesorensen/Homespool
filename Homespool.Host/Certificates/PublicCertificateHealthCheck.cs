@@ -194,6 +194,13 @@ public sealed class PublicCertificateHealthCheck : IHealthCheck
             return PublicCertificateProbeResult.Unreachable(
                 $"no answer within {ProbeTimeout.TotalSeconds.ToString(CultureInfo.InvariantCulture)} seconds");
         }
+        catch (Exception ex)
+        {
+            // Anything else the probe throws is still a name that was not checked. Left to escape it
+            // would fault the shared task, and _inFlight - cleared only after a probe completes - would
+            // hand that same failure to every later caller until the application restarted.
+            return PublicCertificateProbeResult.Unreachable($"{ex.GetType().Name}: {ex.Message}");
+        }
     }
 
     /// <summary>What the probes found, as one health result.</summary>

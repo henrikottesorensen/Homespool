@@ -202,7 +202,11 @@ public class ExternalLoginModel : PageModel
         returnUrl = returnUrl ?? Url.Content("~/");
         if (remoteError != null)
         {
-            ErrorMessage = _localiser["Account_ExternalProviderError", remoteError];
+            // The query value is whatever the requester typed, so it is logged and never shown: echoing
+            // it would let anyone link a victim to the login page with text of their choosing on it.
+            _logger.LogWarning("The external provider reported an error: {RemoteError}",
+                               remoteError.Length > 200 ? remoteError[..200] : remoteError);
+            ErrorMessage = _localiser["Account_ExternalProviderError"];
             return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
         }
 

@@ -1843,7 +1843,7 @@
     <value>E-mailadressen kunne ikke bekræftes.</value>
   </data>
   <data name="Account_ExternalProviderError" xml:space="preserve">
-    <value>Fejl fra ekstern udbyder: {0}</value>
+    <value>Fejl fra ekstern udbyder.</value>
   </data>
   <data name="Manage_TokenRevoked" xml:space="preserve">
     <value>Tokenet er tilbagekaldt.</value>

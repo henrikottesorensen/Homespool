@@ -434,6 +434,13 @@ public class PrusaConnectService
     /// </remarks>
     public async Task<Printer> ClaimPrinterAsync(string temporaryCode, string? name, string? location, Guid? teamUuid, Caller caller)
     {
+        ArgumentNullException.ThrowIfNull(caller);
+
+        // Before the code is looked up: a key that cannot enrol hardware is told that, and learns
+        // nothing about whether the code it sent is live or already claimed. The caller's own
+        // credential is all this reads, so answering first gives nothing away.
+        CredentialScope.Require(caller, Capability.ManagePrinter);
+
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
         PrusaConnectRegistration? registration = await FindActiveRegistrationAsync(temporaryCode, now);
@@ -761,16 +768,13 @@ public class PrusaConnectService
 
         TeamMember? defaultMembership = await _teamService.GetDefaultTeamMembershipAsync(caller.UserId, CancellationToken.None);
 
-        // Should be unreachable: every account is given a default team at creation
-        // (TeamProvisioning.AddDefaultTeam). Fail closed rather than create a teamless printer.
-        if (defaultMembership is null)
-        {
-            throw new TeamAccessDeniedException();
-        }
-
+        // No default should be unreachable: every account is given one at creation
+        // (TeamProvisioning.AddDefaultTeam). RequireManage refuses a missing membership, so this fails
+        // closed rather than create a teamless printer - and asks the credential first, as the other
+        // branch does.
         RequireManage(defaultMembership, caller);
 
-        return defaultMembership.TeamId;
+        return defaultMembership!.TeamId;
     }
 
     private async Task RequireManageAsync(int teamId, Caller caller)

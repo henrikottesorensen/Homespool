@@ -1257,6 +1257,9 @@
   <data name="Validation_ExpiryRange" xml:space="preserve">
     <value>Expiry must be between 1 and 8760 hours.</value>
   </data>
+  <data name="Validation_TextNotPrintable" xml:space="preserve">
+    <value>That text holds a control or invisible character, or a space other than the ordinary one.</value>
+  </data>
   <data name="Validation_EmailNotStorable" xml:space="preserve">
     <value>That address holds a control or invisible character, or is longer than 254 characters.</value>
   </data>

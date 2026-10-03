@@ -20,6 +20,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -101,10 +102,12 @@ public class ClaimModel : PageModel
     public class InputModel
     {
         [StringLength(Printer.NameMaxLength)]
+        [PrintableText]
         [Display(Name = "Common_Name")]
         public string? Name { get; set; }
 
         [StringLength(Printer.LocationMaxLength)]
+        [PrintableText]
         [Display(Name = "Printers_Location")]
         public string? Location { get; set; }
 

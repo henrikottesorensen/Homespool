@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using Homespool.Host.Controllers;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrusaConnect.DTO.App;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -65,6 +66,22 @@ public sealed class PrinterNameBoundsTests
 
         bound.Should().NotBeNull($"{surface.Name}.{property} is bounded by this attribute and by nothing else");
         bound!.MaximumLength.Should().Be(expected, "all four writers of this column answer to one number");
+
+        declared.GetCustomAttribute<PrintableTextAttribute>().Should()
+                .NotBeNull($"{surface.Name}.{property} is shown back to people, so it holds to the printable rule");
+    }
+
+    [Theory]
+    [InlineData("Living room MK4", true)]
+    [InlineData("Værksted \U0001F600", true)]
+    [InlineData("MK4\u00A0", false)]
+    [InlineData("MK4\u2800", false)]
+    [InlineData("MK4\u3164", false)]
+    [InlineData("MK4\u206A", false)]
+    [InlineData("MK4\uFFF9", false)]
+    public void ANameOrLocationHoldingAnInvisibleCharacterIsRefused(string value, bool expected)
+    {
+        new PrintableTextAttribute().IsValid(value).Should().Be(expected);
     }
 
     /// <summary>

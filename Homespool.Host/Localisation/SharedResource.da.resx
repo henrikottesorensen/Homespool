@@ -1221,6 +1221,9 @@
   <data name="Validation_ExpiryRange" xml:space="preserve">
     <value>Udløb skal være mellem 1 og 8760 timer.</value>
   </data>
+  <data name="Validation_TextNotPrintable" xml:space="preserve">
+    <value>Teksten indeholder kontroltegn eller usynlige tegn, eller et andet mellemrum end det almindelige.</value>
+  </data>
   <data name="Validation_EmailNotStorable" xml:space="preserve">
     <value>Adressen indeholder kontroltegn eller usynlige tegn, eller er længere end 254 tegn.</value>
   </data>

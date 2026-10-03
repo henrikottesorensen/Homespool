@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Services;
 
 namespace Homespool.Host.Localisation;
 
@@ -36,9 +37,12 @@ public sealed class ValidationAttributeAdapters : IValidationAttributeAdapterPro
     {
         ArgumentNullException.ThrowIfNull(attribute);
 
-        return attribute is StorableEmailAddressAttribute storable ?
-            new MessageOnly<StorableEmailAddressAttribute>(storable, stringLocalizer) :
-            _framework.GetAttributeAdapter(attribute, stringLocalizer);
+        return attribute switch
+        {
+            StorableEmailAddressAttribute storable => new MessageOnly<StorableEmailAddressAttribute>(storable, stringLocalizer),
+            PrintableTextAttribute printable => new MessageOnly<PrintableTextAttribute>(printable, stringLocalizer),
+            _ => _framework.GetAttributeAdapter(attribute, stringLocalizer),
+        };
     }
 
     /// <summary>

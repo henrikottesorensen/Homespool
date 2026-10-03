@@ -31,8 +31,8 @@ namespace Homespool.Host.Accounts;
 /// was not told.
 /// </para>
 /// <para>
-/// <b>A passkey's name is never in the mail.</b> Whoever adds a passkey chooses its name, so naming it
-/// would let them write into the owner's inbox. A provider's display name is the administrator's, and
+/// <b>A passkey's name, or an API token's, is never in the mail.</b> Whoever adds one chooses its name,
+/// so naming it would let them write into the owner's inbox. A provider's display name is the administrator's, and
 /// is named.
 /// </para>
 /// </remarks>
@@ -69,6 +69,7 @@ public sealed class CredentialNotices
             CredentialChange.PasskeyAdded => ("Email_PasskeyAddedSubject", "Email_PasskeyAddedBody"),
             CredentialChange.PasskeyRemoved => ("Email_PasskeyRemovedSubject", "Email_PasskeyRemovedBody"),
             CredentialChange.PasskeyRevoked => ("Email_PasskeyRevokedSubject", "Email_PasskeyRevokedBody"),
+            CredentialChange.ApiTokenIssued => ("Email_ApiTokenIssuedSubject", "Email_ApiTokenIssuedBody"),
             _ => throw new ArgumentOutOfRangeException(nameof(change), change, "Not a change the owner is told about."),
         };
 

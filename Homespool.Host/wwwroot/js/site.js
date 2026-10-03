@@ -107,7 +107,13 @@
 
             body.set("file", file);
 
-            fetch(input.form.action, { method: "POST", body: body, credentials: "same-origin" })
+            // redirect: "manual" because the handler answers with a redirect carrying its flash
+            // message and any held Replace/Discard question in TempData, which the next GET consumes.
+            // Letting fetch follow it would spend that GET here, on a response nobody renders, and
+            // leave the reload with nothing to show. Not following it leaves the TempData cookie (set
+            // on the redirect response itself) for the reload to read. With several files, the last
+            // file's message is the one shown.
+            fetch(input.form.action, { method: "POST", body: body, credentials: "same-origin", redirect: "manual" })
                 .catch(function () {
                     // One file failing to reach the server is not a reason to abandon the rest.
                 })

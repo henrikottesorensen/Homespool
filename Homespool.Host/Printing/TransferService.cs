@@ -118,6 +118,38 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     }
 
     /// <summary>
+    /// Sends one of a user's files to a printer outside the queue - the API's send and the Files
+    /// page's - and hands back every answer, holding and counting nothing.
+    /// </summary>
+    /// <param name="printer">The printer, already resolved and authorised by the caller.</param>
+    /// <param name="indexed">The file's row.</param>
+    /// <param name="file">The file's bytes, as the store holds them.</param>
+    /// <param name="caller">The authority the send is made under.</param>
+    /// <param name="cancellationToken">Cancels the send until the offer goes out, and the caller's wait.</param>
+    /// <returns>What became of an older copy, and the printer's answer when the file was offered.</returns>
+    /// <exception cref="PrintFileUnreadableException">The file could not be read.</exception>
+    /// <remarks>
+    /// Through the printer's mailbox like the queue's sends, so the attempt is recorded before its end
+    /// can be read, and the end settles it whether or not the queue ever visits this printer.
+    /// </remarks>
+    public async Task<DirectSendResult> SendDirectAsync(Printer printer,
+                                                        PrintFile indexed,
+                                                        StoredFile file,
+                                                        Caller caller,
+                                                        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(printer);
+        ArgumentNullException.ThrowIfNull(indexed);
+
+        TransferResult result = await SendAsync(new TransferRequest(printer.Id, indexed.Id, caller, new DirectSend(file)),
+                                                cancellationToken);
+
+        // Never null for a direct send: its file is given, and one that cannot be read throws rather
+        // than stopping short.
+        return new DirectSendResult(result.Cleared!, result.Sent);
+    }
+
+    /// <summary>
     /// Settles this printer's transfers from whatever it has reported since they were last settled,
     /// and returns once that is done.
     /// </summary>
@@ -801,6 +833,25 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// A person's send: the file they chose, and every answer back to them - nothing held, counted or
+    /// stamped, since nothing waits on it but them.
+    /// </summary>
+    private sealed class DirectSend : TransferPolicy
+    {
+        private readonly StoredFile _file;
+
+        public DirectSend(StoredFile file)
+        {
+            _file = file;
+        }
+
+        public override Task<StoredFile?> FindFileAsync(TransferContext context, CancellationToken cancellationToken)
+        {
+            return Task.FromResult<StoredFile?>(_file);
         }
     }
 

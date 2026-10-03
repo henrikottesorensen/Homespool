@@ -80,7 +80,7 @@ public class PrinterController : ControllerBase
     private const string LightingAct = "lighting";
 
     private readonly PrintFileCatalog _files;
-    private readonly PrinterDriveCopies _copies;
+    private readonly TransferService _transfers;
     private readonly PrinterCommandService _commands;
     private readonly PrintStopService _stops;
     private readonly PrinterLightingService _lighting;
@@ -90,7 +90,7 @@ public class PrinterController : ControllerBase
     private readonly ILogger<PrinterController> _logger;
 
     public PrinterController(PrintFileCatalog files,
-                             PrinterDriveCopies copies,
+                             TransferService transfers,
                              PrinterCommandService commands,
                              PrintStopService stops,
                              PrinterLightingService lighting,
@@ -100,7 +100,7 @@ public class PrinterController : ControllerBase
                              ILogger<PrinterController> logger)
     {
         _files = files;
-        _copies = copies;
+        _transfers = transfers;
         _commands = commands;
         _stops = stops;
         _lighting = lighting;
@@ -194,12 +194,12 @@ public class PrinterController : ControllerBase
         }
 
         // Naming the file on the drive, clearing an older version of it there, offering the bytes and
-        // cleaning up after a send that did not take all live in PrinterDriveCopies, because the Files
-        // page needs exactly the same steps in the same order.
+        // recording the attempt all live in TransferService, because the Files page and the queue need
+        // exactly the same steps in the same order.
         try
         {
-            DirectSendResult result = await _copies.SendAsync(printer, indexed, file, CallerResolver.For(user, User),
-                                                              cancellationToken);
+            DirectSendResult result = await _transfers.SendDirectAsync(printer, indexed, file, CallerResolver.For(user, User),
+                                                                       cancellationToken);
 
             if (result.Sent is not { } sent)
             {

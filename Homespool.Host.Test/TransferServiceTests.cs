@@ -104,10 +104,13 @@ public sealed class TransferServiceTests : IDisposable
     /// <summary>
     /// A settle asked for while a send waits on the printer's answer runs after the send has recorded
     /// its attempt - so an end the printer reported before the answer arrived is matched, not passed
-    /// over for good.
+    /// over for good. The queue's sends and a person's alike.
     /// </summary>
-    [Fact]
-    public async Task ASettleWaitsForTheSendAheadOfItToRecordItsAttempt()
+    /// <param name="direct">Whether the send is a person's, through <see cref="TransferService.SendDirectAsync"/>.</param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ASettleWaitsForTheSendAheadOfItToRecordItsAttempt(bool direct)
     {
         // Arrange - a printer whose answer to the offer the test releases
         PrintFile file = await SeedAsync();
@@ -117,12 +120,17 @@ public sealed class TransferServiceTests : IDisposable
         TransferService transfers = _services.GetRequiredService<TransferService>();
 
         // Act - the send, which waits on the printer; its finish in the log; and a settle behind it
-        Task<TransferResult> send = transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
+        Task send = direct ?
+            await SendDirectAsync(transfers, file) :
+            transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
         await offered.Task.WaitAsync(TestContext.Current.CancellationToken);
 
         await AddTransferEndAsync(PrinterEventType.TransferFinished);
         Task settle = transfers.SettleAsync(PrinterId, TestContext.Current.CancellationToken);
 
+        // Given every chance to run first: a settle that did not wait would be done well within this,
+        // and one that waits cannot be, so the wait costs a correct run nothing but the time.
+        await Task.WhenAny(settle, Task.Delay(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken));
         bool settledBeforeTheAnswer = settle.IsCompleted;
 
         answer.SetResult(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.TransferInfo, null))
@@ -285,7 +293,54 @@ public sealed class TransferServiceTests : IDisposable
         await stop.Should().NotThrowAsync();
     }
 
+    /// <summary>
+    /// A person's send is recorded as an attempt nothing in the queue waits on: its end settles it,
+    /// and an abort only says the partial has gone - nothing is counted against the file.
+    /// </summary>
+    [Fact]
+    public async Task ADirectSendsAbortIsSettledWithoutBeingCounted()
+    {
+        // Arrange
+        PrintFile file = await SeedAsync();
+        ConnectAnsweringDownloadsWith(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                                            new CommandOutcome(PrinterEventType.TransferInfo, null))
+        {
+            CommandId = DownloadCommandId,
+        }));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        // Act - the send, then the printer giving it up
+        await await SendDirectAsync(transfers, file);
+        PrintFileOnPrinter sent = await ReadRowAsync();
+
+        await AddTransferEndAsync(PrinterEventType.TransferAborted);
+        await transfers.SettleAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        sent.TransferCommandId.Should().Be(DownloadCommandId, "the printer took it under that command");
+        sent.TransferStartedAt.Should().BeNull("nothing in the queue waits on a person's send");
+
+        PrintFileOnPrinter ended = await ReadRowAsync();
+
+        ended.TransferCommandId.Should().BeNull("its end has been read");
+        ended.Digest.Should().BeNull("the partial went with the abort");
+        ended.TransferRefusalCount.Should().BeNull("a person's send counts against nothing");
+    }
+
     private static Caller Owner => Caller.Scoped(1, CapabilitySet.Everything);
+
+    /// <summary>The seeded file sent as a person sends it, once the printer and the bytes are read back.</summary>
+    private async Task<Task<DirectSendResult>> SendDirectAsync(TransferService transfers, PrintFile file)
+    {
+        await using AsyncServiceScope scope = _services.CreateAsyncScope();
+        Printer printer = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                     .Printers
+                                     .AsNoTracking()
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+        StoredFile stored = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>().FindForPrinting(file.UserId, file.Name)!;
+
+        return transfers.SendDirectAsync(printer, file, stored, Owner, TestContext.Current.CancellationToken);
+    }
 
     private static TransferRequest Request(PrintFile file)
     {

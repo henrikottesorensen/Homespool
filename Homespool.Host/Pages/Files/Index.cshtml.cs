@@ -53,7 +53,7 @@ public class IndexModel : PageModel
     private readonly PrintFileStorageOptions _options;
     private readonly PrinterQueryService _printers;
     private readonly DefaultPrinterService _defaults;
-    private readonly PrinterDriveCopies _copies;
+    private readonly TransferService _transfers;
     private readonly PrintQueueService _queue;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ErrorText _errors;
@@ -64,7 +64,7 @@ public class IndexModel : PageModel
                       IOptionsSnapshot<PrintFileStorageOptions> options,
                       PrinterQueryService printers,
                       DefaultPrinterService defaults,
-                      PrinterDriveCopies copies,
+                      TransferService transfers,
                       PrintQueueService queue,
                       IStringLocalizer<SharedResource> localiser,
                       ErrorText errors,
@@ -75,7 +75,7 @@ public class IndexModel : PageModel
         _options = options.Value;
         _printers = printers;
         _defaults = defaults;
-        _copies = copies;
+        _transfers = transfers;
         _queue = queue;
         _localiser = localiser;
         _errors = errors;
@@ -542,8 +542,8 @@ public class IndexModel : PageModel
                 return RedirectToSelf(sort, desc, printerUuid, compatible);
             }
 
-            DirectSendResult result = await _copies.SendAsync(printer, indexed, file,
-                                                              CallerResolver.For(userId.Value, User), cancellationToken);
+            DirectSendResult result = await _transfers.SendDirectAsync(printer, indexed, file,
+                                                                       CallerResolver.For(userId.Value, User), cancellationToken);
             CommandOutcome? outcome = result.Sent?.Outcome;
 
             (StatusMessage, StatusSuccess) =

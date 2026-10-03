@@ -48,32 +48,6 @@ public sealed class PrinterDriveNames
     }
 
     /// <summary>
-    /// The row for <paramref name="file"/> on <paramref name="printerId"/>, created when there is none,
-    /// with its drive name chosen when it has none - saved, so the next transfer sees it.
-    /// </summary>
-    public async Task<PrintFileOnPrinter> ReserveAsync(int printerId, PrintFile file, CancellationToken cancellationToken)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-
-        PrintFileOnPrinter? row = await _dbContext.PrintFilesOnPrinters
-                                                  .SingleOrDefaultAsync(candidate => candidate.PrinterId == printerId &&
-                                                                                     candidate.PrintFileId == file.Id,
-                                                                        cancellationToken);
-
-        if (row is null)
-        {
-            row = new PrintFileOnPrinter { PrinterId = printerId, PrintFileId = file.Id };
-            _dbContext.PrintFilesOnPrinters.Add(row);
-        }
-
-        row.DriveName ??= await FirstAsync(printerId, file, file.Name, cancellationToken);
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        return row;
-    }
-
-    /// <summary>
     /// The first name for <paramref name="file"/> that no other file on this printer is known by.
     /// </summary>
     /// <remarks>

@@ -15,7 +15,7 @@ Type=oneshot
 # Which deployment to renew for. Everything else - the names, the provider, the account - is read
 # from that directory's .env and compose.yaml, so this unit needs no other configuration and does
 # not have to be rewritten when any of it changes.
-Environment=COMPOSE_DIR=@COMPOSE_DIR@
+Environment="COMPOSE_DIR=@COMPOSE_DIR@"
 
 # The provider's credentials are an env_file on the certs service, read from /etc/lego/dns.env by
 # the compose CLI that this unit starts - on the host, before any container exists, the values

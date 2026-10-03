@@ -194,9 +194,16 @@ done
 # The deployment path is baked in here rather than read from a file at run time, so that a machine
 # running two deployments can carry two differently-named copies of these units without either
 # knowing about the other's configuration.
+# Absolute, because a unit starts in / and a relative path would point somewhere else. Symlinks are
+# left alone (-L), as above: the checks covered the path as written. Then escaped twice: for systemd
+# (inside the double quotes the units put around it, \ and " are special and % starts a specifier)
+# and for sed (\, & and our # delimiter are special in a replacement).
+unit_dir="$(cd -L -- "$COMPOSE_DIR" && pwd -L)"
+unit_dir="$(printf '%s' "$unit_dir" | sed -e 's/[\\"]/\\&/g' -e 's/%/%%/g')"
+unit_dir="$(printf '%s' "$unit_dir" | sed -e 's/[\\&#]/\\&/g')"
 for u in homespool-renew-cert.service homespool-renew-cert.timer \
          homespool-check-cert.service homespool-check-cert.timer; do
-    sed "s#@COMPOSE_DIR@#$COMPOSE_DIR#g" "$here/$u" > "$UNITS/$u"
+    sed "s#@COMPOSE_DIR@#$unit_dir#g" "$here/$u" > "$UNITS/$u"
     chmod 0644 "$UNITS/$u"
     echo "  $UNITS/$u"
 done

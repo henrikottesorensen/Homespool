@@ -69,6 +69,12 @@ internal sealed class QueueTransferPolicy : TransferPolicy
     public override bool StampsAttempt => true;
 
     /// <summary>
+    /// Whether the service let this send begin - false when it was refused because another send to the
+    /// printer was waiting or under way.
+    /// </summary>
+    public bool Begun { get; private set; }
+
+    /// <summary>
     /// Whether the send got past the older copy and the free-space question to the offer itself -
     /// which tells a failure to send the file from a failure to clear its way.
     /// </summary>
@@ -83,6 +89,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
     /// </remarks>
     public override async Task<StoredFile?> FindFileAsync(TransferContext context, CancellationToken cancellationToken)
     {
+        Begun = true;
         _head = await context.DbContext.QueuedPrints
                                        .Include(queued => queued.PrintFile)
                                        .SingleOrDefaultAsync(queued => queued.Id == _headId, cancellationToken);

@@ -571,6 +571,67 @@ public sealed class UserFileStoreTests : IDisposable
         act.Should().Throw<PrintFileNameConflictException>();
     }
 
+    /// <summary>
+    /// The name check and the move are one step: of many same-name publishes, exactly one wins and the
+    /// rest are a clean conflict, never an <see cref="IOException"/> from the move.
+    /// </summary>
+    [Fact]
+    public async Task ConcurrentPublishesOfOneNameYieldOneWinnerAndConflictsForTheRest()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        List<PendingUpload> staged = [];
+
+        for (int i = 0; i < 16; i++)
+        {
+            staged.Add(await store.StageAsync(Alice, "Benchy.gcode", new MemoryStream([(byte)i]),
+                                              CancellationToken.None));
+        }
+
+        // Act
+        Task<Exception?>[] attempts = staged.Select(upload => Task.Run(() =>
+        {
+            try
+            {
+                store.Publish(Alice, upload.Token, overwrite: false);
+
+                return (Exception?)null;
+            }
+            catch (Exception exception)
+            {
+                return exception;
+            }
+        }, TestContext.Current.CancellationToken)).ToArray();
+
+        Exception?[] outcomes = await Task.WhenAll(attempts);
+
+        // Assert
+        outcomes.Count(outcome => outcome is null).Should().Be(1);
+        outcomes.Where(outcome => outcome is not null).Should().AllBeOfType<PrintFileNameConflictException>();
+        store.List(Alice).Should().ContainSingle();
+    }
+
+    /// <summary>A double click on Replace publishes one token twice; the second finds it gone.</summary>
+    [Fact]
+    public async Task ConcurrentPublishesOfOneTokenPublishItOnce()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        await SaveAsync(store, Alice, "benchy.gcode", [0]);
+        PendingUpload staged = await store.StageAsync(Alice, "benchy.gcode", new MemoryStream([1]),
+                                                      CancellationToken.None);
+
+        // Act
+        PublishedFile?[] results = await Task.WhenAll(
+            Enumerable.Range(0, 8)
+                      .Select(_ => Task.Run(() => store.Publish(Alice, staged.Token, overwrite: true),
+                                            TestContext.Current.CancellationToken)));
+
+        // Assert
+        results.Count(result => result is not null).Should().Be(1);
+        store.List(Alice).Should().ContainSingle();
+    }
+
     [Fact]
     public async Task AFailedUploadLeavesNothingBehind()
     {

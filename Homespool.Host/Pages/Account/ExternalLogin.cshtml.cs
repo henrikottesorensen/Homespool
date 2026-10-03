@@ -199,7 +199,7 @@ public class ExternalLoginModel : PageModel
     public async Task<IActionResult> OnGetCallbackAsync(CancellationToken cancellationToken, string? returnUrl = null,
                                                         string? remoteError = null)
     {
-        returnUrl = returnUrl ?? Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
         if (remoteError != null)
         {
             ErrorMessage = _localiser["Account_ExternalProviderError", remoteError];
@@ -341,7 +341,7 @@ public class ExternalLoginModel : PageModel
 
     public async Task<IActionResult> OnPostConfirmationAsync(CancellationToken cancellationToken, string? returnUrl = null)
     {
-        returnUrl = returnUrl ?? Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
 
         // Get the information about the user from the external login provider
         ExternalLoginInfo? info = await _externalSignIn.InfoAsync(HttpContext, ExternalRoundTrip.SignIn);

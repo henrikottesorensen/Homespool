@@ -243,7 +243,7 @@ public class RegisterModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(string? returnUrl, CancellationToken cancellationToken)
     {
-        returnUrl ??= Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
         ReturnUrl = returnUrl;
 
         // Re-validate on post: the token could be tampered with, and the invite could have expired or

@@ -339,8 +339,35 @@ public sealed class LoginWith2faTests : IAsyncLifetime
         (await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("Invalid recovery code");
     }
 
+    /// <summary>
+    /// A <c>returnUrl</c> off this site does not stop a valid recovery code from signing in: the code
+    /// is spent by the sign-in, so an error page here would cost the person a code for nothing.
+    /// </summary>
+    [Fact]
+    public async Task ARecoveryCodeWithANonLocalReturnUrlSignsInAndGoesHome()
+    {
+        // Arrange
+        await CreateTwoFactorEnabledUserAsync();
+        string recoveryCode;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser user = (await userManager.FindByEmailAsync(Email))!;
+            recoveryCode = (await userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 2))!.First();
+        }
+
+        // Act
+        HttpResponseMessage response = await RedeemAsync(recoveryCode, "https://evil.example/");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.OriginalString.Should().Be("/");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, response).Should().BeTrue();
+    }
+
     /// <summary>Passes the password step on a fresh browser, then posts <paramref name="recoveryCode"/> to the recovery page.</summary>
-    private async Task<HttpResponseMessage> RedeemAsync(string recoveryCode)
+    private async Task<HttpResponseMessage> RedeemAsync(string recoveryCode, string? returnUrl = null)
     {
         (HttpClient client, _) = await SignInWithPasswordAsync();
         using (client)
@@ -355,7 +382,9 @@ public sealed class LoginWith2faTests : IAsyncLifetime
                 ["Input.RecoveryCode"] = recoveryCode,
             });
 
-            return await client.PostAsync("/Account/LoginWithRecoveryCode", body, TestContext.Current.CancellationToken);
+            string target = returnUrl is null ? "/Account/LoginWithRecoveryCode" : $"/Account/LoginWithRecoveryCode?returnUrl={Uri.EscapeDataString(returnUrl)}";
+
+            return await client.PostAsync(target, body, TestContext.Current.CancellationToken);
         }
     }
 

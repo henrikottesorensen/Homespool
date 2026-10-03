@@ -107,7 +107,7 @@ public class LoginModel : PageModel
             ModelState.AddModelError(string.Empty, ErrorMessage);
         }
 
-        returnUrl ??= Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
 
         // Clear the existing external cookie to ensure a clean login process.
         await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
@@ -165,7 +165,7 @@ public class LoginModel : PageModel
     /// </remarks>
     public async Task<IActionResult> OnPostPasskeyAsync(string? credential = null, bool rememberMe = false, string? returnUrl = null)
     {
-        returnUrl ??= Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
 
         ExternalLogins = (await _externalSignIn.ProvidersAsync()).ToList();
         PasskeysAvailable = _passkeys.Get(Schemes.Passkey).Covers(Request.Host);
@@ -202,7 +202,7 @@ public class LoginModel : PageModel
 
     public async Task<IActionResult> OnPostAsync(string? returnUrl = null)
     {
-        returnUrl ??= Url.Content("~/");
+        returnUrl = Url.LocalOrHome(returnUrl);
 
         ExternalLogins = (await _externalSignIn.ProvidersAsync()).ToList();
         PasskeysAvailable = _passkeys.Get(Schemes.Passkey).Covers(Request.Host);

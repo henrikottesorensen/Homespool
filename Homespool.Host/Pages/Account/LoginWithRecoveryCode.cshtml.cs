@@ -100,7 +100,7 @@ public class LoginWithRecoveryCodeModel : PageModel
 
             _logger.LogInformation("User with ID {UserId} logged in with a recovery code.", user.Id);
 
-            return LocalRedirect(returnUrl ?? Url.Content("~/"));
+            return LocalRedirect(Url.LocalOrHome(returnUrl));
         }
 
         if (code.Refusal() == SignInRefusal.LockedOut)

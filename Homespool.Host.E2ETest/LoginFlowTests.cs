@@ -126,6 +126,38 @@ public sealed class LoginFlowTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A <c>returnUrl</c> that is not on this site does not turn a correct sign-in into an error page:
+    /// the person is signed in and sent to the home page.
+    /// </summary>
+    [Theory]
+    [InlineData("https://evil.example/")]
+    [InlineData("//evil.example/")]
+    [InlineData("/\\evil.example/")]
+    public async Task ANonLocalReturnUrlSignsTheUserInAndGoesHome(string returnUrl)
+    {
+        // Arrange
+        await CreateUserAsync("user@example.com", confirmed: true);
+
+        using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+
+        HttpResponseMessage getResponse = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
+        string antiforgeryToken =
+            AntiforgeryTestHelper.ExtractToken(await getResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+
+        using FormUrlEncodedContent body = LoginBody(antiforgeryToken, "user@example.com", Password);
+
+        // Act
+        HttpResponseMessage postResponse = await client.PostAsync($"/Account/Login?returnUrl={Uri.EscapeDataString(returnUrl)}", body,
+                                                                  TestContext.Current.CancellationToken);
+
+        // Assert
+        postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        postResponse.Headers.Location!.OriginalString.Should().Be("/");
+        IdentityCookieTestHelper.SetTheApplicationCookie(_factory.Services, postResponse).Should()
+                                .BeTrue("the sign-in happened, so its cookie has to reach the browser");
+    }
+
+    /// <summary>
     /// The same account, signed in by its username instead of its address.
     /// </summary>
     /// <remarks>

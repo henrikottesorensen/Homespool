@@ -300,6 +300,29 @@ public sealed class UserFileStoreTests : IDisposable
         store.List(Alice).Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Within the character limit is not within the filesystem's byte limit: three-byte letters
+    /// fill 255 bytes long before 167 characters.
+    /// </summary>
+    [Fact]
+    public async Task ANameOverTheFilesystemsByteLimitIsRefusedBeforeTheUpload()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        string name = new string('\u3042', 90) + ".gcode";
+
+        // Act
+        Func<Task> act = () => SaveAsync(store, Alice, name, [1]);
+
+        // Assert
+        name.Length.Should().BeLessThan(UserFileStore.MaxNameLength);
+        PrintFileNameRejectedException refused = (await act.Should().ThrowAsync<PrintFileNameRejectedException>()).Which;
+
+        refused.ResourceKey.Should().Be("Error_FileNameTooLongBytes");
+        refused.ResourceArguments.Should().Equal([name, UserFileStore.MaxNameBytes]);
+        store.List(Alice).Should().BeEmpty();
+    }
+
     /// <summary>The longest name the printer holds is still a name the store takes.</summary>
     [Fact]
     public async Task ANameOfExactlyThePrintersLimitIsAccepted()

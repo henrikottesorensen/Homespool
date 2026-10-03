@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -67,6 +68,14 @@ public sealed class UserFileStore
     /// what <see cref="string.Length"/> counts.
     /// </remarks>
     public const int MaxNameLength = 167;
+
+    /// <summary>The longest file name, in UTF-8 bytes, that the host's filesystem will take.</summary>
+    /// <remarks>
+    /// Ext4 and its kin cap a single name at 255 <i>bytes</i>, and a name of non-ASCII letters is
+    /// several bytes each - so a name can be within <see cref="MaxNameLength"/> and still be refused
+    /// by the filesystem, after the whole upload has been read.
+    /// </remarks>
+    public const int MaxNameBytes = 255;
 
     /// <summary>
     /// Where a file is assembled before it is given its name. A sibling of the user directories
@@ -639,6 +648,11 @@ public sealed class UserFileStore
     /// <b>So is a name longer than <see cref="MaxNameLength"/></b>, for the same reason: the printer
     /// cannot create it. Refused here, it is refused before the bytes are read rather than after.
     /// </para>
+    /// <para>
+    /// <b>And so is one over <see cref="MaxNameBytes"/> in UTF-8</b>, which the host's own filesystem
+    /// refuses: non-ASCII letters take several bytes each, so a name can pass the check above and
+    /// still fail when the finished upload is moved into place.
+    /// </para>
     /// </remarks>
     private static string RequireSafeName(string fileName)
     {
@@ -654,6 +668,11 @@ public sealed class UserFileStore
         if (name.Length > MaxNameLength)
         {
             throw PrintFileNameRejectedException.ForLength(name, MaxNameLength, nameof(fileName));
+        }
+
+        if (Encoding.UTF8.GetByteCount(name) > MaxNameBytes)
+        {
+            throw PrintFileNameRejectedException.ForByteLength(name, MaxNameBytes, nameof(fileName));
         }
 
         return name;

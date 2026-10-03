@@ -1947,6 +1947,9 @@
   <data name="Error_FileNameTooLong" xml:space="preserve">
     <value>‘{0}’ er længere, end en printer kan gemme: højst {1} tegn. Forkort navnet, og upload filen igen.</value>
   </data>
+  <data name="Error_FileNameTooLongBytes" xml:space="preserve">
+    <value>‘{0}’ er længere, end serveren kan gemme: højst {1} bytes, og bogstaver uden for A–Z fylder mere end én. Forkort navnet, og upload filen igen.</value>
+  </data>
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>
   </data>

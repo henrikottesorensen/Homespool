@@ -2010,6 +2010,9 @@
   <data name="Error_FileNameTooLong" xml:space="preserve">
     <value>‘{0}’ is longer than a printer can hold: at most {1} characters. Shorten the name and upload it again.</value>
   </data>
+  <data name="Error_FileNameTooLongBytes" xml:space="preserve">
+    <value>‘{0}’ is longer than the server can store: at most {1} bytes, and letters outside A–Z take more than one. Shorten the name and upload it again.</value>
+  </data>
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>File name is empty, or is a directory reference, once its directory part is removed.</value>
   </data>

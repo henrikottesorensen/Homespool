@@ -96,4 +96,12 @@ public class PrintFileNameRejectedException : ArgumentException, ILocalisableErr
             $"'{fileName}' is longer than a printer can hold: at most {limit} characters.",
             fileName, parameterName, "Error_FileNameTooLong", limit);
     }
+
+    /// <summary>The refusal of a name the host's filesystem cannot hold, which counts bytes rather than characters.</summary>
+    public static PrintFileNameRejectedException ForByteLength(string fileName, int limit, string parameterName)
+    {
+        return new PrintFileNameRejectedException(
+            $"'{fileName}' is longer than the filesystem can hold: at most {limit} bytes.",
+            fileName, parameterName, "Error_FileNameTooLongBytes", limit);
+    }
 }

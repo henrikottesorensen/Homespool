@@ -167,6 +167,10 @@ public sealed class UserFileStore
     /// </remarks>
     private readonly ConcurrentDictionary<string, Pending> _pending = new(StringComparer.Ordinal);
 
+    // Serialises the find-then-move of Publish and Rename, which is a check-then-act on the
+    // directory: without it two same-name publishes both pass Find and the loser's File.Move throws.
+    private readonly Lock _namesLock = new();
+
     private readonly string _root;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<UserFileStore> _logger;
@@ -447,49 +451,56 @@ public sealed class UserFileStore
     /// </remarks>
     public PublishedFile? Publish(long userId, string token, bool overwrite, string? userName = null)
     {
-        if (!_pending.TryGetValue(token, out Pending? pending) || pending.UserId != userId)
+        lock (_namesLock)
         {
-            // Scoped by user for the same reason every other lookup here is: a token is not a
-            // capability, and one user finishing another's upload would be exactly that.
-            return null;
+            // Not claimed (removed) until the move has succeeded: a name conflict leaves the staged
+            // upload in place so the page can still answer "replace it?". Holding the lock is what
+            // makes a second Publish of the same token - a double Replace - see the first one's
+            // removal instead of reaching for a source file that has already moved.
+            if (!_pending.TryGetValue(token, out Pending? pending) || pending.UserId != userId)
+            {
+                // Scoped by user for the same reason every other lookup here is: a token is not a
+                // capability, and one user finishing another's upload would be exactly that.
+                return null;
+            }
+
+            StoredFile? existing = Find(userId, pending.FileName);
+
+            if (existing is not null && !overwrite)
+            {
+                throw new PrintFileNameConflictException(pending.FileName);
+            }
+
+            // Resolved before it is created, and that order is load-bearing: building the name from the
+            // *current* username each time would give a renamed user a second directory and split
+            // their files across both, with listings showing whichever the glob happened to hit.
+            string directory = DirectoryFor(userId, userName);
+
+            // After the staging check, not instead of it: the storage can go away between the two, and
+            // this is the call that would create the user's directory on whatever is left.
+            RequireConfirmed();
+
+            Directory.CreateDirectory(directory);
+
+            string path = Path.Combine(directory, pending.FileName);
+
+            // An existing file has to go before the rename, because File.Move(overwrite: true) would
+            // replace only the exact path - the case-insensitive match may be spelled differently from
+            // the name about to be written, leaving two files where the user expects one.
+            if (existing is not null && !string.Equals(existing.Path, path, StringComparison.Ordinal))
+            {
+                File.Delete(existing.Path);
+            }
+
+            File.Move(pending.Path, path, overwrite);
+            _pending.TryRemove(token, out _);
+
+            StoredFile stored = Describe(path);
+            _logger.LogInformation("Stored {FileName} for user {UserId} ({Length} bytes){Replaced}",
+                                   stored.FileName, userId, stored.Length, existing is null ? string.Empty : ", replacing");
+
+            return new PublishedFile(stored, pending.Digest);
         }
-
-        StoredFile? existing = Find(userId, pending.FileName);
-
-        if (existing is not null && !overwrite)
-        {
-            throw new PrintFileNameConflictException(pending.FileName);
-        }
-
-        // Resolved before it is created, and that order is load-bearing: building the name from the
-        // *current* username each time would give a renamed user a second directory and split
-        // their files across both, with listings showing whichever the glob happened to hit.
-        string directory = DirectoryFor(userId, userName);
-
-        // After the staging check, not instead of it: the storage can go away between the two, and
-        // this is the call that would create the user's directory on whatever is left.
-        RequireConfirmed();
-
-        Directory.CreateDirectory(directory);
-
-        string path = Path.Combine(directory, pending.FileName);
-
-        // An existing file has to go before the rename, because File.Move(overwrite: true) would
-        // replace only the exact path - the case-insensitive match may be spelled differently from
-        // the name about to be written, leaving two files where the user expects one.
-        if (existing is not null && !string.Equals(existing.Path, path, StringComparison.Ordinal))
-        {
-            File.Delete(existing.Path);
-        }
-
-        File.Move(pending.Path, path, overwrite);
-        _pending.TryRemove(token, out _);
-
-        StoredFile stored = Describe(path);
-        _logger.LogInformation("Stored {FileName} for user {UserId} ({Length} bytes){Replaced}",
-                               stored.FileName, userId, stored.Length, existing is null ? string.Empty : ", replacing");
-
-        return new PublishedFile(stored, pending.Digest);
     }
 
     /// <summary>Throws a staged upload away, and reports whether there was one to throw.</summary>
@@ -524,29 +535,32 @@ public sealed class UserFileStore
             throw new PrintFileNameRejectedException(safeNewName, nameof(newName));
         }
 
-        StoredFile? existing = Find(userId, fileName);
-
-        if (existing is null)
+        lock (_namesLock)
         {
-            return null;
+            StoredFile? existing = Find(userId, fileName);
+
+            if (existing is null)
+            {
+                return null;
+            }
+
+            string path = Path.Combine(DirectoryFor(userId), safeNewName);
+
+            // Comparing paths rather than names so that changing only the case of a file's own name is a
+            // rename and not a collision with itself.
+            StoredFile? occupant = Find(userId, safeNewName);
+
+            if (occupant is not null && !string.Equals(occupant.Path, existing.Path, StringComparison.Ordinal))
+            {
+                throw new PrintFileNameConflictException(safeNewName);
+            }
+
+            File.Move(existing.Path, path, overwrite: true);
+            _logger.LogInformation("Renamed {FileName} to {NewName} for user {UserId}",
+                                   existing.FileName, safeNewName, userId);
+
+            return Describe(path);
         }
-
-        string path = Path.Combine(DirectoryFor(userId), safeNewName);
-
-        // Comparing paths rather than names so that changing only the case of a file's own name is a
-        // rename and not a collision with itself.
-        StoredFile? occupant = Find(userId, safeNewName);
-
-        if (occupant is not null && !string.Equals(occupant.Path, existing.Path, StringComparison.Ordinal))
-        {
-            throw new PrintFileNameConflictException(safeNewName);
-        }
-
-        File.Move(existing.Path, path, overwrite: true);
-        _logger.LogInformation("Renamed {FileName} to {NewName} for user {UserId}",
-                               existing.FileName, safeNewName, userId);
-
-        return Describe(path);
     }
 
     /// <summary>

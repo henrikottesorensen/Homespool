@@ -488,9 +488,35 @@ public sealed class PrintFileCatalog
     private async Task IndexAsync(long userId, PublishedFile published, CancellationToken cancellationToken)
     {
         PrintFile? row = await FindRowAsync(userId, published.File.FileName, cancellationToken);
+        bool inserted = row is null;
 
         row ??= Insert(userId, published.File, published.Digest);
 
+        Apply(row, published);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException) when (inserted)
+        {
+            // A concurrent publish of the same name indexed it between our lookup and our insert, and
+            // the unique (user, name) index refused the second row. Not an error: the file exists once,
+            // so drop our insert and write onto the row that won.
+            _dbContext.Entry(row).State = EntityState.Detached;
+
+            PrintFile winner = await FindRowAsync(userId, published.File.FileName, cancellationToken) ??
+                               throw new InvalidOperationException(
+                                   $"Indexing {published.File.FileName} failed on a duplicate row that then could not be found.");
+
+            Apply(winner, published);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    private void Apply(PrintFile row, PublishedFile published)
+    {
         // An overwrite reaches here with the existing row: same name, same row, different bytes.
         // Keeping the row is what lets a queued print print the replacement, which is the behaviour
         // "overwrite" promises. A printer still holding the old bytes is not touched here: its copy
@@ -503,8 +529,6 @@ public sealed class PrintFileCatalog
         row.UploadedAt = published.File.UploadedAt;
 
         Describe(row, published.File.Path);
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>

@@ -31,11 +31,27 @@ namespace Homespool.Host.Authorisation;
 /// </para>
 /// <para>
 /// <b><c>Sec-Fetch-Site</c> is the browser's own word on where a request came from, and script cannot
-/// forge it</b> - the <c>Sec-</c> prefix makes it a forbidden header name. So a write is admitted only
-/// when the browser says <c>same-origin</c>. <b>Absent is refused too</b>, deliberately: a browser too
-/// old to send the header cannot make the one write the site's own script makes (the WebRTC offer),
-/// and that costs less than leaving the only script-forgeable alternative, a custom header, as the
-/// floor. Every browser released since March 2023 sends it.
+/// forge it</b> - the <c>Sec-</c> prefix makes it a forbidden header name. So a write that carries it
+/// is admitted only when the browser says <c>same-origin</c>, and any other value is believed.
+/// </para>
+/// <para>
+/// <b>Absent is refused over HTTPS</b>, deliberately: there it means a browser too old to send the
+/// header, which cannot then make the writes the site's own script makes (the WebRTC offer, ending a
+/// live view), and that costs less than leaving the only script-forgeable alternative, a custom
+/// header, as the floor. Every browser released since March 2023 sends it.
+/// </para>
+/// <para>
+/// <b>Over plain HTTP absent is what every browser sends</b>: fetch metadata goes only to a
+/// potentially trustworthy origin - HTTPS, or loopback - so a page at <c>http://192.168.1.10:8080</c>
+/// sends none, on its own requests included. There the browser's <c>Origin</c> stands in, which is
+/// forbidden to script too and which the site's own script sends on every write: it must be exactly
+/// this request's own origin, built from <c>Host</c>. The browser writes that header and nothing here
+/// rewrites it - <c>X-Forwarded-Host</c> is not honoured - and a sibling port or subdomain names
+/// itself in <c>Origin</c>, so the gap <c>SameSite=Lax</c> leaves stays closed. A missing, <c>null</c>
+/// or second <c>Origin</c> is refused. Whether the request is HTTPS is
+/// <see cref="HttpRequest.IsHttps"/>, which behind the shipped proxy is the browser's own connection,
+/// since that proxy's <c>X-Forwarded-Proto</c> is trusted. The fallback gives little away: over plain
+/// HTTP the cookie itself crosses the network in clear.
 /// </para>
 /// <para>
 /// <b>Whether the cookie authenticated the request is asked of the cookie scheme, not read off the
@@ -67,8 +83,14 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
     /// <summary>The one value that admits a cookie-authenticated write.</summary>
     public const string SameOrigin = "same-origin";
 
+    /// <summary>The browser's own origin, which stands in for <c>Sec-Fetch-Site</c> over plain HTTP.</summary>
+    public const string OriginHeaderName = "Origin";
+
     /// <summary>The longest value the header is defined to take is <c>same-origin</c>; more than this is not one.</summary>
     private const int MaxLoggedHeaderLength = 32;
+
+    /// <summary>A host name is at most 253 characters; with a scheme and a port, more than this is not an origin.</summary>
+    private const int MaxLoggedOriginLength = 280;
 
     private readonly ILogger<SameOriginWriteFilter> _logger;
 
@@ -95,22 +117,25 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
 
         AuthenticateResult byCookie = await context.HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);
         StringValues secFetchSite = request.Headers[HeaderName];
+        StringValues origin = request.Headers[OriginHeaderName];
 
-        if (!Refuses(request.Method, secFetchSite, byCookie.Succeeded))
+        if (!Refuses(request.Method, secFetchSite, byCookie.Succeeded, origin, PlainHttpOrigin(request)))
         {
             return;
         }
 
         // Information rather than Warning: on a healthy deployment this line means a browser old
-        // enough not to send the header, and "the live view will not start" is answered by it. A
-        // browser writes the header itself; anything else holding the cookie writes what it likes,
-        // so the value is cleaned and cut. The path needs neither - a PathString renders escaped.
-        _logger.LogInformation("Refused a cookie-authenticated {Method} to {Path}: Sec-Fetch-Site is {SecFetchSite}.",
-                               request.Method,
-                               request.Path,
-                               StringValues.IsNullOrEmpty(secFetchSite) ?
-                                   "absent" :
-                                   LogText.Clean(secFetchSite.ToString(), MaxLoggedHeaderLength));
+        // enough not to send the header, or a page on another origin, and "the live view will not
+        // start" is answered by it - the scheme says which of the two rules was applied. A browser
+        // writes both headers itself; anything else holding the cookie writes what it likes, so the
+        // values are cleaned and cut. The path needs neither - a PathString renders escaped.
+        _logger.LogInformation(
+            "Refused a cookie-authenticated {Method} to {Path} over {Scheme}: Sec-Fetch-Site is {SecFetchSite}, Origin is {Origin}.",
+            request.Method,
+            request.Path,
+            request.IsHttps ? Uri.UriSchemeHttps : Uri.UriSchemeHttp,
+            StringValues.IsNullOrEmpty(secFetchSite) ? "absent" : LogText.Clean(secFetchSite.ToString(), MaxLoggedHeaderLength),
+            StringValues.IsNullOrEmpty(origin) ? "absent" : LogText.Clean(origin.ToString(), MaxLoggedOriginLength));
 
         context.Result = new ObjectResult(new ProblemDetails
         {
@@ -130,7 +155,16 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
     /// <param name="method">The HTTP method.</param>
     /// <param name="secFetchSite">The <c>Sec-Fetch-Site</c> header, however many values it carries.</param>
     /// <param name="cookieAuthenticated">Whether the sign-in cookie authenticated this request.</param>
-    public static bool Refuses(string method, StringValues secFetchSite, bool cookieAuthenticated)
+    /// <param name="origin">The <c>Origin</c> header, consulted only when <paramref name="secFetchSite"/> is absent.</param>
+    /// <param name="plainHttpOrigin">
+    /// This request's own origin when it arrived over plain HTTP, from <see cref="PlainHttpOrigin"/>;
+    /// <see langword="null"/> over HTTPS, where <paramref name="origin"/> is never consulted.
+    /// </param>
+    public static bool Refuses(string method,
+                               StringValues secFetchSite,
+                               bool cookieAuthenticated,
+                               StringValues origin = default,
+                               string? plainHttpOrigin = null)
     {
         if (IsRead(method) || !cookieAuthenticated)
         {
@@ -138,8 +172,33 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
         }
 
         // Exactly one value, and that one. Two values is a request assembled by hand, not a browser.
-        return secFetchSite.Count != 1 ||
-               !string.Equals(secFetchSite[0], SameOrigin, StringComparison.Ordinal);
+        if (secFetchSite.Count != 0)
+        {
+            return secFetchSite.Count != 1 ||
+                   !string.Equals(secFetchSite[0], SameOrigin, StringComparison.Ordinal);
+        }
+
+        // Scheme and host are case-insensitive, and the browser writes both headers from one URL.
+        return plainHttpOrigin is null ||
+               origin.Count != 1 ||
+               !string.Equals(origin[0], plainHttpOrigin, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The origin a page serving this request would have, as a browser writes it in <c>Origin</c> -
+    /// or <see langword="null"/> when the request arrived over HTTPS or names no host.
+    /// </summary>
+    /// <param name="request">The request.</param>
+    public static string? PlainHttpOrigin(HttpRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.IsHttps || !request.Host.HasValue)
+        {
+            return null;
+        }
+
+        return Uri.UriSchemeHttp + Uri.SchemeDelimiter + request.Host.ToUriComponent();
     }
 
     private static bool IsRead(string method)

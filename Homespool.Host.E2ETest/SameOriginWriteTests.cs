@@ -28,8 +28,8 @@ namespace Homespool.Host.E2ETest;
 /// <remarks>
 /// <para>
 /// The signed-in client every other test uses already carries <c>Sec-Fetch-Site: same-origin</c>,
-/// so those tests are the proof that the header admits; what is pinned here is the refusal and its
-/// two edges. The upload endpoint is the sink because it is the simplest write with no printer in it.
+/// so those tests are the proof that the header admits; what is pinned here is the refusal, its
+/// two edges, and the plain-HTTP <c>Origin</c> that stands in when no browser sends the header. The upload endpoint is the sink because it is the simplest write with no printer in it.
 /// </para>
 /// <para>
 /// The bearer row is the guarantee that matters most to a script author: a token never sends the
@@ -108,6 +108,50 @@ public sealed class SameOriginWriteTests : IAsyncLifetime
         // Act
         using HttpResponseMessage response =
             await signedIn.PutAsync("/api/v1/files/sibling.gcode", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>
+    /// <b>Over plain HTTP a browser sends no <c>Sec-Fetch-Site</c></b>, to its own origin included,
+    /// and its <c>Origin</c> admits instead when it names this host. The test server is plain HTTP on
+    /// <c>localhost</c>, so this is that request.
+    /// </summary>
+    [Fact]
+    public async Task APlainHttpCookieWriteWithoutTheHeaderFromThisOriginIsAdmitted()
+    {
+        // Arrange
+        (_, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "plainorigin@example.com");
+        using HttpClient signedIn = client;
+        signedIn.DefaultRequestHeaders.Remove(SameOriginWriteFilter.HeaderName);
+        signedIn.DefaultRequestHeaders.Add(SameOriginWriteFilter.OriginHeaderName, "http://localhost");
+
+        using StreamContent body = Gcode();
+
+        // Act
+        using HttpResponseMessage response =
+            await signedIn.PutAsync("/api/v1/files/plainorigin.gcode", body, TestContext.Current.CancellationToken);
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>And a sibling port on the same host names itself in <c>Origin</c>, and is refused.</summary>
+    [Fact]
+    public async Task APlainHttpCookieWriteWithoutTheHeaderFromASiblingPortIsRefusedWith403()
+    {
+        // Arrange
+        (_, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "plainsibling@example.com");
+        using HttpClient signedIn = client;
+        signedIn.DefaultRequestHeaders.Remove(SameOriginWriteFilter.HeaderName);
+        signedIn.DefaultRequestHeaders.Add(SameOriginWriteFilter.OriginHeaderName, "http://localhost:8081");
+
+        using StreamContent body = Gcode();
+
+        // Act
+        using HttpResponseMessage response =
+            await signedIn.PutAsync("/api/v1/files/plainsibling.gcode", body, TestContext.Current.CancellationToken);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);

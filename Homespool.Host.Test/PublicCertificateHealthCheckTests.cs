@@ -42,10 +42,20 @@ public sealed class PublicCertificateHealthCheckTests
 
         public List<string> Asked { get; } = [];
 
+        /// <summary>Thrown by the next probe, once, in place of an answer.</summary>
+        public Exception? ThrowNext { get; set; }
+
         public Task<PublicCertificateProbeResult> ProbeAsync(string host, int port, string name,
                                                              CancellationToken cancellationToken)
         {
             Asked.Add(name);
+
+            if (ThrowNext is { } toThrow)
+            {
+                ThrowNext = null;
+                throw toThrow;
+            }
+
             return Task.FromResult(_answers[name]);
         }
     }
@@ -285,6 +295,27 @@ public sealed class PublicCertificateHealthCheckTests
         time.Advance(TimeSpan.FromSeconds(61));
         await RunAsync(check);
 
+        probe.Asked.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task A_probe_that_throws_is_a_name_not_checked_and_is_asked_again_after_a_minute()
+    {
+        // The failure used to fault the shared in-flight task, which was never cleared, so every
+        // later check rethrew it until the application restarted.
+        (PublicCertificateHealthCheck check, TableProbe probe, FakeTimeProvider time) =
+            NewCheck("a.example.com", new() { ["a.example.com"] = Expiring(60) });
+        probe.ThrowNext = new InvalidOperationException("surprise");
+
+        HealthCheckResult first = await RunAsync(check);
+
+        first.Status.Should().Be(HealthStatus.Degraded);
+        first.Description.Should().Contain("InvalidOperationException: surprise");
+
+        time.Advance(TimeSpan.FromSeconds(61));
+        HealthCheckResult second = await RunAsync(check);
+
+        second.Status.Should().Be(HealthStatus.Healthy);
         probe.Asked.Should().HaveCount(2);
     }
 

@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
@@ -125,7 +126,7 @@ public sealed class SameOriginWriteTests : IAsyncLifetime
         (_, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "plainorigin@example.com");
         using HttpClient signedIn = client;
         signedIn.DefaultRequestHeaders.Remove(SameOriginWriteFilter.HeaderName);
-        signedIn.DefaultRequestHeaders.Add(SameOriginWriteFilter.OriginHeaderName, "http://localhost");
+        signedIn.DefaultRequestHeaders.Add(HeaderNames.Origin, "http://localhost");
 
         using StreamContent body = Gcode();
 
@@ -145,7 +146,7 @@ public sealed class SameOriginWriteTests : IAsyncLifetime
         (_, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "plainsibling@example.com");
         using HttpClient signedIn = client;
         signedIn.DefaultRequestHeaders.Remove(SameOriginWriteFilter.HeaderName);
-        signedIn.DefaultRequestHeaders.Add(SameOriginWriteFilter.OriginHeaderName, "http://localhost:8081");
+        signedIn.DefaultRequestHeaders.Add(HeaderNames.Origin, "http://localhost:8081");
 
         using StreamContent body = Gcode();
 

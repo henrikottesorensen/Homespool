@@ -18,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Primitives;
+using Microsoft.Net.Http.Headers;
 
 using NSubstitute;
 
@@ -285,7 +286,7 @@ public class SameOriginWriteFilterTests
         AuthorizationFilterContext context = Context(new ControllerActionDescriptor(), "PUT", CookieSucceeded());
         context.HttpContext.Request.Scheme = Uri.UriSchemeHttp;
         context.HttpContext.Request.Host = new HostString("192.0.2.10:8080");
-        context.HttpContext.Request.Headers[SameOriginWriteFilter.OriginHeaderName] = "http://evil\u001B[2J" + new string('x', 500);
+        context.HttpContext.Request.Headers[HeaderNames.Origin] = "http://evil\u001B[2J" + new string('x', 500);
 
         // Act
         await new SameOriginWriteFilter(logger).OnAuthorizationAsync(context);
@@ -312,7 +313,7 @@ public class SameOriginWriteFilterTests
         AuthorizationFilterContext context = Context(new ControllerActionDescriptor(), "POST", CookieSucceeded());
         context.HttpContext.Request.Scheme = Uri.UriSchemeHttp;
         context.HttpContext.Request.Host = new HostString("192.0.2.10:8080");
-        context.HttpContext.Request.Headers[SameOriginWriteFilter.OriginHeaderName] = PlainOrigin;
+        context.HttpContext.Request.Headers[HeaderNames.Origin] = PlainOrigin;
 
         // Act
         await Filter().OnAuthorizationAsync(context);
@@ -329,7 +330,7 @@ public class SameOriginWriteFilterTests
         AuthorizationFilterContext context = Context(new ControllerActionDescriptor(), "POST", CookieSucceeded());
         context.HttpContext.Request.Scheme = Uri.UriSchemeHttps;
         context.HttpContext.Request.Host = new HostString("192.0.2.10:8080");
-        context.HttpContext.Request.Headers[SameOriginWriteFilter.OriginHeaderName] = "https://192.0.2.10:8080";
+        context.HttpContext.Request.Headers[HeaderNames.Origin] = "https://192.0.2.10:8080";
 
         // Act
         await Filter().OnAuthorizationAsync(context);

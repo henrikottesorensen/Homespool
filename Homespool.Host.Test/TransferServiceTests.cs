@@ -243,6 +243,43 @@ public sealed class TransferServiceTests : IDisposable
     }
 
     /// <summary>
+    /// A pass that starts at the very moment a send's caller is told how it ended - as the next pass
+    /// of a queue does - finds the printer free to settle, never still sending: the send is let go of
+    /// before its caller hears of it. The caller here runs inline in the telling, which puts its next
+    /// pass exactly in the gap a later release would leave.
+    /// </summary>
+    [Fact]
+    public async Task ASettleStartedAsASendEndsFindsThePrinterFree()
+    {
+        // Arrange
+        PrintFile file = await SeedAsync();
+        ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+        TaskCompletionSource<Task<bool>> nextPass = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Act
+        Task caller = Task.Run(async () =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new InlineSynchronizationContext());
+
+            // No token that could be cancelled, so the caller waits on the send's own completion - not on
+            // a wrapper that the pool completes later - and is run by the mailbox's thread as it is told.
+#pragma warning disable xUnit1051 // Deliberately not the test's token: see above.
+            await transfers.SendAsync(Request(file), CancellationToken.None);
+#pragma warning restore xUnit1051
+
+            // Runs inside the send's completion, on the mailbox's own thread.
+            nextPass.SetResult(transfers.SettleUnlessSendingAsync(PrinterId, TestContext.Current.CancellationToken));
+        }, TestContext.Current.CancellationToken);
+
+        await caller.WaitAsync(Bound, TestContext.Current.CancellationToken);
+        Task<bool> pass = await nextPass.Task.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Assert
+        (await pass.WaitAsync(Bound, TestContext.Current.CancellationToken)).Should().BeTrue("the send was over by the time its caller was told");
+    }
+
+    /// <summary>
     /// A person's send of a file the queue is transferring, refused or falling short, leaves the
     /// queue's attempt as it was: its stamp, and the command whose end it awaits.
     /// </summary>
@@ -662,6 +699,15 @@ public sealed class TransferServiceTests : IDisposable
         public override Task<StoredFile?> FindFileAsync(TransferContext context, CancellationToken cancellationToken)
         {
             throw new InvalidOperationException("a policy that throws");
+        }
+    }
+
+    /// <summary>Runs what is posted to it where it is posted from, so a continuation runs inside the completion that wakes it.</summary>
+    private sealed class InlineSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            d(state);
         }
     }
 }

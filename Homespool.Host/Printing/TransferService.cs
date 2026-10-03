@@ -395,6 +395,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
             {
                 if (_stoppingToken.IsCancellationRequested)
                 {
+                    ReleaseSend(mailbox, message);
                     message.Cancel(_stoppingToken);
 
                     continue;
@@ -403,7 +404,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
                 switch (message)
                 {
                     case SendMessage send:
-                        await HandleSendAsync(send);
+                        await HandleSendAsync(mailbox, send);
                         break;
 
                     case SettleMessage settle:
@@ -416,25 +417,36 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
             }
             finally
             {
-                // However the send ended - done, failed, given up on, or cancelled by a stop - the
-                // next one may be admitted.
-                if (message is SendMessage)
-                {
-                    lock (mailbox.Gate)
-                    {
-                        mailbox.SendPending = false;
-                    }
-                }
+                // The send's own handling has released it already, before telling its caller; this is
+                // for a handler that threw, which must not leave the printer refusing sends for good.
+                ReleaseSend(mailbox, message);
             }
         }
     }
 
-    private async Task HandleSendAsync(SendMessage send)
+    /// <summary>
+    /// Lets the next send be admitted. Always before a send's caller is told how it ended: a caller
+    /// woken by the result goes straight on to its next pass, and a pass that found the printer still
+    /// sending would skip its settle and decide on stale state.
+    /// </summary>
+    private static void ReleaseSend(Mailbox mailbox, Message message)
+    {
+        if (message is SendMessage)
+        {
+            lock (mailbox.Gate)
+            {
+                mailbox.SendPending = false;
+            }
+        }
+    }
+
+    private async Task HandleSendAsync(Mailbox mailbox, SendMessage send)
     {
         // Checked first, because the send has costs the caller is no longer there to receive: an
         // offer, a command, and this printer's mailbox for as long as the answer takes.
         if (send.CallerToken.IsCancellationRequested)
         {
+            ReleaseSend(mailbox, send);
             send.Completion.TrySetCanceled(send.CallerToken);
 
             return;
@@ -442,18 +454,26 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
 
         using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(send.CallerToken, _stoppingToken);
 
+        // Awaited to an outcome first and told to the caller after the release, never from inside the try.
+        Action tell;
+
         try
         {
-            send.Completion.TrySetResult(await SendCoreAsync(send.Request, linked.Token));
+            TransferResult result = await SendCoreAsync(send.Request, linked.Token);
+
+            tell = () => send.Completion.TrySetResult(result);
         }
         catch (OperationCanceledException e) when (linked.IsCancellationRequested)
         {
-            send.Completion.TrySetCanceled(e.CancellationToken);
+            tell = () => send.Completion.TrySetCanceled(e.CancellationToken);
         }
         catch (Exception e)
         {
-            send.Completion.TrySetException(e);
+            tell = () => send.Completion.TrySetException(e);
         }
+
+        ReleaseSend(mailbox, send);
+        tell();
     }
 
     private async Task HandleSettleAsync(int printerId, Mailbox mailbox, SettleMessage settle)

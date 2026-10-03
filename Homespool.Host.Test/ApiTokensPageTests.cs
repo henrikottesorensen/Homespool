@@ -129,6 +129,43 @@ public sealed class ApiTokensPageTests : IDisposable
     }
 
     /// <summary>
+    /// The owner hears that a token was minted - the proof that gates it can be earned by a session
+    /// somebody else holds - and the name the minter chose stays out of the mail.
+    /// </summary>
+    [Fact]
+    public async Task MintingMailsTheOwnerWithoutTheTokensName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "<b>laptop</b>");
+
+        // Act
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        (string email, string subject, string body) sent = _mail.SentEmails.Should().ContainSingle().Subject;
+        sent.email.Should().Be("owner@example.com");
+        sent.subject.Should().Be("A new API token has been issued for your Homespool account");
+        sent.body.Should().NotContain("laptop").And.NotContain(model.CreatedToken!);
+    }
+
+    /// <summary>A refused form mints nothing, so there is nothing to tell the owner.</summary>
+    [Fact]
+    public async Task ARefusedFormMailsNobody()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "laptop");
+        model.ModelState.AddModelError("Input.Name", "required");
+
+        // Act
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        _mail.SentEmails.Should().BeEmpty();
+    }
+
+    /// <summary>
     /// Tick all is the way back for somebody who wants everything, so the empty default costs a click
     /// rather than nine.
     /// </summary>
@@ -243,6 +280,8 @@ public sealed class ApiTokensPageTests : IDisposable
     /// handler wants is the filter's to demand and is not part of the model, so every test here
     /// reaches the mint.
     /// </summary>
+    private readonly CapturingEmailSender _mail = new();
+
     private async Task<(ApiTokensModel model, DefaultHttpContext httpContext)> NewModelAsync(
         HomespoolDbContext context,
         string name)
@@ -266,6 +305,7 @@ public sealed class ApiTokensPageTests : IDisposable
         ApiTokensModel model = new(new ApiTokenService(context),
                                    users,
                                    scope.ServiceProvider.GetRequiredService<RecentProof>(),
+                                   _mail.Notices(),
                                    NullLogger<ApiTokensModel>.Instance,
                                    TestLocaliser.Shared(),
                                    new CapabilityText(TestLocaliser.Shared()))

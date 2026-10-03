@@ -43,6 +43,8 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// that outlives the session that minted it. The create handler alone carries
 /// <see cref="RequireRecentProofAttribute"/>; the proof is earned at <c>Account/Reauthenticate</c>
 /// with any credential the account holds, and the view offers the way there before the button.
+/// The owner is mailed that one was made, in their own language and
+/// to their own address, without the token's name.
 /// Revoking takes nothing extra, because removing a credential is what the holder of a stolen session
 /// would least want to do.
 /// </para>
@@ -54,11 +56,13 @@ public class ApiTokensModel : PageModel
     private readonly UserManager<HSUser> _userManager;
     private readonly RecentProof _proof;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly CredentialNotices _notices;
     private readonly ILogger<ApiTokensModel> _logger;
 
     public ApiTokensModel(ApiTokenService tokens,
                           UserManager<HSUser> userManager,
                           RecentProof proof,
+                          CredentialNotices notices,
                           ILogger<ApiTokensModel> logger,
                           IStringLocalizer<SharedResource> localiser,
                           CapabilityText capabilities)
@@ -66,6 +70,7 @@ public class ApiTokensModel : PageModel
         _tokens = tokens;
         _userManager = userManager;
         _proof = proof;
+        _notices = notices;
         _localiser = localiser;
         _logger = logger;
         Capabilities = capabilities;
@@ -156,6 +161,10 @@ public class ApiTokensModel : PageModel
         // key was minted able to do, and the scope is the one part of a token that is not secret.
         _logger.LogInformation("User {UserId} created API token {TokenId} scoped to {Scope}.",
                                user.Id, token.Id, token.Scope);
+
+        // The owner is told, because a session somebody else holds can earn the proof and what it mints
+        // outlives a password change. A failed send is logged by the notice and undoes nothing.
+        await _notices.TellAsync(user, CredentialChange.ApiTokenIssued);
 
         CreatedToken = plaintext;
 

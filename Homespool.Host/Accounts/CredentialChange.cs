@@ -29,4 +29,10 @@ public enum CredentialChange
 
     /// <summary>An administrator revoked one of the account's passkeys.</summary>
     PasskeyRevoked = 6,
+
+    /// <summary>
+    /// The owner's own page minted an API token: a complete sign-in for what its scope names, with no
+    /// expiry, that a password change leaves standing.
+    /// </summary>
+    ApiTokenIssued = 7,
 }

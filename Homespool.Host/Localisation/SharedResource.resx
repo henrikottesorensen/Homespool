@@ -3163,6 +3163,12 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Email_PasskeyRevokedBody" xml:space="preserve">
     <value>An administrator of this Homespool just removed one of your passkeys, so it can no longer be used to sign in. If you did not ask for that, contact the Homespool administrator.</value>
   </data>
+  <data name="Email_ApiTokenIssuedSubject" xml:space="preserve">
+    <value>A new API token has been issued for your Homespool account</value>
+  </data>
+  <data name="Email_ApiTokenIssuedBody" xml:space="preserve">
+    <value>A new API token was just issued for your Homespool account. It lets a script act as you without signing in, and stays valid until it is revoked, even if you change your password. If that was not you, revoke it under Manage / API tokens and contact the Homespool administrator straight away.</value>
+  </data>
   <data name="Error_Title" xml:space="preserve">
     <value>Something went wrong</value>
   </data>

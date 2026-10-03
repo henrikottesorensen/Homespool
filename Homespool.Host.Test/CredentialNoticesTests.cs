@@ -40,6 +40,7 @@ public sealed class CredentialNoticesTests
     [InlineData(CredentialChange.PasskeyAdded, "A passkey was added to your Homespool account")]
     [InlineData(CredentialChange.PasskeyRemoved, "A passkey was removed from your Homespool account")]
     [InlineData(CredentialChange.PasskeyRevoked, "An administrator removed a passkey from your Homespool account")]
+    [InlineData(CredentialChange.ApiTokenIssued, "A new API token has been issued for your Homespool account")]
     public async Task EachChangeIsMailedToTheAccountsAddressUnderItsOwnSubject(CredentialChange change, string subject)
     {
         // Act

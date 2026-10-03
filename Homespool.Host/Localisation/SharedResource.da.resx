@@ -3042,6 +3042,12 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Email_PasskeyRevokedBody" xml:space="preserve">
     <value>En administrator af denne Homespool har netop fjernet en af dine adgangsnøgler, så den kan ikke længere bruges til at logge ind. Hvis du ikke har bedt om det, så kontakt Homespool administratoren.</value>
   </data>
+  <data name="Email_ApiTokenIssuedSubject" xml:space="preserve">
+    <value>Der er udstedt et nyt API-token til din Homespool-konto</value>
+  </data>
+  <data name="Email_ApiTokenIssuedBody" xml:space="preserve">
+    <value>Der er netop udstedt et nyt API-token til din Homespool-konto. Det lader et script handle som dig uden at logge ind, og det gælder, indtil det tilbagekaldes, også selv om du skifter adgangskode. Hvis det ikke var dig, så tilbagekald det under Administrer / API-tokens og kontakt Homespool administratoren med det samme.</value>
+  </data>
   <data name="Error_Title" xml:space="preserve">
     <value>Noget gik galt</value>
   </data>

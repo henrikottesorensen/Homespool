@@ -898,6 +898,8 @@ public sealed class PrintQueueServiceTests : IDisposable
                                   TimeProvider.System,
                                   NullLogger<UserFileStore>.Instance);
 
+        store.Confirm();
+
         return new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance);
     }
 

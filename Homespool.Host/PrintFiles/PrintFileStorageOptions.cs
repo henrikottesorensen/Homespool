@@ -19,6 +19,14 @@ public class PrintFileStorageOptions
     /// replaced, which is the same trap the database already avoids. The warning about network
     /// filesystems applies here too, for a different reason: reads happen on the
     /// connection actor's loop, bounded only by its send timeout.
+    /// <para>
+    /// <b>An install that already has files needs a <c>.homespool-store</c> file in this directory
+    /// before it will accept an upload</b>, and creates nothing until it is there - so a directory
+    /// that is a mount point, with nothing mounted on it, is refused rather than filled. Create it
+    /// once the right storage is in place, for example
+    /// <c>docker compose exec homespool touch /app/data/printfiles/.homespool-store</c>. A fresh
+    /// install, with nothing indexed, writes it on its first upload.
+    /// </para>
     /// </remarks>
     public string Directory { get; set; } = "data/printfiles";
 

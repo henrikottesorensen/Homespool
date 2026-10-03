@@ -459,12 +459,74 @@ public sealed class PrintFileCatalogTests : IDisposable
         return job.Id;
     }
 
-    private UserFileStore NewStore()
+    private UserFileStore NewUnconfirmedStore()
     {
         return new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
                    new HostEnvironmentAccessor(_root),
                    TimeProvider.System,
                    NullLogger<UserFileStore>.Instance);
+    }
+
+    private UserFileStore NewStore()
+    {
+        UserFileStore store = new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
+                                  new HostEnvironmentAccessor(_root),
+                                  TimeProvider.System,
+                                  NullLogger<UserFileStore>.Instance);
+
+        // A store an operator has already confirmed, which is what every install but a fresh one has.
+        store.Confirm();
+
+        return store;
+    }
+
+    /// <summary>
+    /// A fresh install has nothing indexed, so nothing an empty root could be hiding: the first
+    /// upload marks the storage itself, and needs no operator.
+    /// </summary>
+    [Fact]
+    public async Task TheFirstUploadOfAFreshInstallMarksTheStorage()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        UserFileStore store = NewUnconfirmedStore();
+        PrintFileCatalog catalog = NewCatalog(context, store);
+
+        // Act
+        StoredFile saved = await catalog.SaveAsync(TestCallers.Scoped(Alice, Capability.UploadOwnFiles), "first.gcode", new MemoryStream([1]),
+                                                   overwrite: false, TestContext.Current.CancellationToken);
+
+        // Assert
+        saved.FileName.Should().Be("first.gcode");
+        store.IsConfirmed.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// <b>Rows with no marker is what an unmounted volume looks like</b>, so an install that has rows
+    /// is never marked by the app: an upload is refused until the operator creates the file.
+    /// </summary>
+    [Fact]
+    public async Task AnInstallWithIndexedFilesIsNotMarkedByAnUpload()
+    {
+        // Arrange - one file indexed, and a root with no marker
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        context.PrintFiles.Add(new PrintFile { UserId = Alice, Name = "old.gcode", Size = 1, UploadedAt = DateTimeOffset.UtcNow });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Directory.CreateDirectory(_root);
+        UserFileStore store = NewUnconfirmedStore();
+        PrintFileCatalog catalog = NewCatalog(context, store);
+
+        // Act
+        Func<Task> upload = () => catalog.SaveAsync(TestCallers.Scoped(Alice, Capability.UploadOwnFiles), "new.gcode", new MemoryStream([1]),
+                                                    overwrite: false, TestContext.Current.CancellationToken);
+
+        // Assert
+        await upload.Should().ThrowAsync<PrintFileStorageUnconfirmedException>();
+        store.IsConfirmed.Should().BeFalse();
+        Directory.EnumerateFileSystemEntries(_root).Should().BeEmpty();
     }
 
     private PrintFileCatalog NewCatalog(HomespoolDbContext context, UserFileStore? store = null)

@@ -504,7 +504,9 @@ public sealed class UserFileStoreTests : IDisposable
         // Assert
         await act.Should().ThrowAsync<PrintFileNameConflictException>();
         Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
-                 .Should().HaveCount(1, "only the file that was already stored: nothing was staged");
+                 .Select(Path.GetFileName)
+                 .Should().BeEquivalentTo([UserFileStore.MarkerFileName, "benchy.gcode"],
+                                          "only the marker and the file that was already stored: nothing was staged");
     }
 
     /// <summary>
@@ -560,7 +562,8 @@ public sealed class UserFileStoreTests : IDisposable
         await act.Should().ThrowAsync<IOException>();
         store.List(Alice).Should().BeEmpty("a half-written upload must never be listable");
         Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
-                 .Should().BeEmpty("nor left in the incoming directory");
+                 .Select(Path.GetFileName)
+                 .Should().Equal([UserFileStore.MarkerFileName], "nothing but the marker, and nothing left in the incoming directory");
     }
 
     [Fact]
@@ -736,6 +739,63 @@ public sealed class UserFileStoreTests : IDisposable
         UserFileStore.IsAllowedExtension(name).Should().Be(allowed);
     }
 
+    /// <summary>
+    /// <b>An unmounted mount point is an empty directory the process may write to</b>, and a write
+    /// there would create the user's directory on the bare mount point. Nothing may be created, and
+    /// the upload says why rather than succeeding.
+    /// </summary>
+    [Fact]
+    public async Task AnUploadIntoARootWithNoMarkerIsRefusedAndCreatesNothing()
+    {
+        // Arrange - a mount point with nothing mounted on it
+        Directory.CreateDirectory(_root);
+        UserFileStore store = NewUnconfirmedStore();
+
+        // Act
+        Func<Task> upload = () => SaveAsync(store, Alice, "model.gcode", [1, 2, 3]);
+
+        // Assert
+        await upload.Should().ThrowAsync<PrintFileStorageUnconfirmedException>();
+        Directory.EnumerateFileSystemEntries(_root).Should().BeEmpty("not even the staging directory may appear");
+    }
+
+    /// <summary>
+    /// The storage can go away between staging and publishing. Publishing is the call that creates
+    /// the user's directory, so it checks again rather than trusting the check that staged.
+    /// </summary>
+    [Fact]
+    public async Task PublishingAfterTheMarkerIsGoneIsRefusedAndCreatesNoUserDirectory()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        PendingUpload pending = await store.StageAsync(Alice, "model.gcode", new MemoryStream([1]),
+                                                       TestContext.Current.CancellationToken);
+
+        File.Delete(Path.Combine(_root, UserFileStore.MarkerFileName));
+
+        // Act
+        Action publish = () => store.Publish(Alice, pending.Token, overwrite: false, "alice");
+
+        // Assert
+        publish.Should().Throw<PrintFileStorageUnconfirmedException>();
+        Directory.EnumerateDirectories(_root).Select(Path.GetFileName).Should().Equal([".incoming"]);
+    }
+
+    [Fact]
+    public void ConfirmingMarksTheRootAndCanBeRepeated()
+    {
+        // Arrange
+        UserFileStore store = NewUnconfirmedStore();
+
+        // Act
+        store.IsConfirmed.Should().BeFalse("a root that does not exist is not confirmed");
+        store.Confirm();
+        store.Confirm();
+
+        // Assert
+        store.IsConfirmed.Should().BeTrue();
+    }
+
     private static async Task<StoredFile> SaveAsync(UserFileStore store,
                                                     long userId,
                                                     string fileName,
@@ -897,7 +957,17 @@ public sealed class UserFileStoreTests : IDisposable
         store.List(12).Should().ContainSingle(file => file.FileName == "twelve.gcode");
     }
 
+    /// <summary>A store whose root an operator has confirmed, which is what a running install has.</summary>
     private UserFileStore NewStore()
+    {
+        UserFileStore store = NewUnconfirmedStore();
+
+        store.Confirm();
+
+        return store;
+    }
+
+    private UserFileStore NewUnconfirmedStore()
     {
         return new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
                    new HostEnvironmentAccessor(_root),

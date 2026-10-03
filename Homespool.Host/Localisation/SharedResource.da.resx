@@ -1917,6 +1917,9 @@
   <data name="Error_FileNameConflict" xml:space="preserve">
     <value>Der findes allerede en fil, der hedder ‘{0}’. Bed om at overskrive den, hvis det var din intention.</value>
   </data>
+  <data name="Error_PrintFileStorageUnconfirmed" xml:space="preserve">
+    <value>Fillageret er ikke tilgængeligt på serveren, så der blev ikke uploadet noget. Bed en administrator om at kontrollere, at lageret er monteret.</value>
+  </data>
   <data name="Error_FileNameConflictAny" xml:space="preserve">
     <value>Der findes allerede en fil med dette navn.</value>
   </data>

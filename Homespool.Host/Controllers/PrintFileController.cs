@@ -104,7 +104,7 @@ public class PrintFileController : ControllerBase
     [HttpPut]
     [Route("{fileName}")]
     [RequestSizeLimit(long.MaxValue)] // Enforced against the configured cap below, not by MVC.
-    public async Task<Results<Ok<PrintFileReadDTO>, BadRequestProblem, ForbiddenProblem, ConflictProblem, PayloadTooLargeProblem>> Upload(
+    public async Task<Results<Ok<PrintFileReadDTO>, BadRequestProblem, ForbiddenProblem, ConflictProblem, PayloadTooLargeProblem, ServiceUnavailableProblem>> Upload(
         string fileName,
         [FromQuery] bool overwrite,
         CancellationToken cancellationToken)
@@ -144,6 +144,13 @@ public class PrintFileController : ControllerBase
         catch (PrintFileNameConflictException e)
         {
             return this.ConflictProblem(e.Message);
+        }
+        catch (PrintFileStorageUnconfirmedException)
+        {
+            // Not the exception's message, which names the server's own path. The reader is owed what
+            // to do about it, and what to do is an administrator's.
+            return this.ServiceUnavailableProblem("File storage is not available on this server, so nothing was uploaded. " +
+                                                  "Ask whoever runs it to check that the storage is mounted.");
         }
         catch (ArgumentException e)
         {

@@ -164,7 +164,7 @@ public class ApiTokensModel : PageModel
 
         // The owner is told, because a session somebody else holds can earn the proof and what it mints
         // outlives a password change. A failed send is logged by the notice and undoes nothing.
-        await _notices.TellAsync(user, CredentialChange.ApiTokenIssued);
+        await _notices.TellAsync(user, CredentialChange.ApiTokenIssued, cancellationToken: cancellationToken);
 
         CreatedToken = plaintext;
 

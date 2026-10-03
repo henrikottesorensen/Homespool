@@ -44,7 +44,7 @@ public sealed class CredentialNoticesTests
     public async Task EachChangeIsMailedToTheAccountsAddressUnderItsOwnSubject(CredentialChange change, string subject)
     {
         // Act
-        await Notices.TellAsync(Owner(), change, "Dex");
+        await Notices.TellAsync(Owner(), change, "Dex", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         (string email, string subject, string body) sent = _mail.SentEmails.Should().ContainSingle().Subject;
@@ -58,7 +58,7 @@ public sealed class CredentialNoticesTests
     public async Task TheNoticeIsWrittenInTheAccountsLanguage()
     {
         // Act
-        await Notices.TellAsync(Owner("da"), CredentialChange.PasskeyAdded);
+        await Notices.TellAsync(Owner("da"), CredentialChange.PasskeyAdded, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         _mail.SentEmails.Should().ContainSingle().Which.subject.Should().Be("En adgangsnøgle er blevet tilføjet til din Homespool-konto");
@@ -69,7 +69,7 @@ public sealed class CredentialNoticesTests
     public async Task TheProviderIsNamedAndEncoded()
     {
         // Act
-        await Notices.TellAsync(Owner(), CredentialChange.ProviderSwappedForPassword, "Dex <b>");
+        await Notices.TellAsync(Owner(), CredentialChange.ProviderSwappedForPassword, "Dex <b>", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         string body = _mail.SentEmails.Should().ContainSingle().Subject.htmlMessage;
@@ -85,7 +85,7 @@ public sealed class CredentialNoticesTests
         owner.Email = null;
 
         // Act
-        await Notices.TellAsync(owner, CredentialChange.PasskeyAdded);
+        await Notices.TellAsync(owner, CredentialChange.PasskeyAdded, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         _mail.SentEmails.Should().BeEmpty();
@@ -99,7 +99,7 @@ public sealed class CredentialNoticesTests
         _mail.Result = EmailSendResult.Failed;
 
         // Act
-        await Notices.TellAsync(Owner(), CredentialChange.ProviderLinked, "Dex");
+        await Notices.TellAsync(Owner(), CredentialChange.ProviderLinked, "Dex", cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         FakeLogRecord record = _logger.Collector.GetSnapshot().Should().ContainSingle().Subject;
@@ -112,7 +112,7 @@ public sealed class CredentialNoticesTests
     public async Task AnUnassignedChangeIsRefused()
     {
         // Act
-        Func<Task> tell = () => Notices.TellAsync(Owner(), CredentialChange.Undefined);
+        Func<Task> tell = () => Notices.TellAsync(Owner(), CredentialChange.Undefined, cancellationToken: TestContext.Current.CancellationToken);
 
         // Assert
         await tell.Should().ThrowAsync<ArgumentOutOfRangeException>();

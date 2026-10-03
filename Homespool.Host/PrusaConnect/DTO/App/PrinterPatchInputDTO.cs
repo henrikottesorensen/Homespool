@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 using Homespool.Model.Entities;
 
@@ -17,9 +18,39 @@ namespace Homespool.Host.PrusaConnect.DTO.App;
 /// </remarks>
 public class PrinterPatchInputDTO
 {
+    private string? _name;
+    private string? _location;
+
+    /// <summary>
+    /// Whether the body carried <c>name</c> at all. The JSON binder only calls the setter for a
+    /// property that is present, so this tells an omitted field (leave it) from an explicit
+    /// <c>null</c> (clear it).
+    /// </summary>
+    [JsonIgnore]
+    public bool NameSpecified { get; private set; }
+
+    [JsonIgnore]
+    public bool LocationSpecified { get; private set; }
+
     [StringLength(Printer.NameMaxLength)]
-    public string? Name { get; set; }
+    public string? Name
+    {
+        get => _name;
+        set
+        {
+            _name = value;
+            NameSpecified = true;
+        }
+    }
 
     [StringLength(Printer.LocationMaxLength)]
-    public string? Location { get; set; }
+    public string? Location
+    {
+        get => _location;
+        set
+        {
+            _location = value;
+            LocationSpecified = true;
+        }
+    }
 }

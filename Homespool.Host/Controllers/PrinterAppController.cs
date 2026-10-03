@@ -210,7 +210,10 @@ public class PrinterAppController : ControllerBase
         try
         {
             PrinterWithState? printer =
-                await _printerQueryService.UpdatePrinterAsync(uuid, CallerResolver.For(user, User), body.Name, body.Location, cancellationToken);
+                await _printerQueryService.UpdatePrinterAsync(uuid, CallerResolver.For(user, User),
+                                                                       body.NameSpecified ? PatchField.Set<string>(body.Name) : default,
+                                                                       body.LocationSpecified ? PatchField.Set<string>(body.Location) : default,
+                                                                       cancellationToken);
 
             if (printer is null)
             {

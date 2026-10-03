@@ -297,7 +297,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, scoped, "Renamed", "Garage", CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, scoped, PatchField.Set("Renamed"), PatchField.Set("Garage"), CancellationToken.None);
 
         // Assert
         PrinterReadDTO.FromEntity(updated!).Capabilities
@@ -318,7 +318,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), "Renamed", "Garage",
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), PatchField.Set("Renamed"), PatchField.Set("Garage"),
                                 CancellationToken.None);
 
         // Assert

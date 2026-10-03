@@ -277,7 +277,7 @@ public class PrinterQueryService
     }
 
     /// <summary>
-    /// Updates a printer's user-editable fields - name and location only; moving it between teams
+    /// Updates a printer's user-editable fields - name and location only, each left untouched when unset; moving it between teams
     /// is deferred (needs a permission check on both the old and new team). Returns <c>null</c> under
     /// the same "doesn't exist or caller can't even read it" rule as <see cref="GetPrinterForUserAsync"/>.
     /// A caller who can read but not manage the printer's team gets <see cref="TeamAccessDeniedException"/>
@@ -290,8 +290,8 @@ public class PrinterQueryService
     /// </remarks>
     public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid,
                                                             Caller caller,
-                                                            string? name,
-                                                            string? location,
+                                                            PatchField<string> name,
+                                                            PatchField<string> location,
                                                             CancellationToken cancellationToken)
     {
         // Two questions, two refusal shapes, and the order matters: a caller who cannot even read
@@ -307,8 +307,17 @@ public class PrinterQueryService
 
         await _access.RequireAsync(printer.Id, caller, Capability.ManagePrinter, cancellationToken);
 
-        printer.Name = name;
-        printer.Location = location;
+        // PATCH semantics: a field the request omitted keeps its stored value; one sent as null clears it.
+        if (name.IsSet)
+        {
+            printer.Name = name.Value;
+        }
+
+        if (location.IsSet)
+        {
+            printer.Location = location.Value;
+        }
+
         printer.UpdatedAt = _timeProvider.GetUtcNow();
 
         await _dbContext.SaveChangesAsync(cancellationToken);

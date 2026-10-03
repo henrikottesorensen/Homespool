@@ -383,7 +383,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), "New name", "New location",
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), PatchField.Set("New name"), PatchField.Set("New location"),
                                 CancellationToken.None);
 
         // Assert
@@ -411,7 +411,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         Func<Task> update = () => new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, Caller.Unscoped(1), "New name", null, CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, Caller.Unscoped(1), PatchField.Set("New name"), default, CancellationToken.None);
 
         // Assert
         await update.Should().ThrowAsync<TeamAccessDeniedException>();
@@ -433,7 +433,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, Caller.Unscoped(1), "New name", null, CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, Caller.Unscoped(1), PatchField.Set("New name"), default, CancellationToken.None);
 
         // Assert
         updated.Should().BeNull();
@@ -448,7 +448,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(Guid.NewGuid(), TestCallers.Scoped(1, Capability.ManagePrinter), "New name", null,
+            .UpdatePrinterAsync(Guid.NewGuid(), TestCallers.Scoped(1, Capability.ManagePrinter), PatchField.Set("New name"), default,
                                 CancellationToken.None);
 
         // Assert
@@ -471,10 +471,40 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), null, null, CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), default, default, CancellationToken.None);
 
         // Assert
         updated!.Printer.UpdatedAt.Should().BeOnOrAfter(before.AddSeconds(-1));
+    }
+
+    /// <summary>A field the PATCH omits keeps its stored value; one sent as null is cleared.</summary>
+    [Fact]
+    public async Task UpdatePrinterAsyncLeavesUnsetFieldsAloneAndClearsExplicitNulls()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Old name", location: "Old location");
+        PrinterQueryService service = new(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System);
+
+        // Act
+        await service.UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), PatchField.Set("New name"), default,
+                                         CancellationToken.None);
+
+        // Assert
+        Printer afterOmit = await context.Printers.AsNoTracking().SingleAsync(p => p.Id == printer.Id, TestContext.Current.CancellationToken);
+        afterOmit.Name.Should().Be("New name");
+        afterOmit.Location.Should().Be("Old location");
+
+        // Act
+        await service.UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), default, PatchField.Set<string>(null),
+                                         CancellationToken.None);
+
+        // Assert
+        Printer afterClear = await context.Printers.AsNoTracking().SingleAsync(p => p.Id == printer.Id, TestContext.Current.CancellationToken);
+        afterClear.Name.Should().Be("New name");
+        afterClear.Location.Should().BeNull();
     }
 
     // ---------- GetPrinterStatisticsForUserAsync ----------

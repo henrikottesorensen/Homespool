@@ -585,7 +585,7 @@ public class PrinterCertificateAuthority
                 // The encrypted pair, not the plaintext one just loaded: they are the same
                 // certificate, and this one is the copy proved to open under the configured
                 // passphrase - which is the question this arm exists to answer.
-                reEncrypted = WriteAuthorityKey(key);
+                reEncrypted = WriteAuthorityKey(key, File.ReadAllText(AuthorityCertificatePemPath));
             }
 
             _logger.LogInformation("Encrypted the printer authority's private key ({Path}) with the configured " +
@@ -621,7 +621,7 @@ public class PrinterCertificateAuthority
     /// trust that was not read back from disk.
     /// </para>
     /// </remarks>
-    private X509Certificate2 WriteAuthorityKey(ECDsa key)
+    private X509Certificate2 WriteAuthorityKey(ECDsa key, string certificatePem)
     {
         string pem = key.ExportEncryptedPkcs8PrivateKeyPem(Passphrase, KeyEncryption);
 
@@ -633,8 +633,8 @@ public class PrinterCertificateAuthority
 
         try
         {
-            verified = X509Certificate2.CreateFromEncryptedPemFile(
-                AuthorityCertificatePemPath, Passphrase, temporary);
+            verified = X509Certificate2.CreateFromEncryptedPem(
+                certificatePem, File.ReadAllText(temporary), Passphrase);
 
             using (ECDsa? verifiedKey = verified.GetECDsaPrivateKey())
             {
@@ -695,9 +695,11 @@ public class PrinterCertificateAuthority
                     "anything and cannot be migrated. Restore it from a backup; nothing here will mint a replacement, " +
                     "because that would strand every provisioned printer.");
 
-            WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(legacy.ExportCertificatePem()));
+            string certificatePem = legacy.ExportCertificatePem();
 
-            migrated = WriteAuthorityKey(key);
+            WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(certificatePem));
+
+            migrated = WriteAuthorityKey(key, certificatePem);
         }
 
         File.Delete(LegacyAuthorityPath);
@@ -775,14 +777,22 @@ public class PrinterCertificateAuthority
         using X509Certificate2 authority = request.CreateSelfSigned(
             NotBefore, now.AddDays(_options.AuthorityValidityDays));
 
-        WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(authority.ExportCertificatePem()));
+        string certificatePem = authority.ExportCertificatePem();
+
+        // The order is what makes a power cut during first boot survivable. The key's PBKDF2 pass
+        // takes seconds, and the certificate used to be on disk for all of them: a cut in that
+        // window left a certificate with no key, which is the "restore from backup" refusal for an
+        // authority nobody has provisioned a printer from yet. So the public DER goes first (harmless
+        // alone - no key and no PEM still reads as "nothing minted"), then the key, whose derivation,
+        // verification and rename all happen before the certificate PEM exists, and the PEM last.
+        // A cut after the key and before the PEM lands on the repairable arm of EnsureAuthority: a
+        // key, no PEM, and a DER to rebuild it from. Every write is flushed to the device, so the
+        // order on disk is the order written.
         WriteFile(AuthorityDerPath, authority.Export(X509ContentType.Cert));
 
-        // The DER moved above the key deliberately: the pair this returns is the one the write
-        // verified, so there is no re-read afterwards to hang the remaining writes off. A crash
-        // between the certificate and the key lands on the same refusal it always did - the
-        // certificate exists and its key does not - and the DER being there too does not change which.
-        X509Certificate2 minted = WriteAuthorityKey(key);
+        X509Certificate2 minted = WriteAuthorityKey(key, certificatePem);
+
+        WriteFile(AuthorityCertificatePemPath, Encoding.ASCII.GetBytes(certificatePem));
 
         _logger.LogWarning("Minted a new printer certificate authority in {Directory}. Every printer provisioned " +
                            "from a previous authority will no longer validate this server and must be " +
@@ -806,7 +816,7 @@ public class PrinterCertificateAuthority
         // directory default deliberately.
         if (path.EndsWith(".der", StringComparison.OrdinalIgnoreCase))
         {
-            File.WriteAllBytes(path, contents);
+            RestrictedFile.WriteDurably(path, contents);
             return;
         }
 
@@ -829,7 +839,7 @@ public class PrinterCertificateAuthority
     /// </remarks>
     private static void WriteProxyFile(string path, byte[] contents)
     {
-        File.WriteAllBytes(path, contents);
+        RestrictedFile.WriteDurably(path, contents);
 
         if (!OperatingSystem.IsWindows())
         {

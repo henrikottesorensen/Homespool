@@ -80,6 +80,20 @@ public sealed class UserFileStore
     private const string IncomingDirectory = ".incoming";
 
     /// <summary>
+    /// The file whose presence says this root is the storage that was set up, rather than a mount
+    /// point with nothing mounted on it.
+    /// </summary>
+    /// <remarks>
+    /// <b>A directory cannot say that from inside a container.</b> An unmounted mount point is an
+    /// empty directory the process may create anything in, and it looks like a mount whether or not
+    /// the filesystem behind it is up - so writing into it would create a user's directory on the
+    /// bare mount point, where the next reconcile reads it as the only storage there is. A file that
+    /// only the real storage holds is the one thing the bare directory cannot have. The leading dot
+    /// keeps it out of the way of user directories, like <see cref="IncomingDirectory"/>.
+    /// </remarks>
+    public const string MarkerFileName = ".homespool-store";
+
+    /// <summary>
     /// Print files, and <b>deliberately less than the printer will accept</b>. This is a security
     /// boundary, not a convenience.
     /// </summary>
@@ -217,6 +231,46 @@ public sealed class UserFileStore
         return path is null ? null : Describe(path);
     }
 
+    /// <summary>Whether the root holds <see cref="MarkerFileName"/>, which is what lets anything be written to it.</summary>
+    public bool IsConfirmed => File.Exists(Path.Combine(_root, MarkerFileName));
+
+    /// <summary>
+    /// Marks the root as the real storage, creating it if need be. Does nothing if it already is.
+    /// </summary>
+    /// <remarks>
+    /// Called by the app only for an install with nothing indexed, which has nothing to lose by
+    /// trusting the root it finds. Every other install has the marker created by its operator.
+    /// </remarks>
+    public void Confirm()
+    {
+        Directory.CreateDirectory(_root);
+
+        string marker = Path.Combine(_root, MarkerFileName);
+
+        if (!File.Exists(marker))
+        {
+            File.WriteAllText(marker, "Homespool print-file storage. Delete this file only to stop Homespool writing here.\n");
+        }
+    }
+
+    /// <summary>Refuses a write that would create anything under a root that is not confirmed.</summary>
+    /// <exception cref="PrintFileStorageUnconfirmedException">The root has no <see cref="MarkerFileName"/>.</exception>
+    private void RequireConfirmed()
+    {
+        if (IsConfirmed)
+        {
+            return;
+        }
+
+        _logger.LogWarning(
+            "Refusing to write under {Root}: it has no {Marker}, so it may be a mount point with nothing mounted on it. " +
+            "If this is the right storage, create the file there.",
+            _root, MarkerFileName);
+
+        throw new PrintFileStorageUnconfirmedException(
+            $"Print-file storage at '{_root}' has no {MarkerFileName}; nothing was written.");
+    }
+
     /// <summary>Whether <paramref name="userId"/> has a directory in the store, empty or not.</summary>
     /// <remarks>
     /// Tells a deleted file from storage that is not there. Deleting a file leaves its directory
@@ -337,6 +391,8 @@ public sealed class UserFileStore
 
         SweepAbandoned();
 
+        RequireConfirmed();
+
         string incoming = Path.Combine(_root, IncomingDirectory);
 
         Directory.CreateDirectory(incoming);
@@ -400,6 +456,10 @@ public sealed class UserFileStore
         // *current* username each time would give a renamed user a second directory and split
         // their files across both, with listings showing whichever the glob happened to hit.
         string directory = DirectoryFor(userId, userName);
+
+        // After the staging check, not instead of it: the storage can go away between the two, and
+        // this is the call that would create the user's directory on whatever is left.
+        RequireConfirmed();
 
         Directory.CreateDirectory(directory);
 

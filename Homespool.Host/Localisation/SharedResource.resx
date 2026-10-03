@@ -1979,6 +1979,9 @@
   <data name="Error_FileNameConflict" xml:space="preserve">
     <value>A file named ‘{0}’ already exists. Ask to overwrite it if that is intended.</value>
   </data>
+  <data name="Error_PrintFileStorageUnconfirmed" xml:space="preserve">
+    <value>File storage is not available on this server, so nothing was uploaded. Ask an administrator to check that the storage is mounted.</value>
+  </data>
   <data name="Error_FileNameConflictAny" xml:space="preserve">
     <value>A file of that name already exists.</value>
   </data>

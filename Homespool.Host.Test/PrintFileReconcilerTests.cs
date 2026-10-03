@@ -366,8 +366,12 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await AddUserAsync(context);
 
         await using MemoryStream content = new([1, 2, 3, 4, 5]);
-        PublishedFile uploaded = await NewStore().SaveAsync(Alice, "model.gcode", content, overwrite: false,
-                                                            TestContext.Current.CancellationToken, "alice");
+        UserFileStore store = NewStore();
+
+        store.Confirm();
+
+        PublishedFile uploaded = await store.SaveAsync(Alice, "model.gcode", content, overwrite: false,
+                                                       TestContext.Current.CancellationToken, "alice");
 
         await AddRowFromDiskAsync(context, "model.gcode", digest: null);
 

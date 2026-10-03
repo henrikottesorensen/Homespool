@@ -170,6 +170,20 @@ public sealed class BadGatewayProblem : ProblemResult, IEndpointMetadataProvider
     }
 }
 
+/// <summary>A 503 with a <see cref="ProblemDetails"/> body.</summary>
+public sealed class ServiceUnavailableProblem : ProblemResult, IEndpointMetadataProvider
+{
+    internal ServiceUnavailableProblem(ProblemDetails details)
+        : base(details)
+    {
+    }
+
+    static void IEndpointMetadataProvider.PopulateMetadata(MethodInfo method, EndpointBuilder builder)
+    {
+        Document(builder, StatusCodes.Status503ServiceUnavailable);
+    }
+}
+
 /// <summary>
 /// The factories: one per <see cref="ProblemResult"/> arm, named for it, each taking the one sentence
 /// the caller is owed.
@@ -229,6 +243,11 @@ internal static class ProblemResults
     public static BadGatewayProblem BadGatewayProblem(this ControllerBase controller, string detail)
     {
         return new(controller.Details(StatusCodes.Status502BadGateway, detail));
+    }
+
+    public static ServiceUnavailableProblem ServiceUnavailableProblem(this ControllerBase controller, string detail)
+    {
+        return new(controller.Details(StatusCodes.Status503ServiceUnavailable, detail));
     }
 
     /// <summary>

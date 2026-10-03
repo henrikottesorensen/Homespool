@@ -41,10 +41,13 @@ public sealed class PrintThumbnailsTests : IAsyncLifetime
 
         services.AddLogging();
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
-        services.AddSingleton(new UserFileStore(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
-                                                new HostEnvironmentAccessor(_root),
-                                                TimeProvider.System,
-                                                NullLogger<UserFileStore>.Instance));
+        UserFileStore store = new(TestOptions.Monitor(new PrintFileStorageOptions { Directory = _root }),
+                                  new HostEnvironmentAccessor(_root),
+                                  TimeProvider.System,
+                                  NullLogger<UserFileStore>.Instance);
+
+        store.Confirm();
+        services.AddSingleton(store);
         services.AddScoped<PrintFileCatalog>();
         services.AddSingleton<PrintThumbnails>();
 

@@ -339,7 +339,7 @@ public class IndexModel : PageModel
 
             staged = await _files.StageAsync(CallerResolver.For(userId.Value, User), file.FileName, content, cancellationToken);
         }
-        catch (ArgumentException e)
+        catch (Exception e) when (e is ArgumentException or PrintFileStorageUnconfirmedException)
         {
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
 

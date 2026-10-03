@@ -149,15 +149,34 @@ public sealed class PrintFileCatalog
     /// Streams an upload to disk without naming it yet. Straight through - a staged upload has no row
     /// because it is not yet a file anyone has.
     /// </summary>
-    public Task<PendingUpload> StageAsync(Caller caller,
-                                          string fileName,
-                                          Stream content,
-                                          CancellationToken cancellationToken,
-                                          bool refuseTakenName = false)
+    public async Task<PendingUpload> StageAsync(Caller caller,
+                                                string fileName,
+                                                Stream content,
+                                                CancellationToken cancellationToken,
+                                                bool refuseTakenName = false)
     {
         CredentialScope.Require(caller, Capability.UploadOwnFiles);
 
-        return _store.StageAsync(caller.UserId, fileName, content, cancellationToken, refuseTakenName);
+        await ConfirmFreshStorageAsync(cancellationToken);
+
+        return await _store.StageAsync(caller.UserId, fileName, content, cancellationToken, refuseTakenName);
+    }
+
+    /// <summary>
+    /// Marks the storage as the real one when nothing is indexed, because then there is nothing an
+    /// empty root could be hiding.
+    /// </summary>
+    /// <remarks>
+    /// An install with rows is never marked here: rows and a root with no marker are what an
+    /// unmounted volume looks like, so its operator creates the marker once they have seen the
+    /// right disk is there.
+    /// </remarks>
+    private async Task ConfirmFreshStorageAsync(CancellationToken cancellationToken)
+    {
+        if (!_store.IsConfirmed && !await _dbContext.PrintFiles.AnyAsync(cancellationToken))
+        {
+            _store.Confirm();
+        }
     }
 
     /// <summary>Throws a staged upload away. Straight through, for the same reason.</summary>
@@ -316,6 +335,8 @@ public sealed class PrintFileCatalog
                                             string? userName = null)
     {
         CredentialScope.Require(caller, RequiredToWrite(overwrite));
+
+        await ConfirmFreshStorageAsync(cancellationToken);
 
         PublishedFile published =
             await _store.SaveAsync(caller.UserId, fileName, content, overwrite, cancellationToken, userName);

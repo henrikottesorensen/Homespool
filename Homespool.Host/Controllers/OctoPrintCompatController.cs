@@ -271,6 +271,12 @@ public class OctoPrintCompatController : ControllerBase
                            $"A file named '{Path.GetFileName(disposition?.FileName.Value ?? string.Empty)}' already exists. " +
                            "Rename it in the send dialog, or delete the existing file in Homespool.");
         }
+        catch (PrintFileStorageUnconfirmedException)
+        {
+            return Explain(StatusCodes.Status503ServiceUnavailable,
+                           "File storage is not available on this server, so nothing was uploaded. " +
+                           "Ask whoever runs it to check that the storage is mounted.");
+        }
         catch (ArgumentException e)
         {
             return Explain(StatusCodes.Status400BadRequest, e.Message);

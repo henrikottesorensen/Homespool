@@ -7,7 +7,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-Environment=COMPOSE_DIR=@COMPOSE_DIR@
+Environment="COMPOSE_DIR=@COMPOSE_DIR@"
 ExecStart=/usr/local/sbin/homespool-check-cert
 
 # SEPARATE FROM THE RENEWAL, deliberately, and this is the whole point of having it. The renewal

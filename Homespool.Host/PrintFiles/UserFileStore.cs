@@ -273,14 +273,9 @@ public sealed class UserFileStore
                                                CancellationToken cancellationToken,
                                                string? userName = null)
     {
-        // Fails a doomed request before hundreds of megabytes cross the wire. The check inside
-        // Publish is the authoritative one; this is the courtesy.
-        if (!overwrite && Find(userId, RequireSafeName(fileName)) is not null)
-        {
-            throw new PrintFileNameConflictException(RequireSafeName(fileName));
-        }
-
-        PendingUpload pending = await StageAsync(userId, fileName, content, cancellationToken);
+        // The courtesy check before the bytes; the one inside Publish is the authoritative one.
+        PendingUpload pending = await StageAsync(userId, fileName, content, cancellationToken,
+                                                 refuseTakenName: !overwrite);
 
         try
         {
@@ -309,11 +304,22 @@ public sealed class UserFileStore
     /// The name is validated here rather than at publish time, so a file no printer would accept is
     /// refused before it is written rather than after.
     /// </para>
+    /// <para>
+    /// <b><paramref name="refuseTakenName"/> is for a caller that cannot answer "replace it?"</b> - a
+    /// slicer has no way to say yes - and so wants a doomed upload failed before hundreds of megabytes
+    /// cross the wire. The check inside <see cref="Publish"/> stays the authoritative one, because two
+    /// uploads of the same name can race between them. A page that stages precisely so it can ask
+    /// leaves it off.
+    /// </para>
     /// </remarks>
+    /// <exception cref="PrintFileNameConflictException">
+    /// The name is taken and <paramref name="refuseTakenName"/> is set. Thrown before any byte is read.
+    /// </exception>
     public async Task<PendingUpload> StageAsync(long userId,
                                                 string fileName,
                                                 Stream content,
-                                                CancellationToken cancellationToken)
+                                                CancellationToken cancellationToken,
+                                                bool refuseTakenName = false)
     {
         string safeName = RequireSafeName(fileName);
 
@@ -322,6 +328,11 @@ public sealed class UserFileStore
             // Also checked by the endpoint, which can say it better. Repeated here because this is
             // the boundary that must hold whoever calls it - see AllowedExtensions.
             throw new PrintFileNameRejectedException(safeName, nameof(fileName));
+        }
+
+        if (refuseTakenName && Find(userId, safeName) is not null)
+        {
+            throw new PrintFileNameConflictException(safeName);
         }
 
         SweepAbandoned();

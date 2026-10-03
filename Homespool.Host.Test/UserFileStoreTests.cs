@@ -483,6 +483,69 @@ public sealed class UserFileStoreTests : IDisposable
             "the endpoint checks this too, but the boundary has to hold whoever calls it");
     }
 
+    /// <summary>
+    /// A caller that cannot answer "replace it?" has a taken name refused <b>before a byte is read</b>.
+    /// </summary>
+    /// <remarks>
+    /// The stream throws on its first read, so a conflict is the only way out that does not mean the
+    /// body was touched: a check that ran after staging would surface the <see cref="IOException"/>.
+    /// </remarks>
+    [Fact]
+    public async Task ATakenNameIsRefusedBeforeTheBodyIsReadWhenAskedTo()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        await SaveAsync(store, Alice, "benchy.gcode", Encoding.UTF8.GetBytes("first"));
+
+        // Act
+        Func<Task> act = () => store.StageAsync(Alice, "benchy.gcode", new ThrowingStream(),
+                                                CancellationToken.None, refuseTakenName: true);
+
+        // Assert
+        await act.Should().ThrowAsync<PrintFileNameConflictException>();
+        Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories)
+                 .Should().HaveCount(1, "only the file that was already stored: nothing was staged");
+    }
+
+    /// <summary>
+    /// Staging leaves a taken name alone by default: the pages that stage do so to ask "replace it?".
+    /// </summary>
+    [Fact]
+    public async Task ATakenNameStagesByDefaultSoAPageCanAskToReplaceIt()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        await SaveAsync(store, Alice, "benchy.gcode", Encoding.UTF8.GetBytes("first"));
+
+        // Act
+        PendingUpload staged = await store.StageAsync(Alice, "benchy.gcode", new MemoryStream([1, 2, 3]),
+                                                      CancellationToken.None);
+
+        // Assert
+        staged.FileName.Should().Be("benchy.gcode");
+        staged.Length.Should().Be(3);
+    }
+
+    /// <summary>
+    /// The early refusal is a courtesy, not the lock: a name that is free when staging starts and taken
+    /// by the time it publishes is still refused, by <see cref="UserFileStore.Publish"/>.
+    /// </summary>
+    [Fact]
+    public async Task ANameTakenWhileStagingIsStillRefusedAtPublish()
+    {
+        // Arrange
+        UserFileStore store = NewStore();
+        PendingUpload staged = await store.StageAsync(Alice, "benchy.gcode", new MemoryStream([1]),
+                                                      CancellationToken.None, refuseTakenName: true);
+        await SaveAsync(store, Alice, "benchy.gcode", Encoding.UTF8.GetBytes("raced"));
+
+        // Act
+        Action act = () => store.Publish(Alice, staged.Token, overwrite: false);
+
+        // Assert
+        act.Should().Throw<PrintFileNameConflictException>();
+    }
+
     [Fact]
     public async Task AFailedUploadLeavesNothingBehind()
     {

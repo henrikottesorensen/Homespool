@@ -442,7 +442,7 @@ public class OctoPrintCompatController : ControllerBase
 
         await using LengthLimitingStream limited = new(section.Body, _options.MaxUploadBytes);
 
-        return await _files.StageAsync(caller, fileName, limited, cancellationToken);
+        return await _files.StageAsync(caller, fileName, limited, cancellationToken, refuseTakenName: true);
     }
 
     /// <summary>

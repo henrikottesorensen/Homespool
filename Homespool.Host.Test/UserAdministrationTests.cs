@@ -60,7 +60,7 @@ public sealed class UserAdministrationTests : IDisposable
         HSUser admin = await AddUserAsync(users, "admin@example.com");
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         await tokens.CreateAsync(subject.Id, "pi", [Capability.Print], CancellationToken.None);
         UserSessionService sessions = provider.GetRequiredService<UserSessionService>();
@@ -102,7 +102,7 @@ public sealed class UserAdministrationTests : IDisposable
 
         InvitationService invitations = new(context,
                                             new TokenService(),
-                                            TestOptions.Snapshot(new InvitationOptions { LifetimeHours = 48 }));
+                                            TestOptions.Snapshot(new InvitationOptions { LifetimeHours = 48 }), TimeProvider.System);
         DateTimeOffset lapsedAt = DateTimeOffset.UtcNow.AddHours(-1);
 
         (Invitation signup, string signupToken) = await invitations.CreateAsync(
@@ -156,7 +156,7 @@ public sealed class UserAdministrationTests : IDisposable
 
         InvitationService invitations = new(context,
                                             new TokenService(),
-                                            TestOptions.Snapshot(new InvitationOptions { LifetimeHours = 48 }));
+                                            TestOptions.Snapshot(new InvitationOptions { LifetimeHours = 48 }), TimeProvider.System);
 
         (Invitation forSubject, string forSubjectToken) = await invitations.CreateRecoveryAsync(
             subject.Id, subject.Email!, clearsTwoFactor: false, invitedBy: admin.Id, expiresAt: null, CancellationToken.None);
@@ -237,7 +237,7 @@ public sealed class UserAdministrationTests : IDisposable
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser clerk = await AddUserAsync(users, "clerk@example.com");
         HSUser subject = await AddUserAsync(users, "subject@example.com");
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
         UserAdministration administration = Administration(context, provider);
@@ -321,7 +321,7 @@ public sealed class UserAdministrationTests : IDisposable
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         HSUser stranger = await AddUserAsync(users, "stranger@example.com");
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, deputy);
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         UserPasskeyInfo phone = await SeedPasskeyAsync(users, subject, "phone");
         CapturingEmailSender mail = new();
@@ -390,7 +390,7 @@ public sealed class UserAdministrationTests : IDisposable
         HSUser admin = await AddUserAsync(users, "admin@example.com");
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         UserAdministration administration = Administration(context, provider);
         await administration.DeactivateAsync(admin.Id, subject.Id, CancellationToken.None);
@@ -416,7 +416,7 @@ public sealed class UserAdministrationTests : IDisposable
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         HSUser bystander = await AddUserAsync(users, "bystander@example.com");
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         await tokens.CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         await tokens.CreateAsync(bystander.Id, "theirs", [Capability.Print], CancellationToken.None);
 
@@ -646,7 +646,7 @@ public sealed class UserAdministrationTests : IDisposable
                                                      TimeProvider? time = null)
     {
         return new UserAdministration(context,
-                                      new ApiTokenService(context),
+                                      new ApiTokenService(context, TimeProvider.System),
                                       provider.GetRequiredService<UserSessionService>(),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),

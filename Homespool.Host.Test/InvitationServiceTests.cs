@@ -9,6 +9,7 @@ using AwesomeAssertions;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -30,9 +31,9 @@ public sealed class InvitationServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-{Guid.NewGuid():N}.db");
 
-    private static InvitationService NewService(HomespoolDbContext context, int lifetimeHours = 48)
+    private static InvitationService NewService(HomespoolDbContext context, int lifetimeHours = 48, TimeProvider? clock = null)
     {
-        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions { LifetimeHours = lifetimeHours }));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions { LifetimeHours = lifetimeHours }), clock ?? TimeProvider.System);
     }
 
     private HomespoolDbContext NewContext()
@@ -178,6 +179,34 @@ public sealed class InvitationServiceTests : IDisposable
         // Assert
         validated.Should().NotBeNull();
         validated!.Id.Should().Be(invitation.Id);
+    }
+
+    /// <summary>
+    /// An invite's lifetime runs on the injected clock, from creation through to the expiry check. The
+    /// clock starts years behind the real one, so reading the wall clock at either end would refuse
+    /// the invite before its lifetime had passed.
+    /// </summary>
+    [Fact]
+    public async Task ValidateAsyncMeasuresExpiryFromTheInjectedClock()
+    {
+        // Arrange
+        FakeTimeProvider clock = new(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        InvitationService service = NewService(context, lifetimeHours: 48, clock);
+
+        (Invitation invitation, string plaintext) = await service.CreateAsync(
+            "invitee@example.com", null, 1, null, CancellationToken.None);
+
+        // Act
+        clock.Advance(TimeSpan.FromHours(47));
+        Invitation? beforeExpiry = await service.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None);
+
+        clock.Advance(TimeSpan.FromHours(2));
+        Invitation? afterExpiry = await service.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None);
+
+        // Assert
+        beforeExpiry.Should().NotBeNull("47 hours on the injected clock is inside a 48-hour lifetime");
+        afterExpiry.Should().BeNull("49 hours on the injected clock is past it");
     }
 
     /// <summary>

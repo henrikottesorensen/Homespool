@@ -46,6 +46,7 @@ public class IndexModel : PageModel
     private readonly PrinterQueryService _printers;
     private readonly CameraDisplayNames _names;
     private readonly UserManager<HSUser> _userManager;
+    private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ErrorText _errors;
 
@@ -56,6 +57,7 @@ public class IndexModel : PageModel
                       PrinterQueryService printers,
                       CameraDisplayNames names,
                       UserManager<HSUser> userManager,
+                      TimeProvider time,
                       IStringLocalizer<SharedResource> localiser,
                       ErrorText errors)
     {
@@ -66,6 +68,7 @@ public class IndexModel : PageModel
         _printers = printers;
         _names = names;
         _userManager = userManager;
+        _time = time;
         _localiser = localiser;
         _errors = errors;
     }
@@ -348,7 +351,7 @@ public class IndexModel : PageModel
             return null;
         }
 
-        TimeSpan age = frame.AgeAt(DateTimeOffset.UtcNow);
+        TimeSpan age = frame.AgeAt(_time.GetUtcNow());
 
         return age.TotalSeconds < 2 ?
             _localiser["Common_JustNow"] :

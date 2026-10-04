@@ -110,7 +110,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         HSUser user = await AddUserWithPasswordAsync(users, "changer@example.com");
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string first) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
         await tokens.CreateAsync(user.Id, "ci", CapabilitySet.Everything, CancellationToken.None);
 
@@ -158,7 +158,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         HSUser user = await AddUserWithPasswordAsync(users, "wrongpass@example.com");
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         ChangePasswordModel model = new(users, signIn,
@@ -202,7 +202,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
 
         HSUser user = await AddUserWithPasswordAsync(users, "resetter@example.com");
 
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "attacker's", CapabilitySet.Everything, CancellationToken.None);
 
         ResetPasswordModel model = new(users, tokens, new UnitOfWork(context),
@@ -243,7 +243,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
 
         HSUser user = await AddUserWithPasswordAsync(users, "badcode@example.com");
 
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         ResetPasswordModel model = new(users, tokens, new UnitOfWork(context),

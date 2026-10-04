@@ -87,6 +87,8 @@ namespace Homespool.Host.Accounts;
 /// </remarks>
 public sealed class HSUserManager : UserManager<HSUser>
 {
+    private readonly TimeProvider _time;
+
     public HSUserManager(IUserStore<HSUser> store,
                          IOptions<IdentityOptions> optionsAccessor,
                          IPasswordHasher<HSUser> passwordHasher,
@@ -95,9 +97,11 @@ public sealed class HSUserManager : UserManager<HSUser>
                          ILookupNormalizer keyNormalizer,
                          IdentityErrorDescriber errors,
                          IServiceProvider services,
+                         TimeProvider time,
                          ILogger<UserManager<HSUser>> logger)
         : base(store, optionsAccessor, passwordHasher, userValidators, passwordValidators, keyNormalizer, errors, services, logger)
     {
+        _time = time;
     }
 
     /// <summary>The <see cref="IdentityError.Code"/> of a refused <see cref="RemoveLoginAsync"/>.</summary>
@@ -187,6 +191,33 @@ public sealed class HSUserManager : UserManager<HSUser>
 
     /// <inheritdoc/>
     /// <remarks>
+    /// The framework's own check, read against the injected <see cref="TimeProvider"/>: the base reads
+    /// <see cref="DateTimeOffset.UtcNow"/> and takes no clock, and the lockout end it compares with is
+    /// written from the injected one, so the two have to agree or a lockout would be checked on a
+    /// different clock from the one that imposed it.
+    /// </remarks>
+    public override async Task<bool> IsLockedOutAsync(HSUser user)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (Store is not IUserLockoutStore<HSUser> store)
+        {
+            throw new NotSupportedException("The user store does not implement IUserLockoutStore<HSUser>.");
+        }
+
+        if (!await store.GetLockoutEnabledAsync(user, CancellationToken))
+        {
+            return false;
+        }
+
+        DateTimeOffset? lockoutEnd = await store.GetLockoutEndDateAsync(user, CancellationToken);
+
+        return lockoutEnd >= _time.GetUtcNow();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// The framework's arithmetic - at the threshold the lockout starts and the count returns to zero -
     /// as an update of the row rather than an increment in memory saved under the concurrency stamp,
     /// which parallel failures lose. Counts whether or not the account is locked out already, as the
@@ -204,7 +235,7 @@ public sealed class HSUserManager : UserManager<HSUser>
             return await base.AccessFailedAsync(user);
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = _time.GetUtcNow();
         AttemptTicket counted = await store.CountAccessFailureAsync(user,
                                                                     Options.Lockout.MaxFailedAccessAttempts,
                                                                     now,
@@ -237,9 +268,9 @@ public sealed class HSUserManager : UserManager<HSUser>
     /// <see cref="ReturnAccessAttemptAsync"/>.
     /// </para>
     /// <para>
-    /// The lockout end is read from <see cref="DateTimeOffset.UtcNow"/>, the clock
-    /// <see cref="UserManager{TUser}.IsLockedOutAsync"/> reads. An account with lockout disabled is
-    /// counted and never refused, as the framework has it.
+    /// The lockout end is reckoned from the injected <see cref="TimeProvider"/>, the clock
+    /// <see cref="IsLockedOutAsync"/> reads. An account with lockout disabled is counted and never
+    /// refused, as the framework has it.
     /// </para>
     /// </remarks>
     public async Task<AttemptTicket> TakeAccessAttemptAsync(HSUser user)
@@ -247,7 +278,7 @@ public sealed class HSUserManager : UserManager<HSUser>
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(user);
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = _time.GetUtcNow();
         AttemptTicket attempt = await LockoutStore().CountAccessFailureAsync(user,
                                                                              Options.Lockout.MaxFailedAccessAttempts,
                                                                              now,

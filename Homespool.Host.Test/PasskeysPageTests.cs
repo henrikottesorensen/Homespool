@@ -578,7 +578,7 @@ public sealed class PasskeysPageTests : IDisposable
                                       Engine,
                                       Ceremonies,
                                       _provider.GetRequiredService<IOptionsMonitor<PasskeyAuthenticationOptions>>(),
-                                      TestLocaliser.Shared(),
+                                      TimeProvider.System, TestLocaliser.Shared(),
                                       Mail.Notices(),
                                       Limit,
                                       logger ?? NullLogger<PasskeysModel>.Instance)

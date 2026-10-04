@@ -12,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Telemetry;
@@ -92,7 +93,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         }
     }
 
-    private async Task<TelemetryRetentionService> StartServiceAsync(StorageOptions options)
+    private async Task<TelemetryRetentionService> StartServiceAsync(StorageOptions options, TimeProvider? timeProvider = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite(_connectionString));
@@ -110,6 +111,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         _service = new TelemetryRetentionService(_provider.GetRequiredService<IServiceScopeFactory>(),
                                                  TestOptions.Monitor(options),
+                                                 timeProvider ?? TimeProvider.System,
                                                  NullLogger<TelemetryRetentionService>.Instance);
 
         await _service.StartAsync(CancellationToken.None);
@@ -284,6 +286,88 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken))
             .Timestamp.Should().BeAfter(DateTimeOffset.UtcNow.AddDays(-2), "the recent one survives");
+    }
+
+    /// <summary>
+    /// Both age cutoffs are measured from the injected clock, not the machine's. The clock is set
+    /// years behind the real one, so a sweep reading the wall clock would find every row past its
+    /// window and delete the recent one along with the old.
+    /// </summary>
+    [Fact]
+    public async Task TheAgeSweepsMeasureFromTheInjectedClock()
+    {
+        // Arrange
+        FakeTimeProvider clock = new(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await SeedPrinterAsync();
+        await SeedSampleAsync(1, clock.GetUtcNow().AddDays(-100));
+        await SeedSampleAsync(1, clock.GetUtcNow().AddHours(-1));
+        await SeedEventAsync(1, clock.GetUtcNow().AddDays(-40));
+        await SeedEventAsync(1, clock.GetUtcNow().AddDays(-1));
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 14,
+            EventRetentionDays = 30,
+            MaxEventsPerPrinter = 0,
+        }, clock);
+
+        // Assert
+        bool swept = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken) == 1 &&
+                   await context.PrinterEvents.CountAsync(TestContext.Current.CancellationToken) == 1;
+        }, TimeSpan.FromSeconds(10));
+
+        swept.Should().BeTrue("each sweep keeps the row inside its window by the injected clock");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.TelemetrySamples.SingleAsync(TestContext.Current.CancellationToken))
+            .Timestamp.Should().Be(clock.GetUtcNow().AddHours(-1));
+        (await verify.PrinterEvents.SingleAsync(TestContext.Current.CancellationToken))
+            .Timestamp.Should().Be(clock.GetUtcNow().AddDays(-1));
+    }
+
+    /// <summary>
+    /// The hourly timer runs on the injected clock too: advancing it an hour sweeps again, with no
+    /// real hour having passed. The first old row proves the startup sweep has finished, so the
+    /// second can only be removed by a tick.
+    /// </summary>
+    [Fact]
+    public async Task AnHourOnTheInjectedClockSweepsAgain()
+    {
+        // Arrange
+        FakeTimeProvider clock = new(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await SeedPrinterAsync();
+        await SeedSampleAsync(1, clock.GetUtcNow().AddDays(-100));
+
+        await StartServiceAsync(new StorageOptions { TelemetryRetentionDays = 14 }, clock);
+
+        bool startupSwept = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return !await context.TelemetrySamples.AnyAsync(TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(10));
+
+        startupSwept.Should().BeTrue("the startup sweep runs before any tick");
+
+        await SeedSampleAsync(1, clock.GetUtcNow().AddDays(-100));
+
+        // Act
+        clock.Advance(TimeSpan.FromHours(1));
+
+        // Assert
+        bool tickSwept = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return !await context.TelemetrySamples.AnyAsync(TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(10));
+
+        tickSwept.Should().BeTrue("an hour on the injected clock is a tick of the sweep timer");
     }
 
     /// <summary>

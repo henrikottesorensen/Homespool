@@ -99,7 +99,7 @@ public sealed class ResetPasswordEnumerationTests : IDisposable
         string email)
     {
         ResetPasswordModel model = new(users,
-                                       new ApiTokenService(context),
+                                       new ApiTokenService(context, TimeProvider.System),
                                        new UnitOfWork(context),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)

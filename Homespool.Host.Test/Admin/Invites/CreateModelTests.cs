@@ -80,11 +80,11 @@ public sealed class CreateModelTests : IDisposable
             IdentityTestHarness.SignInAsPrincipal(httpContext, admin);
         }
 
-        InvitationService invitationService = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        InvitationService invitationService = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
         CapturingEmailSender emailSender = new();
 
         CreateModel model = new(invitationService, new TeamService(context), users, emailSender,
-                                TestLocaliser.Shared(), NullLogger<CreateModel>.Instance)
+                                TimeProvider.System, TestLocaliser.Shared(), NullLogger<CreateModel>.Instance)
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),
             Url = IdentityTestHarness.NewUrlHelper(httpContext),
@@ -178,7 +178,7 @@ public sealed class CreateModelTests : IDisposable
         (CreateModel model, _, _) = await NewModelAsync(context);
         model.Input.Email = "invitee@example.com";
 
-        InvitationService invitationService = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        InvitationService invitationService = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
 
         // Act
         await model.OnPostAsync(CancellationToken.None);

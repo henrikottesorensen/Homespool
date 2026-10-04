@@ -104,7 +104,7 @@ public sealed class RecoveryInviteTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
-        ApiTokenService tokens = new(context);
+        ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string plaintext) = await tokens.CreateAsync(subject.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
         InvitationService invitations = NewInvitationService(context);
@@ -176,7 +176,7 @@ public sealed class RecoveryInviteTests : IDisposable
             subject.Id, subject.Email!, clearsTwoFactor: false, invitedBy: admin.Id, expiresAt: null, CancellationToken.None);
 
         await new UserAdministration(context,
-                                     new ApiTokenService(context),
+                                     new ApiTokenService(context, TimeProvider.System),
                                      provider.GetRequiredService<UserSessionService>(),
                                      provider.GetRequiredService<AttemptLimiter>(),
                                      new UnitOfWork(context),
@@ -540,7 +540,7 @@ public sealed class RecoveryInviteTests : IDisposable
 
     private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
-        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
     }
 
     private static (RegisterModel model, CapturingEmailSender mail) NewModel(HomespoolDbContext context,
@@ -567,7 +567,8 @@ public sealed class RecoveryInviteTests : IDisposable
             invitations,
             new TeamService(context),
             new UnitOfWork(context),
-            new ApiTokenService(context),
+            new ApiTokenService(context, TimeProvider.System),
+            TimeProvider.System,
             TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

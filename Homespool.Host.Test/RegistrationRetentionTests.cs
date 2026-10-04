@@ -10,6 +10,7 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
@@ -47,6 +48,30 @@ public sealed class RegistrationRetentionTests : IDisposable
              .Should().BeEquivalentTo(["STILLGOOD1"],
                                       "an expired code is refused by every lookup already, so keeping the row only " +
                                       "grows the table");
+    }
+
+    /// <summary>
+    /// Expiry is judged by the injected clock. It is set years behind the real one, so a sweep
+    /// reading the wall clock would find both codes expired and delete the live one too.
+    /// </summary>
+    [Fact]
+    public async Task ExpiryIsMeasuredFromTheInjectedClock()
+    {
+        FakeTimeProvider clock = new(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        await using (HomespoolDbContext context = await MigratedContextAsync())
+        {
+            await AddAsync(context, "EXPIRED001", clock.GetUtcNow().AddMinutes(-1));
+            await AddAsync(context, "STILLGOOD1", clock.GetUtcNow().AddMinutes(30));
+        }
+
+        await SweepAsync(clock);
+
+        await using HomespoolDbContext after = NewContext();
+
+        after.PrusaConnectRegistrations
+             .Select(registration => registration.TemporaryCode)
+             .Should().BeEquivalentTo(["STILLGOOD1"]);
     }
 
     /// <summary>
@@ -162,7 +187,7 @@ public sealed class RegistrationRetentionTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
-    private async Task SweepAsync()
+    private async Task SweepAsync(TimeProvider? clock = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
@@ -171,7 +196,7 @@ public sealed class RegistrationRetentionTests : IDisposable
 
         using RegistrationRetentionService sweep = new(
             provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<RegistrationRetentionService>.Instance);
+            clock ?? TimeProvider.System, NullLogger<RegistrationRetentionService>.Instance);
 
         // One pass, driven directly. Start/StopAsync would prove nothing: on .NET 10 StartAsync
         // schedules ExecuteAsync onto the pool and returns, so the stop can win the race and the

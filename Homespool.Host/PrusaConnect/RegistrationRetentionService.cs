@@ -57,18 +57,21 @@ public sealed class RegistrationRetentionService : BackgroundService
     private static readonly TimeSpan SweepInterval = TimeSpan.FromHours(1);
 
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly TimeProvider _timeProvider;
     private readonly ILogger<RegistrationRetentionService> _logger;
 
     public RegistrationRetentionService(IServiceScopeFactory scopeFactory,
+                                        TimeProvider timeProvider,
                                         ILogger<RegistrationRetentionService> logger)
     {
         _scopeFactory = scopeFactory;
+        _timeProvider = timeProvider;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using PeriodicTimer timer = new(SweepInterval);
+        using PeriodicTimer timer = new(SweepInterval, _timeProvider);
 
         try
         {
@@ -102,7 +105,7 @@ public sealed class RegistrationRetentionService : BackgroundService
 
             HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset now = _timeProvider.GetUtcNow();
 
             int deleted = await context.PrusaConnectRegistrations
                                        .Where(registration => registration.TemporaryCodeExpiry <= now)

@@ -58,10 +58,12 @@ public class ApiTokenService
     public const int SecretLength = 43;
 
     private readonly HomespoolDbContext _dbContext;
+    private readonly TimeProvider _time;
 
-    public ApiTokenService(HomespoolDbContext dbContext)
+    public ApiTokenService(HomespoolDbContext dbContext, TimeProvider time)
     {
         _dbContext = dbContext;
+        _time = time;
     }
 
     /// <summary>
@@ -107,7 +109,7 @@ public class ApiTokenService
             TokenHash = HashSecret(secret),
             Name = name,
             Scope = CapabilitySet.Format(scope),
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _time.GetUtcNow(),
         };
 
         _dbContext.ApiTokens.Add(token);

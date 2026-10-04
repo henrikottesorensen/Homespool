@@ -93,6 +93,7 @@ public class PasskeysModel : PageModel
     private readonly IPasskeyHandler<HSUser> _engine;
     private readonly PasskeyCeremonies _ceremonies;
     private readonly IOptionsMonitor<PasskeyAuthenticationOptions> _options;
+    private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly CredentialNotices _notices;
     private readonly CredentialChangeLimit _limit;
@@ -103,6 +104,7 @@ public class PasskeysModel : PageModel
                          IPasskeyHandler<HSUser> engine,
                          PasskeyCeremonies ceremonies,
                          IOptionsMonitor<PasskeyAuthenticationOptions> options,
+                         TimeProvider time,
                          IStringLocalizer<SharedResource> localiser,
                          CredentialNotices notices,
                          CredentialChangeLimit limit,
@@ -113,6 +115,7 @@ public class PasskeysModel : PageModel
         _engine = engine;
         _ceremonies = ceremonies;
         _options = options;
+        _time = time;
         _localiser = localiser;
         _notices = notices;
         _limit = limit;
@@ -292,7 +295,7 @@ public class PasskeysModel : PageModel
 
         UserPasskeyInfo passkey = attested.Passkey!;
         passkey.Name = string.IsNullOrWhiteSpace(Input.Name) ?
-            _localiser["Passkeys_DefaultName", DateTimeOffset.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)].Value :
+            _localiser["Passkeys_DefaultName", _time.GetUtcNow().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)].Value :
             Input.Name.Trim();
 
         if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))

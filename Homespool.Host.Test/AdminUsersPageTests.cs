@@ -51,7 +51,7 @@ public sealed class AdminUsersPageTests : IDisposable
 
     private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
-        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
     }
 
     public void Dispose()
@@ -80,7 +80,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, alice);
         HSUser bob = await AddUserAsync(users, "bob@example.com");
         await SeedPasskeyAsync(users, bob, "phone");
-        await new ApiTokenService(context).CreateAsync(bob.Id, "laptop", [Capability.Print], CancellationToken.None);
+        await new ApiTokenService(context, TimeProvider.System).CreateAsync(bob.Id, "laptop", [Capability.Print], CancellationToken.None);
         await Administration(context, provider).DeactivateAsync(alice.Id, bob.Id, CancellationToken.None);
 
         IndexModel model = new(context, TimeProvider.System);
@@ -110,7 +110,7 @@ public sealed class AdminUsersPageTests : IDisposable
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
         await SeedPasskeyAsync(users, subject, "phone");
-        await new ApiTokenService(context).CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
+        await new ApiTokenService(context, TimeProvider.System).CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         await new TeamService(context).AddDefaultTeamAsync(subject.Id, DateTimeOffset.UtcNow, CancellationToken.None);
 
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
@@ -154,7 +154,7 @@ public sealed class AdminUsersPageTests : IDisposable
         HSUser admin = await AddUserAsync(users, "admin@example.com");
         await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
-        await new ApiTokenService(context).CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
+        await new ApiTokenService(context, TimeProvider.System).CreateAsync(subject.Id, "laptop", [Capability.Print], CancellationToken.None);
         (DetailModel model, _) = NewDetail(context, provider, users, admin);
 
         // Act
@@ -389,7 +389,7 @@ public sealed class AdminUsersPageTests : IDisposable
     private static UserAdministration Administration(HomespoolDbContext context, IServiceProvider provider)
     {
         return new UserAdministration(context,
-                                      new ApiTokenService(context),
+                                      new ApiTokenService(context, TimeProvider.System),
                                       provider.GetRequiredService<UserSessionService>(),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),

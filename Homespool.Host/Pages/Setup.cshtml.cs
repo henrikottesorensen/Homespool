@@ -35,6 +35,7 @@ public class SetupModel : PageModel
     private readonly SetupState _setupState;
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
+    private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<SetupModel> _logger;
 
@@ -44,6 +45,7 @@ public class SetupModel : PageModel
                       SetupState setupState,
                       TeamService teamService,
                       UnitOfWork unitOfWork,
+                      TimeProvider time,
                       IStringLocalizer<SharedResource> localiser,
                       ILogger<SetupModel> logger)
     {
@@ -54,6 +56,7 @@ public class SetupModel : PageModel
         _setupState = setupState;
         _teamService = teamService;
         _unitOfWork = unitOfWork;
+        _time = time;
         _localiser = localiser;
         _logger = logger;
     }
@@ -168,7 +171,7 @@ public class SetupModel : PageModel
                 return Page();
             }
 
-            await _teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, CancellationToken.None);
+            await _teamService.AddDefaultTeamAsync(user.Id, _time.GetUtcNow(), CancellationToken.None);
 
             await transaction.CommitAsync(CancellationToken.None);
         }

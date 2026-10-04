@@ -55,6 +55,7 @@ public class RegisterModel : PageModel
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
     private readonly ApiTokenService _apiTokens;
+    private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public RegisterModel(UserManager<HSUser> userManager,
@@ -69,6 +70,7 @@ public class RegisterModel : PageModel
                          TeamService teamService,
                          UnitOfWork unitOfWork,
                          ApiTokenService apiTokens,
+                         TimeProvider time,
                          IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
@@ -80,6 +82,7 @@ public class RegisterModel : PageModel
         _logger = logger;
         _emailSender = emailSender;
         _accountConfirmationPolicy = accountConfirmationPolicy;
+        _time = time;
         _localiser = localiser;
         _invitationService = invitationService;
         _teamService = teamService;
@@ -328,7 +331,7 @@ public class RegisterModel : PageModel
 
             // Every user gets their own default team, so printer-claim identity resolution (step 7)
             // always has one. A team-scoped invite additionally joins that existing team.
-            await _teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, cancellationToken);
+            await _teamService.AddDefaultTeamAsync(user.Id, _time.GetUtcNow(), cancellationToken);
 
             if (invitation.TeamId is int teamId)
             {

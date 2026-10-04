@@ -35,7 +35,7 @@ else
         <tbody>
         @foreach (var invite in Model.Invitations)
         {
-            var status = IndexModel.StatusOf(invite);
+            var status = Model.StatusOf(invite);
             <tr>
                 <td>@invite.Email</td>
                 <td>@Model.TargetOf(invite)</td>

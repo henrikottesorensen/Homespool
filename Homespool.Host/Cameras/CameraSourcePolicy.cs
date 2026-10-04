@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -75,16 +74,19 @@ public sealed class CameraSourcePolicy
         new(StringComparer.OrdinalIgnoreCase) { "rtsp", "rtsps", "http", "https", "rtmp" };
 
     private readonly IHostAddressResolver _resolver;
+    private readonly ILocalMachine _machine;
     private readonly IOptionsMonitor<CameraOptions> _options;
     private readonly IOptionsMonitor<CertificateOptions> _certificates;
     private readonly IOptionsMonitor<PrusaConnect.PrusaConnectOptions> _connect;
 
     public CameraSourcePolicy(IHostAddressResolver resolver,
+                              ILocalMachine machine,
                               IOptionsMonitor<CameraOptions> options,
                               IOptionsMonitor<CertificateOptions> certificates,
                               IOptionsMonitor<PrusaConnect.PrusaConnectOptions> connect)
     {
         _resolver = resolver;
+        _machine = machine;
         _options = options;
         _certificates = certificates;
         _connect = connect;
@@ -208,32 +210,6 @@ public sealed class CameraSourcePolicy
     }
 
     /// <summary>
-    /// This process's own addresses. Loopback is excluded because
-    /// <see cref="IsReachableAddress"/> has already refused it, and including it here would only
-    /// produce a second, less clear refusal for the same address.
-    /// </summary>
-    private static IReadOnlyList<IPAddress> OwnAddresses()
-    {
-        try
-        {
-            return
-            [
-                .. System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-                         .Where(nic => nic.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up)
-                         .Where(nic => nic.NetworkInterfaceType != System.Net.NetworkInformation.NetworkInterfaceType.Loopback)
-                         .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
-                         .Select(unicast => unicast.Address)
-            ];
-        }
-        catch (System.Net.NetworkInformation.NetworkInformationException)
-        {
-            // Enumeration is a courtesy on top of the container ranges and the names, so a platform
-            // that will not answer costs a narrower check rather than a failed save.
-            return [];
-        }
-    }
-
-    /// <summary>
     /// Whether an address may be reached: refuses loopback and link-local, including IPv6 and the
     /// IPv4-mapped forms of both.
     /// </summary>
@@ -295,14 +271,9 @@ public sealed class CameraSourcePolicy
         }
 
         // This container, which in the shipped stack is "homespool".
-        try
+        if (_machine.HostName() is { } hostName)
         {
-            names.Add(System.Net.Dns.GetHostName());
-        }
-        catch (SocketException)
-        {
-            // A machine that cannot name itself contributes no name, exactly as PrinterAddressSuggestion
-            // treats the same failure.
+            names.Add(hostName);
         }
 
         // The one outer address the application is actually told about.
@@ -427,7 +398,7 @@ public sealed class CameraSourcePolicy
         }
 
         IReadOnlyList<IPNetwork> containerNetworks = _certificates.CurrentValue.ParsedContainerNetworks;
-        IReadOnlyList<IPAddress> ownAddresses = OwnAddresses();
+        IReadOnlyList<IPAddress> ownAddresses = _machine.Addresses();
 
         foreach (IPAddress address in addresses)
         {

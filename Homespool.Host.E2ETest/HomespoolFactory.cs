@@ -18,6 +18,7 @@ using Microsoft.Extensions.Options;
 using Serilog.Core;
 
 using Homespool.Data;
+using Homespool.Host.Cameras;
 using Homespool.Host.Certificates;
 using Homespool.Host.Controllers;
 using Homespool.Host.Listeners;
@@ -335,6 +336,18 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
             // in appsettings.Development.json - which is a real machine's LAN address, and changes.
             services.PostConfigure<PrusaConnectOptions>(options => options.PrinterHost = PrinterHost);
 
+            // A machine with no name and no addresses, for the same reason: the camera source policy
+            // refuses whatever this machine holds, and a fixture address a test runner happens to own
+            // would be refused on that runner alone. The policy's own tests cover the refusal.
+            ServiceDescriptor? machine = services.SingleOrDefault(d => d.ServiceType == typeof(ILocalMachine));
+
+            if (machine is not null)
+            {
+                services.Remove(machine);
+            }
+
+            services.AddSingleton<ILocalMachine>(new UnknownMachine());
+
             // Program.cs writes to any ILogEventSink registered here alongside its own console sink,
             // both behind the same wrapper, so a test sees an event as the console was handed it - a bare Microsoft.Extensions.Logging.ILoggerProvider
             // registered the same way does *not* work, because AddSerilog replaces ILoggerFactory with
@@ -364,6 +377,22 @@ public sealed class HomespoolFactory : WebApplicationFactory<PrinterAppControlle
                 services.AddSingleton(_messageDispatcher);
             }
         });
+    }
+
+    /// <summary>
+    /// A machine that names itself nothing and holds no addresses.
+    /// </summary>
+    private sealed class UnknownMachine : ILocalMachine
+    {
+        public string? HostName()
+        {
+            return null;
+        }
+
+        public IReadOnlyList<System.Net.IPAddress> Addresses()
+        {
+            return [];
+        }
     }
 
     /// <summary>

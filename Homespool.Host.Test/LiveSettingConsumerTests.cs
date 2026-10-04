@@ -112,7 +112,12 @@ public class LiveSettingConsumerTests
         ChangeableMonitor<CameraOptions> cameras =
             TestOptions.Monitor(new CameraOptions { RefuseLoopbackAndLinkLocal = true });
 
+        ILocalMachine machine = Substitute.For<ILocalMachine>();
+        machine.HostName().Returns((string?)null);
+        machine.Addresses().Returns([]);
+
         CameraSourcePolicy policy = new(resolver,
+                                        machine,
                                         cameras,
                                         TestOptions.Monitor(new CertificateOptions()),
                                         TestOptions.Monitor(new PrusaConnect.PrusaConnectOptions()));

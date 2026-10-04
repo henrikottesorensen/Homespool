@@ -176,12 +176,14 @@ public sealed class CameraRegistrationTests : IAsyncLifetime
             Registrations().Should().Be(1, "the camera must have been registered, or leaving it alone proves nothing");
 
             await CameraPage.EditAsync(client, camera.Uuid, "after", Source);
+            (await CameraPage.AlertAsync(client, "danger")).Should().BeEmpty("a refused edit would leave the stream alone too");
 
             Registrations().Should().Be(1, "the source did not change, so the stream did not need replacing");
             _sidecar.Streams.Should().Contain(camera.Uuid.ToString(), Source);
 
             const string Moved = "rtsp://cam:camera-secret@192.0.2.2/live"; // betterleaks:allow - a test fixture for a camera that does not exist
             await CameraPage.EditAsync(client, camera.Uuid, "after", Moved);
+            (await CameraPage.AlertAsync(client, "danger")).Should().BeEmpty("the new source has to be accepted to be registered");
 
             Registrations().Should().Be(2);
             _sidecar.Streams.Should().Contain(camera.Uuid.ToString(), Moved);

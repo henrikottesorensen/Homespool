@@ -47,7 +47,10 @@ public static class Registration
         // one would hold nothing between two requests of the same page.
         services.AddSingleton<CameraFrameCache>();
 
-        // Both dependencies are singletons and it holds no state of its own.
+        // Reads the platform on every call, so there is nothing per request about it.
+        services.AddSingleton<ILocalMachine, PlatformLocalMachine>();
+
+        // Every dependency is a singleton and it holds no state of its own.
         services.AddSingleton<CameraSourcePolicy>();
 
         // Reads a bind-mounted directory; nothing per-request about it.

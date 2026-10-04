@@ -5,6 +5,9 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
 using NSubstitute;
 
 using Homespool.Host.Cameras;
@@ -17,7 +20,8 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// The resolver is substituted, so "this name points at the server itself" is producible without a
-/// DNS server - which is the whole reason <see cref="IHostAddressResolver"/> is an interface.
+/// DNS server - which is the whole reason <see cref="IHostAddressResolver"/> is an interface. The
+/// machine is substituted for the same reason: see <see cref="ILocalMachine"/>.
 /// </remarks>
 public class CameraSourcePolicyTests
 {
@@ -359,10 +363,9 @@ public class CameraSourcePolicyTests
     [Fact]
     public async Task ThisContainerIsNotACamera()
     {
-        CameraSourcePolicy policy = Build();
+        CameraSourcePolicy policy = Build(hostName: "homespool");
 
-        CameraSourceCheck check = await policy.CheckAsync(
-            $"http://{System.Net.Dns.GetHostName()}:8080/api/v1/printers", CancellationToken.None);
+        CameraSourceCheck check = await policy.CheckAsync("http://homespool:8080/api/v1/printers", CancellationToken.None);
 
         check.IsAcceptable.Should().BeFalse();
         check.Error!.Key.Should().Be("Cameras_SourceIsThisDeployment");
@@ -434,6 +437,55 @@ public class CameraSourcePolicyTests
     }
 
     /// <summary>
+    /// An address this machine holds is this server, whatever range it is in - the deployment with no
+    /// container range configured at all, where the interface addresses are the only thing that
+    /// catches it.
+    /// </summary>
+    [Fact]
+    public async Task AnAddressThisMachineHoldsIsRefused()
+    {
+        CameraSourcePolicy policy = Build(resolvesTo: "192.168.1.20", ownAddress: "192.168.1.20");
+
+        CameraSourceCheck check = await policy.CheckAsync("rtsp://camera.example/live", CancellationToken.None);
+
+        check.IsAcceptable.Should().BeFalse();
+        check.Error!.Key.Should().Be("Cameras_SourceIsThisServer");
+    }
+
+    [Theory]
+    [InlineData("192.168.1.20", "192.168.1.20")]
+    [InlineData("::ffff:192.168.1.20", "192.168.1.20")]
+    [InlineData("192.168.1.20", "::ffff:192.168.1.20")]
+    [InlineData("fd00::20", "fd00::20")]
+    public void AnAddressThisMachineHoldsIsInsideTheDeployment(string address, string own)
+    {
+        CameraSourcePolicy.IsInsideThisDeployment(IPAddress.Parse(address), [], [IPAddress.Parse(own)])
+                          .Should().BeTrue();
+    }
+
+    [Fact]
+    public void AnAddressThisMachineDoesNotHoldIsOutsideTheDeployment()
+    {
+        CameraSourcePolicy.IsInsideThisDeployment(IPAddress.Parse("192.168.1.21"), [], [IPAddress.Parse("192.168.1.20")])
+                          .Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The application reads the machine it runs on. A registration answering nothing would narrow
+    /// the check without failing anything, so nothing else would notice it.
+    /// </summary>
+    [Fact]
+    public void TheApplicationRegistersThePlatformsAnswer()
+    {
+        ServiceCollection services = [];
+
+        services.AddCameras(new ConfigurationBuilder().Build());
+
+        services.Should().ContainSingle(descriptor => descriptor.ServiceType == typeof(ILocalMachine))
+                .Which.ImplementationType.Should().Be<PlatformLocalMachine>();
+    }
+
+    /// <summary>
     /// 0.0.0.0 is not loopback, so it passed the reachability check and reached the local host
     /// anyway on Linux.
     /// </summary>
@@ -450,12 +502,19 @@ public class CameraSourcePolicyTests
     /// documentation-range address by default, so an ordinary camera name is an ordinary camera -
     /// or with nothing at all when <paramref name="unresolvable"/>.
     /// </summary>
+    /// <remarks>
+    /// The machine is a stand-in too, with no name and no addresses unless a test gives it
+    /// <paramref name="hostName"/> or <paramref name="ownAddress"/>, so no test here depends on what
+    /// the machine running it is called or which addresses it holds.
+    /// </remarks>
     internal static CameraSourcePolicy Build(string? resolvesTo = "203.0.113.10",
                                              bool refuseLoopback = true,
                                              string? containerNetwork = null,
                                              string? printerHost = null,
                                              bool unresolvable = false,
-                                             IHostAddressResolver? resolver = null)
+                                             IHostAddressResolver? resolver = null,
+                                             string? hostName = null,
+                                             string? ownAddress = null)
     {
         if (resolver is null)
         {
@@ -479,7 +538,12 @@ public class CameraSourcePolicyTests
             PrinterHost = printerHost ?? string.Empty,
         };
 
+        ILocalMachine machine = Substitute.For<ILocalMachine>();
+        machine.HostName().Returns(hostName);
+        machine.Addresses().Returns(ownAddress is null ? [] : [IPAddress.Parse(ownAddress)]);
+
         return new CameraSourcePolicy(resolver,
+                                      machine,
                                       TestOptions.Monitor(options),
                                       TestOptions.Monitor(certificates),
                                       TestOptions.Monitor(connect));

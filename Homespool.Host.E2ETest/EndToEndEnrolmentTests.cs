@@ -165,6 +165,31 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
             JsonDocument reGet =
                 JsonDocument.Parse(await reGetResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             reGet.RootElement.GetProperty("name").GetString().Should().Be("Renamed MK4", "the patch must have persisted");
+
+            // ---------- app: a PATCH naming one field leaves the other alone ----------
+            using JsonContent nameOnly = JsonContent.Create(new { name = "Workshop MK4" });
+            HttpResponseMessage nameOnlyResponse =
+                await appClient.PatchAsync($"/api/v1/printers/{uuid}", nameOnly, TestContext.Current.CancellationToken);
+
+            nameOnlyResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            JsonDocument renamedOnly =
+                JsonDocument.Parse(await nameOnlyResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            renamedOnly.RootElement.GetProperty("name").GetString().Should().Be("Workshop MK4");
+            renamedOnly.RootElement.GetProperty("location").GetString().Should().Be("Garage", "the body did not mention location");
+
+            // ---------- app: an explicit null clears, and still leaves the other alone ----------
+            using JsonContent clearLocation = JsonContent.Create(new { location = (string?)null });
+            HttpResponseMessage clearResponse =
+                await appClient.PatchAsync($"/api/v1/printers/{uuid}", clearLocation, TestContext.Current.CancellationToken);
+
+            clearResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            HttpResponseMessage clearedGetResponse =
+                await appClient.GetAsync($"/api/v1/printers/{uuid}", TestContext.Current.CancellationToken);
+            JsonDocument cleared =
+                JsonDocument.Parse(await clearedGetResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            cleared.RootElement.GetProperty("name").GetString().Should().Be("Workshop MK4", "the body did not mention name");
+            cleared.RootElement.GetProperty("location").ValueKind.Should().Be(JsonValueKind.Null, "a present null clears the field");
         }
     }
 

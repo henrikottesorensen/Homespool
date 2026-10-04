@@ -284,14 +284,21 @@ public class PrinterQueryService
     /// instead - safe to distinguish, since reaching that branch already proves they can see the printer.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// <b>An absent <paramref name="name"/> or <paramref name="location"/> leaves the column alone</b>;
+    /// a present null clears it. A plain nullable here made every partial PATCH wipe the field it left
+    /// out. <see cref="Printer.UpdatedAt"/> moves only when a value actually changes.
+    /// </para>
+    /// <para>
     /// Returns the live state alongside, so the response to an edit describes the same resource the
     /// next <c>GET</c> will - a PATCH answering <c>UNKNOWN</c> while a GET one second later says
     /// <c>PRINTING</c> would look like the edit had reset something.
+    /// </para>
     /// </remarks>
     public async Task<PrinterWithState?> UpdatePrinterAsync(Guid uuid,
                                                             Caller caller,
-                                                            string? name,
-                                                            string? location,
+                                                            Field<string?> name,
+                                                            Field<string?> location,
                                                             CancellationToken cancellationToken)
     {
         // Two questions, two refusal shapes, and the order matters: a caller who cannot even read
@@ -307,11 +314,26 @@ public class PrinterQueryService
 
         await _access.RequireAsync(printer.Id, caller, Capability.ManagePrinter, cancellationToken);
 
-        printer.Name = name;
-        printer.Location = location;
-        printer.UpdatedAt = _timeProvider.GetUtcNow();
+        bool changed = false;
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (name.IsPresent && name.Value != printer.Name)
+        {
+            printer.Name = name.Value;
+            changed = true;
+        }
+
+        if (location.IsPresent && location.Value != printer.Location)
+        {
+            printer.Location = location.Value;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            printer.UpdatedAt = _timeProvider.GetUtcNow();
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         PrinterLiveState? liveState = await _telemetry.PrinterLiveStates
                                                       .AsNoTracking()

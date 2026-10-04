@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -80,7 +79,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </remarks>
 [Authorize]
 [EnableRateLimiting(RateLimitPolicies.PasskeyChallenge)]
-public class PasskeysModel : PageModel
+public class PasskeysModel : StatusMessagePageModel
 {
     /// <summary>The handler that starts a registration ceremony; the one handler on this page the rate limit applies to.</summary>
     public const string BeginRegistrationHandler = "BeginRegistration";
@@ -132,9 +131,6 @@ public class PasskeysModel : PageModel
 
     /// <summary>The relying-party id, for saying which address to come back by; null when none is configured.</summary>
     public string? ServerDomain { get; private set; }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     public class InputModel
     {
@@ -319,6 +315,7 @@ public class PasskeysModel : PageModel
         await _notices.TellAsync(user, CredentialChange.PasskeyAdded);
 
         StatusMessage = _localiser["Passkeys_Added"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }
@@ -347,6 +344,7 @@ public class PasskeysModel : PageModel
         if (passkey is null)
         {
             StatusMessage = _localiser["Passkeys_Gone"];
+            StatusMessageKind = StatusKind.Info;
 
             return RedirectToPage();
         }
@@ -355,6 +353,7 @@ public class PasskeysModel : PageModel
         await _users.AddOrUpdatePasskeyAsync(user, passkey);
 
         StatusMessage = _localiser["Passkeys_Renamed"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }
@@ -377,6 +376,7 @@ public class PasskeysModel : PageModel
         if (passkey is null)
         {
             StatusMessage = _localiser["Passkeys_Gone"];
+            StatusMessageKind = StatusKind.Info;
 
             return RedirectToPage();
         }
@@ -384,6 +384,7 @@ public class PasskeysModel : PageModel
         if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
         {
             StatusMessage = _localiser["CredentialChange_TooMany"];
+            StatusMessageKind = StatusKind.Warning;
 
             return RedirectToPage();
         }
@@ -407,6 +408,7 @@ public class PasskeysModel : PageModel
         await _notices.TellAsync(user, CredentialChange.PasskeyRemoved);
 
         StatusMessage = _localiser["Passkeys_Removed"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }

@@ -8,13 +8,13 @@
 
 @if (Model.RecoveryCodes is not null)
 {
-    <partial name="_StatusMessage" model="Model.IssuedMessage" />
+    <partial name="_StatusMessage" model="new StatusAlert(Model.IssuedMessage, StatusKind.Success)" />
     <h1>@ViewData["Title"]</h1>
     <partial name="_RecoveryCodes" model="Model.RecoveryCodes" />
 }
 else
 {
-    <partial name="_StatusMessage" for="StatusMessage" />
+    <partial name="_StatusMessage" model="new StatusAlert(Model.StatusMessage, Model.StatusMessageKind)" />
     <h1>@ViewData["Title"]</h1>
     <div class="alert alert-warning" role="alert">
         <p>

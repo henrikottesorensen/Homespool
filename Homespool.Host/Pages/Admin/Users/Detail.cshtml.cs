@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
@@ -51,7 +50,7 @@ namespace Homespool.Host.Pages.Admin.Users;
 /// </remarks>
 [Authorize(Policy = Policies.Administrator)]
 [RequireRecentProof]
-public class DetailModel : PageModel
+public class DetailModel : StatusMessagePageModel
 {
     private readonly HomespoolDbContext _context;
     private readonly UserManager<HSUser> _users;
@@ -101,9 +100,6 @@ public class DetailModel : PageModel
 
     /// <summary>One of this account's team memberships, and what it permits there.</summary>
     public sealed record TeamRow(string Name, string Capabilities, bool IsDefault);
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     /// <summary>
     /// Whether a recovery issued now also clears the account's authenticator - ticked when the person
@@ -238,6 +234,7 @@ public class DetailModel : PageModel
         if (IsSelf)
         {
             StatusMessage = _localiser["AdminUsers_RefusedSelfRecovery"].Value;
+            StatusMessageKind = StatusKind.Warning;
 
             return Page();
         }
@@ -245,6 +242,7 @@ public class DetailModel : PageModel
         if (DeactivatedAt is not null)
         {
             StatusMessage = _localiser["AdminUsers_RefusedRecoverDeactivated"].Value;
+            StatusMessageKind = StatusKind.Warning;
 
             return Page();
         }
@@ -252,6 +250,7 @@ public class DetailModel : PageModel
         if (string.IsNullOrEmpty(Email))
         {
             StatusMessage = _localiser["AdminUsers_RefusedRecoverNoAddress"].Value;
+            StatusMessageKind = StatusKind.Warning;
 
             return Page();
         }
@@ -287,6 +286,7 @@ public class DetailModel : PageModel
             ClearAuthenticator);
 
         StatusMessage = _localiser["AdminUsers_RecoveryIssued"].Value;
+        StatusMessageKind = StatusKind.Success;
 
         return Page();
     }
@@ -359,11 +359,11 @@ public class DetailModel : PageModel
             return Forbid();
         }
 
-        StatusMessage = result.Refusal switch
+        (StatusMessage, StatusMessageKind) = result.Refusal switch
         {
-            UserAdminRefusal.None => describe(result),
-            UserAdminRefusal.Self when refusedSelf is not null => refusedSelf,
-            UserAdminRefusal.NoSuchAccount => _localiser["AdminUsers_Gone"].Value,
+            UserAdminRefusal.None => (describe(result), StatusKind.Success),
+            UserAdminRefusal.Self when refusedSelf is not null => (refusedSelf, StatusKind.Warning),
+            UserAdminRefusal.NoSuchAccount => (_localiser["AdminUsers_Gone"].Value, StatusKind.Info),
             _ => throw new InvalidOperationException($"User administration answered {result.Refusal}, which no act produces."),
         };
 

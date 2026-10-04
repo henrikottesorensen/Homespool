@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
 using Homespool.Host.Accounts;
@@ -20,7 +19,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 
 [Authorize]
 [NoRecentProof("Edits the profile, which a session may do; nothing here outlives it.")]
-public class IndexModel : PageModel
+public class IndexModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignInRules _rules;
@@ -37,9 +36,6 @@ public class IndexModel : PageModel
         _signIn = signIn;
         _localiser = localiser;
     }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
@@ -133,6 +129,7 @@ public class IndexModel : PageModel
         }
 
         StatusMessage = _localiser["Manage_ProfileUpdated"];
+        StatusMessageKind = StatusKind.Success;
         return RedirectToPage();
     }
 }

@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -20,7 +19,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 
 [Authorize]
 [NoRecentProof("Takes the current password itself, which is the proof.")]
-public class ChangePasswordModel : PageModel
+public class ChangePasswordModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
@@ -46,9 +45,6 @@ public class ChangePasswordModel : PageModel
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     /// <summary>
     /// Whether this account has a local password at all. False means it signs in with an external
@@ -191,6 +187,7 @@ public class ChangePasswordModel : PageModel
         }
 
         StatusMessage = message;
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }

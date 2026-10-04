@@ -5,7 +5,7 @@
 }
 
 <h1>@ViewData["Title"]</h1>
-<partial name="_StatusMessage" for="StatusMessage" />
+<partial name="_StatusMessage" model="new StatusAlert(Model.StatusMessage, Model.StatusMessageKind)" />
 
 @* Linking and removing both take a recent proof - removing the last login of a provider-only account
    sets a password, which is a takeover in the wrong hands - so every act on this page waits for one.

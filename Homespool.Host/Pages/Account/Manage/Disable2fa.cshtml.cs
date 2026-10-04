@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -43,7 +42,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </remarks>
 [Authorize]
 [RequireRecentProof]
-public class Disable2faModel : PageModel
+public class Disable2faModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
@@ -60,9 +59,6 @@ public class Disable2faModel : PageModel
         _logger = logger;
         _localiser = localiser;
     }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     public async Task<IActionResult> OnGet()
     {
@@ -100,6 +96,7 @@ public class Disable2faModel : PageModel
 
         _logger.LogInformation("User with ID '{UserId}' has disabled 2fa.", _userManager.GetUserId(User));
         StatusMessage = _localiser["TwoFactor_Disabled"];
+        StatusMessageKind = StatusKind.Success;
         return RedirectToPage("./TwoFactorAuthentication");
     }
 }

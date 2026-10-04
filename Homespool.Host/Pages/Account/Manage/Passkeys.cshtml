@@ -6,7 +6,7 @@
 }
 
 <h1>@ViewData["Title"]</h1>
-<partial name="_StatusMessage" for="StatusMessage" />
+<partial name="_StatusMessage" model="new StatusAlert(Model.StatusMessage, Model.StatusMessageKind)" />
 
 <p class="text-muted">@Localiser["Passkeys_Explanation"]</p>
 

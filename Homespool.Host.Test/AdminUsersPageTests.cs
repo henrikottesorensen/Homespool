@@ -26,6 +26,8 @@ using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
+using StatusKind = Homespool.Host.Pages.StatusKind;
+
 namespace Homespool.Host.Test;
 
 /// <summary>
@@ -163,6 +165,7 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().Be("Account deactivated, and its one API token revoked.");
+        model.StatusMessageKind.Should().Be(StatusKind.Success);
         (await Reload(context, subject.Id)).DeactivatedAt.Should().NotBeNull();
     }
 
@@ -182,6 +185,7 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().StartWith("You cannot deactivate your own account");
+        model.StatusMessageKind.Should().Be(StatusKind.Warning, "a refusal is not shown as a success");
         (await Reload(context, admin.Id)).DeactivatedAt.Should().BeNull();
     }
 
@@ -206,6 +210,7 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         model.StatusMessage.Should().StartWith("You cannot send yourself a recovery link");
+        model.StatusMessageKind.Should().Be(StatusKind.Warning);
         model.RecoveryLink.Should().BeNull();
         (await context.Invitations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         Mail.SentEmails.Should().BeEmpty();

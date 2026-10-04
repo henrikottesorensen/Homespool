@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
 
@@ -46,7 +45,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
-public class NotificationsModel : PageModel
+public class NotificationsModel : StatusMessagePageModel
 {
     /// <summary>How many base64url characters of the endpoint's SHA-256 a row carries for matching.</summary>
     public const int EndpointHashLength = 22;
@@ -87,9 +86,6 @@ public class NotificationsModel : PageModel
 
     /// <summary>The deployment's public VAPID key, which a browser subscribes with.</summary>
     public string ApplicationServerKey { get; private set; } = string.Empty;
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     /// <summary>A sentence about something that did not work, shown apart from the success messages.</summary>
     [TempData]
@@ -148,6 +144,7 @@ public class NotificationsModel : PageModel
                                           cancellationToken);
 
         StatusMessage = _localiser["Notifications_KindsSaved"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }
@@ -178,6 +175,7 @@ public class NotificationsModel : PageModel
                                                   cancellationToken);
 
         StatusMessage = _localiser["Notifications_PrintersSaved"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }
@@ -226,6 +224,7 @@ public class NotificationsModel : PageModel
         {
             case WebPushSubscribeResult.Subscribed:
                 StatusMessage = _localiser["Notifications_Enabled"];
+                StatusMessageKind = StatusKind.Success;
                 break;
 
             case WebPushSubscribeResult.EndpointNotAllowed:
@@ -265,6 +264,7 @@ public class NotificationsModel : PageModel
         {
             case TestSendResult.Delivered:
                 StatusMessage = _localiser["Notifications_TestSent"];
+                StatusMessageKind = StatusKind.Success;
                 break;
 
             case TestSendResult.Gone:
@@ -309,6 +309,7 @@ public class NotificationsModel : PageModel
         if (await _destinations.RemoveAsync(user.Id, uuid, cancellationToken))
         {
             StatusMessage = _localiser["Notifications_Removed"];
+            StatusMessageKind = StatusKind.Success;
         }
         else
         {

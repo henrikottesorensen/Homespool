@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -50,7 +49,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
-public class ApiTokensModel : PageModel
+public class ApiTokensModel : StatusMessagePageModel
 {
     private readonly ApiTokenService _tokens;
     private readonly UserManager<HSUser> _userManager;
@@ -93,9 +92,6 @@ public class ApiTokensModel : PageModel
     /// other request, and unrecoverable afterwards: only its hash was stored.
     /// </summary>
     public string? CreatedToken { get; private set; }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     public class InputModel
     {
@@ -268,6 +264,7 @@ public class ApiTokensModel : PageModel
         }
 
         StatusMessage = revoked ? _localiser["Manage_TokenRevoked"] : _localiser["Manage_TokenGone"];
+        StatusMessageKind = revoked ? StatusKind.Success : StatusKind.Info;
 
         return RedirectToPage();
     }

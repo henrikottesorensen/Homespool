@@ -21,6 +21,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authentication;
 using Homespool.Host.Mail;
+using Homespool.Host.Pages;
 using Homespool.Host.Pages.Account;
 using Homespool.Model.Entities;
 
@@ -165,6 +166,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         reloaded.Email.Should().Be("after@example.com");
         reloaded.UserName.Should().Be("henrik", "an address change is not a rename");
         model.StatusMessage.Should().StartWith("Thank you");
+        model.StatusMessageKind.Should().Be(StatusKind.Success);
     }
 
     /// <summary>
@@ -207,6 +209,7 @@ public sealed class ConfirmEmailChangeTests : IDisposable
         reloaded.UserName.Should().Be("mover");
 
         model.StatusMessage.Should().Be("Error changing email.");
+        model.StatusMessageKind.Should().Be(StatusKind.Danger, "a change that did not happen is not good news in any language");
         Mail.SentEmails.Should().BeEmpty("nothing changed, so there is nothing to tell anybody");
     }
 

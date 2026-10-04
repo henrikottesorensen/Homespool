@@ -666,10 +666,10 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// read.
     /// </summary>
     /// <remarks>
-    /// <b>Text, for the WebRTC candidate.</b> The question asked of it there is whether it already
-    /// contains a particular candidate address, which a substring answers — so that check works
-    /// whether the sidecar renders the document as YAML or as JSON. The streams are another matter,
-    /// and <see cref="ReadStreamSourcesAsync"/> parses them.
+    /// <b>Text, and every reader parses it.</b> The streams and the <c>webrtc</c> section share this
+    /// document, and a stream's source is a string somebody typed, so no question about one section
+    /// can be answered by searching the whole text. <see cref="ReadStreamSourcesAsync"/> and
+    /// <see cref="WebRtcSidecarWriter.Matches"/> each read the section they ask about.
     /// </remarks>
     public async Task<string?> ReadConfigAsync(CancellationToken cancellationToken)
     {

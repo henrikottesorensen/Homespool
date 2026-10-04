@@ -86,6 +86,23 @@ public sealed class WebRtcConfigurerStartupTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A camera source carrying the address does not make the sidecar advertise it: the source is in
+    /// the streams, the address belongs in the <c>webrtc</c> section, and only that section counts.
+    /// </summary>
+    [Fact]
+    public void TheAddressInACameraSourceIsNotTheAddressAdvertised()
+    {
+        _sidecar.Config =
+            "webrtc:\n  candidates:\n    - 192.0.2.99:8555\n  ice_servers: []\n" +
+            $"streams:\n  garage:\n    - rtsp://192.0.2.30/live?next={Candidate}\n";
+
+        Start(stunEnabled: false);
+
+        _sidecar.ConfigWrites.Should().ContainSingle().Which.Should().Contain(Candidate);
+        _sidecar.Restarts.Should().Be(1);
+    }
+
+    /// <summary>
     /// Starts a host against the sidecar. The configurer is a hosted service, so it has finished by
     /// the time the server exists.
     /// </summary>

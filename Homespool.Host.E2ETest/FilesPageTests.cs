@@ -18,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.PrusaConnect;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -697,7 +698,7 @@ public sealed class FilesPageTests : IAsyncLifetime
         });
 
         registerResponse.EnsureSuccessStatusCode();
-        string code = registerResponse.Headers.GetValues("Code").Single();
+        string code = registerResponse.Headers.GetValues(Headers.Code).Single();
 
         using HttpResponseMessage claimResponse = await client.PostAsJsonAsync(
             "/api/v1/printers/register",

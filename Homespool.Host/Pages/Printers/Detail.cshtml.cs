@@ -17,6 +17,7 @@ using Homespool.Host.Authentication;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Http;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles.GCode;
 using Homespool.Host.Printing;
@@ -920,7 +921,7 @@ public class DetailModel : PageModel
 
         // Private because it came through a sign-in; a day because the address never names another
         // picture, and a print rarely runs longer.
-        Response.Headers.CacheControl = "private, max-age=86400";
+        Response.Headers.CacheControl = CacheControlValues.PrivateOneDay;
 
         return File(image, MediaTypeNames.Image.Png);
     }

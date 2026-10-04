@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Host.Localisation;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -191,7 +192,7 @@ public class EnableAuthenticatorModel : StatusMessagePageModel
             // said here so that the codes do not depend on a form somewhere else staying a form.
             // Both directives, in this order, because that is exactly what the antiforgery token
             // would otherwise write over the top of - and warn about while doing it.
-            Response.Headers.CacheControl = "no-cache, no-store";
+            Response.Headers.CacheControl = CacheControlValues.NoCacheNoStore;
 
             return Page();
         }

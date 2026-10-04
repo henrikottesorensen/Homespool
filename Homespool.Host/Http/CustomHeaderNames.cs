@@ -22,4 +22,19 @@ public static class CustomHeaderNames
     /// Carries a personal access token with no scheme in front of it, as OctoPrint clients send it.
     /// </summary>
     public const string ApiKey = "X-Api-Key";
+
+    /// <summary>Web Push (RFC 8030): how long the push service holds the message, in seconds.</summary>
+    public const string PushTtl = "TTL";
+
+    /// <summary>Web Push (RFC 8030): how hard the push service should try to wake the device.</summary>
+    public const string PushUrgency = "Urgency";
+
+    /// <summary>Web Push (RFC 8030): a key that lets a newer push replace an undelivered one.</summary>
+    public const string PushTopic = "Topic";
+
+    /// <summary>
+    /// Which referrer the browser sends. <c>HeaderNames</c> has no constant for it, and <c>Referer</c>,
+    /// the request header it is easy to reach for instead, is a different header entirely.
+    /// </summary>
+    public const string ReferrerPolicy = "Referrer-Policy";
 }

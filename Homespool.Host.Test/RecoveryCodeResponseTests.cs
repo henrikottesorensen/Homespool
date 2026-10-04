@@ -17,6 +17,7 @@ using OtpNet;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -78,7 +79,7 @@ public sealed class RecoveryCodeResponseTests : IDisposable
         await model.OnPostAsync();
 
         model.RecoveryCodes.Should().NotBeNull("this is the response that carries them");
-        httpContext.Response.Headers.CacheControl.ToString().Should().Be("no-cache, no-store");
+        httpContext.Response.Headers.CacheControl.ToString().Should().Be(CacheControlValues.NoCacheNoStore);
     }
 
     /// <summary>
@@ -112,7 +113,7 @@ public sealed class RecoveryCodeResponseTests : IDisposable
         await model.OnPostAsync(CancellationToken.None);
 
         model.RecoveryCodes.Should().NotBeNull("a first enable mints them and shows them here");
-        httpContext.Response.Headers.CacheControl.ToString().Should().Be("no-cache, no-store");
+        httpContext.Response.Headers.CacheControl.ToString().Should().Be(CacheControlValues.NoCacheNoStore);
     }
 
     private HomespoolDbContext NewContext()

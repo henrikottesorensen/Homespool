@@ -15,6 +15,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
 using Homespool.Host.Telemetry;
@@ -173,7 +174,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
         heard["viewer"].GetProperty("url").GetString().Should().Be($"/Printers/Detail/{_printer.Uuid}");
 
         FakePush push = _pushService.Received[0];
-        push.Header("Urgency").Should().Be("high");
+        push.Header(CustomHeaderNames.PushUrgency).Should().Be("high");
         heard["owner"].GetProperty("tag").GetString().Should().Be($"printer-{_printer.Id}", "the next notification about this printer replaces it");
     }
 

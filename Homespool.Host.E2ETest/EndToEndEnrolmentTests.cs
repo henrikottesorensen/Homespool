@@ -93,7 +93,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
         });
 
         registerResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        string code = registerResponse.Headers.GetValues("Code").Single();
+        string code = registerResponse.Headers.GetValues(Headers.Code).Single();
         code.Should().NotBeNullOrWhiteSpace();
 
         // ---------- printer: GET /p/register before anyone has claimed it ----------
@@ -193,11 +193,11 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
             firmware = "6.4.0+11974",
         };
 
-        string printersCode = (await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, body)).Headers.GetValues("Code").Single();
+        string printersCode = (await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, body)).Headers.GetValues(Headers.Code).Single();
 
         // Act
         HttpResponseMessage strangersRegistration = await EnrolmentFlowHelper.SendPrinterRegisterAsync(stranger, body);
-        string strangersCode = strangersRegistration.Headers.GetValues("Code").Single();
+        string strangersCode = strangersRegistration.Headers.GetValues(Headers.Code).Single();
 
         (HSUser _, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
         using (appClient)
@@ -214,7 +214,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
         // Assert
         strangersRegistration.StatusCode.Should().Be(HttpStatusCode.OK);
         strangersCode.Should().NotBe(printersCode);
-        strangersRegistration.Headers.GetValues("Temporary-Code").Should().NotContain(printersCode);
+        strangersRegistration.Headers.GetValues(Headers.TemporaryCode).Should().NotContain(printersCode);
 
         strangersPoll.StatusCode.Should().Be(HttpStatusCode.Accepted, "nobody claimed the stranger's code");
         strangersPoll.Headers.Contains(Headers.Token).Should().BeFalse();
@@ -249,7 +249,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
         {
             for (int attempt = 0; attempt < PrusaConnectService.MaxPendingRegistrationsPerFingerprint; attempt++)
             {
-                string code = (await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, body)).Headers.GetValues("Code").Single();
+                string code = (await EnrolmentFlowHelper.SendPrinterRegisterAsync(printer, body)).Headers.GetValues(Headers.Code).Single();
 
                 HttpResponseMessage claim = await appClient.PostAsJsonAsync(
                     "/api/v1/printers/register", new { name = $"Claim {attempt}", code }, TestContext.Current.CancellationToken);
@@ -262,7 +262,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
 
         // Assert
         refused.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
-        refused.Headers.Contains("Code").Should().BeFalse();
+        refused.Headers.Contains(Headers.Code).Should().BeFalse();
     }
 
     /// <summary>
@@ -283,7 +283,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
             fingerprint = Fingerprint,
             printer_type = "1.3.5",
             firmware = "6.4.0+11974",
-        })).Headers.GetValues("Code").Single();
+        })).Headers.GetValues(Headers.Code).Single();
 
         (HSUser _, HttpClient appClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "claimer@example.com");
         using (appClient)
@@ -424,7 +424,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
             firmware = "6.4.0+11974",
         });
 
-        string code = registerResponse.Headers.GetValues("Code").Single();
+        string code = registerResponse.Headers.GetValues(Headers.Code).Single();
 
         string overLongName = new('n', Printer.NameMaxLength + 1);
         string overLongLocation = new('l', Printer.LocationMaxLength + 1);

@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 
 namespace Homespool.Host.E2ETest;
 
@@ -84,10 +85,10 @@ public sealed class SecurityHeaderTests : IAsyncLifetime
         using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
 
         // Assert
-        Header(response, HeaderNames.XContentTypeOptions).Should().Be("nosniff");
-        Header(response, HeaderNames.XFrameOptions).Should().Be("DENY");
-        Header(response, "Content-Security-Policy").Should().MatchRegex(PolicyShape);
-        Header(response, "Referrer-Policy").Should().Be("same-origin");
+        Header(response, HeaderNames.XContentTypeOptions).Should().Be(SecurityHeaderValues.NoSniff);
+        Header(response, HeaderNames.XFrameOptions).Should().Be(SecurityHeaderValues.FrameDeny);
+        Header(response, HeaderNames.ContentSecurityPolicy).Should().MatchRegex(PolicyShape);
+        Header(response, CustomHeaderNames.ReferrerPolicy).Should().Be(SecurityHeaderValues.ReferrerSameOrigin);
     }
 
     /// <summary>
@@ -131,7 +132,7 @@ public sealed class SecurityHeaderTests : IAsyncLifetime
 
     private static string Nonce(HttpResponseMessage response)
     {
-        string policy = Header(response, "Content-Security-Policy");
+        string policy = Header(response, HeaderNames.ContentSecurityPolicy);
         int start = policy.IndexOf("'nonce-", StringComparison.Ordinal) + "'nonce-".Length;
         int end = policy.IndexOf('\'', start);
 

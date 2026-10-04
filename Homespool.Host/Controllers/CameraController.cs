@@ -190,7 +190,7 @@ public class CameraController : ControllerBase
 
         // No caching anywhere: this resource is different every couple of seconds, and a cached
         // frame is the stale picture the age rule exists to prevent - reintroduced by a proxy.
-        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+        Response.Headers.CacheControl = CacheControlValues.NoStoreNoCacheMustRevalidate;
         Response.Headers[CustomHeaderNames.FrameCapturedAt] =
             frame.CapturedAt.ToString("O", CultureInfo.InvariantCulture);
 
@@ -339,8 +339,8 @@ public class CameraController : ControllerBase
 
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = live.ContentType;
-        Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
-        Response.Headers.Pragma = "no-cache";
+        Response.Headers.CacheControl = CacheControlValues.NoStoreNoCacheMustRevalidate;
+        Response.Headers.Pragma = CacheControlValues.NoCache;
 
         // The front proxy buffers upstream responses by default, which would hold every frame back;
         // nginx honours this header per response, so the compose deployment needs no config change.

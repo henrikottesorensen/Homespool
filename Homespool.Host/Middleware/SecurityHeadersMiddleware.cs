@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+using Homespool.Host.Http;
+
 namespace Homespool.Host.Middleware;
 
 /// <summary>
@@ -117,13 +119,12 @@ public sealed class SecurityHeadersMiddleware : IMiddleware
         {
             IHeaderDictionary headers = context.Response.Headers;
 
-            headers.XContentTypeOptions = "nosniff";
-            headers.XFrameOptions = "DENY";
+            headers.XContentTypeOptions = SecurityHeaderValues.NoSniff;
+            headers.XFrameOptions = SecurityHeaderValues.FrameDeny;
             headers.ContentSecurityPolicy = Policy(context, swagger);
 
-            // By name: IHeaderDictionary types the other three but not this one, and Referer - the
-            // request header it is easy to reach for instead - is a different header entirely.
-            headers["Referrer-Policy"] = "same-origin";
+            // By name: IHeaderDictionary has no property for this one.
+            headers[CustomHeaderNames.ReferrerPolicy] = SecurityHeaderValues.ReferrerSameOrigin;
 
             return Task.CompletedTask;
         });

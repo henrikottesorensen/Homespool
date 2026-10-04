@@ -17,7 +17,9 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Net.Http.Headers;
 
+using Homespool.Host.Http;
 using Homespool.Host.Notifications;
 using Homespool.Host.Notifications.WebPush;
 using Homespool.Host.PrusaConnect;
@@ -122,10 +124,10 @@ public sealed class WebPushChannelTests : IAsyncLifetime
         payload.GetProperty("url").GetString().Should().Be("/Printers/Detail/3");
         payload.GetProperty("tag").GetString().Should().Be("printer-3");
 
-        push.Header("Content-Encoding").Should().Be("aes128gcm");
-        push.Header("TTL").Should().Be("600");
-        push.Header("Urgency").Should().Be("high");
-        push.Header("Topic").Should().BeNull("Apple's push service refuses a push that carries one");
+        push.Header(HeaderNames.ContentEncoding).Should().Be("aes128gcm");
+        push.Header(CustomHeaderNames.PushTtl).Should().Be("600");
+        push.Header(CustomHeaderNames.PushUrgency).Should().Be("high");
+        push.Header(CustomHeaderNames.PushTopic).Should().BeNull("Apple's push service refuses a push that carries one");
 
         JsonElement claims = push.VerifiedVapidClaims(publicKey);
         claims.GetProperty("aud").GetString().Should().Be("https://fcm.googleapis.com");

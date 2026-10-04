@@ -45,8 +45,7 @@ namespace Homespool.Host.Certificates;
 /// runs the key derivation twice on every open — once for its MAC, once for the key — and the MAC
 /// cannot be made cheap without becoming the guessing oracle above. An encrypted PKCS#8 key beside a
 /// certificate PEM has no MAC, opens with one derivation, and is what <c>ca.key.pem</c> already is,
-/// so the two keys on this volume read the same way. The PKCS#12 an earlier version wrote is
-/// migrated to the pair on first start and then deleted, exactly as <c>ca.pfx</c> was.
+/// so the two keys on this volume read the same way.
 /// </para>
 /// <para>
 /// <b>RSA, where everything else here is ECDSA P-256, and it cannot be otherwise.</b> Data
@@ -64,7 +63,6 @@ namespace Homespool.Host.Certificates;
 /// </remarks>
 public static class DataProtectionCertificate
 {
-    private const string LegacyFileName = "dataprotection.pfx";
     private const string CertificatePemFileName = "dataprotection.crt.pem";
     private const string KeyPemFileName = "dataprotection.key.pem";
 
@@ -89,13 +87,6 @@ public static class DataProtectionCertificate
     /// password-reset link breaking at once. So an existing key always wins, and nothing here rotates
     /// anything — a key that exists and cannot be opened is a refusal to start, never a re-mint, and
     /// so is a certificate whose key beside it is gone.
-    /// </para>
-    /// <para>
-    /// <b>A PKCS#12 written before the passphrase existed is moved to the pair, once.</b> It loads
-    /// with no password, its certificate and key are written out in the new layout and proved to
-    /// open, and only then is it deleted. The certificate is unchanged, so nothing in the ring
-    /// becomes unreadable; a migration that died between writing the pair and deleting the PKCS#12
-    /// is finished on the next start.
     /// </para>
     /// </remarks>
     /// <param name="directory">Directory to hold the certificate. Created if absent.</param>
@@ -123,7 +114,6 @@ public static class DataProtectionCertificate
 
         string certificatePath = Path.Combine(directory, CertificatePemFileName);
         string keyPath = Path.Combine(directory, KeyPemFileName);
-        string legacyPath = Path.Combine(directory, LegacyFileName);
 
         if (File.Exists(keyPath))
         {
@@ -135,16 +125,7 @@ public static class DataProtectionCertificate
                     "session and pending token.");
             }
 
-            X509Certificate2 loaded = LoadPair(certificatePath, keyPath, passphrase);
-
-            if (File.Exists(legacyPath))
-            {
-                // A migration that wrote its pair and then died before this line. The pair is verified
-                // readable, so the plaintext PKCS#12 is the one copy too many.
-                File.Delete(legacyPath);
-            }
-
-            return loaded;
+            return LoadPair(certificatePath, keyPath, passphrase);
         }
 
         if (File.Exists(certificatePath))
@@ -152,11 +133,6 @@ public static class DataProtectionCertificate
             throw new DataProtectionCertificateUnreadableException(
                 $"{certificatePath} exists but the private key beside it ({keyPath}) is gone. Restore the key from a " +
                 "backup; it cannot be recreated, and a fresh one would invalidate every session and pending token.");
-        }
-
-        if (File.Exists(legacyPath))
-        {
-            return MigrateFromPkcs12(legacyPath, certificatePath, keyPath, passphrase);
         }
 
         using RSA key = RSA.Create(3072);
@@ -190,44 +166,6 @@ public static class DataProtectionCertificate
                 "will mint a replacement, because that would invalidate every session and pending token.",
                 exception);
         }
-    }
-
-    /// <summary>
-    /// Moves a passwordless PKCS#12 written by an earlier version to the encrypted pair, then deletes
-    /// it. Nothing is re-minted: the certificate the ring was encrypted with is the one written out.
-    /// </summary>
-    private static X509Certificate2 MigrateFromPkcs12(string legacyPath, string certificatePath, string keyPath, string passphrase)
-    {
-        X509Certificate2 legacy;
-
-        try
-        {
-            legacy = X509CertificateLoader.LoadPkcs12FromFile(legacyPath, null, X509KeyStorageFlags.Exportable);
-        }
-        catch (CryptographicException exception)
-        {
-            throw new DataProtectionCertificateUnreadableException(
-                $"The Data Protection certificate ({legacyPath}) cannot be read. Restore it from a backup; nothing " +
-                "here will mint a replacement, because that would invalidate every session and pending token.",
-                exception);
-        }
-
-        X509Certificate2 migrated;
-
-        using (legacy)
-        {
-            using RSA key = legacy.GetRSAPrivateKey() ??
-                throw new DataProtectionCertificateUnreadableException(
-                    $"The Data Protection certificate ({legacyPath}) carries no RSA private key, so it cannot decrypt " +
-                    "the ring and cannot be migrated. Restore it from a backup; nothing here will mint a replacement, " +
-                    "because that would invalidate every session and pending token.");
-
-            migrated = WritePair(certificatePath, keyPath, legacy, key, passphrase);
-        }
-
-        File.Delete(legacyPath);
-
-        return migrated;
     }
 
     /// <summary>

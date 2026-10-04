@@ -24,7 +24,6 @@ using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
-using Homespool.Host.Http;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Test;
@@ -81,7 +80,7 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
         // Assert
         request.Response.StatusCode.Should().Be((int)HttpStatusCode.OK);
         request.Response.ContentType.Should().StartWith(MediaTypeNames.Application.Json);
-        request.Response.Headers.CacheControl.ToString().Should().Be(CacheControlValues.NoStore);
+        request.Response.Headers.CacheControl.ToString().Should().Be("no-store");
 
         using JsonDocument options = JsonDocument.Parse(body);
         options.RootElement.GetProperty("rpId").GetString().Should().Be(RelyingPartyId);

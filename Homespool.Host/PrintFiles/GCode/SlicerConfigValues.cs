@@ -68,7 +68,8 @@ internal sealed class SlicerConfigValues
     /// <remarks>
     /// <b>First wins.</b> A key cannot legitimately appear twice, so a second occurrence is either
     /// corruption or somebody appending their own block to a sliced file; taking the first keeps the
-    /// answer the slicer's.
+    /// answer the slicer's. Both readers also stop at the end of the first block, so a second block
+    /// is never offered at all.
     /// </remarks>
     public void Accept(string key, string value)
     {
@@ -144,6 +145,12 @@ internal sealed class SlicerConfigValues
     /// <summary>
     /// Millimetres, comma-separated - PrusaSlicer's serialisation for a numeric vector option.
     /// </summary>
+    /// <remarks>
+    /// <b>A non-finite entry is unreadable</b>, though <c>float.TryParse</c> accepts <c>NaN</c> and
+    /// <c>Infinity</c>. No slicer writes either, and every comparison with a
+    /// NaN is false, so one would pass as a diameter that silences the nozzle check rather than as
+    /// the file not saying.
+    /// </remarks>
     private static IReadOnlyList<float>? ParseFloats(string value)
     {
         if (!FitsListBound(value))
@@ -158,7 +165,8 @@ internal sealed class SlicerConfigValues
         {
             // Invariant, not the ambient culture: the slicer writes a point regardless of where the
             // machine that ran it thinks the decimal separator is.
-            if (!float.TryParse(part.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float number))
+            if (!float.TryParse(part.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float number) ||
+                !float.IsFinite(number))
             {
                 return null;
             }

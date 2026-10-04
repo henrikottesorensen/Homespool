@@ -52,7 +52,10 @@ internal static class SlicerConfigMetadataReader
         // A tail can start mid-character, which the decoder turns into one replacement character.
         // Harmless: the marker searched for is ASCII and everything parsed comes after it.
         string text = Encoding.UTF8.GetString(tail);
-        int begin = text.LastIndexOf(BeginMarker, StringComparison.Ordinal);
+
+        // The first block, as for a repeated key and as the binary reader does: a block appended
+        // after the slicer's is somebody else's.
+        int begin = text.IndexOf(BeginMarker, StringComparison.Ordinal);
 
         if (begin < 0)
         {

@@ -590,6 +590,51 @@ body.camera-maximised-open {
   width: 10rem;
 }
 
+/* A control folded behind a button in the control strip: a <details> whose summary is the button and
+   whose panel floats below it, so opening it does not shove the rest of a wrapped strip about. Drawn
+   from Bootstrap's own dropdown tokens, so it reads as a dropdown and follows the theme. */
+.printer-popout {
+  position: relative;
+}
+
+/* The summary is a .btn, and the browser's disclosure triangle beside Bootstrap's caret would be two
+   arrows for one thing. */
+.printer-popout > summary {
+  list-style: none;
+}
+
+.printer-popout > summary::-webkit-details-marker {
+  display: none;
+}
+
+.printer-popout-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: var(--bs-dropdown-zindex, 1000);
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  margin-top: .25rem;
+  padding: .75rem;
+  background-color: var(--bs-body-bg);
+  border: var(--bs-border-width) solid var(--bs-border-color-translucent);
+  border-radius: var(--bs-border-radius);
+  box-shadow: var(--bs-box-shadow);
+}
+
+/* Set by popout.js when a panel hung from the button's left edge would run past the right of the
+   strip - the last button in a row, or anywhere on a phone, where the strip wraps. */
+.printer-popout-panel.printer-popout-end {
+  right: 0;
+  left: auto;
+}
+
+/* The XL's note runs to two sentences; it wraps at the width of the controls above it rather than
+   stretching the panel to the window. */
+.printer-popout-panel p {
+  max-width: 20rem;
+}
+
 /* The graph. Fills its column and keeps its aspect from the viewBox, so there is no second place
    where the drawing's proportions are decided. */
 .printer-graph-svg {

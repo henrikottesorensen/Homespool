@@ -3021,6 +3021,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="CredentialChange_TooMany" xml:space="preserve">
     <value>Du har ændret dine loginmetoder for nylig. Prøv igen om et par minutter.</value>
   </data>
+  <data name="Tokens_TooMany" xml:space="preserve">
+    <value>Du har for nylig oprettet et token eller ændret, hvordan du logger ind. Prøv igen om nogle minutter.</value>
+  </data>
   <data name="Email_ProviderLinkedSubject" xml:space="preserve">
     <value>En loginudbyder er blevet tilknyttet din Homespool-konto</value>
   </data>

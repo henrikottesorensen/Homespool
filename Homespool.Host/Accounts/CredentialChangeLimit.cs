@@ -10,7 +10,7 @@ namespace Homespool.Host.Accounts;
 
 /// <summary>
 /// How often the ways into one account may be changed: a provider linked or removed, a passkey added
-/// or removed - once, then a <see cref="Cooldown"/> before the next.
+/// or removed, or an API token minted - once, then a <see cref="Cooldown"/> before the next.
 /// </summary>
 /// <remarks>
 /// <para>

@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 
 namespace Homespool.Host.Cameras;
 
@@ -27,11 +31,10 @@ namespace Homespool.Host.Cameras;
 /// changed nothing must not cost somebody their picture.
 /// </para>
 /// <para>
-/// <b>The comparison is done on the document as text.</b> The only two questions are whether it
-/// carries this exact candidate and whether it carries this exact STUN address, and a substring
-/// answers both — so this works whether go2rtc renders that document as YAML or as JSON, and keeps
-/// working if it changes its mind. It is also why the STUN server is a single configured address
-/// rather than a list: one string to look for.
+/// <b>The comparison reads the <c>webrtc</c> section, not the document.</b> The same file holds every
+/// camera's source, and a source is a string somebody typed: one containing the candidate or the STUN
+/// address must not be able to answer for a section it is not in. A YAML reader covers JSON too, so
+/// this holds whichever of the two go2rtc renders.
 /// </para>
 /// </remarks>
 public sealed class WebRtcSidecarWriter
@@ -119,13 +122,60 @@ public sealed class WebRtcSidecarWriter
     }
 
     /// <summary>
-    /// Whether a configuration document already says what we would write.
+    /// Whether a configuration document's <c>webrtc</c> section already says what we would write.
     /// </summary>
-    private static bool Matches(string document, string candidate, bool stunEnabled, string stunServer)
+    /// <remarks>
+    /// Both lists have to be exactly what a write would put there, since a write replaces them whole.
+    /// An <c>ice_servers</c> that is missing is not the same as an empty one: missing leaves go2rtc's
+    /// own public STUN default in force. A document that cannot be read says nothing, and is written.
+    /// </remarks>
+    public static bool Matches(string document, string candidate, bool stunEnabled, string stunServer)
     {
-        bool hasCandidate = document.Contains(candidate, StringComparison.Ordinal);
-        bool hasStun = stunServer.Length > 0 && document.Contains(stunServer, StringComparison.Ordinal);
+        ArgumentNullException.ThrowIfNull(document);
 
-        return hasCandidate && hasStun == stunEnabled;
+        YamlStream yaml = new();
+
+        try
+        {
+            using StringReader reader = new(document);
+            yaml.Load(reader);
+        }
+        catch (YamlException)
+        {
+            return false;
+        }
+
+        if (yaml.Documents.Count == 0 ||
+            yaml.Documents[0].RootNode is not YamlMappingNode root ||
+            !root.Children.TryGetValue(new YamlScalarNode("webrtc"), out YamlNode? section) ||
+            section is not YamlMappingNode webrtc)
+        {
+            return false;
+        }
+
+        if (!webrtc.Children.TryGetValue(new YamlScalarNode("candidates"), out YamlNode? candidates) ||
+            !IsList(candidates, candidate) ||
+            !webrtc.Children.TryGetValue(new YamlScalarNode("ice_servers"), out YamlNode? iceServers) ||
+            iceServers is not YamlSequenceNode servers)
+        {
+            return false;
+        }
+
+        if (!stunEnabled)
+        {
+            return servers.Children.Count == 0;
+        }
+
+        return servers.Children is [YamlMappingNode server] &&
+               server.Children.Count == 1 &&
+               server.Children.TryGetValue(new YamlScalarNode("urls"), out YamlNode? urls) &&
+               IsList(urls, stunServer);
+    }
+
+    /// <summary>Whether a node is a list holding exactly one value, and that value is <paramref name="only"/>.</summary>
+    private static bool IsList(YamlNode node, string only)
+    {
+        return node is YamlSequenceNode { Children: [YamlScalarNode { Value: { } value }] } &&
+               string.Equals(value, only, StringComparison.Ordinal);
     }
 }

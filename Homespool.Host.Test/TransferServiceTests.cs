@@ -284,6 +284,71 @@ public sealed class TransferServiceTests : IDisposable
     }
 
     /// <summary>
+    /// A send admitted the moment the one before it ended keeps its place: the flag that admits one
+    /// send at a time is let go of once for each send, never again after the next has claimed it. A
+    /// third send while the second is under way is refused, as any send to a busy printer is.
+    /// </summary>
+    [Fact]
+    public async Task ASendAdmittedAsTheLastOneEndsIsNotReleasedWithIt()
+    {
+        // Arrange - a printer that takes the first download at once and holds the second
+        PrintFile file = await SeedAsync();
+        TaskCompletionSource<CommandSendResult> secondAnswer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondOffered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int downloads = 0;
+
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+        actor.IsOpen.Returns(true);
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns(call =>
+             {
+                 if (call.Arg<ISendableCommand>() is not (StartConnectDownload or StartEncryptedDownload))
+                 {
+                     return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
+                                                                  new CommandOutcome(PrinterEventType.Info, null)));
+                 }
+
+                 if (Interlocked.Increment(ref downloads) == 1)
+                 {
+                     return Task.FromResult(TakenAs(DownloadCommandId));
+                 }
+
+                 secondOffered.TrySetResult();
+
+                 return secondAnswer.Task;
+             });
+        _registry.Register(PrinterId, actor, overPlaintext: false);
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+        TaskCompletionSource<Task<TransferResult>> second = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // Act - the second send is made by the first one's caller as it is told, inline on the mailbox's
+        // own thread: after the handler has let go of the printer, and before the loop's own tidying
+        Task caller = Task.Run(async () =>
+        {
+            SynchronizationContext.SetSynchronizationContext(new InlineSynchronizationContext());
+
+#pragma warning disable xUnit1051 // Deliberately not the test's token: see ASettleStartedAsASendEndsFindsThePrinterFree.
+            await transfers.SendAsync(Request(file), CancellationToken.None);
+            second.SetResult(transfers.SendAsync(Request(file), CancellationToken.None));
+#pragma warning restore xUnit1051
+        }, TestContext.Current.CancellationToken);
+
+        await caller.WaitAsync(Bound, TestContext.Current.CancellationToken);
+        Task<TransferResult> secondSend = await second.Task.WaitAsync(Bound, TestContext.Current.CancellationToken);
+        await secondOffered.Task.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        Task<TransferResult> third = transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
+
+        // Assert - refused at once, not admitted behind the second
+        bool refused = third.IsFaulted;
+
+        secondAnswer.SetResult(TakenAs(DownloadCommandId + 1));
+        await secondSend.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        refused.Should().BeTrue("the second send was under way, and the first one's tidying must not have let go of it");
+    }
+
+    /// <summary>
     /// A person's send of a file the queue is transferring, refused or falling short, leaves the
     /// queue's attempt as it was: its stamp, and the command whose end it awaits.
     /// </summary>

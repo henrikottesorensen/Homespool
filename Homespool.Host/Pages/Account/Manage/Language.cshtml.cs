@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Localization;
 
@@ -32,7 +31,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </remarks>
 [Authorize]
 [NoRecentProof("A display preference, which a session may set.")]
-public class LanguageModel : PageModel
+public class LanguageModel : StatusMessagePageModel
 {
     /// <summary>The form value meaning "no stored preference".</summary>
     /// <remarks>
@@ -60,9 +59,6 @@ public class LanguageModel : PageModel
     /// <summary>The culture currently stored, or <see cref="FollowBrowser"/> when there is none.</summary>
     [BindProperty]
     public string Selected { get; set; } = FollowBrowser;
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     /// <summary>The languages offered, plus the "follow my browser" option at the top.</summary>
     public IReadOnlyList<SelectListItem> Options { get; private set; } = [];
@@ -117,6 +113,7 @@ public class LanguageModel : PageModel
         StatusMessage = UserCultures.InCulture(
             user.Language,
             () => _localiser["Language_Saved"].Value);
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }

@@ -26,6 +26,8 @@ using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
+using StatusKind = Homespool.Host.Pages.StatusKind;
+
 namespace Homespool.Host.Test;
 
 /// <summary>
@@ -163,7 +165,29 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().Be("Account deactivated, and its one API token revoked.");
+        model.StatusMessageKind.Should().Be(StatusKind.Success);
         (await Reload(context, subject.Id)).DeactivatedAt.Should().NotBeNull();
+    }
+
+    /// <summary>Revoking the tokens of an account that has none is information, not a success.</summary>
+    [Fact]
+    public async Task RevokingTokensWhenThereAreNoneSaysSoAsInformation()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        (DetailModel model, _) = NewDetail(context, provider, users, admin);
+
+        // Act
+        IActionResult result = await model.OnPostRevokeTokensAsync(subject.Uuid, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>();
+        model.StatusMessage.Should().Be(TestLocaliser.Shared()["AdminUsers_NoTokensToRevoke"].Value);
+        model.StatusMessageKind.Should().Be(StatusKind.Info);
     }
 
     [Fact]
@@ -182,6 +206,7 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().StartWith("You cannot deactivate your own account");
+        model.StatusMessageKind.Should().Be(StatusKind.Warning, "a refusal is not shown as a success");
         (await Reload(context, admin.Id)).DeactivatedAt.Should().BeNull();
     }
 
@@ -206,6 +231,7 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>();
         model.StatusMessage.Should().StartWith("You cannot send yourself a recovery link");
+        model.StatusMessageKind.Should().Be(StatusKind.Warning);
         model.RecoveryLink.Should().BeNull();
         (await context.Invitations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         Mail.SentEmails.Should().BeEmpty();
@@ -335,6 +361,7 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         goneResult.Should().BeOfType<RedirectToPageResult>();
         gone.StatusMessage.Should().Be("That passkey was already gone.");
+        gone.StatusMessageKind.Should().Be(StatusKind.Info, "the passkey is gone either way, which is what was asked for");
         malformedResult.Should().BeOfType<NotFoundResult>();
     }
 

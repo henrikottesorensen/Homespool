@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -54,7 +53,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </remarks>
 [Authorize]
 [RequireRecentProof]
-public class ResetAuthenticatorModel : PageModel
+public class ResetAuthenticatorModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
@@ -74,9 +73,6 @@ public class ResetAuthenticatorModel : PageModel
         _logger = logger;
         _localiser = localiser;
     }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     public async Task<IActionResult> OnGetAsync()
     {
@@ -112,6 +108,7 @@ public class ResetAuthenticatorModel : PageModel
         await _signIn.RefreshSignInAsync(HttpContext, user);
 
         StatusMessage = _localiser["TwoFactor_KeyReset"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage("./EnableAuthenticator");
     }

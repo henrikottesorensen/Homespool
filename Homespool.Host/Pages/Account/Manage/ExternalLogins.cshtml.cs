@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -76,7 +75,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
-public class ExternalLoginsModel : PageModel
+public class ExternalLoginsModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
@@ -135,9 +134,6 @@ public class ExternalLoginsModel : PageModel
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     /// <summary>The password an account must set to be allowed to remove its last external login.</summary>
     public class InputModel
@@ -228,6 +224,7 @@ public class ExternalLoginsModel : PageModel
         if (info == null)
         {
             StatusMessage = _localiser["Manage_ExternalLoginLinkError"];
+            StatusMessageKind = StatusKind.Danger;
 
             return RedirectToPage();
         }
@@ -235,6 +232,7 @@ public class ExternalLoginsModel : PageModel
         if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
         {
             StatusMessage = _localiser["CredentialChange_TooMany"];
+            StatusMessageKind = StatusKind.Warning;
 
             return RedirectToPage();
         }
@@ -243,6 +241,7 @@ public class ExternalLoginsModel : PageModel
         if (!result.Succeeded)
         {
             StatusMessage = _localiser["Manage_ExternalLoginLinkError"];
+            StatusMessageKind = StatusKind.Danger;
 
             return RedirectToPage();
         }
@@ -255,6 +254,7 @@ public class ExternalLoginsModel : PageModel
         await _notices.TellAsync(user, CredentialChange.ProviderLinked, info.ProviderDisplayName);
 
         StatusMessage = _localiser["Manage_ExternalLoginLinked"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }
@@ -281,6 +281,7 @@ public class ExternalLoginsModel : PageModel
             if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
             {
                 StatusMessage = _localiser["CredentialChange_TooMany"];
+                StatusMessageKind = StatusKind.Warning;
 
                 return RedirectToPage();
             }
@@ -290,6 +291,7 @@ public class ExternalLoginsModel : PageModel
             if (!removed.Succeeded)
             {
                 StatusMessage = _localiser["Manage_ExternalLoginRemoveError"];
+                StatusMessageKind = StatusKind.Danger;
 
                 return RedirectToPage();
             }
@@ -299,6 +301,7 @@ public class ExternalLoginsModel : PageModel
             await _notices.TellAsync(user, CredentialChange.ProviderRemoved, await ProviderNameAsync(loginProvider));
 
             StatusMessage = _localiser["Manage_ExternalLoginRemoved"];
+            StatusMessageKind = StatusKind.Success;
 
             return RedirectToPage();
         }
@@ -314,6 +317,7 @@ public class ExternalLoginsModel : PageModel
         if (!await _limit.TryStartAsync(user.Id, HttpContext.RequestAborted))
         {
             StatusMessage = _localiser["CredentialChange_TooMany"];
+            StatusMessageKind = StatusKind.Warning;
 
             return RedirectToPage();
         }
@@ -354,6 +358,7 @@ public class ExternalLoginsModel : PageModel
         await _notices.TellAsync(user, CredentialChange.ProviderSwappedForPassword, await ProviderNameAsync(loginProvider));
 
         StatusMessage = _localiser["Manage_ExternalLoginSwappedForPassword"];
+        StatusMessageKind = StatusKind.Success;
 
         return RedirectToPage();
     }

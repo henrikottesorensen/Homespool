@@ -13,7 +13,7 @@
    this folder's search path. *@
 @if (!string.IsNullOrEmpty(Model.StatusMessage))
 {
-    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+    <div class="alert @(new StatusAlert(Model.StatusMessage, Model.StatusMessageKind).AlertClass)" role="alert">@Model.StatusMessage</div>
 }
 
 <dl class="row">

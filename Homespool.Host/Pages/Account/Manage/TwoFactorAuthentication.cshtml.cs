@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -18,7 +17,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 
 [Authorize]
 [NoRecentProof("Reads the state and forgets this browser, which only makes the next sign-in ask more.")]
-public class TwoFactorAuthenticationModel : PageModel
+public class TwoFactorAuthenticationModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignInRules _rules;
@@ -48,9 +47,6 @@ public class TwoFactorAuthenticationModel : PageModel
 
     public bool IsMachineRemembered { get; set; }
 
-    [TempData]
-    public string? StatusMessage { get; set; }
-
     public async Task<IActionResult> OnGetAsync()
     {
         HSUser? user = await _userManager.GetUserAsync(User);
@@ -78,6 +74,7 @@ public class TwoFactorAuthenticationModel : PageModel
         await _signIn.ForgetClientAsync(HttpContext);
         StatusMessage =
             _localiser["Manage_BrowserForgotten"];
+        StatusMessageKind = StatusKind.Success;
         return RedirectToPage();
     }
 }

@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -49,7 +48,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </remarks>
 [Authorize]
 [RequireRecentProof]
-public class EnableAuthenticatorModel : PageModel
+public class EnableAuthenticatorModel : StatusMessagePageModel
 {
     private const string AuthenticatorUriFormat = "otpauth://totp/{0}:{1}?secret={2}&issuer={0}&digits=6";
 
@@ -95,9 +94,6 @@ public class EnableAuthenticatorModel : PageModel
 
     /// <summary>The confirmation shown above freshly minted codes, in the same response.</summary>
     public string? IssuedMessage { get; private set; }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
@@ -201,6 +197,7 @@ public class EnableAuthenticatorModel : PageModel
         }
 
         StatusMessage = _localiser["TwoFactor_AppVerified"];
+        StatusMessageKind = StatusKind.Success;
         return RedirectToPage("./TwoFactorAuthentication");
     }
 

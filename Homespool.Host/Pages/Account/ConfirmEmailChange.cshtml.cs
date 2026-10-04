@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -46,7 +45,7 @@ namespace Homespool.Host.Pages.Account;
 /// </para>
 /// </remarks>
 [AllowAnonymous]
-public class ConfirmEmailChangeModel : PageModel
+public class ConfirmEmailChangeModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly HomespoolDbContext _dbContext;
@@ -75,9 +74,6 @@ public class ConfirmEmailChangeModel : PageModel
         _localiser = localiser;
         _logger = logger;
     }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     /// <summary>
     /// Tells an administrator that health alerts keep going to the old address until a restart.
@@ -113,6 +109,7 @@ public class ConfirmEmailChangeModel : PageModel
         {
             // As ConfirmEmail: a code that is not a code is a failed change, not a server error.
             StatusMessage = _localiser["Account_EmailChangeError"];
+            StatusMessageKind = StatusKind.Danger;
 
             return Page();
         }
@@ -144,6 +141,7 @@ public class ConfirmEmailChangeModel : PageModel
             // insert, and the unique index on NormalizedEmail refuses the write instead. A change that
             // did not happen, told to the person as one, rather than a 500 on a link from their mail.
             StatusMessage = _localiser["Account_EmailChangeError"];
+            StatusMessageKind = StatusKind.Danger;
 
             return Page();
         }
@@ -151,6 +149,7 @@ public class ConfirmEmailChangeModel : PageModel
         if (!result.Succeeded)
         {
             StatusMessage = _localiser["Account_EmailChangeError"];
+            StatusMessageKind = StatusKind.Danger;
 
             return Page();
         }
@@ -170,6 +169,7 @@ public class ConfirmEmailChangeModel : PageModel
         await TellThePreviousAddressAsync(user, previous, email);
 
         StatusMessage = _localiser["Account_EmailChangeThanks"].Value + AlertRecipientNotice(await IsAlertRecipientAsync(user));
+        StatusMessageKind = StatusKind.Success;
 
         return Page();
     }

@@ -6,5 +6,5 @@
 
 <header>
     <h1>@ViewData["Title"]</h1>
-    <partial name="_StatusMessage" for="StatusMessage" />
+    <partial name="_StatusMessage" model="new StatusAlert(Model.StatusMessage, Model.StatusMessageKind)" />
 </header>

@@ -5,7 +5,7 @@
     ViewData["Title"] = Localiser["Manage_TwoFactor"].Value;
 }
 
-<partial name="_StatusMessage" for="StatusMessage" />
+<partial name="_StatusMessage" model="new StatusAlert(Model.StatusMessage, Model.StatusMessageKind)" />
 <h1>@ViewData["Title"]</h1>
 @{
     var consentFeature = HttpContext.Features.Get<ITrackingConsentFeature>();

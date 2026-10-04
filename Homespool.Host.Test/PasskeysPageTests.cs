@@ -23,6 +23,7 @@ using Microsoft.Extensions.Primitives;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Pages;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Model.Entities;
 
@@ -392,6 +393,7 @@ public sealed class PasskeysPageTests : IDisposable
         result.Should().BeOfType<RedirectToPageResult>();
         (await rig.Users.GetPasskeysAsync(user)).Should().BeEmpty();
         model.StatusMessage.Should().Be("Passkey removed.");
+        model.StatusMessageKind.Should().Be(StatusKind.Success);
         rig.Mail.SentEmails.Should().ContainSingle().Which.subject.Should().Be("A passkey was removed from your Homespool account");
     }
 
@@ -449,6 +451,7 @@ public sealed class PasskeysPageTests : IDisposable
         (await rig.Users.GetPasskeysAsync(user)).Should().ContainSingle();
         rig.Mail.SentEmails.Should().BeEmpty();
         model.StatusMessage.Should().Be("You recently changed how you sign in. Try again in a few minutes.");
+        model.StatusMessageKind.Should().Be(StatusKind.Warning);
     }
 
     /// <summary>
@@ -472,6 +475,7 @@ public sealed class PasskeysPageTests : IDisposable
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
         model.StatusMessage.Should().Be("That passkey was already gone.");
+        model.StatusMessageKind.Should().Be(StatusKind.Info, "the passkey is gone either way, which is what was asked for");
         (await rig.Users.GetPasskeysAsync(owner)).Should().ContainSingle();
         rig.Mail.SentEmails.Should().BeEmpty("nobody's passkey changed");
     }

@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
@@ -41,7 +40,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </remarks>
 [Authorize]
 [RequireRecentProof]
-public class GenerateRecoveryCodesModel : PageModel
+public class GenerateRecoveryCodesModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly ILogger<GenerateRecoveryCodesModel> _logger;
@@ -58,9 +57,6 @@ public class GenerateRecoveryCodesModel : PageModel
 
     /// <summary>The codes just minted, set only by a successful POST; null renders the form.</summary>
     public string[]? RecoveryCodes { get; private set; }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     /// <summary>The confirmation shown above freshly minted codes, in the same response.</summary>
     public string? IssuedMessage { get; private set; }

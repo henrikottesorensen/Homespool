@@ -11,7 +11,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Localization;
 
@@ -47,7 +46,7 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </para>
 /// </remarks>
 [Authorize]
-public class EmailModel : PageModel
+public class EmailModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly IEmailSender _emailSender;
@@ -80,9 +79,6 @@ public class EmailModel : PageModel
     public string? Email { get; set; }
 
     public bool IsEmailConfirmed { get; set; }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
@@ -143,6 +139,7 @@ public class EmailModel : PageModel
             if (!await TryStartCooldownAsync(user.Id, LimitedAction.ChangeEmail, cancellationToken))
             {
                 StatusMessage = _localiser["Manage_EmailSendCooldown"];
+                StatusMessageKind = StatusKind.Warning;
                 return RedirectToPage();
             }
 
@@ -162,10 +159,12 @@ public class EmailModel : PageModel
             StatusMessage = sendResult == EmailSendResult.Failed ?
                 _localiser["Manage_EmailChangeSendFailed"] :
                 _localiser["Manage_EmailChangeSent"];
+            StatusMessageKind = sendResult == EmailSendResult.Failed ? StatusKind.Danger : StatusKind.Success;
             return RedirectToPage();
         }
 
         StatusMessage = _localiser["Manage_EmailUnchanged"];
+        StatusMessageKind = StatusKind.Info;
         return RedirectToPage();
     }
 
@@ -186,6 +185,7 @@ public class EmailModel : PageModel
         if (!await TryStartCooldownAsync(user.Id, LimitedAction.SendVerificationEmail, cancellationToken))
         {
             StatusMessage = _localiser["Manage_EmailSendCooldown"];
+            StatusMessageKind = StatusKind.Warning;
             return RedirectToPage();
         }
 
@@ -204,6 +204,7 @@ public class EmailModel : PageModel
         StatusMessage = sendResult == EmailSendResult.Failed ?
             _localiser["Manage_VerificationSendFailed"] :
             _localiser["Account_VerificationSent"];
+        StatusMessageKind = sendResult == EmailSendResult.Failed ? StatusKind.Danger : StatusKind.Success;
         return RedirectToPage();
     }
 

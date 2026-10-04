@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Localization;
 
@@ -19,7 +18,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Pages.Account;
 
 [AllowAnonymous]
-public class ConfirmEmailModel : PageModel
+public class ConfirmEmailModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly IStringLocalizer<SharedResource> _localiser;
@@ -30,9 +29,6 @@ public class ConfirmEmailModel : PageModel
         _userManager = userManager;
         _localiser = localiser;
     }
-
-    [TempData]
-    public string? StatusMessage { get; set; }
 
     public async Task<IActionResult> OnGetAsync(Guid? userUuid, string? code, CancellationToken cancellationToken)
     {
@@ -54,6 +50,7 @@ public class ConfirmEmailModel : PageModel
             // A link broken in transit is a code that cannot work, which this page already has a
             // sentence for. It used to be a 500.
             StatusMessage = _localiser["Account_EmailConfirmFailed"];
+            StatusMessageKind = StatusKind.Danger;
 
             return Page();
         }
@@ -63,6 +60,7 @@ public class ConfirmEmailModel : PageModel
         StatusMessage = result.Succeeded ?
             _localiser["Account_EmailConfirmed"] :
             _localiser["Account_EmailConfirmFailed"];
+        StatusMessageKind = result.Succeeded ? StatusKind.Success : StatusKind.Danger;
 
         return Page();
     }

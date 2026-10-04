@@ -15,6 +15,7 @@ using Microsoft.Extensions.Time.Testing;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Pages;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -71,6 +72,7 @@ public sealed class ManageEmailCooldownTests : IDisposable
         sender.SentEmails.Should().ContainSingle("the second post is inside the cooldown")
               .Which.email.Should().Be("first@example.com");
         second.StatusMessage.Should().Be(TestLocaliser.Shared()["Manage_EmailSendCooldown"].Value);
+        second.StatusMessageKind.Should().Be(StatusKind.Warning);
 
         UserActionAttempt row = await context.UserActionAttempts.AsNoTracking()
             .SingleAsync(a => a.UserId == user.Id && a.Action == LimitedAction.ChangeEmail,

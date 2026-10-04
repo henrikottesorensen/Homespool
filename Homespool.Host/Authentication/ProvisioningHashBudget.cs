@@ -4,7 +4,7 @@ using System.Threading;
 namespace Homespool.Host.Authentication;
 
 /// <summary>
-/// How many token hashes the printer port may spend on fingerprints nobody has enrolled - a token
+/// How many token hashes the printer port may spend checking USB-key provisioning tokens - a token
 /// bucket counted in hashes rather than in requests, shared by every caller.
 /// </summary>
 /// <remarks>
@@ -17,10 +17,16 @@ namespace Homespool.Host.Authentication;
 /// themselves bounds the work whatever the row count and whatever the caller's addresses look like.
 /// </para>
 /// <para>
+/// <b>An enrolled fingerprint draws one hash too, for a reissued token.</b> While a printer has a live
+/// reissue, a wrong token under its fingerprint is checked against that as well, and any account can
+/// reissue its own printers. The check against the enrolled credential itself never draws from here.
+/// </para>
+/// <para>
 /// <b>What an empty bucket costs.</b> A printer making genuine first contact while the bucket is empty
-/// is refused as an unknown printer, and firmware retries on its own. So a flood delays enrolment of
-/// new USB-key printers - never beyond the eight hours their tokens live - and cannot reach an enrolled
-/// printer, whose path never draws from here.
+/// is refused as an unknown printer, and one presenting a reissued token is refused as a stale one;
+/// firmware retries either on its own. So a flood delays a USB-key token being taken up - never beyond
+/// the eight hours it lives - and cannot reach a printer authenticating with the credential it is
+/// enrolled with.
 /// </para>
 /// <para>
 /// <b>Refilled lazily from the clock</b>, on the next take rather than by a timer, so a test can move

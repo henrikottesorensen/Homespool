@@ -430,14 +430,28 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// woken by the result goes straight on to its next pass, and a pass that found the printer still
     /// sending would skip its settle and decide on stale state.
     /// </summary>
+    /// <remarks>
+    /// <b>Once for each send, and only by that send.</b> It is reached twice - by the handler, ahead of
+    /// telling the caller, and by the loop's net for a handler that threw - and the flag is one for the
+    /// whole mailbox. A send admitted between the two had claimed it, and the second release let go of
+    /// that send's claim: a third was then admitted behind it instead of refused.
+    /// </remarks>
     private static void ReleaseSend(Mailbox mailbox, Message message)
     {
-        if (message is SendMessage)
+        if (message is not SendMessage send)
         {
-            lock (mailbox.Gate)
+            return;
+        }
+
+        lock (mailbox.Gate)
+        {
+            if (send.Released)
             {
-                mailbox.SendPending = false;
+                return;
             }
+
+            send.Released = true;
+            mailbox.SendPending = false;
         }
     }
 
@@ -1076,6 +1090,9 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
                                       TaskCompletionSource<TransferResult> Completion,
                                       CancellationToken CallerToken) : Message
     {
+        /// <summary>Whether this send has let go of the mailbox's one-send flag. Read and written under <see cref="Mailbox.Gate"/>.</summary>
+        public bool Released { get; set; }
+
         public override void Cancel(CancellationToken cancellationToken)
         {
             Completion.TrySetCanceled(cancellationToken);

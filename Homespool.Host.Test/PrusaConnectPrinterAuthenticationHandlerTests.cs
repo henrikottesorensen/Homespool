@@ -56,7 +56,7 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     private readonly VerifiedPrinterTokens _verifiedTokens;
 
     /// <summary>
-    /// The provisioning hash budget, on the same clock. Not readonly: the shuffle test swaps in a
+    /// The first-contact hash budget, on the same clock. Not readonly: the shuffle test swaps in a
     /// budget small enough to run out part-way through the candidates.
     /// </summary>
     private ProvisioningHashBudget _hashBudget;
@@ -146,29 +146,6 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return (printer, token);
-    }
-
-    /// <summary>
-    /// Seeds an outstanding reissued token for an enrolled printer, written <paramref name="age"/> ago,
-    /// and returns its plaintext.
-    /// </summary>
-    private static async Task<string> AddReissuedTokenAsync(HomespoolDbContext context,
-                                                            Printer printer,
-                                                            TimeSpan? age = null)
-    {
-        TokenService tokenService = new();
-        string token = tokenService.GenerateToken();
-
-        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
-        {
-            PrinterId = printer.Id,
-            HashedToken = tokenService.HashToken(token),
-            CreatedAt = DateTimeOffset.UtcNow - (age ?? TimeSpan.Zero),
-        });
-
-        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
-
-        return token;
     }
 
     private HomespoolDbContext NewContext()
@@ -535,61 +512,100 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         _hashBudget.Available.Should().Be(ProvisioningHashBudget.Burst);
     }
 
+    /// <summary>Adds an outstanding reissued token for <paramref name="printer"/> and returns it.</summary>
+    private static async Task<string> AddReissuedTokenAsync(HomespoolDbContext context,
+                                                            Printer printer,
+                                                            TimeSpan? age = null)
+    {
+        TokenService tokenService = new();
+        string reissuedToken = tokenService.GenerateToken();
+
+        context.PrusaConnectProvisionings.Add(new PrusaConnectProvisioning
+        {
+            PrinterId = printer.Id,
+            HashedToken = tokenService.HashToken(reissuedToken),
+            CreatedAt = DateTimeOffset.UtcNow - (age ?? TimeSpan.Zero),
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return reissuedToken;
+    }
+
     /// <summary>
-    /// The check against an enrolled credential never draws from the budget, with a right token or a
-    /// wrong one, so a flood of strangers cannot reach a printer that is already enrolled.
+    /// An enrolled printer proving itself costs the bucket nothing - the first time, and again each
+    /// time its remembered verification lapses - so strangers spending the bucket cannot reach it.
     /// </summary>
     [Fact]
-    public async Task TheEnrolledCheckNeverDrawsFromTheBudget()
+    public async Task AnEnrolledPrintersOwnVerificationNeverDrawsFromTheBudget()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         (_, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
 
         // Act
-        AuthenticateResult right = await AuthenticateAsync(context, Fingerprint, token);
+        AuthenticateResult first = await AuthenticateAsync(context, Fingerprint, token);
 
-        await using HomespoolDbContext second = NewContext();
-        AuthenticateResult wrong = await AuthenticateAsync(second, Fingerprint, new TokenService().GenerateToken());
+        _time.Advance(VerifiedPrinterTokens.Lifetime);
+
+        await using HomespoolDbContext later = NewContext();
+        AuthenticateResult lapsed = await AuthenticateAsync(later, Fingerprint, token);
 
         // Assert
-        right.Succeeded.Should().BeTrue();
-        wrong.Succeeded.Should().BeFalse();
+        first.Succeeded.Should().BeTrue();
+        lapsed.Succeeded.Should().BeTrue();
         _hashBudget.Available.Should().Be(ProvisioningHashBudget.Burst);
     }
 
     /// <summary>
-    /// While a printer has a live reissue, a wrong token under its fingerprint is checked against that
-    /// too, and that hash is drawn from the budget - as is the one that rebinds the reissued token. The
-    /// right enrolled token still draws nothing.
+    /// A known fingerprint with a wrong token draws its hash from the bucket once the credential's free
+    /// one is spent. The fingerprint is sent in clear, so knowing it proves nothing.
     /// </summary>
     [Fact]
-    public async Task CheckingAReissuedTokenDrawsOneHash()
+    public async Task AWrongTokenForAKnownFingerprintDrawsFromTheBudget()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddEnrolledPrinterAsync(context, Fingerprint);
+        TokenService tokenService = new();
+
+        // Act
+        for (int i = 0; i < 3; i++)
+        {
+            await using HomespoolDbContext request = NewContext();
+            (await AuthenticateAsync(request, Fingerprint, tokenService.GenerateToken())).Succeeded.Should().BeFalse();
+        }
+
+        // Assert
+        _hashBudget.Available.Should().Be(ProvisioningHashBudget.Burst - 2, "the first took the credential's free hash");
+    }
+
+    /// <summary>
+    /// A reissued token being rebound costs two hashes past the free one - against the enrolled
+    /// credential, which it fails, and against the reissue - and both come from the bucket.
+    /// </summary>
+    [Fact]
+    public async Task ARebindDrawsBothItsHashesFromTheBudget()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         (Printer printer, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
         string reissuedToken = await AddReissuedTokenAsync(context, printer);
 
+        (await AuthenticateAsync(context, Fingerprint, token)).Succeeded.Should().BeTrue();
+
         // Act
-        AuthenticateResult right = await AuthenticateAsync(context, Fingerprint, token);
-
         await using HomespoolDbContext second = NewContext();
-        AuthenticateResult wrong = await AuthenticateAsync(second, Fingerprint, new TokenService().GenerateToken());
-
-        await using HomespoolDbContext third = NewContext();
-        AuthenticateResult rebound = await AuthenticateAsync(third, Fingerprint, reissuedToken);
+        AuthenticateResult rebound = await AuthenticateAsync(second, Fingerprint, reissuedToken);
 
         // Assert
-        right.Succeeded.Should().BeTrue();
-        wrong.Succeeded.Should().BeFalse();
         rebound.Succeeded.Should().BeTrue();
         _hashBudget.Available.Should().Be(ProvisioningHashBudget.Burst - 2);
     }
 
     /// <summary>
     /// A reissue past its lifetime is not in the query's result, so a wrong token under the fingerprint
-    /// costs no hash for it.
+    /// costs no hash for it - only the credential's free one, which the bucket does not see.
     /// </summary>
     [Fact]
     public async Task AnExpiredReissuedTokenDrawsNoHash()
@@ -607,24 +623,49 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
     }
 
     /// <summary>
-    /// With the budget spent, a valid reissued token is refused and the enrolment is left as it was:
-    /// the reissue row survives, and the printer's current credential still authenticates, since that
-    /// check needs no budget. The same token rebinds once the bucket has refilled.
+    /// With the bucket spent, a flood of strangers has not reached an enrolled printer: its own token
+    /// still verifies on the credential's free hash.
     /// </summary>
     [Fact]
-    public async Task AnEmptyBudgetRefusesARebindUntilItRefills()
+    public async Task AnEmptyBudgetStillAdmitsAnEnrolledPrinter()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
-        (Printer printer, string enrolledToken) = await AddEnrolledPrinterAsync(context, Fingerprint);
-        string reissuedToken = await AddReissuedTokenAsync(context, printer);
+        (_, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
 
         while (_hashBudget.TryTake())
         {
         }
 
         // Act
-        AuthenticateResult refused = await AuthenticateAsync(context, Fingerprint, reissuedToken);
+        AuthenticateResult result = await AuthenticateAsync(context, Fingerprint, token);
+
+        // Assert
+        result.Succeeded.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// With the bucket and the credential's free hash both spent, a wrong token is refused without
+    /// being checked - shown by a reissued token, which would otherwise rebind, being refused and its
+    /// row left for the retry that gets through once the bucket refills.
+    /// </summary>
+    [Fact]
+    public async Task AnEmptyBudgetRefusesARebindUntilItRefills()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (Printer printer, string token) = await AddEnrolledPrinterAsync(context, Fingerprint);
+        string reissuedToken = await AddReissuedTokenAsync(context, printer);
+
+        (await AuthenticateAsync(context, Fingerprint, token)).Succeeded.Should().BeTrue();
+
+        while (_hashBudget.TryTake())
+        {
+        }
+
+        // Act
+        await using HomespoolDbContext second = NewContext();
+        AuthenticateResult refused = await AuthenticateAsync(second, Fingerprint, reissuedToken);
 
         // Assert
         refused.Succeeded.Should().BeFalse();
@@ -633,8 +674,6 @@ public sealed class PrusaConnectPrinterAuthenticationHandlerTests : IDisposable
         {
             (await check.PrusaConnectProvisionings.AnyAsync(p => p.PrinterId == printer.Id, TestContext.Current.CancellationToken))
                 .Should().BeTrue("a refusal for want of budget must leave the reissued token usable");
-            (await AuthenticateAsync(check, Fingerprint, enrolledToken)).Succeeded
-                .Should().BeTrue("the enrolled credential is checked without drawing from the budget");
         }
 
         _time.Advance(TimeSpan.FromSeconds(1));

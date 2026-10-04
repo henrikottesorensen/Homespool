@@ -14,6 +14,11 @@ namespace Homespool.Host.Test;
 /// </summary>
 public sealed class ProvisioningHashBudgetTests
 {
+    /// <summary>Stored credentials, as the database hands them over; only their identity matters here.</summary>
+    private const string Credential = "$SHA384$4096$c2FsdA$aGFzaA$";
+
+    private const string OtherCredential = "$SHA384$4096$c2FsdDI$aGFzaDI$";
+
     private readonly FakeTimeProvider _time = new(DateTimeOffset.UtcNow);
 
     private static void Drain(ProvisioningHashBudget budget)
@@ -122,5 +127,82 @@ public sealed class ProvisioningHashBudgetTests
         first.Should().Be(3, "the take that found the bucket empty while draining counts too");
         held.Should().BeNull();
         next.Should().Be(1);
+    }
+
+    // ---------- enrolled credentials ----------
+    [Fact]
+    public void ACredentialsFirstHashIsFree()
+    {
+        // Arrange
+        ProvisioningHashBudget budget = new(_time);
+
+        // Act
+        bool taken = budget.TryTakeFor(Credential);
+
+        // Assert
+        taken.Should().BeTrue();
+        budget.Available.Should().Be(ProvisioningHashBudget.Burst);
+    }
+
+    [Fact]
+    public void ACredentialsSecondHashInAnIntervalDrawsFromTheBucket()
+    {
+        // Arrange
+        ProvisioningHashBudget budget = new(_time);
+        budget.TryTakeFor(Credential);
+
+        // Act
+        bool taken = budget.TryTakeFor(Credential);
+
+        // Assert
+        taken.Should().BeTrue();
+        budget.Available.Should().Be(ProvisioningHashBudget.Burst - 1);
+    }
+
+    [Fact]
+    public void ACredentialsFreeHashReturnsAfterAnInterval()
+    {
+        // Arrange
+        ProvisioningHashBudget budget = new(_time);
+        budget.TryTakeFor(Credential);
+        Drain(budget);
+
+        // Act
+        _time.Advance(ProvisioningHashBudget.CredentialInterval);
+        Drain(budget);
+        bool taken = budget.TryTakeFor(Credential);
+
+        // Assert
+        taken.Should().BeTrue();
+    }
+
+    [Fact]
+    public void EachCredentialHasItsOwnFreeHash()
+    {
+        // Arrange
+        ProvisioningHashBudget budget = new(_time);
+        budget.TryTakeFor(Credential);
+        Drain(budget);
+
+        // Act
+        bool taken = budget.TryTakeFor(OtherCredential);
+
+        // Assert
+        taken.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ASpentCredentialAgainstAnEmptyBucketIsRefused()
+    {
+        // Arrange
+        ProvisioningHashBudget budget = new(_time);
+        budget.TryTakeFor(Credential);
+        Drain(budget);
+
+        // Act
+        bool taken = budget.TryTakeFor(Credential);
+
+        // Assert
+        taken.Should().BeFalse();
     }
 }

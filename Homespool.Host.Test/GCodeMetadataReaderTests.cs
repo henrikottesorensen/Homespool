@@ -177,6 +177,39 @@ public class GCodeMetadataReaderTests
     }
 
     /// <summary>
+    /// <b>No slicer writes a non-finite diameter</b>, and a NaN compares false against everything, so
+    /// reading one as a diameter would silence the nozzle check rather than say nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("0.4,NaN")]
+    [InlineData("Infinity")]
+    [InlineData("0.4,-Infinity")]
+    public void ANonFiniteNozzleDiameterIsUnreadable(string diameters)
+    {
+        Read(Config($"; nozzle_diameter = {diameters}"))!.NozzleDiameters.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// <b>First wins, across blocks as within one.</b> A block appended after the slicer's is
+    /// somebody else's, and the binary reader likewise reads only the first printer block.
+    /// </summary>
+    [Fact]
+    public void ASecondConfigurationBlockIsIgnored()
+    {
+        GCodeMetadata? metadata = Read(Config("; nozzle_diameter = 0.4",
+                                              "; printer_model = MK4S") +
+                                       Config("; nozzle_diameter = 0.6",
+                                              "; printer_model = XL",
+                                              "; filament_type = PETG"));
+
+        metadata.Should().NotBeNull();
+        metadata!.PrinterModel.Should().Be("MK4S");
+        metadata.NozzleDiameters.Should().Equal(0.4f);
+        metadata.FilamentTypes.Should().BeEmpty("the second block is not read at all");
+    }
+
+    /// <summary>
     /// A megabyte of printer model in a binary file: readable, so the file is <c>Read</c>, but the
     /// value is past any real model and is dropped rather than stored.
     /// </summary>

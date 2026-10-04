@@ -302,7 +302,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.Headers.Location.Should().BeNull("a script has nowhere to follow a redirect to");
-        response.Headers.WwwAuthenticate.ToString().Should().Contain(AuthorizationSchemes.Bearer,
+        response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
                                                                      "the token scheme is in the policy, so its challenge says how to authenticate");
     }
 

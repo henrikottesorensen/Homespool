@@ -349,7 +349,7 @@ public abstract class Go2RtcContract : IAsyncLifetime
         using LiveMjpegStream? live = await OpenStreamAsync(stream);
 
         live.Should().NotBeNull();
-        live!.ContentType.Should().StartWith(CustomMediaTypes.MultipartMixedReplace);
+        live!.ContentType.Should().StartWith("multipart/x-mixed-replace");
     }
 
     /// <summary>

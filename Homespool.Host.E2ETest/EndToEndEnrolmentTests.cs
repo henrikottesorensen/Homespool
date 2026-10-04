@@ -14,7 +14,6 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
-using Homespool.Host.Http;
 using Homespool.Host.PrusaConnect;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -356,7 +355,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.Headers.Location.Should().BeNull("an API caller has nowhere to follow a login redirect to");
-        response.Headers.WwwAuthenticate.ToString().Should().Contain(AuthorizationSchemes.Bearer,
+        response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
                                                                      "the challenge should say how to authenticate, which for a script means a token");
     }
 

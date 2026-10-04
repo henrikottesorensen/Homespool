@@ -85,10 +85,10 @@ public sealed class SecurityHeaderTests : IAsyncLifetime
         using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
 
         // Assert
-        Header(response, HeaderNames.XContentTypeOptions).Should().Be(SecurityHeaderValues.NoSniff);
-        Header(response, HeaderNames.XFrameOptions).Should().Be(SecurityHeaderValues.FrameDeny);
+        Header(response, HeaderNames.XContentTypeOptions).Should().Be("nosniff");
+        Header(response, HeaderNames.XFrameOptions).Should().Be("DENY");
         Header(response, HeaderNames.ContentSecurityPolicy).Should().MatchRegex(PolicyShape);
-        Header(response, CustomHeaderNames.ReferrerPolicy).Should().Be(SecurityHeaderValues.ReferrerSameOrigin);
+        Header(response, CustomHeaderNames.ReferrerPolicy).Should().Be("same-origin");
     }
 
     /// <summary>

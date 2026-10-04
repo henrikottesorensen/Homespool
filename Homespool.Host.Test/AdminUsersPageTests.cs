@@ -169,6 +169,27 @@ public sealed class AdminUsersPageTests : IDisposable
         (await Reload(context, subject.Id)).DeactivatedAt.Should().NotBeNull();
     }
 
+    /// <summary>Revoking the tokens of an account that has none is information, not a success.</summary>
+    [Fact]
+    public async Task RevokingTokensWhenThereAreNoneSaysSoAsInformation()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser admin = await AddUserAsync(users, "admin@example.com");
+        await IdentityTestHarness.MakeAdministratorAsync(provider, users, admin);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        (DetailModel model, _) = NewDetail(context, provider, users, admin);
+
+        // Act
+        IActionResult result = await model.OnPostRevokeTokensAsync(subject.Uuid, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>();
+        model.StatusMessage.Should().Be(TestLocaliser.Shared()["AdminUsers_NoTokensToRevoke"].Value);
+        model.StatusMessageKind.Should().Be(StatusKind.Info);
+    }
+
     [Fact]
     public async Task DeactivatingYourOwnAccountIsRefusedAndSaysWhy()
     {
@@ -340,6 +361,7 @@ public sealed class AdminUsersPageTests : IDisposable
         // Assert
         goneResult.Should().BeOfType<RedirectToPageResult>();
         gone.StatusMessage.Should().Be("That passkey was already gone.");
+        gone.StatusMessageKind.Should().Be(StatusKind.Info, "the passkey is gone either way, which is what was asked for");
         malformedResult.Should().BeOfType<NotFoundResult>();
     }
 

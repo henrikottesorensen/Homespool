@@ -157,12 +157,12 @@ public class DetailModel : StatusMessagePageModel
     {
         return await ActAsync(uuid,
                               (administratorId, accountId) => _administration.DeactivateAsync(administratorId, accountId, cancellationToken),
-                              result => result.Affected switch
+                              result => new(result.Affected switch
                               {
                                   0 => _localiser["AdminUsers_Deactivated"].Value,
                                   1 => _localiser["AdminUsers_DeactivatedOneToken"].Value,
                                   _ => _localiser["AdminUsers_DeactivatedTokens", result.Affected].Value,
-                              },
+                              }, StatusKind.Success),
                               _localiser["AdminUsers_RefusedSelf"].Value,
                               cancellationToken);
     }
@@ -171,7 +171,7 @@ public class DetailModel : StatusMessagePageModel
     {
         return await ActAsync(uuid,
                               (administratorId, accountId) => _administration.ReactivateAsync(administratorId, accountId, cancellationToken),
-                              _ => _localiser["AdminUsers_Reactivated"].Value,
+                              _ => new(_localiser["AdminUsers_Reactivated"].Value, StatusKind.Success),
                               refusedSelf: null,
                               cancellationToken);
     }
@@ -182,9 +182,9 @@ public class DetailModel : StatusMessagePageModel
                               (administratorId, accountId) => _administration.RevokeTokensAsync(administratorId, accountId, cancellationToken),
                               result => result.Affected switch
                               {
-                                  0 => _localiser["AdminUsers_NoTokensToRevoke"].Value,
-                                  1 => _localiser["AdminUsers_RevokedOneToken"].Value,
-                                  _ => _localiser["AdminUsers_RevokedTokens", result.Affected].Value,
+                                  0 => new(_localiser["AdminUsers_NoTokensToRevoke"].Value, StatusKind.Info),
+                                  1 => new(_localiser["AdminUsers_RevokedOneToken"].Value, StatusKind.Success),
+                                  _ => new(_localiser["AdminUsers_RevokedTokens", result.Affected].Value, StatusKind.Success),
                               },
                               refusedSelf: null,
                               cancellationToken);
@@ -194,7 +194,7 @@ public class DetailModel : StatusMessagePageModel
     {
         return await ActAsync(uuid,
                               (administratorId, accountId) => _administration.ClearLockoutAsync(administratorId, accountId, cancellationToken),
-                              _ => _localiser["AdminUsers_LockoutCleared"].Value,
+                              _ => new(_localiser["AdminUsers_LockoutCleared"].Value, StatusKind.Success),
                               refusedSelf: null,
                               cancellationToken);
     }
@@ -312,8 +312,8 @@ public class DetailModel : StatusMessagePageModel
         return await ActAsync(uuid,
                               (administratorId, accountId) => _administration.RevokePasskeyAsync(administratorId, accountId, key, cancellationToken),
                               result => result.Affected == 0 ?
-                                  _localiser["Passkeys_Gone"].Value :
-                                  _localiser["AdminPasskeys_Revoked"].Value,
+                                  new(_localiser["Passkeys_Gone"].Value, StatusKind.Info) :
+                                  new(_localiser["AdminPasskeys_Revoked"].Value, StatusKind.Success),
                               _localiser["AdminPasskeys_RefusedSelf"].Value,
                               cancellationToken);
     }
@@ -325,7 +325,10 @@ public class DetailModel : StatusMessagePageModel
     /// </summary>
     /// <param name="uuid">The account acted on.</param>
     /// <param name="act">The act, given the administrator's id and the account's.</param>
-    /// <param name="describe">What to say when it went through.</param>
+    /// <param name="describe">
+    /// What to say when it went through, and what kind of news that is - an act with nothing to do,
+    /// such as revoking a passkey that is already gone, is information rather than a success.
+    /// </param>
     /// <param name="refusedSelf">
     /// What to say when the act refuses the administrator's own account, which each act that refuses
     /// it explains differently; <see langword="null"/> for an act that never does.
@@ -333,7 +336,7 @@ public class DetailModel : StatusMessagePageModel
     /// <param name="cancellationToken">Cancels the reads and the act.</param>
     private async Task<IActionResult> ActAsync(Guid uuid,
                                                Func<long, long, Task<UserAdminResult>> act,
-                                               Func<UserAdminResult, string> describe,
+                                               Func<UserAdminResult, StatusAlert> describe,
                                                string? refusedSelf,
                                                CancellationToken cancellationToken)
     {
@@ -361,9 +364,9 @@ public class DetailModel : StatusMessagePageModel
 
         (StatusMessage, StatusMessageKind) = result.Refusal switch
         {
-            UserAdminRefusal.None => (describe(result), StatusKind.Success),
-            UserAdminRefusal.Self when refusedSelf is not null => (refusedSelf, StatusKind.Warning),
-            UserAdminRefusal.NoSuchAccount => (_localiser["AdminUsers_Gone"].Value, StatusKind.Info),
+            UserAdminRefusal.None => describe(result),
+            UserAdminRefusal.Self when refusedSelf is not null => new(refusedSelf, StatusKind.Warning),
+            UserAdminRefusal.NoSuchAccount => new(_localiser["AdminUsers_Gone"].Value, StatusKind.Info),
             _ => throw new InvalidOperationException($"User administration answered {result.Refusal}, which no act produces."),
         };
 

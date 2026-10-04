@@ -73,9 +73,27 @@
             }
         }
 
+        // And a panel somebody has opened stays open: the new strip is drawn with every panel shut,
+        // and a light's panel closing under a reader because a print moved on is the page acting on
+        // its own.
+        const open = new Set();
+        const panels = target.querySelectorAll("details[id][open]");
+
+        for (let index = 0; index < panels.length; index++) {
+            open.add(panels[index].id);
+        }
+
         target.innerHTML = state.pending;
         state.shown = comparable(state.pending);
         state.pending = null;
+
+        open.forEach(function (id) {
+            const panel = document.getElementById(id);
+
+            if (panel instanceof HTMLDetailsElement && target.contains(panel)) {
+                panel.open = true;
+            }
+        });
 
         const after = target.querySelectorAll("select[id]");
 

@@ -95,18 +95,48 @@
 
         @* The light, in any state: firmware takes it mid-print, and nothing about a print depends on
            it. A slider and a button rather than a slider that sends as it moves, because every send
-           is a write to the printer's configuration store. *@
+           is a write to the printer's configuration store.
+
+           Folded behind a button, since it is set now and then rather than watched. A <details> so it
+           opens and closes with no script at all; popout.js adds closing on Escape and on a click
+           elsewhere, and live-region.js keeps it open across a redraw of the strip. Set closes it by
+           reloading the page.
+
+           The button names a brightness only when the printer has given one, or - on a printer that
+           never reports it - when one was set here. Otherwise the slider's starting point is
+           firmware's default, which is a guess and would read as a reading. *@
         @if (Model.CanControlPrinter && Model.LightingShown)
         {
-            <form method="post" asp-page-handler="Lighting" asp-route-uuid="@uuid"
-                  class="d-flex align-items-center gap-2">
-                <label class="form-label mb-0" for="lighting">@Localiser["Printers_Lighting"]</label>
-                <input type="range" class="form-range printer-lighting-range" id="lighting" name="intensity"
-                       min="0" max="@PrinterLighting.MaxIntensity" step="1" value="@Model.LightingIntensity"
-                       data-range-output="lighting-value" />
-                <span class="text-nowrap"><output id="lighting-value" for="lighting">@Model.LightingIntensity</output>%</span>
-                <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_LightingApply"]</button>
-            </form>
+            int? known = Model.Statistics.LiveState?.ChamberLedIntensity;
+
+            <details class="printer-popout" id="lighting-popout" data-popout>
+                <summary class="btn btn-outline-secondary dropdown-toggle">
+                    @Localiser["Printers_Lighting"]
+                    @if (known is not null)
+                    {
+                        <text>&middot; @known%</text>
+                    }
+                </summary>
+                <div class="printer-popout-panel">
+                    <form method="post" asp-page-handler="Lighting" asp-route-uuid="@uuid"
+                          class="d-flex align-items-center gap-2">
+                        <label class="visually-hidden" for="lighting">@Localiser["Printers_Lighting"]</label>
+                        <input type="range" class="form-range printer-lighting-range" id="lighting" name="intensity"
+                               min="0" max="@PrinterLighting.MaxIntensity" step="1" value="@Model.LightingIntensity"
+                               data-range-output="lighting-value" />
+                        <span class="text-nowrap"><output id="lighting-value" for="lighting">@Model.LightingIntensity</output>%</span>
+                        <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_LightingApply"]</button>
+                    </form>
+
+                    @* Said only where it is true: an XL takes the setting and never reports it, so the
+                       slider shows the last value set from here, and a change made at the printer does
+                       not reach it. In the panel, because it matters only to somebody about to set it. *@
+                    @if (Model.LightingUnreported)
+                    {
+                        <p class="text-body-secondary small mb-0 mt-2">@Localiser["Printers_LightingUnreported"]</p>
+                    }
+                </div>
+            </details>
         }
 
         @* Setting ready is a person asserting the sheet is clear, which is why the walk to the
@@ -142,10 +172,4 @@
         <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
     }
 
-    @* Said only where it is true: an XL takes the setting and never reports it, so the slider shows
-       the last value set from here, and a change made at the printer does not reach it. *@
-    @if (Model.CanControlPrinter && Model.LightingShown && Model.LightingUnreported)
-    {
-        <p class="text-body-secondary small">@Localiser["Printers_LightingUnreported"]</p>
-    }
 }

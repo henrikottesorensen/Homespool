@@ -116,7 +116,9 @@ public sealed class ControlStripTests(Browsers browsers)
         await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
         strip.Connect();
 
-        await Expect(strip.Slider).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await strip.LightButton.ClickAsync(new() { Timeout = 15_000 });
+
+        await Expect(strip.Slider).ToBeVisibleAsync();
         await Expect(strip.SliderNumber).ToHaveTextAsync("60");
 
         await strip.Slider.FocusAsync();
@@ -129,7 +131,7 @@ public sealed class ControlStripTests(Browsers browsers)
 
     /// <summary>
     /// A slider moved and not yet sent keeps its place, and its number, when the strip is redrawn
-    /// around it for something else.
+    /// around it for something else - and the panel it is in stays open.
     /// </summary>
     [Theory]
     [InlineData(Browsers.Chromium)]
@@ -141,7 +143,7 @@ public sealed class ControlStripTests(Browsers browsers)
         await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
         strip.Connect();
 
-        await Expect(strip.Slider).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await strip.LightButton.ClickAsync(new() { Timeout = 15_000 });
 
         await strip.Slider.FocusAsync();
         await strip.Page.Keyboard.PressAsync("ArrowLeft");
@@ -150,6 +152,7 @@ public sealed class ControlStripTests(Browsers browsers)
         await strip.ReportAsync(PrinterStatus.Printing, lighting: 60);
 
         await Expect(strip.Handler("Pause")).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await Expect(strip.Slider).ToBeVisibleAsync();
         await Expect(strip.Slider).ToHaveValueAsync("59");
         await Expect(strip.SliderNumber).ToHaveTextAsync("59");
     }
@@ -174,6 +177,86 @@ public sealed class ControlStripTests(Browsers browsers)
 
         await Expect(strip.Slider).ToHaveValueAsync("20", new() { Timeout = 15_000 });
         await Expect(strip.SliderNumber).ToHaveTextAsync("20");
+        await Expect(strip.LightButton).ToHaveTextAsync("Light · 20%");
+    }
+
+    /// <summary>
+    /// The light is a button until it is wanted: pressing it opens the slider and Set below it, and
+    /// pressing it again puts them away.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task TheLightOpensAndClosesOnItsButton(string engine)
+    {
+        await using Strip strip = await Strip.OpenAsync(browsers, engine, "strip-light-button");
+
+        await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
+        strip.Connect();
+
+        await Expect(strip.LightButton).ToBeVisibleAsync(new() { Timeout = 15_000 });
+        await Expect(strip.Slider).ToBeHiddenAsync();
+        await Expect(strip.Handler("Lighting").GetByRole(AriaRole.Button)).ToBeHiddenAsync();
+
+        await strip.LightButton.ClickAsync();
+
+        await Expect(strip.Slider).ToBeVisibleAsync();
+        await Expect(strip.Handler("Lighting").GetByRole(AriaRole.Button)).ToBeVisibleAsync();
+
+        await strip.LightButton.ClickAsync();
+
+        await Expect(strip.Slider).ToBeHiddenAsync();
+    }
+
+    /// <summary>
+    /// Escape closes the light's panel and hands focus back to its button, and a slider moved and
+    /// abandoned that way goes back to what the printer last reported.
+    /// </summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task EscapeClosesTheLightAndForgetsTheMove(string engine)
+    {
+        await using Strip strip = await Strip.OpenAsync(browsers, engine, "strip-light-escape");
+
+        await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
+        strip.Connect();
+
+        await strip.LightButton.ClickAsync(new() { Timeout = 15_000 });
+
+        await strip.Slider.FocusAsync();
+        await strip.Page.Keyboard.PressAsync("ArrowLeft");
+        await Expect(strip.Slider).ToHaveValueAsync("59");
+
+        await strip.Page.Keyboard.PressAsync("Escape");
+
+        await Expect(strip.Slider).ToBeHiddenAsync();
+        await Expect(strip.LightButton).ToBeFocusedAsync();
+        await Expect(strip.Slider).ToHaveValueAsync("60");
+        await Expect(strip.SliderNumber).ToHaveTextAsync("60");
+    }
+
+    /// <summary>A click anywhere else on the page closes the light's panel, as a dropdown would.</summary>
+    [Theory]
+    [InlineData(Browsers.Chromium)]
+    [InlineData(Browsers.WebKit)]
+    public async Task AClickElsewhereClosesTheLight(string engine)
+    {
+        await using Strip strip = await Strip.OpenAsync(browsers, engine, "strip-light-outside");
+
+        await strip.ReportAsync(PrinterStatus.Idle, lighting: 60);
+        strip.Connect();
+
+        await strip.LightButton.ClickAsync(new() { Timeout = 15_000 });
+        await Expect(strip.Slider).ToBeVisibleAsync();
+
+        // Inside the panel is not elsewhere.
+        await strip.SliderNumber.ClickAsync();
+        await Expect(strip.Slider).ToBeVisibleAsync();
+
+        await strip.Page.Locator(".printer-status-badge").ClickAsync();
+
+        await Expect(strip.Slider).ToBeHiddenAsync();
     }
 
     /// <summary>A printer page open in a browser, for a printer that is not connected.</summary>
@@ -194,6 +277,8 @@ public sealed class ControlStripTests(Browsers browsers)
         public IPage Page { get; }
 
         public ILocator Filament => Page.Locator("[data-live-target=\"printer-controls\"] #filament");
+
+        public ILocator LightButton => Page.Locator("[data-live-target=\"printer-controls\"] #lighting-popout > summary");
 
         public ILocator Slider => Page.Locator("[data-live-target=\"printer-controls\"] #lighting");
 

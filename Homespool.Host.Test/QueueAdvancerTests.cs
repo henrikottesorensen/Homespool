@@ -53,6 +53,9 @@ public sealed class QueueAdvancerTests : IDisposable
     private const int PrinterId = 1;
     private const int SecondPrinterId = 2;
 
+    /// <summary>A member who may run the printer for everybody - see <see cref="AddOperatorAsync"/>.</summary>
+    private const long OperatorId = 3;
+
     /// <summary>
     /// What <see cref="WriteFileOnDiskAsync"/> actually writes. The store reads the length off disk,
     /// so this - not the seeded <c>PrintFile.Size</c> - is what a drive's copy is compared against.
@@ -2293,6 +2296,113 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob running = await context.PrintJobs.SingleAsync(row => row.Id == starting.Id, TestContext.Current.CancellationToken);
         running.WithdrawnByUserId.Should().BeNull("a refusal is final, not a question for every pass");
         running.EndedAt.Should().BeNull("the print runs on");
+    }
+
+    /// <summary>
+    /// A start an operator withdrew is asked about as the operator, so it is still recognised and
+    /// stopped after the person who queued it has lost access.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only somebody else can have withdrawn it then</b>, since withdrawing takes access too. Asked
+    /// as the queuer, every question was refused, the bound closed the row as <c>Unknown</c> while
+    /// the print ran, and the stop was never sent.
+    /// </remarks>
+    [Fact]
+    public async Task AStartAnOperatorWithdrewIsAskedAboutAsTheOperator()
+    {
+        // Arrange - unanswered, withdrawn by an operator, then the queuer leaves the team
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        await AddOperatorAsync(context);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        QueueCancellation withdrawal = await WithdrawAsync(Caller.Unscoped(OperatorId));
+
+        await context.TeamMembers.Where(member => member.UserId == 1)
+                     .ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 741);
+        IPrinterConnectionActor printer = ConnectAnswering(command => command switch
+        {
+            SendJobInfo => Answered(PrinterEventType.JobInfo, json: "{\"state\":\"PRINTING\",\"path\":\"/usb/QUEUED~1.BGC\"}"),
+            _ => Answered(PrinterEventType.Finished),
+        });
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        withdrawal.Should().Be(QueueCancellation.StopRequested);
+        await printer.Received(1).SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob adopted = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        adopted.FirmwareJobId.Should().Be(741, "the operator's question was answered where the queuer's would not be");
+        adopted.StoppedByUserId.Should().Be(OperatorId);
+    }
+
+    /// <summary>
+    /// A withdrawn start the printer will never describe is given up on like any other - not
+    /// stopped, and its reason says so.
+    /// </summary>
+    /// <remarks>
+    /// Nothing established that what the printer runs is ours, so a stop could end somebody's panel
+    /// print. The reason is what tells the person who withdrew it why it printed anyway.
+    /// </remarks>
+    [Fact]
+    public async Task AWithdrawnStartThePrinterWillNotDescribeIsClosedSayingItWasNotStopped()
+    {
+        // Arrange - unanswered, withdrawn, and a printer refusing every question about what it runs
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await WithdrawAsync(Caller.Unscoped(1));
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 742);
+        IPrinterConnectionActor printer = ConnectAnswering(_ => Unanswered(CommandSendOutcome.ResponseTimedOut));
+        _clock.Advance(QueueAdvancer.StartUnresolvableAfter + TimeSpan.FromMinutes(1));
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await printer.DidNotReceive().SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob given = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        given.State.Should().Be(PrintState.Unknown);
+        given.Reason.Should().StartWith("Withdrawn while it was starting.").And.Contain("so it was not stopped");
+    }
+
+    /// <summary>A second member, holding the operator preset on the seeded printer's team.</summary>
+    private async Task AddOperatorAsync(HomespoolDbContext context)
+    {
+        const string email = "operator@example.com";
+        context.Users.Add(new HSUser(email)
+        {
+            Id = OperatorId,
+            Email = email,
+            NormalizedEmail = email.ToUpperInvariant(),
+            NormalizedUserName = email.ToUpperInvariant(),
+        });
+
+        int teamId = await context.Printers.Where(printer => printer.Id == PrinterId)
+                                   .Select(printer => printer.TeamId)
+                                   .SingleAsync(TestContext.Current.CancellationToken);
+
+        context.TeamMembers.Add(new TeamMember
+        {
+            TeamId = teamId,
+            UserId = OperatorId,
+            Capabilities = TestMemberships.Literal(CapabilityPresets.Operator),
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>

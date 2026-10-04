@@ -416,6 +416,20 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
+    /// The authority of whoever withdrew this print while it was starting, or null when nobody did.
+    /// </summary>
+    /// <remarks>
+    /// <b>A missing scope parses to nothing</b>, which every send refuses - so a row that somehow
+    /// carries a withdrawer without one is never acted on as them.
+    /// </remarks>
+    private static Caller? WithdrawerOf(PrintJob job)
+    {
+        return job.WithdrawnByUserId is { } withdrawnBy ?
+            Caller.Scoped(withdrawnBy, CapabilitySet.Parse(job.WithdrawnByScope)) :
+            null;
+    }
+
+    /// <summary>
     /// Every printer that needs a pass - one with work waiting, or one with a print in flight.
     /// </summary>
     /// <remarks>
@@ -1148,14 +1162,10 @@ public sealed class QueueAdvancer : BackgroundService
                                                      PrintJob withdrawn,
                                                      CancellationToken cancellationToken)
     {
-        if (withdrawn.WithdrawnByUserId is not { } withdrawnBy)
+        if (WithdrawerOf(withdrawn) is not { } withdrawer)
         {
             return false;
         }
-
-        // A missing scope parses to nothing, which the stop service refuses - and a refusal drops
-        // the request below, so a row that somehow has no scope is never acted on beyond that.
-        Caller withdrawer = Caller.Scoped(withdrawnBy, CapabilitySet.Parse(withdrawn.WithdrawnByScope));
 
         PrintStopService stops = scope.ServiceProvider.GetRequiredService<PrintStopService>();
         CommandOutcome? outcome;
@@ -1229,6 +1239,14 @@ public sealed class QueueAdvancer : BackgroundService
     /// and nobody heard how it ended. The entry decides only what follows: removed when the print is
     /// adopted, held beside a print nobody can describe.
     /// </para>
+    /// <para>
+    /// <b>A withdrawn start is asked about as whoever withdrew it.</b> Theirs is the request being
+    /// carried out, and the stop that follows goes out as them anyway. The difference is the case
+    /// where the queuer has since lost access - only somebody else can have withdrawn it then - and
+    /// asking as the queuer would be refused until the bound closed the row with the print still
+    /// running and the stop never sent. Asking reads and changes nothing; a withdrawer who may not
+    /// ask could not have stopped it either.
+    /// </para>
     /// </remarks>
     private async Task<PrintStartVerdict> ResolveUnconfirmedPrintAsync(AsyncServiceScope scope,
                                                                        HomespoolDbContext dbContext,
@@ -1245,9 +1263,9 @@ public sealed class QueueAdvancer : BackgroundService
         bool connected = _registry.IsConnected(printerId);
         JobAnswer answer = JobAnswer.NotAsked;
 
-        if (connected && CallerFor(commanded) is { } queuer && live?.JobId is { } jobId)
+        if (connected && (WithdrawerOf(commanded) ?? CallerFor(commanded)) is { } asker && live?.JobId is { } jobId)
         {
-            answer = await AskWhoseJobAsync(scope, printerId, commanded, queuer, entry?.PrintFileId, jobId, cancellationToken);
+            answer = await AskWhoseJobAsync(scope, printerId, commanded, asker, entry?.PrintFileId, jobId, cancellationToken);
         }
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -1329,7 +1347,7 @@ public sealed class QueueAdvancer : BackgroundService
     private async Task<JobAnswer> AskWhoseJobAsync(AsyncServiceScope scope,
                                                    int printerId,
                                                    PrintJob commanded,
-                                                   Caller queuer,
+                                                   Caller asker,
                                                    long? printFileId,
                                                    int jobId,
                                                    CancellationToken cancellationToken)
@@ -1342,7 +1360,7 @@ public sealed class QueueAdvancer : BackgroundService
             answer = await WhilePrinterAnswersAsync(scope,
                                                     () => commands.AskAsync(printerId,
                                                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
-                                                                            queuer,
+                                                                            asker,
                                                                             cancellationToken));
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
@@ -1491,11 +1509,18 @@ public sealed class QueueAdvancer : BackgroundService
     /// Gives up asking, and stops the queue rather than guessing.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The row is closed <see cref="PrintState.Unknown"/>, which is what that state is for - it
     /// stopped being observable without saying how - and the hold is what keeps the entry from being
     /// printed a second time on the strength of not knowing. Both, because either alone is wrong:
     /// closing without holding advances the queue onto a print that may already have run, and
     /// holding without closing leaves the printer's one open-print slot occupied for ever.
+    /// </para>
+    /// <para>
+    /// <b>A withdrawn start is not stopped here either</b>, and the row's reason says so. Nobody has
+    /// established that what the printer is running is ours, and a stop sent on that would end
+    /// whatever it is - somebody's print started at the panel included.
+    /// </para>
     /// </remarks>
     private async Task HoldUnresolvedStartAsync(AsyncServiceScope scope,
                                                 HomespoolDbContext dbContext,
@@ -1516,9 +1541,15 @@ public sealed class QueueAdvancer : BackgroundService
         PrintState settled = await AskPriorOutcomeAsync(scope, printerId, commanded, cancellationToken) ??
                              PrintState.Unknown;
 
-        commanded.Reason = settled == PrintState.Unknown ?
-            "The printer never said whether it started this print." :
-            "The printer would not describe this print while it ran, and reported afterwards how it ended.";
+        commanded.Reason = (settled, commanded.WithdrawnByUserId) switch
+        {
+            (PrintState.Unknown, null) => "The printer never said whether it started this print.",
+            (PrintState.Unknown, _) => "Withdrawn while it was starting. The printer never said whether it had started, " +
+                                       "so it was not stopped.",
+            (_, null) => "The printer would not describe this print while it ran, and reported afterwards how it ended.",
+            _ => "Withdrawn while it was starting. The printer would not describe it while it ran, so it was not " +
+                 "stopped, and reported afterwards how it ended.",
+        };
 
         Close(commanded, settled, now);
 

@@ -427,18 +427,50 @@ public sealed class PrintFileCatalog
             }
             catch (DbUpdateException)
             {
-                // A concurrent publish indexed a row under the new name between the move and this
-                // write, and the unique (user, name) index refused ours. The rename itself succeeded
-                // on disk, which is the truth: leave the old row as it was and let the reconcile heal
-                // the pair rather than answering a completed rename with a 500.
-                _dbContext.Entry(row).State = EntityState.Detached;
-
-                _logger.LogWarning("Renamed {FileName} to {NewName} for user {UserId}, but a row for the new name already existed; leaving the index to the reconcile",
-                                   fileName, renamed.FileName, userId);
+                await ResolveRenameConflictAsync(userId, row.Id, renamed, cancellationToken);
             }
         }
 
         return renamed;
+    }
+
+    /// <summary>
+    /// Finishes a rename whose row update the unique (user, name) index refused, or rethrows.
+    /// </summary>
+    /// <remarks>
+    /// The only way here that is not a real fault is a concurrent publish that indexed a second row
+    /// under the new name between the move and the write. The renamed row is the one queued prints
+    /// reference, so it is the one kept: the duplicate is removed and the rename written again. A
+    /// duplicate a queued print still wants is never removed - that would cancel somebody's print -
+    /// and neither is a failure with no duplicate behind it swallowed; both rethrow, because leaving
+    /// the old row behind would have the reconcile remove it as missing and cancel its queued prints.
+    /// </remarks>
+    private async Task ResolveRenameConflictAsync(long userId,
+                                                  long rowId,
+                                                  StoredFile renamed,
+                                                  CancellationToken cancellationToken)
+    {
+        _dbContext.ChangeTracker.Clear();
+
+        PrintFile? duplicate = await FindRowAsync(userId, renamed.FileName, cancellationToken);
+
+        if (duplicate is null || duplicate.Id == rowId ||
+            await _dbContext.QueuedPrints.AnyAsync(job => job.PrintFileId == duplicate.Id, cancellationToken))
+        {
+            throw new InvalidOperationException(
+                $"Renaming to {renamed.FileName} could not be recorded for user {userId}.");
+        }
+
+        _dbContext.PrintFiles.Remove(duplicate);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        PrintFile row = await _dbContext.PrintFiles.SingleAsync(candidate => candidate.Id == rowId, cancellationToken);
+
+        row.Name = renamed.FileName;
+        row.UploadedAt = renamed.UploadedAt;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     /// <summary>

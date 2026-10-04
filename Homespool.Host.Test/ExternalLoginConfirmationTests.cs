@@ -39,7 +39,8 @@ namespace Homespool.Host.Test;
 /// <summary>
 /// The external sign-in's confirmation post: an invite carried through the provider creates exactly one
 /// account, bound to the invite's address and linked to the provider's subject, and every way that can
-/// fail leaves no account and no spent invite behind.
+/// fail leaves no account and no spent invite behind. The callback's refusals before that form are here
+/// too, for an identity an account already holds.
 /// </summary>
 /// <remarks>
 /// The provider's answer is written into the external cookie in-process, with the properties the page's
@@ -355,7 +356,91 @@ public sealed class ExternalLoginConfirmationTests : IDisposable
         await ShouldHaveCreatedNothingAsync(rig, invitation, token);
     }
 
+    // ---------- the callback, for a provider identity already linked ----------
+
+    /// <summary>
+    /// A linked account that may not sign in is told so, not sent through the invite gate: there it was
+    /// told nobody here knows it, and with an invite in the round trip it was offered a form to create a
+    /// second account the existing link would then refuse.
+    /// </summary>
+    [Fact]
+    public async Task AnUnconfirmedLinkedAccountIsToldItCannotSignInYet()
+    {
+        // Arrange
+        await using LocalSchemeRig rig = await NewRigAsync();
+        HSUser holder = await rig.AddUserAsync("holder@example.com", confirmed: false);
+        await LinkAsync(rig, holder);
+
+        (Invitation invitation, string token) = await InviteAsync(rig, teamId: null);
+        string answer = await AnswerAsync(rig, invitation, token);
+
+        ExternalLoginModel page = NewPage(rig, rig.NewRequest(answer), smtpConfigured: false, out _);
+
+        // Act
+        IActionResult result = await page.OnGetCallbackAsync(CancellationToken.None, ReturnUrl);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().Be("./Login");
+        page.ErrorMessage.Should().Be(_localiser["Account_ExternalNotAllowed"].Value);
+        page.Email.Should().BeNull("the invite's form is not offered to an identity that already has an account");
+        ((DefaultHttpContext)page.HttpContext).Response.Headers.SetCookie.Should()
+            .NotContain(cookie => cookie!.StartsWith(rig.CookieNameOf(IdentityConstants.ApplicationScheme) + "=", StringComparison.Ordinal),
+                        "an account that may not sign in is not signed in");
+        await ShouldHaveCreatedNothingAsync(rig, invitation, token);
+    }
+
+    /// <summary>A deactivated account is the other standing refusal, and gets the same answer.</summary>
+    [Fact]
+    public async Task ADeactivatedLinkedAccountIsToldItCannotSignIn()
+    {
+        // Arrange
+        await using LocalSchemeRig rig = await NewRigAsync();
+        HSUser holder = await rig.AddUserAsync("holder@example.com");
+        holder.DeactivatedAt = DateTimeOffset.UtcNow;
+        (await rig.Users.UpdateAsync(holder)).Succeeded.Should().BeTrue();
+        await LinkAsync(rig, holder);
+
+        string answer = await AnswerAsync(rig, ExternalSignIn.ChallengeProperties(Schemes.ExternalOidc, null, ExternalRoundTrip.SignIn));
+
+        ExternalLoginModel page = NewPage(rig, rig.NewRequest(answer), smtpConfigured: false, out _);
+
+        // Act
+        IActionResult result = await page.OnGetCallbackAsync(CancellationToken.None, ReturnUrl);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().Be("./Login");
+        page.ErrorMessage.Should().Be(_localiser["Account_ExternalNotAllowed"].Value);
+        ((DefaultHttpContext)page.HttpContext).Response.Headers.SetCookie.Should()
+            .NotContain(cookie => cookie!.StartsWith(rig.CookieNameOf(IdentityConstants.ApplicationScheme) + "=", StringComparison.Ordinal),
+                        "an account that may not sign in is not signed in");
+    }
+
+    /// <summary>An identity nobody has linked, with no invite, is still told there is no invitation.</summary>
+    [Fact]
+    public async Task AnUnlinkedIdentityWithNoInviteIsToldThereIsNone()
+    {
+        // Arrange
+        await using LocalSchemeRig rig = await NewRigAsync();
+        string answer = await AnswerAsync(rig, ExternalSignIn.ChallengeProperties(Schemes.ExternalOidc, null, ExternalRoundTrip.SignIn));
+
+        ExternalLoginModel page = NewPage(rig, rig.NewRequest(answer), smtpConfigured: false, out _);
+
+        // Act
+        IActionResult result = await page.OnGetCallbackAsync(CancellationToken.None, ReturnUrl);
+
+        // Assert
+        result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().Be("./Login");
+        page.ErrorMessage.Should().Be(_localiser["Account_ExternalNoInvite"].Value);
+    }
+
     // ---------- the rig ----------
+
+    /// <summary>Links the provider identity every answer here carries to <paramref name="user"/>.</summary>
+    private static async Task LinkAsync(LocalSchemeRig rig, HSUser user)
+    {
+        (await rig.Users.AddLoginAsync(user, new UserLoginInfo(Schemes.ExternalOidc, ExternalSignIn.ProviderKey(Issuer, Subject), "Provider")))
+            .Succeeded.Should().BeTrue();
+    }
 
     /// <summary>A rig with a display-named provider registered, which is what makes it one the login page offers.</summary>
     private Task<LocalSchemeRig> NewRigAsync()

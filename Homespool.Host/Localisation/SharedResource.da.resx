@@ -1245,6 +1245,9 @@
   <data name="Account_ExternalNoInvite" xml:space="preserve">
     <value>Dit login lykkedes, men ingen konto her er knyttet til det, og der findes ingen invitation til det. Bed en administrator om at invitere dig.</value>
   </data>
+  <data name="Account_ExternalNotAllowed" xml:space="preserve">
+    <value>Dit login lykkedes og er knyttet til en konto her, men den konto kan ikke logge ind endnu. Hvis du ikke har bekræftet dens e-mailadresse, så brug linket i bekræftelsesmailen, eller send den igen; ellers bed en administrator om hjælp.</value>
+  </data>
   <data name="Account_EmailChangeError" xml:space="preserve">
     <value>E-mailen kunne ikke ændres.</value>
   </data>

@@ -40,6 +40,7 @@ public class CreateModel : PageModel
     private readonly TeamService _teamService;
     private readonly UserManager<HSUser> _userManager;
     private readonly IEmailSender _emailSender;
+    private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<CreateModel> _logger;
 
@@ -49,6 +50,7 @@ public class CreateModel : PageModel
                        TeamService teamService,
                        UserManager<HSUser> userManager,
                        IEmailSender emailSender,
+                       TimeProvider time,
                        IStringLocalizer<SharedResource> localiser,
                        ILogger<CreateModel> logger)
     {
@@ -56,6 +58,7 @@ public class CreateModel : PageModel
         _teamService = teamService;
         _userManager = userManager;
         _emailSender = emailSender;
+        _time = time;
         _localiser = localiser;
         _logger = logger;
     }
@@ -124,7 +127,7 @@ public class CreateModel : PageModel
             }
         }
 
-        DateTimeOffset? expiresAt = Input.ExpiresInHours is int hours ? DateTimeOffset.UtcNow + TimeSpan.FromHours(hours) : null;
+        DateTimeOffset? expiresAt = Input.ExpiresInHours is int hours ? _time.GetUtcNow() + TimeSpan.FromHours(hours) : null;
 
         (Invitation invitation, string plaintextToken) = await _invitationService.CreateAsync(
             Input.Email, teamId, admin.Id, expiresAt, cancellationToken);

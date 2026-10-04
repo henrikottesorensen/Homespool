@@ -101,7 +101,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         // Act
         (ApiToken token, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
@@ -126,7 +126,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         // Act
         (_, string first) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
@@ -145,7 +145,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         (ApiToken created, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
@@ -169,7 +169,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         (_, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
         string secretOnly = plaintext[ApiTokenService.Prefix.Length..];
@@ -188,7 +188,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
@@ -212,7 +212,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
@@ -230,7 +230,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         (ApiToken created, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
@@ -256,7 +256,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser owner = await AddUserAsync(context, "owner@example.com");
         HSUser other = await AddUserAsync(context, "other@example.com");
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         (ApiToken token, string plaintext) = await service.CreateAsync(owner.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 
@@ -277,7 +277,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser owner = await AddUserAsync(context, "owner@example.com");
         HSUser other = await AddUserAsync(context, "other@example.com");
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         (ApiToken older, _) = await service.CreateAsync(owner.Id, "older", CapabilitySet.Everything, CancellationToken.None);
         (ApiToken newer, _) = await service.CreateAsync(owner.Id, "newer", CapabilitySet.Everything, CancellationToken.None);
@@ -308,7 +308,7 @@ public sealed class ApiTokenServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
         HSUser user = await AddUserAsync(context);
-        ApiTokenService service = new(context);
+        ApiTokenService service = new(context, TimeProvider.System);
 
         (_, string plaintext) = await service.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
 

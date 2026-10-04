@@ -69,7 +69,7 @@ public sealed class RegisterModelTests : IDisposable
 
     private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
-        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
     }
 
     /// <summary>
@@ -102,7 +102,8 @@ public sealed class RegisterModelTests : IDisposable
             invitationService,
             new TeamService(context),
             new UnitOfWork(context),
-            new ApiTokenService(context),
+            new ApiTokenService(context, TimeProvider.System),
+            TimeProvider.System,
             TestLocaliser.Shared())
         {
             PageContext = IdentityTestHarness.NewPageContext(httpContext),

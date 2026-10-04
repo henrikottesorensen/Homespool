@@ -302,7 +302,7 @@ public sealed class ApiTokensPageTests : IDisposable
         (await users.CreateAsync(user, LocalSchemeRig.Password)).Succeeded.Should().BeTrue();
         IdentityTestHarness.SignInAsPrincipal(httpContext, user);
 
-        ApiTokensModel model = new(new ApiTokenService(context),
+        ApiTokensModel model = new(new ApiTokenService(context, TimeProvider.System),
                                    users,
                                    scope.ServiceProvider.GetRequiredService<RecentProof>(),
                                    _mail.Notices(),

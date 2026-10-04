@@ -51,14 +51,17 @@ public class InvitationService
     private readonly HomespoolDbContext _dbContext;
     private readonly TokenService _tokenService;
     private readonly InvitationOptions _options;
+    private readonly TimeProvider _time;
 
-    public InvitationService(HomespoolDbContext dbContext, TokenService tokenService, IOptionsSnapshot<InvitationOptions> options)
+    public InvitationService(HomespoolDbContext dbContext, TokenService tokenService, IOptionsSnapshot<InvitationOptions> options,
+                             TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         _dbContext = dbContext;
         _tokenService = tokenService;
         _options = options.Value;
+        _time = time;
     }
 
     /// <summary>
@@ -89,7 +92,7 @@ public class InvitationService
             throw new ArgumentException("The address holds a control or invisible character, or is too long to be one.", nameof(email));
         }
 
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = _time.GetUtcNow();
         string plaintext = _tokenService.GenerateToken(InviteTokenLength);
 
         Invitation invitation = new()
@@ -141,7 +144,7 @@ public class InvitationService
                                                                                           DateTimeOffset? expiresAt,
                                                                                           CancellationToken cancellationToken)
     {
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = _time.GetUtcNow();
         string plaintext = _tokenService.GenerateToken(InviteTokenLength);
 
         Invitation invitation = new()
@@ -198,7 +201,7 @@ public class InvitationService
 
         if (invitation is null ||
             invitation.UsedAt is not null ||
-            invitation.ExpiresAt <= DateTimeOffset.UtcNow ||
+            invitation.ExpiresAt <= _time.GetUtcNow() ||
             !accepts.Contains(invitation.Type) ||
             !IsCoherent(invitation))
         {
@@ -263,7 +266,7 @@ public class InvitationService
         }
 
         string asserted = email.Trim();
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = _time.GetUtcNow();
 
         // Tracked, not AsNoTracking: the caller spends the one it gets inside its own transaction.
         List<Invitation> outstanding = await _dbContext.Invitations
@@ -286,7 +289,7 @@ public class InvitationService
     {
         ArgumentNullException.ThrowIfNull(invitation);
 
-        invitation.UsedAt = DateTimeOffset.UtcNow;
+        invitation.UsedAt = _time.GetUtcNow();
 
         return _dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -305,7 +308,7 @@ public class InvitationService
             return;
         }
 
-        invitation.ExpiresAt = DateTimeOffset.UtcNow;
+        invitation.ExpiresAt = _time.GetUtcNow();
 
         await _dbContext.SaveChangesAsync(cancellationToken);
     }

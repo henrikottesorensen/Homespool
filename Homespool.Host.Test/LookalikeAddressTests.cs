@@ -234,7 +234,7 @@ public sealed class LookalikeAddressTests : IDisposable
         (UserManager<HSUser> users, _, _, _) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser administrator = await SeedUserAsync(users, "admin@example.net", confirmed: true);
 
-        InvitationService invitations = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        InvitationService invitations = new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
         await invitations.CreateAsync(address, teamId: null, administrator.Id, expiresAt: null,
                                       TestContext.Current.CancellationToken);
 

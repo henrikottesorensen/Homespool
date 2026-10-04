@@ -284,7 +284,7 @@ public sealed class ClosedAccountCredentialTests : IDisposable
         string code)
     {
         ResetPasswordModel model = new(users,
-                                       new ApiTokenService(context),
+                                       new ApiTokenService(context, TimeProvider.System),
                                        new UnitOfWork(context),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)
@@ -341,7 +341,7 @@ public sealed class ClosedAccountCredentialTests : IDisposable
     private static UserAdministration Administration(HomespoolDbContext context, IServiceProvider provider)
     {
         return new UserAdministration(context,
-                                      new ApiTokenService(context),
+                                      new ApiTokenService(context, TimeProvider.System),
                                       provider.GetRequiredService<UserSessionService>(),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),

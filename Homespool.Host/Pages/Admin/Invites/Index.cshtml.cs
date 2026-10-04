@@ -26,13 +26,16 @@ public class IndexModel : PageModel
 {
     private readonly InvitationService _invitationService;
     private readonly TeamService _teamService;
+    private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public IndexModel(InvitationService invitationService, TeamService teamService,
+                      TimeProvider time,
                       IStringLocalizer<SharedResource> localiser)
     {
         _invitationService = invitationService;
         _teamService = teamService;
+        _time = time;
         _localiser = localiser;
     }
 
@@ -44,14 +47,14 @@ public class IndexModel : PageModel
     public string? StatusMessage { get; set; }
 
     /// <summary>Outstanding / Used / Expired, derived from the invite's timestamps.</summary>
-    public static string StatusOf(Invitation invitation)
+    public string StatusOf(Invitation invitation)
     {
         if (invitation.UsedAt is not null)
         {
             return "Used";
         }
 
-        return invitation.ExpiresAt <= DateTimeOffset.UtcNow ? "Expired" : "Outstanding";
+        return invitation.ExpiresAt <= _time.GetUtcNow() ? "Expired" : "Outstanding";
     }
 
     public async Task OnGetAsync(CancellationToken cancellationToken)

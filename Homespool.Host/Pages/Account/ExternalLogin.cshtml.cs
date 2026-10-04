@@ -68,6 +68,7 @@ public class ExternalLoginModel : PageModel
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
     private readonly OidcOptions _oidc;
+    private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ExternalLoginModel(LocalSignIn signIn,
@@ -81,6 +82,7 @@ public class ExternalLoginModel : PageModel
                               TeamService teamService,
                               UnitOfWork unitOfWork,
                               IOptions<OidcOptions> oidc,
+                              TimeProvider time,
                               IStringLocalizer<SharedResource> localiser)
     {
         ArgumentNullException.ThrowIfNull(oidc);
@@ -98,6 +100,7 @@ public class ExternalLoginModel : PageModel
         _teamService = teamService;
         _unitOfWork = unitOfWork;
         _oidc = oidc.Value;
+        _time = time;
         _localiser = localiser;
     }
 
@@ -415,7 +418,7 @@ public class ExternalLoginModel : PageModel
             // Every account gets its own default team, so printer-claim identity resolution always has
             // one; a team-scoped invite additionally joins that team. Identical to Register, because
             // the invite means the same thing however it was presented.
-            await _teamService.AddDefaultTeamAsync(user.Id, DateTimeOffset.UtcNow, cancellationToken);
+            await _teamService.AddDefaultTeamAsync(user.Id, _time.GetUtcNow(), cancellationToken);
 
             if (invitation.TeamId is int teamId)
             {

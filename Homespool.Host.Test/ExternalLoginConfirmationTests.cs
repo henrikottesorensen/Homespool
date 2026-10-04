@@ -371,7 +371,7 @@ public sealed class ExternalLoginConfirmationTests : IDisposable
 
     private static InvitationService Invitations(LocalSchemeRig rig)
     {
-        return new InvitationService(rig.Context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        return new InvitationService(rig.Context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
     }
 
     private static Task<(Invitation invitation, string token)> InviteAsync(LocalSchemeRig rig, int? teamId)
@@ -398,7 +398,7 @@ public sealed class ExternalLoginConfirmationTests : IDisposable
                                       new TeamService(rig.Context),
                                       new UnitOfWork(rig.Context),
                                       Options.Create(new OidcOptions()),
-                                      _localiser)
+                                      TimeProvider.System, _localiser)
         {
             PageContext = IdentityTestHarness.NewPageContext(request),
             Url = IdentityTestHarness.NewUrlHelper(request),

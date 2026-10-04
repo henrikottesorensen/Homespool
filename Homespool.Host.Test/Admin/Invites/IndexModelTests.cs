@@ -8,6 +8,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -25,14 +26,20 @@ public sealed class IndexModelTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-invite-index-{Guid.NewGuid():N}.db");
 
+    /// <summary>
+    /// Years behind the real clock, so a status read from the wall clock instead would call every
+    /// invite in these tests expired.
+    /// </summary>
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
     private static InvitationService NewInvitationService(HomespoolDbContext context)
     {
-        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()));
+        return new(context, new TokenService(), TestOptions.Snapshot(new InvitationOptions()), TimeProvider.System);
     }
 
-    private static IndexModel NewModel(HomespoolDbContext context)
+    private IndexModel NewModel(HomespoolDbContext context)
     {
-        return new(NewInvitationService(context), new TeamService(context), TestLocaliser.Shared());
+        return new(NewInvitationService(context), new TeamService(context), _clock, TestLocaliser.Shared());
     }
 
     private HomespoolDbContext NewContext()
@@ -75,13 +82,15 @@ public sealed class IndexModelTests : IDisposable
             HashedToken = "irrelevant",
             Type = InvitationType.Signup,
             Email = "invitee@example.com",
-            CreatedAt = DateTimeOffset.UtcNow,
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
-            UsedAt = DateTimeOffset.UtcNow,
+            CreatedAt = _clock.GetUtcNow(),
+            ExpiresAt = _clock.GetUtcNow().AddHours(1),
+            UsedAt = _clock.GetUtcNow(),
         };
 
+        using HomespoolDbContext context = NewContext();
+
         // Assert
-        IndexModel.StatusOf(invitation).Should().Be("Used");
+        NewModel(context).StatusOf(invitation).Should().Be("Used");
     }
 
     [Fact]
@@ -93,12 +102,14 @@ public sealed class IndexModelTests : IDisposable
             HashedToken = "irrelevant",
             Type = InvitationType.Signup,
             Email = "invitee@example.com",
-            CreatedAt = DateTimeOffset.UtcNow.AddHours(-2),
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1),
+            CreatedAt = _clock.GetUtcNow().AddHours(-2),
+            ExpiresAt = _clock.GetUtcNow().AddHours(-1),
         };
 
+        using HomespoolDbContext context = NewContext();
+
         // Assert
-        IndexModel.StatusOf(invitation).Should().Be("Expired");
+        NewModel(context).StatusOf(invitation).Should().Be("Expired");
     }
 
     [Fact]
@@ -110,12 +121,14 @@ public sealed class IndexModelTests : IDisposable
             HashedToken = "irrelevant",
             Type = InvitationType.Signup,
             Email = "invitee@example.com",
-            CreatedAt = DateTimeOffset.UtcNow,
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1),
+            CreatedAt = _clock.GetUtcNow(),
+            ExpiresAt = _clock.GetUtcNow().AddHours(1),
         };
 
+        using HomespoolDbContext context = NewContext();
+
         // Assert
-        IndexModel.StatusOf(invitation).Should().Be("Outstanding");
+        NewModel(context).StatusOf(invitation).Should().Be("Outstanding");
     }
 
     // ---------- TargetOf ----------
@@ -210,7 +223,7 @@ public sealed class IndexModelTests : IDisposable
 
         (Invitation second, _) = await invitationService.CreateAsync("second@example.com", null, 1, null, CancellationToken.None);
 
-        IndexModel model = new(invitationService, new TeamService(context), TestLocaliser.Shared());
+        IndexModel model = new(invitationService, new TeamService(context), TimeProvider.System, TestLocaliser.Shared());
 
         // Act
         await model.OnGetAsync(CancellationToken.None);
@@ -232,7 +245,7 @@ public sealed class IndexModelTests : IDisposable
         (Invitation invitation, string plaintext) = await invitationService.CreateAsync(
             "invitee@example.com", null, 1, null, CancellationToken.None);
 
-        IndexModel model = new(invitationService, new TeamService(context), TestLocaliser.Shared());
+        IndexModel model = new(invitationService, new TeamService(context), TimeProvider.System, TestLocaliser.Shared());
 
         // Act
         IActionResult result = await model.OnPostRevokeAsync(invitation.Uuid, CancellationToken.None);

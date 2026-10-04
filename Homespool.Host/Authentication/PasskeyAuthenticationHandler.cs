@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Http;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -153,7 +154,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
 
         Response.StatusCode = StatusCodes.Status200OK;
         Response.ContentType = "application/json; charset=utf-8";
-        Response.Headers.CacheControl = "no-store";
+        Response.Headers.CacheControl = CacheControlValues.NoStore;
 
         await Response.WriteAsync(requestOptions.RequestOptionsJson, Context.RequestAborted);
 

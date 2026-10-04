@@ -12,6 +12,15 @@ internal static class WireNames
     /// <summary>Request header carrying the printer's token.</summary>
     public const string Token = "Token";
 
+    /// <summary>Registration header carrying the code the user enters in the web UI.</summary>
+    public const string Code = "Code";
+
+    /// <summary>Request header naming the printer model.</summary>
+    public const string UserAgentPrinter = "User-Agent-Printer";
+
+    /// <summary>Request header carrying the firmware version.</summary>
+    public const string UserAgentVersion = "User-Agent-Version";
+
     /// <summary>Response header carrying the id of the command in a telemetry response.</summary>
     public const string CommandId = "Command-Id";
 

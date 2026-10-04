@@ -15,6 +15,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Account.Manage;
 using Homespool.Model;
@@ -346,7 +347,7 @@ public sealed class ApiTokensPageTests : IDisposable
 
         // Assert
         model.CreatedToken.Should().NotBeNull("this is the response that carries the secret");
-        httpContext.Response.Headers.CacheControl.ToString().Should().Be("no-cache, no-store");
+        httpContext.Response.Headers.CacheControl.ToString().Should().Be(CacheControlValues.NoCacheNoStore);
     }
 
     /// <summary>

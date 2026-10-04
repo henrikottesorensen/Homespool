@@ -111,7 +111,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
         HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        return response.Headers.GetValues("Code").First();
+        return response.Headers.GetValues(WireNames.Code).First();
     }
 
     /// <summary>
@@ -124,7 +124,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     {
         using HttpRequestMessage request = new(HttpMethod.Get, "/p/register");
         AddUserAgentHeaders(request);
-        request.Headers.TryAddWithoutValidation("Code", code);
+        request.Headers.TryAddWithoutValidation(WireNames.Code, code);
 
         HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken);
 
@@ -187,8 +187,8 @@ public sealed class FakePrinterClient : IAsyncDisposable
         {
             [WireNames.Fingerprint] = Identity.HeaderFingerprint,
             [WireNames.Token] = Token,
-            ["User-Agent-Printer"] = _options.UserAgentPrinter,
-            ["User-Agent-Version"] = Identity.Firmware,
+            [WireNames.UserAgentPrinter] = _options.UserAgentPrinter,
+            [WireNames.UserAgentVersion] = Identity.Firmware,
         };
 
         FakePrinterConnectRequest request = new(BuildWebSocketUri(), SubProtocol, headers);
@@ -413,8 +413,8 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
     private void AddUserAgentHeaders(HttpRequestMessage request)
     {
-        request.Headers.TryAddWithoutValidation("User-Agent-Printer", _options.UserAgentPrinter);
-        request.Headers.TryAddWithoutValidation("User-Agent-Version", Identity.Firmware);
+        request.Headers.TryAddWithoutValidation(WireNames.UserAgentPrinter, _options.UserAgentPrinter);
+        request.Headers.TryAddWithoutValidation(WireNames.UserAgentVersion, Identity.Firmware);
     }
 
     private Uri BuildWebSocketUri()

@@ -19,6 +19,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Health;
+using Homespool.Host.Http;
 using Homespool.Host.Mail;
 using Homespool.Model.Entities;
 
@@ -107,7 +108,7 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
         danish.GetProperty("tag").GetString().Should().Be(TelemetryAlertService.HealthTag);
 
         PayloadFor(brit).GetProperty("title").GetString().Should().Be("Homespool is unhealthy");
-        _rig.PushService.Received.Should().OnlyContain(push => push.Header("Urgency") == "high");
+        _rig.PushService.Received.Should().OnlyContain(push => push.Header(CustomHeaderNames.PushUrgency) == "high");
     }
 
     /// <summary>
@@ -139,7 +140,7 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
         JsonElement payload = admin.DecryptJson(allClear.Body);
         payload.GetProperty("title").GetString().Should().Be("Homespool has recovered");
         payload.GetProperty("tag").GetString().Should().Be(TelemetryAlertService.HealthTag);
-        allClear.Header("Urgency").Should().BeNull("normal is the default, which goes unsaid - not the alert's high");
+        allClear.Header(CustomHeaderNames.PushUrgency).Should().BeNull("normal is the default, which goes unsaid - not the alert's high");
     }
 
     /// <summary>

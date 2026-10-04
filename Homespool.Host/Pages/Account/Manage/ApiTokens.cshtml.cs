@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Host.Localisation;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -182,7 +183,7 @@ public class ApiTokensModel : StatusMessagePageModel
         // every successful mint. Saying the same thing the framework will say keeps the intent stated
         // where the secret is created rather than left to a form elsewhere in the layout, and leaves
         // the log to carry real problems only.
-        Response.Headers.CacheControl = "no-cache, no-store";
+        Response.Headers.CacheControl = CacheControlValues.NoCacheNoStore;
 
         // Listed after the create, so the new token appears in the table alongside its one-time secret.
         await LoadAsync(user, cancellationToken);

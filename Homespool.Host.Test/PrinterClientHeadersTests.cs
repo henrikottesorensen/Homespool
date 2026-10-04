@@ -58,7 +58,7 @@ public class PrinterClientHeadersTests
     public void CodeIsReadFromTheCodeHeader()
     {
         // Assert
-        new PrinterClientHeaders(RequestWith(("Code", "MUF4RZJF5R")))
+        new PrinterClientHeaders(RequestWith((Headers.Code, "MUF4RZJF5R")))
             .Code.Should().Be("MUF4RZJF5R");
     }
 
@@ -74,7 +74,7 @@ public class PrinterClientHeadersTests
     public void TemporaryCodeHeaderIsNotMistakenForTheCode()
     {
         // Assert
-        new PrinterClientHeaders(RequestWith(("Temporary-Code", "MUF4RZJF5R")))
+        new PrinterClientHeaders(RequestWith((Headers.TemporaryCode, "MUF4RZJF5R")))
             .Code.Should().BeNull("no client sends Temporary-Code; only the server emits it");
     }
 
@@ -84,9 +84,9 @@ public class PrinterClientHeadersTests
     {
         // Act
         PrinterClientHeaders headers = new(RequestWith(
-                                               ("User-Agent-Printer", "MK3.5"),
-                                               ("User-Agent-Version", "6.4.0+11974"),
-                                               ("Code", "MUF4RZJF5R")));
+                                               (Headers.UserAgentPrinter, "MK3.5"),
+                                               (Headers.UserAgentVersion, "6.4.0+11974"),
+                                               (Headers.Code, "MUF4RZJF5R")));
 
         // Assert
         headers.Printer.Should().Be("MK3.5");

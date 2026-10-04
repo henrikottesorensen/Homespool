@@ -18,6 +18,7 @@ using Microsoft.Extensions.Options;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Host.Localisation;
 using Homespool.Host.RateLimiting;
 using Homespool.Host.Services;
@@ -206,7 +207,7 @@ public class PasskeysModel : StatusMessagePageModel
 
         _ceremonies.Begin(HttpContext, PasskeyCeremonies.Attestation, creation.AttestationState!);
 
-        Response.Headers.CacheControl = "no-store";
+        Response.Headers.CacheControl = CacheControlValues.NoStore;
 
         return Content(creation.CreationOptionsJson, "application/json; charset=utf-8");
     }

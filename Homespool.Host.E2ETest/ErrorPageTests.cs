@@ -18,6 +18,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -89,10 +90,10 @@ public sealed partial class ErrorPageTests : IAsyncLifetime
         TraceReference().IsMatch(page).Should().BeTrue("the reference is the bare 32-character trace id the log carries as @tr");
         page.Should().NotContain(ThrowingController.Message, "outside Development the exception stays in the log");
 
-        Header(response, HeaderNames.XContentTypeOptions).Should().Be("nosniff");
-        Header(response, HeaderNames.XFrameOptions).Should().Be("DENY");
-        Header(response, "Referrer-Policy").Should().Be("same-origin");
-        Header(response, "Content-Security-Policy").Should().MatchRegex(PolicyShape);
+        Header(response, HeaderNames.XContentTypeOptions).Should().Be(SecurityHeaderValues.NoSniff);
+        Header(response, HeaderNames.XFrameOptions).Should().Be(SecurityHeaderValues.FrameDeny);
+        Header(response, CustomHeaderNames.ReferrerPolicy).Should().Be(SecurityHeaderValues.ReferrerSameOrigin);
+        Header(response, HeaderNames.ContentSecurityPolicy).Should().MatchRegex(PolicyShape);
         page.Should().Contain($"<script nonce=\"{Nonce(response)}\">", "the layout's inline block has to run under the page's own policy");
     }
 
@@ -169,8 +170,8 @@ public sealed partial class ErrorPageTests : IAsyncLifetime
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         page.Should().Contain(ThrowingController.Message).And.NotContain("Something went wrong");
-        Header(response, "Content-Security-Policy").Should().Be("object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
-        Header(response, HeaderNames.XContentTypeOptions).Should().Be("nosniff");
+        Header(response, HeaderNames.ContentSecurityPolicy).Should().Be("object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+        Header(response, HeaderNames.XContentTypeOptions).Should().Be(SecurityHeaderValues.NoSniff);
     }
 
     [GeneratedRegex("<code>[0-9a-f]{32}</code>")]
@@ -178,7 +179,7 @@ public sealed partial class ErrorPageTests : IAsyncLifetime
 
     private static string Nonce(HttpResponseMessage response)
     {
-        string policy = Header(response, "Content-Security-Policy");
+        string policy = Header(response, HeaderNames.ContentSecurityPolicy);
         int start = policy.IndexOf("'nonce-", StringComparison.Ordinal) + "'nonce-".Length;
         int end = policy.IndexOf('\'', start);
 

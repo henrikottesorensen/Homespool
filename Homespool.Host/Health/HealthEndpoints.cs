@@ -15,6 +15,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.Certificates;
+using Homespool.Host.Http;
 using Homespool.Host.Listeners;
 using Homespool.Host.Telemetry;
 
@@ -191,8 +192,8 @@ public static class HealthEndpoints
             StatusCodes.Status503ServiceUnavailable :
             StatusCodes.Status200OK;
 
-        context.Response.Headers.CacheControl = "no-store, no-cache";
-        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers.CacheControl = CacheControlValues.NoStoreNoCache;
+        context.Response.Headers.Pragma = CacheControlValues.NoCache;
         context.Response.Headers.Expires = "Thu, 01 Jan 1970 00:00:00 GMT";
 
         if (report is not null)

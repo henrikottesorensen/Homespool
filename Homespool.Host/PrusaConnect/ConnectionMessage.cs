@@ -85,3 +85,14 @@ public sealed record InboundTransferRequestMessage(DateTimeOffset ReceivedAt, In
 /// piece of command state touched from two threads, and this class's history is what that costs.
 /// </remarks>
 public sealed record TakePendingCommandMessage(TaskCompletionSource<PendingCommand?> Completion) : ConnectionMessage;
+
+/// <summary>
+/// The HTTP transport giving back a command it took for a telemetry POST that ended before the
+/// response was written. The printer never saw it, so the loop parks it again for the next poll.
+/// </summary>
+/// <remarks>
+/// Only a return before the write is possible. Once the response has started, even a write that
+/// succeeds proves only that the bytes reached the proxy in front of us, so the command stays
+/// delivered and its response clock decides.
+/// </remarks>
+public sealed record ReturnCollectedCommandMessage(PendingCommand Command) : ConnectionMessage;

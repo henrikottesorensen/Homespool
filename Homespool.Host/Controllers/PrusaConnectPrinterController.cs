@@ -550,12 +550,9 @@ public class PrusaConnectPrinterController : ControllerBase
 
         // Ask the loop, and only the loop, whether a command is waiting: the parked slot is
         // loop-owned, and this request thread never reads it. Posted after the telemetry so that a
-        // command answering something in this very message is not handed out ahead of it.
-        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        await actor.PostAsync(new TakePendingCommandMessage(take), cancellationToken);
-
-        PendingCommand? pending = await take.Task.WaitAsync(cancellationToken);
+        // command answering something in this very message is not handed out ahead of it. A request
+        // that ends before this point gives back what it took, so the next poll collects it.
+        PendingCommand? pending = await HttpCommandCollection.CollectAsync(actor, cancellationToken);
 
         if (pending is null)
         {

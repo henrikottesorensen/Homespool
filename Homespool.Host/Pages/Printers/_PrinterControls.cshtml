@@ -124,7 +124,10 @@
                         <input type="range" class="form-range printer-lighting-range" id="lighting" name="intensity"
                                min="0" max="@PrinterLighting.MaxIntensity" step="1" value="@Model.LightingIntensity"
                                data-range-output="lighting-value" />
-                        <span class="text-nowrap"><output id="lighting-value" for="lighting">@Model.LightingIntensity</output>%</span>
+                        @* d-inline because Bootstrap's reboot makes an <output> an inline-block, and
+                           Safari sat the % sign below the number beside it. Inline, the two are one
+                           run of text on one baseline. *@
+                        <span class="text-nowrap"><output class="d-inline" id="lighting-value" for="lighting">@Model.LightingIntensity</output>%</span>
                         <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_LightingApply"]</button>
                     </form>
 

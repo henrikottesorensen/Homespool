@@ -41,9 +41,10 @@ public class TokenService
     /// <para>
     /// <b>Where that latency lands on the printer port</b>, which is what makes the count worth
     /// arguing about: one hash per live provisioning token when an unknown fingerprint makes first
-    /// contact, bounded by <c>ProvisioningHashBudget</c>, and one per enrolled printer when its last
-    /// verification has aged out of <c>VerifiedPrinterTokens</c>. A printer's ordinary traffic does not
-    /// pay it per request.
+    /// contact, and one or two when a known fingerprint presents a token that is not its remembered
+    /// one - all bounded by <c>ProvisioningHashBudget</c>, which leaves each enrolled printer the one
+    /// it needs when its last verification has aged out of <c>VerifiedPrinterTokens</c>. A printer's
+    /// ordinary traffic does not pay it per request.
     /// </para>
     /// <para>
     /// <b>Do not reuse <see cref="HashToken(string)"/> for user passwords.</b> Against a

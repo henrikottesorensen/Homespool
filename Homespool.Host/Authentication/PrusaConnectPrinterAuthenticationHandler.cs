@@ -197,6 +197,18 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
             return AuthenticateResult.Success(BuildTicket(auth.PrinterId, auth.Printer));
         }
 
+        // The fingerprint is known but sent in clear, so nothing is proved yet and the hash is drawn
+        // like any other: free for the one verification a memo lifetime the printer itself needs, from
+        // the shared bucket past that (see ProvisioningHashBudget).
+        if (!_hashBudget.TryTakeFor(auth.HashedToken))
+        {
+            ReportExhaustedBudget();
+
+            // The answer a wrong token gets, so a printer that happened to arrive while its credential
+            // was being hammered retries exactly as it would have anyway.
+            return AuthenticateResult.Fail("PrusaConnect invalid token.");
+        }
+
         if (_tokenService.VerifyToken(token, auth.HashedToken))
         {
             _verifiedTokens.Remember(auth.HashedToken, token);
@@ -231,6 +243,11 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// the wire there is no way to tell an operator's duplicate entry from an attempt on someone
     /// else's printer, so it fails closed and the operator reissues against the printer they mean.
     /// </para>
+    /// <para>
+    /// <b>The hash is drawn from <see cref="ProvisioningHashBudget"/></b>, as first contact's are: a
+    /// reissued token is a provisioning token, and any caller who knows this printer's fingerprint can
+    /// make this check run. A rebind refused for want of budget leaves the row in place for the retry.
+    /// </para>
     /// </remarks>
     private async Task<AuthenticateResult> RebindReissuedTokenAsync(PrusaConnectAuthenticationData enrolled, string token)
     {
@@ -241,6 +258,12 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         PrusaConnectProvisioning? reissued = await _dbContext.PrusaConnectProvisionings
                                                              .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId &&
                                                                                         p.CreatedAt > issuedAfter);
+
+        if (reissued is not null && !_hashBudget.TryTake())
+        {
+            ReportExhaustedBudget();
+            return AuthenticateResult.Fail("PrusaConnect invalid token.");
+        }
 
         if (reissued is null || !_tokenService.VerifyToken(token, reissued.HashedToken))
         {
@@ -372,8 +395,8 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     }
 
     /// <summary>
-    /// Says, at most once a <see cref="ProvisioningHashBudget.ReportInterval"/>, that first contacts
-    /// are being refused for want of hashes - the one line a flood produces, rather than one a request.
+    /// Says, at most once a <see cref="ProvisioningHashBudget.ReportInterval"/>, that token checks are
+    /// being refused for want of hashes - the one line a flood produces, rather than one a request.
     /// </summary>
     private void ReportExhaustedBudget()
     {
@@ -383,10 +406,10 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         }
 
         Logger.LogWarning(
-            "The printer port's budget for checking USB-key provisioning tokens is spent: {Refused} hash(es) refused since " +
-            "the last report. Unknown fingerprints are arriving faster than {HashesPerSecond} hashes a second allow, so a " +
-            "USB-key printer making first contact now is refused as unknown and will get through when it retries after " +
-            "the traffic eases.",
+            "The printer port's budget for checking unproven printer tokens is spent: {Refused} hash(es) refused since " +
+            "the last report. Unknown fingerprints, or known ones with wrong tokens, are arriving faster than " +
+            "{HashesPerSecond} hashes a second allow, so a USB-key printer making first contact or rebinding a reissued " +
+            "token now is refused and will get through when it retries after the traffic eases.",
             refused,
             ProvisioningHashBudget.HashesPerSecond);
     }

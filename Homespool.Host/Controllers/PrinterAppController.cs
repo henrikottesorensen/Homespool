@@ -19,6 +19,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.Services;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -210,7 +211,11 @@ public class PrinterAppController : ControllerBase
         try
         {
             PrinterWithState? printer =
-                await _printerQueryService.UpdatePrinterAsync(uuid, CallerResolver.For(user, User), body.Name, body.Location, cancellationToken);
+                await _printerQueryService.UpdatePrinterAsync(uuid,
+                                                              CallerResolver.For(user, User),
+                                                              body.NameSpecified ? Field<string?>.Of(body.Name) : Field<string?>.Absent,
+                                                              body.LocationSpecified ? Field<string?>.Of(body.Location) : Field<string?>.Absent,
+                                                              cancellationToken);
 
             if (printer is null)
             {

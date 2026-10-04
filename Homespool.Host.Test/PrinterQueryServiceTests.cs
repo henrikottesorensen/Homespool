@@ -15,6 +15,7 @@ using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Services;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -455,7 +456,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         updated.Should().BeNull();
     }
 
-    /// <summary>Updating stamps UpdatedAt.</summary>
+    /// <summary>A change stamps UpdatedAt.</summary>
     [Fact]
     public async Task UpdatePrinterAsyncRefreshesUpdatedAt()
     {
@@ -463,7 +464,7 @@ public sealed class PrinterQueryServiceTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
 
         TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
-        Printer printer = await AddPrinterAsync(context, membership.TeamId);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Old name");
         printer.UpdatedAt = DateTimeOffset.UtcNow.AddDays(-1);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -471,10 +472,81 @@ public sealed class PrinterQueryServiceTests : IDisposable
 
         // Act
         PrinterWithState? updated = await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
-            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), null, null, CancellationToken.None);
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), "New name", Field<string?>.Absent,
+                                CancellationToken.None);
 
         // Assert
         updated!.Printer.UpdatedAt.Should().BeOnOrAfter(before.AddSeconds(-1));
+    }
+
+    /// <summary>
+    /// A field the patch leaves out keeps its value - renaming a printer does not wipe its location.
+    /// </summary>
+    [Fact]
+    public async Task UpdatePrinterAsyncLeavesAnAbsentFieldAlone()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Old name", location: "Old location");
+
+        // Act
+        await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), Field<string?>.Absent, "New location",
+                                CancellationToken.None);
+
+        // Assert
+        Printer stored = await context.Printers.AsNoTracking().SingleAsync(p => p.Id == printer.Id, TestContext.Current.CancellationToken);
+        stored.Name.Should().Be("Old name");
+        stored.Location.Should().Be("New location");
+    }
+
+    /// <summary>A present null clears the field, and only that field.</summary>
+    [Fact]
+    public async Task UpdatePrinterAsyncClearsAPresentNull()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Old name", location: "Old location");
+
+        // Act
+        await new PrinterQueryService(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System)
+            .UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), Field<string?>.Absent, Field<string?>.Null,
+                                CancellationToken.None);
+
+        // Assert
+        Printer stored = await context.Printers.AsNoTracking().SingleAsync(p => p.Id == printer.Id, TestContext.Current.CancellationToken);
+        stored.Name.Should().Be("Old name");
+        stored.Location.Should().BeNull();
+    }
+
+    /// <summary>A patch that changes nothing - empty, or restating the stored values - leaves UpdatedAt alone.</summary>
+    [Fact]
+    public async Task UpdatePrinterAsyncDoesNotStampUpdatedAtWhenNothingChanges()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember membership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Manager);
+        Printer printer = await AddPrinterAsync(context, membership.TeamId, name: "Same name", location: "Same location");
+        DateTimeOffset stamped = new(2026, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        printer.UpdatedAt = stamped;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        PrinterQueryService service = new(context, TestTelemetryContext.For(context), new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), new TeamCapabilityLookup(context), TimeProvider.System);
+
+        // Act
+        await service.UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), Field<string?>.Absent, Field<string?>.Absent,
+                                         CancellationToken.None);
+        await service.UpdatePrinterAsync(printer.Uuid, TestCallers.Scoped(1, Capability.ManagePrinter), "Same name", "Same location",
+                                         CancellationToken.None);
+
+        // Assert
+        Printer stored = await context.Printers.AsNoTracking().SingleAsync(p => p.Id == printer.Id, TestContext.Current.CancellationToken);
+        stored.UpdatedAt.Should().Be(stamped);
     }
 
     // ---------- GetPrinterStatisticsForUserAsync ----------

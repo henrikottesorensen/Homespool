@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -643,7 +644,46 @@ public sealed class TransferServiceTests : IDisposable
         DownloadsOffered(actor).Should().Be(0, "the offer was revoked and the command never went out");
     }
 
+    /// <summary>
+    /// A person who may see the printer but not print on it is refused before the send writes
+    /// anything: the file's name on the drive is chosen and saved ahead of the offer, and would
+    /// otherwise stay reserved for a file they could never send.
+    /// </summary>
+    [Fact]
+    public async Task ADirectSendWithoutPrintIsRefusedBeforeTheDriveNameIsReserved()
+    {
+        // Arrange - the seeded owner sees the printer and may not print on it
+        PrintFile file = await SeedAsync();
+        await SetCapabilitiesAsync(CapabilityPresets.Viewer);
+        IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        // Act
+        Func<Task> send = async () => await await SendDirectAsync(transfers, file);
+
+        // Assert
+        await send.Should().ThrowAsync<TeamAccessDeniedException>();
+        DownloadsOffered(actor).Should().Be(0);
+
+        await using AsyncServiceScope scope = _services.CreateAsyncScope();
+        (await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                    .PrintFilesOnPrinters
+                    .AnyAsync(TestContext.Current.CancellationToken))
+            .Should().BeFalse("nothing was reserved on the drive for a send that was never allowed");
+    }
+
     private static Caller Owner => Caller.Scoped(1, CapabilitySet.Everything);
+
+    /// <summary>Replaces the seeded owner's membership with <paramref name="capabilities"/>.</summary>
+    private async Task SetCapabilitiesAsync(IEnumerable<Capability> capabilities)
+    {
+        await using AsyncServiceScope scope = _services.CreateAsyncScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+        TeamMember membership = await context.TeamMembers.SingleAsync(TestContext.Current.CancellationToken);
+
+        membership.Capabilities = TestMemberships.Literal(capabilities);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
 
     /// <summary>Makes the seeded file <paramref name="length"/> bytes long without writing them.</summary>
     private void MakeStoredFileSparse(long length)

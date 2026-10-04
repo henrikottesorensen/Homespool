@@ -13,6 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
@@ -198,9 +199,19 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// <returns>What became of an older copy, and the printer's answer when the file was offered.</returns>
     /// <exception cref="PrintFileUnreadableException">The file could not be read.</exception>
     /// <exception cref="PrintFileTooLargeException">The file is too large for a printer to be sent.</exception>
+    /// <exception cref="CredentialScopeDeniedException">The credential's scope does not allow printing on it.</exception>
+    /// <exception cref="TeamAccessDeniedException">The printer's team does not allow this caller to print.</exception>
     /// <remarks>
+    /// <para>
     /// Through the printer's mailbox like the queue's sends, so the attempt is recorded before its end
     /// can be read, and the end settles it whether or not the queue ever visits this printer.
+    /// </para>
+    /// <para>
+    /// <b><see cref="Capability.Print"/> is asked before anything else</b>, because the send writes
+    /// before the printer is asked anything: the file's name on the drive is chosen and saved ahead
+    /// of the offer, so a refusal at the offer would leave that name reserved for a file this caller
+    /// could never send.
+    /// </para>
     /// </remarks>
     public async Task<DirectSendResult> SendDirectAsync(Printer printer,
                                                         PrintFile indexed,
@@ -210,6 +221,12 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     {
         ArgumentNullException.ThrowIfNull(printer);
         ArgumentNullException.ThrowIfNull(indexed);
+
+        await using (AsyncServiceScope scope = _scopeFactory.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<PrinterAccessService>()
+                       .RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
+        }
 
         TransferResult result = await SendAsync(new TransferRequest(printer.Id, indexed.Id, caller, new DirectSend(file)),
                                                 cancellationToken);

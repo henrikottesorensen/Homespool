@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
@@ -164,6 +166,57 @@ public sealed class UserPasswordAuthenticationHandlerTests : IDisposable
         last.Refusal().Should().Be(SignInRefusal.LockedOut, "the attempt that reached the limit reports the lockout it caused");
         right.Succeeded.Should().BeFalse("a locked-out account is refused before its password is even compared");
         right.Refusal().Should().Be(SignInRefusal.LockedOut);
+    }
+
+    /// <summary>
+    /// A lockout is imposed and checked on the injected clock, and ends when that clock passes its
+    /// end. The clock starts years behind the real one, so a lockout reckoned or checked against the
+    /// wall clock would either never start or never end.
+    /// </summary>
+    [Fact]
+    public async Task ALockoutRunsOnTheInjectedClock()
+    {
+        FakeTimeProvider clock = new(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath, services => services.AddSingleton<TimeProvider>(clock));
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+        int allowed = rig.Users.Options.Lockout.MaxFailedAccessAttempts;
+
+        for (int i = 0; i < allowed; i += 1)
+        {
+            await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential("owner", "not it")); // betterleaks:allow
+        }
+
+        AuthenticateResult whileLocked = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential("owner", LocalSchemeRig.Password));
+
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeTrue("the lockout has only just been imposed");
+        whileLocked.Refusal().Should().Be(SignInRefusal.LockedOut);
+
+        clock.Advance(rig.Users.Options.Lockout.DefaultLockoutTimeSpan + TimeSpan.FromSeconds(1));
+
+        AuthenticateResult afterwards = await LocalSchemeRig.AuthenticateAsync(rig.NewRequest(), Schemes.UserPassword, Credential("owner", LocalSchemeRig.Password));
+
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeFalse("the injected clock has passed the lockout's end");
+        afterwards.Succeeded.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// <see cref="UserManager{TUser}.AccessFailedAsync"/> reckons the lockout it imposes from the same
+    /// injected clock <see cref="UserManager{TUser}.IsLockedOutAsync"/> checks it against.
+    /// </summary>
+    [Fact]
+    public async Task AccessFailedAsyncImposesItsLockoutOnTheInjectedClock()
+    {
+        FakeTimeProvider clock = new(new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero));
+        await using LocalSchemeRig rig = await LocalSchemeRig.CreateAsync(_databasePath, services => services.AddSingleton<TimeProvider>(clock));
+        HSUser user = await rig.AddUserAsync("owner@example.com");
+
+        for (int i = 0; i < rig.Users.Options.Lockout.MaxFailedAccessAttempts; i += 1)
+        {
+            (await rig.Users.AccessFailedAsync(user)).Succeeded.Should().BeTrue();
+        }
+
+        (await rig.Users.GetLockoutEndDateAsync(user)).Should().Be(clock.GetUtcNow() + rig.Users.Options.Lockout.DefaultLockoutTimeSpan);
+        (await rig.Users.IsLockedOutAsync(user)).Should().BeTrue();
     }
 
     [Fact]

@@ -1281,6 +1281,9 @@
   <data name="Account_ExternalNoInvite" xml:space="preserve">
     <value>That sign-in succeeded, but no account here is linked to it and there is no invitation for it. Ask an administrator to invite you.</value>
   </data>
+  <data name="Account_ExternalNotAllowed" xml:space="preserve">
+    <value>That sign-in succeeded and is linked to an account here, but that account cannot sign in yet. If you have not confirmed its email address, use the link in the confirmation email or resend it; otherwise ask an administrator.</value>
+  </data>
   <data name="Account_EmailChangeError" xml:space="preserve">
     <value>Error changing email.</value>
   </data>

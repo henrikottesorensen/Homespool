@@ -258,6 +258,18 @@ public class ExternalLoginModel : PageModel
             return RedirectToPage("./LoginWith2fa", new { ReturnUrl = returnUrl, RememberMe = false });
         }
 
+        // An account has this identity linked and may not sign in - unconfirmed, or deactivated. It must
+        // not reach the invite gate: that tells the owner nobody here knows them, and with an invite in
+        // the round trip it offers a form to create a second account the existing link then refuses.
+        // Saying why is no oracle - the caller has just proved they hold the linked identity, so the
+        // only account this describes is their own.
+        if (result == ExternalSignInResult.NotAllowed)
+        {
+            ErrorMessage = _localiser["Account_ExternalNotAllowed"];
+
+            return RedirectToPage("./Login", new { ReturnUrl = returnUrl });
+        }
+
         // No account is linked, so this is a creation - and registration is invite-only. Whether the
         // provider authenticated somebody is not the question; whether an invite says they may have an
         // account here is.

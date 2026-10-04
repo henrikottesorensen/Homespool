@@ -33,7 +33,9 @@ namespace Homespool.Host.Notifications;
 /// <b>The audience follows the permission to see the thing.</b> A printer waiting for a person is
 /// news to everybody who may see the printer; a queue held, to everybody who may see the queue. A
 /// print ending is its owner's news alone - the person who queued it - and a person who stopped their
-/// own print is not told they did.
+/// own print is not told they did. <b>So does what a message says</b>: a printer lost mid-print is told
+/// to everybody who may see the printer, but the file it was printing only to those who may see its
+/// history, and to whoever queued it.
 /// </para>
 /// </remarks>
 public sealed class NotificationRouter
@@ -201,26 +203,35 @@ public sealed class NotificationRouter
 
     private async Task<int> SendLostAsync(Printer printer, PrinterLost lost, CancellationToken cancellationToken)
     {
-        string? file = await _db.PrintJobs
-                                .AsNoTracking()
-                                .Where(job => job.Id == lost.PrintJobId)
-                                .Select(job => job.FileName)
-                                .SingleOrDefaultAsync(cancellationToken);
+        PrintJob? job = await _db.PrintJobs
+                                 .AsNoTracking()
+                                 .SingleOrDefaultAsync(row => row.Id == lost.PrintJobId, cancellationToken);
 
-        return await SendToTeamAsync(printer,
-                                     Capability.ViewPrinter,
-                                     NotificationKind.PrinterLost,
-                                     language => Task.FromResult<NotificationMessage?>(UserCultures.InCulture(language, () =>
-                                         new NotificationMessage(
-                                             _localiser["Notifications_LostTitle", PrinterDisplayName.For(printer)].Value,
-                                             file is null ?
-                                                 _localiser["Notifications_LostBodyNoFile"].Value :
-                                                 _localiser["Notifications_LostBody", file].Value,
-                                             UrlFor(printer),
-                                             TagFor(printer),
-                                             NotificationUrgency.High,
-                                             TimeSpan.FromHours(1)))),
-                                     cancellationToken);
+        IReadOnlyList<Recipient> audience = await AudienceAsync(printer, Capability.ViewPrinter, NotificationKind.PrinterLost, cancellationToken);
+
+        foreach (Recipient recipient in audience)
+        {
+            // The printer is news to everybody who may see it; what it was printing is not. The page
+            // names the running print only behind ViewHistory, and the person who queued it knows.
+            string? file = job is not null &&
+                           (recipient.Capabilities.Allows(Capability.ViewHistory) || recipient.UserId == job.QueuedByUserId) ?
+                job.FileName :
+                null;
+
+            NotificationMessage message = UserCultures.InCulture(recipient.Language, () => new NotificationMessage(
+                _localiser["Notifications_LostTitle", PrinterDisplayName.For(printer)].Value,
+                file is null ?
+                    _localiser["Notifications_LostBodyNoFile"].Value :
+                    _localiser["Notifications_LostBody", file].Value,
+                UrlFor(printer),
+                TagFor(printer),
+                NotificationUrgency.High,
+                TimeSpan.FromHours(1)));
+
+            await _destinations.DeliverToAllAsync(recipient.UserId, message, cancellationToken);
+        }
+
+        return audience.Count;
     }
 
     private NotificationMessage FilamentSoon(Printer printer, FilamentChangeSoon soon, string? language)
@@ -316,12 +327,15 @@ public sealed class NotificationRouter
         // Filtered here rather than in SQL: capabilities are a space-separated string, and matching
         // one by substring is the trap the capability set exists to avoid - as is matching an id in
         // the muted printers by substring.
-        return [.. members.Where(member => CapabilitySet.Parse(member.Capabilities).Allows(needed))
-                          .Where(member => !NotificationMutes.Parse(member.MutedNotifications).Contains(kind))
+        return [.. members.Where(member => !NotificationMutes.Parse(member.MutedNotifications).Contains(kind))
                           .Where(member => !NotificationMutes.ParsePrinters(member.MutedPrinters).Contains(printer.Uuid))
-                          .Select(member => new Recipient(member.UserId, member.Language))];
+                          .Select(member => new Recipient(member.UserId, member.Language, CapabilitySet.Parse(member.Capabilities)))
+                          .Where(recipient => recipient.Capabilities.Allows(needed))];
     }
 
-    /// <summary>Somebody to tell, and the language to tell them in.</summary>
-    private sealed record Recipient(long UserId, string? Language);
+    /// <summary>
+    /// Somebody to tell, the language to tell them in, and what their membership lets them see - for
+    /// a message that says more to some of its audience than to others.
+    /// </summary>
+    private sealed record Recipient(long UserId, string? Language, CapabilitySet Capabilities);
 }

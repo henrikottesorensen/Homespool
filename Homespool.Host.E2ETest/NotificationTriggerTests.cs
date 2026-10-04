@@ -294,6 +294,11 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
             db.PrintJobs.Add(job);
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
             jobId = job.Id;
+
+            await db.TeamMembers.Where(member => member.UserId == _muted)
+                    .ExecuteUpdateAsync(set => set.SetProperty(member => member.Capabilities,
+                                                               CapabilitySet.Format([Capability.ViewPrinter, Capability.ViewHistory])),
+                                        TestContext.Current.CancellationToken);
         });
 
         // What the watcher publishes once the printer has been quiet for the whole grace, which a test
@@ -304,7 +309,12 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
 
         heard.Keys.Should().BeEquivalentTo(["owner", "viewer", "muted"]);
         heard["owner"].GetProperty("title").GetString().Should().Be("Mistet forbindelsen til Core One+");
-        heard["viewer"].GetProperty("body").GetString().Should().Be("It was printing benchy.bgcode – it may still be.");
+        heard["owner"].GetProperty("body").GetString().Should().Be("Den var i gang med at printe benchy.bgcode – det er den måske stadig.",
+                                                                   "whoever queued the print knows what it is, history or not");
+        heard["muted"].GetProperty("body").GetString().Should().Be("It was printing benchy.bgcode – it may still be.",
+                                                                   "somebody who may see the printer's history may see what it was printing");
+        heard["viewer"].GetProperty("body").GetString().Should().Be("It was printing – it may still be.",
+                                                                    "the printer page names the running print only behind ViewHistory");
     }
 
     /// <summary>

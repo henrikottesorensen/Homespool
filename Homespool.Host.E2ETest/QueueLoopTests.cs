@@ -1192,7 +1192,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
         {
             (await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
                         .CancelAsync(printerId, queued, Caller.Unscoped(userId), TestContext.Current.CancellationToken))
-                .Should().BeTrue();
+                .Should().Be(QueueCancellation.Removed);
         }
 
         fake.Device.TrySetReady().Should().BeTrue();

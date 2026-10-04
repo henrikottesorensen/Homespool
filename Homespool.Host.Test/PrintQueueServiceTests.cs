@@ -338,11 +338,11 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, TestCallers.Scoped(Bob, Capability.ControlPrinter),
-                                                 TestContext.Current.CancellationToken);
+        QueueCancellation cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, TestCallers.Scoped(Bob, Capability.ControlPrinter),
+                                                              TestContext.Current.CancellationToken);
 
         // Assert
-        cancelled.Should().BeTrue();
+        cancelled.Should().Be(QueueCancellation.Removed);
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
@@ -365,11 +365,11 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, TestCallers.Scoped(Bob, Capability.Print),
-                                                 TestContext.Current.CancellationToken);
+        QueueCancellation cancelled = await queue.CancelAsync(printer.Id, job.PrintUuid, TestCallers.Scoped(Bob, Capability.Print),
+                                                              TestContext.Current.CancellationToken);
 
         // Assert
-        cancelled.Should().BeTrue();
+        cancelled.Should().Be(QueueCancellation.Removed);
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
@@ -400,7 +400,7 @@ public sealed class PrintQueueServiceTests : IDisposable
     }
 
     [Fact]
-    public async Task CancellingAJobThatIsNotThereIsFalseRatherThanAThrow()
+    public async Task CancellingAJobThatIsNotThereIsNotFoundRatherThanAThrow()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -408,11 +408,112 @@ public sealed class PrintQueueServiceTests : IDisposable
         PrintQueueService queue = NewQueue(context);
 
         // Act
-        bool cancelled = await queue.CancelAsync(printer.Id, Guid.NewGuid(), TestCallers.Scoped(Alice, Capability.Print),
-                                                 TestContext.Current.CancellationToken);
+        QueueCancellation cancelled = await queue.CancelAsync(printer.Id, Guid.NewGuid(), TestCallers.Scoped(Alice, Capability.Print),
+                                                              TestContext.Current.CancellationToken);
 
         // Assert
-        cancelled.Should().BeFalse();
+        cancelled.Should().Be(QueueCancellation.NotFound);
+    }
+
+    /// <summary>
+    /// Withdrawing an entry whose <c>START_PRINT</c> is still unanswered asks for its print to be
+    /// stopped: the open row is marked with who withdrew it and the credential they did it with, which
+    /// is what the queue's loop sends the stop as.
+    /// </summary>
+    /// <remarks>
+    /// <b>The marking is the whole of it here</b> - nothing is sent, because a printer still deciding
+    /// has nothing to stop. Without the mark the print starts with nobody having asked for it, and its
+    /// owner learns that the cancel did nothing only by watching it print.
+    /// </remarks>
+    [Fact]
+    public async Task WithdrawingAnEntryWhoseStartIsUnansweredAsksForItToBeStopped()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode");
+
+        QueuedPrint entry = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                     TestContext.Current.CancellationToken)).Queued;
+        PrintJob starting = await AddCommandedAsync(context, entry, PrintState.Unconfirmed, ended: false);
+        Caller withdrawer = TestCallers.Scoped(Alice, Capability.Print);
+
+        // Act
+        QueueCancellation cancelled = await queue.CancelAsync(printer.Id, entry.PrintUuid, withdrawer,
+                                                              TestContext.Current.CancellationToken);
+
+        // Assert
+        cancelled.Should().Be(QueueCancellation.StopRequested);
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+
+        context.ChangeTracker.Clear();
+        PrintJob marked = await context.PrintJobs.SingleAsync(row => row.Id == starting.Id, TestContext.Current.CancellationToken);
+        marked.WithdrawnByUserId.Should().Be(Alice);
+        marked.WithdrawnByScope.Should().Be(withdrawer.ScopeToRecord, "the stop goes out with no more than the withdrawal had");
+        marked.StoppedByUserId.Should().BeNull("nothing has been stopped - only asked for");
+    }
+
+    /// <summary>
+    /// Somebody else's entry, withdrawn by an operator: the stop is the operator's to send, and is
+    /// recorded as theirs.
+    /// </summary>
+    [Fact]
+    public async Task AnOperatorWithdrawingSomebodyElsesStartingEntryIsTheOneTheStopIsSentAs()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
+        await AddMemberAsync(context, printer.TeamId, Bob, [.. CapabilityPresets.Operator]);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode");
+
+        QueuedPrint entry = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                     TestContext.Current.CancellationToken)).Queued;
+        PrintJob starting = await AddCommandedAsync(context, entry, PrintState.Starting, ended: false);
+
+        // Act
+        QueueCancellation cancelled = await queue.CancelAsync(printer.Id, entry.PrintUuid,
+                                                              TestCallers.Scoped(Bob, Capability.ControlPrinter),
+                                                              TestContext.Current.CancellationToken);
+
+        // Assert
+        cancelled.Should().Be(QueueCancellation.StopRequested);
+
+        context.ChangeTracker.Clear();
+        PrintJob marked = await context.PrintJobs.SingleAsync(row => row.Id == starting.Id, TestContext.Current.CancellationToken);
+        marked.WithdrawnByUserId.Should().Be(Bob);
+        marked.WithdrawnByScope.Should().Be(TestCallers.Scoped(Bob, Capability.ControlPrinter).ScopeToRecord);
+    }
+
+    /// <summary>
+    /// A closed row under the same handle - a refused attempt, a full-drive hold - is history, not a
+    /// print being started, and withdrawing the entry beside it leaves it alone.
+    /// </summary>
+    [Fact]
+    public async Task WithdrawingAnEntryLeavesItsClosedRowsAlone()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
+        PrintQueueService queue = NewQueue(context);
+        await UploadAsync(context, "one.gcode");
+
+        QueuedPrint entry = (await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode",
+                                                     TestContext.Current.CancellationToken)).Queued;
+        PrintJob held = await AddCommandedAsync(context, entry, PrintState.Failed, ended: true);
+
+        // Act
+        QueueCancellation cancelled = await queue.CancelAsync(printer.Id, entry.PrintUuid, Caller.Unscoped(Alice),
+                                                              TestContext.Current.CancellationToken);
+
+        // Assert
+        cancelled.Should().Be(QueueCancellation.Removed);
+
+        context.ChangeTracker.Clear();
+        PrintJob untouched = await context.PrintJobs.SingleAsync(row => row.Id == held.Id, TestContext.Current.CancellationToken);
+        untouched.WithdrawnByUserId.Should().BeNull();
+        untouched.WithdrawnByScope.Should().BeNull();
     }
 
     /// <summary>
@@ -472,11 +573,11 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                    TestContext.Current.CancellationToken)).Queued;
 
         // Act
-        bool cancelled = await queue.CancelAsync(other.Id, job.PrintUuid, TestCallers.Scoped(Alice, Capability.Print),
-                                                 TestContext.Current.CancellationToken);
+        QueueCancellation cancelled = await queue.CancelAsync(other.Id, job.PrintUuid, TestCallers.Scoped(Alice, Capability.Print),
+                                                              TestContext.Current.CancellationToken);
 
         // Assert
-        cancelled.Should().BeFalse();
+        cancelled.Should().Be(QueueCancellation.NotFound);
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
@@ -712,6 +813,33 @@ public sealed class PrintQueueServiceTests : IDisposable
             QueuedByUserId = queuedBy,
             StartedAt = DateTimeOffset.UtcNow.AddHours(-2),
             EndedAt = DateTimeOffset.UtcNow.AddHours(-1),
+        };
+
+        context.PrintJobs.Add(job);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return job;
+    }
+
+    /// <summary>A row the queue loop opened for <paramref name="entry"/>, in <paramref name="state"/>.</summary>
+    private static async Task<PrintJob> AddCommandedAsync(HomespoolDbContext context,
+                                                          QueuedPrint entry,
+                                                          PrintState state,
+                                                          bool ended)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+
+        PrintJob job = new()
+        {
+            PrintUuid = entry.PrintUuid,
+            PrinterId = entry.PrinterId,
+            FileName = "one.gcode",
+            QueuedByUserId = entry.QueuedByUserId,
+            QueuedByScope = entry.QueuedByScope,
+            StartedAt = now,
+            CommandedAt = now,
+            EndedAt = ended ? now : null,
+            State = state,
         };
 
         context.PrintJobs.Add(job);

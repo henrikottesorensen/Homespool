@@ -486,6 +486,13 @@ namespace Homespool.Data.Migrations
                     b.Property<long?>("StoppedByUserId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("WithdrawnByScope")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("WithdrawnByUserId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PrintUuid");

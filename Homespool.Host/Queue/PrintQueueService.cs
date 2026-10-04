@@ -430,21 +430,38 @@ public class PrintQueueService
     /// </exception>
     /// <remarks>
     /// <para>
-    /// <b>This never stops a print.</b> A job the loop has already started is a <c>Job</c>, not a queue
-    /// entry, and stopping it is a separate deliberate act, so withdrawing from the queue can never
-    /// cancel a print on somebody.
+    /// <b>A print the printer has confirmed is never stopped from here.</b> Once the printer has
+    /// taken it, the entry is gone and the print is a <see cref="PrintJob"/>; stopping it is a
+    /// separate deliberate act, so withdrawing from the queue can never cancel a running print on
+    /// somebody.
+    /// </para>
+    /// <para>
+    /// <b>A print still being started is, because the person withdrawing it never saw it start.</b>
+    /// The entry outlives the <c>START_PRINT</c> until the printer confirms it, and that can take
+    /// minutes when the answer is slow. Withdrawing it then is a request that it not print, so the
+    /// open row is marked and the queue's loop stops the print once the printer says it is ours and
+    /// running - or drops the request if it never began. Nothing is sent from here: the printer holds
+    /// one command at a time, and one still deciding has nothing to stop.
+    /// </para>
+    /// <para>
+    /// <b>The entry is deleted before the row is looked for, and the order is the point.</b> The loop
+    /// opens its row before sending and looks for the entry again after, so whichever of the two
+    /// writes second sees the other's: either the loop finds the entry gone and sends nothing, or this
+    /// finds the row and marks it. Looking first would leave a window where neither sees the other and
+    /// the print starts unmarked.
     /// </para>
     /// <para>
     /// <b>Whose entry it is decides who may remove it.</b> <see cref="Capability.Print"/> withdraws
     /// your own, <see cref="Capability.ControlPrinter"/> withdraws anybody's: the queue is the
     /// printer's rather than the queuer's, for whoever holds <see cref="Capability.ControlPrinter"/>.
+    /// It is the same rule <see cref="PrintStopService"/> applies to a stop, so a withdrawal that may
+    /// turn into one is never allowed what the stop would not be.
     /// </para>
     /// </remarks>
-    /// <returns>False if there is no such queued print on that printer.</returns>
-    public async Task<bool> CancelAsync(int printerId,
-                                        Guid printUuid,
-                                        Caller caller,
-                                        CancellationToken cancellationToken)
+    public async Task<QueueCancellation> CancelAsync(int printerId,
+                                                     Guid printUuid,
+                                                     Caller caller,
+                                                     CancellationToken cancellationToken)
     {
         // Whether this caller may withdraw anything here - their own work being the least - asked
         // before the lookup, so somebody who may withdraw nothing is refused alike for a live handle
@@ -455,15 +472,33 @@ public class PrintQueueService
 
         if (job is null)
         {
-            return false;
+            return QueueCancellation.NotFound;
         }
 
         await _access.RequireWithdrawingAsync(job.PrinterId, caller, job.QueuedByUserId, cancellationToken);
 
         _dbContext.QueuedPrints.Remove(job);
-        await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return true;
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The printer confirmed the print between the lookup and the delete, and the loop took
+            // the entry. It is a print now, which this never stops.
+            return QueueCancellation.NotFound;
+        }
+
+        int starting = await _dbContext.PrintJobs
+                                       .Where(row => row.PrinterId == job.PrinterId &&
+                                                     row.PrintUuid == job.PrintUuid &&
+                                                     row.EndedAt == null)
+                                       .ExecuteUpdateAsync(set => set.SetProperty(row => row.WithdrawnByUserId, caller.UserId)
+                                                                     .SetProperty(row => row.WithdrawnByScope, caller.ScopeToRecord),
+                                                           cancellationToken);
+
+        return starting > 0 ? QueueCancellation.StopRequested : QueueCancellation.Removed;
     }
 
     /// <summary>One entry in one printer's queue, tracked for the write that follows.</summary>

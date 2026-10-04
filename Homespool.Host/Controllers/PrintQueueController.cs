@@ -224,15 +224,22 @@ public class PrintQueueController : ControllerBase
     /// Cancels a queued print. <c>DELETE /api/v1/printers/{printerUuid}/queue/{printUuid}</c>.
     /// </summary>
     /// <remarks>
-    /// <b>This never stops a print that has already started.</b> Once the loop has taken an entry it
+    /// <para>
+    /// <b>This never stops a print the printer has confirmed.</b> Once the loop has taken an entry it
     /// is a print, not a plan, and ending one is a deliberate separate act: do not cancel prints on
     /// people.
+    /// </para>
+    /// <para>
+    /// <b>202 rather than 204 when the print was still being started</b>: the entry is gone, and the
+    /// print is stopped if the printer turns out to have started it - which is not known yet, so the
+    /// stop has been accepted rather than done. <see cref="PrintQueueService.CancelAsync"/> has why.
+    /// </para>
     /// </remarks>
     [HttpDelete]
     [Route("printers/{printerUuid:guid}/queue/{printUuid:guid}")]
-    public async Task<Results<NoContent, ForbiddenProblem, NotFoundProblem>> Cancel(Guid printerUuid,
-                                                                                   Guid printUuid,
-                                                                                   CancellationToken cancellationToken)
+    public async Task<Results<NoContent, Accepted, ForbiddenProblem, NotFoundProblem>> Cancel(Guid printerUuid,
+                                                                                             Guid printUuid,
+                                                                                             CancellationToken cancellationToken)
     {
         (Printer? printer, Caller? caller) = await ResolveAsync(printerUuid, cancellationToken);
 
@@ -248,14 +255,12 @@ public class PrintQueueController : ControllerBase
 
         try
         {
-            bool found = await _queue.CancelAsync(printer.Id, printUuid, caller, cancellationToken);
-
-            if (!found)
+            return await _queue.CancelAsync(printer.Id, printUuid, caller, cancellationToken) switch
             {
-                return this.NotFoundProblem();
-            }
-
-            return TypedResults.NoContent();
+                QueueCancellation.Removed => TypedResults.NoContent(),
+                QueueCancellation.StopRequested => TypedResults.Accepted((string?)null),
+                _ => this.NotFoundProblem(),
+            };
         }
         catch (TeamAccessDeniedException e)
         {

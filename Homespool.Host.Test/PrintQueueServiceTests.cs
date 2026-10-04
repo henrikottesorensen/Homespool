@@ -1160,7 +1160,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         // Act
         IReadOnlyDictionary<int, int> counts =
-            await queue.CountByPrinterAsync([busy.Id, quiet.Id], TestContext.Current.CancellationToken);
+            await queue.CountByPrinterAsync([busy.Id, quiet.Id], Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         // Assert
         counts[busy.Id].Should().Be(2);
@@ -1190,7 +1190,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         // Act
         IReadOnlyDictionary<int, int> counts =
-            await queue.CountByPrinterAsync([granted.Id], TestContext.Current.CancellationToken);
+            await queue.CountByPrinterAsync([granted.Id], Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         // Assert
         counts.Should().ContainSingle();
@@ -1210,7 +1210,34 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         // Act
         IReadOnlyDictionary<int, int> counts =
-            await NewQueue(context).CountByPrinterAsync([printer.Id], TestContext.Current.CancellationToken);
+            await NewQueue(context).CountByPrinterAsync([printer.Id], Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+
+        // Assert
+        counts.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A printer the reader may see but whose queue they may not is left out of the counts, as an
+    /// empty queue is: the depth of a queue is the queue's to tell, not the printer's.
+    /// </summary>
+    [Fact]
+    public async Task CountsNothingWhereTheCallerMayNotSeeTheQueue()
+    {
+        // Arrange - queued by somebody who may, read by Alice who may only see the printer
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await SeedAsync(context, CapabilityPresets.Operator);
+
+        await UploadAsync(context, "one.gcode");
+        PrintQueueService queue = NewQueue(context);
+        await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
+
+        TeamMember membership = await context.TeamMembers.SingleAsync(TestContext.Current.CancellationToken);
+        membership.Capabilities = TestMemberships.Literal([Capability.ViewPrinter]);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IReadOnlyDictionary<int, int> counts =
+            await NewQueue(context).CountByPrinterAsync([printer.Id], Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         // Assert
         counts.Should().BeEmpty();
@@ -1286,7 +1313,8 @@ public sealed class PrintQueueServiceTests : IDisposable
 
     private PrintQueueService NewQueue(HomespoolDbContext context)
     {
-        return new(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), NewCatalog(context), TimeProvider.System, _signal, NewHistory(context));
+        return new(context, new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance), NewCatalog(context), TimeProvider.System, _signal, NewHistory(context),
+                   new TeamCapabilityLookup(context));
     }
 
     private HomespoolDbContext NewContext()

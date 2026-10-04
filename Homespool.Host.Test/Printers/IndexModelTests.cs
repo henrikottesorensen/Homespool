@@ -156,7 +156,7 @@ public sealed class IndexModelTests : IDisposable
                                           new QueueSnapshotReader(context, TestTelemetryContext.For(context), connectionRegistry,
                                                                   TimeProvider.System, access, Substitute.For<ITransferOffers>()),
                                           new UserNameLookup(context));
-        PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal, history);
+        PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal, history, new TeamCapabilityLookup(context));
 
         // The drop machinery, real rather than substituted: it is a sealed class, and nothing here
         // drops anything - the page only needs one to be constructed.

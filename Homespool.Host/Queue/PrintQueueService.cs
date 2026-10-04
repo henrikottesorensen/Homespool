@@ -46,16 +46,19 @@ public class PrintQueueService
     private readonly TimeProvider _timeProvider;
     private readonly QueueSignal _signal;
     private readonly PrintHistoryService _history;
+    private readonly TeamCapabilityLookup _teams;
 
     public PrintQueueService(HomespoolDbContext dbContext,
                              PrinterAccessService access,
                              PrintFileCatalog files,
                              TimeProvider timeProvider,
                              QueueSignal signal,
-                             PrintHistoryService history)
+                             PrintHistoryService history,
+                             TeamCapabilityLookup teams)
     {
         _dbContext = dbContext;
         _access = access;
+        _teams = teams;
         _files = files;
         _timeProvider = timeProvider;
         _signal = signal;
@@ -86,12 +89,16 @@ public class PrintQueueService
     /// How many files are queued on each of a set of printers - the front page's "3 queued", counted
     /// in one query rather than by listing every printer's queue in turn.
     /// </summary>
+    /// <param name="printerIds">The printers to count, already resolved for the caller.</param>
+    /// <param name="caller">Who is asking; only printers whose team lets them see the queue are counted.</param>
+    /// <param name="cancellationToken">The request's own.</param>
     /// <remarks>
     /// <para>
-    /// <b>Access comes from <paramref name="printerIds"/>, and there is no per-printer check.</b>
-    /// The same shape as <see cref="Printing.PrintHistoryService.CountForUserAsync"/> and for the same
-    /// reason: a question spanning printers has no single id to require a capability on. The caller
-    /// passes the ids it was already granted and this counts strictly inside that set.
+    /// <b>Counted only where the caller holds <see cref="Capability.ViewQueue"/></b>, from one read of
+    /// their memberships rather than a check per printer. The ids come from a listing that asked
+    /// <see cref="Capability.ViewPrinter"/>, which is not the same question: a queue's depth is the
+    /// queue's, and a printer the caller may see but whose queue they may not is absent from the
+    /// result - read as an empty queue, which is what such a reader is shown.
     /// </para>
     /// <para>
     /// <b>Every row counts, because every row is a wait.</b> A queued print leaves this table when it
@@ -107,6 +114,7 @@ public class PrintQueueService
     /// </remarks>
     public async Task<IReadOnlyDictionary<int, int>> CountByPrinterAsync(
         IReadOnlyCollection<int> printerIds,
+        Caller caller,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(printerIds);
@@ -116,9 +124,18 @@ public class PrintQueueService
             return new Dictionary<int, int>();
         }
 
+        IReadOnlyCollection<int> teams = await _teams.TeamsAllowingAsync(caller, Capability.ViewQueue, cancellationToken);
+
+        if (teams.Count == 0)
+        {
+            return new Dictionary<int, int>();
+        }
+
         var counted = await _dbContext.QueuedPrints
                                       .AsNoTracking()
                                       .Where(job => printerIds.Contains(job.PrinterId))
+                                      .Where(job => _dbContext.Printers.Any(printer => printer.Id == job.PrinterId &&
+                                                                                       teams.Contains(printer.TeamId)))
                                       .GroupBy(job => job.PrinterId)
                                       .Select(group => new { PrinterId = group.Key, Waiting = group.Count() })
                                       .ToListAsync(cancellationToken);

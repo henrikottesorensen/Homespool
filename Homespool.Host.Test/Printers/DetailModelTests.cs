@@ -145,7 +145,8 @@ public sealed class DetailModelTests : IDisposable
                                              new PrintFileCatalog(store, context, NullLogger<PrintFileCatalog>.Instance),
                                              TimeProvider.System,
                                              QueueSignal,
-                                             history);
+                                             history,
+                                             new TeamCapabilityLookup(context));
 
         // One localiser, shared by the page and by the three text services it now holds, so a word
         // inside a sentence reads in the same language as the sentence.
@@ -818,6 +819,132 @@ public sealed class DetailModelTests : IDisposable
         model.WaitingOnAPerson.Should().BeTrue();
         model.WaitingOnMakingReady.Should().BeFalse();
         model.QueueStatusOf(0).Should().Be(QueueEntryStatus.Held);
+    }
+
+    /// <summary>
+    /// The queue and the prints are read only for a reader who may see them: without
+    /// <see cref="Capability.ViewQueue"/> nothing about the queue - its entries, what it waits on, the
+    /// head's file name - and without <see cref="Capability.ViewHistory"/> no print, and the page
+    /// renders either way rather than failing on a service's refusal.
+    /// </summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task ThePageShowsTheQueueAndPrintsOnlyToThoseWhoMaySeeThem(bool viewQueue, bool viewHistory)
+    {
+        // Arrange - a queue waiting on a closed account's file, which the page would name, and a
+        // finished print
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, PrinterConnectionRegistry registry, UserManager<HSUser> users) =
+            await NewModelWithUsersAsync(context);
+        HSUser other = await AddUserAsync(users, "other");
+
+        List<Capability> capabilities = [Capability.ViewPrinter];
+
+        if (viewQueue)
+        {
+            capabilities.Add(Capability.ViewQueue);
+        }
+
+        if (viewHistory)
+        {
+            capabilities.Add(Capability.ViewHistory);
+        }
+
+        await SetCapabilitiesAsync(context, user.Id, capabilities);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        context.TeamMembers.Add(TestMemberships.Operator(team.Id, other.Id));
+
+        PrintFile file = new() { UserId = other.Id, Name = "theirs.bgcode", Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
+        context.PrintFiles.Add(file);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        context.QueuedPrints.Add(new QueuedPrint
+        {
+            PrinterId = printer.Id,
+            PrintFileId = file.Id,
+            PrintUuid = Guid.NewGuid(),
+            QueuedByUserId = other.Id,
+            QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
+            QueuedAt = DateTimeOffset.UtcNow,
+        });
+        context.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printer.Id,
+            FileName = "finished.bgcode",
+            QueuedByUserId = other.Id,
+            StartedAt = DateTimeOffset.UtcNow.AddHours(-1),
+            EndedAt = DateTimeOffset.UtcNow.AddMinutes(-10),
+            State = PrintState.Finished,
+        });
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+
+        other.DeactivatedAt = DateTimeOffset.UtcNow;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectOpen(registry, printer.Id);
+
+        // Act
+        IActionResult result = await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<PageResult>();
+        model.CanViewQueue.Should().Be(viewQueue);
+        model.CanViewHistory.Should().Be(viewHistory);
+
+        if (viewQueue)
+        {
+            model.Queue.Should().ContainSingle();
+            model.WaitingOn.Should().Contain("theirs.bgcode");
+        }
+        else
+        {
+            model.Queue.Should().BeEmpty();
+            model.WaitingOn.Should().BeNull("the head's file name is the queue's to tell");
+            model.WaitingReason.Should().BeNull();
+        }
+
+        if (viewHistory)
+        {
+            model.History.Should().ContainSingle();
+        }
+        else
+        {
+            model.History.Should().BeEmpty();
+        }
+    }
+
+    /// <summary>
+    /// The queue's own poll refuses a reader who may see the printer but not its queue, rather than
+    /// failing on the queue service's refusal.
+    /// </summary>
+    [Fact]
+    public async Task TheQueuePollRefusesAReaderWhoMayNotSeeTheQueue()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, HSUser user, Team team, _) = await NewModelAsync(context);
+
+        await SetCapabilitiesAsync(context, user.Id, [Capability.ViewPrinter, Capability.ViewHistory]);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        IActionResult result = await model.OnGetQueueAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        result.Should().BeOfType<ForbidResult>();
     }
 
     /// <summary>

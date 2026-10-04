@@ -532,6 +532,30 @@ public class DetailModel : PageModel
     public bool CanManagePrinter { get; private set; }
 
     /// <summary>
+    /// Whether the caller holds <see cref="Capability.ViewQueue"/>: the queue, what it is waiting
+    /// on, and why it is held.
+    /// </summary>
+    /// <remarks>
+    /// <b>Unlike the three above, this decides what is read, not only what is rendered.</b> The
+    /// queue's services refuse a reader without it by throwing, so asking them anyway turns a page
+    /// the member may see into a 500. Without it the queue card is absent rather than empty: an
+    /// empty queue is a statement about the printer, and this reader has not been told one.
+    /// </remarks>
+    public bool CanViewQueue { get; private set; }
+
+    /// <summary>
+    /// Whether the caller holds <see cref="Capability.ViewHistory"/>: the print running now, its
+    /// preview, and the prints before it.
+    /// </summary>
+    /// <remarks>
+    /// Decides what is read, as <see cref="CanViewQueue"/> does. Without it the status card falls
+    /// back on the printer's live progress, and Stop is offered only on
+    /// <see cref="CanControlPrinter"/> - whose print is running is history, so the page cannot tell
+    /// a <see cref="Capability.Print"/>-only reader that it is theirs.
+    /// </remarks>
+    public bool CanViewHistory { get; private set; }
+
+    /// <summary>
     /// Whether this is the reader's default printer - the one pages pick when they have to pick one.
     /// </summary>
     /// <remarks>
@@ -785,10 +809,17 @@ public class DetailModel : PageModel
 
         SlicerUrl = $"{Request.Scheme}://{Request.Host}/compat/octoprint/{Statistics.Printer.Uuid}/";
 
-        Queue = await _queueService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
-        History = await _historyService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
-        StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
-        QueuerNames = await _names.ForAsync(Queue.Select(job => job.QueuedByUserId), cancellationToken);
+        if (CanViewQueue)
+        {
+            Queue = await _queueService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
+            QueuerNames = await _names.ForAsync(Queue.Select(job => job.QueuedByUserId), cancellationToken);
+        }
+
+        if (CanViewHistory)
+        {
+            History = await _historyService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
+            StopperNames = await _historyService.GetStopperNamesAsync(History, cancellationToken);
+        }
 
         Cameras = await _cameraAccess.ListForPrinterAsync(Statistics.Printer.Id, caller, cancellationToken);
 
@@ -951,6 +982,11 @@ public class DetailModel : PageModel
             return NotFound();
         }
 
+        if (!CanViewQueue)
+        {
+            return Forbid();
+        }
+
         Queue = await _queueService.ListAsync(Statistics.Printer.Id, caller, cancellationToken);
         QueuerNames = await _names.ForAsync(Queue.Select(job => job.QueuedByUserId), cancellationToken);
 
@@ -1056,6 +1092,8 @@ public class DetailModel : PageModel
 
         CanPrint = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.Print, cancellationToken);
         CanControlPrinter = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.ControlPrinter, cancellationToken);
+        CanViewQueue = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.ViewQueue, cancellationToken);
+        CanViewHistory = await _access.AllowsAsync(statistics.Printer.Id, caller, Capability.ViewHistory, cancellationToken);
 
         Nozzle = HeaterReading.For(statistics.LiveState?.NozzleTemperature, statistics.LiveState?.TargetNozzleTemperature);
         Bed = HeaterReading.For(statistics.LiveState?.BedTemperature, statistics.LiveState?.TargetBedTemperature);
@@ -1068,7 +1106,14 @@ public class DetailModel : PageModel
         // rendered without them would offer preheating with an empty list.
         Presets = FilamentPreset.For(statistics.Printer.Model);
 
-        ActivePrint = await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken);
+        ActivePrint = CanViewHistory ? await _historyService.GetActiveAsync(statistics.Printer.Id, caller, cancellationToken) : null;
+
+        if (!CanViewQueue)
+        {
+            // The snapshot below names the queue's head file and why it waits, which is the queue's
+            // to tell; and the hold reason is refused outright without it.
+            return true;
+        }
 
         // Both of these arrive as keys and are said here, which is the only place that knows who is
         // reading. The loop that recorded the hold had no request to take a culture from.

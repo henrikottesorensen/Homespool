@@ -5766,6 +5766,7 @@ public sealed class QueueAdvancerTests : IDisposable
         // queue service, as a person would.
         services.AddScoped<PrintStopService>();
         services.AddScoped<PrintQueueService>();
+        services.AddScoped<TeamCapabilityLookup>();
         services.AddScoped<PrintHistoryService>();
         services.AddScoped<UserNameLookup>();
         services.AddSingleton(_signal);

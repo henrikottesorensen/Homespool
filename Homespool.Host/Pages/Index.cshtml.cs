@@ -285,7 +285,7 @@ public class IndexModel : PageModel
 
         // One grouped count for every tile, rather than a queue read per printer. Six printers would
         // otherwise be six round trips on a page that refreshes itself every ten seconds.
-        IReadOnlyDictionary<int, int> queued = await _queue.CountByPrinterAsync(ids, cancellationToken);
+        IReadOnlyDictionary<int, int> queued = await _queue.CountByPrinterAsync(ids, caller, cancellationToken);
 
         // Printers you have never used stay in the list rather than being filtered out: a rack of
         // three where you have only ever used two should still show the third, or the front page

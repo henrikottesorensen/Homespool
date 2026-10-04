@@ -412,7 +412,7 @@ public class IndexModel : PageModel
 
         // One grouped count for the whole rack rather than a queue read per printer, the same call
         // the front page makes for its tiles.
-        IReadOnlyDictionary<int, int> queued = await _queue.CountByPrinterAsync(ids, cancellationToken);
+        IReadOnlyDictionary<int, int> queued = await _queue.CountByPrinterAsync(ids, caller, cancellationToken);
 
         Printers = printers.Select(row => RowFor(row, teamNames, status, queued)).ToList();
     }

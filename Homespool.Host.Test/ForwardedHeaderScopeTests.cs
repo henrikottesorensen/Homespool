@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 
+using Homespool.Host.Http;
 using Homespool.Host.Listeners;
 using Homespool.Host.Middleware;
 
@@ -184,7 +185,7 @@ public class ForwardedHeaderScopeTests
         DefaultHttpContext context = new();
         context.Connection.LocalPort = arrivedOnPort;
         context.Connection.RemoteIpAddress = IPAddress.Parse("10.9.9.9");
-        context.Request.Headers["X-Real-IP"] = "192.168.13.110";
+        context.Request.Headers[CustomHeaderNames.RealIp] = "192.168.13.110";
 
         // Act
         await pipeline(context);

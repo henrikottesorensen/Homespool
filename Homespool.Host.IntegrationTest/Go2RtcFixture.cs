@@ -3,6 +3,8 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 
+using Homespool.Host.Http;
+
 namespace Homespool.Host.IntegrationTest;
 
 /// <summary>
@@ -49,7 +51,7 @@ internal static class Go2RtcFixture
             using HttpClient client = new() { Timeout = ProbeTimeout };
             using HttpRequestMessage request = new(HttpMethod.Get, new Uri(BaseAddress, "/api/streams"));
             request.Headers.Authorization = new AuthenticationHeaderValue(
-                "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Username}:{Password}")));
+                AuthorizationSchemes.Basic, Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Username}:{Password}")));
 
             using HttpResponseMessage response = client.Send(request);
 

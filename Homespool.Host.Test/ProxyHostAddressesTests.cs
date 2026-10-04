@@ -8,12 +8,14 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
 using Homespool.Host.Certificates;
+using Homespool.Host.Http;
 using Homespool.Host.Middleware;
 
 namespace Homespool.Host.Test;
@@ -217,8 +219,8 @@ public sealed class ProxyHostAddressesTests
         DefaultHttpContext context = new() { RequestServices = provider };
         context.Connection.RemoteIpAddress = IPAddress.Parse(peer);
         context.Request.Scheme = "http";
-        context.Request.Headers["X-Real-IP"] = "192.168.13.110";
-        context.Request.Headers["X-Forwarded-Proto"] = "https";
+        context.Request.Headers[CustomHeaderNames.RealIp] = "192.168.13.110";
+        context.Request.Headers[ForwardedHeadersDefaults.XForwardedProtoHeaderName] = "https";
 
         // Act
         await pipeline(context);

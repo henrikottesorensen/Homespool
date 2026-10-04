@@ -135,7 +135,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
         response.EnsureSuccessStatusCode();
 
-        return response.Headers.GetValues("Token").First();
+        return response.Headers.GetValues(WireNames.Token).First();
     }
 
     /// <summary>
@@ -185,8 +185,8 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
         Dictionary<string, string> headers = new()
         {
-            ["Fingerprint"] = Identity.HeaderFingerprint,
-            ["Token"] = Token,
+            [WireNames.Fingerprint] = Identity.HeaderFingerprint,
+            [WireNames.Token] = Token,
             ["User-Agent-Printer"] = _options.UserAgentPrinter,
             ["User-Agent-Version"] = Identity.Firmware,
         };
@@ -365,8 +365,8 @@ public sealed class FakePrinterClient : IAsyncDisposable
 
         using HttpRequestMessage request = new(HttpMethod.Post, route);
 
-        request.Headers.TryAddWithoutValidation("Fingerprint", Identity.HeaderFingerprint);
-        request.Headers.TryAddWithoutValidation("Token", Token);
+        request.Headers.TryAddWithoutValidation(WireNames.Fingerprint, Identity.HeaderFingerprint);
+        request.Headers.TryAddWithoutValidation(WireNames.Token, Token);
         AddUserAgentHeaders(request);
 
         request.Content = new ByteArrayContent(payload);
@@ -381,7 +381,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
             return null;
         }
 
-        if (!response.Headers.TryGetValues("Command-Id", out IEnumerable<string>? values) ||
+        if (!response.Headers.TryGetValues(WireNames.CommandId, out IEnumerable<string>? values) ||
             !uint.TryParse(values.FirstOrDefault(), NumberStyles.None, CultureInfo.InvariantCulture, out uint commandId))
         {
             throw new InvalidOperationException(
@@ -391,7 +391,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
         ServerCommandKind kind = response.Content.Headers.ContentType?.MediaType switch
         {
             MediaTypeNames.Application.Json => ServerCommandKind.Json,
-            "text/x.gcode" or "text/x-gcode" => ServerCommandKind.Gcode,
+            WireNames.GcodeContentType or WireNames.LegacyGcodeContentType => ServerCommandKind.Gcode,
             _ => ServerCommandKind.Undefined,
         };
 

@@ -23,7 +23,7 @@ namespace Homespool.Host.Authentication;
 /// </remarks>
 public class ApiTokenAuthenticationHandler : ApiTokenAuthenticationHandlerBase
 {
-    public const string BearerSchemePrefix = "Bearer";
+    public const string BearerSchemePrefix = Http.AuthorizationSchemes.Bearer;
 
     public ApiTokenAuthenticationHandler(ApiTokenService tokens,
                                          UserManager<HSUser> userManager,

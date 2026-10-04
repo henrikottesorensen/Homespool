@@ -14,6 +14,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -301,7 +302,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.Headers.Location.Should().BeNull("a script has nowhere to follow a redirect to");
-        response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
+        response.Headers.WwwAuthenticate.ToString().Should().Contain(AuthorizationSchemes.Bearer,
                                                                      "the token scheme is in the policy, so its challenge says how to authenticate");
     }
 
@@ -329,7 +330,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
         // A client with no cookie at all, so nothing but the header can be authenticating this.
         using HttpClient client = _factory.CreateClient(
             new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
 
         byte[] content = Encoding.UTF8.GetBytes("G28 ; home\n");
         using StreamContent body = new(new MemoryStream(content));
@@ -377,7 +378,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
 
         using HttpClient client = _factory.CreateClient(
             new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
 
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\n")));
 
@@ -428,7 +429,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
 
         using HttpClient client = _factory.CreateClient(
             new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
 
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\n")));
 
@@ -467,7 +468,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
 
         using HttpClient client = _factory.CreateClient(
             new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
 
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28 ; home\n")));
 
@@ -498,7 +499,7 @@ public sealed class FileEndpointTests : IAsyncLifetime
         using HttpClient client = _factory.CreateClient(
             new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", ApiTokenService.Prefix + new string('A', ApiTokenService.SecretLength));
+            AuthorizationSchemes.Bearer, ApiTokenService.Prefix + new string('A', ApiTokenService.SecretLength));
 
         using StreamContent body = new(new MemoryStream(Encoding.UTF8.GetBytes("G28")));
 

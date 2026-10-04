@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Mvc;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
 using Homespool.Host.DTO;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -147,7 +148,7 @@ public class CameraController : ControllerBase
 
     // The 200 is said here because a file result carries no metadata of its own; the rest of the
     // answers say theirs through the union.
-    [Produces("image/jpeg")]
+    [Produces(MediaTypeNames.Image.Jpeg)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<Results<FileContentHttpResult, NoContent, ForbiddenProblem, NotFoundProblem>> Frame(
         Guid uuid,
@@ -190,7 +191,7 @@ public class CameraController : ControllerBase
         // No caching anywhere: this resource is different every couple of seconds, and a cached
         // frame is the stale picture the age rule exists to prevent - reintroduced by a proxy.
         Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
-        Response.Headers["X-Frame-Captured-At"] =
+        Response.Headers[CustomHeaderNames.FrameCapturedAt] =
             frame.CapturedAt.ToString("O", CultureInfo.InvariantCulture);
 
         // Said here rather than repeated from the frame: what this origin serves is decided by this
@@ -343,7 +344,7 @@ public class CameraController : ControllerBase
 
         // The front proxy buffers upstream responses by default, which would hold every frame back;
         // nginx honours this header per response, so the compose deployment needs no config change.
-        Response.Headers["X-Accel-Buffering"] = "no";
+        Response.Headers[CustomHeaderNames.AccelBuffering] = "no";
 
         // Response buffering would hold frames back until some threshold, which for a stream that
         // never ends means never. Kestrel flushes on each write once buffering is off.

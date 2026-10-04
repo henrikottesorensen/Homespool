@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -69,7 +70,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         string token = await MintTokenAsync(subject.Id, CapabilitySet.Everything);
 
         using HttpClient bearer = _factory.CreateClient();
-        bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         HttpResponseMessage before = await bearer.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
         HttpResponseMessage sessionBefore = await signedIn.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
@@ -141,7 +142,7 @@ public sealed class DeactivatedAccountTests : IAsyncLifetime
         }
 
         using HttpClient bearer = _factory.CreateClient();
-        bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        bearer.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         HttpResponseMessage withToken = await bearer.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 

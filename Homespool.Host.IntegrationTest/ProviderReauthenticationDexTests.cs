@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -214,12 +215,12 @@ public sealed class ProviderReauthenticationDexTests
                 BaseAddress = AppBaseAddress,
             });
 
-            foreach (string cookie in minted.DefaultRequestHeaders.GetValues("Cookie"))
+            foreach (string cookie in minted.DefaultRequestHeaders.GetValues(HeaderNames.Cookie))
             {
-                client.DefaultRequestHeaders.Add("Cookie", cookie);
+                client.DefaultRequestHeaders.Add(HeaderNames.Cookie, cookie);
             }
 
-            client.DefaultRequestHeaders.Add("Origin", "https://localhost");
+            client.DefaultRequestHeaders.Add(HeaderNames.Origin, "https://localhost");
 
             return client;
         }

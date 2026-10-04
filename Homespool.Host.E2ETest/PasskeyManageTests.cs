@@ -12,6 +12,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
@@ -114,7 +115,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
 
         using (client)
         {
-            client.DefaultRequestHeaders.Add("Origin", Origin);
+            client.DefaultRequestHeaders.Add(HeaderNames.Origin, Origin);
 
             // Proved first: the add form, and the antiforgery token in it, are offered only then.
             await EnrolmentFlowHelper.ReauthenticateAsync(client);
@@ -154,7 +155,7 @@ public sealed class PasskeyManageTests : IAsyncLifetime
 
         // And now the arc's other end, on a fresh anonymous client.
         using HttpClient anonymous = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        anonymous.DefaultRequestHeaders.Add("Origin", Origin);
+        anonymous.DefaultRequestHeaders.Add(HeaderNames.Origin, Origin);
 
         HttpResponseMessage login = await anonymous.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
         string loginToken = AntiforgeryTestHelper.ExtractToken(await login.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));

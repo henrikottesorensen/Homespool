@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 namespace Homespool.Host.E2ETest;
 
@@ -26,7 +27,7 @@ public static class IdentityCookieTestHelper
                                                          .GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
                                                          .Get(IdentityConstants.ApplicationScheme);
 
-        return response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies) &&
+        return response.Headers.TryGetValues(HeaderNames.SetCookie, out IEnumerable<string>? cookies) &&
                cookies.Any(c => c.StartsWith($"{cookieOptions.Cookie.Name}=", StringComparison.Ordinal));
     }
 }

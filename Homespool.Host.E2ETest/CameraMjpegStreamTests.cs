@@ -10,6 +10,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
@@ -83,7 +84,7 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
             response.StatusCode.Should().Be(HttpStatusCode.OK);
             response.Content.Headers.ContentType?.ToString().Should().Be("multipart/x-mixed-replace; boundary=frame");
             response.Headers.CacheControl?.NoStore.Should().BeTrue("a frame cached anywhere is a picture of the past");
-            response.Headers.GetValues("X-Accel-Buffering").Should().Equal(["no"],
+            response.Headers.GetValues(CustomHeaderNames.AccelBuffering).Should().Equal(["no"],
                                                                          "the front proxy would otherwise hold every frame back");
 
             byte[] frame = await FirstFrameAsync(response);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -489,10 +490,10 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
         using HttpResponseMessage manifest = await client.GetAsync("/site.webmanifest", TestContext.Current.CancellationToken);
 
         worker.StatusCode.Should().Be(HttpStatusCode.OK);
-        worker.Content.Headers.ContentType!.MediaType.Should().Be("text/javascript");
+        worker.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Text.JavaScript);
 
         manifest.StatusCode.Should().Be(HttpStatusCode.OK);
-        manifest.Content.Headers.ContentType!.MediaType.Should().Be("application/manifest+json");
+        manifest.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Application.Manifest);
     }
 
     /// <summary>

@@ -32,14 +32,14 @@ public class CameraSnapshotFetcherTests
     public async Task AnImageIsReturnedWithTheTimeItWasFetched()
     {
         byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02];
-        using RecordingHandler handler = Respond(HttpStatusCode.OK, "image/jpeg", jpeg);
+        using RecordingHandler handler = Respond(HttpStatusCode.OK, MediaTypeNames.Image.Jpeg, jpeg);
         CameraSnapshotFetcher fetcher = Build(handler);
 
         CameraFrame? frame = await fetcher.FetchAsync(Frame, CancellationToken.None);
 
         frame.Should().NotBeNull();
         frame!.Bytes.Should().Equal(jpeg);
-        frame.ContentType.Should().Be("image/jpeg");
+        frame.ContentType.Should().Be(MediaTypeNames.Image.Jpeg);
         frame.CapturedAt.Should().Be(Now);
     }
 
@@ -80,7 +80,7 @@ public class CameraSnapshotFetcherTests
     public async Task ABodyLabelledJpegThatIsNotOneIsRefused()
     {
         using RecordingHandler handler =
-            Respond(HttpStatusCode.OK, "image/jpeg", Encoding.UTF8.GetBytes("<svg xmlns=\"http://www.w3.org/2000/svg\"/>"));
+            Respond(HttpStatusCode.OK, MediaTypeNames.Image.Jpeg, Encoding.UTF8.GetBytes("<svg xmlns=\"http://www.w3.org/2000/svg\"/>"));
         CameraSnapshotFetcher fetcher = Build(handler);
 
         (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
@@ -95,7 +95,7 @@ public class CameraSnapshotFetcherTests
     public async Task AJpegWithNoApplicationSegmentIsAccepted()
     {
         byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xDB, 0x00, 0x43];
-        using RecordingHandler handler = Respond(HttpStatusCode.OK, "image/jpeg", jpeg);
+        using RecordingHandler handler = Respond(HttpStatusCode.OK, MediaTypeNames.Image.Jpeg, jpeg);
         CameraSnapshotFetcher fetcher = Build(handler);
 
         CameraFrame? frame = await fetcher.FetchAsync(Frame, CancellationToken.None);
@@ -107,7 +107,7 @@ public class CameraSnapshotFetcherTests
     [Fact]
     public async Task AFailureStatusIsRefused()
     {
-        using RecordingHandler handler = Respond(HttpStatusCode.NotFound, "image/jpeg", [1, 2, 3]);
+        using RecordingHandler handler = Respond(HttpStatusCode.NotFound, MediaTypeNames.Image.Jpeg, [1, 2, 3]);
         CameraSnapshotFetcher fetcher = Build(handler);
 
         (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
@@ -116,7 +116,7 @@ public class CameraSnapshotFetcherTests
     [Fact]
     public async Task ADeclaredLengthOverTheLimitIsRefusedBeforeReading()
     {
-        using RecordingHandler handler = Respond(HttpStatusCode.OK, "image/jpeg", new byte[64]);
+        using RecordingHandler handler = Respond(HttpStatusCode.OK, MediaTypeNames.Image.Jpeg, new byte[64]);
         CameraSnapshotFetcher fetcher = Build(handler, maxFrameBytes: 16);
 
         (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
@@ -129,7 +129,7 @@ public class CameraSnapshotFetcherTests
     [Fact]
     public async Task AnUndeclaredBodyOverTheLimitIsRefusedWhileReading()
     {
-        using RecordingHandler handler = RespondChunked("image/jpeg", new byte[64]);
+        using RecordingHandler handler = RespondChunked(MediaTypeNames.Image.Jpeg, new byte[64]);
         CameraSnapshotFetcher fetcher = Build(handler, maxFrameBytes: 16);
 
         (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();

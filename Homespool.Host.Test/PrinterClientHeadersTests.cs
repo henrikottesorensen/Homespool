@@ -100,7 +100,7 @@ public class PrinterClientHeadersTests
     public void FingerprintIsReadWhenAClientDoesSendIt()
     {
         // Assert
-        new PrinterClientHeaders(RequestWith(("Fingerprint", "SUDBAJQ78CTJBNA8"), ("Code", "X")))
+        new PrinterClientHeaders(RequestWith((Headers.Fingerprint, "SUDBAJQ78CTJBNA8"), (Headers.Code, "X")))
             .FingerPrint.Should().Be("SUDBAJQ78CTJBNA8");
     }
 
@@ -117,7 +117,7 @@ public class PrinterClientHeadersTests
     {
         // Arrange
         DefaultHttpContext context = new();
-        context.Request.Headers["Code"] = new[] { "FIRST", "SECOND" };
+        context.Request.Headers[Headers.Code] = new[] { "FIRST", "SECOND" };
 
         // Assert
         new PrinterClientHeaders(context.Request)

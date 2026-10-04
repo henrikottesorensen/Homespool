@@ -22,6 +22,7 @@ using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
 using Homespool.Host.Controllers;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Http;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -1034,7 +1035,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
         using HttpClient client = _factory.CreateClient(
             new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
 
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer",
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer,
                                                                                    await IssueTokenAsync(userId, PrintOnly));
 
         using HttpResponseMessage response = await client.PutAsync(

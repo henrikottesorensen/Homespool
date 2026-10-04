@@ -18,6 +18,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Cameras;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -207,7 +208,7 @@ public sealed class CameraListEndpointTests : IAsyncLifetime
 
         using HttpClient client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", await MintTokenAsync(user.Id, Capability.ViewPrinter));
+            AuthorizationSchemes.Bearer, await MintTokenAsync(user.Id, Capability.ViewPrinter));
 
         // Act
         (JsonElement[] cameras, _) = await ListAsync(client);

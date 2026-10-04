@@ -24,6 +24,7 @@ using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
 using Homespool.Host.Controllers;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Http;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
@@ -1118,7 +1119,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId, CapabilitySet.Parse("ControlPrinter"));
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         // Act
         using HttpResponseMessage response =
@@ -1178,7 +1179,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         (Guid uuid, string token) = await UuidAndTokenAsync(printerId, userId, CapabilitySet.Parse("ControlPrinter"));
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         // Act
         using HttpResponseMessage response =
@@ -1285,7 +1286,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
         }
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         // Act
         using HttpResponseMessage response = await client.PutAsync(

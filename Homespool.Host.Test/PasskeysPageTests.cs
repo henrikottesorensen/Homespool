@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -79,7 +80,7 @@ public sealed class PasskeysPageTests : IDisposable
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>();
-        options.ContentType.Should().StartWith("application/json");
+        options.ContentType.Should().StartWith(MediaTypeNames.Application.Json);
         stored.Should().ContainSingle();
         stored[0].Name.Should().Be("MacBook");
         stored[0].CredentialId.Should().Equal(authenticator.CredentialId);

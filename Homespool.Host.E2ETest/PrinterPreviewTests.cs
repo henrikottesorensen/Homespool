@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -74,7 +75,7 @@ public sealed class PrinterPreviewTests : IAsyncLifetime
             using HttpResponseMessage response = await seeded.Client.GetAsync(ThumbnailUrl(seeded), TestContext.Current.CancellationToken);
 
             response.StatusCode.Should().Be(HttpStatusCode.OK);
-            response.Content.Headers.ContentType!.MediaType.Should().Be("image/png");
+            response.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Image.Png);
             response.Headers.CacheControl!.Private.Should().BeTrue();
 
             byte[] body = await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);

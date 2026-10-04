@@ -1,4 +1,5 @@
 using System;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -135,7 +136,7 @@ public class CameraFrameCacheTests
 
         fetcher.FetchAsync(Arg.Any<Uri>(), Arg.Any<CancellationToken>())
                .Returns(_ => Task.FromResult<CameraFrame?>(
-                            new CameraFrame([1, 2, 3], "image/jpeg", time.GetUtcNow())));
+                            new CameraFrame([1, 2, 3], MediaTypeNames.Image.Jpeg, time.GetUtcNow())));
 
         CameraOptions options = new()
         {

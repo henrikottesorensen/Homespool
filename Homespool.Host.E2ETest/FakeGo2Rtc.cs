@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Mime;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -511,7 +512,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
 
             default:
                 // With tables: go2rtc's still endpoint repairs a frame that has none.
-                context.Response.ContentType = "image/jpeg";
+                context.Response.ContentType = MediaTypeNames.Image.Jpeg;
                 await context.Response.Body.WriteAsync(FakeCamera.FrameWithTables);
                 break;
         }

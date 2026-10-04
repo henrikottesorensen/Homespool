@@ -11,6 +11,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -151,7 +152,7 @@ public sealed class UserEndpointTests : IAsyncLifetime
                                                          CancellationToken.None);
 
         HttpClient client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
 
         return client;
     }

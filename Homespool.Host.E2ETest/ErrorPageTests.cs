@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
@@ -87,8 +89,8 @@ public sealed partial class ErrorPageTests : IAsyncLifetime
         TraceReference().IsMatch(page).Should().BeTrue("the reference is the bare 32-character trace id the log carries as @tr");
         page.Should().NotContain(ThrowingController.Message, "outside Development the exception stays in the log");
 
-        Header(response, "X-Content-Type-Options").Should().Be("nosniff");
-        Header(response, "X-Frame-Options").Should().Be("DENY");
+        Header(response, HeaderNames.XContentTypeOptions).Should().Be("nosniff");
+        Header(response, HeaderNames.XFrameOptions).Should().Be("DENY");
         Header(response, "Referrer-Policy").Should().Be("same-origin");
         Header(response, "Content-Security-Policy").Should().MatchRegex(PolicyShape);
         page.Should().Contain($"<script nonce=\"{Nonce(response)}\">", "the layout's inline block has to run under the page's own policy");
@@ -158,7 +160,7 @@ public sealed partial class ErrorPageTests : IAsyncLifetime
         // Arrange
         using HttpClient client = Host(Environments.Development).CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         using HttpRequestMessage request = new(HttpMethod.Get, "/test-only/throws");
-        request.Headers.Accept.ParseAdd("text/html");
+        request.Headers.Accept.ParseAdd(MediaTypeNames.Text.Html);
 
         // Act
         using HttpResponseMessage response = await client.SendAsync(request, TestContext.Current.CancellationToken);
@@ -168,7 +170,7 @@ public sealed partial class ErrorPageTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
         page.Should().Contain(ThrowingController.Message).And.NotContain("Something went wrong");
         Header(response, "Content-Security-Policy").Should().Be("object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
-        Header(response, "X-Content-Type-Options").Should().Be("nosniff");
+        Header(response, HeaderNames.XContentTypeOptions).Should().Be("nosniff");
     }
 
     [GeneratedRegex("<code>[0-9a-f]{32}</code>")]

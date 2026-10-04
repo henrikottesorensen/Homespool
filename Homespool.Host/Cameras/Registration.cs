@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using Homespool.Host.Http;
+
 namespace Homespool.Host.Cameras;
 
 /// <summary>
@@ -133,6 +135,6 @@ public static class Registration
         string pair = $"{options.ApiUsername}:{options.ApiPassword}";
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(pair)));
+            AuthorizationSchemes.Basic, Convert.ToBase64String(Encoding.UTF8.GetBytes(pair)));
     }
 }

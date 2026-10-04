@@ -35,7 +35,7 @@ namespace Homespool.Host.Cameras;
 /// </remarks>
 public sealed class CameraStreamRelay
 {
-    private const string MultipartMixedReplace = "multipart/x-mixed-replace";
+    private const string MultipartMixedReplace = Http.CustomMediaTypes.MultipartMixedReplace;
 
     /// <summary>RFC 2046's limit on a boundary's length.</summary>
     private const int MaxBoundaryLength = 70;

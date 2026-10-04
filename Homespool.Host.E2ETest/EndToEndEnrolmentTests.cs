@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Host.PrusaConnect;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -122,7 +123,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
             // ---------- printer: GET /p/register now that it has been claimed ----------
             HttpResponseMessage postPollResponse = await EnrolmentFlowHelper.SendPollAsync(anonymous, code);
             postPollResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-            postPollResponse.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
+            postPollResponse.Headers.GetValues(Headers.Token).Single().Should().NotBeNullOrWhiteSpace();
 
             // ---------- app: GET /api/v1/user ----------
             JsonDocument user =
@@ -216,10 +217,10 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
         strangersRegistration.Headers.GetValues("Temporary-Code").Should().NotContain(printersCode);
 
         strangersPoll.StatusCode.Should().Be(HttpStatusCode.Accepted, "nobody claimed the stranger's code");
-        strangersPoll.Headers.Contains("Token").Should().BeFalse();
+        strangersPoll.Headers.Contains(Headers.Token).Should().BeFalse();
 
         printersPoll.StatusCode.Should().Be(HttpStatusCode.OK);
-        printersPoll.Headers.GetValues("Token").Single().Should().NotBeNullOrWhiteSpace();
+        printersPoll.Headers.GetValues(Headers.Token).Single().Should().NotBeNullOrWhiteSpace();
 
         HttpResponseMessage afterwards = await EnrolmentFlowHelper.SendPollAsync(stranger, strangersCode);
         afterwards.StatusCode.Should().Be(HttpStatusCode.NotFound, "the printer's enrolment ended every other code for its fingerprint");
@@ -327,7 +328,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
 
         // Assert
         poll.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        poll.Headers.Contains("Token").Should().BeFalse();
+        poll.Headers.Contains(Headers.Token).Should().BeFalse();
         again.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -355,7 +356,7 @@ public sealed class EndToEndEnrolmentTests : IAsyncLifetime
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         response.Headers.Location.Should().BeNull("an API caller has nowhere to follow a login redirect to");
-        response.Headers.WwwAuthenticate.ToString().Should().Contain("Bearer",
+        response.Headers.WwwAuthenticate.ToString().Should().Contain(AuthorizationSchemes.Bearer,
                                                                      "the challenge should say how to authenticate, which for a script means a token");
     }
 

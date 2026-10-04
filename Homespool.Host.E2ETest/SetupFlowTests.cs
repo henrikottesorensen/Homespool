@@ -8,6 +8,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
@@ -107,7 +108,7 @@ public sealed class SetupFlowTests : IAsyncLifetime
         // Assert
         postResponse.StatusCode.Should().Be(HttpStatusCode.Redirect, "a successful setup redirects to the app root");
         postResponse.Headers.Location!.OriginalString.Should().Be("/");
-        postResponse.Headers.Should().Contain(h => h.Key == "Set-Cookie", "signing the new admin in issues a cookie");
+        postResponse.Headers.Should().Contain(h => h.Key == HeaderNames.SetCookie, "signing the new admin in issues a cookie");
 
         HttpResponseMessage secondGet = await client.GetAsync("/setup", TestContext.Current.CancellationToken);
         secondGet.StatusCode.Should().Be(HttpStatusCode.NotFound, "setup must close the moment an administrator exists");

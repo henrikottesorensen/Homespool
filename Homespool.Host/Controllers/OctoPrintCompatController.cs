@@ -361,7 +361,7 @@ public class OctoPrintCompatController : ControllerBase
 
         if (contentType is null ||
             !MediaTypeHeaderValue.TryParse(contentType, out MediaTypeHeaderValue? parsed) ||
-            !parsed.MediaType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+            !parsed.MediaType.Equals(MediaTypeNames.Multipart.FormData, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }

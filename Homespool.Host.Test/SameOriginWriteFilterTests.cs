@@ -297,7 +297,7 @@ public class SameOriginWriteFilterTests
         refusal.StructuredState.Should().Contain(pair => pair.Key == "Scheme" && pair.Value == Uri.UriSchemeHttp);
         refusal.StructuredState.Should().Contain(pair => pair.Key == "SecFetchSite" && pair.Value == "absent");
         refusal.StructuredState.Should().Contain(
-            pair => pair.Key == "Origin" &&
+            pair => pair.Key == HeaderNames.Origin &&
                     pair.Value!.StartsWith("http://evil\uFFFD[2Jx", StringComparison.Ordinal) &&
                     pair.Value.EndsWith("<515 characters in all>", StringComparison.Ordinal));
     }

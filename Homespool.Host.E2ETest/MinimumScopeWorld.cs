@@ -20,6 +20,7 @@ using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -302,7 +303,7 @@ public sealed class MinimumScopeWorld : IAsyncDisposable
         }
         else
         {
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
         }
 
         return client;

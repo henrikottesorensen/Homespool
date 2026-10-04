@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -232,7 +233,7 @@ public sealed class DirectSendDriveNameTests : IAsyncLifetime
         }
 
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
 
         return client;
     }

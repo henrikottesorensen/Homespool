@@ -56,7 +56,7 @@ public class XForwardedOptions
     /// than the shipped nginx, and only knowing the above.
     /// </para>
     /// </remarks>
-    public string ClientAddressHeader { get; set; } = "X-Real-IP";
+    public string ClientAddressHeader { get; set; } = Http.CustomHeaderNames.RealIp;
 
     /// <summary>
     /// Addresses of proxies whose forwarded headers are believed. Empty by default.

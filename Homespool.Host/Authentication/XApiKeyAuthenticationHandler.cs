@@ -36,7 +36,7 @@ namespace Homespool.Host.Authentication;
 public class XApiKeyAuthenticationHandler : ApiTokenAuthenticationHandlerBase
 {
     /// <summary>The header this scheme reads, carrying the token with no scheme in front of it.</summary>
-    public const string HeaderName = "X-Api-Key";
+    public const string HeaderName = Http.CustomHeaderNames.ApiKey;
 
     public XApiKeyAuthenticationHandler(ApiTokenService tokens,
                                         UserManager<HSUser> userManager,

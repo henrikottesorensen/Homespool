@@ -17,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -234,7 +235,7 @@ public sealed class RegisterModelTests : IDisposable
             await context.Users.SingleAsync(u => u.Email == "invitee@example.com", TestContext.Current.CancellationToken);
         stored.EmailConfirmed.Should().BeTrue("no SMTP means no confirmation mail can ever arrive");
 
-        httpContext.Response.Headers.Should().ContainKey("Set-Cookie", "signing in writes the auth cookie");
+        httpContext.Response.Headers.Should().ContainKey(HeaderNames.SetCookie, "signing in writes the auth cookie");
 
         (await invitationService.ValidateAsync(invitation.Uuid, plaintext, [InvitationType.Signup], CancellationToken.None)).Should()
             .BeNull("the invite is spent");

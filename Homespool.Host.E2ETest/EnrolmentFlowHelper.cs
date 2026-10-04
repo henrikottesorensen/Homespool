@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Data;
 using Homespool.FakePrinter;
@@ -258,7 +259,7 @@ public static class EnrolmentFlowHelper
         string protectedTicket = cookieOptions.TicketDataFormat.Protect(ticket);
 
         HttpClient client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Add("Cookie", $"{cookieOptions.Cookie.Name}={protectedTicket}");
+        client.DefaultRequestHeaders.Add(HeaderNames.Cookie, $"{cookieOptions.Cookie.Name}={protectedTicket}");
 
         // What a browser sends on every request its own pages make, and what SameOriginWriteFilter
         // demands before a cookie-signed-in write reaches a controller. Set here so a signed-in test

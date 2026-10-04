@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -921,7 +922,7 @@ public class DetailModel : PageModel
         // picture, and a print rarely runs longer.
         Response.Headers.CacheControl = "private, max-age=86400";
 
-        return File(image, "image/png");
+        return File(image, MediaTypeNames.Image.Png);
     }
 
     /// <summary>

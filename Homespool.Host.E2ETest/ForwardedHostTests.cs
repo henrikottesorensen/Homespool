@@ -10,6 +10,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -88,8 +89,8 @@ public sealed class ForwardedHostTests : IAsyncLifetime
     {
         // Arrange
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Add("X-Forwarded-Proto", "https");
-        client.DefaultRequestHeaders.Add("X-Forwarded-Host", "attacker.example");
+        client.DefaultRequestHeaders.Add(ForwardedHeadersDefaults.XForwardedProtoHeaderName, "https");
+        client.DefaultRequestHeaders.Add(ForwardedHeadersDefaults.XForwardedHostHeaderName, "attacker.example");
 
         HttpResponseMessage page = await client.GetAsync("/Account/ForgotPassword", TestContext.Current.CancellationToken);
         string token = AntiforgeryTestHelper.ExtractToken(await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));

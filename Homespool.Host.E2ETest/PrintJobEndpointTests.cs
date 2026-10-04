@@ -17,6 +17,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -387,7 +388,7 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
 
         using HttpClient client = _factory.CreateClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
-            "Bearer", await MintTokenAsync(user.Id, Capability.ViewPrinter, Capability.ViewHistory));
+            AuthorizationSchemes.Bearer, await MintTokenAsync(user.Id, Capability.ViewPrinter, Capability.ViewHistory));
 
         // Act
         using JsonDocument jobs = await ListAsync(client, $"/api/v1/printers/{uuid}/jobs");

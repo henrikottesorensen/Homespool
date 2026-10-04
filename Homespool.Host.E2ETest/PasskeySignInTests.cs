@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading.Tasks;
 
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
@@ -233,7 +235,7 @@ public sealed class PasskeySignInTests : IAsyncLifetime
             HttpResponseMessage response = await client.PostAsync($"/Account/Login?handler={LoginModel.PasskeyOptionsHandler}", body, TestContext.Current.CancellationToken);
 
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
-            response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies);
+            response.Headers.TryGetValues(HeaderNames.SetCookie, out IEnumerable<string>? cookies);
             (cookies ?? []).Should().NotContain(
                 cookie => cookie.StartsWith(PasskeyAuthenticationOptions.DefaultCeremonyCookieName, StringComparison.Ordinal),
                 "no ceremony starts on a host the browser would refuse");
@@ -248,7 +250,7 @@ public sealed class PasskeySignInTests : IAsyncLifetime
     public async Task AChallengeWithoutTheAntiforgeryTokenIsRefused()
     {
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Add("Origin", Origin);
+        client.DefaultRequestHeaders.Add(HeaderNames.Origin, Origin);
 
         using FormUrlEncodedContent body = new(new Dictionary<string, string>());
         HttpResponseMessage response = await client.PostAsync($"/Account/Login?handler={LoginModel.PasskeyOptionsHandler}", body, TestContext.Current.CancellationToken);
@@ -308,7 +310,7 @@ public sealed class PasskeySignInTests : IAsyncLifetime
     private async Task<(HttpClient client, string antiforgeryToken)> OpenLoginPageAsync()
     {
         HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Add("Origin", Origin);
+        client.DefaultRequestHeaders.Add(HeaderNames.Origin, Origin);
 
         HttpResponseMessage page = await client.GetAsync("/Account/Login", TestContext.Current.CancellationToken);
         page.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -329,8 +331,8 @@ public sealed class PasskeySignInTests : IAsyncLifetime
         HttpResponseMessage response = await client.PostAsync($"/Account/Login?handler={LoginModel.PasskeyOptionsHandler}", body, TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK, "the relying-party id covers this host, so a challenge is issued");
-        response.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
-        response.Headers.TryGetValues("Set-Cookie", out _).Should().BeTrue("the challenge starts a ceremony");
+        response.Content.Headers.ContentType!.MediaType.Should().Be(MediaTypeNames.Application.Json);
+        response.Headers.TryGetValues(HeaderNames.SetCookie, out _).Should().BeTrue("the challenge starts a ceremony");
 
         string json = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 

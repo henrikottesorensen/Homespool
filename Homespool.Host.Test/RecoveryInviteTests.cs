@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Data;
 using Homespool.Host.Accounts;
@@ -529,7 +530,7 @@ public sealed class RecoveryInviteTests : IDisposable
 
         // Assert
         result.Should().BeOfType<RedirectToPageResult>().Which.PageName.Should().Be("./Lockout");
-        model.HttpContext.Response.Headers.Should().NotContainKey("Set-Cookie", "a lockout is not something a recovery gets around");
+        model.HttpContext.Response.Headers.Should().NotContainKey(HeaderNames.SetCookie, "a lockout is not something a recovery gets around");
 
         (await users.CheckPasswordAsync(subject, NewPassword)).Should().BeTrue("the recovery itself stands");
         mail.SentEmails.Should().ContainSingle("the owner is told either way");

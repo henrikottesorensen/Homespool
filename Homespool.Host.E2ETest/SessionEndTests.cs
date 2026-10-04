@@ -8,6 +8,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Model.Entities;
@@ -48,10 +49,10 @@ public sealed class SessionEndTests : IAsyncLifetime
     {
         // Arrange
         (HSUser _, HttpClient browser) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner@example.com");
-        string cookie = browser.DefaultRequestHeaders.GetValues("Cookie").Single();
+        string cookie = browser.DefaultRequestHeaders.GetValues(HeaderNames.Cookie).Single();
 
         using HttpClient copy = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        copy.DefaultRequestHeaders.Add("Cookie", cookie);
+        copy.DefaultRequestHeaders.Add(HeaderNames.Cookie, cookie);
 
         HttpResponseMessage before = await copy.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 

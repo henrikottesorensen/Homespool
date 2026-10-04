@@ -7,6 +7,7 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 
@@ -83,8 +84,8 @@ public sealed class SecurityHeaderTests : IAsyncLifetime
         using HttpResponseMessage response = await client.GetAsync(url, TestContext.Current.CancellationToken);
 
         // Assert
-        Header(response, "X-Content-Type-Options").Should().Be("nosniff");
-        Header(response, "X-Frame-Options").Should().Be("DENY");
+        Header(response, HeaderNames.XContentTypeOptions).Should().Be("nosniff");
+        Header(response, HeaderNames.XFrameOptions).Should().Be("DENY");
         Header(response, "Content-Security-Policy").Should().MatchRegex(PolicyShape);
         Header(response, "Referrer-Policy").Should().Be("same-origin");
     }

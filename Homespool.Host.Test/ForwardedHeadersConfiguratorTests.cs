@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 
+using Homespool.Host.Http;
 using Homespool.Host.Middleware;
 
 namespace Homespool.Host.Test;
@@ -45,7 +46,7 @@ public class ForwardedHeadersConfiguratorTests
     public void TheClientAddressComesFromXRealIpByDefault()
     {
         // Assert
-        Apply(new XForwardedOptions(), out _).ForwardedForHeaderName.Should().Be("X-Real-IP");
+        Apply(new XForwardedOptions(), out _).ForwardedForHeaderName.Should().Be(CustomHeaderNames.RealIp);
     }
 
     /// <summary>

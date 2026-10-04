@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
@@ -109,7 +110,7 @@ public sealed class ExternalOidcDexTests
         callback.StatusCode.Should().Be(HttpStatusCode.Redirect, "a linked account is signed in and sent on its way");
         callback.Headers.Location!.OriginalString.Should().NotContain("/Account/Lockout", "a provider's answer cannot be guessed, so the lockout does not reach it")
                 .And.NotContain("/Account/Login", "the account exists and signed in");
-        callback.Headers.GetValues("Set-Cookie").Should().Contain(cookie => cookie.StartsWith(".AspNetCore.Identity.Application", StringComparison.Ordinal),
+        callback.Headers.GetValues(HeaderNames.SetCookie).Should().Contain(cookie => cookie.StartsWith(".AspNetCore.Identity.Application", StringComparison.Ordinal),
                                                                    "a sign-in writes the application cookie");
 
         (await fixture.FindUserAsync(user.Email!)).Should().NotBeNull();
@@ -129,7 +130,7 @@ public sealed class ExternalOidcDexTests
 
         callback.StatusCode.Should().Be(HttpStatusCode.Redirect);
         callback.Headers.Location!.OriginalString.Should().Contain("/Account/Login", "no account holds this issuer's subject");
-        callback.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies);
+        callback.Headers.TryGetValues(HeaderNames.SetCookie, out IEnumerable<string>? cookies);
         (cookies ?? []).Should().NotContain(cookie => cookie.StartsWith(".AspNetCore.Identity.Application", StringComparison.Ordinal),
                                             "nobody was signed in");
     }

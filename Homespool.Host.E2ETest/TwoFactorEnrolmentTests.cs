@@ -11,6 +11,7 @@ using AwesomeAssertions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Net.Http.Headers;
 
 using OtpNet;
 
@@ -322,7 +323,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         List<string> codes = RecoveryCodesIn(html);
         codes.Should().HaveCount(10, "ten codes are generated, and a code that is generated but not displayed is lost");
 
-        IEnumerable<string> tempData = post.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? cookies) ?
+        IEnumerable<string> tempData = post.Headers.TryGetValues(HeaderNames.SetCookie, out IEnumerable<string>? cookies) ?
             cookies.Where(c => c.StartsWith(".AspNetCore.Mvc.CookieTempDataProvider=", StringComparison.Ordinal)) :
             [];
 
@@ -429,7 +430,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
         }
 
         CookieJar jar = new();
-        jar.Seed(client.DefaultRequestHeaders.GetValues("Cookie").First());
+        jar.Seed(client.DefaultRequestHeaders.GetValues(HeaderNames.Cookie).First());
         client.Dispose();
 
         return (user, jar);
@@ -560,7 +561,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
 
         public void Capture(HttpResponseMessage response)
         {
-            if (!response.Headers.TryGetValues("Set-Cookie", out IEnumerable<string>? values))
+            if (!response.Headers.TryGetValues(HeaderNames.SetCookie, out IEnumerable<string>? values))
             {
                 return;
             }
@@ -578,7 +579,7 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
                 return;
             }
 
-            request.Headers.Add("Cookie", string.Join("; ", _cookies.Select(c => $"{c.Key}={c.Value}")));
+            request.Headers.Add(HeaderNames.Cookie, string.Join("; ", _cookies.Select(c => $"{c.Key}={c.Value}")));
         }
 
         private void Store(string pair)

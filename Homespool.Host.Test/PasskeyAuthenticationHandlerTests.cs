@@ -3,6 +3,7 @@ using System.Buffers.Text;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Mime;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -78,7 +79,7 @@ public sealed class PasskeyAuthenticationHandlerTests : IDisposable
 
         // Assert
         request.Response.StatusCode.Should().Be((int)HttpStatusCode.OK);
-        request.Response.ContentType.Should().StartWith("application/json");
+        request.Response.ContentType.Should().StartWith(MediaTypeNames.Application.Json);
         request.Response.Headers.CacheControl.ToString().Should().Be("no-store");
 
         using JsonDocument options = JsonDocument.Parse(body);

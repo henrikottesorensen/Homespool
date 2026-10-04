@@ -17,6 +17,7 @@ using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -215,7 +216,7 @@ public sealed class SameOriginWriteTests : IAsyncLifetime
         }
 
         using HttpClient client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", plaintext);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, plaintext);
 
         using StreamContent body = Gcode();
 

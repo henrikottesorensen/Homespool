@@ -11,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Net.Http.Headers;
 
 namespace Homespool.Host.Test;
 
@@ -112,7 +113,7 @@ internal sealed record FakePush(Uri Endpoint, IReadOnlyDictionary<string, string
     /// <param name="publicKey">The deployment's public key, base64url.</param>
     public JsonElement VerifiedVapidClaims(string publicKey)
     {
-        string authorization = Header("Authorization") ?? throw new InvalidOperationException("No Authorization header.");
+        string authorization = Header(HeaderNames.Authorization) ?? throw new InvalidOperationException("No Authorization header.");
 
         if (!authorization.StartsWith("vapid ", StringComparison.Ordinal))
         {

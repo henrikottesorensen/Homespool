@@ -21,6 +21,7 @@ using Microsoft.Extensions.Options;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -367,7 +368,7 @@ public sealed class ApiTokenAuthenticationHandlerTests : IDisposable
 
         // Assert
         httpContext.Response.StatusCode.Should().Be((int)HttpStatusCode.Unauthorized);
-        httpContext.Response.Headers.WWWAuthenticate.ToString().Should().Be("Bearer");
+        httpContext.Response.Headers.WWWAuthenticate.ToString().Should().Be(AuthorizationSchemes.Bearer);
     }
 
     /// <summary>

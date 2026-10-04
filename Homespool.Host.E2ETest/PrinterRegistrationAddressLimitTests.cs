@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Host.PrusaConnect;
 
 namespace Homespool.Host.E2ETest;
@@ -163,7 +164,7 @@ public sealed class PrinterRegistrationAddressLimitTests : IAsyncLifetime
                 firmware = identity.Firmware,
             }),
         };
-        request.Headers.TryAddWithoutValidation("X-Real-IP", client);
+        request.Headers.TryAddWithoutValidation(CustomHeaderNames.RealIp, client);
 
         using HttpResponseMessage response = await printers.SendAsync(request, TestContext.Current.CancellationToken);
 
@@ -174,7 +175,7 @@ public sealed class PrinterRegistrationAddressLimitTests : IAsyncLifetime
     {
         using HttpRequestMessage poll = new(HttpMethod.Get, "/p/register");
         poll.Headers.TryAddWithoutValidation(Headers.Code, "NOTACODE00");
-        poll.Headers.TryAddWithoutValidation("X-Real-IP", client);
+        poll.Headers.TryAddWithoutValidation(CustomHeaderNames.RealIp, client);
 
         using HttpResponseMessage response = await printers.SendAsync(poll, TestContext.Current.CancellationToken);
 

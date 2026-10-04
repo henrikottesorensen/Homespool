@@ -20,6 +20,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -333,7 +334,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("text/plain");
+        response.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Text.Plain);
 
         (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
             .Should().Contain("nothing was uploaded");
@@ -405,7 +406,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("text/plain");
+        response.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Text.Plain);
 
         string explanation = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
@@ -450,7 +451,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
         foreach (HttpResponseMessage response in new[] { version, upload })
         {
             response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-            response.Content.Headers.ContentType?.MediaType.Should().Be("text/plain");
+            response.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Text.Plain);
 
             (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken))
                 .Should().Contain("ViewPrinter");
@@ -926,7 +927,7 @@ public sealed class OctoPrintCompatEndpointTests : IAsyncLifetime
     {
         HttpClient client = _factory.CreateClient(
             new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         return client;
     }

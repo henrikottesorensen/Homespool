@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -82,7 +83,7 @@ public sealed class CameraStreamLimitTests : IAsyncLifetime
                     $"/api/v1/cameras/{uuid}/stream.mjpeg", TestContext.Current.CancellationToken);
 
                 refused.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
-                refused.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+                refused.Content.Headers.ContentType?.MediaType.Should().Be(MediaTypeNames.Application.ProblemJson);
 
                 watching[0]!.Dispose();
                 watching[0] = null;

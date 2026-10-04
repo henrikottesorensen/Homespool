@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Mime;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,10 +12,12 @@ using AwesomeAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Net.Http.Headers;
 
 using NSubstitute;
 
 using Homespool.Host.Cameras;
+using Homespool.Host.Http;
 
 namespace Homespool.Host.Test;
 
@@ -56,7 +59,7 @@ public sealed class CameraStreamRelayTests
     /// pass, so it is the type alone that refuses them.
     /// </summary>
     [Theory]
-    [InlineData("text/html")]
+    [InlineData(MediaTypeNames.Text.Html)]
     [InlineData("text/html; boundary=frame")]
     [InlineData("image/svg+xml; boundary=frame")]
     [InlineData("multipart/mixed; boundary=frame")]
@@ -82,7 +85,7 @@ public sealed class CameraStreamRelayTests
     [Fact]
     public async Task AMultipartTypeWithNoBoundaryIsRefused()
     {
-        using LiveMjpegStream? live = await OpenAsync("multipart/x-mixed-replace");
+        using LiveMjpegStream? live = await OpenAsync(CustomMediaTypes.MultipartMixedReplace);
 
         live.Should().BeNull();
     }
@@ -128,11 +131,11 @@ public sealed class CameraStreamRelayTests
     {
         FakeLogger<CameraStreamRelay> logger = new();
 
-        using LiveMjpegStream? live = await OpenAsync("text/html", logger: logger);
+        using LiveMjpegStream? live = await OpenAsync(MediaTypeNames.Text.Html, logger: logger);
 
         FakeLogRecord record = logger.Collector.GetSnapshot().Should().ContainSingle().Which;
         record.Level.Should().Be(LogLevel.Warning);
-        record.StructuredState!.Single(pair => pair.Key == "ContentType").Value.Should().Be("text/html");
+        record.StructuredState!.Single(pair => pair.Key == "ContentType").Value.Should().Be(MediaTypeNames.Text.Html);
     }
 
     private static async Task<LiveMjpegStream?> OpenAsync(string? contentType,
@@ -149,7 +152,7 @@ public sealed class CameraStreamRelayTests
 
             if (contentType is not null)
             {
-                response.Content.Headers.TryAddWithoutValidation("Content-Type", contentType).Should().BeTrue();
+                response.Content.Headers.TryAddWithoutValidation(HeaderNames.ContentType, contentType).Should().BeTrue();
             }
 
             return response;

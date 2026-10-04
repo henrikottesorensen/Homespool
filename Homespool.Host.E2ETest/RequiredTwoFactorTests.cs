@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Accounts;
+using Homespool.Host.Http;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -192,7 +194,7 @@ public sealed partial class RequiredTwoFactorTests : IAsyncLifetime
             using HttpResponseMessage response = await client.GetAsync(asset, TestContext.Current.CancellationToken);
 
             response.StatusCode.Should().Be(HttpStatusCode.OK, "{0} is part of a page the hold serves", asset);
-            response.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html",
+            response.Content.Headers.ContentType?.MediaType.Should().NotBe(MediaTypeNames.Text.Html,
                 "{0} must arrive as itself, not as the enrolment page in its place", asset);
         }
     }
@@ -237,7 +239,7 @@ public sealed partial class RequiredTwoFactorTests : IAsyncLifetime
         string token = await MintTokenAsync();
 
         using HttpClient client = _factory.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         using HttpResponseMessage response = await client.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 
@@ -260,7 +262,7 @@ public sealed partial class RequiredTwoFactorTests : IAsyncLifetime
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
 
         using HttpClient client = permissive.CreateClient();
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(AuthorizationSchemes.Bearer, token);
 
         using HttpResponseMessage response = await client.GetAsync("/api/v1/printers", TestContext.Current.CancellationToken);
 

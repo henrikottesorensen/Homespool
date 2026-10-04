@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.Mime;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using Homespool.Host.Cameras;
+using Homespool.Host.Http;
 
 namespace Homespool.Host.IntegrationTest;
 
@@ -257,7 +259,7 @@ public abstract class Go2RtcContract : IAsyncLifetime
         CameraFrame? frame = await FetchFrameAsync(stream);
 
         frame.Should().NotBeNull();
-        frame!.ContentType.Should().Be("image/jpeg");
+        frame!.ContentType.Should().Be(MediaTypeNames.Image.Jpeg);
         frame.Bytes.Should().NotBeEmpty();
     }
 
@@ -347,7 +349,7 @@ public abstract class Go2RtcContract : IAsyncLifetime
         using LiveMjpegStream? live = await OpenStreamAsync(stream);
 
         live.Should().NotBeNull();
-        live!.ContentType.Should().StartWith("multipart/x-mixed-replace");
+        live!.ContentType.Should().StartWith(CustomMediaTypes.MultipartMixedReplace);
     }
 
     /// <summary>
@@ -450,7 +452,7 @@ public abstract class Go2RtcContract : IAsyncLifetime
         using HttpClient client = new();
         using HttpRequestMessage request = new(method, new Uri(BaseAddress, pathAndQuery));
         request.Headers.Authorization = new AuthenticationHeaderValue(
-            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Username}:{Password}")));
+            AuthorizationSchemes.Basic, Convert.ToBase64String(Encoding.UTF8.GetBytes($"{Username}:{Password}")));
 
         return await client.SendAsync(request, TestContext.Current.CancellationToken);
     }

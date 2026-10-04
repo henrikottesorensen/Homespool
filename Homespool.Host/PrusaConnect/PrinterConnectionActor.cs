@@ -464,6 +464,10 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             case TakePendingCommandMessage take:
                 HandleTakePending(take);
                 break;
+
+            case ReturnCollectedCommandMessage returned:
+                await HandleReturnCollectedAsync(returned);
+                break;
         }
     }
 
@@ -489,6 +493,46 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         }
 
         take.Completion.TrySetResult(parked);
+    }
+
+    /// <summary>
+    /// The HTTP transport giving back a command whose poll ended before the response was written:
+    /// parked again, its response clock stopped, so the next poll collects it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Without this the command is lost twice over: the slot is empty, so the next poll gets a 204,
+    /// and the response clock already running reports <c>ResponseTimedOut</c>, which tells the caller
+    /// the printer may have it. It was never sent, and the queue treats "may have it" very
+    /// differently from "never left".
+    /// </para>
+    /// <para>
+    /// <b>The original collect deadline stands, not a fresh one.</b> <c>ParkedAt</c> is kept, so a
+    /// printer whose polls keep failing still has the command withdrawn as <c>NotConnected</c> once
+    /// <see cref="CollectTimeout"/> has passed since the send. Restarting it on every return would let
+    /// such a printer hold the slot indefinitely.
+    /// </para>
+    /// <para>
+    /// Ignored unless it is still the command in flight and still unanswered: a return that arrives
+    /// after the response timeout, or after anything else took the slot, has nothing to give back to.
+    /// A parked command always has <c>ParkedAt</c>, so a written one is never re-parked.
+    /// </para>
+    /// </remarks>
+    private async Task HandleReturnCollectedAsync(ReturnCollectedCommandMessage returned)
+    {
+        PendingCommand command = returned.Command;
+
+        if (_pending is not { SentAt: not null, ParkedAt: not null } pending || pending.CommandId != command.CommandId)
+        {
+            return;
+        }
+
+        await _connection.SendCommandAsync(command.CommandId, command.Command, CancellationToken.None, Dialect);
+
+        _pending = pending with { SentAt = null };
+
+        _logger.LogInformation("command {CommandId} ({Command}) was collected by a poll that ended before it was sent; parked again",
+                               pending.CommandId, pending.WireName);
     }
 
     private async Task HandleSendAsync(SendCommandMessage send)

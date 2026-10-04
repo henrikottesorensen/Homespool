@@ -1236,6 +1236,166 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
+    /// A poll that ends after the loop handed it a command, but before its response was written,
+    /// gives the command back: the next poll collects it, and its answer reaches the caller.
+    /// </summary>
+    /// <remarks>
+    /// The response timeout is 300 ms and the test waits 600 ms between the two polls, so the return
+    /// has to stop the response clock as well as refill the slot. Left running, the clock would report
+    /// <c>ResponseTimedOut</c> for a command the printer never received.
+    /// </remarks>
+    [Fact]
+    public async Task ACommandTakenByAnAbortedPollIsCollectedByTheNextOne()
+    {
+        // Arrange
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System),
+                                                sink,
+                                                responseTimeout: TimeSpan.FromMilliseconds(300));
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+
+        // Act
+        await AbortAPollAfterItsTakeAsync(actor, sink, TimeSpan.Zero);
+
+        await Task.Delay(600, TestContext.Current.CancellationToken);
+        send.IsCompleted.Should().BeFalse("the command was given back undelivered, so no response clock is running");
+
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+        collected.Command.Should().BeOfType<PrusaConnect.Commands.PausePrint>();
+
+        await actor.PostAsync(EventAnswering(collected.CommandId), CancellationToken.None);
+
+        // Assert
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A command given back keeps the collect deadline it was parked with, rather than starting a
+    /// new one, so a printer whose polls keep failing cannot hold the in-flight slot indefinitely.
+    /// </summary>
+    /// <remarks>
+    /// The loop is held for 1.2 s against a 1 s collect timeout, so the deadline has passed by the
+    /// time the command is given back. Kept, it is withdrawn at once. A fresh deadline would hold it
+    /// another full second, past the 500 ms this allows.
+    /// </remarks>
+    [Fact]
+    public async Task ACommandGivenBackKeepsItsOriginalCollectDeadline()
+    {
+        // Arrange
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System),
+                                                sink,
+                                                collectTimeout: TimeSpan.FromSeconds(1));
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+
+        // Act
+        await AbortAPollAfterItsTakeAsync(actor, sink, TimeSpan.FromMilliseconds(1200));
+
+        // Assert
+        CommandSendResult result = await send.WaitAsync(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+        result.Outcome.Should().Be(CommandSendOutcome.NotConnected, "it never reached the printer");
+
+        (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))
+            .Should().BeNull("a withdrawn command must not be handed to a later poll");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A command given back after its response timeout has already reported it is not parked again,
+    /// even once the next command is in flight: its caller has its answer, and the printer must not be
+    /// handed something nobody is waiting for.
+    /// </summary>
+    /// <remarks>
+    /// The stale return arrives while the next command has been collected, which is the one state in
+    /// which only the command id tells the two apart.
+    /// </remarks>
+    [Fact]
+    public async Task AReturnAfterTheResponseTimeoutParksNothing()
+    {
+        // Arrange
+        HttpPrinterConnection connection = new(TimeProvider.System);
+        PrinterConnectionActor actor = NewActor(connection, responseTimeout: TimeSpan.FromMilliseconds(300));
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+
+        PendingCommand stale = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.ResponseTimedOut);
+
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+
+        // Act
+        await actor.PostAsync(new ReturnCollectedCommandMessage(stale), CancellationToken.None);
+
+        // Assert
+        (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))
+            .Should().BeNull("the stale command's caller has its answer, and the next one is already delivered");
+
+        await actor.PostAsync(EventAnswering(collected.CommandId), CancellationToken.None);
+        (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.Completed);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// Only a parked command can be given back. A command written to a socket has reached the
+    /// printer, so a return naming it is ignored rather than writing it a second time.
+    /// </summary>
+    [Fact]
+    public async Task AReturnNamingAWrittenCommandIsIgnored()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+        uint commandId = CommandIdOf(sentFrames[0]);
+
+        // Act
+        await actor.PostAsync(new ReturnCollectedCommandMessage(new PendingCommand(commandId, new PrusaConnect.Commands.PausePrint())),
+                              CancellationToken.None);
+        await actor.PostAsync(EventAnswering(commandId), CancellationToken.None);
+
+        // Assert
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed);
+        sentFrames.Should().HaveCount(1, "a command the printer already has is never written again");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// Drives a poll whose request ends after the loop has handed it the parked command, the window an
+    /// aborted poll leaves: the loop is held so the take is queued, the request's token cancelled,
+    /// and only then is the loop let go to hand the command over.
+    /// </summary>
+    private static async Task AbortAPollAfterItsTakeAsync(PrinterConnectionActor actor, GatedTelemetrySink sink, TimeSpan heldFor)
+    {
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
+        await WaitUntilAsync(() => sink.IsHeld);
+
+        using CancellationTokenSource requestAborted = new();
+
+        Task<PendingCommand?> poll = HttpCommandCollection.CollectAsync(actor, requestAborted.Token);
+
+        await requestAborted.CancelAsync();
+        await Task.Delay(heldFor, TestContext.Current.CancellationToken);
+        sink.Release();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Eventually(poll));
+    }
+
+    /// <summary>
     /// Blocks the actor's loop on demand. <see cref="ITelemetrySink.Enqueue(int,DateTimeOffset,TelemetryUpdate)"/> is synchronous and
     /// called from the loop, which makes it the one place a test can hold the loop still without
     /// guessing at timing.

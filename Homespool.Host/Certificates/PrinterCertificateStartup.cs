@@ -32,7 +32,7 @@ public static class PrinterCertificateStartup
     /// runs. A leaf minted lazily would be minted after the thing that needs it had already given up.
     /// </para>
     /// <para>
-    /// It writes PEM as well as PKCS#12 (<see cref="PrinterCertificateAuthority"/>), with
+    /// It writes the leaf as PEM (<see cref="PrinterCertificateAuthority"/>), with
     /// the leaf <i>alone</i> in the certificate file — firmware's
     /// <c>x509_crt_check_ee_locally_trusted</c> requires exactly one certificate presented, and a
     /// terminator that appends the authority fails in a way that reads as a protocol bug.

@@ -31,8 +31,6 @@ public sealed class DataProtectionCertificateTests : IDisposable
 
     private string KeyPath => Path.Combine(_root, "dataprotection.key.pem");
 
-    private string LegacyPath => Path.Combine(_root, "dataprotection.pfx");
-
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -311,60 +309,6 @@ public sealed class DataProtectionCertificateTests : IDisposable
         // Assert
         act.Should().Throw<DataProtectionCertificateUnreadableException>();
         File.Exists(KeyPath).Should().BeFalse("nothing may be minted in the gap");
-    }
-
-    /// <summary>
-    /// A passwordless PKCS#12 from before the passphrase existed - what every deployment before
-    /// this change has on its volume - is moved to the encrypted pair on the first start and then
-    /// deleted, and is the same certificate afterwards, so nothing in the ring becomes unreadable.
-    /// A migration that wrote the pair and died before deleting the PKCS#12 is finished on the
-    /// next start.
-    /// </summary>
-    [Fact]
-    public void APkcs12WrittenWithoutAPassphraseIsMovedToTheEncryptedPairAndDeleted()
-    {
-        // Arrange - what an existing deployment has: minted by an earlier version, exported with no
-        // password. Deliberately not through the class, which can no longer produce one.
-        Directory.CreateDirectory(_root);
-
-        string thumbprint;
-        byte[] legacyBytes;
-
-        using (RSA key = RSA.Create(2048))
-        {
-            CertificateRequest request = new("CN=legacy", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-
-            using X509Certificate2 legacy = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-
-            legacyBytes = legacy.Export(X509ContentType.Pkcs12);
-            thumbprint = legacy.Thumbprint;
-        }
-
-        File.WriteAllBytes(LegacyPath, legacyBytes);
-
-        // Act
-        using X509Certificate2 migrated = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
-
-        // Assert
-        migrated.Thumbprint.Should().Be(thumbprint, "the certificate must be the one the ring was encrypted with");
-        migrated.HasPrivateKey.Should().BeTrue();
-
-        File.Exists(LegacyPath).Should().BeFalse("the plaintext copy is deleted once the pair is proven readable");
-        File.Exists(KeyPath + ".tmp").Should().BeFalse("the write is atomic and leaves nothing beside the key");
-        File.ReadAllText(KeyPath).Should().StartWith("-----BEGIN ENCRYPTED PRIVATE KEY-----");
-
-        using (X509Certificate2 again = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System))
-        {
-            again.Thumbprint.Should().Be(thumbprint, "and the next start simply opens the pair");
-        }
-
-        // A migration that died between writing the pair and deleting the PKCS#12.
-        File.WriteAllBytes(LegacyPath, legacyBytes);
-
-        using X509Certificate2 finished = DataProtectionCertificate.Ensure(_root, 5475, Passphrase, TimeProvider.System);
-
-        finished.Thumbprint.Should().Be(thumbprint, "the pair wins over the leftover");
-        File.Exists(LegacyPath).Should().BeFalse("and the leftover is removed");
     }
 
     private static IDataProtectionProvider NewProvider(X509Certificate2 certificate, string ringDirectory)

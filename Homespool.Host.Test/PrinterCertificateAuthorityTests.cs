@@ -485,61 +485,6 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
     }
 
     /// <summary>
-    /// A leaf issued by an earlier version as PKCS#12 becomes the proxy's PEM pair on the next start,
-    /// without being reissued.
-    /// </summary>
-    /// <remarks>
-    /// <b>This is the upgrade path, and its ancestor failed on a real stack before this test
-    /// existed.</b> A deployment issued a certificate before nginx terminated printer TLS has
-    /// <c>printer.pfx</c> and no PEM at all; returning the PKCS#12 without writing the PEMs leaves
-    /// nginx with no certificate, a proxy log line reading as "PrinterTls must be off", and every
-    /// printer unable to connect.
-    /// <para>
-    /// The thumbprint assertion is the other half: migrating the existing leaf rather than issuing a
-    /// new one keeps whatever names the operator deliberately covered. And the PKCS#12 must be gone
-    /// afterwards - it holds the private key in the clear with nothing reading it.
-    /// </para>
-    /// </remarks>
-    [Fact]
-    public void AnUpgradedDeploymentGetsThePemWithoutReissuingTheLeaf()
-    {
-        // Arrange - a deployment from an earlier version: PKCS#12 beside the authority, no PEM.
-        PrinterCertificateAuthority authority = NewAuthority();
-        using X509Certificate2 original = authority.IssueLeaf(["192.168.13.238"]);
-
-        string legacyPath = Path.Combine(_root, "certs", "printer.pfx");
-
-        using (X509Certificate2 legacy = X509Certificate2.CreateFromPemFile(
-                   authority.LeafCertificatePemPath, authority.LeafKeyPemPath))
-        {
-            File.WriteAllBytes(legacyPath, legacy.Export(X509ContentType.Pkcs12));
-        }
-
-        File.Delete(authority.LeafCertificatePemPath);
-        File.Delete(authority.LeafKeyPemPath);
-
-        // Act - a restart on the new version.
-        using X509Certificate2 served = NewAuthority().EnsureLeaf(["something-else-entirely.lan"]);
-
-        // Assert
-        File.Exists(authority.LeafCertificatePemPath).Should().BeTrue(
-            "nginx reads PEM and cannot read the PKCS#12, so without this the proxy has nothing to present");
-        File.Exists(authority.LeafKeyPemPath).Should().BeTrue();
-
-        served.Thumbprint.Should().Be(original.Thumbprint,
-                                      "the existing leaf is migrated, not reissued - reissuing would silently drop the names the " +
-                                      "operator had covered");
-
-        using X509Certificate2 fromPem = X509Certificate2.CreateFromPem(
-            File.ReadAllText(authority.LeafCertificatePemPath));
-
-        fromPem.Thumbprint.Should().Be(original.Thumbprint, "and the PEM has to be that same leaf");
-
-        File.Exists(legacyPath).Should().BeFalse(
-            "the PKCS#12 holds the private key in the clear, and after migration nothing reads it");
-    }
-
-    /// <summary>
     /// Minting under a configured passphrase writes the authority's key encrypted, and the same
     /// passphrase opens it on the next start.
     /// </summary>
@@ -715,57 +660,6 @@ public sealed class PrinterCertificateAuthorityTests : IDisposable
 
         File.Exists(authority.AuthorityCertificatePemPath).Should().BeTrue();
         healed.GetECDsaPrivateKey().Should().NotBeNull();
-    }
-
-    /// <summary>
-    /// An authority stored by an earlier version as passwordless PKCS#12 migrates to the PEM pair -
-    /// encrypted, when a passphrase is configured - and the PKCS#12 is deleted.
-    /// </summary>
-    /// <remarks>
-    /// The fixture builds its own <c>ca.pfx</c> the way earlier versions wrote it, because the class
-    /// no longer can. The thumbprint assertion is the fleet-safety half: migration must carry the
-    /// same authority across, or every provisioned printer stops validating.
-    /// </remarks>
-    [Fact]
-    public void ALegacyPkcs12AuthorityMigratesToAnEncryptedPemPair()
-    {
-        // Arrange - ca.pfx and connect.der as an earlier version left them.
-        string directory = Path.Combine(_root, "certs");
-
-        Directory.CreateDirectory(directory);
-
-        string thumbprint;
-
-        using (ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256))
-        {
-            CertificateRequest request = new("CN=Homespool printer CA", key, HashAlgorithmName.SHA256);
-
-            request.CertificateExtensions.Add(new X509BasicConstraintsExtension(
-                                                  certificateAuthority: true, hasPathLengthConstraint: true, pathLengthConstraint: 0,
-                                                  critical: true));
-
-            using X509Certificate2 legacy = request.CreateSelfSigned(
-                DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(10));
-
-            File.WriteAllBytes(Path.Combine(directory, "ca.pfx"), legacy.Export(X509ContentType.Pkcs12));
-            File.WriteAllBytes(Path.Combine(directory, "connect.der"), legacy.Export(X509ContentType.Cert));
-            thumbprint = legacy.Thumbprint;
-        }
-
-        // Act - the first start on the new version, with a passphrase configured.
-        PrinterCertificateAuthority authority = NewAuthority("hunter2");
-        using X509Certificate2 migrated = authority.EnsureAuthority();
-
-        // Assert
-        migrated.Thumbprint.Should().Be(thumbprint,
-                                        "migration must carry the same authority across, or every provisioned printer is stranded");
-        File.Exists(Path.Combine(directory, "ca.pfx")).Should().BeFalse(
-            "the PKCS#12 holds the key in the clear, which is what the migration exists to end");
-        File.ReadAllText(authority.AuthorityKeyPemPath).Should().Contain("ENCRYPTED PRIVATE KEY");
-
-        using X509Certificate2 reloaded = NewAuthority("hunter2").EnsureAuthority();
-
-        reloaded.Thumbprint.Should().Be(thumbprint, "and the migrated pair has to survive a restart");
     }
 
     /// <summary>

@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
+using Microsoft.Net.Http.Headers;
 
 using Homespool.Host.Services;
 
@@ -83,9 +84,6 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
     /// <summary>The one value that admits a cookie-authenticated write.</summary>
     public const string SameOrigin = "same-origin";
 
-    /// <summary>The browser's own origin, which stands in for <c>Sec-Fetch-Site</c> over plain HTTP.</summary>
-    public const string OriginHeaderName = "Origin";
-
     /// <summary>The longest value the header is defined to take is <c>same-origin</c>; more than this is not one.</summary>
     private const int MaxLoggedHeaderLength = 32;
 
@@ -117,7 +115,7 @@ public sealed class SameOriginWriteFilter : IAsyncAuthorizationFilter
 
         AuthenticateResult byCookie = await context.HttpContext.AuthenticateAsync(IdentityConstants.ApplicationScheme);
         StringValues secFetchSite = request.Headers[HeaderName];
-        StringValues origin = request.Headers[OriginHeaderName];
+        StringValues origin = request.Headers[HeaderNames.Origin];
 
         if (!Refuses(request.Method, secFetchSite, byCookie.Succeeded, origin, PlainHttpOrigin(request)))
         {

@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261003011712_InitialCreate")]
+    [Migration("20261004101303_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -487,6 +487,13 @@ namespace Homespool.Data.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("StoppedByUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("WithdrawnByScope")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("WithdrawnByUserId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");

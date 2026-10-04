@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -401,6 +402,20 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
+    /// The same authority, as a print row carries it across from its entry - or null for a row with
+    /// none to lend, opened before <see cref="PrintJob.QueuedByScope"/> existed.
+    /// </summary>
+    /// <remarks>
+    /// <b>The row's copy is the entry's authority, not a lesser one.</b> It is what lets the loop ask
+    /// about a print after its entry has gone - consumed by the start, or withdrawn while the start
+    /// was unanswered - and it is no wider than what queued the work.
+    /// </remarks>
+    internal static Caller? CallerFor(PrintJob job)
+    {
+        return job.QueuedByScope is { } scope ? Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(scope)) : null;
+    }
+
+    /// <summary>
     /// Every printer that needs a pass - one with work waiting, or one with a print in flight.
     /// </summary>
     /// <remarks>
@@ -749,6 +764,19 @@ public sealed class QueueAdvancer : BackgroundService
             return await TryAdoptPanelPrintAsync(scope, dbContext, printerId, live, cancellationToken);
         }
 
+        // Withdrawn while it was being started, and now known to be ours and under way: the person
+        // who withdrew it asked for it not to print. Accepted, the stop is recorded on the row by the
+        // stop service rather than on this tracked copy, so the next pass - reading the row afresh -
+        // is the one that closes it. Refused or unanswered, this pass goes on as usual, which is
+        // also what closes a print that ended before the stop could reach it.
+        if (active.State is PrintState.Starting or PrintState.Printing &&
+            active.WithdrawnByUserId is not null &&
+            active.StoppedByUserId is null &&
+            await StopWithdrawnPrintAsync(scope, dbContext, printerId, active, cancellationToken))
+        {
+            return active;
+        }
+
         if (ObserveFilament(printerId, active, live, now))
         {
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -1094,6 +1122,85 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
+    /// Stops a print whose queue entry was withdrawn while it was being started, as the person who
+    /// withdrew it.
+    /// </summary>
+    /// <returns>Whether the printer accepted the stop.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>Only once the print is known to be ours and running.</b> Called on a
+    /// <see cref="PrintState.Starting"/> or <see cref="PrintState.Printing"/> row, which a withdrawn
+    /// start reaches only by the printer confirming it or naming our file - never on a status alone,
+    /// which cannot say whose print is running.
+    /// </para>
+    /// <para>
+    /// <b>Through <see cref="PrintStopService"/>, like every stop</b>, so the permission is checked
+    /// again as it goes out - the same rule the withdrawal was allowed under - and the stop is
+    /// attributed to that person when the printer accepts it. A refusal on permission is final: the
+    /// request is dropped and the print runs on, for whoever may stop it, rather than being asked
+    /// about on every pass. Anything else - a refusal from the printer, no answer, another command
+    /// in flight - is tried again next pass, until the stop is accepted or the print ends.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> StopWithdrawnPrintAsync(AsyncServiceScope scope,
+                                                     HomespoolDbContext dbContext,
+                                                     int printerId,
+                                                     PrintJob withdrawn,
+                                                     CancellationToken cancellationToken)
+    {
+        if (withdrawn.WithdrawnByUserId is not { } withdrawnBy)
+        {
+            return false;
+        }
+
+        // A missing scope parses to nothing, which the stop service refuses - and a refusal drops
+        // the request below, so a row that somehow has no scope is never acted on beyond that.
+        Caller withdrawer = Caller.Scoped(withdrawnBy, CapabilitySet.Parse(withdrawn.WithdrawnByScope));
+
+        PrintStopService stops = scope.ServiceProvider.GetRequiredService<PrintStopService>();
+        CommandOutcome? outcome;
+
+        try
+        {
+            outcome = await WhilePrinterAnswersAsync(scope,
+                                                     () => stops.StopAsync(printerId, withdrawer, cancellationToken));
+        }
+        catch (Exception e) when (e is TeamAccessDeniedException or CredentialScopeDeniedException)
+        {
+            _logger.LogWarning(e,
+                               "[{PrinterId}] {FileName} was withdrawn while starting, but user {UserId} may no longer stop it; " +
+                               "leaving it to print.",
+                               printerId, withdrawn.FileName, withdrawer.UserId);
+
+            withdrawn.WithdrawnByUserId = null;
+            withdrawn.WithdrawnByScope = null;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return false;
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException)
+        {
+            _logger.LogDebug(e, "[{PrinterId}] could not stop the withdrawn {FileName} yet", printerId, withdrawn.FileName);
+
+            return false;
+        }
+
+        if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+        {
+            _logger.LogDebug("[{PrinterId}] the printer would not stop the withdrawn {FileName} yet: {Reason}",
+                             printerId, withdrawn.FileName, ForLog(outcome.Reason));
+
+            return false;
+        }
+
+        _logger.LogInformation("[{PrinterId}] stopped {FileName}, which user {UserId} withdrew while it was starting",
+                               printerId, withdrawn.FileName, withdrawer.UserId);
+
+        return true;
+    }
+
+    /// <summary>
     /// Settles a print that was commanded and never acknowledged, by asking the printer what it is
     /// running.
     /// </summary>
@@ -1114,11 +1221,13 @@ public sealed class QueueAdvancer : BackgroundService
     /// print, and the queue would start one.
     /// </para>
     /// <para>
-    /// <b>The ask goes out as whoever queued the work</b>, like every other command this loop sends.
-    /// When the entry has gone - cancelled in the window between the row being opened and the printer
-    /// answering - there is no authority to borrow and nothing to remove on success, so nothing is
-    /// asked and the elapsed-time rules settle it instead. Under-asking there costs a hold nobody is
-    /// waiting on; asking with an authority nobody granted would cost more.
+    /// <b>The ask goes out as whoever queued the work</b>, like every other command this loop sends,
+    /// on the authority the row carries - so it is asked whether or not the entry is still there. The
+    /// entry can be gone: withdrawn while the start was unanswered, or dropped with a file that left
+    /// the disk. Left to the elapsed-time rules, a print running with no entry was closed as
+    /// <see cref="PrintState.Unknown"/> or deleted while it ran, and then its owner could not stop it
+    /// and nobody heard how it ended. The entry decides only what follows: removed when the print is
+    /// adopted, held beside a print nobody can describe.
     /// </para>
     /// </remarks>
     private async Task<PrintStartVerdict> ResolveUnconfirmedPrintAsync(AsyncServiceScope scope,
@@ -1136,9 +1245,9 @@ public sealed class QueueAdvancer : BackgroundService
         bool connected = _registry.IsConnected(printerId);
         JobAnswer answer = JobAnswer.NotAsked;
 
-        if (connected && entry is not null && live?.JobId is { } jobId)
+        if (connected && CallerFor(commanded) is { } queuer && live?.JobId is { } jobId)
         {
-            answer = await AskWhoseJobAsync(scope, printerId, commanded, entry, jobId, cancellationToken);
+            answer = await AskWhoseJobAsync(scope, printerId, commanded, queuer, entry?.PrintFileId, jobId, cancellationToken);
         }
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -1170,13 +1279,13 @@ public sealed class QueueAdvancer : BackgroundService
                     dbContext.QueuedPrints.Remove(entry);
                 }
 
-                await dbContext.SaveChangesAsync(cancellationToken);
+                await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
                 break;
 
             case PrintStartVerdict.NeverStarted:
                 _logger.LogInformation(
-                    "[{PrinterId}] {FileName} never started - the printer did not take it. It is still queued.",
-                    printerId, commanded.FileName);
+                    "[{PrinterId}] {FileName} never started - the printer did not take it. Still queued: {StillQueued}",
+                    printerId, commanded.FileName, entry is not null);
 
                 // Removed rather than closed as failed: nothing failed. A command went unanswered
                 // for a minute and the printer turned out never to have acted on it, which is not a
@@ -1220,7 +1329,8 @@ public sealed class QueueAdvancer : BackgroundService
     private async Task<JobAnswer> AskWhoseJobAsync(AsyncServiceScope scope,
                                                    int printerId,
                                                    PrintJob commanded,
-                                                   QueuedPrint entry,
+                                                   Caller queuer,
+                                                   long? printFileId,
                                                    int jobId,
                                                    CancellationToken cancellationToken)
     {
@@ -1232,7 +1342,7 @@ public sealed class QueueAdvancer : BackgroundService
             answer = await WhilePrinterAnswersAsync(scope,
                                                     () => commands.AskAsync(printerId,
                                                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
-                                                                            CallerFor(entry),
+                                                                            queuer,
                                                                             cancellationToken));
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
@@ -1263,12 +1373,16 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         // The name the printer knows the file by is the one it was sent under, which may carry its
-        // owner's name; the record keeps the file's own, which is what history shows.
-        string? driveName = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
-                                       .PrintFilesOnPrinters
-                                       .Where(row => row.PrinterId == printerId && row.PrintFileId == entry.PrintFileId)
-                                       .Select(row => row.DriveName)
-                                       .FirstOrDefaultAsync(cancellationToken);
+        // owner's name; the record keeps the file's own, which is what history shows. Only the entry
+        // says which file that was, so a withdrawn one is matched on the path and the file's own name
+        // alone - and the path is what START_PRINT was given, which the printer echoes.
+        string? driveName = printFileId is { } fileId ?
+            await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                       .PrintFilesOnPrinters
+                       .Where(row => row.PrinterId == printerId && row.PrintFileId == fileId)
+                       .Select(row => row.DriveName)
+                       .FirstOrDefaultAsync(cancellationToken) :
+            null;
 
         bool ours = (job.Path is { } path && path == commanded.PrinterPath) ||
                     (job.DisplayName is { } displayName &&
@@ -1325,7 +1439,7 @@ public sealed class QueueAdvancer : BackgroundService
                                                          PrintJob job,
                                                          CancellationToken cancellationToken)
     {
-        if (job.FirmwareJobId is not { } jobId || job.QueuedByScope is not { } recordedScope)
+        if (job.FirmwareJobId is not { } jobId || CallerFor(job) is not { } recorded)
         {
             return null;
         }
@@ -1343,7 +1457,7 @@ public sealed class QueueAdvancer : BackgroundService
             answer = await WhilePrinterAnswersAsync(scope,
                                                     () => commands.AskAsync(printerId,
                                                                             new PrusaConnect.Commands.SendJobInfo { JobId = jobId },
-                                                                            Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(recordedScope)),
+                                                                            recorded,
                                                                             cancellationToken));
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
@@ -1514,6 +1628,14 @@ public sealed class QueueAdvancer : BackgroundService
     /// have landed would trade this defect for its mirror image - a queued print silently dropped
     /// because a printer was slow to answer.
     /// </para>
+    /// <para>
+    /// <b>And the entry is looked for again after the row is written, before anything is sent.</b>
+    /// It can be withdrawn at any point in a pass, and a withdrawal deletes the entry and then marks
+    /// any open row for it to be stopped - so with the row written first, either this finds the entry
+    /// gone and sends nothing, or the withdrawal finds the row and the print is stopped once it is
+    /// known to be running. One withdrawn after this point is the same second case, which is why the
+    /// confirmation's save lets an entry already gone go rather than undoing the start with it.
+    /// </para>
     /// </remarks>
     private async Task PrintAsync(AsyncServiceScope scope,
                                   HomespoolDbContext dbContext,
@@ -1543,6 +1665,17 @@ public sealed class QueueAdvancer : BackgroundService
         dbContext.PrintJobs.Add(commanded);
         await dbContext.SaveChangesAsync(cancellationToken);
 
+        if (!await dbContext.QueuedPrints.AnyAsync(queued => queued.Id == head.Id, cancellationToken))
+        {
+            _logger.LogInformation("[{PrinterId}] {FileName} was withdrawn as it was about to start; not starting it.",
+                                   printerId, commanded.FileName);
+
+            dbContext.PrintJobs.Remove(commanded);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return;
+        }
+
         try
         {
             CommandOutcome? outcome = await WhilePrinterAnswersAsync(scope,
@@ -1554,7 +1687,7 @@ public sealed class QueueAdvancer : BackgroundService
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
                 HandleRefusal(printerId, dbContext, head, commanded, outcome.Reason);
-                await dbContext.SaveChangesAsync(cancellationToken);
+                await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
 
                 return;
             }
@@ -1566,9 +1699,10 @@ public sealed class QueueAdvancer : BackgroundService
             // says otherwise, and that is also where the firmware job id is picked up.
             commanded.State = PrintState.Starting;
 
-            // The entry has done its job; the history row carries it from here.
+            // The entry has done its job; the history row carries it from here - and if it was
+            // withdrawn while the printer was answering, the row also carries the request to stop it.
             dbContext.QueuedPrints.Remove(head);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
         }
         catch (Exception e) when (e is CommandAlreadyInFlightException or TeamAccessDeniedException or
                                       CredentialScopeDeniedException)
@@ -1595,6 +1729,36 @@ public sealed class QueueAdvancer : BackgroundService
             // not routine slowness.
             _logger.LogWarning(e, "[{PrinterId}] no answer to starting {Path}; asking the printer what it is doing",
                                printerId, ForLog(printerPath));
+        }
+    }
+
+    /// <summary>
+    /// Saves, letting go of a queue entry somebody withdrew in the meantime rather than undoing the
+    /// rest of the save with it.
+    /// </summary>
+    /// <remarks>
+    /// <b>Removing an entry that is already gone matches no row</b>, which EF reports as a concurrency
+    /// failure and answers by rolling back the whole save - taking with it the print row this save was
+    /// settling, which is what left a running print recorded as a question nobody went on to ask. The
+    /// removal is the one write here that somebody else has already made, so it is dropped and the
+    /// rest saved again. A failure on anything else is still thrown.
+    /// </remarks>
+    private static async Task SaveLettingWithdrawnEntriesGoAsync(HomespoolDbContext dbContext,
+                                                                 CancellationToken cancellationToken)
+    {
+        try
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException e) when (e.Entries.All(entry => entry.Entity is QueuedPrint &&
+                                                                          entry.State == EntityState.Deleted))
+        {
+            foreach (EntityEntry withdrawn in e.Entries)
+            {
+                withdrawn.State = EntityState.Detached;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
         }
     }
 

@@ -1806,6 +1806,9 @@
   <data name="Printers_JobRemoved" xml:space="preserve">
     <value>Fjernet fra køen.</value>
   </data>
+  <data name="Printers_JobRemovedWhileStarting" xml:space="preserve">
+    <value>Fjernet fra køen. Printeren var allerede blevet bedt om at starte den, så den bliver stoppet, hvis den er gået i gang.</value>
+  </data>
   <data name="Printers_NoSuchFilament" xml:space="preserve">
     <value>‘{0}’ er ikke et filament, som denne printer har en indstilling til.</value>
   </data>

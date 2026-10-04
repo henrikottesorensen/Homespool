@@ -1860,6 +1860,9 @@
   <data name="Printers_JobRemoved" xml:space="preserve">
     <value>Removed from the queue.</value>
   </data>
+  <data name="Printers_JobRemovedWhileStarting" xml:space="preserve">
+    <value>Removed from the queue. The printer was already being told to start it, so it will be stopped if it has begun.</value>
+  </data>
   <data name="Printers_NoSuchFilament" xml:space="preserve">
     <value>‘{0}’ is not a filament this printer has a preset for.</value>
   </data>

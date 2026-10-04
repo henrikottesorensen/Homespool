@@ -143,6 +143,10 @@ from a USB stick — is nobody's as far as Homespool can tell, so stopping it re
 The same split applies to cancelling a queue entry. Reordering the queue is `ControlPrinter` either
 way, because one queue is shared and moving your entry moves everybody's.
 
+Cancelling an entry the printer has already been told to start, but has not yet confirmed, also stops
+that print as soon as the printer says it has begun — as you, and under the same rule, so cancelling
+is never allowed a stop that stopping would not be.
+
 This is the arrangement a print room has: you can withdraw your own work, and running the machine for
 everybody is a separate job.
 

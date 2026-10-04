@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,6 +19,7 @@ using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 
 using Homespool.Data;
+using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -2058,6 +2060,342 @@ public sealed class QueueAdvancerTests : IDisposable
 
         adopted.FirmwareJobId.Should().Be(726, "the name the printer uses is the one the file was sent under");
         adopted.FileName.Should().Be("queued.bgcode", "history keeps the file's own name");
+    }
+
+    /// <summary>
+    /// An unanswered start whose entry is gone is still asked about, on the authority the row carries,
+    /// and adopted when the printer names our file.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect this guards was a running print with no open row.</b> The question was asked only
+    /// while the entry existed, so an entry dropped in the window - here the way a file gone from disk
+    /// drops it, with nobody asking for a stop - left the elapsed-time rules to close the print as
+    /// <c>Unknown</c> while it ran, and then its owner could not stop it and nobody heard how it ended.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnansweredStartWhoseEntryHasGoneIsStillAdopted()
+    {
+        // Arrange - the command has gone unanswered, the entry has gone, and the printer is now
+        // reporting our print
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await context.QueuedPrints.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 731);
+        IPrinterConnectionActor printer = ConnectAnsweringJobInfo("/usb/QUEUED~1.BGC");
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        PrintJob adopted = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        adopted.State.Should().Be(PrintState.Printing, "the printer said it is ours, entry or no entry");
+        adopted.FirmwareJobId.Should().Be(731);
+        adopted.EndedAt.Should().BeNull();
+
+        await printer.DidNotReceive().SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// Withdrawn while the printer was still answering the start: the printer's confirmation is kept
+    /// rather than undone, and the print is then stopped as the person who withdrew it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The first half is the save.</b> Removing the entry the withdrawal had already removed matched
+    /// no row, and the rollback took the start with it - the row stayed a question while the print
+    /// ran. The second half is the request: a withdrawal of a print being started means it should not
+    /// print.
+    /// </para>
+    /// <para>
+    /// <b>Three passes, because each does one thing</b>: the start, the stop, and the close on the stop
+    /// the printer accepted - which is the loop's to write, not the stop's.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AStartWithdrawnWhileThePrinterWasAnsweringIsStoppedOnceItConfirms()
+    {
+        // Arrange - a printer that, while answering the start, sees the entry withdrawn
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        QueueCancellation? withdrawal = null;
+
+        IPrinterConnectionActor printer = Substitute.For<IPrinterConnectionActor>();
+        printer.IsOpen.Returns(true);
+        printer.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
+               .Returns(async call =>
+               {
+                   if (call.Arg<IPrinterIntent>() is Printing.StartPrint)
+                   {
+                       withdrawal = await WithdrawAsync(Caller.Unscoped(1));
+                   }
+
+                   return Answered(PrinterEventType.Finished);
+               });
+        _registry.Register(PrinterId, printer, overPlaintext: false);
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        context.ChangeTracker.Clear();
+        PrintJob started = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        withdrawal.Should().Be(QueueCancellation.StopRequested, "the start was in flight when it was withdrawn");
+        started.State.Should().Be(PrintState.Starting, "the printer confirmed it, and the confirmation is not undone");
+        started.WithdrawnByUserId.Should().Be(1);
+
+        await printer.Received(1).SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob stopped = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        stopped.State.Should().Be(PrintState.Stopped);
+        stopped.StoppedByUserId.Should().Be(1, "the stop was the withdrawer's");
+        stopped.EndedAt.Should().NotBeNull();
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Withdrawn after the start went unanswered: the printer is asked anyway, names our file, and the
+    /// print is stopped.
+    /// </summary>
+    [Fact]
+    public async Task AStartWithdrawnAfterItWentUnansweredIsStoppedWhenThePrinterNamesIt()
+    {
+        // Arrange - unanswered, then withdrawn, then the printer reports our print
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        QueueCancellation withdrawal = await WithdrawAsync(Caller.Unscoped(1));
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 732);
+        IPrinterConnectionActor printer = ConnectAnswering(command => command switch
+        {
+            SendJobInfo => Answered(PrinterEventType.JobInfo, json: "{\"state\":\"PRINTING\",\"path\":\"/usb/QUEUED~1.BGC\"}"),
+            _ => Answered(PrinterEventType.Finished),
+        });
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        withdrawal.Should().Be(QueueCancellation.StopRequested);
+        await printer.Received(1).SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob adopted = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        adopted.FirmwareJobId.Should().Be(732, "it was adopted before it was stopped");
+        adopted.StoppedByUserId.Should().Be(1);
+    }
+
+    /// <summary>
+    /// Withdrawn after the start went unanswered, and the printer never took it: the row goes, nothing
+    /// is stopped, and nothing is started again - the entry it would be started from is gone.
+    /// </summary>
+    [Fact]
+    public async Task AWithdrawnStartThatNeverBeganLeavesNothingBehind()
+    {
+        // Arrange - unanswered, withdrawn, and the printer says it has no job
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await WithdrawAsync(Caller.Unscoped(1));
+
+        _clock.Advance(QueueAdvancer.StartUnconfirmedGrace + TimeSpan.FromMinutes(1));
+        await ReportAsync(context, PrinterStatus.Ready, jobId: 733);
+        IPrinterConnectionActor printer = ConnectAnswering(command => command is SendJobInfo ?
+                                                               Answered(PrinterEventType.Rejected, "No job in progress") :
+                                                               Answered(PrinterEventType.Finished));
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "a print that never began is not history");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+
+        await printer.DidNotReceive().SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+        await printer.DidNotReceive().SendAsync(Arg.Any<Printing.StartPrint>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// A stop the printer will not take yet is asked again on the next pass, until it does.
+    /// </summary>
+    [Fact]
+    public async Task AWithdrawnPrintsStopIsRetriedUntilThePrinterTakesIt()
+    {
+        // Arrange - a withdrawn print the printer confirmed, and a printer that refuses the first stop
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        PrintJob starting = await AddWithdrawnStartAsync(context, CapabilitySet.Format([Capability.Print]));
+        int stops = 0;
+
+        IPrinterConnectionActor printer = ConnectAnswering(command => command is Printing.StopPrint && ++stops == 1 ?
+                                                               Answered(PrinterEventType.Rejected, "No print to stop") :
+                                                               Answered(PrinterEventType.Finished));
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await printer.Received(2).SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob marked = await context.PrintJobs.SingleAsync(row => row.Id == starting.Id, TestContext.Current.CancellationToken);
+        marked.StoppedByUserId.Should().Be(1, "the second stop was taken");
+    }
+
+    /// <summary>
+    /// A withdrawal whose credential may not stop the print is dropped rather than asked about on every
+    /// pass, and the print runs on.
+    /// </summary>
+    /// <remarks>
+    /// The permission is checked again when the stop goes out, as for everything the loop does on
+    /// somebody's behalf - here a key that may see the queue and nothing more.
+    /// </remarks>
+    [Fact]
+    public async Task AWithdrawalWhoseCredentialMayNotStopIsDropped()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        PrintJob starting = await AddWithdrawnStartAsync(context, CapabilitySet.Format([Capability.ViewQueue]));
+        IPrinterConnectionActor printer = ConnectAccepting();
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await printer.DidNotReceive().SendAsync(Arg.Any<Printing.StopPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        PrintJob running = await context.PrintJobs.SingleAsync(row => row.Id == starting.Id, TestContext.Current.CancellationToken);
+        running.WithdrawnByUserId.Should().BeNull("a refusal is final, not a question for every pass");
+        running.EndedAt.Should().BeNull("the print runs on");
+    }
+
+    /// <summary>
+    /// Withdrawn between the pass choosing the entry and the command going out: the row is written,
+    /// the entry is found gone, and nothing is sent.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is the half of the ordering the withdrawal relies on.</b> A withdrawal deletes the entry
+    /// and then marks any open row; the loop writes its row and then looks for the entry. Whichever
+    /// comes second sees the other - and without this look, a withdrawal landing before the row
+    /// existed found nothing to mark, and the print started with nobody having asked for it.
+    /// </remarks>
+    [Fact]
+    public async Task AnEntryWithdrawnAsItsStartIsWrittenIsNotStarted()
+    {
+        // Arrange - the entry goes the moment the row for its start is saved
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        IPrinterConnectionActor printer = ConnectAccepting();
+
+        using QueueAdvancer advancer = NewAdvancer(interceptor: new WithdrawingOnTheStartsRow(_databasePath));
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        await printer.DidNotReceive().SendAsync(Arg.Any<Printing.StartPrint>(), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "nothing was asked of the printer, so there is nothing to record");
+    }
+
+    /// <summary>Withdraws the seeded entry through the queue service, as a person would.</summary>
+    private async Task<QueueCancellation> WithdrawAsync(Caller caller)
+    {
+        await using AsyncServiceScope scope = _advancerServices!.CreateAsyncScope();
+
+        return await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
+                          .CancelAsync(PrinterId, QueuedPrintUuid, caller, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// The seeded entry as a print the printer has confirmed and its owner has since withdrawn - the
+    /// row the loop is left with, and the entry gone.
+    /// </summary>
+    private async Task<PrintJob> AddWithdrawnStartAsync(HomespoolDbContext context, string withdrawnByScope)
+    {
+        await context.QueuedPrints.ExecuteDeleteAsync(TestContext.Current.CancellationToken);
+
+        PrintJob starting = new()
+        {
+            PrinterId = PrinterId,
+            PrintUuid = QueuedPrintUuid,
+            FileName = "queued.bgcode",
+            QueuedByUserId = 1,
+            QueuedByScope = PrintOnly,
+            PrinterPath = "/usb/QUEUED~1.BGC",
+            StartedAt = _clock.GetUtcNow(),
+            CommandedAt = _clock.GetUtcNow(),
+            State = PrintState.Starting,
+            WithdrawnByUserId = 1,
+            WithdrawnByScope = withdrawnByScope,
+        };
+
+        context.PrintJobs.Add(starting);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return starting;
+    }
+
+    /// <summary>
+    /// Deletes every queue entry, from a connection of its own, the moment a save writing a print row
+    /// commits - a withdrawal landing in exactly that gap.
+    /// </summary>
+    private sealed class WithdrawingOnTheStartsRow(string databasePath) : SaveChangesInterceptor
+    {
+        private bool _writingAPrint;
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+                                                                             InterceptionResult<int> result,
+                                                                             CancellationToken cancellationToken = default)
+        {
+            _writingAPrint = eventData.Context!.ChangeTracker.Entries<PrintJob>().Any(entry => entry.State == EntityState.Added);
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+
+        public override async ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData,
+                                                               int result,
+                                                               CancellationToken cancellationToken = default)
+        {
+            if (_writingAPrint)
+            {
+                DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
+                                                               .UseSqlite($"Data Source={databasePath}")
+                                                               .Options;
+
+                await using HomespoolDbContext other = new(options);
+                await other.QueuedPrints.ExecuteDeleteAsync(cancellationToken);
+            }
+
+            return await base.SavedChangesAsync(eventData, result, cancellationToken);
+        }
     }
 
     /// <summary>
@@ -5293,14 +5631,34 @@ public sealed class QueueAdvancerTests : IDisposable
     /// </param>
     /// <param name="offers">Stands in for the offer store the sender opens files through, when a test needs it to fail.</param>
     /// <param name="budget">How many passes may work at once, when a test needs it smaller than the machine's.</param>
-    private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null, ITransferOffers? offers = null, QueueWorkBudget? budget = null)
+    /// <param name="interceptor">Watches the advancer's own saves, when a test needs something to happen between two of them.</param>
+    private QueueAdvancer NewAdvancer(ILogger<QueueAdvancer>? logger = null,
+                                      ITransferOffers? offers = null,
+                                      QueueWorkBudget? budget = null,
+                                      IInterceptor? interceptor = null)
     {
         ServiceCollection services = new();
-        services.AddDbContext<HomespoolDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
+        services.AddDbContext<HomespoolDbContext>(options =>
+        {
+            options.UseSqlite($"Data Source={_databasePath}");
+
+            if (interceptor is not null)
+            {
+                options.AddInterceptors(interceptor);
+            }
+        });
         services.AddDbContext<TelemetryDbContext>(options => options.UseSqlite($"Data Source={_databasePath}"));
         services.AddScoped<PrinterAccessService>();
         services.AddSingleton(_registry);
         services.AddScoped<PrinterCommandService>();
+
+        // A withdrawn print is stopped through the stop service, and the tests withdraw through the
+        // queue service, as a person would.
+        services.AddScoped<PrintStopService>();
+        services.AddScoped<PrintQueueService>();
+        services.AddScoped<PrintHistoryService>();
+        services.AddScoped<UserNameLookup>();
+        services.AddSingleton(_signal);
 
         // The transfer path resolves these. Rooted in a temp directory: the staleness rule is about a
         // timestamp, and the file merely has to exist for the loop to get that far.

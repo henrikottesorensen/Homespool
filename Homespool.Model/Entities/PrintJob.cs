@@ -219,6 +219,37 @@ public class PrintJob
     public long? StoppedByUserId { get; set; }
 
     /// <summary>
+    /// Who withdrew this print's queue entry while it was still being started, asking for it to be
+    /// stopped if it turns out to have started. <b>Null means nobody did.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A request, not a stop - which is why it is not <see cref="StoppedByUserId"/>.</b> Withdrawing
+    /// an entry whose <c>START_PRINT</c> is still unanswered cannot stop anything at that moment: the
+    /// printer holds one command at a time, and a print that has not begun has nothing to stop. The
+    /// queue's loop sends the stop once the printer has said the print is ours and running, and
+    /// <see cref="StoppedByUserId"/> is written when the printer accepts it, as for any other stop.
+    /// Writing that column early would have the loop close the row as stopped with no stop sent.
+    /// </para>
+    /// <para>
+    /// <b>No foreign key</b>, for <see cref="StoppedByUserId"/>'s reasons.
+    /// </para>
+    /// </remarks>
+    public long? WithdrawnByUserId { get; set; }
+
+    /// <summary>
+    /// The capability scope <see cref="WithdrawnByUserId"/> withdrew the entry under - the other half
+    /// of the authority the stop is sent with.
+    /// </summary>
+    /// <remarks>
+    /// <b>Both halves, for <see cref="QueuedByScope"/>'s reason.</b> The stop goes out later, from a
+    /// loop with no credential of its own, so it is sent as that person and with no more than the
+    /// credential they withdrew with - and the permission is checked again when it goes out.
+    /// </remarks>
+    [MaxLength(QueuedPrint.ScopeMaxLength)]
+    public string? WithdrawnByScope { get; set; }
+
+    /// <summary>
     /// Firmware's own words, when a print ended badly or never began - e.g. <c>Forbidden path</c>.
     /// </summary>
     /// <remarks>

@@ -1161,18 +1161,19 @@ public class DetailModel : PageModel
     }
 
     /// <summary>
-    /// Cancels a queued print. Never stops a print that has already started - see
-    /// <see cref="PrintQueueService.CancelAsync"/>.
+    /// Cancels a queued print. Never stops a print the printer has confirmed, and stops one it was
+    /// still being asked to start - see <see cref="PrintQueueService.CancelAsync"/>.
     /// </summary>
     public Task<IActionResult> OnPostCancelAsync(Guid uuid, Guid printUuid, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            bool cancelled = await _queueService.CancelAsync(printer.Id, printUuid, caller, cancellationToken);
-
-            return cancelled ?
-                (_localiser["Printers_JobRemoved"].Value, true) :
-                (_localiser["Printers_JobGone"].Value, false);
+            return await _queueService.CancelAsync(printer.Id, printUuid, caller, cancellationToken) switch
+            {
+                QueueCancellation.Removed => (_localiser["Printers_JobRemoved"].Value, true),
+                QueueCancellation.StopRequested => (_localiser["Printers_JobRemovedWhileStarting"].Value, true),
+                _ => (_localiser["Printers_JobGone"].Value, false),
+            };
         }, cancellationToken);
     }
 

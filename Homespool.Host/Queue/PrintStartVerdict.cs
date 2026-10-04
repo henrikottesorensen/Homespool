@@ -20,8 +20,8 @@ public enum PrintStartVerdict
     Started = 2,
 
     /// <summary>
-    /// The command did not take. Drop the row we opened; the entry is still queued and the next pass
-    /// sends it again.
+    /// The command did not take. Drop the row we opened; the entry, unless it was withdrawn meanwhile,
+    /// is still queued and the next pass sends it again.
     /// </summary>
     NeverStarted = 3,
 

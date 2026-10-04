@@ -231,6 +231,13 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// the wire there is no way to tell an operator's duplicate entry from an attempt on someone
     /// else's printer, so it fails closed and the operator reissues against the printer they mean.
     /// </para>
+    /// <para>
+    /// <b>Its hash is drawn from <see cref="ProvisioningHashBudget"/></b>, as first contact's are. Every
+    /// wrong token under an enrolled fingerprint reaches here while that printer has a live reissue, so
+    /// without it whoever holds the fingerprint gets two hashes a request rather than one, and any
+    /// account can arrange that for its own printers by reissuing. The enrolled check before this stays
+    /// outside the budget: rationing it would let a flood refuse printers that are already enrolled.
+    /// </para>
     /// </remarks>
     private async Task<AuthenticateResult> RebindReissuedTokenAsync(PrusaConnectAuthenticationData enrolled, string token)
     {
@@ -241,6 +248,15 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
         PrusaConnectProvisioning? reissued = await _dbContext.PrusaConnectProvisionings
                                                              .SingleOrDefaultAsync(p => p.PrinterId == enrolled.PrinterId &&
                                                                                         p.CreatedAt > issuedAfter);
+
+        if (reissued is not null && !_hashBudget.TryTake())
+        {
+            ReportExhaustedBudget();
+
+            // The answer a stale token gets, and the reissue row is left alone, so a printer rebinding
+            // during a flood retries exactly as it would have anyway.
+            return AuthenticateResult.Fail("PrusaConnect invalid token.");
+        }
 
         if (reissued is null || !_tokenService.VerifyToken(token, reissued.HashedToken))
         {
@@ -372,8 +388,9 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     }
 
     /// <summary>
-    /// Says, at most once a <see cref="ProvisioningHashBudget.ReportInterval"/>, that first contacts
-    /// are being refused for want of hashes - the one line a flood produces, rather than one a request.
+    /// Says, at most once a <see cref="ProvisioningHashBudget.ReportInterval"/>, that provisioning
+    /// tokens are going unchecked for want of hashes - the one line a flood produces, rather than one a
+    /// request.
     /// </summary>
     private void ReportExhaustedBudget()
     {
@@ -384,9 +401,9 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
 
         Logger.LogWarning(
             "The printer port's budget for checking USB-key provisioning tokens is spent: {Refused} hash(es) refused since " +
-            "the last report. Unknown fingerprints are arriving faster than {HashesPerSecond} hashes a second allow, so a " +
-            "USB-key printer making first contact now is refused as unknown and will get through when it retries after " +
-            "the traffic eases.",
+            "the last report. Tokens are arriving faster than {HashesPerSecond} hashes a second allow, so a USB-key printer " +
+            "making first contact or presenting a reissued token now is refused, and will get through when it retries " +
+            "after the traffic eases.",
             refused,
             ProvisioningHashBudget.HashesPerSecond);
     }

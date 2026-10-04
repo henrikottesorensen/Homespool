@@ -269,6 +269,39 @@ public sealed class IndexModelTests : IDisposable
         model.Printers.Should().BeEmpty();
     }
 
+    // ---------- OnPostDropAsync ----------
+
+    /// <summary>
+    /// A drop asking to queue, from a member who may see the printer but not print on it, keeps the
+    /// upload and says the queue refused it - the dialog never offers queueing to them, so this is a
+    /// hand-made post or a membership changed while it was open, and still an answer, not a 500.
+    /// </summary>
+    [Fact]
+    public async Task OnPostDropAsyncSaysAQueueRefusedForWantOfPrintRatherThanThrowing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (IndexModel model, _, Team team) = await NewModelAsync(context);
+
+        TeamMember membership = await context.TeamMembers.SingleAsync(TestContext.Current.CancellationToken);
+        membership.Capabilities = TestMemberships.Literal(CapabilityPresets.Viewer);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        using MemoryStream content = new("G28 ; home\n"u8.ToArray());
+        IFormFile file = new FormFile(content, 0, content.Length, "files", "cube.gcode");
+
+        // Act
+        await model.OnPostDropAsync(printer.Uuid, Pages.TileDrop.Queue, [file], [], CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+        model.StatusMessage.Should().Contain("cube.gcode").And.Contain("permission");
+        (await context.PrintJobs.AnyAsync(TestContext.Current.CancellationToken)).Should().BeFalse();
+    }
+
     // ---------- OnPostRegenerateAsync ----------
 
     /// <summary>A successful regenerate shows the new snippet once and does not redirect.</summary>

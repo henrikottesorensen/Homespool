@@ -213,11 +213,11 @@ public sealed class TileDrop
                 queued++;
                 report.Add(_localiser["Home_DropQueued", stored, PrinterDisplayName.For(row.Printer)].Value);
             }
-            catch (Exception e) when (e is ILocalisableError)
+            catch (Exception e) when (e is ILocalisableError or TeamAccessDeniedException)
             {
                 // The bytes are safely in the reader's tree either way, so this reports the queue's
                 // refusal and leaves the file alone rather than undoing an upload that was fine.
-                report.Add(_localiser["Home_DropQueueRefused", stored, _errors.For(e)].Value);
+                report.Add(_localiser["Home_DropQueueRefused", stored, Say(e)].Value);
             }
         }
 
@@ -247,13 +247,13 @@ public sealed class TileDrop
                     report.Add(_localiser["Printers_ReadySent"].Value);
                 }
             }
-            catch (Exception e) when (e is ILocalisableError)
+            catch (Exception e) when (e is ILocalisableError or TeamAccessDeniedException)
             {
                 // The upload and the queue already happened and are worth keeping - this is the last
                 // step of three, and losing the first two because the third failed would be worse
                 // than saying so. Uncaught, it escaped as a 500 and the person got a blank page
                 // having no idea their file had in fact been queued.
-                report.Add(_errors.For(e));
+                report.Add(Say(e));
                 refused = true;
             }
         }
@@ -264,6 +264,17 @@ public sealed class TileDrop
         bool success = report.Count > 0 && !refused && (queued > 0 || !queueing);
 
         return (message, success);
+    }
+
+    /// <summary>A step's refusal, said in the reader's language.</summary>
+    /// <remarks>
+    /// <b>A team's refusal is said here because it carries no sentence of its own.</b> The dialog
+    /// offers only what the reader may do, so it is a hand-made post or a membership changed while
+    /// the dialog was open - and still an answer rather than a 500 after the upload succeeded.
+    /// </remarks>
+    private string Say(Exception error)
+    {
+        return error is TeamAccessDeniedException ? _localiser["Files_NoPermission"].Value : _errors.For(error);
     }
 
     /// <summary>

@@ -43,6 +43,8 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// that outlives the session that minted it. The create handler alone carries
 /// <see cref="RequireRecentProofAttribute"/>; the proof is earned at <c>Account/Reauthenticate</c>
 /// with any credential the account holds, and the view offers the way there before the button.
+/// Minting is limited by <see cref="CredentialChangeLimit"/>, one cooldown shared with the other changes
+/// to how an account is signed into; revoking is not, since it mails nothing.
 /// The owner is mailed that one was made, in their own language and
 /// to their own address, without the token's name.
 /// Revoking takes nothing extra, because removing a credential is what the holder of a stolen session
@@ -57,12 +59,14 @@ public class ApiTokensModel : PageModel
     private readonly RecentProof _proof;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly CredentialNotices _notices;
+    private readonly CredentialChangeLimit _limit;
     private readonly ILogger<ApiTokensModel> _logger;
 
     public ApiTokensModel(ApiTokenService tokens,
                           UserManager<HSUser> userManager,
                           RecentProof proof,
                           CredentialNotices notices,
+                          CredentialChangeLimit limit,
                           ILogger<ApiTokensModel> logger,
                           IStringLocalizer<SharedResource> localiser,
                           CapabilityText capabilities)
@@ -71,6 +75,7 @@ public class ApiTokensModel : PageModel
         _userManager = userManager;
         _proof = proof;
         _notices = notices;
+        _limit = limit;
         _localiser = localiser;
         _logger = logger;
         Capabilities = capabilities;
@@ -149,6 +154,18 @@ public class ApiTokensModel : PageModel
 
         if (!ModelState.IsValid)
         {
+            await LoadAsync(user, cancellationToken);
+
+            return Page();
+        }
+
+        // Minting mails the owner, so it takes the same cooldown as the other changes that do: without
+        // it a session holding a recent proof could mint in a loop and bury the one notice that mattered.
+        // Started after validation, so a refused form costs nothing, and before anything is written.
+        if (!await _limit.TryStartAsync(user.Id, cancellationToken))
+        {
+            ModelState.AddModelError(string.Empty, _localiser["Tokens_TooMany"]);
+
             await LoadAsync(user, cancellationToken);
 
             return Page();

@@ -149,6 +149,30 @@ public sealed class ApiTokensPageTests : IDisposable
         sent.body.Should().NotContain("laptop").And.NotContain(model.CreatedToken!);
     }
 
+    /// <summary>
+    /// A second mint inside the cooldown is refused with the form kept, and mails nobody: the cooldown
+    /// is what bounds the mail, so a loop of mints cannot fill the owner's inbox.
+    /// </summary>
+    [Fact]
+    public async Task ASecondMintInsideTheCooldownIsRefusedAndNotMailed()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (ApiTokensModel model, _) = await NewModelAsync(context, "first");
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+        string? first = model.CreatedToken;
+        model.Input = new ApiTokensModel.InputModel { Name = "second", Scope = [Capability.ManagePrinter] };
+
+        // Act
+        await model.OnPostAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        model.CreatedToken.Should().Be(first, "the refused mint made no new secret");
+        model.ModelState[string.Empty]!.Errors.Should().ContainSingle();
+        model.Tokens.Should().ContainSingle("only the first was minted");
+        _mail.SentEmails.Should().ContainSingle();
+    }
+
     /// <summary>A refused form mints nothing, so there is nothing to tell the owner.</summary>
     [Fact]
     public async Task ARefusedFormMailsNobody()
@@ -306,6 +330,9 @@ public sealed class ApiTokensPageTests : IDisposable
                                    users,
                                    scope.ServiceProvider.GetRequiredService<RecentProof>(),
                                    _mail.Notices(),
+                                   new CredentialChangeLimit(scope.ServiceProvider.GetRequiredService<AttemptLimiter>(),
+                                                             TimeProvider.System,
+                                                             NullLogger<CredentialChangeLimit>.Instance),
                                    NullLogger<ApiTokensModel>.Instance,
                                    TestLocaliser.Shared(),
                                    new CapabilityText(TestLocaliser.Shared()))

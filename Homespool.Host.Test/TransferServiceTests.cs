@@ -46,6 +46,9 @@ public sealed class TransferServiceTests : IDisposable
     /// <summary>The digest of the older copy of the seeded file that the tests leave on the drive.</summary>
     private const string OlderDigest = "an-older-digest";
 
+    /// <summary>The digest recorded for the seeded file once it is made sparse, so that no send reads it.</summary>
+    private const string SparseDigest = "the-sparse-files-digest";
+
     /// <summary>The id the substituted actor's download command goes out under.</summary>
     private const uint DownloadCommandId = 4242;
 
@@ -576,7 +579,7 @@ public sealed class TransferServiceTests : IDisposable
     {
         // Arrange - a sparse file at the ceiling, and an older copy of the name on the drive
         PrintFile file = await SeedAsync();
-        MakeStoredFileSparse(uint.MaxValue);
+        await MakeStoredFileSparseAsync(uint.MaxValue);
         await AddArrivedOlderCopyAsync(file);
         IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
         TransferService transfers = _services.GetRequiredService<TransferService>();
@@ -610,7 +613,7 @@ public sealed class TransferServiceTests : IDisposable
     {
         // Arrange
         PrintFile file = await SeedAsync();
-        MakeStoredFileSparse(uint.MaxValue - 1);
+        await MakeStoredFileSparseAsync(uint.MaxValue - 1);
         IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
         TransferService transfers = _services.GetRequiredService<TransferService>();
 
@@ -631,7 +634,7 @@ public sealed class TransferServiceTests : IDisposable
     {
         // Arrange - found at a small size, and large by the time it is opened
         PrintFile file = await SeedAsync();
-        MakeStoredFileSparse(uint.MaxValue);
+        await MakeStoredFileSparseAsync(uint.MaxValue);
         IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(Task.FromResult(TakenAs(DownloadCommandId)));
         TransferService transfers = _services.GetRequiredService<TransferService>();
 
@@ -685,11 +688,27 @@ public sealed class TransferServiceTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
-    /// <summary>Makes the seeded file <paramref name="length"/> bytes long without writing them.</summary>
-    private void MakeStoredFileSparse(long length)
+    /// <summary>
+    /// Makes the seeded file <paramref name="length"/> bytes long without writing them, and records a
+    /// digest for it as an upload's indexing would.
+    /// </summary>
+    /// <remarks>
+    /// Without the digest a send reads the whole file to compute one, and at 4 GiB that is several
+    /// seconds of hashing - more than <see cref="Bound"/> on a loaded machine - in tests about the size
+    /// ceiling, not the digest.
+    /// </remarks>
+    private async Task MakeStoredFileSparseAsync(long length)
     {
-        using FileStream stream = File.OpenWrite(Path.Combine(_storeRoot, "1-owner", FileName));
-        stream.SetLength(length);
+        await using (FileStream stream = File.OpenWrite(Path.Combine(_storeRoot, "1-owner", FileName)))
+        {
+            stream.SetLength(length);
+        }
+
+        await using AsyncServiceScope scope = _services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                   .PrintFiles
+                   .ExecuteUpdateAsync(set => set.SetProperty(file => file.Digest, SparseDigest),
+                                       TestContext.Current.CancellationToken);
     }
 
     /// <summary>The seeded file's older copy on the drive, which a send of different bytes would delete first.</summary>

@@ -116,7 +116,14 @@ public sealed class PrinterDetailCapabilityTests : IAsyncLifetime
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
-        HSFile file = new() { UserId = ownerId, Name = QueuedFile, Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
+        HSFile file = new()
+        {
+            Type = FileType.GCode,
+            UserId = ownerId,
+            Name = QueuedFile,
+            Size = 1024,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
 
         context.Printers.Add(printer);
         context.Files.Add(file);

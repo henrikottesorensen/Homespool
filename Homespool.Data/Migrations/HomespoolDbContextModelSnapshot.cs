@@ -218,6 +218,10 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("UploadedAt")
                         .HasColumnType("INTEGER");
 
@@ -226,7 +230,7 @@ namespace Homespool.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "Name")
+                    b.HasIndex("UserId", "Type", "Name")
                         .IsUnique();
 
                     b.ToTable("Files");

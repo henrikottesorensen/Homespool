@@ -43,7 +43,7 @@ public sealed class NotificationWatcherTests : IAsyncLifetime
             Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = team.Id, Name = "Core One" };
             db.Printers.Add(printer);
 
-            HSFile file = new() { UserId = _userId, Name = "benchy.bgcode", Size = 1024 };
+            HSFile file = new() { Type = FileType.GCode, UserId = _userId, Name = "benchy.bgcode", Size = 1024 };
             db.Files.Add(file);
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 

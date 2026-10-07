@@ -780,7 +780,14 @@ public sealed class DetailModelTests : IDisposable
         context.Printers.Add(printer);
         context.TeamMembers.Add(TestMemberships.Operator(team.Id, other.Id));
 
-        HSFile file = new() { UserId = other.Id, Name = "theirs.bgcode", Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
+        HSFile file = new()
+        {
+            Type = FileType.GCode,
+            UserId = other.Id,
+            Name = "theirs.bgcode",
+            Size = 1024,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
         context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -859,7 +866,14 @@ public sealed class DetailModelTests : IDisposable
         context.Printers.Add(printer);
         context.TeamMembers.Add(TestMemberships.Operator(team.Id, other.Id));
 
-        HSFile file = new() { UserId = other.Id, Name = "theirs.bgcode", Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
+        HSFile file = new()
+        {
+            Type = FileType.GCode,
+            UserId = other.Id,
+            Name = "theirs.bgcode",
+            Size = 1024,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
         context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 

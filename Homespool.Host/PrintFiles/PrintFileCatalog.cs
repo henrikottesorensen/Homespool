@@ -43,6 +43,13 @@ namespace Homespool.Host.PrintFiles;
 /// team - it lives at <c>{userId}/{name}</c>, so nobody else can reach it and its owner cannot be
 /// refused it. The only question is which of their own powers this key was given.
 /// </para>
+/// <para>
+/// <b>Only <see cref="FileType.GCode"/> rows are a user's files.</b> The table also holds firmware
+/// images, which belong to another store and must never be listed, resolved, queued or deleted as
+/// somebody's print, so every query here names the type. Nothing reaches a firmware row by name
+/// either way - each path starts from a file the user store found - but a query that counted or
+/// matched one would still be wrong, and the filter is what keeps that true of the next query too.
+/// </para>
 /// </remarks>
 public sealed class PrintFileCatalog
 {
@@ -87,7 +94,7 @@ public sealed class PrintFileCatalog
 
         List<HSFile> rows = await _dbContext.Files
                                             .AsNoTracking()
-                                            .Where(row => row.UserId == caller.UserId)
+                                            .Where(row => row.UserId == caller.UserId && row.Type == FileType.GCode)
                                             .OrderBy(row => row.Id)
                                             .ToListAsync(cancellationToken);
 
@@ -169,11 +176,12 @@ public sealed class PrintFileCatalog
     /// <remarks>
     /// An install with rows is never marked here: rows and a root with no marker are what an
     /// unmounted volume looks like, so its operator creates the marker once they have seen the
-    /// right disk is there.
+    /// right disk is there. Only G-code rows count, since only they describe this store: a firmware
+    /// image uploaded first says nothing about whether the users' volume is mounted.
     /// </remarks>
     private async Task ConfirmFreshStorageAsync(CancellationToken cancellationToken)
     {
-        if (!_store.IsConfirmed && !await _dbContext.Files.AnyAsync(cancellationToken))
+        if (!_store.IsConfirmed && !await _dbContext.Files.AnyAsync(row => row.Type == FileType.GCode, cancellationToken))
         {
             _store.Confirm();
         }
@@ -428,9 +436,9 @@ public sealed class PrintFileCatalog
             catch (DbUpdateException)
             {
                 // A concurrent publish indexed a row under the new name between the move and this
-                // write, and the unique (user, name) index refused ours. The rename itself succeeded
-                // on disk, which is the truth: leave the old row as it was and let the reconcile heal
-                // the pair rather than answering a completed rename with a 500.
+                // write, and the unique (user, type, name) index refused ours. The rename itself
+                // succeeded on disk, which is the truth: leave the old row as it was and let the
+                // reconcile heal the pair rather than answering a completed rename with a 500.
                 _dbContext.Entry(row).State = EntityState.Detached;
 
                 _logger.LogWarning("Renamed {FileName} to {NewName} for user {UserId}, but a row for the new name already existed; leaving the index to the reconcile",
@@ -515,8 +523,8 @@ public sealed class PrintFileCatalog
         catch (DbUpdateException) when (inserted)
         {
             // A concurrent publish of the same name indexed it between our lookup and our insert, and
-            // the unique (user, name) index refused the second row. Not an error: the file exists once,
-            // so drop our insert and write onto the row that won.
+            // the unique (user, type, name) index refused the second row. Not an error: the file
+            // exists once, so drop our insert and write onto the row that won.
             _dbContext.Entry(row).State = EntityState.Detached;
 
             HSFile winner = await FindRowAsync(userId, published.File.FileName, cancellationToken) ??
@@ -569,6 +577,7 @@ public sealed class PrintFileCatalog
     {
         HSFile row = new()
         {
+            Type = FileType.GCode,
             UserId = userId,
             Name = file.FileName,
             Size = file.Length,
@@ -602,7 +611,7 @@ public sealed class PrintFileCatalog
     private async Task<HSFile?> FindRowAsync(long userId, string fileName, CancellationToken cancellationToken)
     {
         List<string> names = await _dbContext.Files
-                                             .Where(row => row.UserId == userId)
+                                             .Where(row => row.UserId == userId && row.Type == FileType.GCode)
                                              .OrderBy(row => row.Id)
                                              .Select(row => row.Name)
                                              .ToListAsync(cancellationToken);
@@ -611,7 +620,8 @@ public sealed class PrintFileCatalog
 
         return name is null ?
             null :
-            await _dbContext.Files.SingleAsync(row => row.UserId == userId && row.Name == name, cancellationToken);
+            await _dbContext.Files.SingleAsync(row => row.UserId == userId && row.Type == FileType.GCode && row.Name == name,
+                                               cancellationToken);
     }
 
     /// <summary>

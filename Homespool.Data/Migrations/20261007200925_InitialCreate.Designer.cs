@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261007183602_InitialCreate")]
+    [Migration("20261007200925_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -221,6 +221,10 @@ namespace Homespool.Data.Migrations
                     b.Property<long>("Size")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("UploadedAt")
                         .HasColumnType("INTEGER");
 
@@ -229,7 +233,7 @@ namespace Homespool.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId", "Name")
+                    b.HasIndex("UserId", "Type", "Name")
                         .IsUnique();
 
                     b.ToTable("Files");

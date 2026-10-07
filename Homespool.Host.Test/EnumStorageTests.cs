@@ -105,6 +105,7 @@ public sealed class EnumStorageTests : IDisposable
     [InlineData("PrinterLiveStates", "Status", "Printing")]
     [InlineData("TelemetrySamples", "Status", "Printing")]
     [InlineData("Files", "MetadataState", "Unreadable")]
+    [InlineData("Files", "Type", "GCode")]
     [InlineData("FilesOnPrinters", "HoldReason", "InsufficientSpace")]
     [InlineData("PrintJobs", "State", "Stopped")]
     public async Task AnEnumColumnHoldsTheMemberName(string table, string column, string expected)
@@ -169,6 +170,7 @@ public sealed class EnumStorageTests : IDisposable
 
         HSFile file = new()
         {
+            Type = FileType.GCode,
             UserId = 1,
             Name = "bracket.gcode",
             Size = 4096,

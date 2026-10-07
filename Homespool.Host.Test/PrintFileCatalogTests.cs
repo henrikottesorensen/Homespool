@@ -32,6 +32,8 @@ public sealed class PrintFileCatalogTests : IDisposable
 {
     private const long Alice = 1;
 
+    private const string FirmwareImageName = "COREONE_firmware_7.0.0.bbf";
+
     private readonly string _root = Path.Combine(Path.GetTempPath(), "homespool-catalog-" + Guid.NewGuid().ToString("N"));
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-catalog-{Guid.NewGuid():N}.db");
 
@@ -295,7 +297,7 @@ public sealed class PrintFileCatalogTests : IDisposable
         StoredFile file = store.Find(Alice, "kept.gcode")!;
         File.Delete(file.Path);
 
-        HSFile row = new() { UserId = Alice, Name = "kept.gcode", Digest = "known" };
+        HSFile row = new() { Type = FileType.GCode, UserId = Alice, Name = "kept.gcode", Digest = "known" };
 
         // Act
         string digest = await catalog.DigestForSendingAsync(row, file, TestContext.Current.CancellationToken);
@@ -390,7 +392,14 @@ public sealed class PrintFileCatalogTests : IDisposable
         exact.Name = "ærø.gcode";
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.Files.Add(new HSFile { UserId = Alice, Name = "Ærø.gcode", Size = 3, UploadedAt = DateTimeOffset.UnixEpoch });
+        context.Files.Add(new HSFile
+        {
+            Type = FileType.GCode,
+            UserId = Alice,
+            Name = "Ærø.gcode",
+            Size = 3,
+            UploadedAt = DateTimeOffset.UnixEpoch,
+        });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
@@ -512,7 +521,14 @@ public sealed class PrintFileCatalogTests : IDisposable
         // Arrange - one file indexed, and a root with no marker
         await using HomespoolDbContext context = await MigratedContextAsync();
         await AddUserAsync(context);
-        context.Files.Add(new HSFile { UserId = Alice, Name = "old.gcode", Size = 1, UploadedAt = DateTimeOffset.UtcNow });
+        context.Files.Add(new HSFile
+        {
+            Type = FileType.GCode,
+            UserId = Alice,
+            Name = "old.gcode",
+            Size = 1,
+            UploadedAt = DateTimeOffset.UtcNow,
+        });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         Directory.CreateDirectory(_root);
@@ -527,6 +543,111 @@ public sealed class PrintFileCatalogTests : IDisposable
         await upload.Should().ThrowAsync<PrintFileStorageUnconfirmedException>();
         store.IsConfirmed.Should().BeFalse();
         Directory.EnumerateFileSystemEntries(_root).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Only a G-code row says the users' storage has held something, so a firmware image uploaded
+    /// before any print file leaves a fresh install free to mark its storage on the first upload.
+    /// </summary>
+    [Fact]
+    public async Task AFirmwareImageAloneDoesNotStopAFreshInstallMarkingTheStorage()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await AddFirmwareRowAsync(context);
+
+        UserFileStore store = NewUnconfirmedStore();
+        PrintFileCatalog catalog = NewCatalog(context, store);
+
+        // Act
+        await catalog.SaveAsync(TestCallers.Scoped(Alice, Capability.UploadOwnFiles), "first.gcode", new MemoryStream([1]),
+                                overwrite: false, TestContext.Current.CancellationToken);
+
+        // Assert
+        store.IsConfirmed.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A <c>.bbf</c> copied by hand into a print directory is that user's file like any other, and
+    /// resolving it indexes a G-code row of its own - never the firmware image of the same name.
+    /// </summary>
+    [Fact]
+    public async Task AHandCopiedBbfResolvesToItsOwnRowNotTheFirmwareImage()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        HSFile image = await AddFirmwareRowAsync(context);
+        await CopyIntoAlicesDirectoryAsync(catalog, FirmwareImageName);
+
+        // Act
+        HSFile? row = await catalog.ResolveAsync(Alice, FirmwareImageName, TestContext.Current.CancellationToken);
+        HSFile? again = await catalog.ResolveAsync(Alice, FirmwareImageName, TestContext.Current.CancellationToken);
+
+        // Assert
+        row.Should().NotBeNull();
+        row!.Type.Should().Be(FileType.GCode);
+        row.Id.Should().NotBe(image.Id, "the firmware image is not anybody's print");
+        again!.Id.Should().Be(row.Id, "with both rows indexed, the name still finds the user's own");
+    }
+
+    /// <summary>
+    /// The listing matches files to G-code rows only: a hand-copied <c>.bbf</c> with no row of its own
+    /// is listed with nothing known about it, not described by the firmware image of the same name.
+    /// </summary>
+    [Fact]
+    public async Task ListingNeverDescribesAFileByAFirmwareImage()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+
+        await AddFirmwareRowAsync(context);
+        await CopyIntoAlicesDirectoryAsync(catalog, FirmwareImageName);
+
+        // Act
+        IReadOnlyList<CataloguedFile> listed = await catalog.ListAsync(TestCallers.Scoped(Alice, Capability.ViewOwnFiles),
+                                                                       TestContext.Current.CancellationToken);
+
+        // Assert
+        listed.Should().ContainSingle(file => file.File.FileName == FirmwareImageName)
+              .Which.Row.Should().BeNull();
+    }
+
+    /// <summary>A firmware image owned by Alice, as the firmware store would index it.</summary>
+    private static async Task<HSFile> AddFirmwareRowAsync(HomespoolDbContext context)
+    {
+        HSFile image = new()
+        {
+            Type = FileType.PrusaFirmware,
+            UserId = Alice,
+            Name = FirmwareImageName,
+            Size = 3,
+            Digest = "firmware",
+            UploadedAt = DateTimeOffset.UnixEpoch,
+        };
+
+        context.Files.Add(image);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return image;
+    }
+
+    /// <summary>
+    /// Puts a file in Alice's directory without going through the catalogue, which would refuse the
+    /// extension - creating the directory with an upload first.
+    /// </summary>
+    private static async Task CopyIntoAlicesDirectoryAsync(PrintFileCatalog catalog, string name)
+    {
+        StoredFile anchor = await catalog.SaveAsync(Caller.Unscoped(Alice), "anchor.gcode", new MemoryStream([1]),
+                                                    overwrite: false, TestContext.Current.CancellationToken);
+
+        await File.WriteAllBytesAsync(Path.Combine(Path.GetDirectoryName(anchor.Path)!, name), [1, 2, 3],
+                                      TestContext.Current.CancellationToken);
     }
 
     private PrintFileCatalog NewCatalog(HomespoolDbContext context, UserFileStore? store = null)

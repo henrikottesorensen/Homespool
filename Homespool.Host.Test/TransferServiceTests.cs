@@ -911,7 +911,7 @@ public sealed class TransferServiceTests : IDisposable
         });
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });
 
-        HSFile file = new() { UserId = 1, Name = FileName, Size = 11, UploadedAt = _clock.GetUtcNow() };
+        HSFile file = new() { Type = FileType.GCode, UserId = 1, Name = FileName, Size = 11, UploadedAt = _clock.GetUtcNow() };
         context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 

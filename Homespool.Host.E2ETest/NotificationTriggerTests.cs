@@ -109,7 +109,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
                 new TeamMember { TeamId = workshop.Id, UserId = _bystander, Capabilities = string.Empty },
                 new TeamMember { TeamId = workshop.Id, UserId = _printerMuted, Capabilities = everything });
 
-            HSFile file = new() { UserId = _owner, Name = "benchy.bgcode", Size = 1024 };
+            HSFile file = new() { Type = FileType.GCode, UserId = _owner, Name = "benchy.bgcode", Size = 1024 };
             db.Files.Add(file);
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
             _fileId = file.Id;

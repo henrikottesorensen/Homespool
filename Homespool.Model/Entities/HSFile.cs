@@ -4,9 +4,9 @@ using System.Collections.Generic;
 namespace Homespool.Model.Entities;
 
 /// <summary>
-/// The index row for one uploaded print file. The bytes live on disk under
-/// <c>{root}/{userId}/{name}</c>; this exists so that machinery which must outlive a rename has
-/// something stable to point at.
+/// The index row for one file Homespool holds: an uploaded print file, whose bytes live on disk under
+/// <c>{root}/{userId}/{name}</c>, or a firmware image (see <see cref="Type"/>). This exists so that
+/// machinery which must outlive a rename has something stable to point at.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -59,6 +59,15 @@ public class HSFile
     /// scoped without touching the disk; it does not become a second answer to who owns what.
     /// </remarks>
     public long UserId { get; set; }
+
+    /// <summary>What the file is, and so which store holds its bytes.</summary>
+    /// <remarks>
+    /// <b>Everything that lists, resolves, queues or reconciles a user's files reads only
+    /// <see cref="FileType.GCode"/></b>, because those paths treat a row as a file the user may print.
+    /// A firmware image shares this table so that a transfer to a printer has one bookkeeping, not so
+    /// that it can be found among anybody's prints. Required, so no row is written without one.
+    /// </remarks>
+    public required FileType Type { get; set; }
 
     /// <summary>
     /// The file's name, which is also its identity to the user and the name it takes on the printer.

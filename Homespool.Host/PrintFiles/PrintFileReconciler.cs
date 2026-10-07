@@ -53,6 +53,11 @@ namespace Homespool.Host.PrintFiles;
 /// to a print, which would wait for a restart to be read. <see cref="RecheckAsync"/> covers those every <see cref="RecheckInterval"/>, and says why it
 /// does no more.
 /// </para>
+/// <para>
+/// <b>G-code rows only, in every pass.</b> The table also indexes firmware images, whose bytes are
+/// in another store entirely, so to this walk every one of them is a row whose file is gone: the
+/// reconcile would delete it at each start and the backfill would read slicer metadata out of it.
+/// </para>
 /// </remarks>
 public sealed class PrintFileReconciler : BackgroundService
 {
@@ -143,7 +148,9 @@ public sealed class PrintFileReconciler : BackgroundService
         HashSet<long> users = [.. await dbContext.Users.Select(user => user.Id).ToListAsync(cancellationToken)];
         Dictionary<long, List<StoredFile>> onDisk = ReadDisk(users);
 
-        List<HSFile> rows = await dbContext.Files.ToListAsync(cancellationToken);
+        List<HSFile> rows = await dbContext.Files
+                                           .Where(row => row.Type == FileType.GCode)
+                                           .ToListAsync(cancellationToken);
         int added = 0, corrected = 0, removed = 0;
 
         foreach ((long userId, List<StoredFile> files) in onDisk)
@@ -161,6 +168,7 @@ public sealed class PrintFileReconciler : BackgroundService
                 {
                     dbContext.Files.Add(new HSFile
                     {
+                        Type = FileType.GCode,
                         UserId = userId,
                         Name = file.FileName,
                         Size = file.Length,
@@ -304,10 +312,13 @@ public sealed class PrintFileReconciler : BackgroundService
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        List<HSFile> rows = await dbContext.Files.AsNoTracking().ToListAsync(cancellationToken);
+        List<HSFile> rows = await dbContext.Files
+                                           .AsNoTracking()
+                                           .Where(row => row.Type == FileType.GCode)
+                                           .ToListAsync(cancellationToken);
         int corrected = 0;
 
-        HSFile forgotten = new() { Name = string.Empty };
+        HSFile forgotten = new() { Type = FileType.GCode, Name = string.Empty };
         PrintFileMetadata.Forget(forgotten);
 
         foreach (HSFile row in rows)
@@ -393,9 +404,10 @@ public sealed class PrintFileReconciler : BackgroundService
 
         List<HSFile> wanting = await dbContext.Files
                                               .AsNoTracking()
-                                              .Where(row => row.Digest == null ||
-                                                            row.MetadataState == PrintFileMetadataState.Unread ||
-                                                            row.MetadataState == PrintFileMetadataState.Undefined)
+                                              .Where(row => row.Type == FileType.GCode &&
+                                                            (row.Digest == null ||
+                                                             row.MetadataState == PrintFileMetadataState.Unread ||
+                                                             row.MetadataState == PrintFileMetadataState.Undefined))
                                               .ToListAsync(cancellationToken);
 
         long started = Stopwatch.GetTimestamp();
@@ -498,7 +510,7 @@ public sealed class PrintFileReconciler : BackgroundService
 
             if (describe)
             {
-                description = new HSFile { Name = file.FileName };
+                description = new HSFile { Type = FileType.GCode, Name = file.FileName };
                 PrintFileMetadata.Apply(description, GCodeMetadataReader.Read(stream));
             }
 

@@ -115,7 +115,7 @@ public class PrintFileCompatibilityTests
     [Fact]
     public void AFileThatSaidNothingProducesNothing()
     {
-        Evaluate(new HSFile { Name = "quiet.gcode", MetadataState = PrintFileMetadataState.Silent },
+        Evaluate(new HSFile { Type = FileType.GCode, Name = "quiet.gcode", MetadataState = PrintFileMetadataState.Silent },
                  Printer(),
                  Tool(nozzle: 0.4f, hardened: false)).Should().BeEmpty();
     }
@@ -233,6 +233,7 @@ public class PrintFileCompatibilityTests
     {
         return new HSFile
         {
+            Type = FileType.GCode,
             Name = "model.bgcode",
             MetadataState = PrintFileMetadataState.Read,
             PrinterModel = model,

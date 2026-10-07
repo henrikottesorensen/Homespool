@@ -554,9 +554,12 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
         builder.Entity<HSFile>(entity =>
         {
-            // The natural key: a user's files are unique by name, which is what makes the name the
-            // identity and rename a first-class verb.
-            entity.HasIndex(e => new { e.UserId, e.Name })
+            // The natural key: a user's files are unique by name within each store, which is what
+            // makes the name the identity and rename a first-class verb. The type is part of it
+            // because the stores are separate namespaces - a .bbf copied by hand into somebody's
+            // print directory is a different file from the firmware image of the same name, and
+            // without the type here the reconciler's row for it would collide with the image's.
+            entity.HasIndex(e => new { e.UserId, e.Type, e.Name })
                   .IsUnique();
 
             // NOCASE so the uniqueness leans the way UserFileStore resolves a name - it compares
@@ -574,6 +577,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Text, like every other small vocabulary here: a row of this column is only ever read
             // by somebody working out why a file was or was not checked.
             entity.Property(e => e.MetadataState)
+                  .HasConversion<string>();
+
+            // Text for the same reason, and because every query over a user's files filters on it:
+            // somebody reading those queries' rows by hand should see the word they filter for.
+            entity.Property(e => e.Type)
                   .HasConversion<string>();
 
             // A deleted account takes its file index with it. The bytes on disk are a separate

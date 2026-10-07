@@ -257,6 +257,7 @@ namespace Homespool.Data.Migrations
                     Id = table.Column<long>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     UserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    Type = table.Column<string>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
                     Size = table.Column<long>(type: "INTEGER", nullable: false),
                     Digest = table.Column<string>(type: "TEXT", nullable: true),
@@ -962,9 +963,9 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_Files_UserId_Name",
+                name: "IX_Files_UserId_Type_Name",
                 table: "Files",
-                columns: new[] { "UserId", "Name" },
+                columns: new[] { "UserId", "Type", "Name" },
                 unique: true);
 
             migrationBuilder.CreateIndex(

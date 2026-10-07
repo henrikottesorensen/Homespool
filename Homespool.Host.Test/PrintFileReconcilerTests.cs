@@ -34,6 +34,8 @@ public sealed class PrintFileReconcilerTests : IDisposable
 {
     private const long Alice = 1;
 
+    private const string FirmwareImageName = "COREONE_firmware_7.0.0.bbf";
+
     private static readonly byte[] SlicedForMk4S = Encoding.UTF8.GetBytes(
         "G28 ; home\nG1 X10 Y10 F3000\n\n; prusaslicer_config = begin\n" +
         "; printer_model = MK4S\n; nozzle_diameter = 0.4\n; prusaslicer_config = end\n");
@@ -98,6 +100,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "vanished.gcode",
             Size = 3,
@@ -129,6 +132,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         HSFile row = new()
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "vanished.gcode",
             Size = 3,
@@ -188,6 +192,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         HSFile row = new()
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "unmounted.gcode",
             Size = 3,
@@ -248,6 +253,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "edited.gcode",
             Size = 3,
@@ -299,6 +305,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = stored.FileName,
             Size = stored.Length,
@@ -594,6 +601,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "renaming.gcode",
             Size = 3,
@@ -693,7 +701,14 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         foreach (string name in new[] { "ærø.gcode", "Ærø.gcode" })
         {
-            context.Files.Add(new HSFile { UserId = Alice, Name = name, Size = 3, UploadedAt = DateTimeOffset.UnixEpoch });
+            context.Files.Add(new HSFile
+            {
+                Type = FileType.GCode,
+                UserId = Alice,
+                Name = name,
+                Size = 3,
+                UploadedAt = DateTimeOffset.UnixEpoch,
+            });
         }
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -739,6 +754,114 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         File.Exists(path).Should().BeTrue("the reconciler never writes to the disk");
+    }
+
+    /// <summary>
+    /// A firmware image's bytes are in another store, so its row is not a file this walk lost: it
+    /// survives a reconcile of a directory that does not hold it.
+    /// </summary>
+    [Fact]
+    public async Task AFirmwareImageIsNotAFileThePrintStoreLost()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync("present.gcode", [1, 2, 3]);
+        await AddFirmwareRowAsync(context, size: 3, uploadedAt: DateTimeOffset.UnixEpoch);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        (await context.Files.SingleAsync(row => row.Type == FileType.PrusaFirmware, TestContext.Current.CancellationToken))
+            .Digest.Should().Be("firmware");
+    }
+
+    /// <summary>
+    /// A <c>.bbf</c> copied by hand into a print directory is indexed as that user's file, beside the
+    /// firmware image of the same name rather than as a correction to it.
+    /// </summary>
+    [Fact]
+    public async Task AHandCopiedBbfIsIndexedBesideTheFirmwareImageOfTheSameName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync(FirmwareImageName, [1, 2, 3, 4]);
+        await AddFirmwareRowAsync(context, size: 3, uploadedAt: DateTimeOffset.UnixEpoch);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        List<HSFile> rows = await context.Files.OrderBy(row => row.Id).ToListAsync(TestContext.Current.CancellationToken);
+
+        rows.Should().HaveCount(2);
+        rows[0].Type.Should().Be(FileType.PrusaFirmware);
+        rows[0].Size.Should().Be(3, "the image's row describes the image, not the copy");
+        rows[0].Digest.Should().Be("firmware");
+        rows[1].Type.Should().Be(FileType.GCode);
+        rows[1].Size.Should().Be(4);
+    }
+
+    /// <summary>
+    /// The running recheck corrects G-code rows only: a hand-copied file of a firmware image's name,
+    /// with other bytes, is no statement about the image.
+    /// </summary>
+    [Fact]
+    public async Task TheRecheckLeavesAFirmwareImageAlone()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync(FirmwareImageName, [1, 2, 3, 4]);
+        await AddFirmwareRowAsync(context, size: 3, uploadedAt: DateTimeOffset.UnixEpoch);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.RecheckAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        HSFile image = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+
+        image.Size.Should().Be(3);
+        image.Digest.Should().Be("firmware");
+    }
+
+    /// <summary>
+    /// The backfill reads G-code rows only: it never hashes or describes a firmware image from a file
+    /// in somebody's print directory, even one that matches the image's row exactly.
+    /// </summary>
+    [Fact]
+    public async Task TheBackfillLeavesAFirmwareImageAlone()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync(FirmwareImageName, [1, 2, 3]);
+
+        StoredFile copy = NewStore().Find(Alice, FirmwareImageName)!;
+        await AddFirmwareRowAsync(context, copy.Length, copy.UploadedAt, digest: null);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.BackfillAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        HSFile image = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+
+        image.Digest.Should().BeNull();
+        image.MetadataState.Should().Be(PrintFileMetadataState.Undefined);
     }
 
     private static async Task AddUserAsync(HomespoolDbContext context, long id = Alice, string email = "alice@example.com")
@@ -795,6 +918,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = stored.FileName,
             Size = stored.Length + sizeOffset,
@@ -802,6 +926,25 @@ public sealed class PrintFileReconcilerTests : IDisposable
             UploadedAt = stored.UploadedAt,
             MetadataState = metadataState,
             PrinterModel = printerModel,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>A firmware image owned by Alice, as the firmware store would index it.</summary>
+    private static async Task AddFirmwareRowAsync(HomespoolDbContext context,
+                                                  long size,
+                                                  DateTimeOffset uploadedAt,
+                                                  string? digest = "firmware")
+    {
+        context.Files.Add(new HSFile
+        {
+            Type = FileType.PrusaFirmware,
+            UserId = Alice,
+            Name = FirmwareImageName,
+            Size = size,
+            Digest = digest,
+            UploadedAt = uploadedAt,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);

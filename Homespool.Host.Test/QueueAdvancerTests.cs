@@ -4752,6 +4752,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         HSFile file = new()
         {
+            Type = FileType.GCode,
             UserId = 1,
             Name = "second.bgcode",
             Size = 1024,
@@ -5563,7 +5564,7 @@ public sealed class QueueAdvancerTests : IDisposable
             NormalizedUserName = "OTHER@EXAMPLE.COM",
         });
 
-        HSFile ours = new() { UserId = 2, Name = theirs.Name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
+        HSFile ours = new() { Type = FileType.GCode, UserId = 2, Name = theirs.Name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
         context.Files.Add(ours);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -5836,7 +5837,7 @@ public sealed class QueueAdvancerTests : IDisposable
             NormalizedUserName = "OTHER@EXAMPLE.COM",
         });
 
-        HSFile theirs = new() { UserId = 2, Name = name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
+        HSFile theirs = new() { Type = FileType.GCode, UserId = 2, Name = name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
         context.Files.Add(theirs);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -5888,6 +5889,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         HSFile file = new()
         {
+            Type = FileType.GCode,
             UserId = 1,
             Name = "queued.bgcode",
             Size = 1024,

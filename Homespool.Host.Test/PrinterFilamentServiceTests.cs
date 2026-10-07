@@ -536,6 +536,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
     {
         HSFile file = new()
         {
+            Type = FileType.GCode,
             UserId = 1,
             Name = "queued.bgcode",
             Size = 1024,

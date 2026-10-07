@@ -138,6 +138,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
     {
         HSFile file = new()
         {
+            Type = FileType.GCode,
             Name = "bracket.bgcode",
             PrinterModel = "COREONE",
             NozzleDiameter = 0.6f,
@@ -267,6 +268,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
         Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = team.Id };
         HSFile file = new()
         {
+            Type = FileType.GCode,
             UserId = 1,
             Name = "bracket.gcode",
             Size = 4096,

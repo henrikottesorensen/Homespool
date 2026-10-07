@@ -29,6 +29,12 @@
     // counted from when the asking resumed.
     const ASKING_GAP_MS = 3 * INTERVAL_MS;
 
+    // The oldest a frame can be and still read "just now". A poll asks for the next capture and is
+    // answered with the last one, so a working camera's frame always arrives about one interval old,
+    // and the extra second is room for the poll's own round trip on a loaded machine. Anything older
+    // has missed a capture, and says how old it is.
+    const FRESH_MS = INTERVAL_MS + 1000;
+
     function ready(fn) {
         if (document.readyState !== "loading") {
             fn();
@@ -39,13 +45,13 @@
 
     // Worded by the page, in its own language: the caption carries both forms.
     function describeAge(element, captured) {
-        const seconds = Math.max(0, Math.round((Date.now() - captured) / 1000));
+        const ageMs = Math.max(0, Date.now() - captured);
 
-        if (seconds < 2) {
+        if (ageMs <= FRESH_MS) {
             return element.dataset.labelNow;
         }
 
-        return element.dataset.labelSecondsAgo.replace("{0}", seconds);
+        return element.dataset.labelSecondsAgo.replace("{0}", Math.round(ageMs / 1000));
     }
 
     // When the frame was taken, on this page's clock. The server keeps serving its last frame while a

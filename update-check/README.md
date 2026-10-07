@@ -26,6 +26,7 @@ For the application, the proxy and the camera sidecar, one of:
 |---|---|
 | `current` | The running image is the one the registry serves under that tag. |
 | `newer` | The registry serves a different one. The report says what it would bring. |
+| `restamped` | The registry serves a different one, built from the same source, base and everything else, stamped with a later commit. Every publish builds all three images, so this is what an image whose own source did not change looks like. Nothing to take. |
 | `local` | Built from source rather than pulled — where the stack runs, or on the machine that made the card — so nothing is published to compare with. Reported with the date it was built. |
 | `pinned` | Started from a digest, not a tag, so there is nothing to follow. |
 | `not-running` | No such container in this compose project. |
@@ -33,11 +34,17 @@ For the application, the proxy and the camera sidecar, one of:
 For a newer image, what it would bring:
 
 - **Homespool fixes** — the commits between the revision running here and the published one, counted
-  by type. Found in the published revision's history, so this machine's own revision is never sent
-  anywhere.
+  by type, and only those touching what that image is built from: the proxy counts `nginx/`, the
+  camera sidecar `go2rtc/`, the application the whole repository. Found in the published revision's
+  history, so this machine's own revision is never sent anywhere. It reads up to 500 commits back;
+  a revision older than that gets a count marked "at least".
 - **.NET runtime releases** in between, marked when they were security releases.
+- **Newer Go modules** in the camera sidecar, named.
 - **A rebuild or a newer base** — the same revision rebuilt on newer packages, or built on a newer
   base image; published for what it fixes underneath.
+
+The application's entry also counts the commits that changed `compose.yaml`. No pull brings that
+file, so the banner says when it changed and which revision to compare the deployment's copy with.
 
 It lands in the journal, a line per container, and as JSON in `/var/lib/homespool/update-check.json`:
 
@@ -49,7 +56,8 @@ journalctl -u homespool-update-check.service
 volume, which `compose.yaml` mounts read-only into the application, and its health report says what
 the check found, a line per container. A newer image with a reason to take it — a Homespool fix, a
 .NET security release, a rebuild — puts it in the administrators' banner, with the command to pull
-it. After the pull the banner goes as soon as the application is running on the new images, before
+it. When the containers run different revisions — one recreated without the others — the banner
+names each one's, so different counts per image read as what they are. After the pull the banner goes as soon as the application is running on the new images, before
 the check next runs: a report about another revision or base than the application's own is set aside,
 not repeated. A rebuild on the same revision and base looks identical from inside, so that one stays
 until the next run. A report older than three days is on the banner too, because then the check has

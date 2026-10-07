@@ -3345,4 +3345,73 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Printers_ClaimNoSuchCodeNothingWaiting" xml:space="preserve">
     <value>Ingen printer venter på at blive tilknyttet her, så koden kom ikke fra denne server, eller også er den udløbet. Tjek, at printeren peger på denne server, og start så registreringen på den igen.</value>
   </data>
+  <data name="Firmware_Title" xml:space="preserve">
+    <value>Firmware: {0}</value>
+  </data>
+  <data name="Firmware_BackToPrinter" xml:space="preserve">
+    <value>← Tilbage til {0}</value>
+  </data>
+  <data name="Firmware_Link" xml:space="preserve">
+    <value>Firmwareopdateringer</value>
+  </data>
+  <data name="Firmware_CurrentUnknown" xml:space="preserve">
+    <value>Printeren har endnu ikke oplyst sin firmwareversion.</value>
+  </data>
+  <data name="Firmware_Current" xml:space="preserve">
+    <value>Printeren kører firmware {0}.</value>
+  </data>
+  <data name="Firmware_StoredHeading" xml:space="preserve">
+    <value>Gemt firmware til denne printer</value>
+  </data>
+  <data name="Firmware_NoneStored" xml:space="preserve">
+    <value>Ingen gemt firmware passer til denne printer endnu.</value>
+  </data>
+  <data name="Firmware_Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Firmware_UploadHeading" xml:space="preserve">
+    <value>Upload firmware</value>
+  </data>
+  <data name="Firmware_UploadHelp" xml:space="preserve">
+    <value>Hent printerens firmware hos Prusa, og upload .bbf-filen her. Kun filer signeret af Prusa bliver taget imod, og en gemt fil kan bruges på alle printere af samme slags.</value>
+  </data>
+  <data name="Firmware_UploadLabel" xml:space="preserve">
+    <value>Firmwarefil (.bbf)</value>
+  </data>
+  <data name="Firmware_NoFileChosen" xml:space="preserve">
+    <value>Vælg en .bbf-fil at uploade.</value>
+  </data>
+  <data name="Firmware_Stored" xml:space="preserve">
+    <value>‘{0}’ er gemt, firmware {1}.</value>
+  </data>
+  <data name="Firmware_TooLarge" xml:space="preserve">
+    <value>Filen er større end nogen firmwarefil: højst {0}.</value>
+  </data>
+  <data name="Error_FirmwareNotAnImageName" xml:space="preserve">
+    <value>‘{0}’ er ikke en firmwarefil: Prusas firmwarefiler ender på .bbf.</value>
+  </data>
+  <data name="Error_FirmwareNotAnImage" xml:space="preserve">
+    <value>‘{0}’ er ikke en firmwarefil, Homespool kan læse.</value>
+  </data>
+  <data name="Error_FirmwareTruncated" xml:space="preserve">
+    <value>‘{0}’ slutter, før firmwaren gør. Hent den igen.</value>
+  </data>
+  <data name="Error_FirmwareDamaged" xml:space="preserve">
+    <value>‘{0}’ er beskadiget: indholdet passer ikke med filens egen kontrolsum. Hent den igen hos Prusa.</value>
+  </data>
+  <data name="Error_FirmwareNoSignature" xml:space="preserve">
+    <value>‘{0}’ er ikke signeret. Kun firmware signeret af Prusa bliver taget imod, så en lokalt bygget fil kan ikke bruges.</value>
+  </data>
+  <data name="Error_FirmwareNotPrusas" xml:space="preserve">
+    <value>‘{0}’ er ikke signeret af Prusa og bliver derfor ikke taget imod.</value>
+  </data>
+  <data name="Error_FirmwareWrongPrinter" xml:space="preserve">
+    <value>‘{0}’ er firmware {1} til en anden slags printer end {2}.</value>
+  </data>
+  <data name="Error_FirmwarePrinterModelUnknown" xml:space="preserve">
+    <value>{2} har endnu ikke oplyst, hvilken slags printer den er, så ‘{0}’ kan ikke matches med den. Prøv igen, når den har forbundet.</value>
+  </data>
+  <data name="Error_FirmwareNameTaken" xml:space="preserve">
+    <value>Du har allerede gemt en anden fil med navnet ‘{0}’.</value>
+  </data>
 </root>

@@ -3467,4 +3467,73 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Printers_ClaimNoSuchCodeNothingWaiting" xml:space="preserve">
     <value>No printer is waiting to be added here, so that code did not come from this server, or it has expired. Check that the printer points at this server, then start registration on it again.</value>
   </data>
+  <data name="Firmware_Title" xml:space="preserve">
+    <value>Firmware: {0}</value>
+  </data>
+  <data name="Firmware_BackToPrinter" xml:space="preserve">
+    <value>← Back to {0}</value>
+  </data>
+  <data name="Firmware_Link" xml:space="preserve">
+    <value>Firmware updates</value>
+  </data>
+  <data name="Firmware_CurrentUnknown" xml:space="preserve">
+    <value>This printer has not reported its firmware version yet.</value>
+  </data>
+  <data name="Firmware_Current" xml:space="preserve">
+    <value>This printer runs firmware {0}.</value>
+  </data>
+  <data name="Firmware_StoredHeading" xml:space="preserve">
+    <value>Stored firmware for this printer</value>
+  </data>
+  <data name="Firmware_NoneStored" xml:space="preserve">
+    <value>No stored firmware fits this printer yet.</value>
+  </data>
+  <data name="Firmware_Version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="Firmware_UploadHeading" xml:space="preserve">
+    <value>Upload firmware</value>
+  </data>
+  <data name="Firmware_UploadHelp" xml:space="preserve">
+    <value>Download this printer's firmware from Prusa and upload the .bbf file here. Only images signed by Prusa are accepted, and a stored image can be used on any printer of the same kind.</value>
+  </data>
+  <data name="Firmware_UploadLabel" xml:space="preserve">
+    <value>Firmware image (.bbf)</value>
+  </data>
+  <data name="Firmware_NoFileChosen" xml:space="preserve">
+    <value>Choose a .bbf file to upload.</value>
+  </data>
+  <data name="Firmware_Stored" xml:space="preserve">
+    <value>Stored ‘{0}’, firmware {1}.</value>
+  </data>
+  <data name="Firmware_TooLarge" xml:space="preserve">
+    <value>That file is larger than any firmware image: at most {0}.</value>
+  </data>
+  <data name="Error_FirmwareNotAnImageName" xml:space="preserve">
+    <value>‘{0}’ is not a firmware image: Prusa's firmware files end in .bbf.</value>
+  </data>
+  <data name="Error_FirmwareNotAnImage" xml:space="preserve">
+    <value>‘{0}’ is not a firmware image Homespool can read.</value>
+  </data>
+  <data name="Error_FirmwareTruncated" xml:space="preserve">
+    <value>‘{0}’ ends before its firmware does. Download it again.</value>
+  </data>
+  <data name="Error_FirmwareDamaged" xml:space="preserve">
+    <value>‘{0}’ is damaged: its contents do not match its own checksum. Download it again from Prusa.</value>
+  </data>
+  <data name="Error_FirmwareNoSignature" xml:space="preserve">
+    <value>‘{0}’ is not signed. Only firmware signed by Prusa is accepted, so a locally built image cannot be used.</value>
+  </data>
+  <data name="Error_FirmwareNotPrusas" xml:space="preserve">
+    <value>‘{0}’ is not signed by Prusa, so it is not accepted.</value>
+  </data>
+  <data name="Error_FirmwareWrongPrinter" xml:space="preserve">
+    <value>‘{0}’ is firmware {1} for another kind of printer than {2}.</value>
+  </data>
+  <data name="Error_FirmwarePrinterModelUnknown" xml:space="preserve">
+    <value>{2} has not reported what kind of printer it is yet, so ‘{0}’ cannot be matched to it. Try again once it has connected.</value>
+  </data>
+  <data name="Error_FirmwareNameTaken" xml:space="preserve">
+    <value>You have already stored a different image named ‘{0}’.</value>
+  </data>
 </root>

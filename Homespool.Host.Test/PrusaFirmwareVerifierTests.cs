@@ -1,24 +1,10 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
-
-using Org.BouncyCastle.Asn1.X9;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Digests;
-using Org.BouncyCastle.Crypto.EC;
-using Org.BouncyCastle.Crypto.Generators;
-using Org.BouncyCastle.Crypto.Parameters;
-using Org.BouncyCastle.Crypto.Signers;
-using Org.BouncyCastle.Math;
-using Org.BouncyCastle.Security;
-using Org.BouncyCastle.Utilities;
 
 using Homespool.Host.Firmware;
 
@@ -30,28 +16,23 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The images are built here, in the layout <c>pack_fw.py</c> writes, and signed with a key made for
-/// the run, because Prusa's are not ours to commit. That they are signed the way Prusa signs is what
-/// <see cref="EveryPrusaImageInTheFirmwareDirectoryIsVerified"/> checks, against real releases.
+/// The images come from <see cref="TestFirmwareImages"/>, signed with a key made for the run, because
+/// Prusa's are not ours to commit. That they are signed the way Prusa signs is what
+/// <see cref="PrusasKeySignsTheCoreOne700Release"/> and
+/// <see cref="EveryPrusaImageInTheFirmwareDirectoryIsVerified"/> check, against real releases.
 /// </para>
 /// </remarks>
 public sealed class PrusaFirmwareVerifierTests
 {
-    private const int FirmwareLength = 1000;
+    private const int FirmwareLength = TestFirmwareImages.FirmwareLength;
 
-    private static readonly X9ECParameters Curve = CustomNamedCurves.GetByName("secp256k1");
-
-    private static readonly AsymmetricCipherKeyPair Key = NewKey();
-
-    private static readonly AsymmetricCipherKeyPair OtherKey = NewKey();
-
-    private readonly PrusaFirmwareVerifier _verifier = new(PublicKeyOf(Key));
+    private readonly PrusaFirmwareVerifier _verifier = TestFirmwareImages.Verifier;
 
     [Fact]
     public async Task AnImageSignedWithTheKeyIsVerified()
     {
         // Act
-        PrusaFirmwareCheck check = await CheckAsync(Image());
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build());
 
         // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.Verified);
@@ -72,7 +53,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task APrereleaseCarriesItsLabelInTheVersion()
     {
         // Act
-        PrusaFirmwareCheck check = await CheckAsync(Image(prerelease: "RC1"));
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(prerelease: "RC1"));
 
         // Assert
         check.Header!.Version.Should().Be("7.0.0-RC1+16903");
@@ -82,7 +63,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AChangedFirmwareByteIsDamaged()
     {
         // Arrange
-        byte[] image = Image();
+        byte[] image = TestFirmwareImages.Build();
         image[PrusaFirmwareVerifier.FirmwareOffset + 500] ^= 1;
 
         // Act
@@ -99,7 +80,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AChangedHeaderByteIsDamaged()
     {
         // Arrange - the printer type, 7 for a Core One, made 1 for the MK4 family
-        byte[] image = Image();
+        byte[] image = TestFirmwareImages.Build();
         image[PrusaFirmwareVerifier.SignedFrom + 15] = 1;
 
         // Act
@@ -117,7 +98,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AChangedImageWithAFreshDigestIsRefused()
     {
         // Arrange
-        byte[] image = Image();
+        byte[] image = TestFirmwareImages.Build();
         image[PrusaFirmwareVerifier.FirmwareOffset + 500] ^= 1;
         SHA256.HashData(SignedRegion(image)).CopyTo(image, PrusaFirmwareVerifier.SignatureLength);
 
@@ -132,7 +113,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AnImageSignedWithAnotherKeyIsRefused()
     {
         // Act
-        PrusaFirmwareCheck check = await CheckAsync(Image(signedWith: OtherKey));
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(signedWith: TestFirmwareImages.OtherKey));
 
         // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.SignatureInvalid);
@@ -143,7 +124,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AnImageWithNoSignatureSaysSo()
     {
         // Act
-        PrusaFirmwareCheck check = await CheckAsync(Image(signed: false));
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(signed: false));
 
         // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.NoSignature);
@@ -154,7 +135,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AnImageThatEndsInsideItsFirmwareIsTruncated()
     {
         // Arrange
-        byte[] image = Image()[..(PrusaFirmwareVerifier.FirmwareOffset + (FirmwareLength / 2))];
+        byte[] image = TestFirmwareImages.Build()[..(PrusaFirmwareVerifier.FirmwareOffset + (FirmwareLength / 2))];
 
         // Act
         PrusaFirmwareCheck check = await CheckAsync(image);
@@ -167,7 +148,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AFileShorterThanAHeaderIsNotAnImage()
     {
         // Act
-        PrusaFirmwareCheck check = await CheckAsync(Image()[..(PrusaFirmwareVerifier.FirmwareOffset - 1)]);
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build()[..(PrusaFirmwareVerifier.FirmwareOffset - 1)]);
 
         // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.NotAnImage);
@@ -182,7 +163,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AHeaderOfAnotherVersionIsNotAnImage()
     {
         // Act
-        PrusaFirmwareCheck check = await CheckAsync(Image(bbfVersion: 1));
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(bbfVersion: 1));
 
         // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.NotAnImage);
@@ -196,7 +177,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task TheEntriesAfterTheFirmwareAreNotSigned()
     {
         // Arrange
-        byte[] image = Image();
+        byte[] image = TestFirmwareImages.Build();
         image[^1] ^= 1;
 
         // Act
@@ -222,7 +203,7 @@ public sealed class PrusaFirmwareVerifierTests
     public void AKeyOffTheCurveIsRefused()
     {
         // Arrange - a valid x with y moved by one, which no point on the curve has
-        byte[] key = PublicKeyOf(Key);
+        byte[] key = TestFirmwareImages.PublicKeyOf(TestFirmwareImages.Key);
         key[^1] ^= 1;
 
         // Act
@@ -297,68 +278,9 @@ public sealed class PrusaFirmwareVerifierTests
         return await (verifier ?? _verifier).CheckAsync(stream, TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// An image in <c>pack_fw.py</c>'s second layout: a Core One 7.0.0 header, a firmware of
-    /// <see cref="FirmwareLength"/> bytes, and one trailing entry.
-    /// </summary>
-    /// <param name="prerelease">The prerelease label, or empty for a release.</param>
-    /// <param name="bbfVersion">The header version to write.</param>
-    /// <param name="signed">False to leave the signature as zeros, the way a local build does.</param>
-    /// <param name="signedWith">The key to sign with, when signed; the run's own by default.</param>
-    private static byte[] Image(string prerelease = "",
-                                byte bbfVersion = PrusaFirmwareVerifier.BbfVersion,
-                                bool signed = true,
-                                AsymmetricCipherKeyPair? signedWith = null)
-    {
-        AsymmetricCipherKeyPair? key = signed ? signedWith ?? Key : null;
-
-        byte[] body = new byte[PrusaFirmwareVerifier.FirmwareOffset - PrusaFirmwareVerifier.SignedFrom + FirmwareLength];
-        BinaryPrimitives.WriteUInt32LittleEndian(body, FirmwareLength);
-        body[4] = 7;
-        BinaryPrimitives.WriteUInt16LittleEndian(body.AsSpan(7), 16903);
-        Encoding.ASCII.GetBytes(prerelease).CopyTo(body, 9);
-        body[15] = 7;
-        body[16] = bbfVersion;
-        body[18] = 1;
-
-        for (int i = PrusaFirmwareVerifier.FirmwareOffset - PrusaFirmwareVerifier.SignedFrom; i < body.Length; i++)
-        {
-            body[i] = (byte)i;
-        }
-
-        byte[] digest = SHA256.HashData(body);
-        byte[] signature = key is null ? new byte[PrusaFirmwareVerifier.SignatureLength] : Sign(digest, key);
-        byte[] trailer = [9, 16, 0, 0, 0, .. Enumerable.Range(0, 16).Select(i => (byte)i)];
-
-        return [.. signature, .. digest, .. body, .. trailer];
-    }
-
     private static byte[] SignedRegion(byte[] image)
     {
         return image[PrusaFirmwareVerifier.SignedFrom..(PrusaFirmwareVerifier.FirmwareOffset + FirmwareLength)];
-    }
-
-    private static byte[] Sign(byte[] digest, AsymmetricCipherKeyPair key)
-    {
-        ECDsaSigner signer = new(new HMacDsaKCalculator(new Sha256Digest()));
-        signer.Init(forSigning: true, key.Private);
-
-        BigInteger[] rs = signer.GenerateSignature(digest);
-
-        return [.. BigIntegers.AsUnsignedByteArray(32, rs[0]), .. BigIntegers.AsUnsignedByteArray(32, rs[1])];
-    }
-
-    private static AsymmetricCipherKeyPair NewKey()
-    {
-        ECKeyPairGenerator generator = new();
-        generator.Init(new ECKeyGenerationParameters(new ECDomainParameters(Curve), new SecureRandom()));
-
-        return generator.GenerateKeyPair();
-    }
-
-    private static byte[] PublicKeyOf(AsymmetricCipherKeyPair key)
-    {
-        return ((ECPublicKeyParameters)key.Public).Q.GetEncoded(compressed: false)[1..];
     }
 
     private static DirectoryInfo RepositoryRoot()

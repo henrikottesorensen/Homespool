@@ -668,7 +668,7 @@ public sealed class UserFileStore
     /// still fail when the finished upload is moved into place.
     /// </para>
     /// </remarks>
-    private static string RequireSafeName(string fileName)
+    internal static string RequireSafeName(string fileName)
     {
         string name = SafeName(fileName) ?? throw new PrintFileNameRejectedException(nameof(fileName));
 

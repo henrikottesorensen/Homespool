@@ -113,12 +113,15 @@ public sealed class TelemetryAlertService : BackgroundService
     /// <b>Each item is encoded.</b> A description is plain text - the banner and <c>/health</c> encode
     /// it on the way out - and this is the one place markup is built from it. It is not fixed text:
     /// descriptions carry configured hosts and paths, a host report's contents, a shell command with
-    /// <c>&amp;&amp;</c> in it, and, for a check that throws, the exception's message.
+    /// <c>&amp;&amp;</c> in it, and, for a check that throws, the exception's message. A line break
+    /// in one is meant - the image update check gives each image a line - so the <c>&amp;#xA;</c> the
+    /// encoder writes for it becomes a <c>&lt;br&gt;</c>.
     /// </para>
     /// </remarks>
     private static string Describe(HealthReport report, IStringLocalizer<SharedResource> localiser)
     {
-        IEnumerable<string> problems = Problems(report).Select(problem => $"<li>{HtmlEncoder.Default.Encode(problem)}</li>");
+        IEnumerable<string> problems = Problems(report).Select(
+            problem => $"<li>{HtmlEncoder.Default.Encode(problem).Replace("&#xA;", "<br>", StringComparison.Ordinal)}</li>");
 
         return $"<p>{localiser["Alert_UnhealthyIntro"].Value}</p><ul>{string.Concat(problems)}</ul>" +
                $"<p>{localiser["Alert_UnhealthyFooter"].Value}</p>";

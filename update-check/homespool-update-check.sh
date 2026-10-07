@@ -36,15 +36,28 @@
 # the deployment follows (latest when none is written). The registry's current digest for that tag
 # against the running image's is the whole of "is there something newer". When there is:
 #
-#   - Homespool's commits between the running revision and the published one, counted by type,
-#     merges left out. It asks GitHub for the history of the PUBLISHED revision - which every
-#     deployment following that tag asks for - and finds its own revision in the answer, so the one
-#     thing that would identify this deployment's build, and with it its known defects, never leaves
-#     the machine.
+#   - Homespool's commits between the running revision and the published one that touch what the
+#     image is built from, counted by type, merges left out. The image's context.path label names
+#     that - the camera sidecar is built from go2rtc/, so a fix to the application is not one of its
+#     fixes - and an image without it is counted against the whole repository. It asks GitHub for the
+#     history of the PUBLISHED revision - which every deployment following that tag asks for - and
+#     finds its own revision in the answer, so the one thing that would identify this deployment's
+#     build, and with it its known defects, never leaves the machine. A page at a time, up to
+#     history_pages of them; a running revision further back than that is said to be, and the count
+#     becomes a floor.
 #   - The .NET runtime, when the published image carries a newer one: every release in between, from
 #     Microsoft's release metadata, and whether it was a security release.
+#   - The Go modules compiled into the camera sidecar, when the published image took newer ones.
 #   - Whether the published image is built on a different base. A newer image on the same revision
 #     is a rebuild, and a rebuild is published for what it fixes underneath.
+#   - For the application, the commits that changed compose.yaml, which no pull brings.
+#
+# A NEWER IMAGE OF THE SAME SOURCE IS NOT NECESSARILY NEWS. Every publish builds all three images and
+# stamps each with the commit, so an image whose own source did not change still gets a new digest.
+# Each image labels the git tree of its build context and every other input it was built from, so:
+# all of them equal, and the published image is this one stamped with another commit - restamped,
+# not newer. The same tree with another input - packages refreshed on another day, another
+# toolchain - is newer, and says so only for what the list above counts.
 #
 # A running revision only counts when the running image's source label names the same repository as
 # the published one. An image built before Homespool labelled itself inherits its base's labels, and
@@ -71,6 +84,11 @@ run_dir="${RUNTIME_DIRECTORY:-/run/homespool-update-check}"
 # the state directory, which the unprivileged step owns and could rewrite to start runs or stop them.
 watch_dir="${HOMESPOOL_WATCH_DIRECTORY:-/var/lib/homespool-update-check}"
 dotnet_index="https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json"
+# The prefix of the labels Homespool's builds set where OCI has no key.
+ns="io.github.henrikottesorensen.homespool"
+# How much of the published revision's history it reads, in GitHub's pages of 100, looking for the
+# running one. Each page is a request, and GitHub allows 60 an hour without a login.
+history_pages=5
 
 # The largest report publish will copy. A real one is a few kilobytes.
 report_limit=1048576
@@ -143,6 +161,95 @@ collect() {
 
 # --- compare: unprivileged, everything from outside ----------------------------------------------------
 
+# An image's label or environment variable, from either spelling of its configuration: the registry's
+# answer says config, Docker's own Config.
+label() { jq -r --arg k "$1" '(.config.Labels // .Config.Labels // {})[$k] // ""' "$2"; }
+envvar() { jq -r --arg k "$1=" '((.config.Env // .Config.Env // [])[] | select(startswith($k)) | ltrimstr($k)) // ""' "$2"; }
+
+# Everything an image was built from besides the commit it is stamped with, as one line: two images
+# with the same line differ in that stamp alone. A key an image does not have reads as empty, so the
+# proxy, which has no toolchain, compares its tree and base.
+inputs() {
+    jq -r --arg ns "$ns" '(.config.Labels // .Config.Labels // {}) as $l
+        | ["\($ns).context.tree", "org.opencontainers.image.base.digest", "\($ns).builder.digest",
+           "\($ns).go.modules", "\($ns).packages.refreshed"]
+        | map($l[.] // "") | join(" ")' "$1"
+}
+
+# The next page of a history, added to the file of pages so far. The page count and the last page's
+# length sit beside it, for more.
+page() {
+    pages="$(cat "$1.pages" 2>/dev/null || echo 0)"
+    pages=$((pages + 1))
+    fetch "$2&per_page=100&page=$pages" > "$1.page"
+    jq -s '.[0] + .[1]' "$1" "$1.page" > "$1.new"
+    mv -f "$1.new" "$1"
+    jq length "$1.page" > "$1.last"
+    echo "$pages" > "$1.pages"
+}
+
+# Whether a history has more to read: nothing read yet, or a full last page and pages left.
+more() {
+    [ -f "$1.pages" ] || return 0
+    [ "$(cat "$1.last")" -eq 100 ] && [ "$(cat "$1.pages")" -lt "$history_pages" ]
+}
+
+# What the published revision ($2) has and the running one ($3) does not, in the repository $1:
+# everything the published revision's history reaches, less everything it reaches from the running
+# one, walked along the parent links - not the list's order, which is by date and puts a branch merged
+# late among commits long older than it. With a path ($4), only the commits that touch it, from
+# GitHub's history of the published revision for that path. Counted by type, merges left out.
+#
+# The whole history is read once per published revision and shared by every image published from it,
+# further only as far as the next running revision needs. A path's history is read until a page
+# reaches back past what the first walk found missing.
+changes() {
+    all="$work/history.$2.json"
+    [ -f "$all" ] || printf '[]\n' > "$all"
+    while ! jq -e --arg r "$3" 'any(.[]; .sha == $r)' "$all" >/dev/null && more "$all"; do
+        page "$all" "https://api.github.com/repos/$1/commits?sha=$2"
+    done
+
+    ahead="$work/ahead.$2.$3.json"
+    jq --arg running "$3" '
+            (map({key: .sha, value: [.parents[].sha]}) | from_entries) as $parents
+            | ({seen: {}, queue: [$running]}
+               | until(.queue | length == 0;
+                     .queue[0] as $c
+                     | .queue |= .[1:]
+                     | if .seen[$c] or ($parents[$c] == null) then .
+                       else .seen[$c] = true | .queue += $parents[$c] end)
+               | .seen) as $behind
+            | {
+                found: ($parents[$running] != null),
+                read: length,
+                missing: (map(select(($behind[.sha] // false) | not) | {key: .sha, value: true}) | from_entries)
+            }' "$all" > "$ahead"
+
+    touched="$all"
+    if [ -n "$4" ] && [ "$4" != "." ]; then
+        touched="$work/history.$2.$(printf '%s' "$4" | tr -c 'A-Za-z0-9._-' '_').json"
+        [ -f "$touched" ] || printf '[]\n' > "$touched"
+        while more "$touched" &&
+            { [ ! -f "$touched.page" ] ||
+              jq -e --slurpfile a "$ahead" 'all(.[]; $a[0].missing[.sha] // false)' "$touched.page" >/dev/null; }; do
+            page "$touched" "https://api.github.com/repos/$1/commits?sha=$2&path=$4"
+        done
+    fi
+
+    jq --slurpfile a "$ahead" --arg path "${4:-.}" '
+            $a[0] as $a
+            | map(select(($a.missing[.sha] // false) and (.parents | length) == 1) | .commit.message | split("\n")[0])
+            | {
+                path: $path,
+                commits: length,
+                by_type: (map(capture("^(?<type>[a-z]+)(\\([^)]*\\))?!?:").type // "other")
+                          | group_by(.) | map({key: .[0], value: length}) | from_entries),
+                found: $a.found,
+                read: $a.read
+            }' "$touched"
+}
+
 compare() {
     require docker curl jq
     [ -s "$run_dir/platform" ] || die "nothing collected in $run_dir: collect runs first, as root"
@@ -214,53 +321,60 @@ compare() {
         jq --arg p "$platform" 'if has("config") then . else (.[$p] // (to_entries[0].value)) end' \
             "$work/$service.published.json" > "$work/$service.published.config.json"
 
-        if jq -e --arg d "$repository@$published_digest" '(.RepoDigests // []) | any(. == $d)' "$run" >/dev/null; then
-            jq -n --arg s "$service" --arg r "$reference" --arg d "$published_digest" \
-                '{service: $s, reference: $r, status: "current", digest: $d}' > "$entry"
-            echo "$service: current ($reference is $published_digest)"
-            continue
-        fi
-
-        label() { jq -r --arg k "$1" '(.config.Labels // .Config.Labels // {})[$k] // ""' "$2"; }
-        envvar() { jq -r --arg k "$1=" '((.config.Env // .Config.Env // [])[] | select(startswith($k)) | ltrimstr($k)) // ""' "$2"; }
-
         pub="$work/$service.published.config.json"
         published_revision="$(label org.opencontainers.image.revision "$pub")"
         published_source="$(label org.opencontainers.image.source "$pub")"
         running_revision="$(label org.opencontainers.image.revision "$run")"
         running_source="$(label org.opencontainers.image.source "$run")"
         [ "$running_source" = "$published_source" ] || running_revision=""
+        published_base="$(label org.opencontainers.image.base.digest "$pub")"
+        running_base="$(label org.opencontainers.image.base.digest "$run")"
+
+        # The running revision even here, so a reader can see when the three containers run different
+        # builds - one recreated without the others.
+        if jq -e --arg d "$repository@$published_digest" '(.RepoDigests // []) | any(. == $d)' "$run" >/dev/null; then
+            jq -n --arg s "$service" --arg r "$reference" --arg d "$published_digest" \
+                --arg rr "$running_revision" --arg rb "$running_base" \
+                '{service: $s, reference: $r, status: "current", digest: $d, running: {revision: $rr, base: $rb}}' > "$entry"
+            echo "$service: current ($reference is $published_digest)"
+            continue
+        fi
+
+        # --- the same source, stamped with another commit ---
+        published_tree="$(label "$ns.context.tree" "$pub")"
+        running_tree="$(label "$ns.context.tree" "$run")"
+        [ "$running_source" = "$published_source" ] || running_tree=""
+        same_source=""
+        if [ -n "$published_tree" ] && [ "$published_tree" = "$running_tree" ]; then
+            same_source=1
+        fi
+        if [ -n "$same_source" ] && [ "$(inputs "$pub")" = "$(inputs "$run")" ]; then
+            jq -n --arg s "$service" --arg r "$reference" --arg d "$published_digest" \
+                --arg pr "$published_revision" --arg rr "$running_revision" \
+                --arg pb "$published_base" --arg rb "$running_base" '{
+                    service: $s, reference: $r, status: "restamped", digest: $d,
+                    running: {revision: $rr, base: $rb}, published: {revision: $pr, base: $pb}
+                }' > "$entry"
+            echo "$service: the published image is this one stamped with another commit ($reference is $published_digest)"
+            continue
+        fi
 
         # --- Homespool, from the published revision's history ---
         printf 'null\n' > "$work/$service.homespool.json"
+        printf 'null\n' > "$work/$service.compose.json"
         slug="${published_source#https://github.com/}"
-        if [ -n "$published_revision" ] && [ -n "$running_revision" ] && [ "$slug" != "$published_source" ]; then
-            if [ "$published_revision" = "$running_revision" ]; then
-                printf '{"commits":0,"by_type":{},"found":true}\n' > "$work/$service.homespool.json"
-            else
-                # What the published revision has and the running one does not: everything the fetched
-                # history reaches from the published revision, less everything it reaches from the
-                # running one, walked along the parent links. Not the list's order, which is by date and
-                # puts a branch merged late among commits long older than it.
-                fetch "https://api.github.com/repos/$slug/commits?sha=$published_revision&per_page=100" \
-                    > "$work/$service.commits.json"
-                jq --arg running "$running_revision" '
-                        (map({key: .sha, value: [.parents[].sha]}) | from_entries) as $parents
-                        | ({seen: {}, queue: [$running]}
-                           | until(.queue | length == 0;
-                                 .queue[0] as $c
-                                 | .queue |= .[1:]
-                                 | if .seen[$c] or ($parents[$c] == null) then .
-                                   else .seen[$c] = true | .queue += $parents[$c] end)
-                           | .seen) as $behind
-                        | map(select(($behind[.sha] // false) | not))
-                        | map(select((.parents | length) == 1) | .commit.message | split("\n")[0])
-                        | {
-                            commits: length,
-                            by_type: (map(capture("^(?<type>[a-z]+)(\\([^)]*\\))?!?:").type // "other")
-                                      | group_by(.) | map({key: .[0], value: length}) | from_entries),
-                            found: ($parents[$running] != null)
-                        }' "$work/$service.commits.json" > "$work/$service.homespool.json"
+        # What the image is built from. A label is the publisher's word, and this one goes into a URL,
+        # so anything but a plain path counts the whole repository instead.
+        context_path="$(label "$ns.context.path" "$pub")"
+        case "$context_path" in
+            *[!A-Za-z0-9._/-]* | /* | *..*) context_path="" ;;
+        esac
+        if [ -n "$same_source" ] || { [ -n "$published_revision" ] && [ "$published_revision" = "$running_revision" ]; }; then
+            printf '{"commits":0,"by_type":{},"found":true}\n' > "$work/$service.homespool.json"
+        elif [ -n "$published_revision" ] && [ -n "$running_revision" ] && [ "$slug" != "$published_source" ]; then
+            changes "$slug" "$published_revision" "$running_revision" "$context_path" > "$work/$service.homespool.json"
+            if [ "$service" = homespool ]; then
+                changes "$slug" "$published_revision" "$running_revision" compose.yaml > "$work/$service.compose.json"
             fi
         fi
 
@@ -291,14 +405,19 @@ compare() {
                     }' "$work/dotnet-$channel.json" > "$work/$service.runtime.json"
         fi
 
+        # The Go modules are a reason and the toolchain is not: the sidecar takes each module's latest
+        # release, which comes out about monthly and changes what serves its published ports, where the
+        # toolchain image is republished for much that never reaches the binary.
         jq -n --arg s "$service" --arg r "$reference" --arg d "$published_digest" \
             --arg pr "$published_revision" --arg rr "$running_revision" \
-            --arg pb "$(label org.opencontainers.image.base.digest "$pub")" \
-            --arg rb "$(label org.opencontainers.image.base.digest "$run")" \
+            --arg pb "$published_base" --arg rb "$running_base" \
+            --arg pm "$(label "$ns.go.modules" "$pub")" --arg rm "$(label "$ns.go.modules" "$run")" \
             --slurpfile homespool "$work/$service.homespool.json" \
+            --slurpfile compose "$work/$service.compose.json" \
             --slurpfile runtime "$work/$service.runtime.json" '
-            ($homespool[0]) as $h | ($runtime[0]) as $rt
-            | {
+            ($homespool[0]) as $h | ($runtime[0]) as $rt | ($compose[0]) as $c
+            | def fixes($n): "\($n) Homespool fix\(if $n == 1 then "" else "es" end)";
+            {
                 service: $s,
                 reference: $r,
                 status: "newer",
@@ -310,13 +429,21 @@ compare() {
                 base_changed: ($pb != "" and $rb != "" and $rb != $pb),
                 reasons: [
                     (if $rr == "" then "the running image does not say which Homespool revision it is" else empty end),
-                    (if $h != null and ($h.by_type.fix // 0) > 0 then "\($h.by_type.fix) Homespool fixes" else empty end),
-                    (if $h != null and ($h.found | not) then "more Homespool changes than the history reaches" else empty end),
+                    (if $h == null then empty
+                     else ($h.by_type.fix // 0) as $f
+                     | if $h.found then (if $f > 0 then fixes($f) else empty end)
+                       elif $f > 0 then "at least \(fixes($f)) (the running revision is older than the \($h.read) commits read)"
+                       else "a running revision older than the \($h.read) commits read, so what changed since is not known" end
+                     end),
                     (if $rt != null then ($rt.releases[] | select(.security) | ".NET \(.version), a security release") else empty end),
+                    (if $pm != "" and $rm != "" and $pm != $rm
+                     then "compiled with newer Go modules: \(($pm | split(" ")) - ($rm | split(" ")) | join(", "))"
+                     else empty end),
                     (if $pr != "" and $pr == $rr then "rebuilt from the same revision on newer packages" else empty end),
                     (if $pb != "" and $rb != "" and $rb != $pb and $pr != $rr then "built on a newer base" else empty end)
                 ]
-            }' > "$entry"
+            }
+            + (if $c != null then {compose: $c} else {} end)' > "$entry"
 
         echo "$service: newer image published ($reference is $published_digest): $(jq -r '.reasons | if length == 0 then "nothing it names" else join("; ") end' "$entry")"
     done

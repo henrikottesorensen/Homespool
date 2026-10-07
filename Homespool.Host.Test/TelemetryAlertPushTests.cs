@@ -43,6 +43,7 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
     private readonly List<FakePushBrowser> _browsers = [];
 
     private HealthStatus _status = HealthStatus.Healthy;
+    private string? _degraded;
     private string _connectionString;
     private WebPushRig _rig = null!;
 
@@ -60,7 +61,8 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
 
             services.AddScoped<IEmailSender>(_ => _mail);
             services.AddHealthChecks()
-                    .AddCheck("telemetry-persistence", () => new HealthCheckResult(_status, Problem));
+                    .AddCheck("telemetry-persistence", () => new HealthCheckResult(_status, Problem))
+                    .AddCheck("update-check", () => _degraded is null ? HealthCheckResult.Healthy() : HealthCheckResult.Degraded(_degraded));
         });
     }
 
@@ -216,6 +218,28 @@ public sealed class TelemetryAlertPushTests : IAsyncLifetime
         // Assert
         _rig.PushService.Received.Should().ContainSingle();
         _mail.SentEmails.Select(mail => mail.email).Should().Equal(mailConfigured ? ["admin@example.com"] : []);
+    }
+
+    /// <summary>
+    /// A description's line breaks are kept in the mail, as the banner keeps them: the image update
+    /// check gives each image a line, and an HTML body would otherwise run them together.
+    /// </summary>
+    [Fact]
+    public async Task ADescriptionsLinesAreKeptInTheMail()
+    {
+        // Arrange
+        await AddAsync("admin@example.com", administrator: true);
+        using TelemetryAlertService alerts = NewService(mailConfigured: true);
+        _status = HealthStatus.Unhealthy;
+        _degraded = "Newer Homespool images are published:\nproxy: built on a newer base\ngo2rtc: 1 Homespool fix & more";
+
+        // Act
+        await alerts.PollAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        _mail.SentEmails.Should().ContainSingle().Which.htmlMessage.Should()
+             .Contain("<li>Newer Homespool images are published:<br>proxy: built on a newer base<br>go2rtc: 1 Homespool fix &amp; more</li>")
+             .And.NotContain("&#xA;");
     }
 
     /// <summary>

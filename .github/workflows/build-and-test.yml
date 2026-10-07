@@ -359,6 +359,13 @@ jobs:
       - name: Test the camera sidecar's module resolution
         run: ./tests/go-module-versions.test.sh
 
+      # Each image records the git tree of its build context, which the update check on a host
+      # compares to tell a new image from the same one stamped with a later commit. A tree printed
+      # for uncommitted changes, or one service's tree wired into another's labels, would call two
+      # different images the same.
+      - name: Test the build context trees and their wiring
+        run: ./tests/context-tree.test.sh
+
       # Which names the renewal will act on, and which it refuses before they reach a shell. It
       # talks to the world only through `docker`, and a stub of that is the whole harness, so this
       # needs neither a daemon nor a certificate authority.

@@ -37,6 +37,9 @@
 #
 # And the release version, for the images' version label, when HEAD carries a v-tag and nothing
 # differs from it - tools/release-version.sh. Empty, and the label blank, for every other build.
+#
+# And the git tree of each image's build context, so an image can say its own source did not change
+# when only another image's did - tools/context-tree.sh. Empty for a context with uncommitted changes.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,6 +71,11 @@ HOMESPOOL_GOLANG_DIGEST="$("$repo_root/tools/base-digest.sh" "$sidecar_dockerfil
     HOMESPOOL_BUILDER_IMAGE)"
 HOMESPOOL_GO_MODULES="$("$repo_root/tools/go-module-versions.sh" "$sidecar_dockerfile")"
 export HOMESPOOL_GOLANG_DIGEST HOMESPOOL_GO_MODULES
+
+HOMESPOOL_APP_TREE="$("$repo_root/tools/context-tree.sh" .)"
+HOMESPOOL_PROXY_TREE="$("$repo_root/tools/context-tree.sh" nginx)"
+HOMESPOOL_GO2RTC_TREE="$("$repo_root/tools/context-tree.sh" go2rtc)"
+export HOMESPOOL_APP_TREE HOMESPOOL_PROXY_TREE HOMESPOOL_GO2RTC_TREE
 
 HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"
 export HOMESPOOL_VERSION

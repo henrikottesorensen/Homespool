@@ -104,16 +104,41 @@ published() {
     }' > "$scratch/fixtures/published-$1.json"
 }
 
-# The published revision's history, as GitHub lists it: "sha parent[,parent] subject" per argument.
-history() {
-    local line sha parents subject out=""
+# A history as GitHub lists it, into a fixture file: "sha parent[,parent] subject" per argument.
+history_to() {
+    local file="$1" line sha parents subject out=""
+    shift
     for line in "$@"; do
         sha="${line%% *}"; line="${line#* }"
         parents="${line%% *}"; subject="${line#* }"
         out="$out${out:+,}$(jq -n --arg sha "$sha" --arg p "$parents" --arg m "$subject" \
             '{sha: $sha, parents: ($p | split(",") | map({sha: .})), commit: {message: ($m + "\n\nbody")}}')"
     done
-    printf '[%s]\n' "$out" > "$scratch/fixtures/commits.json"
+    printf '[%s]\n' "$out" > "$scratch/fixtures/$file"
+}
+
+# The published revision's history, its first page.
+history() { history_to commits.json "$@"; }
+
+# The published revision's history for one path, its first page.
+path_history() {
+    local path="$1"
+    shift
+    history_to "commits-$path.json" "$@"
+}
+
+# More labels on a running or published image: labels <running|published> <service> <json object>.
+labels() {
+    local file="$scratch/fixtures/$1-$2.json"
+    jq --argjson l "$3" 'if has("config") then .config.Labels += $l else .Config.Labels += $l end' "$file" > "$file.new" &&
+        mv "$file.new" "$file"
+}
+
+# The labels a build through ./build.sh sets for what the image is built from.
+ns="io.github.henrikottesorensen.homespool"
+built_from() {
+    jq -n --arg ns "$ns" --arg p "$1" --arg t "$2" --arg r "${3:-2026-10-07}" \
+        '{"\($ns).context.path": $p, "\($ns).context.tree": $t, "\($ns).packages.refreshed": $r}'
 }
 
 test_case() {
@@ -173,7 +198,14 @@ case "$url" in *"${STUB_CURL_FAILS:-no-such-url}"*) exit 22 ;; esac
 case "$url" in
     *releases-index.json) printf '{"releases-index":[{"channel-version":"10.0","releases.json":"https://example.invalid/10.0/releases.json"}]}\n' ;;
     */10.0/releases.json) cat "$STUB_FIXTURES/releases.json" ;;
-    https://api.github.com/repos/*/commits*) cat "$STUB_FIXTURES/commits.json" ;;
+    https://api.github.com/repos/*/commits*)
+        # commits.json for the first page of the whole history, commits-<path>.json for a path's,
+        # with .<page> before .json past the first. A page nobody wrote is past the end: empty.
+        path="$(printf '%s' "$url" | sed -n 's/.*[?&]path=\([^&]*\).*/\1/p')"
+        page="$(printf '%s' "$url" | sed -n 's/.*[?&]page=\([0-9]*\).*/\1/p')"
+        file="$STUB_FIXTURES/commits${path:+-$path}$([ "${page:-1}" = 1 ] || printf '.%s' "$page").json"
+        if [ -f "$file" ]; then cat "$file"; else echo '[]'; fi
+        ;;
     *) exit 22 ;;
 esac
 STUB
@@ -212,7 +244,8 @@ STUB
     export STATE_DIRECTORY="$scratch/state"
     export RUNTIME_DIRECTORY="$scratch/run"
     export HOMESPOOL_WATCH_DIRECTORY="$scratch/watch"
-    unset STUB_PROJECT STUB_REGISTRY_FAILS STUB_CURL_FAILS STUB_DIGEST_homespool STUB_DIGEST_proxy HOMESPOOL_PROJECT \
+    unset STUB_PROJECT STUB_REGISTRY_FAILS STUB_CURL_FAILS STUB_DIGEST_homespool STUB_DIGEST_proxy STUB_DIGEST_go2rtc \
+        HOMESPOOL_PROJECT \
         STUB_REPORT_VOLUME STUB_IMAGE_homespool STUB_IMAGE_proxy STUB_IMAGE_go2rtc
     : > "$STUB_LOG"
     return 0
@@ -317,8 +350,188 @@ if test_case "a running revision the fetched history does not reach is said to b
     history "$published_rev p1 fix(A): one" "p1 p2 fix(B): two"
     check
     assert_equals "$(app .homespool.found)" "false" "not found in the window"
-    assert_contains "$(app '.reasons | join(";")')" "more Homespool changes than the history reaches" \
-        "and the count is not passed off as complete"
+    assert_equals "$(app '.reasons | join(";")')" \
+        "at least 2 Homespool fixes (the running revision is older than the 2 commits read)" \
+        "and the count is said to be a floor, in one reason"
+fi
+
+if test_case "a running revision beyond the history with no fix in it is said to be unknown, not fine"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    history "$published_rev p1 feat(A): one"
+    check
+    assert_equals "$(app '.reasons | join(";")')" \
+        "a running revision older than the 1 commits read, so what changed since is not known" \
+        "nothing counted is not nothing changed"
+fi
+
+if test_case "one fix is one fix"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    history "$published_rev $running_rev fix(A): one" "$running_rev old feat(B): two"
+    check
+    assert_equals "$(app '.reasons | join(";")')" "1 Homespool fix" "singular"
+fi
+
+if test_case "the history is read a page at a time until it reaches the running revision"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    # A first page of 100 commits in a line, each a fix, the running revision on the second.
+    jq -n --arg top "$published_rev" '[range(100)] | map({
+            sha: (if . == 0 then $top else "c\(.)" end), parents: [{sha: "c\(. + 1)"}],
+            commit: {message: "fix(A): \(.)"}})' > "$scratch/fixtures/commits.json"
+    history_to commits.2.json "c100 $running_rev fix(B): the last one" "$running_rev old feat(C): running"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(app .homespool.found)" "true" "found on the second page"
+    assert_equals "$(app .homespool.read)" "102" "both pages read"
+    assert_equals "$(app '.reasons | join(";")')" "101 Homespool fixes" "every one counted"
+    assert_equals "$(grep -c "commits?sha=$published_rev&per_page" "$STUB_LOG")" "2" "two requests, not more"
+    assert_not_contains "$log" "$running_rev" "and still never told the running revision"
+fi
+
+if test_case "the history is read no further than the page limit"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    for page in 1 2 3 4 5 6; do
+        jq -n --argjson p "$page" --arg top "$published_rev" '[range(100)] | map(. + ($p - 1) * 100) | map({
+                sha: (if . == 0 then $top else "c\(.)" end), parents: [{sha: "c\(. + 1)"}],
+                commit: {message: "feat(A): \(.)"}})' > "$scratch/fixtures/commits.$page.json"
+    done
+    mv "$scratch/fixtures/commits.1.json" "$scratch/fixtures/commits.json"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(grep -c "commits?sha=$published_rev&per_page" "$STUB_LOG")" "5" "five pages, the sixth not asked for"
+    assert_equals "$(app .homespool.found)" "false" "the running revision is not in them"
+    assert_equals "$(app .homespool.read)" "500" "and says how much it read"
+fi
+
+if test_case "each image counts the commits that touch what it is built from"; then
+    newer_app
+    export STUB_DIGEST_go2rtc="sha256:newer-go2rtc" STUB_DIGEST_proxy="sha256:newer-proxy"
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    published go2rtc "$published_rev" "$source_url" sha256:base-g ""
+    published proxy "$published_rev" "$source_url" sha256:base-n ""
+    labels published homespool "$(built_from . tree-a2)"
+    labels published go2rtc "$(built_from go2rtc tree-g2)"
+    labels published proxy "$(built_from nginx tree-n2)"
+    path_history go2rtc \
+        "f3 f2 fix(Cameras): the sidecar's" \
+        "f1 $running_rev fix(Cameras): also the sidecar's, and the application's" \
+        "f3x old fix(Cameras): a fix the running revision already has"
+    path_history nginx "f2 f1 fix(Proxy): the proxy's"
+    # The running revision already has f3x: it is in the path's history and not among the missing.
+    history \
+        "$published_rev f3 fix(Printers): the application's" \
+        "f3 f2 fix(Cameras): the sidecar's" \
+        "f2 f1 fix(Proxy): the proxy's" \
+        "f1 $running_rev fix(Cameras): also the sidecar's, and the application's" \
+        "$running_rev f3x feat(Files): what is running" \
+        "f3x old fix(Cameras): a fix the running revision already has"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    service_reasons() { field ".services[] | select(.service == \"$1\") | .reasons | join(\";\")"; }
+    assert_equals "$(service_reasons homespool)" "4 Homespool fixes" "the application: the whole repository"
+    assert_equals "$(service_reasons go2rtc)" "2 Homespool fixes" "the sidecar: go2rtc/ alone"
+    assert_equals "$(service_reasons proxy)" "1 Homespool fix" "the proxy: nginx/ alone"
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .homespool.path')" "go2rtc" \
+        "the report says what was counted"
+    assert_contains "$log" "commits?sha=$published_rev&path=go2rtc" "the path is asked of GitHub"
+    assert_equals "$(grep -c "commits?sha=$published_rev&per_page" "$STUB_LOG")" "1" \
+        "and the whole history once, shared by all three"
+    assert_not_contains "$log" "$running_rev" "the running revision is still never sent"
+fi
+
+if test_case "a context path that is not a plain path is not put into a URL"; then
+    export STUB_DIGEST_go2rtc="sha256:newer-go2rtc"
+    published go2rtc "$published_rev" "$source_url" sha256:base-g ""
+    labels published go2rtc "$(built_from 'go2rtc&sha=elsewhere' tree-g2)"
+    history "$published_rev $running_rev fix(A): one" "$running_rev old feat(B): two"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_not_contains "$log" "elsewhere" "the label is not sent"
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .homespool.path')" "." \
+        "the whole repository is counted instead"
+fi
+
+if test_case "an image of the same source stamped with another commit is restamped, not newer"; then
+    export STUB_DIGEST_proxy="sha256:newer-proxy"
+    published proxy "$published_rev" "$source_url" sha256:base-n ""
+    labels running proxy "$(built_from nginx tree-n)"
+    labels published proxy "$(built_from nginx tree-n)"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(field '.services[] | select(.service == "proxy") | .status')" "restamped" "restamped"
+    assert_equals "$(field '.services[] | select(.service == "proxy") | .published.revision')" "$published_rev" \
+        "with both revisions"
+    assert_equals "$(field .update_available)" "false" "nothing to take"
+    assert_not_contains "$log" "api.github.com" "and nothing asked about history"
+    assert_contains "$output" "proxy: the published image is this one stamped with another commit" "the journal says so"
+fi
+
+if test_case "the same source on another base is newer, and says so"; then
+    export STUB_DIGEST_proxy="sha256:newer-proxy"
+    published proxy "$published_rev" "$source_url" sha256:base-n2 ""
+    labels running proxy "$(built_from nginx tree-n)"
+    labels published proxy "$(built_from nginx tree-n)"
+    check
+    assert_equals "$(field '.services[] | select(.service == "proxy") | .status')" "newer" "newer"
+    assert_equals "$(field '.services[] | select(.service == "proxy") | .reasons | join(";")')" "built on a newer base" \
+        "for the base alone"
+    assert_not_contains "$log" "api.github.com" "its own source did not change, so no history is read"
+fi
+
+if test_case "the same source with packages refreshed on another day is newer, with no reason"; then
+    export STUB_DIGEST_go2rtc="sha256:newer-go2rtc"
+    published go2rtc "$published_rev" "$source_url" sha256:base-g ""
+    labels running go2rtc "$(built_from go2rtc tree-g 2026-10-04)"
+    labels published go2rtc "$(built_from go2rtc tree-g 2026-10-07)"
+    check
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .status')" "newer" "newer"
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .reasons | length')" "0" "with no reason"
+fi
+
+if test_case "an image with no tree is never called restamped"; then
+    export STUB_DIGEST_proxy="sha256:newer-proxy"
+    published proxy "$published_rev" "$source_url" sha256:base-n ""
+    labels running proxy "$(built_from nginx '')"
+    labels published proxy "$(built_from nginx '')"
+    history "$published_rev $running_rev feat(A): one" "$running_rev old feat(B): two"
+    check
+    assert_equals "$(field '.services[] | select(.service == "proxy") | .status')" "newer" \
+        "an unknown tree is not an equal one"
+fi
+
+if test_case "newer Go modules are a reason, and named"; then
+    export STUB_DIGEST_go2rtc="sha256:newer-go2rtc"
+    published go2rtc "$published_rev" "$source_url" sha256:base-g ""
+    labels running go2rtc "$(built_from go2rtc tree-g)"
+    labels published go2rtc "$(built_from go2rtc tree-g)"
+    labels running go2rtc "{\"$ns.go.modules\": \"golang.org/x/crypto@v0.57.0 golang.org/x/net@v0.59.0\"}"
+    labels published go2rtc "{\"$ns.go.modules\": \"golang.org/x/crypto@v0.58.0 golang.org/x/net@v0.59.0\"}"
+    check
+    assert_equals "$(field '.services[] | select(.service == "go2rtc") | .reasons | join(";")')" \
+        "compiled with newer Go modules: golang.org/x/crypto@v0.58.0" "the module that moved, and only it"
+fi
+
+if test_case "the application's entry counts the commits that changed compose.yaml"; then
+    newer_app
+    export STUB_DIGEST_proxy="sha256:newer-proxy"
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    published proxy "$published_rev" "$source_url" sha256:base-n ""
+    history "$published_rev c1 fix(A): one" "c1 $running_rev feat(Cameras): compose" "$running_rev old feat(B): two"
+    path_history compose.yaml "c1 $running_rev feat(Cameras): compose"
+    check
+    assert_equals "$(app .compose.commits)" "1" "one commit changed it"
+    assert_equals "$(app .compose.found)" "true" "counted to the running revision"
+    assert_equals "$(field '.services[] | select(.service == "proxy") | has("compose")')" "false" \
+        "and only the application's entry says so"
+fi
+
+if test_case "a current image says which revision it runs"; then
+    check
+    assert_equals "$(field '[.services[].running.revision] | unique | join(",")')" "$running_rev" \
+        "so a reader can tell the containers apart"
 fi
 
 if test_case "an image built from source has nothing to compare with, and nothing is asked"; then

@@ -156,6 +156,8 @@ ARG GO2RTC_COMMIT
 ARG HOMESPOOL_BUILDER_IMAGE
 ARG HOMESPOOL_BUILDER_DIGEST
 ARG GO2RTC_MODULE_VERSIONS
+ARG HOMESPOOL_CONTEXT_PATH=
+ARG HOMESPOOL_CONTEXT_TREE=
 LABEL org.opencontainers.image.title="Homespool camera sidecar" \
       org.opencontainers.image.description="go2rtc ${GO2RTC_VERSION} (${GO2RTC_COMMIT}) with the fixes in go2rtc/patches, built from source for Homespool, a self-hosted alternative to Prusa Connect." \
       org.opencontainers.image.source="https://github.com/henrikottesorensen/Homespool" \
@@ -168,9 +170,16 @@ LABEL org.opencontainers.image.title="Homespool camera sidecar" \
       org.opencontainers.image.base.digest="${HOMESPOOL_BASE_DIGEST}"
 
 # What OCI has no key for, under a prefix this project controls: the toolchain the binary was compiled
-# with, the modules taken newer than go2rtc's own, and the release they were applied to.
+# with, the modules taken newer than go2rtc's own, and the release they were applied to; the day the
+# packages were refreshed; and the build context's path in the repository and its git tree. Together
+# with the base, those are everything this image is built from but the commit it is stamped with, so
+# an image equal in all of them is this one under a later commit - which the update check on a host
+# says, rather than offering the application's changes as this image's.
 LABEL io.github.henrikottesorensen.homespool.builder.name="${HOMESPOOL_BUILDER_IMAGE}" \
       io.github.henrikottesorensen.homespool.builder.digest="${HOMESPOOL_BUILDER_DIGEST}" \
       io.github.henrikottesorensen.homespool.go.modules="${GO2RTC_MODULE_VERSIONS}" \
       io.github.henrikottesorensen.homespool.go2rtc.version="${GO2RTC_VERSION}" \
-      io.github.henrikottesorensen.homespool.go2rtc.commit="${GO2RTC_COMMIT}"
+      io.github.henrikottesorensen.homespool.go2rtc.commit="${GO2RTC_COMMIT}" \
+      io.github.henrikottesorensen.homespool.packages.refreshed="${HOMESPOOL_PACKAGE_REFRESH}" \
+      io.github.henrikottesorensen.homespool.context.path="${HOMESPOOL_CONTEXT_PATH}" \
+      io.github.henrikottesorensen.homespool.context.tree="${HOMESPOOL_CONTEXT_TREE}"

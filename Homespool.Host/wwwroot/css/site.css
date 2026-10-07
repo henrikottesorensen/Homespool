@@ -197,6 +197,12 @@ body {
   line-height: 60px;
 }
 
+/* A health check's description is plain text, and a line break in one is meant: the image update
+   check gives each image a line. pre-line keeps the breaks and still folds runs of spaces. */
+.health-banner-message {
+  white-space: pre-line;
+}
+
 /* Text somebody typed, of a length nobody promised: a printer's name or location (200 characters
    each), a camera's name, a team's, an uploaded file's.
 

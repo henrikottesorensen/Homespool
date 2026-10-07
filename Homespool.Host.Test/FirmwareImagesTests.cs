@@ -32,6 +32,7 @@ public sealed class FirmwareImagesTests : IDisposable
 {
     private const long Manager = 1;
     private const long Operator = 2;
+    private const long OtherManager = 3;
     private const string ImageName = "COREONE_firmware_7.0.0.bbf";
 
     private readonly string _root = Path.Combine(Path.GetTempPath(), "homespool-firmware-" + Guid.NewGuid().ToString("N"));
@@ -288,6 +289,107 @@ public sealed class FirmwareImagesTests : IDisposable
         // Assert
         await store.Should().ThrowAsync<UploadTooLargeException>();
         Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Images are shared, so deleting one is for whoever manages a printer it fits - here somebody on
+    /// another team entirely, who did not upload it.
+    /// </summary>
+    [Fact]
+    public async Task AManagerOfAnyPrinterAnImageFitsMayDeleteIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer uploadersPrinter = await AddPrinterAsync(context, "7.1.0");
+        Printer othersPrinter = await AddPrinterOnAnotherTeamAsync(context, "7.2.0");
+        FirmwareImage stored = await StoreAsync(context, uploadersPrinter, TestFirmwareImages.Build());
+
+        // Act
+        string? deleted = await NewImages(context).DeleteAsync(Caller.Unscoped(OtherManager), othersPrinter.Id, stored.Digest,
+                                                               TestContext.Current.CancellationToken);
+
+        // Assert
+        deleted.Should().Be(ImageName);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        File.Exists(Path.Combine(_root, stored.Digest + ".bbf")).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Through a printer the image does not fit, it is not there to delete - as the page for that
+    /// printer never lists it.
+    /// </summary>
+    [Fact]
+    public async Task AnImageIsNotDeletedThroughAPrinterItDoesNotFit()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer coreOne = await AddPrinterAsync(context, "7.1.0");
+        Printer mk4 = await AddPrinterAsync(context, "1.4.0", teamId: coreOne.TeamId);
+        FirmwareImage stored = await StoreAsync(context, coreOne, TestFirmwareImages.Build());
+
+        // Act
+        string? deleted = await NewImages(context).DeleteAsync(Caller.Unscoped(Manager), mk4.Id, stored.Digest,
+                                                               TestContext.Current.CancellationToken);
+
+        // Assert
+        deleted.Should().BeNull();
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        File.Exists(Path.Combine(_root, stored.Digest + ".bbf")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SomebodyWhoCannotManageThePrinterCannotDeleteFromIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+        FirmwareImage stored = await StoreAsync(context, printer, TestFirmwareImages.Build());
+
+        // Act
+        Func<Task> delete = () => NewImages(context).DeleteAsync(Caller.Unscoped(Operator), printer.Id, stored.Digest,
+                                                                 TestContext.Current.CancellationToken);
+
+        // Assert
+        await delete.Should().ThrowAsync<TeamAccessDeniedException>();
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AnUnknownImageDeletesNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+        await StoreAsync(context, printer, TestFirmwareImages.Build());
+
+        // Act
+        string? deleted = await NewImages(context).DeleteAsync(Caller.Unscoped(Manager), printer.Id, "not-a-digest",
+                                                               TestContext.Current.CancellationToken);
+
+        // Assert
+        deleted.Should().BeNull();
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>A printer reporting <paramref name="model"/> on a team that <see cref="OtherManager"/> alone manages.</summary>
+    private static async Task<Printer> AddPrinterOnAnotherTeamAsync(HomespoolDbContext context, string model)
+    {
+        TestAccounts.Add(context, OtherManager);
+
+        Team team = new()
+        {
+            CreatedBy = OtherManager,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Members =
+            {
+                new TeamMember { UserId = OtherManager, Capabilities = TestMemberships.Literal(CapabilityPresets.Manager), IsDefault = true },
+            },
+        };
+
+        context.Teams.Add(team);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return await AddPrinterAsync(context, model, team.Id);
     }
 
     private async Task<FirmwareImage> StoreAsync(HomespoolDbContext context,

@@ -3414,4 +3414,10 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Error_FirmwareNameTaken" xml:space="preserve">
     <value>Du har allerede gemt en anden fil med navnet ‘{0}’.</value>
   </data>
+  <data name="Firmware_DeleteLabel" xml:space="preserve">
+    <value>Slet {0}</value>
+  </data>
+  <data name="Firmware_DeleteGone" xml:space="preserve">
+    <value>Den firmwarefil er ikke længere gemt her.</value>
+  </data>
 </root>

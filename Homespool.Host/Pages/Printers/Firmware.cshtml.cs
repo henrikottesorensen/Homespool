@@ -122,6 +122,25 @@ public class FirmwareModel : PageModel
         return RedirectToPage(new { uuid });
     }
 
+    /// <summary>Deletes a stored image this printer is offered, by its digest.</summary>
+    public async Task<IActionResult> OnPostDeleteAsync(Guid uuid, string? digest, CancellationToken cancellationToken)
+    {
+        if (await LoadAsync(uuid, listImages: false, cancellationToken) is IActionResult refused)
+        {
+            return refused;
+        }
+
+        string? deleted = digest is null ?
+            null :
+            await _images.DeleteAsync(await CallerAsync(), Printer.Id, digest, cancellationToken);
+
+        (StatusMessage, StatusSuccess) = deleted is null ?
+            (_localiser["Firmware_DeleteGone"].Value, false) :
+            (_localiser["Files_Deleted", deleted].Value, true);
+
+        return RedirectToPage(new { uuid });
+    }
+
     /// <summary>
     /// Finds the printer for the caller, and the images when <paramref name="listImages"/> - each one
     /// is verified again to be listed, which a post has no use for - or the answer to give instead: not

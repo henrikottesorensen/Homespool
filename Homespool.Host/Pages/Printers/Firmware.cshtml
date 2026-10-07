@@ -49,6 +49,7 @@ else
                 <th role="columnheader">@Localiser["Common_File"]</th>
                 <th role="columnheader" class="text-end">@Localiser["Files_Size"]</th>
                 <th role="columnheader">@Localiser["Files_Uploaded"]</th>
+                <th role="columnheader"><span class="visually-hidden">@Localiser["Common_Delete"]</span></th>
             </tr>
         </thead>
         <tbody role="rowgroup">
@@ -59,6 +60,15 @@ else
                     <td role="cell" class="typed-name">@image.Name</td>
                     <td role="cell" class="text-end font-monospace text-nowrap">@ByteSize.Format(image.Size, Localiser)</td>
                     <td role="cell">@image.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
+                    <td role="cell" class="text-end">
+                        @* Shared images, so whoever manages a printer one fits may delete it - the page
+                           offers only images that fit this printer, and the service checks again. *@
+                        <form method="post" asp-page-handler="Delete" asp-route-uuid="@uuid">
+                            <input type="hidden" name="digest" value="@image.Digest" />
+                            <button type="submit" class="btn btn-outline-danger btn-sm"
+                                    aria-label="@Localiser["Firmware_DeleteLabel", image.Name]">@Localiser["Common_Delete"]</button>
+                        </form>
+                    </td>
                 </tr>
             }
         </tbody>

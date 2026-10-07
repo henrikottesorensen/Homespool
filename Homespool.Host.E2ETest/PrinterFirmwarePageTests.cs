@@ -164,11 +164,60 @@ public sealed class PrinterFirmwarePageTests : IAsyncLifetime
 
             // Act
             string page = await UploadAsync(client, uuid, Path.GetFileName(path!), image);
+            string afterDelete = await DeleteAsync(client, uuid, DigestOn(page));
 
             // Assert
             page.Should().Contain($"firmware {check.Header!.Version}.");
             page.Should().NotContain("No stored firmware fits this printer yet.");
+            afterDelete.Should().Contain($"Deleted {Path.GetFileName(path!)}.");
+            afterDelete.Should().Contain("No stored firmware fits this printer yet.");
         }
+    }
+
+    [Fact]
+    public async Task DeletingAnImageThatIsNotStoredSaysSo()
+    {
+        // Arrange
+        (HSUser owner, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "firmware-delete-gone@example.com");
+
+        using (client)
+        {
+            (Guid uuid, _) = await SeedAsync(owner.Id, "7.1.0");
+
+            // Act
+            string page = await DeleteAsync(client, uuid, "not-a-stored-digest");
+
+            // Assert
+            page.Should().Contain("That firmware image is no longer stored here.");
+        }
+    }
+
+    private static string DigestOn(string page)
+    {
+        const string marker = "name=\"digest\" value=\"";
+        int start = page.IndexOf(marker, StringComparison.Ordinal) + marker.Length;
+
+        return page[start..page.IndexOf('"', start)];
+    }
+
+    /// <summary>Deletes through the page's form and returns the page the redirect lands on.</summary>
+    private static async Task<string> DeleteAsync(HttpClient client, Guid uuid, string digest)
+    {
+        string form = await GetAsync(client, $"/Printers/Firmware/{uuid}");
+
+        using FormUrlEncodedContent content = new(new Dictionary<string, string>
+        {
+            ["__RequestVerificationToken"] = AntiforgeryTestHelper.ExtractToken(form),
+            ["digest"] = digest,
+        });
+
+        using HttpResponseMessage response = await client.PostAsync($"/Printers/Firmware/{uuid}?handler=Delete", content,
+                                                                    TestContext.Current.CancellationToken);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+
+        return await GetAsync(client, response.Headers.Location!.OriginalString);
     }
 
     private static IEnumerable<string> PrusaImages()

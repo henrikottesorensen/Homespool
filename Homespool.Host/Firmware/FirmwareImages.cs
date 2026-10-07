@@ -234,6 +234,58 @@ public sealed class FirmwareImages
         return images;
     }
 
+    /// <summary>
+    /// Deletes a stored image on behalf of a printer it fits, and answers its name - or null when no
+    /// such image is stored or it does not fit that printer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Anybody who manages a printer an image fits may delete it</b>, which is exactly who may use
+    /// it: the image is shared, and the uploader has no special claim on Prusa's bytes. Answered as
+    /// absent rather than refused for a printer it does not fit, as the page would never have
+    /// offered the button.
+    /// </para>
+    /// <para>
+    /// <b>Row first, then bytes</b>, the catalogue's order: an interruption leaves a file with no row,
+    /// which nothing offers, never a row whose file is gone. Copies already on printers are knowledge
+    /// about those drives and go with the row.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="TeamAccessDeniedException">The caller may not manage this printer.</exception>
+    public async Task<string?> DeleteAsync(Caller caller, int printerId, string digest, CancellationToken cancellationToken)
+    {
+        Printer printer = await _access.RequireAsync(printerId, caller, Capability.ManagePrinter, cancellationToken);
+
+        HSFile? row = await _dbContext.Files
+                                      .FirstOrDefaultAsync(candidate => candidate.Type == FileType.PrusaFirmware &&
+                                                                        candidate.Digest == digest,
+                                                           cancellationToken);
+
+        if (row?.Digest is null)
+        {
+            return null;
+        }
+
+        // The path comes from the row, never from the digest the caller sent.
+        string path = PathFor(row.Digest);
+        PrusaFirmwareCheck check = await CheckAsync(path, cancellationToken);
+
+        if (!check.IsVerified || !PrusaFirmwareCompatibility.Fits(check.Header!, printer.Model))
+        {
+            return null;
+        }
+
+        _dbContext.Files.Remove(row);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        File.Delete(path);
+
+        _logger.LogInformation("Deleted firmware image {FileName} ({Version}), by user {UserId} for printer {PrinterId}",
+                               row.Name, check.Header!.Version, caller.UserId, printerId);
+
+        return row.Name;
+    }
+
     private static FirmwareImage Describe(HSFile row, PrusaFirmwareHeader header)
     {
         return new FirmwareImage(row.Digest!, row.Name, header, row.Size, row.UploadedAt);

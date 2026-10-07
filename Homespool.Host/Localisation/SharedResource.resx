@@ -3536,4 +3536,10 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Error_FirmwareNameTaken" xml:space="preserve">
     <value>You have already stored a different image named ‘{0}’.</value>
   </data>
+  <data name="Firmware_DeleteLabel" xml:space="preserve">
+    <value>Delete {0}</value>
+  </data>
+  <data name="Firmware_DeleteGone" xml:space="preserve">
+    <value>That firmware image is no longer stored here.</value>
+  </data>
 </root>

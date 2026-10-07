@@ -57,9 +57,12 @@ Homespool.Host.IntegrationTest/.mailpit-tls
 # it, and that is deliberately not done.
 .claude/
 
-# Firmware archives left here by separate work that happens to share this directory. Large
-# binaries, and not build inputs of this project.
-firmware/
+# Firmware archives, never committed: Prusa's .bbf images are theirs to distribute, and large. The
+# signature test reads every .bbf here and skips when there are none; a worktree needs this
+# symlinked in. Anchored and without a trailing slash, so it covers that symlink - and so it cannot
+# match a source folder named Firmware, which git on a case-insensitive filesystem would otherwise
+# ignore.
+/firmware
 
 # The rig container's /usb mount - whatever a test transfer downloaded. Scratch, and potentially
 # large gcode.

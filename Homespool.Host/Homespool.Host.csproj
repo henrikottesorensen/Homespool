@@ -5,6 +5,12 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <!-- Checks a Prusa firmware image's secp256k1 signature. The framework's ECDsa has the curve
+             on Linux, through OpenSSL, and not on macOS, where it uses Apple's frameworks, which have
+             never offered it - so verification would work in the container and fail every test on a
+             Mac. Referenced directly rather than relied on through MailKit, at the version MailKit
+             brings. -->
+        <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
         <PackageReference Include="Duende.IdentityModel" Version="8.1.0" />
         <!-- Exact, not a floor: the reader runs on whatever anybody uploads, and the bounds it
              promises are vouched for by the library's own tests at this version only. -->

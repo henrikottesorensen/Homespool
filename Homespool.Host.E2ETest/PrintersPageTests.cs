@@ -109,6 +109,34 @@ public sealed class PrintersPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>A card names the firmware its printer last reported</b>, bare under the queue as on the front
+    /// page's tile, without the build number, which the tooltip keeps - and a printer that has never
+    /// reported says nothing about it. Read from the poll, which is the render that has to keep it.
+    /// </summary>
+    [Fact]
+    public async Task ACardNamesTheFirmwareItsPrinterReported()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "printers-firmware@example.com");
+
+        (int reported, _) = SeedPrinters(user.Id, "Upgraded", "Never Heard From");
+        SetFirmware(reported, "6.8.1+12345");
+
+        // Act
+        string fragment = await GetAsync(client, "/Printers?handler=Rack");
+
+        // Assert
+        fragment.Should().Contain("<span aria-hidden=\"true\">6.8.1</span>", "the release is shown bare");
+        fragment.Should().Contain("<span class=\"visually-hidden\">Firmware 6.8.1</span>", "and read out with its label");
+        fragment.Should().Contain("title=\"Firmware 6.8.1&#x2B;12345\"", "the tooltip has the label and the whole version, its plus encoded");
+        fragment.Should().NotContain(">6.8.1&#x2B;12345<", "the build number is not on the card itself");
+        fragment.Split("printer-plaque-firmware").Should().HaveCount(2, "only the printer that reported has the line");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// <b>The listing no longer drives the printer.</b> Pause, resume and stop live on the printer's
     /// own page, beside the status they act on; a card here offers only the two things a tile has no
     /// room for.
@@ -361,6 +389,15 @@ public sealed class PrintersPageTests : IAsyncLifetime
         context.SaveChanges();
 
         return (first.Id, second.Id);
+    }
+
+    private void SetFirmware(int printerId, string firmware)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        context.Printers.Single(printer => printer.Id == printerId).Firmware = firmware;
+        context.SaveChanges();
     }
 
     private void SeedLiveState(int printerId,

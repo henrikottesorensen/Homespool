@@ -27,6 +27,13 @@ else
                drawing: it is the bigger thing to aim at, and a drop on one of its buttons is a drop,
                not a press. *@
             <div class="printer-card" data-drop-target data-drop-uuid="@row.Printer.Uuid">
+                @{
+                    string? firmware = PrinterFirmwareRelease.For(row.Printer.Firmware);
+                    string? firmwareTitle = row.Printer.Firmware is string stated && firmware is not null ?
+                        Localiser["Printers_Firmware", stated.Trim()].Value :
+                        null;
+                }
+
                 @* .printer-shortcut-drawing as well as its own class, so the dark-mode lift of the
                    brand blue is one rule shared with the tiles rather than a second copy. *@
                 <span class="printer-card-drawing printer-shortcut-drawing">
@@ -90,7 +97,7 @@ else
                     @* The bar and the rows under it, only when there is something to put in them.
                        Progress is already null for a disconnected printer - see PrinterRow - so a
                        card never shows a percentage over an Offline badge. *@
-                    @if (row.Progress is not null || row.QueuedCount > 0 || !string.IsNullOrWhiteSpace(row.Material))
+                    @if (row.Progress is not null || row.QueuedCount > 0 || !string.IsNullOrWhiteSpace(row.Material) || firmware is not null)
                     {
                         <div class="printer-card-live">
                             @if (row.Progress is { } progress)
@@ -125,6 +132,16 @@ else
                                     {
                                         <span class="printer-plaque-stat-end typed-name">@row.Material</span>
                                     }
+                                </span>
+                            }
+
+                            @* The firmware version under the queue, as on the front page's tile. Only
+                               when there is one: a list has no neighbours to keep level with. *@
+                            @if (firmware is not null)
+                            {
+                                <span class="printer-plaque-stats printer-plaque-firmware" title="@firmwareTitle">
+                                    <span class="visually-hidden">@Localiser["Printers_Firmware", firmware]</span>
+                                    <span aria-hidden="true">@firmware</span>
                                 </span>
                             }
                         </div>

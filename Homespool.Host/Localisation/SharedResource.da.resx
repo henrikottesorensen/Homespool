@@ -2414,6 +2414,9 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Printers_Updated" xml:space="preserve">
     <value>Opdateret {0}</value>
   </data>
+  <data name="Printers_Firmware" xml:space="preserve">
+    <value>Firmware {0}</value>
+  </data>
   <data name="Printers_TimeLeft" xml:space="preserve">
     <value>{0} tilbage</value>
   </data>

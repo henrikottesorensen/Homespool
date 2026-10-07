@@ -30,7 +30,7 @@ namespace Homespool.Host.Printing;
 public abstract class TransferPolicy
 {
     /// <summary>
-    /// Whether the attempt is stamped <see cref="PrintFileOnPrinter.TransferStartedAt"/> before the
+    /// Whether the attempt is stamped <see cref="FileOnPrinter.TransferStartedAt"/> before the
     /// command goes out - the queue's mark that it is waiting on this transfer, and what makes its
     /// end counted and held. False for a direct send, which nothing waits on.
     /// </summary>
@@ -142,22 +142,22 @@ public interface ITransferEndPolicy
 /// </summary>
 public sealed class TransferContext
 {
-    /// <summary>A run in <paramref name="services"/>' scope, about <paramref name="printFile"/> on <paramref name="printerId"/>.</summary>
+    /// <summary>A run in <paramref name="services"/>' scope, about <paramref name="file"/> on <paramref name="printerId"/>.</summary>
     /// <param name="services">The procedure's scope.</param>
     /// <param name="dbContext">The scope's context, which every write in the run goes through.</param>
     /// <param name="printerId">The printer.</param>
-    /// <param name="printFile">The file, tracked by <paramref name="dbContext"/>.</param>
+    /// <param name="file">The file, tracked by <paramref name="dbContext"/>.</param>
     /// <param name="row">The file's row on the printer, or null when there is none yet.</param>
     public TransferContext(IServiceProvider services,
                            HomespoolDbContext dbContext,
                            int printerId,
-                           PrintFile printFile,
-                           PrintFileOnPrinter? row)
+                           HSFile file,
+                           FileOnPrinter? row)
     {
         Services = services;
         DbContext = dbContext;
         PrinterId = printerId;
-        PrintFile = printFile;
+        File = file;
         Row = row;
     }
 
@@ -171,18 +171,18 @@ public sealed class TransferContext
     public int PrinterId { get; }
 
     /// <summary>The file, as the catalogue has it.</summary>
-    public PrintFile PrintFile { get; }
+    public HSFile File { get; }
 
     /// <summary>The file's row on the printer, or null until <see cref="EnsureRow"/> has made one.</summary>
-    public PrintFileOnPrinter? Row { get; private set; }
+    public FileOnPrinter? Row { get; private set; }
 
     /// <summary>The file's row on the printer, added to the context when there is none. Not saved.</summary>
-    public PrintFileOnPrinter EnsureRow()
+    public FileOnPrinter EnsureRow()
     {
         if (Row is null)
         {
-            Row = new PrintFileOnPrinter { PrinterId = PrinterId, PrintFileId = PrintFile.Id };
-            DbContext.PrintFilesOnPrinters.Add(Row);
+            Row = new FileOnPrinter { PrinterId = PrinterId, FileId = File.Id };
+            DbContext.FilesOnPrinters.Add(Row);
         }
 
         return Row;

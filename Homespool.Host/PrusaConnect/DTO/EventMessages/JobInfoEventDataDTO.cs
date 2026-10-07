@@ -40,7 +40,7 @@ public class JobInfoEventDataDTO
     /// the job is over.
     /// </summary>
     /// <remarks>
-    /// The same alias <c>FILE_INFO</c> reports, which is what <c>PrintFileOnPrinter.PrinterPath</c>
+    /// The same alias <c>FILE_INFO</c> reports, which is what <c>FileOnPrinter.PrinterPath</c>
     /// stores and what <c>START_PRINT</c> was sent - so this is directly comparable to what we asked
     /// for, with no name conversion of our own in between.
     /// </remarks>

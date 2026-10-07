@@ -275,7 +275,7 @@ public sealed class ReprintFromHistoryTests : IAsyncLifetime
         return await context.QueuedPrints
                             .AsNoTracking()
                             .Where(q => q.PrinterId == printerId)
-                            .Select(q => q.PrintFile!.Name)
+                            .Select(q => q.File!.Name)
                             .ToListAsync(TestContext.Current.CancellationToken);
     }
 

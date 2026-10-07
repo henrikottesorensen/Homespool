@@ -31,7 +31,7 @@ public static class PrintCompatibilityDescription
 {
     /// <summary>The sentence a finding wants, filled from the two rows it came from.</summary>
     public static MessageKey For(PrintCompatibilityFinding finding,
-                                 PrintFile file,
+                                 HSFile file,
                                  Printer printer,
                                  IReadOnlyList<PrinterTool> tools)
     {

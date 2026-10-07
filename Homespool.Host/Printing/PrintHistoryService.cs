@@ -283,7 +283,7 @@ public class PrintHistoryService
         // name from: it can stop a queue before anything has ever been sent to the printer.
         QueuedPrint? head = await _dbContext.QueuedPrints
                                             .AsNoTracking()
-                                            .Include(queued => queued.PrintFile)
+                                            .Include(queued => queued.File)
                                             .Where(queued => queued.PrinterId == printerId)
                                             .OrderBy(queued => queued.Position)
                                             .ThenBy(queued => queued.Id)
@@ -294,9 +294,9 @@ public class PrintHistoryService
             return null;
         }
 
-        var hold = await _dbContext.PrintFilesOnPrinters
+        var hold = await _dbContext.FilesOnPrinters
                                    .AsNoTracking()
-                                   .Where(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId)
+                                   .Where(row => row.PrinterId == printerId && row.FileId == head.FileId)
                                    .Select(row => new
                                    {
                                        row.HoldReason,
@@ -305,8 +305,8 @@ public class PrintHistoryService
                                        row.TransferRefusalCount,
                                        row.TransferRefusalCode,
                                        row.TransferRefusalReason,
-                                       FileName = row.PrintFile!.Name,
-                                       OurBytes = row.PrintFile!.Size,
+                                       FileName = row.File!.Name,
+                                       OurBytes = row.File!.Size,
                                    })
                                    .SingleOrDefaultAsync(cancellationToken);
 
@@ -321,7 +321,7 @@ public class PrintHistoryService
             return MessageKey.For(reason == PrintHoldReason.AbrasiveFilamentNeedsHardenedNozzle ?
                                       "Queue_HoldAbrasiveFilament" :
                                       "Queue_HoldIncompatibleModel",
-                                  hold?.FileName ?? head.PrintFile?.Name ?? string.Empty);
+                                  hold?.FileName ?? head.File?.Name ?? string.Empty);
         }
 
         return hold?.HoldReason switch

@@ -24,7 +24,7 @@ namespace Homespool.Model.Entities;
 /// because every reader of one was deferred work; the queue is that reader.
 /// </para>
 /// </remarks>
-public class PrintFile
+public class HSFile
 {
     /// <summary>The longest <see cref="PrinterModel"/> the metadata reader keeps.</summary>
     /// <remarks>
@@ -93,7 +93,7 @@ public class PrintFile
     /// <b>What reads it:</b> reprinting warns when the file has changed since that print ran, by
     /// comparing this with the digest <c>PrintJob</c> copied from it when the print opened. With
     /// either side null the check says nothing, so a null costs exactly that warning. And a printer's
-    /// copy is the file only while <see cref="PrintFileOnPrinter.Digest"/> equals this - an overwrite
+    /// copy is the file only while <see cref="FileOnPrinter.Digest"/> equals this - an overwrite
     /// changes it, and the queue then replaces the copy rather than printing it.
     /// </para>
     /// <para>

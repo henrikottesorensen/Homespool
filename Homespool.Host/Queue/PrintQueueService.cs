@@ -78,7 +78,7 @@ public class PrintQueueService
 
         return await _dbContext.QueuedPrints
                                .AsNoTracking()
-                               .Include(job => job.PrintFile)
+                               .Include(job => job.File)
                                .Where(job => job.PrinterId == printerId)
                                .OrderBy(job => job.Position)
                                .ThenBy(job => job.Id)
@@ -174,7 +174,7 @@ public class PrintQueueService
     {
         await _access.RequireAsync(printerId, caller, Capability.Print, cancellationToken);
 
-        PrintFile? file = await _files.ResolveAsync(caller.UserId, fileName, cancellationToken);
+        HSFile? file = await _files.ResolveAsync(caller.UserId, fileName, cancellationToken);
 
         if (file is null)
         {
@@ -205,7 +205,7 @@ public class PrintQueueService
         QueuedPrint queued = new()
         {
             PrinterId = printerId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
 
             // The caller's handle for the whole lifecycle - minted here because enqueue is where the
             // intention begins, and everything that becomes of it carries this forward.
@@ -226,16 +226,16 @@ public class PrintQueueService
         // (FileTooLarge), which a smaller one under the same name answers. Asking for the file now is
         // somebody saying they have looked. Scoped to those - the other holds are conditions on the
         // printer the loop re-checks itself, and none of them is cleared by wanting the file more.
-        PrintFileOnPrinter? personHeld = await _dbContext.PrintFilesOnPrinters
-                                                         .SingleOrDefaultAsync(
-                                                             row => row.PrinterId == printerId &&
-                                                                    row.PrintFileId == file.Id &&
-                                                                    (row.HoldReason == PrintHoldReason.PrintStartUnresolved ||
-                                                                     row.HoldReason == PrintHoldReason.TransferRefused ||
-                                                                     row.HoldReason == PrintHoldReason.TransferAborted ||
-                                                                     row.HoldReason == PrintHoldReason.TransferStopped ||
-                                                                     row.HoldReason == PrintHoldReason.FileTooLarge),
-                                                             cancellationToken);
+        FileOnPrinter? personHeld = await _dbContext.FilesOnPrinters
+                                                    .SingleOrDefaultAsync(
+                                                        row => row.PrinterId == printerId &&
+                                                               row.FileId == file.Id &&
+                                                               (row.HoldReason == PrintHoldReason.PrintStartUnresolved ||
+                                                                row.HoldReason == PrintHoldReason.TransferRefused ||
+                                                                row.HoldReason == PrintHoldReason.TransferAborted ||
+                                                                row.HoldReason == PrintHoldReason.TransferStopped ||
+                                                                row.HoldReason == PrintHoldReason.FileTooLarge),
+                                                        cancellationToken);
 
         if (personHeld is not null)
         {
@@ -331,7 +331,7 @@ public class PrintQueueService
 
         if (!acceptChanged && job.Digest is not null)
         {
-            PrintFile? current = await _files.ResolveAsync(caller.UserId, job.FileName, cancellationToken);
+            HSFile? current = await _files.ResolveAsync(caller.UserId, job.FileName, cancellationToken);
 
             // A missing file falls through to the enqueue, which says so in its own words.
             if (current?.Digest is not null && !string.Equals(current.Digest, job.Digest, StringComparison.Ordinal))

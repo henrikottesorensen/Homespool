@@ -105,16 +105,16 @@ public static class TransferRetryRules
     /// <param name="row">The <i>(file, printer)</i> row as it stands before this refusal.</param>
     /// <param name="code">The machine reason the printer sent this time, if any.</param>
     /// <param name="reason">The printer's words this time, if any.</param>
-    public static int CountAfter(PrintFileOnPrinter row, string? code, string? reason)
+    public static int CountAfter(FileOnPrinter row, string? code, string? reason)
     {
         ArgumentNullException.ThrowIfNull(row);
 
         bool same = row.TransferRefusalCount is > 0 &&
                     string.Equals(row.TransferRefusalCode,
-                                     Bound(code, PrintFileOnPrinter.TransferRefusalCodeMaxLength),
+                                     Bound(code, FileOnPrinter.TransferRefusalCodeMaxLength),
                                      StringComparison.Ordinal) &&
                     string.Equals(row.TransferRefusalReason,
-                                     Bound(reason, PrintFileOnPrinter.TransferRefusalReasonMaxLength),
+                                     Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength),
                                      StringComparison.Ordinal);
 
         return same ? row.TransferRefusalCount!.Value + 1 : 1;
@@ -132,7 +132,7 @@ public static class TransferRetryRules
     /// </summary>
     /// <param name="row">The <i>(file, printer)</i> row, or null when nothing has been tried.</param>
     /// <param name="now">The loop's clock.</param>
-    public static bool IsWaiting(PrintFileOnPrinter? row, DateTimeOffset now)
+    public static bool IsWaiting(FileOnPrinter? row, DateTimeOffset now)
     {
         return row?.TransferRefusalCount is int count and > 0 &&
                row.TransferRefusedAt is DateTimeOffset refusedAt &&
@@ -161,7 +161,7 @@ public static class TransferRetryRules
     /// refusals.
     /// </summary>
     /// <param name="row">The <i>(file, printer)</i> row, or null when nothing has been tried.</param>
-    public static bool IsCountingAborts(PrintFileOnPrinter? row)
+    public static bool IsCountingAborts(FileOnPrinter? row)
     {
         return row?.TransferRefusalCount is > 0 &&
                string.Equals(row.TransferRefusalCode, TransferAbortedCode, StringComparison.Ordinal);
@@ -177,7 +177,7 @@ public static class TransferRetryRules
     /// count ends when a transfer finishes.
     /// </remarks>
     /// <param name="row">The row to reset.</param>
-    public static void Forget(PrintFileOnPrinter row)
+    public static void Forget(FileOnPrinter row)
     {
         ArgumentNullException.ThrowIfNull(row);
 

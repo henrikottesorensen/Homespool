@@ -42,7 +42,7 @@ namespace Homespool.Host.Printing;
 /// earlier, before an older copy is deleted for a file that could not be sent anyway.
 /// </para>
 /// </remarks>
-public class PrintFileSender
+public class FileSender
 {
     /// <summary>
     /// Bytes of randomness in a transfer token: whatever base64url-encodes to exactly
@@ -58,7 +58,7 @@ public class PrintFileSender
     /// <b>Derived rather than stated, because a byte count written out beside the buffer it came from
     /// is a coupling nothing enforces.</b> Raising this for more entropy encodes past firmware's
     /// buffer and is truncated there, and the only symptom is a first range request quoting a hash
-    /// that correlates with nothing - so <c>PrintFileSenderTests</c> measures the minted token's
+    /// that correlates with nothing - so <c>FileSenderTests</c> measures the minted token's
     /// length rather than trusting the arithmetic.
     /// </para>
     /// <para>
@@ -87,10 +87,10 @@ public class PrintFileSender
     private readonly PrinterCommandService _commands;
     private readonly IOptionsMonitor<PrusaConnectOptions> _options;
 
-    public PrintFileSender(ITransferOffers offers,
-                           EncryptedTransferOffers encrypted,
-                           PrinterCommandService commands,
-                           IOptionsMonitor<PrusaConnectOptions> options)
+    public FileSender(ITransferOffers offers,
+                      EncryptedTransferOffers encrypted,
+                      PrinterCommandService commands,
+                      IOptionsMonitor<PrusaConnectOptions> options)
     {
         _offers = offers;
         _encrypted = encrypted;

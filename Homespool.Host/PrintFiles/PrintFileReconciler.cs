@@ -38,7 +38,7 @@ namespace Homespool.Host.PrintFiles;
 /// </para>
 /// <para>
 /// <b>Reading comes after each pass, and nothing waits for it.</b> Once the index agrees with the
-/// disk, <see cref="BackfillAsync"/> reads every file whose row has no <see cref="PrintFile.Digest"/>
+/// disk, <see cref="BackfillAsync"/> reads every file whose row has no <see cref="HSFile.Digest"/>
 /// or has not had its slicer metadata read - one that arrived outside the app, one indexed on the way
 /// to a print, one whose bytes moved - one at a time, while the service is already serving. Uploads do
 /// both on the pass they already make, so there is usually nothing left to read.
@@ -143,23 +143,23 @@ public sealed class PrintFileReconciler : BackgroundService
         HashSet<long> users = [.. await dbContext.Users.Select(user => user.Id).ToListAsync(cancellationToken)];
         Dictionary<long, List<StoredFile>> onDisk = ReadDisk(users);
 
-        List<PrintFile> rows = await dbContext.PrintFiles.ToListAsync(cancellationToken);
+        List<HSFile> rows = await dbContext.Files.ToListAsync(cancellationToken);
         int added = 0, corrected = 0, removed = 0;
 
         foreach ((long userId, List<StoredFile> files) in onDisk)
         {
             // The store's rule for names, applied here: SQLite's NOCASE folds ASCII only, so no query
             // could match a file to its row the way the store matches a name to its file.
-            ILookup<string, PrintFile> byName = rows.Where(row => row.UserId == userId)
-                                                    .ToLookup(row => row.Name, StringComparer.OrdinalIgnoreCase);
+            ILookup<string, HSFile> byName = rows.Where(row => row.UserId == userId)
+                                                 .ToLookup(row => row.Name, StringComparer.OrdinalIgnoreCase);
 
             foreach (StoredFile file in files)
             {
-                PrintFile[] matching = [.. byName[file.FileName]];
+                HSFile[] matching = [.. byName[file.FileName]];
 
                 if (matching.Length == 0)
                 {
-                    dbContext.PrintFiles.Add(new PrintFile
+                    dbContext.Files.Add(new HSFile
                     {
                         UserId = userId,
                         Name = file.FileName,
@@ -190,7 +190,7 @@ public sealed class PrintFileReconciler : BackgroundService
                     continue;
                 }
 
-                PrintFile row = matching[0];
+                HSFile row = matching[0];
                 bool renamed = !string.Equals(row.Name, file.FileName, StringComparison.Ordinal);
                 bool moved = HasMoved(row, file);
 
@@ -221,8 +221,8 @@ public sealed class PrintFileReconciler : BackgroundService
             }
         }
 
-        foreach (IGrouping<long, PrintFile> unreachable in rows.Where(row => !onDisk.ContainsKey(row.UserId))
-                                                               .GroupBy(row => row.UserId))
+        foreach (IGrouping<long, HSFile> unreachable in rows.Where(row => !onDisk.ContainsKey(row.UserId))
+                                                            .GroupBy(row => row.UserId))
         {
             _logger.LogWarning(
                 "User {UserId} has {Count} indexed file(s) but no storage directory under {Root}; keeping them " +
@@ -230,7 +230,7 @@ public sealed class PrintFileReconciler : BackgroundService
                 unreachable.Key, unreachable.Count(), _root);
         }
 
-        foreach (PrintFile row in rows)
+        foreach (HSFile row in rows)
         {
             // No directory is not the same as no files. Nothing here ever removes a user's directory,
             // so its absence says the storage is missing - an unmounted volume, an empty mount point -
@@ -247,7 +247,7 @@ public sealed class PrintFileReconciler : BackgroundService
             // is asked rather than surprised - but there is nobody to ask here and nothing to preserve:
             // the bytes already left without going through us.
             List<QueuedPrint> orphaned = await dbContext.QueuedPrints
-                                                        .Where(job => job.PrintFileId == row.Id)
+                                                        .Where(job => job.FileId == row.Id)
                                                         .ToListAsync(cancellationToken);
 
             if (orphaned.Count > 0)
@@ -260,7 +260,7 @@ public sealed class PrintFileReconciler : BackgroundService
                 dbContext.QueuedPrints.RemoveRange(orphaned);
             }
 
-            dbContext.PrintFiles.Remove(row);
+            dbContext.Files.Remove(row);
             removed++;
         }
 
@@ -304,13 +304,13 @@ public sealed class PrintFileReconciler : BackgroundService
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        List<PrintFile> rows = await dbContext.PrintFiles.AsNoTracking().ToListAsync(cancellationToken);
+        List<HSFile> rows = await dbContext.Files.AsNoTracking().ToListAsync(cancellationToken);
         int corrected = 0;
 
-        PrintFile forgotten = new() { Name = string.Empty };
+        HSFile forgotten = new() { Name = string.Empty };
         PrintFileMetadata.Forget(forgotten);
 
-        foreach (PrintFile row in rows)
+        foreach (HSFile row in rows)
         {
             StoredFile? file = _store.Find(row.UserId, row.Name);
 
@@ -319,7 +319,7 @@ public sealed class PrintFileReconciler : BackgroundService
                 continue;
             }
 
-            corrected += await dbContext.PrintFiles
+            corrected += await dbContext.Files
                                         .Where(candidate => candidate.Id == row.Id &&
                                                             candidate.Size == row.Size &&
                                                             candidate.UploadedAt == row.UploadedAt)
@@ -355,7 +355,7 @@ public sealed class PrintFileReconciler : BackgroundService
     /// gives the same digest back.
     /// </para>
     /// </remarks>
-    private static bool HasMoved(PrintFile row, StoredFile file)
+    private static bool HasMoved(HSFile row, StoredFile file)
     {
         return row.Size != file.Length ||
                row.UploadedAt.ToUnixTimeMilliseconds() != file.UploadedAt.ToUnixTimeMilliseconds();
@@ -391,18 +391,18 @@ public sealed class PrintFileReconciler : BackgroundService
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         HomespoolDbContext dbContext = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        List<PrintFile> wanting = await dbContext.PrintFiles
-                                                 .AsNoTracking()
-                                                 .Where(row => row.Digest == null ||
-                                                               row.MetadataState == PrintFileMetadataState.Unread ||
-                                                               row.MetadataState == PrintFileMetadataState.Undefined)
-                                                 .ToListAsync(cancellationToken);
+        List<HSFile> wanting = await dbContext.Files
+                                              .AsNoTracking()
+                                              .Where(row => row.Digest == null ||
+                                                            row.MetadataState == PrintFileMetadataState.Unread ||
+                                                            row.MetadataState == PrintFileMetadataState.Undefined)
+                                              .ToListAsync(cancellationToken);
 
         long started = Stopwatch.GetTimestamp();
         int hashed = 0, described = 0;
         long bytes = 0;
 
-        foreach (PrintFile row in wanting)
+        foreach (HSFile row in wanting)
         {
             StoredFile? file = _store.Find(row.UserId, row.Name);
 
@@ -424,7 +424,7 @@ public sealed class PrintFileReconciler : BackgroundService
 
             if (reading.Digest is not null)
             {
-                int filled = await dbContext.PrintFiles
+                int filled = await dbContext.Files
                                             .Where(candidate => candidate.Id == row.Id &&
                                                                 candidate.Digest == null &&
                                                                 candidate.Size == reading.Length &&
@@ -439,7 +439,7 @@ public sealed class PrintFileReconciler : BackgroundService
 
             if (reading.Description is not null)
             {
-                int filled = await dbContext.PrintFiles
+                int filled = await dbContext.Files
                                             .Where(candidate => candidate.Id == row.Id &&
                                                                 candidate.MetadataState == row.MetadataState &&
                                                                 candidate.Size == reading.Length &&
@@ -494,11 +494,11 @@ public sealed class PrintFileReconciler : BackgroundService
             });
 
             string? digest = hash ? await PrintFileDigest.ComputeAsync(stream, copyTo: null, cancellationToken) : null;
-            PrintFile? description = null;
+            HSFile? description = null;
 
             if (describe)
             {
-                description = new PrintFile { Name = file.FileName };
+                description = new HSFile { Name = file.FileName };
                 PrintFileMetadata.Apply(description, GCodeMetadataReader.Read(stream));
             }
 
@@ -575,5 +575,5 @@ public sealed class PrintFileReconciler : BackgroundService
     /// <param name="Description">A detached row carrying the metadata columns, or null when they were not asked for.</param>
     /// <param name="Length">The size of the bytes read.</param>
     /// <param name="WrittenAt">The modification time of the bytes read.</param>
-    private sealed record FileReading(string? Digest, PrintFile? Description, long Length, DateTimeOffset WrittenAt);
+    private sealed record FileReading(string? Digest, HSFile? Description, long Length, DateTimeOffset WrittenAt);
 }

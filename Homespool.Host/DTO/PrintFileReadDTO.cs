@@ -35,7 +35,7 @@ public class PrintFileReadDTO
     /// <summary>A file and what is recorded about it.</summary>
     /// <param name="file">The bytes, as the store holds them.</param>
     /// <param name="row">What is recorded about them, or null when the file has not been indexed.</param>
-    public static PrintFileReadDTO From(StoredFile file, PrintFile? row)
+    public static PrintFileReadDTO From(StoredFile file, HSFile? row)
     {
         ArgumentNullException.ThrowIfNull(file);
 

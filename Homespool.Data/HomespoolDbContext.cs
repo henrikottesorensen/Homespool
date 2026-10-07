@@ -85,14 +85,14 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
     /// <summary>Index over the uploaded print files on disk. The filesystem is the truth; this exists
     /// so a queue entry can point at something a rename does not move.</summary>
-    public DbSet<PrintFile> PrintFiles { get; set; }
+    public DbSet<HSFile> Files { get; set; }
 
     /// <summary>Per-printer print queues. One row per queued print; cancelling is deleting it.</summary>
     public DbSet<QueuedPrint> QueuedPrints { get; set; }
 
     /// <summary>What the loop believes each printer's drive holds of ours, and what the printer calls
     /// it. Keyed on (file, printer), so one file queued twice transfers once.</summary>
-    public DbSet<PrintFileOnPrinter> PrintFilesOnPrinters { get; set; }
+    public DbSet<FileOnPrinter> FilesOnPrinters { get; set; }
 
     /// <summary>Every print, running and finished - "print history" is the feature this backs. A row
     /// with no <c>EndedAt</c> is the print happening now.</summary>
@@ -552,7 +552,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .OnDelete(DeleteBehavior.Cascade);
         });
 
-        builder.Entity<PrintFile>(entity =>
+        builder.Entity<HSFile>(entity =>
         {
             // The natural key: a user's files are unique by name, which is what makes the name the
             // identity and rename a first-class verb.
@@ -613,22 +613,22 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // The printer's own copy of a file follows the same rule - delete only when no queued
             // print still wants it - and the same instinct applies to ours.
             // PrintFileCatalog turns the resulting failure into a sentence rather than an exception.
-            entity.HasOne(e => e.PrintFile)
+            entity.HasOne(e => e.File)
                   .WithMany(e => e.QueuedPrints)
-                  .HasForeignKey(e => e.PrintFileId)
+                  .HasForeignKey(e => e.FileId)
                   .OnDelete(DeleteBehavior.Restrict);
 
             // QueuedByUserId deliberately has no foreign key. It records who asked - the same
             // "a record, not a pointer" treatment history rows get - and an FK here
-            // would add a second cascade path into a table PrintFile already cascades from, for no
+            // would add a second cascade path into a table HSFile already cascades from, for no
             // reader that needs the join.
         });
 
-        builder.Entity<PrintFileOnPrinter>(entity =>
+        builder.Entity<FileOnPrinter>(entity =>
         {
             // One row per (file, printer): the whole point is that a file queued twice on one printer
             // transfers once, which a second row would defeat.
-            entity.HasIndex(e => new { e.PrinterId, e.PrintFileId })
+            entity.HasIndex(e => new { e.PrinterId, e.FileId })
                   .IsUnique();
 
             // Navigation-less, as QueuedPrint above.
@@ -641,9 +641,9 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // somebody else's drive rather than an intention of ours, so there is nothing here to
             // protect a person from losing - and the bytes it describes are findable again through
             // the printer's own storage listing, which the queue relies on for exactly this.
-            entity.HasOne(e => e.PrintFile)
+            entity.HasOne(e => e.File)
                   .WithMany()
-                  .HasForeignKey(e => e.PrintFileId)
+                  .HasForeignKey(e => e.FileId)
                   .OnDelete(DeleteBehavior.Cascade);
 
             // Stored as text, like PrintJob.State below. This column is null on nearly every row and
@@ -657,9 +657,9 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // SQLite does not enforce either length; the writer truncates to them, and these record
             // the bound where the schema is read.
             entity.Property(e => e.TransferRefusalCode)
-                  .HasMaxLength(PrintFileOnPrinter.TransferRefusalCodeMaxLength);
+                  .HasMaxLength(FileOnPrinter.TransferRefusalCodeMaxLength);
             entity.Property(e => e.TransferRefusalReason)
-                  .HasMaxLength(PrintFileOnPrinter.TransferRefusalReasonMaxLength);
+                  .HasMaxLength(FileOnPrinter.TransferRefusalReasonMaxLength);
         });
 
         builder.Entity<PrintJob>(entity =>
@@ -695,7 +695,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.Property(e => e.State)
                   .HasConversion<string>();
 
-            // No foreign key to PrintFile, deliberately: this records a name and a digest rather than
+            // No foreign key to HSFile, deliberately: this records a name and a digest rather than
             // pointing at a row, so a renamed or deleted file leaves history intact. See PrintJob.
 
             // Nor to HSUser, for QueuedByUserId or StoppedByUserId - but for a different reason than

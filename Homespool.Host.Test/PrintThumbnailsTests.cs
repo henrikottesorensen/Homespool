@@ -228,7 +228,7 @@ public sealed class PrintThumbnailsTests : IAsyncLifetime
                                                   new MemoryStream(Encoding.ASCII.GetBytes(gcode)), overwrite,
                                                   TestContext.Current.CancellationToken);
 
-        PrintFile? row = await catalog.RowForAsync(userId, file, TestContext.Current.CancellationToken);
+        HSFile? row = await catalog.RowForAsync(userId, file, TestContext.Current.CancellationToken);
 
         return row!.Digest!;
     }

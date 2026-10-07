@@ -80,7 +80,7 @@ public class QueueSnapshotReader
     /// </para>
     /// <list type="bullet">
     /// <item><b>Once it has reported the file</b> - the <c>FILE_INFO</c> firmware sends a few seconds
-    /// in, which set <see cref="PrintFileOnPrinter.PrinterPath"/> - only the transfer's own terminal event
+    /// in, which set <see cref="FileOnPrinter.PrinterPath"/> - only the transfer's own terminal event
     /// ends it. The offer is not asked: <c>TRANSFER_FINISHED</c> releases it at once, while the event
     /// reaches the database at the writer's next flush, and a pass in that gap would offer the file
     /// again while it is being printed.</item>
@@ -94,7 +94,7 @@ public class QueueSnapshotReader
     /// that never comes. See <see cref="QueueAdvancer.TransferStaleAfter"/>.
     /// </para>
     /// </remarks>
-    public bool IsTransferInFlight(PrintFileOnPrinter? onPrinter, string fileName)
+    public bool IsTransferInFlight(FileOnPrinter? onPrinter, string fileName)
     {
         if (onPrinter?.TransferStartedAt is not DateTimeOffset startedAt ||
             _timeProvider.GetUtcNow() - startedAt >= QueueAdvancer.TransferStaleAfter)
@@ -151,7 +151,7 @@ public class QueueSnapshotReader
     {
         QueuedPrint? head = await _dbContext.QueuedPrints
                                             .AsNoTracking()
-                                            .Include(queued => queued.PrintFile)
+                                            .Include(queued => queued.File)
                                             .Where(queued => queued.PrinterId == printerId)
                                             .OrderBy(queued => queued.Position)
                                             .ThenBy(queued => queued.Id)
@@ -171,17 +171,17 @@ public class QueueSnapshotReader
                                              .AnyAsync(job => job.PrinterId == printerId && job.EndedAt == null,
                                                        cancellationToken);
 
-        if (head?.PrintFile is null)
+        if (head?.File is null)
         {
             return new QueueSnapshot(connected, status, Head: null, TransferInFlight: false, printInFlight);
         }
 
-        PrintFileOnPrinter? onPrinter = await _dbContext.PrintFilesOnPrinters
-                                                        .AsNoTracking()
-                                                        .SingleOrDefaultAsync(
-                                                            row => row.PrinterId == printerId &&
-                                                                   row.PrintFileId == head.PrintFileId,
-                                                            cancellationToken);
+        FileOnPrinter? onPrinter = await _dbContext.FilesOnPrinters
+                                                   .AsNoTracking()
+                                                   .SingleOrDefaultAsync(
+                                                       row => row.PrinterId == printerId &&
+                                                              row.FileId == head.FileId,
+                                                       cancellationToken);
 
         Printer? printer = await _dbContext.Printers
                                            .AsNoTracking()
@@ -203,16 +203,16 @@ public class QueueSnapshotReader
         // for may be anything - so either reads as nothing there, and the rules send the file instead
         // of printing what is. A transfer of an older version still running is left to finish: the
         // printer has one transfer slot, and its path is hidden so nothing prints the partial.
-        bool current = PrinterDriveCopies.IsCurrent(onPrinter, head.PrintFile.Digest);
+        bool current = PrinterDriveCopies.IsCurrent(onPrinter, head.File.Digest);
 
         return new QueueSnapshot(
             connected,
             status,
-            new QueueHead(head.Id, head.PrintFileId, head.PrintFile.Name, current && onPrinter!.Arrived,
+            new QueueHead(head.Id, head.FileId, head.File.Name, current && onPrinter!.Arrived,
                           current ? onPrinter!.PrinterPath : null),
-            IsTransferInFlight(onPrinter, head.PrintFile.Name),
+            IsTransferInFlight(onPrinter, head.File.Name),
             printInFlight,
-            CompatibilityHold(head.PrintFile, printer, tools) ?? onPrinter?.HoldReason,
+            CompatibilityHold(head.File, printer, tools) ?? onPrinter?.HoldReason,
             TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()),
             authorityLapsed,
             TransferRetryRules.IsCountingAborts(onPrinter));
@@ -242,7 +242,7 @@ public class QueueSnapshotReader
     /// nobody is watching.
     /// </para>
     /// </remarks>
-    private static PrintHoldReason? CompatibilityHold(PrintFile file,
+    private static PrintHoldReason? CompatibilityHold(HSFile file,
                                                       Printer? printer,
                                                       IReadOnlyList<PrinterTool> tools)
     {

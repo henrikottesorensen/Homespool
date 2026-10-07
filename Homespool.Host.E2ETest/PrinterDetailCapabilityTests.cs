@@ -116,16 +116,16 @@ public sealed class PrinterDetailCapabilityTests : IAsyncLifetime
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
-        PrintFile file = new() { UserId = ownerId, Name = QueuedFile, Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
+        HSFile file = new() { UserId = ownerId, Name = QueuedFile, Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
 
         context.Printers.Add(printer);
-        context.PrintFiles.Add(file);
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = printer.Id,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             PrintUuid = Guid.NewGuid(),
             QueuedByUserId = ownerId,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),

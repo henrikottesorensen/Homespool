@@ -68,7 +68,7 @@ public class QueuedPrint
     /// each context's tracked <see cref="Printer"/> into, which poisons any instance outliving the
     /// context that loaded it - and the queue's loop holds these rows across scoped work.
     /// <para>
-    /// Nothing lost, because <b>nothing ever asked for it</b>. Unlike <see cref="PrintFile"/>, which is
+    /// Nothing lost, because <b>nothing ever asked for it</b>. Unlike <see cref="File"/>, which is
     /// explicitly <c>Include</c>d where it is read, this slot was only ever populated by fix-up: no
     /// query requested it and no code read it. It was exposure with no corresponding use.
     /// </para>
@@ -77,13 +77,13 @@ public class QueuedPrint
 
     /// <summary>
     /// What to print, by surrogate id rather than by name - which is the whole reason
-    /// <see cref="PrintFile"/> exists. Renaming a queued file leaves this entry pointing at the same
+    /// <see cref="HSFile"/> exists. Renaming a queued file leaves this entry pointing at the same
     /// bytes.
     /// </summary>
-    public long PrintFileId { get; set; }
+    public long FileId { get; set; }
 
-    [ForeignKey(nameof(PrintFileId))]
-    public virtual PrintFile? PrintFile { get; set; }
+    [ForeignKey(nameof(FileId))]
+    public virtual HSFile? File { get; set; }
 
     /// <summary>
     /// Where in the queue it sits, ascending. Ties break by <see cref="Id"/>, so two rows sharing a

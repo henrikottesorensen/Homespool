@@ -28,7 +28,7 @@ namespace Homespool.Host.PrintFiles.GCode;
 /// <para>
 /// <b>So is a value longer than anything a slicer writes.</b> The file is the uploader's, the values
 /// end up in database columns, and SQLite enforces no length. The bounds are on
-/// <see cref="PrintFile"/>, beside the columns they protect.
+/// <see cref="HSFile"/>, beside the columns they protect.
 /// </para>
 /// </remarks>
 internal sealed class SlicerConfigValues
@@ -78,7 +78,7 @@ internal sealed class SlicerConfigValues
             case PrinterModelKey when _printerModel is null:
                 string model = Unquote(value.Trim());
 
-                if (model.Length is > 0 and <= PrintFile.PrinterModelMaxLength)
+                if (model.Length is > 0 and <= HSFile.PrinterModelMaxLength)
                 {
                     _printerModel = model;
                 }
@@ -274,7 +274,7 @@ internal sealed class SlicerConfigValues
 
         current.Clear();
 
-        if (entry.Length > PrintFile.FilamentTypeMaxLength || parsed.Count >= PrintFile.MaxFilaments)
+        if (entry.Length > HSFile.FilamentTypeMaxLength || parsed.Count >= HSFile.MaxFilaments)
         {
             return false;
         }
@@ -285,12 +285,12 @@ internal sealed class SlicerConfigValues
     }
 
     /// <summary>
-    /// Whether a comma-separated list has at most <see cref="PrintFile.MaxFilaments"/> entries,
+    /// Whether a comma-separated list has at most <see cref="HSFile.MaxFilaments"/> entries,
     /// counted before anything is split.
     /// </summary>
     private static bool FitsListBound(string value)
     {
-        return value.AsSpan().Count(',') < PrintFile.MaxFilaments;
+        return value.AsSpan().Count(',') < HSFile.MaxFilaments;
     }
 
     /// <summary>Strips one layer of surrounding quotes from a scalar value.</summary>

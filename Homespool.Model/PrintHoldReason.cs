@@ -5,7 +5,7 @@ namespace Homespool.Model;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Replaced a sentence, and that is the point.</b> <c>PrintFileOnPrinter.BlockedReason</c> stored
+/// <b>Replaced a sentence, and that is the point.</b> <c>FileOnPrinter.BlockedReason</c> stored
 /// finished English prose, which made the column do two jobs badly: it was the only record of *what
 /// happened*, and it was the text shown to whoever was reading the page. The second job meant it
 /// could not be translated; the first meant the free-space check had to identify its own holds by
@@ -46,7 +46,7 @@ public enum PrintHoldReason
     /// </summary>
     /// <remarks>
     /// Held rather than failed, because the queue entry is still wanted - see
-    /// <c>PrintFileOnPrinter</c>'s remarks on holding like a spooler.
+    /// <c>FileOnPrinter</c>'s remarks on holding like a spooler.
     /// </remarks>
     FileExistsDifferentSize = 2,
 
@@ -123,7 +123,7 @@ public enum PrintHoldReason
     /// </para>
     /// <para>
     /// <b>The printer's own words go with it</b>, in
-    /// <c>PrintFileOnPrinter.TransferRefusalReason</c>, because they are the useful part: a person can
+    /// <c>FileOnPrinter.TransferRefusalReason</c>, because they are the useful part: a person can
     /// read <i>"Failed to create directory"</i> once and act on it.
     /// </para>
     /// <para>

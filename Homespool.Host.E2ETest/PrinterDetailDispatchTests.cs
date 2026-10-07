@@ -1073,7 +1073,7 @@ public sealed class PrinterDetailDispatchTests : IAsyncLifetime
 
         return await context.QueuedPrints
                             .OrderBy(queued => queued.Position)
-                            .Select(queued => queued.PrintFile!.Name)
+                            .Select(queued => queued.File!.Name)
                             .ToArrayAsync(TestContext.Current.CancellationToken);
     }
 

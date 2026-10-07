@@ -42,7 +42,7 @@ namespace Homespool.Host.Queue;
 /// </para>
 /// </param>
 public sealed record EnqueueOutcome(QueuedPrint Queued,
-                                    PrintFile File,
+                                    HSFile File,
                                     IReadOnlyList<PrintCompatibilityFinding> Findings,
                                     IReadOnlyList<MessageKey> Warnings)
 {

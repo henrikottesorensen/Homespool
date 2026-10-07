@@ -75,7 +75,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// Generous, because a full-size model over TLS is minutes - 279.8 KB/s measured through nginx, so
     /// 100 MB is close to six. This exists for the case with no other bound: a transfer the printer
     /// has reported whose terminal event never arrives - a printer that goes away mid-transfer and
-    /// does not come back to fetch again - leaves <see cref="PrintFileOnPrinter.TransferStartedAt"/>
+    /// does not come back to fetch again - leaves <see cref="FileOnPrinter.TransferStartedAt"/>
     /// set with nothing running, which without this would wedge that printer's queue permanently.
     /// </remarks>
     public static readonly TimeSpan TransferStaleAfter = TimeSpan.FromMinutes(30);
@@ -579,7 +579,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// A path or a reason the printer wrote, as a log line may carry it.
     /// </summary>
     /// <remarks>
-    /// That includes <see cref="PrintFileOnPrinter.PrinterPath"/> read back from a row: it is the
+    /// That includes <see cref="FileOnPrinter.PrinterPath"/> read back from a row: it is the
     /// printer's own name for the file, stored as it was reported, so having been in the database
     /// does not make it ours.
     /// </remarks>
@@ -643,7 +643,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         // Tracked, unlike the reader's copy, because this one may be removed.
         QueuedPrint head = await dbContext.QueuedPrints
-                                          .Include(queued => queued.PrintFile)
+                                          .Include(queued => queued.File)
                                           .SingleAsync(queued => queued.Id == snapshot.Head.QueuedPrintId,
                                                        cancellationToken);
 
@@ -1023,16 +1023,16 @@ public sealed class QueueAdvancer : BackgroundService
         // nothing to ask. Only a copy of the file as it is now: a panel print of a version since
         // overwritten is not the entry, and claiming it would record the newer file as printed.
         var candidates = await dbContext.QueuedPrints
-                                        .Include(queued => queued.PrintFile)
-                                        .Join(dbContext.PrintFilesOnPrinters,
-                                              queued => new { queued.PrinterId, queued.PrintFileId },
-                                              onPrinter => new { onPrinter.PrinterId, onPrinter.PrintFileId },
+                                        .Include(queued => queued.File)
+                                        .Join(dbContext.FilesOnPrinters,
+                                              queued => new { queued.PrinterId, queued.FileId },
+                                              onPrinter => new { onPrinter.PrinterId, onPrinter.FileId },
                                               (queued, onPrinter) => new
                                               {
                                                   Entry = queued,
                                                   onPrinter.PrinterPath,
                                                   onPrinter.DriveName,
-                                                  Current = onPrinter.Digest != null && onPrinter.Digest == queued.PrintFile!.Digest,
+                                                  Current = onPrinter.Digest != null && onPrinter.Digest == queued.File!.Digest,
                                               })
                                         .Where(candidate => candidate.Entry.PrinterId == printerId &&
                                                             candidate.PrinterPath != null &&
@@ -1096,7 +1096,7 @@ public sealed class QueueAdvancer : BackgroundService
         var claimed = candidates.FirstOrDefault(
             candidate => (job.Path is not null && job.Path == candidate.PrinterPath) ||
                                         (job.DisplayName is not null &&
-                                         job.DisplayName == (candidate.DriveName ?? candidate.Entry.PrintFile!.Name)));
+                                         job.DisplayName == (candidate.DriveName ?? candidate.Entry.File!.Name)));
 
         _examinedPanelJobs[printerId] = jobId;
 
@@ -1112,14 +1112,14 @@ public sealed class QueueAdvancer : BackgroundService
         _logger.LogWarning(
             "[{PrinterId}] {FileName} was started at the printer, not by a command of ours - adopting " +
             "firmware job {JobId} and consuming the entry so it does not print twice.",
-            printerId, claimed.Entry.PrintFile!.Name, jobId);
+            printerId, claimed.Entry.File!.Name, jobId);
 
         PrintJob adopted = new()
         {
             PrinterId = printerId,
             PrintUuid = claimed.Entry.PrintUuid,
-            FileName = claimed.Entry.PrintFile!.Name,
-            Digest = claimed.Entry.PrintFile.Digest,
+            FileName = claimed.Entry.File!.Name,
+            Digest = claimed.Entry.File.Digest,
             QueuedByUserId = claimed.Entry.QueuedByUserId,
             QueuedByScope = claimed.Entry.QueuedByScope,
             PrinterPath = claimed.PrinterPath,
@@ -1269,7 +1269,7 @@ public sealed class QueueAdvancer : BackgroundService
 
         if (connected && (WithdrawerOf(commanded) ?? CallerFor(commanded)) is Caller asker && live?.JobId is int jobId)
         {
-            answer = await AskWhoseJobAsync(scope, printerId, commanded, asker, entry?.PrintFileId, jobId, cancellationToken);
+            answer = await AskWhoseJobAsync(scope, printerId, commanded, asker, entry?.FileId, jobId, cancellationToken);
         }
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -1402,8 +1402,8 @@ public sealed class QueueAdvancer : BackgroundService
         // alone - and the path is what START_PRINT was given, which the printer echoes.
         string? driveName = printFileId is long fileId ?
             await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
-                       .PrintFilesOnPrinters
-                       .Where(row => row.PrinterId == printerId && row.PrintFileId == fileId)
+                       .FilesOnPrinters
+                       .Where(row => row.PrinterId == printerId && row.FileId == fileId)
                        .Select(row => row.DriveName)
                        .FirstOrDefaultAsync(cancellationToken) :
             null;
@@ -1568,11 +1568,11 @@ public sealed class QueueAdvancer : BackgroundService
 
         if (entry is not null)
         {
-            PrintFileOnPrinter? onPrinter = await dbContext.PrintFilesOnPrinters
-                                                           .SingleOrDefaultAsync(
-                                                               row => row.PrinterId == printerId &&
-                                                                      row.PrintFileId == entry.PrintFileId,
-                                                               cancellationToken);
+            FileOnPrinter? onPrinter = await dbContext.FilesOnPrinters
+                                                      .SingleOrDefaultAsync(
+                                                          row => row.PrinterId == printerId &&
+                                                                 row.FileId == entry.FileId,
+                                                          cancellationToken);
 
             if (onPrinter is not null)
             {
@@ -1595,11 +1595,11 @@ public sealed class QueueAdvancer : BackgroundService
     private async Task TransferAsync(QueuePassWork work, int printerId, QueuedPrint head, CancellationToken cancellationToken)
     {
         QueueTransferPolicy policy = new(head.Id, _timeProvider, _logger);
-        string fileName = head.PrintFile!.Name;
+        string fileName = head.File!.Name;
 
         try
         {
-            await work.WhilePrinterAnswersAsync(() => _transfers.SendAsync(new TransferRequest(printerId, head.PrintFileId, CallerFor(head), policy),
+            await work.WhilePrinterAnswersAsync(() => _transfers.SendAsync(new TransferRequest(printerId, head.FileId, CallerFor(head), policy),
                                                                            cancellationToken));
         }
         catch (CommandAlreadyInFlightException) when (!policy.Begun)
@@ -1630,7 +1630,7 @@ public sealed class QueueAdvancer : BackgroundService
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
                                       CommandSendTimedOutException)
         {
-            // Cleared, and not because the command is known to have failed: PrintFileSender revoked the
+            // Cleared, and not because the command is known to have failed: FileSender revoked the
             // offer, so a printer that did take it can fetch nothing and firmware abandons the
             // download. No transfer of these bytes can be running, and the next pass offers them again.
             _logger.LogInformation(e, "[{PrinterId}] could not start the transfer of {FileName}", printerId, fileName);
@@ -1665,7 +1665,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// the printer accepted the command and went off to home and heat - so the timeout is caused by
     /// the success it was being read as ruling out. Writing the row afterwards leaves a window in
     /// which the effect exists and the record does not, which is the same shape
-    /// <see cref="PrintFileOnPrinter.TransferStartedAt"/> is written early to close.
+    /// <see cref="FileOnPrinter.TransferStartedAt"/> is written early to close.
     /// </para>
     /// <para>
     /// <b>The queue entry stays until the printer confirms.</b> Removing it on a command that may not
@@ -1696,8 +1696,8 @@ public sealed class QueueAdvancer : BackgroundService
         {
             PrinterId = printerId,
             PrintUuid = head.PrintUuid,
-            FileName = head.PrintFile!.Name,
-            Digest = head.PrintFile.Digest,
+            FileName = head.File!.Name,
+            Digest = head.File.Digest,
             QueuedByUserId = head.QueuedByUserId,
             QueuedByScope = head.QueuedByScope,
             PrinterPath = printerPath,
@@ -1840,10 +1840,10 @@ public sealed class QueueAdvancer : BackgroundService
         {
             case "File not found":
                 _logger.LogInformation("[{PrinterId}] the drive no longer has {FileName}; sending it again",
-                                       printerId, head.PrintFile?.Name);
+                                       printerId, head.File?.Name);
 
-                dbContext.PrintFilesOnPrinters
-                         .Where(row => row.PrinterId == printerId && row.PrintFileId == head.PrintFileId)
+                dbContext.FilesOnPrinters
+                         .Where(row => row.PrinterId == printerId && row.FileId == head.FileId)
                          .ExecuteDelete();
 
                 dbContext.PrintJobs.Remove(commanded);
@@ -1869,7 +1869,7 @@ public sealed class QueueAdvancer : BackgroundService
                 _logger.LogError(
                     "[{PrinterId}] refused {FileName} with \"{Reason}\", which will not change by retrying; " +
                     "removing it from the queue.",
-                    printerId, head.PrintFile?.Name, reason);
+                    printerId, head.File?.Name, reason);
 
                 // Recorded as a failed print rather than only logged. Dropping the entry with nothing
                 // to show for it is how a queued print used to vanish with no way for its owner to

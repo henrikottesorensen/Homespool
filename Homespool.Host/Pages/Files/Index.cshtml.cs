@@ -525,7 +525,7 @@ public class IndexModel : PageModel
 
         try
         {
-            PrintFile? indexed = await _files.ResolveAsync(userId.Value, file.FileName, cancellationToken);
+            HSFile? indexed = await _files.ResolveAsync(userId.Value, file.FileName, cancellationToken);
 
             if (indexed is null)
             {

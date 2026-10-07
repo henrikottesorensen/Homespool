@@ -58,7 +58,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
     /// <summary>
     /// What <see cref="WriteFileOnDiskAsync"/> actually writes. The store reads the length off disk,
-    /// so this - not the seeded <c>PrintFile.Size</c> - is what a drive's copy is compared against.
+    /// so this - not the seeded <c>HSFile.Size</c> - is what a drive's copy is compared against.
     /// </summary>
     private const long OnDiskLength = 11;
 
@@ -731,7 +731,7 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "the print is still wanted - the bytes simply are not where we believed");
-        (await context.PrintFilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+        (await context.FilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
             "clearing the row is what makes the loop send the file again");
         (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
             "nothing failed - this is a retry, not an outcome");
@@ -755,7 +755,7 @@ public sealed class QueueAdvancerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
-        (await context.PrintFilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await context.FilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
         (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
@@ -798,12 +798,12 @@ public sealed class QueueAdvancerTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync(status: PrinterStatus.Idle);
         await WriteFileOnDiskAsync("queued.bgcode");
 
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
         });
 
@@ -819,8 +819,8 @@ public sealed class QueueAdvancerTests : IDisposable
         // Assert - it tried again, which the refusal above records by clearing the stamp
         context.ChangeTracker.Clear();
 
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters
-                                              .SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters
+                                         .SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferStartedAt.Should().BeNull(
             "a stale stamp must not be mistaken for a transfer still running, or the queue wedges forever");
@@ -834,15 +834,15 @@ public sealed class QueueAdvancerTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync(status: PrinterStatus.Idle);
         await WriteFileOnDiskAsync("queued.bgcode");
 
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
         DateTimeOffset started = _clock.GetUtcNow();
 
         // Reported by the printer a few seconds in, which is what makes the stamp a transfer running
         // rather than one merely started.
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = started,
             PrinterPath = "/usb/QUEUED~1.BGC",
         });
@@ -860,8 +860,8 @@ public sealed class QueueAdvancerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters
-                                              .SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters
+                                         .SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferStartedAt.Should().Be(started, "nothing should interrupt a transfer that is merely slow");
     }
@@ -1166,7 +1166,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().NotBeNull("these bytes are on the drive, and the digest says so");
         row.PrinterPath.Should().Be("/usb/SHAPE-~1.BGC",
@@ -1197,7 +1197,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().BeNull("a matching size is not matching content");
         row.PrinterPath.Should().BeNull();
@@ -1222,7 +1222,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().BeNull("a partial at its preallocated size is not the file");
         row.PrinterPath.Should().BeNull();
@@ -1248,7 +1248,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.DriveName.Should().Be("queued.bgcode", "the bytes under it are ours and this version");
         row.ArrivedAt.Should().BeNull("in use is not arrived");
@@ -1273,7 +1273,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter refused = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter refused = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
@@ -1309,7 +1309,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().Be(PrintHoldReason.FileExistsDifferentSize,
                                    "the reason has to reach a person, or the queue stalls silently");
@@ -1344,7 +1344,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().Equal(["/usb/" + OwnersName]);
 
         context.ChangeTracker.Clear();
-        (await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == 1, TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.SingleAsync(row => row.FileId == 1, TestContext.Current.CancellationToken))
             .DriveName.Should().Be(OwnersName);
     }
 
@@ -1365,7 +1365,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
 
         context.ChangeTracker.Clear();
-        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
             .DriveName.Should().Be("queued.bgcode", "the printer's reports about it will carry this name");
     }
 
@@ -1402,7 +1402,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"], "the newer version goes where the older one was");
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().Be(OverwrittenDigest, "the printer took the newer bytes");
         row.ArrivedAt.Should().BeNull("and they have not arrived yet");
@@ -1424,12 +1424,12 @@ public sealed class QueueAdvancerTests : IDisposable
         // Arrange - the older version arriving and named by the printer; then the overwrite
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~1.BGC",
@@ -1496,7 +1496,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().BeEmpty("the name is still taken");
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferRefusalCount.Should().BeNull("a copy in use says nothing about this file");
         row.HoldReason.Should().BeNull();
@@ -1529,7 +1529,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().BeEmpty();
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferRefusalCount.Should().Be(1);
         row.TransferRefusalReason.Should().Be("Error deleting file", "the printer's words are the useful part");
@@ -1555,7 +1555,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
 
         context.ChangeTracker.Clear();
-        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
             .TransferRefusalCount.Should().BeNull("gone is what the delete was for");
     }
 
@@ -1570,7 +1570,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
 
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
         file.Digest = null;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -1586,7 +1586,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
 
         context.ChangeTracker.Clear();
-        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
             .Digest.Should().Be(expected, "no file is sent without one");
     }
 
@@ -1609,7 +1609,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.DriveName.Should().Be(OwnersName);
         row.Digest.Should().BeNull("it described the bytes under the old name");
@@ -1625,12 +1625,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - a transfer the printer took and named, then abandoned
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~1.BGC",
@@ -1648,7 +1648,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.PrinterPath.Should().BeNull("firmware removes the partial");
         row.Digest.Should().BeNull("and with it the bytes the digest described");
@@ -1669,7 +1669,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
             .Digest.Should().BeNull("a digest here would vouch for whatever is under the name");
     }
 
@@ -1705,12 +1705,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             DriveName = OwnersName,
         });
@@ -1736,7 +1736,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.PrinterPath.Should().Be("/usb/QUEUED~2.BGC", "the printer names the file by the name it was sent under");
     }
@@ -1768,7 +1768,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         offers.Count.Should().Be(TransferRetryRules.HoldAfter, "each pass after its wait is one attempt");
         row.HoldReason.Should().Be(PrintHoldReason.TransferRefused);
@@ -1845,7 +1845,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().BeNull("a taken slot says nothing about this file");
         row.TransferRefusalCount.Should().BeNull("and so is not counted at all");
@@ -1876,7 +1876,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         offers.Count.Should().Be(attempts);
         row.HoldReason.Should().BeNull("only an unchanging answer is the signal");
@@ -1891,12 +1891,12 @@ public sealed class QueueAdvancerTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
         await WriteFileOnDiskAsync("queued.bgcode");
 
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferRefusalCount = TransferRetryRules.HoldAfter - 1,
             TransferRefusedAt = _clock.GetUtcNow(),
             TransferRefusalCode = "STORAGE_FAILURE",
@@ -1913,7 +1913,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferStartedAt.Should().NotBeNull("the transfer is under way");
         row.TransferRefusalCount.Should().BeNull("a later failure must start from one, not from five");
@@ -2042,7 +2042,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - staged under its owner's name; the job answer names it that way, by another path
         await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
-        PrintFileOnPrinter staged = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter staged = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
         staged.DriveName = OwnersName;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -2641,7 +2641,7 @@ public sealed class QueueAdvancerTests : IDisposable
         given.State.Should().Be(PrintState.Unknown, "it stopped being observable without saying how");
         given.EndedAt.Should().NotBeNull("the open-print slot cannot be held for ever");
 
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
         row.HoldReason.Should().Be(PrintHoldReason.PrintStartUnresolved,
                                    "advancing might print the file twice, so a person decides");
 
@@ -2766,7 +2766,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - staged under its owner's name; the printer's job names it that way, by another path
         await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Idle);
-        PrintFileOnPrinter staged = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter staged = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
         staged.DriveName = OwnersName;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
@@ -3837,7 +3837,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
@@ -3870,7 +3870,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter waiting = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter waiting = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
         int offeredWhileStanding = OfferedPaths(actor).Length;
 
         _clock.Advance(TransferOfferStore.CollectWithin);
@@ -3891,13 +3891,13 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - a transfer in flight, and the printer's early report of the partial
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
         DateTimeOffset started = _clock.GetUtcNow();
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = started,
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -3912,7 +3912,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.PrinterPath.Should().Be("/usb/QUEUED~1.BGC");
         row.ArrivedAt.Should().BeNull("a partial is not a file on the drive until its transfer finishes");
@@ -3928,12 +3928,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             PrinterPath = "/usb/QUEUED~1.BGC",
             Digest = SeededDigest,
@@ -3964,12 +3964,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~2.BGC",
@@ -3986,7 +3986,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().NotBeNull("the transfer the queue started has finished");
         row.TransferStartedAt.Should().BeNull("nothing is running any more");
@@ -4007,12 +4007,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             TransferCommandId = StartCommandId,
         });
@@ -4030,7 +4030,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().NotBeNull();
         row.PrinterPath.Should().Be("/usb/QUEUED~1.BGC", "an arrived file with no name could never be printed");
@@ -4057,7 +4057,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter ended = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter ended = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
         int offeredAtOnce = OfferedPaths(actor).Length;
 
         await using TelemetryDbContext telemetry = TestTelemetryContext.For(context);
@@ -4106,7 +4106,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().Be(PrintHoldReason.TransferAborted);
         row.TransferRefusalCount.Should().Be(TransferRetryRules.HoldAfter);
@@ -4127,7 +4127,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - a row carrying earlier aborts, whose latest transfer then finishes
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFileOnPrinter named = await AddNamedTransferAsync(context);
+        FileOnPrinter named = await AddNamedTransferAsync(context);
 
         named.TransferRefusalCount = 3;
         named.TransferRefusedAt = _clock.GetUtcNow() - TimeSpan.FromMinutes(5);
@@ -4142,7 +4142,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().NotBeNull();
         row.TransferRefusalCount.Should().BeNull("the file arrived, so nothing is failing any more");
@@ -4160,12 +4160,12 @@ public sealed class QueueAdvancerTests : IDisposable
         // Arrange - a row whose retry wait has run out
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferRefusalCount = 2,
             TransferRefusedAt = _clock.GetUtcNow() - TimeSpan.FromMinutes(5),
             TransferRefusalCode = code,
@@ -4180,7 +4180,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken))
             .TransferRefusalCount.Should().Be(countAfter);
     }
 
@@ -4207,7 +4207,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().Be(PrintHoldReason.TransferStopped);
         row.PrinterPath.Should().BeNull("the partial it named has gone");
@@ -4242,7 +4242,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.PrinterPath.Should().BeNull();
         row.HoldReason.Should().BeNull();
@@ -4260,12 +4260,12 @@ public sealed class QueueAdvancerTests : IDisposable
         // Arrange - an attempt past the staleness bound, with a path its partial once had
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow() - QueueAdvancer.TransferStaleAfter - TimeSpan.FromMinutes(1),
             PrinterPath = "/usb/OLD~1.BGC",
         });
@@ -4280,7 +4280,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"], "the stale attempt is given up on, once");
         row.PrinterPath.Should().BeNull("the old path belongs to a partial this transfer never reported");
@@ -4297,13 +4297,13 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - the row waits on the second attempt; the first one's end arrives
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
         DateTimeOffset started = _clock.GetUtcNow();
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = started,
             TransferCommandId = StartCommandId + 1,
             PrinterPath = "/usb/QUEUED~1.BGC",
@@ -4318,7 +4318,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferStartedAt.Should().Be(started, "this attempt has not ended");
         row.PrinterPath.Should().Be("/usb/QUEUED~1.BGC");
@@ -4356,7 +4356,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferRefusalCount.Should().Be(aborts, "each abort was counted once, when it happened");
         row.HoldReason.Should().BeNull();
@@ -4373,12 +4373,12 @@ public sealed class QueueAdvancerTests : IDisposable
         // Arrange - a direct send's row, its stop in the log, and the seeded entry queued since
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferCommandId = StartCommandId,
             DriveName = file.Name,
             Digest = SeededDigest,
@@ -4394,7 +4394,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().BeNull("nobody stopped the queued print");
         (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
@@ -4410,12 +4410,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - a copy arriving by a direct send, and an earlier copy's finish in the log
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferCommandId = StartCommandId + 1,
             DriveName = file.Name,
             Digest = SeededDigest,
@@ -4430,7 +4430,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().BeNull("the finish was of another transfer");
         row.TransferCommandId.Should().Be(StartCommandId + 1, "the later copy's transfer is still awaited");
@@ -4458,7 +4458,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().NotBeNull("the printer was fetching all along");
         row.TransferCommandId.Should().BeNull("nothing is awaited any more");
@@ -4499,7 +4499,7 @@ public sealed class QueueAdvancerTests : IDisposable
         ServiceProvider services = _advancerServices!;
         TransferService transfers = services.GetRequiredService<TransferService>();
         Printer printer = await context.Printers.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
-        PrintFile file = await context.PrintFiles.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.AsNoTracking().SingleAsync(TestContext.Current.CancellationToken);
         StoredFile stored;
 
         using (IServiceScope scope = services.CreateScope())
@@ -4544,7 +4544,7 @@ public sealed class QueueAdvancerTests : IDisposable
             stream.SetLength(uint.MaxValue);
         }
 
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
         row.Digest = "an-older-digest";
         row.ArrivedAt = _clock.GetUtcNow();
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -4559,7 +4559,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().Be(PrintHoldReason.FileTooLarge, "a person has to be told, or the queue stalls silently");
         row.TransferRefusalCount.Should().BeNull("this is the file's doing, not a printer's refusal");
@@ -4750,7 +4750,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         context.Printers.Add(new Printer { Id = SecondPrinterId, Uuid = Guid.NewGuid(), TeamId = teamId });
 
-        PrintFile file = new()
+        HSFile file = new()
         {
             UserId = 1,
             Name = "second.bgcode",
@@ -4759,23 +4759,23 @@ public sealed class QueueAdvancerTests : IDisposable
             UploadedAt = _clock.GetUtcNow(),
         };
 
-        context.PrintFiles.Add(file);
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = SecondPrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             PrintUuid = Guid.NewGuid(),
             Position = 0,
             QueuedByUserId = 1,
             QueuedByScope = PrintOnly,
             QueuedAt = _clock.GetUtcNow(),
         });
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = SecondPrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             ArrivedAt = _clock.GetUtcNow(),
             PrinterPath = "/usb/SECOND~1.BGC",
             DriveName = file.Name,
@@ -4812,7 +4812,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferRefusalCount.Should().BeNull("revoking the offer is what ended the transfer");
     }
@@ -4827,12 +4827,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - an attempt started now, and an earlier copy's report from a minute ago
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             TransferCommandId = StartCommandId,
             DriveName = file.Name,
@@ -4850,7 +4850,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.PrinterPath.Should().BeNull("the report describes a copy this transfer replaced");
     }
@@ -4864,13 +4864,13 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
         DateTimeOffset started = _clock.GetUtcNow();
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = started,
             PrinterPath = "/usb/QUEUED~1.BGC",
         });
@@ -4884,7 +4884,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.ArrivedAt.Should().BeNull("somebody else's upload finishing says nothing about ours");
         row.TransferStartedAt.Should().Be(started);
@@ -4919,7 +4919,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.DriveName.Should().Be("queued.bgcode", "nothing said the name belongs to another file");
         row.ArrivedAt.Should().BeNull("nothing said the file on the drive is ours");
@@ -4953,7 +4953,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().BeEmpty("whether it fits is not known yet");
 
         context.ChangeTracker.Clear();
-        (await context.PrintFilesOnPrinters.AnyAsync(row => row.HoldReason != null, TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.AnyAsync(row => row.HoldReason != null, TestContext.Current.CancellationToken))
             .Should().BeFalse("a busy printer is not a full one");
         (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
             "there is no failure to put in history");
@@ -4990,12 +4990,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - a transfer in flight
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -5034,7 +5034,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.PrinterPath.Should().Be("/usb/QUEUED~1.BGC", "a report without a path cannot say where the file is");
         row.ArrivedAt.Should().BeNull("naming a file is not the printer saying its transfer finished");
@@ -5053,12 +5053,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - a transfer in flight
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Idle);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -5083,7 +5083,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.PrinterPath.Should().BeNull("a report with no path says nothing a print could be started with");
         row.ArrivedAt.Should().BeNull();
@@ -5101,13 +5101,13 @@ public sealed class QueueAdvancerTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
         await WriteFileOnDiskAsync("queued.bgcode");
         Printer first = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         context.Printers.Add(new Printer { Id = secondPrinterId, Uuid = Guid.NewGuid(), TeamId = first.TeamId });
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = secondPrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             PrintUuid = Guid.NewGuid(),
             Position = 0,
             QueuedByUserId = 1,
@@ -5166,7 +5166,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().BeEmpty("nothing could be offered");
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().Be(PrintHoldReason.FileUnreadable, "the reason has to reach a person, or the queue stalls silently");
         row.TransferStartedAt.Should().BeNull("no transfer is under way");
@@ -5204,7 +5204,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().ContainSingle("the file is offered as soon as it opens");
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().BeNull("the fault was on this side, and it has gone");
         row.BlockedAt.Should().BeNull();
@@ -5237,7 +5237,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
@@ -5270,7 +5270,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         context.ChangeTracker.Clear();
-        DateTimeOffset? heldAt = (await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken)).BlockedAt;
+        DateTimeOffset? heldAt = (await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken)).BlockedAt;
 
         _clock.Advance(TimeSpan.FromSeconds(5));
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
@@ -5279,7 +5279,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().BeEmpty("there is nothing to offer");
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().Be(PrintHoldReason.FileUnreadable, "the storage is a fault on this side");
         row.BlockedAt.Should().Be(heldAt, "a hold asked about recently is left alone");
@@ -5313,7 +5313,7 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(actor).Should().ContainSingle("the file is offered once it can be found");
 
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().BeNull("the storage is back");
         row.TransferStartedAt.Should().NotBeNull("the transfer is under way");
@@ -5340,7 +5340,7 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
             "there is nothing left to print");
-        (await context.PrintFilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+        (await context.FilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
             "nothing was held");
     }
 
@@ -5403,7 +5403,7 @@ public sealed class QueueAdvancerTests : IDisposable
     /// <summary>The seeded file overwritten with other bytes, as an upload's index leaves its row.</summary>
     private async Task OverwriteSeededFileAsync(HomespoolDbContext context)
     {
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
         file.Digest = OverwrittenDigest;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
@@ -5421,19 +5421,19 @@ public sealed class QueueAdvancerTests : IDisposable
     /// The seeded file's row as a direct send leaves it: sent under its own name, the printer took
     /// these bytes, and nothing has said they arrived.
     /// </summary>
-    private async Task<PrintFileOnPrinter> AddTakenCopyAsync(HomespoolDbContext context)
+    private async Task<FileOnPrinter> AddTakenCopyAsync(HomespoolDbContext context)
     {
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        PrintFileOnPrinter row = new()
+        FileOnPrinter row = new()
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             DriveName = file.Name,
             Digest = file.Digest,
         };
 
-        context.PrintFilesOnPrinters.Add(row);
+        context.FilesOnPrinters.Add(row);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return row;
@@ -5443,20 +5443,20 @@ public sealed class QueueAdvancerTests : IDisposable
     /// The seeded file's row as a transfer in flight that the printer has named - the state its end
     /// event finds it in.
     /// </summary>
-    private async Task<PrintFileOnPrinter> AddNamedTransferAsync(HomespoolDbContext context)
+    private async Task<FileOnPrinter> AddNamedTransferAsync(HomespoolDbContext context)
     {
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        PrintFileOnPrinter row = new()
+        FileOnPrinter row = new()
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             TransferCommandId = StartCommandId,
             PrinterPath = "/usb/QUEUED~1.BGC",
         };
 
-        context.PrintFilesOnPrinters.Add(row);
+        context.FilesOnPrinters.Add(row);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         return row;
@@ -5488,7 +5488,7 @@ public sealed class QueueAdvancerTests : IDisposable
     private async Task EndRecordedTransferAsync(HomespoolDbContext context, PrinterEventType ending)
     {
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.TransferCommandId.Should().NotBeNull("the printer took the transfer, so its command was recorded");
         await AddTransferEndAsync(ending, "/usb/queued.bgcode", (uint)row.TransferCommandId!.Value);
@@ -5500,12 +5500,12 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         // Arrange - a transfer in flight, and the FILE_INFO that ends it naming a path with an escape in it
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             TransferStartedAt = _clock.GetUtcNow(),
             Digest = SeededDigest,
         });
@@ -5553,7 +5553,7 @@ public sealed class QueueAdvancerTests : IDisposable
         // Arrange - the seeded file is the other user's, and has the lower id, so a lookup that
         // merely took the first row it read would find it; the second user's transfer is in flight.
         await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
-        PrintFile theirs = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile theirs = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         context.Users.Add(new HSUser("other@example.com")
         {
@@ -5563,22 +5563,22 @@ public sealed class QueueAdvancerTests : IDisposable
             NormalizedUserName = "OTHER@EXAMPLE.COM",
         });
 
-        PrintFile ours = new() { UserId = 2, Name = theirs.Name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
-        context.PrintFiles.Add(ours);
+        HSFile ours = new() { UserId = 2, Name = theirs.Name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
+        context.Files.Add(ours);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = theirs.Id,
+            FileId = theirs.Id,
             ArrivedAt = theirsArrived ? _clock.GetUtcNow() : null,
             PrinterPath = theirsArrived ? "/usb/QUEUED~1.BGC" : null,
         });
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = ours.Id,
+            FileId = ours.Id,
             TransferStartedAt = _clock.GetUtcNow(),
         });
 
@@ -5605,11 +5605,11 @@ public sealed class QueueAdvancerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFileOnPrinter named = await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == ours.Id,
-                                                                                  TestContext.Current.CancellationToken);
+        FileOnPrinter named = await context.FilesOnPrinters.SingleAsync(row => row.FileId == ours.Id,
+                                                                        TestContext.Current.CancellationToken);
 
         named.PrinterPath.Should().Be("/usb/QUEUED~2.BGC", "the transfer in flight is the one this report describes");
-        (await context.PrintFilesOnPrinters.SingleAsync(row => row.PrintFileId == theirs.Id, TestContext.Current.CancellationToken))
+        (await context.FilesOnPrinters.SingleAsync(row => row.FileId == theirs.Id, TestContext.Current.CancellationToken))
             .PrinterPath.Should().Be(theirsArrived ? "/usb/QUEUED~1.BGC" : null, "the other user's copy is not the one reported");
     }
 
@@ -5790,7 +5790,7 @@ public sealed class QueueAdvancerTests : IDisposable
         services.AddSingleton<ITransferOffers>(sp => offers ?? sp.GetRequiredService<TransferOfferStore>());
         services.AddSingleton<EncryptedTransferOffers>();
         services.AddSingleton(Options.Create(new PrusaConnectOptions()));
-        services.AddScoped<PrintFileSender>();
+        services.AddScoped<FileSender>();
         services.AddScoped<PrinterDriveNames>();
         services.AddScoped<PrinterDriveCopies>();
         services.AddLogging();
@@ -5836,14 +5836,14 @@ public sealed class QueueAdvancerTests : IDisposable
             NormalizedUserName = "OTHER@EXAMPLE.COM",
         });
 
-        PrintFile theirs = new() { UserId = 2, Name = name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
-        context.PrintFiles.Add(theirs);
+        HSFile theirs = new() { UserId = 2, Name = name, Size = 2048, UploadedAt = _clock.GetUtcNow() };
+        context.Files.Add(theirs);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = PrinterId,
-            PrintFileId = theirs.Id,
+            FileId = theirs.Id,
             ArrivedAt = arrived ? _clock.GetUtcNow() : null,
             PrinterPath = arrived ? "/usb/QUEUED~1.BGC" : null,
             DriveName = arrived ? null : name,
@@ -5886,7 +5886,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         context.Printers.Add(new Printer { Id = PrinterId, Uuid = Guid.NewGuid(), TeamId = team.Id });
 
-        PrintFile file = new()
+        HSFile file = new()
         {
             UserId = 1,
             Name = "queued.bgcode",
@@ -5895,13 +5895,13 @@ public sealed class QueueAdvancerTests : IDisposable
             UploadedAt = _clock.GetUtcNow(),
         };
 
-        context.PrintFiles.Add(file);
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             PrintUuid = QueuedPrintUuid,
             Position = 0,
             QueuedByUserId = 1,
@@ -5911,10 +5911,10 @@ public sealed class QueueAdvancerTests : IDisposable
 
         if (arrived)
         {
-            context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+            context.FilesOnPrinters.Add(new FileOnPrinter
             {
                 PrinterId = PrinterId,
-                PrintFileId = file.Id,
+                FileId = file.Id,
                 ArrivedAt = _clock.GetUtcNow(),
                 PrinterPath = "/usb/QUEUED~1.BGC",
                 DriveName = file.Name,

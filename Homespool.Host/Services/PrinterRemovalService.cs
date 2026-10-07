@@ -37,11 +37,11 @@ namespace Homespool.Host.Services;
 /// </para>
 /// <para>
 /// <b>What survives, deliberately:</b> the team, any <c>Camera</c> bound to the printer, and any
-/// <c>PrintFile</c> that was sent to this printer. A camera is unbound (<c>DeleteBehavior.SetNull</c>)
+/// <c>HSFile</c> that was sent to this printer. A camera is unbound (<c>DeleteBehavior.SetNull</c>)
 /// rather than deleted, because deleting it here would go round the rules <c>CameraService.DeleteAsync</c>
 /// applies - <c>ManageCamera</c>, and an administrator for an attached device - which this method does
 /// not ask. Its owners remove it through the camera page. The file belongs to a person's library rather than to a machine, and its
-/// <c>PrintFileOnPrinter</c> row - knowledge about somebody else's drive - is the part that goes.
+/// <c>FileOnPrinter</c> row - knowledge about somebody else's drive - is the part that goes.
 /// </para>
 /// <para>
 /// <b>The printer itself is not told.</b> Its token lives in EEPROM, so a removed printer goes on

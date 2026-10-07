@@ -395,8 +395,8 @@ public sealed class PrintQueueEndpointTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == name,
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.Name == name,
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = model;
 

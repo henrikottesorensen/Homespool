@@ -79,7 +79,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Name.Should().Be("handcopied.gcode");
         row.Size.Should().Be(3);
@@ -96,7 +96,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await AddUserAsync(context);
         Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
             UserId = Alice,
             Name = "vanished.gcode",
@@ -112,7 +112,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
     /// <summary>
@@ -127,7 +127,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await AddUserAsync(context);
         Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
 
-        PrintFile row = new()
+        HSFile row = new()
         {
             UserId = Alice,
             Name = "vanished.gcode",
@@ -135,7 +135,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
             UploadedAt = DateTimeOffset.UnixEpoch,
         };
 
-        context.PrintFiles.Add(row);
+        context.Files.Add(row);
 
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
@@ -148,7 +148,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = printer.Id,
-            PrintFileId = row.Id,
+            FileId = row.Id,
             Position = 0,
             QueuedByUserId = Alice,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
@@ -164,7 +164,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
     /// <summary>
@@ -186,7 +186,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
             Directory.CreateDirectory(_root);
         }
 
-        PrintFile row = new()
+        HSFile row = new()
         {
             UserId = Alice,
             Name = "unmounted.gcode",
@@ -194,7 +194,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
             UploadedAt = DateTimeOffset.UnixEpoch,
         };
 
-        context.PrintFiles.Add(row);
+        context.Files.Add(row);
 
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
@@ -207,7 +207,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = printer.Id,
-            PrintFileId = row.Id,
+            FileId = row.Id,
             Position = 0,
             QueuedByUserId = Alice,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
@@ -224,7 +224,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
         logger.Collector.GetSnapshot()
               .Should().ContainSingle(record => record.Level == LogLevel.Warning)
@@ -246,7 +246,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         string path = Path.Combine(_root, "1-alice", "edited.gcode");
         await File.WriteAllBytesAsync(path, [1, 2, 3, 4, 5, 6], TestContext.Current.CancellationToken);
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
             UserId = Alice,
             Name = "edited.gcode",
@@ -264,7 +264,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Size.Should().Be(6);
         row.Digest.Should().BeNull("a digest for content that is gone would be believed");
@@ -297,7 +297,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         StoredFile stored = NewStore().Find(Alice, "untouched.gcode")!;
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
             UserId = Alice,
             Name = stored.FileName,
@@ -317,7 +317,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().Be("uploaded", "nothing about the file changed");
         logger.Collector.GetSnapshot().Should().NotContain(record => record.Level == LogLevel.Information,
@@ -347,7 +347,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().BeNull("the bytes may have changed, and the old digest would be believed");
         row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "the backfill reads it again");
@@ -384,7 +384,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().Be(uploaded.Digest);
         logger.Collector.GetSnapshot()
@@ -410,7 +410,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().Be("uploaded");
     }
@@ -440,7 +440,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        List<PrintFile> rows = await context.PrintFiles.ToListAsync(TestContext.Current.CancellationToken);
+        List<HSFile> rows = await context.Files.ToListAsync(TestContext.Current.CancellationToken);
 
         rows.Should().AllSatisfy(row =>
         {
@@ -481,9 +481,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        (await context.PrintFiles.SingleAsync(row => row.Name == "locked.gcode", TestContext.Current.CancellationToken))
+        (await context.Files.SingleAsync(row => row.Name == "locked.gcode", TestContext.Current.CancellationToken))
             .Digest.Should().BeNull();
-        (await context.PrintFiles.SingleAsync(row => row.Name == "open.gcode", TestContext.Current.CancellationToken))
+        (await context.Files.SingleAsync(row => row.Name == "open.gcode", TestContext.Current.CancellationToken))
             .Digest.Should().NotBeNull();
         logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Warning);
     }
@@ -513,7 +513,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.MetadataState.Should().Be(PrintFileMetadataState.Read);
         row.PrinterModel.Should().Be("MK4S");
@@ -571,7 +571,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Size.Should().Be(4);
         row.Digest.Should().BeNull("a digest for content that is gone would be believed");
@@ -592,7 +592,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         await WriteFileAsync("unindexed.gcode", [1, 2, 3]);
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
             UserId = Alice,
             Name = "renaming.gcode",
@@ -610,7 +610,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Name.Should().Be("renaming.gcode", "a row whose file is missing may be mid-rename");
         row.Digest.Should().Be("uploaded");
@@ -669,7 +669,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Name.Should().Be("Ærø.gcode");
         row.Digest.Should().Be("uploaded", "a rename does not change the bytes");
@@ -693,7 +693,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         foreach (string name in new[] { "ærø.gcode", "Ærø.gcode" })
         {
-            context.PrintFiles.Add(new PrintFile { UserId = Alice, Name = name, Size = 3, UploadedAt = DateTimeOffset.UnixEpoch });
+            context.Files.Add(new HSFile { UserId = Alice, Name = name, Size = 3, UploadedAt = DateTimeOffset.UnixEpoch });
         }
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -711,9 +711,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        (await context.PrintFiles.CountAsync(row => row.UserId == Alice, TestContext.Current.CancellationToken))
+        (await context.Files.CountAsync(row => row.UserId == Alice, TestContext.Current.CancellationToken))
             .Should().Be(2, "neither row is the reconcile's to remove");
-        (await context.PrintFiles.SingleAsync(row => row.UserId == bob, TestContext.Current.CancellationToken))
+        (await context.Files.SingleAsync(row => row.UserId == bob, TestContext.Current.CancellationToken))
             .Name.Should().Be("handcopied.gcode");
         logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Error);
     }
@@ -737,7 +737,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         File.Exists(path).Should().BeTrue("the reconciler never writes to the disk");
     }
 
@@ -793,7 +793,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
     {
         StoredFile stored = NewStore().Find(Alice, name)!;
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
             UserId = Alice,
             Name = stored.FileName,
@@ -817,7 +817,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         for (int i = 0; i < 500; i++)
         {
-            digest = await context.PrintFiles
+            digest = await context.Files
                                   .AsNoTracking()
                                   .Select(row => row.Digest)
                                   .SingleOrDefaultAsync(TestContext.Current.CancellationToken);

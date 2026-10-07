@@ -1346,9 +1346,9 @@ public sealed class QueueLoopTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        foreach (PrintFileOnPrinter row in await context.PrintFilesOnPrinters
-                                                        .Where(candidate => candidate.PrinterId == printerId)
-                                                        .ToListAsync(TestContext.Current.CancellationToken))
+        foreach (FileOnPrinter row in await context.FilesOnPrinters
+                                                   .Where(candidate => candidate.PrinterId == printerId)
+                                                   .ToListAsync(TestContext.Current.CancellationToken))
         {
             row.BlockedAt = DateTimeOffset.UnixEpoch;
         }
@@ -1370,8 +1370,8 @@ public sealed class QueueLoopTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
-                          .PrintFilesOnPrinters.CountAsync(row => row.PrinterId == printerId,
-                                                           TestContext.Current.CancellationToken);
+                          .FilesOnPrinters.CountAsync(row => row.PrinterId == printerId,
+                                                      TestContext.Current.CancellationToken);
     }
 
     /// <summary>What the printer has told this application it is - <c>INFO</c>'s <c>printer_type</c>.</summary>
@@ -1395,8 +1395,8 @@ public sealed class QueueLoopTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == name,
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.Name == name,
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = model;
 
@@ -1412,7 +1412,7 @@ public sealed class QueueLoopTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
 
         return await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
-                          .PrintFilesOnPrinters.AnyAsync(
+                          .FilesOnPrinters.AnyAsync(
                               row => row.PrinterId == printerId && row.PrinterPath != null,
                               TestContext.Current.CancellationToken);
     }

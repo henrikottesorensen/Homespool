@@ -128,7 +128,7 @@ public sealed class PrintThumbnails
             await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
             PrintFileCatalog catalog = scope.ServiceProvider.GetRequiredService<PrintFileCatalog>();
 
-            PrintFile? row = await catalog.RowForAsync(job.QueuedByUserId, file, cancellationToken);
+            HSFile? row = await catalog.RowForAsync(job.QueuedByUserId, file, cancellationToken);
 
             if (row?.Digest is not null && !string.Equals(row.Digest, job.Digest, StringComparison.Ordinal))
             {

@@ -115,7 +115,7 @@ public class PrintFileCompatibilityTests
     [Fact]
     public void AFileThatSaidNothingProducesNothing()
     {
-        Evaluate(new PrintFile { Name = "quiet.gcode", MetadataState = PrintFileMetadataState.Silent },
+        Evaluate(new HSFile { Name = "quiet.gcode", MetadataState = PrintFileMetadataState.Silent },
                  Printer(),
                  Tool(nozzle: 0.4f, hardened: false)).Should().BeEmpty();
     }
@@ -219,19 +219,19 @@ public class PrintFileCompatibilityTests
             .Should().Equal(PrintCompatibilityFinding.NozzleDiameterMismatch);
     }
 
-    private static IReadOnlyList<PrintCompatibilityFinding> Evaluate(PrintFile file,
+    private static IReadOnlyList<PrintCompatibilityFinding> Evaluate(HSFile file,
                                                                      Printer printer,
                                                                      IReadOnlyList<PrinterTool> tools)
     {
         return PrintFileCompatibility.Evaluate(file, printer, tools);
     }
 
-    private static PrintFile File(string? model = null,
-                                  float? nozzle = null,
-                                  bool? abrasive = null,
-                                  bool? highFlow = null)
+    private static HSFile File(string? model = null,
+                               float? nozzle = null,
+                               bool? abrasive = null,
+                               bool? highFlow = null)
     {
-        return new PrintFile
+        return new HSFile
         {
             Name = "model.bgcode",
             MetadataState = PrintFileMetadataState.Read,

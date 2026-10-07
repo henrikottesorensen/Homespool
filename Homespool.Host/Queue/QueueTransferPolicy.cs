@@ -91,7 +91,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
     {
         Begun = true;
         _head = await context.DbContext.QueuedPrints
-                                       .Include(queued => queued.PrintFile)
+                                       .Include(queued => queued.File)
                                        .SingleOrDefaultAsync(queued => queued.Id == _headId, cancellationToken);
 
         if (_head is null)
@@ -100,7 +100,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
         }
 
         PrintFileCatalog catalog = context.Services.GetRequiredService<PrintFileCatalog>();
-        StoredFile? file = catalog.FindForPrinting(_head.QueuedByUserId, _head.PrintFile!.Name);
+        StoredFile? file = catalog.FindForPrinting(_head.QueuedByUserId, _head.File!.Name);
 
         if (file is null && !catalog.HasStorageFor(_head.QueuedByUserId))
         {
@@ -109,7 +109,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
             // in turn on a disk that is not there, so it is held like a file that cannot be opened,
             // and the first pass that finds the storage back sends it.
             bool existed = context.Row is not null;
-            PrintFileOnPrinter onPrinter = context.EnsureRow();
+            FileOnPrinter onPrinter = context.EnsureRow();
 
             if (existed &&
                 onPrinter is { HoldReason: PrintHoldReason.FileUnreadable, BlockedAt: { } blockedAt } &&
@@ -131,7 +131,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
             // entry is dropped rather than retried forever - the reconciler makes the same call when
             // it finds a row whose file has left.
             _logger.LogWarning("[{PrinterId}] {FileName} is queued but no longer on disk; dropping the entry",
-                               context.PrinterId, _head.PrintFile.Name);
+                               context.PrinterId, _head.File.Name);
             context.DbContext.QueuedPrints.Remove(_head);
         }
 
@@ -158,12 +158,12 @@ internal sealed class QueueTransferPolicy : TransferPolicy
                                                PrintFileUnreadableException unreadable,
                                                CancellationToken cancellationToken)
     {
-        if (context.Services.GetRequiredService<PrintFileCatalog>().FindForPrinting(Head.QueuedByUserId, Head.PrintFile!.Name) is null)
+        if (context.Services.GetRequiredService<PrintFileCatalog>().FindForPrinting(Head.QueuedByUserId, Head.File!.Name) is null)
         {
             // Deleted between being found and being opened. The next pass finds it missing and
             // drops the entry, as it would have had the delete come a moment sooner.
             _logger.LogInformation(unreadable, "[{PrinterId}] {FileName} went while it was being sent",
-                                   context.PrinterId, Head.PrintFile.Name);
+                                   context.PrinterId, Head.File.Name);
         }
         else
         {
@@ -185,7 +185,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
         if (kept.Removal == OutdatedCopyRemoval.InUse)
         {
             _logger.LogDebug("[{PrinterId}] the older copy of {FileName} is in use; waiting to replace it",
-                             context.PrinterId, Head.PrintFile!.Name);
+                             context.PrinterId, Head.File!.Name);
         }
         else
         {
@@ -216,7 +216,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
         if (context.Row!.HoldReason == PrintHoldReason.FileUnreadable)
         {
             _logger.LogInformation("[{PrinterId}] {FileName} can be read again; the queue resumes",
-                                   context.PrinterId, Head.PrintFile!.Name);
+                                   context.PrinterId, Head.File!.Name);
 
             QueueHolds.ClearHold(context.Row);
         }
@@ -229,7 +229,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
                                             CommandOutcome refusal,
                                             CancellationToken cancellationToken)
     {
-        PrintFileOnPrinter onPrinter = context.Row!;
+        FileOnPrinter onPrinter = context.Row!;
 
         // Classified on MachineReason, not on the prose: the code is a fixed vocabulary and the
         // wording is free to change between releases. Both are the printer's text, so both are
@@ -253,7 +253,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
     /// <inheritdoc />
     public override void Taken(TransferContext context, CommandOutcome? outcome)
     {
-        PrintFileOnPrinter onPrinter = context.Row!;
+        FileOnPrinter onPrinter = context.Row!;
 
         if (outcome is not null && onPrinter.TransferRefusalCount is not null &&
             !TransferRetryRules.IsCountingAborts(onPrinter))
@@ -279,7 +279,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
     /// <c>File not found</c> reaches from the other direction: the drive is the truth.
     /// </para>
     /// <para>
-    /// <b>Only when <see cref="PrintFileOnPrinter.Digest"/> says so.</b> <c>FILE_INFO</c> carries no
+    /// <b>Only when <see cref="FileOnPrinter.Digest"/> says so.</b> <c>FILE_INFO</c> carries no
     /// digest, so what is on the drive can only be vouched for by what Homespool recorded sending
     /// there. A matching size is checked as well, but never on its own: a re-slice that changes one
     /// temperature keeps its length, so a size match would adopt the older version of a file and print
@@ -307,7 +307,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
                                                   QueuedPrint head,
                                                   StoredFile file,
                                                   string digest,
-                                                  PrintFileOnPrinter onPrinter,
+                                                  FileOnPrinter onPrinter,
                                                   CancellationToken cancellationToken)
     {
         PrinterCommandService commands = services.GetRequiredService<PrinterCommandService>();
@@ -361,7 +361,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
 
         string refused = onPrinter.DriveName ?? file.FileName;
         string? next = await services.GetRequiredService<PrinterDriveNames>()
-                                  .AfterAsync(printerId, head.PrintFile!, refused, file.FileName, cancellationToken);
+                                  .AfterAsync(printerId, head.File!, refused, file.FileName, cancellationToken);
 
         if (next is not null)
         {
@@ -432,7 +432,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
                                              int printerId,
                                              QueuedPrint head,
                                              long length,
-                                             PrintFileOnPrinter onPrinter,
+                                             FileOnPrinter onPrinter,
                                              CancellationToken cancellationToken)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -479,7 +479,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
             if (onPrinter.HoldReason == PrintHoldReason.InsufficientSpace)
             {
                 _logger.LogInformation("[{PrinterId}] there is room for {FileName} now; the queue resumes",
-                                       printerId, head.PrintFile!.Name);
+                                       printerId, head.File!.Name);
 
                 QueueHolds.ClearHold(onPrinter);
                 await dbContext.SaveChangesAsync(cancellationToken);
@@ -504,7 +504,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
             // different jobs.
             string recorded = string.Create(
                 CultureInfo.InvariantCulture,
-                $"Not enough space on the printer: {head.PrintFile!.Name} needs {length} bytes, {free} free.");
+                $"Not enough space on the printer: {head.File!.Name} needs {length} bytes, {free} free.");
 
             // Written once, on the transition. A row per tick would turn history into a log, and the
             // queue entry itself stays put - somebody still wants this printed.
@@ -512,8 +512,8 @@ internal sealed class QueueTransferPolicy : TransferPolicy
             {
                 PrinterId = printerId,
                 PrintUuid = head.PrintUuid,
-                FileName = head.PrintFile.Name,
-                Digest = head.PrintFile.Digest,
+                FileName = head.File.Name,
+                Digest = head.File.Digest,
                 QueuedByUserId = head.QueuedByUserId,
                 QueuedByScope = head.QueuedByScope,
                 StartedAt = now,

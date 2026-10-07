@@ -625,7 +625,7 @@ public class QueueRulesTests
         return new QueueSnapshot(
             Connected: true,
             status,
-            new QueueHead(QueuedPrintId: 1, PrintFileId: 2, "benchy.bgcode", arrived, path),
+            new QueueHead(QueuedPrintId: 1, FileId: 2, "benchy.bgcode", arrived, path),
             TransferInFlight: false);
     }
 }

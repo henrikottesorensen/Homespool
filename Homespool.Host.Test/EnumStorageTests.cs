@@ -104,8 +104,8 @@ public sealed class EnumStorageTests : IDisposable
     [InlineData("PrinterEvents", "Status", "Attention")]
     [InlineData("PrinterLiveStates", "Status", "Printing")]
     [InlineData("TelemetrySamples", "Status", "Printing")]
-    [InlineData("PrintFiles", "MetadataState", "Unreadable")]
-    [InlineData("PrintFilesOnPrinters", "HoldReason", "InsufficientSpace")]
+    [InlineData("Files", "MetadataState", "Unreadable")]
+    [InlineData("FilesOnPrinters", "HoldReason", "InsufficientSpace")]
     [InlineData("PrintJobs", "State", "Stopped")]
     public async Task AnEnumColumnHoldsTheMemberName(string table, string column, string expected)
     {
@@ -167,7 +167,7 @@ public sealed class EnumStorageTests : IDisposable
             Status = PrinterStatus.Attention,
         };
 
-        PrintFile file = new()
+        HSFile file = new()
         {
             UserId = 1,
             Name = "bracket.gcode",
@@ -177,7 +177,7 @@ public sealed class EnumStorageTests : IDisposable
         };
 
         context.Printers.Add(printer);
-        context.PrintFiles.Add(file);
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.PrinterEvents.Add(new PrinterEvent
@@ -201,10 +201,10 @@ public sealed class EnumStorageTests : IDisposable
             Status = PrinterStatus.Printing,
         });
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = printer.Id,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             HoldReason = PrintHoldReason.InsufficientSpace,
             BlockedAt = DateTimeOffset.UtcNow,
         });

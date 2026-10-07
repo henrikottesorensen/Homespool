@@ -99,8 +99,14 @@ internal sealed class RecoveryCodeHashes
         if (fields.Length != 4 ||
             fields[0] != Version ||
             !int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out int iterations) ||
-            iterations <= 0 ||
-            FromBase64(fields[2], SaltBytes) is not { } salt)
+            iterations <= 0)
+        {
+            return null;
+        }
+
+        byte[]? salt = FromBase64(fields[2], SaltBytes);
+
+        if (salt is null)
         {
             return null;
         }
@@ -109,7 +115,9 @@ internal sealed class RecoveryCodeHashes
 
         foreach (string field in fields[3].Split(HashSeparator))
         {
-            if (FromBase64(field, HashBytes) is not { } hash)
+            byte[]? hash = FromBase64(field, HashBytes);
+
+            if (hash is null)
             {
                 return null;
             }

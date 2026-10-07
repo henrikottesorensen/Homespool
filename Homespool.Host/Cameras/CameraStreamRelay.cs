@@ -82,7 +82,8 @@ public sealed class CameraStreamRelay
 
             // Before the first-frame wait, so a stream that will be refused anyway costs nothing.
             MediaTypeHeaderValue? upstreamType = upstream.Content.Headers.ContentType;
-            if (ContentTypeFor(upstreamType) is not { } contentType)
+            string? contentType = ContentTypeFor(upstreamType);
+            if (contentType is null)
             {
                 _logger.LogWarning(
                     "The stream server answered a live stream as {ContentType}, which is not a multipart MJPEG stream.",

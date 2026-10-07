@@ -438,7 +438,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
         if (onPrinter.HoldReason is not null &&
-            onPrinter.BlockedAt is { } blockedAt &&
+            onPrinter.BlockedAt is DateTimeOffset blockedAt &&
             now - blockedAt < QueueAdvancer.BlockRecheckAfter)
         {
             // Still held, and asked recently enough. Saying nothing here is deliberate: a held queue

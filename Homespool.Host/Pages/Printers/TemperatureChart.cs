@@ -232,7 +232,7 @@ public sealed class TemperatureChart
 
         foreach (TemperaturePoint point in series.Points)
         {
-            if (select(point) is not { } value)
+            if (select(point) is not double value)
             {
                 penDown = false;
 

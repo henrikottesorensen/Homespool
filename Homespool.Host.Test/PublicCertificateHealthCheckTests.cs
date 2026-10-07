@@ -50,7 +50,9 @@ public sealed class PublicCertificateHealthCheckTests
         {
             Asked.Add(name);
 
-            if (ThrowNext is { } toThrow)
+            Exception? toThrow = ThrowNext;
+
+            if (toThrow is not null)
             {
                 ThrowNext = null;
                 throw toThrow;

@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 using Homespool.Data;
+using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Telemetry;
@@ -305,7 +306,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     {
         // Always counted (the health snapshot reports the exact total); logged at most once per
         // DropWarningInterval, whatever the drop rate.
-        if (_dropWarnings.Record() is not { } window)
+        if (_dropWarnings.Record() is not LogThrottleWindow window)
         {
             return;
         }
@@ -900,7 +901,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             // sends unprocessable messages, but an attacker can stream them at wire rate - and this
             // site logs a full stack trace per item, which is the heaviest log entry in the class.
             // The skip semantics are untouched; only the logging is capped.
-            if (_processingFailureWarnings.Record() is { } window)
+            if (_processingFailureWarnings.Record() is LogThrottleWindow window)
             {
                 if (window.IsFirstOccurrence)
                 {
@@ -996,7 +997,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // discarding of a single row. The window summary is the aggregate the message was always
         // phrased for. Same arrangement as the drop warning - occurrences counted exactly, only the
         // logging bounded.
-        if (_sampleTrims.Record(excess) is not { } window)
+        if (_sampleTrims.Record(excess) is not LogThrottleWindow window)
         {
             return;
         }
@@ -1044,7 +1045,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // loss with nothing to reconstruct it from, and an operator should hear about it the moment
         // it starts. What is bounded is the repetition, which reached 5,193 identical Errors in one
         // 180 s outage. The exact lifetime total stays unthrottled on the health snapshot.
-        if (_eventTrims.Record(excess) is not { } window)
+        if (_eventTrims.Record(excess) is not LogThrottleWindow window)
         {
             return;
         }
@@ -1314,7 +1315,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
-                if (_observerFailures.Record() is { } window)
+                if (_observerFailures.Record() is LogThrottleWindow window)
                 {
                     _logger.LogError(e,
                                      "[{PrinterId}] a live-state observer failed - {Count} time(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. Telemetry is unaffected.",
@@ -1347,7 +1348,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
-                    if (_observerFailures.Record() is { } window)
+                    if (_observerFailures.Record() is LogThrottleWindow window)
                     {
                         _logger.LogError(e,
                                          "[{PrinterId}] an event observer failed - {Count} time(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. Telemetry is unaffected.",
@@ -1374,19 +1375,19 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     {
         PrinterEventRecord record = item.Data;
 
-        if (record.Identity is { } identity)
+        if (record.Identity is not null)
         {
             // An identity report arrives on connection and is applied at flush time, so it commits
             // with everything else in the batch - see FlushAsync.
-            pendingPrinterInfo[item.PrinterId] = identity;
+            pendingPrinterInfo[item.PrinterId] = record.Identity;
         }
 
-        if (record.DriveListing is { } listing)
+        if (record.DriveListing is not null)
         {
             // Last one wins, and that is the semantics rather than an optimisation: a listing is
             // superseded by the next, so a batch carrying three of them means only the third
             // describes the drive. Overwriting here is what keeps a flush from writing history.
-            pendingDriveListings[item.PrinterId] = new PendingDriveListing(listing, item.ReceivedAt);
+            pendingDriveListings[item.PrinterId] = new PendingDriveListing(record.DriveListing, item.ReceivedAt);
         }
 
         if (record.EventType == Model.PrinterEventType.StateChanged)
@@ -1409,7 +1410,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             Tell(item.PrinterId, before, entry.State, item.ReceivedAt);
         }
 
-        if (record.Cancellable is { } cancellable)
+        if (record.Cancellable is not null)
         {
             // Replaced whole rather than merged: every report is the entire plate. A null record
             // said nothing about the plate and leaves the stored one standing, which matters because
@@ -1420,12 +1421,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 cache[item.PrinterId] = entry;
             }
 
-            entry.State.CancellableObjectCount = cancellable.ObjectCount;
-            entry.State.CancelledObjectIds = Model.CancelledObjects.Format(cancellable.CancelledIds);
+            entry.State.CancellableObjectCount = record.Cancellable.ObjectCount;
+            entry.State.CancelledObjectIds = Model.CancelledObjects.Format(record.Cancellable.CancelledIds);
             dirtyPrinterIds.Add(item.PrinterId);
         }
 
-        if (record.LightingIntensity is { } intensity)
+        if (record.LightingIntensity is int intensity)
         {
             // Into the same column telemetry writes, so the next report carrying a brightness simply
             // replaces it - there is no second source for a reader to reconcile.

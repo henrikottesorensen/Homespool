@@ -33,7 +33,9 @@ public static class TransferRequestBuilder
             writer.WriteStartObject();
             writer.WriteString("transfer", "inline");
 
-            if (request.Details is { } details)
+            InlineRequestDetails? details = request.Details;
+
+            if (details is not null)
             {
                 writer.WriteString("hash", details.Hash);
                 writer.WriteNumber("team_id", details.TeamId);

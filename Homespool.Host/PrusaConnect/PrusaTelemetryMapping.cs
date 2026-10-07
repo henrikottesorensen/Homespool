@@ -151,7 +151,9 @@ public static class PrusaTelemetryMapping
                                                   PrusaConnectConstants.FilamentSensorStatusMaxLength),
         };
 
-        if (telemetry.Chamber is { } chamber)
+        ChamberTelemetryDTO? chamber = telemetry.Chamber;
+
+        if (chamber is not null)
         {
             update = update with
             {
@@ -164,7 +166,9 @@ public static class PrusaTelemetryMapping
             };
         }
 
-        if (telemetry.Enclosure is { } enclosure)
+        EnclosureTelemetryDTO? enclosure = telemetry.Enclosure;
+
+        if (enclosure is not null)
         {
             update = update with
             {
@@ -174,7 +178,9 @@ public static class PrusaTelemetryMapping
             };
         }
 
-        if (telemetry.Slot is { } slot)
+        SlotsTelemetryDTO? slot = telemetry.Slot;
+
+        if (slot is not null)
         {
             // Active is always present when the block is, but MmuState/MmuCommand are MMU-only - an
             // XL sends the block (tool changer, >1 tool) without ever populating those two, so they
@@ -429,7 +435,7 @@ public static class PrusaTelemetryMapping
             return Field<string?>.Absent;
         }
 
-        return LoadedFilament.Of(reported) is { } material ? Field<string?>.Of(material) : Field<string?>.Null;
+        return LoadedFilament.Of(reported) is string material ? Field<string?>.Of(material) : Field<string?>.Null;
     }
 
     /// <summary>
@@ -658,7 +664,7 @@ public static class PrusaTelemetryMapping
     /// </remarks>
     private static string? FormatPayload(EventDTO dto)
     {
-        if (dto.Data is not { } element)
+        if (dto.Data is not JsonElement element)
         {
             return null;
         }

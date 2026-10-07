@@ -179,7 +179,7 @@ public class PrinterAccessService
         Capability[] candidates = WithdrawingCandidates(caller, queuedByUserId);
         CapabilitySet? membership = await MembershipOfAsync(printerId, caller.UserId, cancellationToken);
 
-        if (Allowing(candidates, caller, membership) is { } allowedBy)
+        if (Allowing(candidates, caller, membership) is Capability allowedBy)
         {
             return allowedBy;
         }

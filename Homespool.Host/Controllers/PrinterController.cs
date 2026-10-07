@@ -195,7 +195,9 @@ public class PrinterController : ControllerBase
             DirectSendResult result = await _transfers.SendDirectAsync(printer, indexed, file, CallerResolver.For(user, User),
                                                                        cancellationToken);
 
-            if (result.Sent is not { } sent)
+            FileSendResult? sent = result.Sent;
+
+            if (sent is null)
             {
                 // Said as the printer refusing the send, which is what it amounts to: the newer
                 // version cannot go where the older one still is.

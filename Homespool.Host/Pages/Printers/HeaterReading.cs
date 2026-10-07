@@ -33,12 +33,12 @@ public sealed record HeaterReading(float? Current, float? Target, HeaterState St
     /// </remarks>
     public static HeaterReading For(float? current, float? target)
     {
-        if (current is not { } now)
+        if (current is not float now)
         {
             return new HeaterReading(current, target, HeaterState.Unknown);
         }
 
-        if (target is not { } wanted || wanted <= 0)
+        if (target is not float wanted || wanted <= 0)
         {
             return new HeaterReading(current, target, now > WarmAbove ? HeaterState.Cooling : HeaterState.Off);
         }

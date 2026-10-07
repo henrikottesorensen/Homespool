@@ -407,7 +407,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                     {
                         Fail(send.Completion, e);
                     }
-                    else if (_faultWarnings.Record() is { } window)
+                    else if (_faultWarnings.Record() is LogThrottleWindow window)
                     {
                         if (window.IsFirstOccurrence)
                         {
@@ -681,9 +681,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // INFO is where a printer describes itself, and the version is the only thing that tells two
         // Buddys apart - they send no user agent. Taken as it passes rather than asked for, and kept
         // only for the life of this connection, which a firmware change ends.
-        if (message.Identity?.Firmware is { } firmware)
+        if (message.Identity?.Firmware is not null)
         {
-            _firmwareVersion = firmware;
+            _firmwareVersion = message.Identity.Firmware;
         }
 
         int? lightingIntensity = null;

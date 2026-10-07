@@ -176,7 +176,7 @@ public sealed class ProvisioningHashBudget
         {
             DateTimeOffset now = _time.GetUtcNow();
 
-            if (_refusedSinceReport == 0 || (_reportedAt is { } last && now - last < ReportInterval))
+            if (_refusedSinceReport == 0 || (_reportedAt is DateTimeOffset last && now - last < ReportInterval))
             {
                 return null;
             }

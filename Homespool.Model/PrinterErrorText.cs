@@ -609,7 +609,7 @@ public static class PrinterErrorText
     /// </param>
     public static string? For(int? code, string? language = null)
     {
-        if (code is not { } value)
+        if (code is not int value)
         {
             return null;
         }

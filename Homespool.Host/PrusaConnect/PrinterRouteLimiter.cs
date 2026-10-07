@@ -88,7 +88,7 @@ public sealed class PrinterRouteLimiter : PartitionedRateLimiter<HttpContext>
         // this class guards.
         PrinterRateLimits.Demand? demand = PrinterRateLimits.DemandOf(resource);
 
-        if (demand is not { } wanted)
+        if (demand is not PrinterRateLimits.Demand wanted)
         {
             return Admitted;
         }
@@ -190,7 +190,9 @@ public sealed class PrinterRouteLimiter : PartitionedRateLimiter<HttpContext>
                 return node.Value.Window;
             }
 
-            if (_callers.Count >= capacity && _recency.Last is { } oldest)
+            LinkedListNode<Caller>? oldest = _recency.Last;
+
+            if (_callers.Count >= capacity && oldest is not null)
             {
                 _recency.RemoveLast();
                 _callers.Remove(oldest.Value.Key);

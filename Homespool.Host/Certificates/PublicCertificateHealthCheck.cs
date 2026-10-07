@@ -100,7 +100,7 @@ public sealed class PublicCertificateHealthCheck : IHealthCheck
 
         lock (_gate)
         {
-            if (_last is { } last && _time.GetUtcNow() < _lastValidUntil)
+            if (_last is HealthCheckResult last && _time.GetUtcNow() < _lastValidUntil)
             {
                 return last;
             }
@@ -246,7 +246,7 @@ public sealed class PublicCertificateHealthCheck : IHealthCheck
             }
             else
             {
-                data[name] = probe.NotAfter is { } notAfter ?
+                data[name] = probe.NotAfter is DateTimeOffset notAfter ?
                     $"{probe.Outcome}, valid until {notAfter:yyyy-MM-dd HH:mm} UTC, {probe.Errors}" :
                     $"{probe.Outcome}: {probe.Detail}";
             }
@@ -306,7 +306,7 @@ public sealed class PublicCertificateHealthCheck : IHealthCheck
                         "cannot reach the site under that name.");
         }
 
-        if (probe.Outcome != PublicCertificateProbeOutcome.Served || probe.NotAfter is not { } notAfter)
+        if (probe.Outcome != PublicCertificateProbeOutcome.Served || probe.NotAfter is not DateTimeOffset notAfter)
         {
             throw new InvalidOperationException($"A probe of {name} came back {probe.Outcome} with no certificate.");
         }

@@ -96,7 +96,7 @@ public class AttemptLimiter
                                                                 .Select(a => a.LockoutEnd)
                                                                 .SingleOrDefaultAsync(cancellationToken);
 
-        if (lockoutEnd is not { } end || end <= now)
+        if (lockoutEnd is not DateTimeOffset end || end <= now)
         {
             return null;
         }
@@ -252,7 +252,7 @@ public class AttemptLimiter
                                                     .Select(a => new { a.LockoutEnd })
                                                     .SingleOrDefaultAsync(cancellationToken);
 
-            if (current?.LockoutEnd is { } running && running > now)
+            if (current?.LockoutEnd is DateTimeOffset running && running > now)
             {
                 return running - now;
             }

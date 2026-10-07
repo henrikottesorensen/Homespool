@@ -109,7 +109,9 @@ public class PrinterFilamentService
         IReadOnlyList<PrinterToolState> tools = await _tools.ReadToolsAsync(printerId, cancellationToken);
         PrinterToolState tool = Resolve(printerId, tools, toolNumber);
 
-        if (tool.Material is not { } material)
+        string? material = tool.Material;
+
+        if (material is null)
         {
             throw new FilamentTypeUnknownException(printerId);
         }
@@ -154,7 +156,7 @@ public class PrinterFilamentService
             throw new FilamentTypeUnknownException(printerId);
         }
 
-        if (toolNumber is not { } requested)
+        if (toolNumber is not int requested)
         {
             return tools.Count == 1 ? tools[0] : throw new ToolNotSpecifiedException(printerId);
         }

@@ -155,7 +155,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
     {
         ArgumentNullException.ThrowIfNull(user);
 
-        if (user.SecurityStamp is { } replaced && !string.Equals(replaced, stamp, StringComparison.Ordinal))
+        if (user.SecurityStamp is not null && !string.Equals(user.SecurityStamp, stamp, StringComparison.Ordinal))
         {
             if (!_replacedStamps.TryGetValue(user.Id, out List<string>? stamps))
             {
@@ -163,7 +163,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
                 _replacedStamps[user.Id] = stamps;
             }
 
-            stamps.Add(replaced);
+            stamps.Add(user.SecurityStamp);
         }
 
         return base.SetSecurityStampAsync(user, stamp, cancellationToken);
@@ -277,7 +277,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
                 return AttemptTicket.Counted(end);
             }
 
-            if (await LockedUntilAsync(user, cancellationToken) is { } until && until > now && onlyIfNotLockedOut)
+            if (await LockedUntilAsync(user, cancellationToken) is DateTimeOffset until && until > now && onlyIfNotLockedOut)
             {
                 return AttemptTicket.Refused(until - now);
             }
@@ -302,7 +302,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
 
         (string? loaded, string fresh, string other) = NextStamps(user);
 
-        if (imposed is { } ours &&
+        if (imposed is DateTimeOffset ours &&
             await Row(user).Where(u => u.LockoutEnd == ours)
                            .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, maxFailedAttempts - 1)
                                                                  .SetProperty(u => u.LockoutEnd, (DateTimeOffset?)null)
@@ -337,7 +337,7 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
 
         (string? loaded, string fresh, string other) = NextStamps(user);
 
-        int cleared = imposed is { } ours ?
+        int cleared = imposed is DateTimeOffset ours ?
             await Row(user).Where(u => u.AccessFailedCount != 0 || u.LockoutEnd == ours)
                            .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.AccessFailedCount, 0)
                                                                  .SetProperty(u => u.LockoutEnd, u => u.LockoutEnd == ours ? null : u.LockoutEnd)
@@ -505,7 +505,9 @@ public sealed class HSUserStore : UserStore<HSUser, IdentityRole<long>, Homespoo
             return true;
         }
 
-        if (Parse(user, stored) is not { } hashes || !hashes.TryRemove(code))
+        RecoveryCodeHashes? hashes = Parse(user, stored);
+
+        if (hashes is null || !hashes.TryRemove(code))
         {
             return false;
         }

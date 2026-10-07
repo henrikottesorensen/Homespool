@@ -580,7 +580,9 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
                                                                             cancellationToken);
         TransferContext context = new(scope.ServiceProvider, dbContext, printerId, printFile, existing);
 
-        if (await policy.FindFileAsync(context, cancellationToken) is not { } file)
+        StoredFile? file = await policy.FindFileAsync(context, cancellationToken);
+
+        if (file is null)
         {
             await dbContext.SaveChangesAsync(cancellationToken);
 
@@ -900,7 +902,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
 
         PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
                                                                              displayName) &&
-                                                             (candidate.TransferStartedAt is not { } startedAt ||
+                                                             (candidate.TransferStartedAt is not DateTimeOffset startedAt ||
                                                               printerEvent.Timestamp >= startedAt))
                                          .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
                                          .ThenByDescending(candidate => candidate.TransferStartedAt)
@@ -959,7 +961,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
                                               PrinterEvent printerEvent,
                                               CancellationToken cancellationToken)
     {
-        if (Deserialize<TransferEventDataDTO>(printerEvent)?.StartCommandId is not { } startCommandId)
+        if (Deserialize<TransferEventDataDTO>(printerEvent)?.StartCommandId is not uint startCommandId)
         {
             return false;
         }
@@ -1026,7 +1028,9 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     private static T? Deserialize<T>(PrinterEvent? printerEvent)
         where T : class
     {
-        if (printerEvent?.Payload is not { } payload)
+        string? payload = printerEvent?.Payload;
+
+        if (payload is null)
         {
             return null;
         }

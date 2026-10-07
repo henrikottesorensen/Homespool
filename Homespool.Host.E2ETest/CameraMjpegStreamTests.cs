@@ -230,7 +230,7 @@ public sealed class CameraMjpegStreamTests : IAsyncLifetime
     private static async Task<HttpResponseMessage> OpenAsync(HttpClient client, Guid uuid, Guid? view = null)
     {
         using HttpRequestMessage request = new(
-            HttpMethod.Get, $"/api/v1/cameras/{uuid}/stream.mjpeg" + (view is { } named ? $"?view={named}" : string.Empty));
+            HttpMethod.Get, $"/api/v1/cameras/{uuid}/stream.mjpeg" + (view is Guid named ? $"?view={named}" : string.Empty));
 
         return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
     }

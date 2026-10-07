@@ -89,7 +89,7 @@ public sealed class AttentionWatch : ILiveStateObserver
         {
             foreach ((int printerId, Watched watched) in _printers)
             {
-                if (watched.WaitingSince is not { } since || now - since < Settle)
+                if (watched.WaitingSince is not DateTimeOffset since || now - since < Settle)
                 {
                     continue;
                 }
@@ -99,7 +99,7 @@ public sealed class AttentionWatch : ILiveStateObserver
                 LiveStateSnapshot state = watched.Latest;
                 Episode episode = new(state.Status, state.AttentionCode, state.JobId);
 
-                if (watched.LastAnnounced is { } last &&
+                if (watched.LastAnnounced is Announcement last &&
                     last.Episode == episode &&
                     now - last.At < RepeatSuppression)
                 {

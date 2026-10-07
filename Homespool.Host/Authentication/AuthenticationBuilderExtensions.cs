@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 using Duende.IdentityModel;
@@ -282,7 +283,9 @@ public static class AuthenticationBuilderExtensions
             // nothing reads a claim before it has been made printable here.
             options.Events.OnTicketReceived = context =>
             {
-                if (context.Principal is { } principal)
+                ClaimsPrincipal? principal = context.Principal;
+
+                if (principal is not null)
                 {
                     if (!ExternalSignIn.TryMakePrintable(principal, out string? refusedClaimType))
                     {

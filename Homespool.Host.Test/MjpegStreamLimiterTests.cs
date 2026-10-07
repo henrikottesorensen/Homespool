@@ -122,7 +122,7 @@ public class MjpegStreamLimiterTests
 
         await Task.WhenAll(Enumerable.Range(0, 200).Select(_ => Task.Run(() =>
         {
-            if (limiter.TryAcquire(Alice, Camera, null) is { } lease)
+            if (limiter.TryAcquire(Alice, Camera, null) is MjpegStreamLease lease)
             {
                 granted.Add(lease);
             }

@@ -2699,8 +2699,8 @@ file static class WireEnqueueExtensions
     {
         PrinterIdentityUpdate? identity = null;
 
-        if (eventDto.EventType == PrinterEventType.Info && eventDto.Data is { } data &&
-            data.Deserialize<InfoEventDataDTO>() is { } info)
+        if (eventDto.EventType == PrinterEventType.Info && eventDto.Data is JsonElement data &&
+            data.Deserialize<InfoEventDataDTO>() is InfoEventDataDTO info)
         {
             identity = PrusaTelemetryMapping.ToIdentity(info);
         }

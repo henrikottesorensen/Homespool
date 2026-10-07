@@ -177,7 +177,7 @@ public class CameraController : ControllerBase
         // No address means the sidecar has no credential and is not used, so there is nothing to
         // schedule. The read below then finds no frame and answers 204 - the same answer a camera
         // that is switched off gives, which is honest: there is no current picture either way.
-        if (_streamServer.FrameUrl(camera.Uuid) is { } frameUrl)
+        if (_streamServer.FrameUrl(camera.Uuid) is Uri frameUrl)
         {
             _frames.RequestRefresh(camera.Id, frameUrl);
         }

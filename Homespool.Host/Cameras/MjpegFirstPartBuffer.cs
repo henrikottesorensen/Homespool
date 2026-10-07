@@ -116,7 +116,7 @@ public sealed class MjpegFirstPartBuffer
 
         int headerLength = headerEnd + 4;
 
-        if (ParseContentLength(headerLength) is not { } bodyLength || bodyLength > MaxPartBytes)
+        if (ParseContentLength(headerLength) is not int bodyLength || bodyLength > MaxPartBytes)
         {
             return PartKind.Unframed;
         }

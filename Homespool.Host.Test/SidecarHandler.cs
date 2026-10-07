@@ -137,7 +137,7 @@ internal sealed class SidecarHandler : HttpMessageHandler
             return Answer(ConfigFile());
         }
 
-        if (request.Method == HttpMethod.Delete && query["src"] is { } deleted)
+        if (request.Method == HttpMethod.Delete && query["src"] is string deleted)
         {
             lock (_gate)
             {
@@ -150,9 +150,9 @@ internal sealed class SidecarHandler : HttpMessageHandler
 
         if (request.Method == HttpMethod.Put &&
             path == "/api/streams" &&
-            query["name"] is { } name &&
+            query["name"] is string name &&
             Guid.TryParse(name, out Guid uuid) &&
-            query["src"] is { } source)
+            query["src"] is string source)
         {
             int before;
 

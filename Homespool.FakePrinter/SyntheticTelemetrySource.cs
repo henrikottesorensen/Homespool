@@ -97,7 +97,7 @@ public sealed class SyntheticTelemetrySource : ITelemetrySource
     private void Advance(FakeDevice device)
     {
         DateTimeOffset now = Clock.GetUtcNow();
-        TimeSpan elapsed = _lastMessageAt is { } last && now > last ? now - last : TimeSpan.Zero;
+        TimeSpan elapsed = _lastMessageAt is DateTimeOffset last && now > last ? now - last : TimeSpan.Zero;
         _lastMessageAt = now;
 
         if (device.JobId != _countedJob)

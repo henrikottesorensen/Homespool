@@ -283,7 +283,7 @@ public class PasskeysModel : StatusMessagePageModel
 
         // Verified and for this account, so now it is answered; a record refused is a concurrent
         // copy of this request that got there first.
-        if (_ceremonies.Spend(ceremony) is { } notSpent)
+        if (_ceremonies.Spend(ceremony) is string notSpent)
         {
             _logger.LogInformation("Passkey registration refused for user {UserId}: {Reason}.", user.Id, notSpent);
 

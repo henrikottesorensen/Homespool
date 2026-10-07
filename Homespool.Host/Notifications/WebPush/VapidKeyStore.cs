@@ -72,7 +72,7 @@ public sealed class VapidKeyStore : IDisposable
     /// </summary>
     public async Task<VapidCredentials> GetAsync(CancellationToken cancellationToken)
     {
-        if (_current is { } current)
+        if (_current is VapidCredentials current)
         {
             return current;
         }

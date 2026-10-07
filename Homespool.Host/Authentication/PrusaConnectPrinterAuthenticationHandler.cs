@@ -403,7 +403,7 @@ public class PrusaConnectPrinterAuthenticationHandler : AuthenticationHandler<Pr
     /// </summary>
     private void ReportExhaustedBudget()
     {
-        if (_hashBudget.TakeReport() is not { } refused)
+        if (_hashBudget.TakeReport() is not long refused)
         {
             return;
         }

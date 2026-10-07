@@ -76,7 +76,7 @@ public sealed class TlsPublicCertificateProbe : IPublicCertificateProbe
             return PublicCertificateProbeResult.Refused(e.Message);
         }
 
-        return notAfter is { } expiry ?
+        return notAfter is DateTimeOffset expiry ?
             PublicCertificateProbeResult.Served(expiry, errors) :
             PublicCertificateProbeResult.Refused("the handshake completed with no certificate");
     }

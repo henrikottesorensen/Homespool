@@ -271,7 +271,7 @@ public sealed class CameraSourcePolicy
         }
 
         // This container, which in the shipped stack is "homespool".
-        if (_machine.HostName() is { } hostName)
+        if (_machine.HostName() is string hostName)
         {
             names.Add(hostName);
         }

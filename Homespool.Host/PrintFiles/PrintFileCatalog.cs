@@ -274,9 +274,9 @@ public sealed class PrintFileCatalog
         ArgumentNullException.ThrowIfNull(row);
         ArgumentNullException.ThrowIfNull(file);
 
-        if (row.Digest is { } known)
+        if (row.Digest is not null)
         {
-            return known;
+            return row.Digest;
         }
 
         string digest;

@@ -54,7 +54,9 @@ public sealed class RecentProofPageFilter : IAsyncPageFilter
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(next);
 
-        if (Declared(context) is not { } required)
+        RequireRecentProofAttribute? required = Declared(context);
+
+        if (required is null)
         {
             await next();
 

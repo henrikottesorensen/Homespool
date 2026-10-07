@@ -253,7 +253,7 @@ public class FakeTransferTests
     {
         List<InlineRequest> requests = [];
 
-        while (transfer.NextRequest() is { } request)
+        while (transfer.NextRequest() is InlineRequest request)
         {
             requests.Add(request);
             Deliver(transfer, source, request);

@@ -54,7 +54,7 @@ public sealed class CredentialChangeLimit
     /// </summary>
     public async Task<bool> HasRoomAsync(long userId, CancellationToken cancellationToken)
     {
-        if (await _attempts.RemainingLockoutAsync(userId, LimitedAction.ChangeSignIn, _time.GetUtcNow(), cancellationToken) is not { } remaining)
+        if (await _attempts.RemainingLockoutAsync(userId, LimitedAction.ChangeSignIn, _time.GetUtcNow(), cancellationToken) is not TimeSpan remaining)
         {
             return true;
         }
@@ -74,7 +74,7 @@ public sealed class CredentialChangeLimit
     /// </remarks>
     public async Task<bool> TryStartAsync(long userId, CancellationToken cancellationToken)
     {
-        if (await _attempts.TryStartCooldownAsync(userId, LimitedAction.ChangeSignIn, _time.GetUtcNow(), Cooldown, cancellationToken) is { } remaining)
+        if (await _attempts.TryStartCooldownAsync(userId, LimitedAction.ChangeSignIn, _time.GetUtcNow(), Cooldown, cancellationToken) is TimeSpan remaining)
         {
             LogRefusal(userId, remaining);
 

@@ -57,7 +57,7 @@ public sealed class PrinterDriveCopies
     /// </remarks>
     public static bool IsCurrent(PrintFileOnPrinter? row, string? digest)
     {
-        return row?.Digest is { } held && digest is not null && string.Equals(held, digest, StringComparison.Ordinal);
+        return row?.Digest is not null && digest is not null && string.Equals(row.Digest, digest, StringComparison.Ordinal);
     }
 
     /// <summary>

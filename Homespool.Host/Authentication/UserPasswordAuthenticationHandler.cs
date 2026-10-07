@@ -1,3 +1,4 @@
+using System;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
@@ -138,7 +139,7 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
             return SignInRefusals.Fail(SignInRefusal.Invalid, "Invalid login attempt.");
         }
 
-        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        if (await _rules.PreSignInCheckAsync(user) is SignInRefusal refusal)
         {
             // The decoy the unknown-identifier branch pays, for the same reason: this refusal returns
             // before the password is ever compared, so without it an account that may not sign in is
@@ -234,7 +235,7 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
             return SignInRefusals.Fail(SignInRefusal.Invalid, "A password is required.");
         }
 
-        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        if (await _rules.PreSignInCheckAsync(user) is SignInRefusal refusal)
         {
             Logger.LogInformation("Password step-up refused for user {UserId}: {Refusal}.", user.Id, refusal);
 
@@ -243,7 +244,7 @@ public sealed class UserPasswordAuthenticationHandler : AuthenticationHandler<Au
 
         // The step-up's own backoff, counted before the password is compared and instead of the
         // account lockout: a session holder guessing here must not lock the owner out.
-        if ((await _rules.TakeStepUpAsync(user, Context.RequestAborted)).BackedOff is { } backedOff)
+        if ((await _rules.TakeStepUpAsync(user, Context.RequestAborted)).BackedOff is TimeSpan backedOff)
         {
             Logger.LogInformation("Password step-up refused for user {UserId}: backed off for {Remaining}.", user.Id, backedOff);
 

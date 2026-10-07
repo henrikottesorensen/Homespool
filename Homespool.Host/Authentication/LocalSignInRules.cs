@@ -131,7 +131,7 @@ public sealed class LocalSignInRules
     /// </remarks>
     public async Task<SignInRefusal?> PreSignInCheckAsync(HSUser user)
     {
-        if (await StandingCheckAsync(user) is { } refusal)
+        if (await StandingCheckAsync(user) is SignInRefusal refusal)
         {
             return refusal;
         }

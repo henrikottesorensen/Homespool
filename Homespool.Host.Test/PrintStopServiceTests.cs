@@ -344,7 +344,7 @@ public sealed class PrintStopServiceTests : IDisposable
         // Arrange
         await using HomespoolDbContext context = await SeedAsync();
 
-        if (queuedBy is { } owner)
+        if (queuedBy is long owner)
         {
             await AddPrintAsync(context, PrintState.Printing, ended: false, queuedBy: owner);
         }

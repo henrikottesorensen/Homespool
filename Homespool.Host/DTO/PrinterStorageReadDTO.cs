@@ -65,7 +65,7 @@ public class PrinterStorageReadDTO
     /// <summary>Firmware's Unix seconds as an instant, or null when it sent none.</summary>
     internal static DateTimeOffset? ToInstant(long? unixSeconds)
     {
-        return unixSeconds is { } seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
+        return unixSeconds is long seconds ? DateTimeOffset.FromUnixTimeSeconds(seconds) : null;
     }
 
     /// <summary><c>PRINT_FILE</c> becomes <c>printFile</c>, <c>FOLDER</c> becomes <c>folder</c>.</summary>

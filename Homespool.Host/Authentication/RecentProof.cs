@@ -88,7 +88,9 @@ public sealed class RecentProof
     /// </summary>
     public bool Renew(HttpContext context, long userId, TimeSpan? maxAge = null)
     {
-        if (Read(context, userId, maxAge) is not { } method)
+        string? method = Read(context, userId, maxAge);
+
+        if (method is null)
         {
             return false;
         }

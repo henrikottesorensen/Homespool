@@ -186,7 +186,7 @@ public sealed class StepUpGateTests : IDisposable
     {
         List<Claim> claims = [new(JwtClaimTypes.Subject, subject)];
 
-        if (answered is { } time)
+        if (answered is DateTimeOffset time)
         {
             claims.Add(new Claim(JwtClaimTypes.AuthenticationTime, Seconds(time)));
         }

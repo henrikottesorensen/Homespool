@@ -161,7 +161,12 @@ public sealed class DirectSendDriveNameTests : IAsyncLifetime
 
         // Assert
         (await FakePrinterConnections.WaitUntilAsync(
-                () => fake.Device.LastTransfer is { } last && !ReferenceEquals(last, first) && last.Path == "/usb/part.gcode",
+                () =>
+                {
+                    FakeTransfer? last = fake.Device.LastTransfer;
+
+                    return last is not null && !ReferenceEquals(last, first) && last.Path == "/usb/part.gcode";
+                },
                 TimeSpan.FromSeconds(30)))
             .Should().BeTrue("the newer version is sent under the same name");
 

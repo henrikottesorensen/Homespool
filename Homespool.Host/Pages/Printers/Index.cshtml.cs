@@ -216,7 +216,7 @@ public class IndexModel : PageModel
         }
 
         Guid? camera = await _drop.FirstCameraAsync(row.Printer.Id, caller, cancellationToken);
-        string? frame = camera is { } cameraUuid ? Url.Action("Frame", "Camera", new { uuid = cameraUuid }) : null;
+        string? frame = camera is Guid cameraUuid ? Url.Action("Frame", "Camera", new { uuid = cameraUuid }) : null;
 
         return Partial("_TileDrop", await _drop.PromptAsync(row, caller, names, frame, cancellationToken));
     }

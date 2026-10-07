@@ -130,7 +130,7 @@ public sealed class PrintThumbnails
 
             PrintFile? row = await catalog.RowForAsync(job.QueuedByUserId, file, cancellationToken);
 
-            if (row?.Digest is { } current && !string.Equals(current, job.Digest, StringComparison.Ordinal))
+            if (row?.Digest is not null && !string.Equals(row.Digest, job.Digest, StringComparison.Ordinal))
             {
                 _logger.LogDebug("[{PrinterId}] no preview for print {PrintUuid}: its file has changed since it opened",
                                  job.PrinterId, job.PrintUuid);

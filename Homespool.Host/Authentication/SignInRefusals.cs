@@ -32,7 +32,7 @@ public static class SignInRefusals
         AuthenticationProperties properties = new();
         properties.Items[Item] = refusal.RequireSet().ToString();
 
-        if (retryAfter is { } wait)
+        if (retryAfter is TimeSpan wait)
         {
             properties.Items[RetryAfterItem] = wait.TotalSeconds.ToString(CultureInfo.InvariantCulture);
         }

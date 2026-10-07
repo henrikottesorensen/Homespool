@@ -131,14 +131,14 @@ public static class TelemetryMessageBuilder
             writer.WriteEndObject();
         }
 
-        if (readings.MmuState is { } mmuState)
+        if (readings.MmuState is int mmuState)
         {
             writer.WriteNumber("state", mmuState);
         }
 
-        if (readings.MmuCommand is { } mmuCommand)
+        if (readings.MmuCommand is not null)
         {
-            writer.WriteString("command", mmuCommand);
+            writer.WriteString("command", readings.MmuCommand);
         }
 
         // Clamped from zero, not from one: firmware packs "no tool picked" into this field as 0
@@ -171,7 +171,7 @@ public static class TelemetryMessageBuilder
         // has_job rather than the id (render.cpp:159): a finished printer keeps its job id for
         // SEND_JOB_INFO, but stops sending the block, and a server clearing job fields when the
         // block goes missing is reached only if the fake stops too.
-        if (!device.HasJob || device.JobId is not { } jobId)
+        if (!device.HasJob || device.JobId is not int jobId)
         {
             return;
         }
@@ -184,7 +184,7 @@ public static class TelemetryMessageBuilder
         // gates it on time_to_pause being valid (render.cpp:164), so an ordinary print omits it
         // entirely rather than sending zero. Confirmed twice: the rig sent this shape live, and
         // Prusa's own render.cpp "Telemetry - reduced" golden string carries the same six fields.
-        if (readings.TimeToFilamentChange is { } untilChange)
+        if (readings.TimeToFilamentChange is int untilChange)
         {
             writer.WriteNumber("filament_change_in", untilChange);
         }

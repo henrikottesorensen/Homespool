@@ -576,7 +576,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
                     await Task.Delay(reply.Delay, cancellationToken);
                 }
 
-                if ((reply.Complete?.Invoke() ?? reply.Payload) is { } payload)
+                if ((reply.Complete?.Invoke() ?? reply.Payload) is byte[] payload)
                 {
                     await send(payload, cancellationToken);
                 }
@@ -676,7 +676,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
     {
         TimeSpan delay = source.DelayBeforeNext(Device);
 
-        if (source.ChangeInterval is not { } floor)
+        if (source.ChangeInterval is not TimeSpan floor)
         {
             if (delay > TimeSpan.Zero)
             {

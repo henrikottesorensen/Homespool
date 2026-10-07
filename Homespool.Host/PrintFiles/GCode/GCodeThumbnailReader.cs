@@ -135,7 +135,7 @@ public static class GCodeThumbnailReader
             }
 
             if (block.Thumbnail is { Format: BgcodeThumbnailFormat.Png } candidate &&
-                (best?.Thumbnail is not { } chosen || Area(candidate.Width, candidate.Height) > Area(chosen.Width, chosen.Height)))
+                (best?.Thumbnail is not BgcodeThumbnailParameters chosen || Area(candidate.Width, candidate.Height) > Area(chosen.Width, chosen.Height)))
             {
                 best = block;
             }
@@ -164,7 +164,7 @@ public static class GCodeThumbnailReader
         string? bestBase64 = null;
         long bestArea = 0;
 
-        while (reader.ReadLine() is { } line)
+        while (reader.ReadLine() is string line)
         {
             if (capturing is not null)
             {

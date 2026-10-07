@@ -28,7 +28,7 @@ public sealed class MjpegStreamLease : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _owner, null) is { } owner)
+        if (Interlocked.Exchange(ref _owner, null) is MjpegStreamLimiter owner)
         {
             owner.Release(this);
             _stopped.Dispose();

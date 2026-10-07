@@ -54,7 +54,7 @@ public static class TemperatureWindow
     /// <param name="now">The present, from the caller's <see cref="TimeProvider"/>.</param>
     public static (DateTimeOffset from, DateTimeOffset to) For(PrinterLiveState? liveState, DateTimeOffset now)
     {
-        TimeSpan span = liveState?.TimePrinting is { } elapsed && elapsed > 0 ?
+        TimeSpan span = liveState?.TimePrinting is int elapsed && elapsed > 0 ?
             TimeSpan.FromSeconds(elapsed) :
             Idle;
 

@@ -134,8 +134,8 @@ public static class TransferRetryRules
     /// <param name="now">The loop's clock.</param>
     public static bool IsWaiting(PrintFileOnPrinter? row, DateTimeOffset now)
     {
-        return row?.TransferRefusalCount is { } count and > 0 &&
-               row.TransferRefusedAt is { } refusedAt &&
+        return row?.TransferRefusalCount is int count and > 0 &&
+               row.TransferRefusedAt is DateTimeOffset refusedAt &&
                now - refusedAt < WaitAfter(count);
     }
 

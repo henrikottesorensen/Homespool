@@ -85,7 +85,7 @@ public sealed record FilamentPreset(string Name, int NozzleTemperature, int BedT
     /// </remarks>
     private static bool IsMini(string? model)
     {
-        return PrinterModelDesignation.Of(model) is { } designation &&
+        return PrinterModelDesignation.Of(model) is string designation &&
                designation.Contains(MiniModel, StringComparison.OrdinalIgnoreCase);
     }
 }

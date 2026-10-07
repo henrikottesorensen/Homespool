@@ -125,7 +125,7 @@ public class PrintJobController : ControllerBase
             IEnumerable<PrintJob> shown = active is null ? finished : finished.Prepend(active);
 
             IReadOnlyDictionary<long, UserReference> people = await _people.ReferencesForAsync(
-                shown.SelectMany(job => job.StoppedByUserId is { } stopper ?
+                shown.SelectMany(job => job.StoppedByUserId is long stopper ?
                                             new[] { job.QueuedByUserId, stopper } :
                                             new[] { job.QueuedByUserId }),
                 cancellationToken);

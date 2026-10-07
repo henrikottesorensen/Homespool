@@ -104,7 +104,7 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
             return SignInRefusals.Fail(SignInRefusal.Invalid, "There is no account to verify a code for.");
         }
 
-        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        if (await _rules.PreSignInCheckAsync(user) is SignInRefusal refusal)
         {
             Logger.LogInformation("Authenticator code refused for user {UserId}: {Refusal}.", user.Id, refusal);
 
@@ -118,7 +118,7 @@ public sealed class TotpAuthenticationHandler : AuthenticationHandler<Authentica
             await _rules.TakeStepUpAsync(user, Context.RequestAborted) :
             await _rules.TakeAttemptAsync(user);
 
-        if (attempt.BackedOff is { } backedOff)
+        if (attempt.BackedOff is TimeSpan backedOff)
         {
             if (stepUp is not null)
             {

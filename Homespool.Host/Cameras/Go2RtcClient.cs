@@ -114,7 +114,7 @@ public sealed class Go2RtcClient : ICameraCodecProbe
             return true;
         }
 
-        if (_uncredentialed.Record() is { } window)
+        if (_uncredentialed.Record() is LogThrottleWindow window)
         {
             _logger.LogWarning(
                 "Cameras are disabled because the stream server has no credential: set Cameras:ApiUsername and " +
@@ -185,7 +185,9 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// </remarks>
     public async Task<HttpResponseMessage?> OpenMjpegStreamAsync(Guid streamName, CancellationToken cancellationToken)
     {
-        if (MjpegStreamUrl(streamName) is not { } url)
+        Uri? url = MjpegStreamUrl(streamName);
+
+        if (url is null)
         {
             return null;
         }
@@ -491,7 +493,9 @@ public sealed class Go2RtcClient : ICameraCodecProbe
                 continue;
             }
 
-            if (NodeFromUrl(source.Url) is not { } node)
+            string? node = NodeFromUrl(source.Url);
+
+            if (node is null)
             {
                 continue;
             }

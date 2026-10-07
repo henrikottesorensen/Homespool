@@ -180,7 +180,7 @@ public sealed class StepUpGate
             return new ProviderProofOutcome("failed", provider);
         }
 
-        if (ProviderProofRefusal(info, await _users.GetLoginsAsync(user), _time.GetUtcNow()) is { } refusal)
+        if (ProviderProofRefusal(info, await _users.GetLoginsAsync(user), _time.GetUtcNow()) is string refusal)
         {
             _logger.LogWarning("Provider re-authentication refused for user {UserId} via {LoginProvider}: {Reason}.",
                                user.Id,
@@ -224,13 +224,13 @@ public sealed class StepUpGate
             return "mismatch";
         }
 
-        if (UnixTime(info.Principal, JwtClaimTypes.AuthenticationTime) is not { } answered)
+        if (UnixTime(info.Principal, JwtClaimTypes.AuthenticationTime) is not DateTimeOffset answered)
         {
             return "failed";
         }
 
         if (now - answered > MaxProviderProofAge ||
-            (UnixTime(info.Principal, HSClaimTypes.ExternalAuthenticationTime) is { } reported && now - reported > MaxProviderProofAge))
+            (UnixTime(info.Principal, HSClaimTypes.ExternalAuthenticationTime) is DateTimeOffset reported && now - reported > MaxProviderProofAge))
         {
             return "stale";
         }

@@ -201,8 +201,8 @@ public sealed class NotificationDestinationService
 
         DateTimeOffset now = _time.GetUtcNow();
 
-        if ((destination.LastDeliveredAt is { } delivered && now - delivered < TestCooldown) ||
-            (destination.LastFailedAt is { } failed && now - failed < TestCooldown))
+        if ((destination.LastDeliveredAt is DateTimeOffset delivered && now - delivered < TestCooldown) ||
+            (destination.LastFailedAt is DateTimeOffset failed && now - failed < TestCooldown))
         {
             return TestSendResult.TooSoon;
         }

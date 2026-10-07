@@ -89,7 +89,9 @@ public static class QueueRules
             return QueueAction.Nothing;
         }
 
-        if (situation.Head is not { } head)
+        QueueHead? head = situation.Head;
+
+        if (head is null)
         {
             return QueueAction.Nothing;
         }
@@ -110,7 +112,7 @@ public static class QueueRules
             return QueueAction.Wait(QueueWaitReason.QueuerLostAccess);
         }
 
-        if (situation.HoldReason is { } hold)
+        if (situation.HoldReason is PrintHoldReason hold)
         {
             // Ahead of the transfer branch, because a blocked file is precisely one that would
             // otherwise be reported as about to be sent. The advancer discovers the block and records

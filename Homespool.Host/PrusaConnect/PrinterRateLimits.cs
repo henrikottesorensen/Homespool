@@ -307,14 +307,14 @@ public static class PrinterRateLimits
 
         PolicyLimits limits = Policies[policy];
 
-        if (limits.PerPrinter is { } perPrinter)
+        if (limits.PerPrinter is int perPrinter)
         {
             return new Demand(policy, limits.Ceiling, PrinterOf(context), perPrinter);
         }
 
         // Read per request, as the sign-in limit does: the options are bound after this class has
         // registered anything, and a test host sets them late.
-        if (limits.PerAddress is { } perAddress &&
+        if (limits.PerAddress is int perAddress &&
             context.RequestServices.GetRequiredService<IOptions<XForwardedOptions>>().Value.AddressesAreClients)
         {
             return new Demand(policy, limits.Ceiling, ClientAddressKey.Of(context.Connection.RemoteIpAddress), perAddress);

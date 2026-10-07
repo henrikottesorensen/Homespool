@@ -496,7 +496,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
             UpdatedAt = DateTimeOffset.UtcNow,
         });
 
-        if (status is { } reported)
+        if (status is PrinterStatus reported)
         {
             // Connected first, so what it reports below is said to this connection - a status from
             // before the connection is refused as unknown, which is not the guard these tests are about.

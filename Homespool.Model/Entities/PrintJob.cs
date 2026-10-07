@@ -291,5 +291,5 @@ public class PrintJob
     /// <b>Null too when the odometer went backwards</b> - an EEPROM reset, or a print stopped inside a
     /// retraction before it extruded anything - because a negative length is a figure nobody could act on.
     /// </remarks>
-    public float? FilamentUsed => FilamentAtEnd - FilamentAtStart is { } used && used >= 0 ? used : null;
+    public float? FilamentUsed => FilamentAtEnd - FilamentAtStart is float used && used >= 0 ? used : null;
 }

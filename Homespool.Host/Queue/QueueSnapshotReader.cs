@@ -96,7 +96,7 @@ public class QueueSnapshotReader
     /// </remarks>
     public bool IsTransferInFlight(PrintFileOnPrinter? onPrinter, string fileName)
     {
-        if (onPrinter?.TransferStartedAt is not { } startedAt ||
+        if (onPrinter?.TransferStartedAt is not DateTimeOffset startedAt ||
             _timeProvider.GetUtcNow() - startedAt >= QueueAdvancer.TransferStaleAfter)
         {
             return false;
@@ -140,7 +140,7 @@ public class QueueSnapshotReader
     public static PrinterStatus StatedSinceConnecting(PrinterLiveState? live, DateTimeOffset? connectedSince)
     {
         return live is not null &&
-               connectedSince is { } since &&
+               connectedSince is DateTimeOffset since &&
                live.LastSeenAt.ToUnixTimeMilliseconds() >= since.ToUnixTimeMilliseconds() ?
                    live.Status :
                    PrinterStatus.Unknown;

@@ -412,7 +412,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     internal static Caller? CallerFor(PrintJob job)
     {
-        return job.QueuedByScope is { } scope ? Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(scope)) : null;
+        return job.QueuedByScope is string scope ? Caller.Scoped(job.QueuedByUserId, CapabilitySet.Parse(scope)) : null;
     }
 
     /// <summary>
@@ -424,7 +424,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// </remarks>
     private static Caller? WithdrawerOf(PrintJob job)
     {
-        return job.WithdrawnByUserId is { } withdrawnBy ?
+        return job.WithdrawnByUserId is long withdrawnBy ?
             Caller.Scoped(withdrawnBy, CapabilitySet.Parse(job.WithdrawnByScope)) :
             null;
     }
@@ -518,15 +518,15 @@ public sealed class QueueAdvancer : BackgroundService
             return false;
         }
 
-        if (live?.FilamentUsed is not { } reading ||
-            live.FilamentUsedAt is not { } heardAt ||
+        if (live?.FilamentUsed is not float reading ||
+            live.FilamentUsedAt is not DateTimeOffset heardAt ||
             heardAt < active.StartedAt ||
             heardAt < _startedAt)
         {
             return false;
         }
 
-        if (active.FilamentAtStart is not { } opening)
+        if (active.FilamentAtStart is not float opening)
         {
             if (active.StartedAt < _startedAt)
             {
@@ -566,8 +566,8 @@ public sealed class QueueAdvancer : BackgroundService
     private void RecordFilamentAtEnd(PrintJob job, PrinterLiveState? live)
     {
         if (job.FilamentAtStart is not null &&
-            live?.FilamentUsed is { } reading &&
-            live.FilamentUsedAt is { } heardAt &&
+            live?.FilamentUsed is float reading &&
+            live.FilamentUsedAt is DateTimeOffset heardAt &&
             heardAt >= job.StartedAt &&
             heardAt >= _startedAt)
         {
@@ -758,10 +758,10 @@ public sealed class QueueAdvancer : BackgroundService
         // else reads the live state, so neither the odometer nor the status below is credited to
         // this row.
         if (active.State is PrintState.Starting or PrintState.Printing &&
-            active.FirmwareJobId is { } recorded &&
+            active.FirmwareJobId is int recorded &&
             live is not null &&
             live.LastSeenAt >= _startedAt &&
-            live.JobId is { } running &&
+            live.JobId is int running &&
             running != recorded)
         {
             // Not the filament reading, which belongs to the print now running.
@@ -803,7 +803,7 @@ public sealed class QueueAdvancer : BackgroundService
             // dialog - so recording it here is what lets a later withdrawal mean something. Ours by
             // construction: a printer already running somebody else's job refuses START_PRINT, so
             // the only job it can be reporting seconds after accepting ours is ours.
-            if (live?.JobId is { } offered && active.FirmwareJobId is null)
+            if (live?.JobId is int offered && active.FirmwareJobId is null)
             {
                 active.FirmwareJobId = offered;
                 await dbContext.SaveChangesAsync(cancellationToken);
@@ -1005,7 +1005,7 @@ public sealed class QueueAdvancer : BackgroundService
                                                           PrinterLiveState? live,
                                                           CancellationToken cancellationToken)
     {
-        if (live?.JobId is not { } jobId ||
+        if (live?.JobId is not int jobId ||
             live.Status is not (PrinterStatus.Printing or PrinterStatus.Paused) ||
             !_registry.IsConnected(printerId))
         {
@@ -1082,7 +1082,9 @@ public sealed class QueueAdvancer : BackgroundService
             return null;
         }
 
-        if (answer?.Answer is not { } job || (job.Path is null && job.DisplayName is null))
+        JobInfoEventDataDTO? job = answer?.Answer;
+
+        if (job is null || (job.Path is null && job.DisplayName is null))
         {
             // A job described without a name settles nothing - and a *current* job should always
             // carry one, so there is no point asking this id again.
@@ -1092,9 +1094,9 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         var claimed = candidates.FirstOrDefault(
-            candidate => (job.Path is { } path && path == candidate.PrinterPath) ||
-                                        (job.DisplayName is { } displayName &&
-                                         displayName == (candidate.DriveName ?? candidate.Entry.PrintFile!.Name)));
+            candidate => (job.Path is not null && job.Path == candidate.PrinterPath) ||
+                                        (job.DisplayName is not null &&
+                                         job.DisplayName == (candidate.DriveName ?? candidate.Entry.PrintFile!.Name)));
 
         _examinedPanelJobs[printerId] = jobId;
 
@@ -1162,7 +1164,9 @@ public sealed class QueueAdvancer : BackgroundService
                                                      PrintJob withdrawn,
                                                      CancellationToken cancellationToken)
     {
-        if (WithdrawerOf(withdrawn) is not { } withdrawer)
+        Caller? withdrawer = WithdrawerOf(withdrawn);
+
+        if (withdrawer is null)
         {
             return false;
         }
@@ -1263,7 +1267,7 @@ public sealed class QueueAdvancer : BackgroundService
         bool connected = _registry.IsConnected(printerId);
         JobAnswer answer = JobAnswer.NotAsked;
 
-        if (connected && (WithdrawerOf(commanded) ?? CallerFor(commanded)) is { } asker && live?.JobId is { } jobId)
+        if (connected && (WithdrawerOf(commanded) ?? CallerFor(commanded)) is Caller asker && live?.JobId is int jobId)
         {
             answer = await AskWhoseJobAsync(scope, printerId, commanded, asker, entry?.PrintFileId, jobId, cancellationToken);
         }
@@ -1383,7 +1387,9 @@ public sealed class QueueAdvancer : BackgroundService
             return answer.Reason == "No job in progress" ? JobAnswer.NoJob : JobAnswer.Inconclusive;
         }
 
-        if (answer?.Answer is not { } job || (job.Path is null && job.DisplayName is null))
+        JobInfoEventDataDTO? job = answer?.Answer;
+
+        if (job is null || (job.Path is null && job.DisplayName is null))
         {
             // A job the printer only remembers renders its state and nothing else - FIN_OK, or
             // FIN_STOPPED. There is no name in it to compare, so it settles nothing.
@@ -1394,7 +1400,7 @@ public sealed class QueueAdvancer : BackgroundService
         // owner's name; the record keeps the file's own, which is what history shows. Only the entry
         // says which file that was, so a withdrawn one is matched on the path and the file's own name
         // alone - and the path is what START_PRINT was given, which the printer echoes.
-        string? driveName = printFileId is { } fileId ?
+        string? driveName = printFileId is long fileId ?
             await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                        .PrintFilesOnPrinters
                        .Where(row => row.PrinterId == printerId && row.PrintFileId == fileId)
@@ -1402,9 +1408,9 @@ public sealed class QueueAdvancer : BackgroundService
                        .FirstOrDefaultAsync(cancellationToken) :
             null;
 
-        bool ours = (job.Path is { } path && path == commanded.PrinterPath) ||
-                    (job.DisplayName is { } displayName &&
-                     (displayName == commanded.FileName || displayName == driveName));
+        bool ours = (job.Path is not null && job.Path == commanded.PrinterPath) ||
+                    (job.DisplayName is not null &&
+                     (job.DisplayName == commanded.FileName || job.DisplayName == driveName));
 
         if (!ours)
         {
@@ -1457,7 +1463,14 @@ public sealed class QueueAdvancer : BackgroundService
                                                          PrintJob job,
                                                          CancellationToken cancellationToken)
     {
-        if (job.FirmwareJobId is not { } jobId || CallerFor(job) is not { } recorded)
+        if (job.FirmwareJobId is not int jobId)
+        {
+            return null;
+        }
+
+        Caller? recorded = CallerFor(job);
+
+        if (recorded is null)
         {
             return null;
         }

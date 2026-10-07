@@ -311,7 +311,7 @@ public sealed class RestartPageTests : IAsyncLifetime
         context.Printers.Add(printer);
         context.SaveChanges();
 
-        if (status is { } reported)
+        if (status is PrinterStatus reported)
         {
             context.PrinterLiveStates.Add(new PrinterLiveState
             {

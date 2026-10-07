@@ -344,7 +344,7 @@ public class DetailModel : PageModel
     public bool CanCancelObjects => Connected && CanPrint && ActivePrintIsReaders;
 
     /// <summary>Whether the reader queued the print this printer has open.</summary>
-    public bool ActivePrintIsReaders => ActivePrint is { } print && print.QueuedByUserId == _readerId;
+    public bool ActivePrintIsReaders => ActivePrint is not null && ActivePrint.QueuedByUserId == _readerId;
 
     /// <summary>
     /// The running print's objects, or null when it has fewer than two that can be cancelled one at a
@@ -387,7 +387,7 @@ public class DetailModel : PageModel
     /// </remarks>
     public string StoppedByDescription(PrintJob job)
     {
-        if (job.StoppedByUserId is not { } stopper)
+        if (job.StoppedByUserId is not long stopper)
         {
             return _localiser["Printers_StoppedAtPrinter"];
         }
@@ -945,7 +945,14 @@ public class DetailModel : PageModel
 
         PrintJob? job = await _historyService.FindAsync(printer.Id, printUuid, caller, cancellationToken);
 
-        if (job is null || await _thumbnails.ForAsync(job, cancellationToken) is not { } image)
+        if (job is null)
+        {
+            return NotFound();
+        }
+
+        byte[]? image = await _thumbnails.ForAsync(job, cancellationToken);
+
+        if (image is null)
         {
             return NotFound();
         }
@@ -1062,7 +1069,7 @@ public class DetailModel : PageModel
     /// <summary>Whether the running print has a preview, for the picture beside the camera.</summary>
     private async Task LoadThumbnailAsync(CancellationToken cancellationToken)
     {
-        HasThumbnail = ActivePrint is { } job && await _thumbnails.ForAsync(job, cancellationToken) is not null;
+        HasThumbnail = ActivePrint is not null && await _thumbnails.ForAsync(ActivePrint, cancellationToken) is not null;
     }
 
     /// <summary>Everything the status card shows. Shared by the page and its poll.</summary>
@@ -1160,7 +1167,7 @@ public class DetailModel : PageModel
             return;
         }
 
-        PlateReading reading = live.JobId is { } jobId && Connected ?
+        PlateReading reading = live.JobId is int jobId && Connected ?
             await _plates.ReadAsync(Statistics.Printer.Id, jobId, caller, wait, cancellationToken) :
             new PlateReading(null, Settled: false);
 

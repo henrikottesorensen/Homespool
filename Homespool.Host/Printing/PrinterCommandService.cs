@@ -169,7 +169,7 @@ public class PrinterCommandService
 
         try
         {
-            answer = result.Data is { } data ? data.Deserialize<TAnswer>() : default;
+            answer = result.Data is JsonElement data ? data.Deserialize<TAnswer>() : default;
         }
         catch (JsonException e)
         {

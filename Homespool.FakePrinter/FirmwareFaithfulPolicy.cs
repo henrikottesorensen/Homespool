@@ -133,7 +133,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
 
             PlannedReply accepted = Reply(EventMessageBuilder.Build("ACCEPTED", device.WireState, frame.CommandId));
 
-            if (UnloadedTool(frame) is { } tool && device.MaterialOf(tool) is not null)
+            if (UnloadedTool(frame) is int tool && device.MaterialOf(tool) is not null)
             {
                 DeviceState before = device.BeginUnload();
 
@@ -230,7 +230,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// </summary>
     private static void AppendRequest(List<PlannedReply> replies, FakeTransfer transfer)
     {
-        if (transfer.NextRequest() is { } request)
+        if (transfer.NextRequest() is InlineRequest request)
         {
             replies.Add(Reply(TransferRequestBuilder.Build(request)));
         }
@@ -454,7 +454,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
         // rejection while still in a state that reports READY/IDLE, not the settled PRINTING.
         string stateBefore = device.WireState;
 
-        if (device.TryStartPrint(path) is not { } jobId)
+        if (device.TryStartPrint(path) is not int jobId)
         {
             return [Reject(frame.CommandId, device, "Can't print now")];
         }
@@ -495,12 +495,12 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// </remarks>
     private IReadOnlyList<PlannedReply> SendJobInfo(ServerCommandFrame frame, FakeDevice device)
     {
-        if (JobIdArgument.TryParse(frame.Payload) is not { } jobId)
+        if (JobIdArgument.TryParse(frame.Payload) is not int jobId)
         {
             return [Reject(frame.CommandId, device, "Missing or broken parameters")];
         }
 
-        if (device.JobId is not { } current)
+        if (device.JobId is not int current)
         {
             return [Reject(frame.CommandId, device, "No job in progress")];
         }
@@ -512,7 +512,9 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
 
         // A job with no path is one the machine is only remembering - the finished screen. It
         // answers, and says nothing that identifies the file.
-        return device.JobPath is { } path ?
+        string? path = device.JobPath;
+
+        return path is not null ?
             [Reply(EventMessageBuilder.BuildJobInfo(device.WireState, current, path, "PRINTING", frame.CommandId))] :
             [Reply(EventMessageBuilder.BuildJobInfo(device.WireState, current, null, "FIN_OK", frame.CommandId))];
     }
@@ -529,7 +531,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
     /// </remarks>
     private IReadOnlyList<PlannedReply> CancelObject(ServerCommandFrame frame, FakeDevice device, bool cancelled)
     {
-        if (ObjectIdArgument.TryParse(frame.Payload) is not { } id)
+        if (ObjectIdArgument.TryParse(frame.Payload) is not int id)
         {
             return [Reject(frame.CommandId, device, "Missing or broken parameters")];
         }

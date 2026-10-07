@@ -124,7 +124,7 @@ public sealed class UnknownFieldTracker
             // misleads nobody - the same "counts may smear, totals never do" bargain LogThrottle makes.
             if (Volatile.Read(ref _distinct) >= MaxDistinctFields)
             {
-                if (_cappedWarnings.Record() is { } window)
+                if (_cappedWarnings.Record() is LogThrottleWindow window)
                 {
                     _logger.LogWarning(
                         "Unknown wire fields past the {Cap}-name cap; no longer learning new ones. {Count} occurrence(s) in the last {ElapsedSeconds:F0}s, {Total} since startup. Known names: {Fields}",

@@ -112,7 +112,7 @@ public sealed class PrinterStateIsLiveTests : IDisposable
         context.Printers.Add(printer);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        if (liveStatus is { } status)
+        if (liveStatus is PrinterStatus status)
         {
             context.PrinterLiveStates.Add(new PrinterLiveState
             {

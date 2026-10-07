@@ -159,7 +159,7 @@ public abstract class ApiTokenAuthenticationHandlerBase : AuthenticationHandler<
         // consulted - a token cannot be guessed at the login form, and a lockout that reached it would
         // let whoever knows a username stop the account's scripts with a wrong password every five
         // minutes. The same invalid-token 401 as below, for the same reason.
-        if (await _rules.StandingCheckAsync(user) is { } refusal)
+        if (await _rules.StandingCheckAsync(user) is SignInRefusal refusal)
         {
             Logger.LogWarning("API token {TokenId} refused: user {UserId} may not sign in ({Refusal}).", token.Id, token.UserId, refusal);
 

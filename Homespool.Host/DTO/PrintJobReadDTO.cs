@@ -96,7 +96,7 @@ public class PrintJobReadDTO
             Digest = job.Digest,
             State = job.State.ToString(),
             QueuedBy = Person(people, job.QueuedByUserId),
-            StoppedBy = job.StoppedByUserId is { } stopper ? Person(people, stopper) : null,
+            StoppedBy = job.StoppedByUserId is long stopper ? Person(people, stopper) : null,
             StartedAt = job.StartedAt,
             CommandedAt = job.CommandedAt,
             BegunAt = job.BegunAt,

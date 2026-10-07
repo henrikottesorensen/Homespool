@@ -1114,7 +1114,7 @@ public sealed class QueueAdvancerTests : IDisposable
                  if (call.Arg<ISendableCommand>() is SendFileInfo)
                  {
                      string readOnlyField = readOnly ? ",\"read_only\":true" : string.Empty;
-                     string json = existingSize is { } size ?
+                     string json = existingSize is long size ?
                          $"{{\"path\":\"{existingPath}\",\"size\":{size}{readOnlyField}}}" :
                          $"{{\"path\":\"{existingPath}\"{readOnlyField}}}";
 

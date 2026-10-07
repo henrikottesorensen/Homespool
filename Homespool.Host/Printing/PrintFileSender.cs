@@ -180,7 +180,7 @@ public class PrintFileSender
         // Opening the file is what pins these bytes for the whole transfer - see ITransferOffers. The
         // size declared is theirs, not the stored file's: that was read when the file was looked up,
         // and an overwrite since would have the printer fetch the newer bytes to the older length.
-        if (_offers.Offer(token, file.Path, printer.Id) is not { } length)
+        if (_offers.Offer(token, file.Path, printer.Id) is not long length)
         {
             throw new PrintFileUnreadableException(file.FileName);
         }
@@ -241,7 +241,7 @@ public class PrintFileSender
         try
         {
             // The size of the bytes pinned, as for the inline transfer.
-            if (_offers.Offer(ivHex, file.Path, printer.Id) is not { } length)
+            if (_offers.Offer(ivHex, file.Path, printer.Id) is not long length)
             {
                 throw new PrintFileUnreadableException(file.FileName);
             }

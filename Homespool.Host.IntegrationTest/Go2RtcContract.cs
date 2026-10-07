@@ -422,7 +422,7 @@ public abstract class Go2RtcContract : IAsyncLifetime
         {
             await Task.Delay(200, TestContext.Current.CancellationToken);
 
-            if (await Client.ListStreamNamesAsync(TestContext.Current.CancellationToken) is { } listed)
+            if (await Client.ListStreamNamesAsync(TestContext.Current.CancellationToken) is IReadOnlySet<string> listed)
             {
                 return listed;
             }

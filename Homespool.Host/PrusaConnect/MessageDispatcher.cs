@@ -152,14 +152,14 @@ public class MessageDispatcher
     /// </summary>
     private Telemetry.PrinterIdentityUpdate? ExtractIdentity(int printerId, EventDTO eventDto)
     {
-        if (eventDto.EventType != Model.PrinterEventType.Info || eventDto.Data is not { } data)
+        if (eventDto.EventType != Model.PrinterEventType.Info || eventDto.Data is not JsonElement data)
         {
             return null;
         }
 
         try
         {
-            if (data.Deserialize<InfoEventDataDTO>(InboundWireJson.Options) is { } info)
+            if (data.Deserialize<InfoEventDataDTO>(InboundWireJson.Options) is InfoEventDataDTO info)
             {
                 _unknownFields.Record(printerId, "event:Info.data", info.Unknown);
 

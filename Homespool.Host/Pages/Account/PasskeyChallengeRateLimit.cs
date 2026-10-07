@@ -97,7 +97,14 @@ public static class PasskeyChallengeRateLimit
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        if (!HttpMethods.IsPost(context.Request.Method) || HandlerName(context) is not { } handler)
+        if (!HttpMethods.IsPost(context.Request.Method))
+        {
+            return false;
+        }
+
+        string? handler = HandlerName(context);
+
+        if (handler is null)
         {
             return false;
         }

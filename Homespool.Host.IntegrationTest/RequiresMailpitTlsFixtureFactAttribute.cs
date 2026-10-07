@@ -118,7 +118,9 @@ public sealed class RequiresMailpitTlsFixtureFactAttribute : FactAttribute
             };
 
             // The greeting first, or EHLO is written into a conversation that has not started.
-            if (reader.ReadLine() is not { } greeting || !greeting.StartsWith("220", StringComparison.Ordinal))
+            string? greeting = reader.ReadLine();
+
+            if (greeting is null || !greeting.StartsWith("220", StringComparison.Ordinal))
             {
                 return false;
             }
@@ -127,7 +129,7 @@ public sealed class RequiresMailpitTlsFixtureFactAttribute : FactAttribute
 
             // Extensions come back as "250-NAME" with "250 NAME" on the last one, so the loop ends on
             // the space rather than on running out of lines.
-            while (reader.ReadLine() is { } line)
+            while (reader.ReadLine() is string line)
             {
                 if (line.Contains("STARTTLS", StringComparison.OrdinalIgnoreCase))
                 {

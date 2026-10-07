@@ -259,7 +259,7 @@ public sealed class PrinterTrafficLog : IDisposable
                 writer.WritePropertyName("gcode");
                 WriteStringValue(writer, gcodeCommand.Line);
             }
-            else if (command.Arguments is { } arguments)
+            else if (command.Arguments is IReadOnlyDictionary<string, object?> arguments)
             {
                 writer.WritePropertyName("kwargs");
                 writer.WriteStartObject();
@@ -354,7 +354,7 @@ public sealed class PrinterTrafficLog : IDisposable
 
                 break;
 
-            case JsonValueKind.String when spellings?.Next() is { } spelling:
+            case JsonValueKind.String when spellings?.Next() is string spelling:
                 // Unvalidated on purpose - it is not JSON, which is the thing being recorded. The
                 // patcher's grammar is what keeps it to a sign and ASCII letters.
                 writer.WriteRawValue(spelling, skipInputValidation: true);

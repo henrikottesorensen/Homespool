@@ -119,7 +119,7 @@ public sealed class PrinterWireComplaints
     {
         LogThrottle throttle = _throttles.GetOrAdd((printerId, complaint), _ => new LogThrottle(Interval));
 
-        if (throttle.Record() is not { } window)
+        if (throttle.Record() is not LogThrottleWindow window)
         {
             return;
         }

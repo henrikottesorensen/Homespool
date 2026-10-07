@@ -140,7 +140,7 @@ public sealed class TelemetryPersistenceHealthCheck : IHealthCheck
             TimeSpan.FromSeconds(_storage.WriteFlushIntervalSeconds * StaleAfterMissedFlushIntervals),
             MinimumStaleThreshold);
 
-        if (snapshot.LastFlushAt is { } lastFlush && _timeProvider.GetUtcNow() - lastFlush > staleAfter)
+        if (snapshot.LastFlushAt is DateTimeOffset lastFlush && _timeProvider.GetUtcNow() - lastFlush > staleAfter)
         {
             return Task.FromResult(HealthCheckResult.Unhealthy(
                                        $"No telemetry flush has completed for {(_timeProvider.GetUtcNow() - lastFlush).TotalSeconds:F0}s, with none failing either - the writer is blocked rather than broken, and nothing is reaching the database.",

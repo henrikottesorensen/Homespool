@@ -91,7 +91,7 @@ public sealed record ToolTarget
     /// </remarks>
     public static ToolTarget For(int? activeSlot, int reportedToolCount)
     {
-        if (activeSlot is { } active)
+        if (activeSlot is int active)
         {
             return active <= 0 ? NothingPicked : Picked(active);
         }

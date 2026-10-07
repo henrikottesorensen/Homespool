@@ -216,7 +216,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
 
         // Verified, so now it is answered: recorded before anything is done with it, and a record
         // refused - a concurrent copy of this request got there first - is a refusal of this one.
-        if (_ceremonies.Spend(ceremony) is { } notSpent)
+        if (_ceremonies.Spend(ceremony) is string notSpent)
         {
             Logger.LogInformation("Passkey assertion refused: {Reason}.", notSpent);
 
@@ -232,7 +232,7 @@ public sealed class PasskeyAuthenticationHandler : AuthenticationHandler<Passkey
         // cannot be replayed once the account may sign in. The password lockout is not consulted: an
         // assertion cannot be guessed, and LocalSignInRules.PreSignInCheckAsync says what consulting
         // it here would hand an attacker. The refusal carries why, for the page to route on.
-        if (await _rules.StandingCheckAsync(user) is { } refusal)
+        if (await _rules.StandingCheckAsync(user) is SignInRefusal refusal)
         {
             Logger.LogInformation("Passkey assertion refused for user {UserId}: {Refusal}.", user.Id, refusal);
 

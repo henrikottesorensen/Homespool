@@ -71,7 +71,7 @@ public sealed class RecoveryCodeAuthenticationHandler : AuthenticationHandler<Au
             return SignInRefusals.Fail(SignInRefusal.Invalid, "There is no account to redeem a code for.");
         }
 
-        if (await _rules.PreSignInCheckAsync(user) is { } refusal)
+        if (await _rules.PreSignInCheckAsync(user) is SignInRefusal refusal)
         {
             Logger.LogInformation("Recovery code refused for user {UserId}: {Refusal}.", user.Id, refusal);
 

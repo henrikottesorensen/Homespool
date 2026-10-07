@@ -68,7 +68,9 @@ public sealed class PrintableExceptionSink : ILogEventSink, IDisposable, IAsyncD
 
     private static LogEvent Printable(LogEvent logEvent)
     {
-        if (logEvent.Exception is not { } exception)
+        Exception? exception = logEvent.Exception;
+
+        if (exception is null)
         {
             return logEvent;
         }

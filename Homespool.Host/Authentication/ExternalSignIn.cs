@@ -222,7 +222,7 @@ public sealed class ExternalSignIn
                     _ => null,
                 };
 
-                if (identifierLength is { } longest)
+                if (identifierLength is int longest)
                 {
                     if (claim.Value.Length > longest || !PrintableText.IsPrintable(claim.Value))
                     {

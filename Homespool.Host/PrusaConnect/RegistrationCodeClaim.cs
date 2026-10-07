@@ -95,7 +95,7 @@ public class RegistrationCodeClaim
         // from which refusal comes back - and counted as a wrong guess until it proves otherwise.
         AttemptTicket attempt = await _attemptLimiter.TakeAttemptAsync(userId, LimitedAction.ClaimPrinter, _timeProvider.GetUtcNow(), cancellationToken);
 
-        if (attempt.BackedOff is { } remaining)
+        if (attempt.BackedOff is TimeSpan remaining)
         {
             throw new ClaimLockedOutException(remaining);
         }

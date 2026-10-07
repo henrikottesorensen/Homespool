@@ -111,9 +111,9 @@ public class PrintStopService
         // the machine. StopPrint's own floor is only Print, so nothing beneath this would refuse.
         Capability allowedBy;
 
-        if (active is { } job)
+        if (active is not null)
         {
-            allowedBy = await _access.RequireWithdrawingAsync(printerId, caller, job.QueuedByUserId, cancellationToken);
+            allowedBy = await _access.RequireWithdrawingAsync(printerId, caller, active.QueuedByUserId, cancellationToken);
         }
         else
         {

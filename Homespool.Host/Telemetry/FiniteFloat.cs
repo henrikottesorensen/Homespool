@@ -26,6 +26,6 @@ public static class FiniteFloat
     /// <summary>The value when it is a number, otherwise null.</summary>
     public static float? OrNull(float? value)
     {
-        return value is { } number && float.IsFinite(number) ? number : null;
+        return value is float number && float.IsFinite(number) ? number : null;
     }
 }

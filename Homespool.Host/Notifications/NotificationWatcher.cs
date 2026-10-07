@@ -248,7 +248,7 @@ public sealed class NotificationWatcher : BackgroundService
 
         Dictionary<long, PrintHoldReason> held = rows.ToDictionary(row => row.Id, row => row.Reason);
 
-        if (_held is { } before)
+        if (_held is Dictionary<long, PrintHoldReason> before)
         {
             foreach (var row in rows)
             {

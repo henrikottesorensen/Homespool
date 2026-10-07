@@ -58,14 +58,14 @@ public sealed class FilamentChangeWatch : ILiveStateObserver
 
         lock (_lock)
         {
-            if (after.TimeToFilamentChange is not { } left || left > threshold + (int)Rearm.TotalSeconds)
+            if (after.TimeToFilamentChange is not int left || left > threshold + (int)Rearm.TotalSeconds)
             {
                 _announced.Remove(printerId);
             }
 
-            bool crossed = after.TimeToFilamentChange is { } now &&
+            bool crossed = after.TimeToFilamentChange is int now &&
                            now <= threshold &&
-                           (before.TimeToFilamentChange is not { } was || was > threshold);
+                           (before.TimeToFilamentChange is not int was || was > threshold);
 
             if (!crossed || !_announced.Add(printerId))
             {

@@ -194,7 +194,7 @@ public class IndexModel : PageModel
 
             // The camera being edited holds its device, so it is not in AvailableDevices - that list
             // is deliberately the unclaimed ones. Its sizes are asked for separately.
-            if (Editing is not null && LocalCameraDevices.DeviceNameFrom(Editing.Source) is { } device &&
+            if (Editing is not null && LocalCameraDevices.DeviceNameFrom(Editing.Source) is string device &&
                 CameraSourcePolicy.IsLocalDevice(Editing.Source))
             {
                 IReadOnlyDictionary<string, IReadOnlyList<string>> byDevice = await _cameras

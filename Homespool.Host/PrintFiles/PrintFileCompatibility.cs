@@ -87,13 +87,13 @@ public static class PrintFileCompatibility
             findings.Add(PrintCompatibilityFinding.IncompatiblePrinterModel);
         }
 
-        if (file.RequiresHardenedNozzle == true && AbrasiveFindingFor(tools) is { } abrasive)
+        if (file.RequiresHardenedNozzle == true && AbrasiveFindingFor(tools) is PrintCompatibilityFinding abrasive)
         {
             findings.Add(abrasive);
         }
 
-        if (file.NozzleDiameter is { } wanted &&
-            FittedNozzleDiameter(printer, tools) is { } fitted &&
+        if (file.NozzleDiameter is float wanted &&
+            FittedNozzleDiameter(printer, tools) is float fitted &&
             Math.Abs(wanted - fitted) > GCodeMetadata.NozzleDiameterTolerance)
         {
             findings.Add(PrintCompatibilityFinding.NozzleDiameterMismatch);
@@ -194,8 +194,8 @@ public static class PrintFileCompatibility
 
         float? first = tools[0].NozzleDiameter;
 
-        return tools.All(tool => tool.NozzleDiameter is { } diameter &&
-                                 first is { } head &&
+        return tools.All(tool => tool.NozzleDiameter is float diameter &&
+                                 first is float head &&
                                  Math.Abs(diameter - head) < GCodeMetadata.NozzleDiameterTolerance) ?
             first :
             null;

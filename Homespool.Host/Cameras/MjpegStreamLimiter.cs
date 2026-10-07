@@ -77,7 +77,7 @@ public sealed class MjpegStreamLimiter
 
             _open[userId] = count + 1;
 
-            if (view is { } named && !_views.ContainsKey((userId, camera, named)))
+            if (view is Guid named && !_views.ContainsKey((userId, camera, named)))
             {
                 MjpegStreamLease stoppable = new(this, userId, (userId, camera, named));
                 _views.Add((userId, camera, named), stoppable);

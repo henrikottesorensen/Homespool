@@ -139,7 +139,7 @@ public class CameraService
 
         foreach (LocalCameraDevice device in devices)
         {
-            if (_devices.NodeFor(device.Name) is { } node && byNode.TryGetValue(node, out IReadOnlyList<string>? sizes))
+            if (_devices.NodeFor(device.Name) is string node && byNode.TryGetValue(node, out IReadOnlyList<string>? sizes))
             {
                 byDevice[device.Name] = sizes;
             }
@@ -221,7 +221,7 @@ public class CameraService
             return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
         }
 
-        if (CheckAttachedSource(source, resolution) is { } malformed)
+        if (CheckAttachedSource(source, resolution) is CameraSaveOutcome malformed)
         {
             return malformed;
         }
@@ -327,7 +327,7 @@ public class CameraService
             return CameraSaveOutcome.Refused("Cameras_StreamServerNoCredential");
         }
 
-        if (CheckAttachedSource(source, resolution) is { } malformed)
+        if (CheckAttachedSource(source, resolution) is CameraSaveOutcome malformed)
         {
             return malformed;
         }

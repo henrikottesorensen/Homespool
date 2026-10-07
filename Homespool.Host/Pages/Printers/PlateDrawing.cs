@@ -65,15 +65,15 @@ public sealed class PlateDrawing
     public PlateBounds? Bed { get; }
 
     /// <summary>The SVG viewBox for <see cref="Frame"/>, invariant-formatted. Empty without one.</summary>
-    public string ViewBox => Frame is { } frame ?
-        string.Join(' ', Number(frame.MinX), Number(frame.MinY), Number(frame.MaxX - frame.MinX), Number(frame.MaxY - frame.MinY)) :
+    public string ViewBox => Frame is not null ?
+        string.Join(' ', Number(Frame.MinX), Number(Frame.MinY), Number(Frame.MaxX - Frame.MinX), Number(Frame.MaxY - Frame.MinY)) :
         string.Empty;
 
     /// <summary>
     /// The object numbers' size in user units - millimetres here - scaled to the frame, so a label
     /// reads the same on a small bed as on a large one.
     /// </summary>
-    public double LabelSize => Frame is { } frame ? Math.Max(frame.MaxX - frame.MinX, frame.MaxY - frame.MinY) / 28 : 0;
+    public double LabelSize => Frame is not null ? Math.Max(Frame.MaxX - Frame.MinX, Frame.MaxY - Frame.MinY) / 28 : 0;
 
     /// <summary>How many objects are cancelled.</summary>
     public int CancelledCount => Objects.Count(item => item.Cancelled);
@@ -154,7 +154,9 @@ public sealed class PlateDrawing
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        if (Frame is not { } frame || item.Outline.Count == 0)
+        PlateBounds? frame = Frame;
+
+        if (frame is null || item.Outline.Count == 0)
         {
             return string.Empty;
         }
@@ -180,7 +182,9 @@ public sealed class PlateDrawing
     {
         ArgumentNullException.ThrowIfNull(item);
 
-        if (Frame is not { } frame || item.Outline.Count == 0)
+        PlateBounds? frame = Frame;
+
+        if (frame is null || item.Outline.Count == 0)
         {
             return (string.Empty, string.Empty);
         }

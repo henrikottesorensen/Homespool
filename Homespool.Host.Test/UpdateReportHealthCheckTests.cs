@@ -115,6 +115,42 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         }
         """;
 
+    /// <summary>
+    /// The appliance's report of 2026-10-07, trimmed to the fields the check reads: the application had
+    /// been recreated on a later revision and the proxy and the camera sidecar had not, so each was a
+    /// different distance behind.
+    /// </summary>
+    private const string MixedStack = """
+        {
+          "schema": 1,
+          "checked": "2026-10-06T23:07:05Z",
+          "update_available": true,
+          "services": [
+            {
+              "service": "homespool",
+              "status": "newer",
+              "running": { "revision": "672cc8da630ab7e2adccfd4c99ecee0d6182a538", "base": "sha256:2227" },
+              "published": { "revision": "038f1fc7b624a892ae80bee8bc09578ba0519b8b", "base": "sha256:2227" },
+              "reasons": [ "1 Homespool fixes" ]
+            },
+            {
+              "service": "proxy",
+              "status": "newer",
+              "running": { "revision": "2378927090b48109df6292801f39b5ff282893fe", "base": "sha256:9eab" },
+              "published": { "revision": "038f1fc7b624a892ae80bee8bc09578ba0519b8b", "base": "sha256:d715" },
+              "reasons": [ "34 Homespool fixes", "more Homespool changes than the history reaches", "built on a newer base" ]
+            },
+            {
+              "service": "go2rtc",
+              "status": "newer",
+              "running": { "revision": "2378927090b48109df6292801f39b5ff282893fe", "base": "sha256:294b" },
+              "published": { "revision": "038f1fc7b624a892ae80bee8bc09578ba0519b8b", "base": "sha256:294b" },
+              "reasons": [ "34 Homespool fixes", "more Homespool changes than the history reaches" ]
+            }
+          ]
+        }
+        """;
+
     private static readonly DateTimeOffset Now = new(2026, 9, 26, 19, 0, 0, TimeSpan.Zero);
 
     /// <summary>When the appliance was found still showing <see cref="BeforePull"/> after its pull.</summary>
@@ -234,9 +270,9 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
     }
 
     /// <summary>
-    /// The appliance's own report from before it pulled: both images newer for the same reason, said
-    /// once for both, and the command that acts on it - as plain text, since the banner, the mail and
-    /// <c>/health</c> all carry the description as it is.
+    /// The appliance's own report from before it pulled: both images newer, a line each, and the
+    /// command that acts on it - as plain text, since the banner, the mail and <c>/health</c> all
+    /// carry the description as it is.
     /// </summary>
     [Fact]
     public async Task A_newer_image_with_reasons_is_degraded_and_says_what_to_run()
@@ -247,13 +283,14 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
 
         result.Status.Should().Be(HealthStatus.Degraded);
         result.Description.Should().Be(
-            "Newer Homespool images are published for homespool and proxy: the running image does not say " +
-            "which Homespool revision it is. To take them, run docker compose pull && docker compose up -d " +
-            "where the stack runs.");
+            "Newer Homespool images are published:\n" +
+            "homespool: the running image does not say which Homespool revision it is\n" +
+            "proxy: the running image does not say which Homespool revision it is\n" +
+            "To take them, run docker compose pull && docker compose up -d where the stack runs.");
     }
 
     [Fact]
-    public async Task Services_with_different_reasons_are_listed_apart()
+    public async Task Each_image_has_a_line_of_its_own()
     {
         await WriteAsync("""
             {
@@ -270,8 +307,10 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         HealthCheckResult result = await RunAsync(NewCheck());
 
         result.Description.Should().StartWith(
-            "Newer Homespool images are published for homespool and proxy: 10 Homespool fixes; " +
-            "for go2rtc: 10 Homespool fixes, built on a newer base. ");
+            "Newer Homespool images are published:\n" +
+            "homespool: 10 Homespool fixes\n" +
+            "proxy: 10 Homespool fixes\n" +
+            "go2rtc: 10 Homespool fixes, built on a newer base\n");
     }
 
     [Fact]
@@ -282,12 +321,17 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         HealthCheckResult result = await RunAsync(NewCheck());
 
         result.Description.Should().Be(
-            "A newer Homespool image is published for homespool: 2 Homespool fixes. " +
+            "A newer Homespool image is published:\n" +
+            "homespool: 2 Homespool fixes\n" +
             "To take it, run docker compose pull && docker compose up -d where the stack runs.");
     }
 
+    /// <summary>
+    /// The same reasons are still a line each: every image counts what it is built from, so the same
+    /// count twice is two images' own changes, not one change said twice.
+    /// </summary>
     [Fact]
-    public async Task Three_services_with_the_same_reasons_are_listed_as_a_sentence_would()
+    public async Task Images_with_the_same_reasons_still_have_a_line_each()
     {
         await WriteAsync("""
             {
@@ -304,7 +348,89 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         HealthCheckResult result = await RunAsync(NewCheck());
 
         result.Description.Should().StartWith(
-            "Newer Homespool images are published for homespool, proxy and go2rtc: 10 Homespool fixes. ");
+            "Newer Homespool images are published:\n" +
+            "homespool: 10 Homespool fixes\nproxy: 10 Homespool fixes\ngo2rtc: 10 Homespool fixes\n");
+    }
+
+    /// <summary>
+    /// The case that read as one update counted two ways: the containers run different revisions, and
+    /// the banner says which, so different counts are not a contradiction.
+    /// </summary>
+    [Fact]
+    public async Task Containers_on_different_revisions_are_named_with_theirs()
+    {
+        _time.SetUtcNow(new(2026, 10, 7, 9, 0, 0, TimeSpan.Zero));
+        await WriteAsync(MixedStack);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Status.Should().Be(HealthStatus.Degraded);
+        result.Description.Should().Contain(
+            "The containers are not all one build: homespool runs 672cc8da, proxy and go2rtc run 23789270. " +
+            "To take them, run docker compose pull && docker compose up -d where the stack runs.");
+    }
+
+    [Fact]
+    public async Task Containers_on_one_revision_are_not_said_to_differ()
+    {
+        _time.SetUtcNow(AfterPull);
+        await WriteAsync(BeforePull);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Description.Should().NotContain("not all one build");
+    }
+
+    [Theory]
+    [InlineData("true", 1, "compose.yaml changed too, in 1 commit,")]
+    [InlineData("true", 3, "compose.yaml changed too, in 3 commits,")]
+    [InlineData("false", 3, "compose.yaml changed too, in at least 3 commits,")]
+    public async Task A_changed_compose_file_is_said_after_the_pull_command(string found, int commits, string expected)
+    {
+        await WriteAsync($$"""
+            {
+              "schema": 1,
+              "checked": "2026-09-26T18:00:00Z",
+              "services": [
+                {
+                  "service": "homespool",
+                  "status": "newer",
+                  "published": { "revision": "038f1fc7b624a892ae80bee8bc09578ba0519b8b", "base": "" },
+                  "reasons": [ "2 Homespool fixes" ],
+                  "compose": { "path": "compose.yaml", "commits": {{commits}}, "found": {{found}}, "read": 185 }
+                }
+              ]
+            }
+            """);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Description.Should().EndWith(
+            $"where the stack runs. {expected} and a pull does not bring that: compare the deployment's copy " +
+            "with the repository's at 038f1fc7.");
+    }
+
+    [Fact]
+    public async Task An_unchanged_compose_file_is_not_mentioned()
+    {
+        await WriteAsync("""
+            {
+              "schema": 1,
+              "checked": "2026-09-26T18:00:00Z",
+              "services": [
+                {
+                  "service": "homespool",
+                  "status": "newer",
+                  "reasons": [ "2 Homespool fixes" ],
+                  "compose": { "commits": 0, "found": true }
+                }
+              ]
+            }
+            """);
+
+        HealthCheckResult result = await RunAsync(NewCheck());
+
+        result.Description.Should().NotContain("compose.yaml");
     }
 
     [Fact]
@@ -368,6 +494,7 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
     [Theory]
     [InlineData("pinned", "\"built\": \"2026-08-14T00:00:00Z\"", "homespool is pinned to a digest on 2026-08-14, so there is no tag to follow")]
     [InlineData("not-running", "\"built\": null", "homespool was not running")]
+    [InlineData("restamped", "\"built\": null", "homespool differs from the image its registry publishes only in the commit it is stamped with")]
     [InlineData("local", "\"built\": \"\"", "homespool was built from source rather than pulled, so nothing is published")]
     [InlineData("from-the-future", "\"built\": null", "homespool is 'from-the-future', which this version does not know")]
     public async Task Every_other_status_says_what_it_means(string status, string built, string expected)
@@ -431,8 +558,7 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
         HealthCheckResult result = await RunAsync(NewCheck(new RunningImage(ReportedRevision, AspnetBase)));
 
         result.Status.Should().Be(HealthStatus.Degraded);
-        result.Description.Should().StartWith(
-            "Newer Homespool images are published for homespool, proxy and go2rtc: 10 Homespool fixes. ");
+        result.Description.Should().StartWith("Newer Homespool images are published:\nhomespool: 10 Homespool fixes\n");
     }
 
     /// <summary>

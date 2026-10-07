@@ -41,8 +41,9 @@ namespace Homespool.Host.Health;
 /// reasons would tell whoever just took the update to take it again. When the report names the
 /// application's running revision or base and this process was built from another, the report is set
 /// aside until the check runs again. The application is the one container whose image this process knows,
-/// and it stands for all three because they are built from one revision and replaced by one
-/// <c>docker compose up</c>.
+/// and it stands for all three because one <c>docker compose up</c> replaces them together. Not always:
+/// a container recreated alone leaves the others on another revision, which the report records and the
+/// banner names, and the host's watch runs the check again within minutes of any of them changing.
 /// </para>
 /// <para>
 /// <b>Registered as a singleton</b>, because it keeps the last report it read and reads the file again
@@ -139,16 +140,16 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
 
         if (worthPulling.Count > 0)
         {
-            // Grouped by what they bring, because the images are built from one revision and usually
-            // bring the same thing: three services each saying "10 Homespool fixes" reads as thirty.
-            string reasons = string.Join("; ", worthPulling
-                .GroupBy(s => string.Join(", ", s.Reasons!), StringComparer.Ordinal)
-                .Select(g => $"for {JoinNames([.. g.Select(s => s.Service)])}: {g.Key}"));
+            // A line per image, because each counts what it is built from: the same count on two lines
+            // is two images' own changes, not one change said twice.
+            string lines = string.Join('\n', worthPulling.Select(s => $"{s.Service}: {string.Join(", ", s.Reasons!)}"));
             bool several = worthPulling.Count > 1;
 
             return HealthCheckResult.Degraded(
-                $"{(several ? "Newer Homespool images are" : "A newer Homespool image is")} published {reasons}. " +
-                $"To take {(several ? "them" : "it")}, run {PullCommand} where the stack runs.");
+                $"{(several ? "Newer Homespool images are" : "A newer Homespool image is")} published:\n{lines}\n" +
+                MixedRevisions(report) +
+                $"To take {(several ? "them" : "it")}, run {PullCommand} where the stack runs." +
+                ComposeChanges(report));
         }
 
         if (report.Services.All(s => s.Status == "current"))
@@ -180,6 +181,59 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
         }
     }
 
+    /// <summary>
+    /// A sentence naming each container's revision, when they do not all run the same one - one
+    /// recreated without the others - and nothing when they do. Without it, three images a different
+    /// distance behind read as one update counted three ways.
+    /// </summary>
+    private static string MixedRevisions(Report report)
+    {
+        List<IGrouping<string, ReportService>> revisions =
+        [
+            .. report.Services
+                     .Where(s => !string.IsNullOrEmpty(s.Running?.Revision))
+                     .GroupBy(s => Short(s.Running!.Revision!), StringComparer.Ordinal),
+        ];
+
+        if (revisions.Count < 2)
+        {
+            return string.Empty;
+        }
+
+        IEnumerable<string> clauses = revisions.Select(
+            g => $"{JoinNames([.. g.Select(s => s.Service)])} {(g.Count() > 1 ? "run" : "runs")} {g.Key}");
+
+        return $"The containers are not all one build: {string.Join(", ", clauses)}. ";
+    }
+
+    /// <summary>
+    /// A sentence saying <c>compose.yaml</c> changed between the application's running and published
+    /// revisions, when it did: no pull brings that, so somebody has to compare the deployment's copy.
+    /// </summary>
+    private static string ComposeChanges(Report report)
+    {
+        ReportService? application = report.Services.FirstOrDefault(s => s.Service == ApplicationService);
+
+        if (application?.Compose is not { Commits: > 0 } compose)
+        {
+            return string.Empty;
+        }
+
+        string count = $"{(compose.Found ? string.Empty : "at least ")}{compose.Commits} " +
+                       $"{(compose.Commits == 1 ? "commit" : "commits")}";
+        string? published = application.Published?.Revision;
+        string at = string.IsNullOrEmpty(published) ? string.Empty : $" at {Short(published)}";
+
+        return $" compose.yaml changed too, in {count}, and a pull does not bring that: compare the " +
+               $"deployment's copy with the repository's{at}.";
+    }
+
+    /// <summary>A revision as people quote one: its first eight characters.</summary>
+    private static string Short(string revision)
+    {
+        return revision[..Math.Min(8, revision.Length)];
+    }
+
     /// <summary>Service names as a sentence lists them: "a", "a and b", "a, b and c".</summary>
     private static string JoinNames(IReadOnlyList<string> names)
     {
@@ -204,6 +258,7 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
         return service.Status switch
         {
             "current" => $"{service.Service} is the image its registry publishes",
+            "restamped" => $"{service.Service} differs from the image its registry publishes only in the commit it is stamped with",
             "newer" => $"{service.Service} has a newer image published, with nothing in it the check counts as a reason to update",
             "local" => $"{service.Service} was built from source rather than pulled{Built(service)}, so nothing is " +
                        "published to compare it with, and no check can say whether fixes have come out since",
@@ -304,7 +359,19 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
         [property: JsonPropertyName("status")] string Status,
         [property: JsonPropertyName("reasons")] IReadOnlyList<string>? Reasons,
         [property: JsonPropertyName("built")] string? Built,
-        [property: JsonPropertyName("running")] ReportImage? Running);
+        [property: JsonPropertyName("running")] ReportImage? Running,
+        [property: JsonPropertyName("published")] ReportImage? Published,
+        [property: JsonPropertyName("compose")] ReportCompose? Compose);
+
+    /// <summary>
+    /// The commits that changed <c>compose.yaml</c> between the application's running and published
+    /// revisions, and whether the host's walk reached the running one - a floor when it did not.
+    /// </summary>
+    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
+                     Justification = "Only ever constructed by System.Text.Json when reading the report.")]
+    private sealed record ReportCompose(
+        [property: JsonPropertyName("commits")] int Commits,
+        [property: JsonPropertyName("found")] bool Found);
 
     /// <summary>The image a container was running, as its labels described it to the host check.</summary>
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",

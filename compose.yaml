@@ -45,6 +45,12 @@ services:
         # The release version for the image's label, when the commit carries a v-tag. Also only
         # ./build.sh fills it in; empty for every build that is not a release.
         HOMESPOOL_VERSION: "${HOMESPOOL_VERSION:-}"
+        # Where the build context is in the repository, and the git tree it was at, so the update
+        # check on a host can tell this image's own changes from another's and a new image from the
+        # same one stamped with a later commit. The path is context: above, written again because
+        # compose cannot pass a key's value on; the tree is only ever ./build.sh's.
+        HOMESPOOL_CONTEXT_PATH: "."
+        HOMESPOOL_CONTEXT_TREE: "${HOMESPOOL_APP_TREE:-}"
 
     # Pinned, because Docker otherwise derives it from the container id - a new name on every
     # recreation. The printer certificate carries this name and is issued once, so an unpinned name
@@ -437,6 +443,8 @@ services:
         HOMESPOOL_BUILDER_DIGEST: "${HOMESPOOL_GOLANG_DIGEST:-}"
         GO2RTC_MODULE_VERSIONS: "${HOMESPOOL_GO_MODULES:-}"
         HOMESPOOL_VERSION: "${HOMESPOOL_VERSION:-}"
+        HOMESPOOL_CONTEXT_PATH: "go2rtc"
+        HOMESPOOL_CONTEXT_TREE: "${HOMESPOOL_GO2RTC_TREE:-}"
 
     # The credential is not in go2rtc.yaml, because Homespool rewrites that file when it registers a
     # camera, and it is not on the command line either, where every account on the host could read
@@ -744,6 +752,8 @@ services:
         HOMESPOOL_GITREF: "${HOMESPOOL_GITREF:-}"
         HOMESPOOL_BASE_DIGEST: "${HOMESPOOL_NGINX_DIGEST:-}"
         HOMESPOOL_VERSION: "${HOMESPOOL_VERSION:-}"
+        HOMESPOOL_CONTEXT_PATH: "nginx"
+        HOMESPOOL_CONTEXT_TREE: "${HOMESPOOL_PROXY_TREE:-}"
 
     # IPv4 ONLY, on every port here, and the 0.0.0.0 is what says so. Published without an address,
     # Docker also listens on [::] - but this network has no IPv6, so a v6 connection is relayed by

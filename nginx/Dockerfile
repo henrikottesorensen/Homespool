@@ -166,3 +166,12 @@ LABEL org.opencontainers.image.title="Homespool proxy" \
       org.opencontainers.image.base.name="${HOMESPOOL_BASE_IMAGE}" \
       org.opencontainers.image.base.digest="${HOMESPOOL_BASE_DIGEST}" \
       maintainer=""
+
+# The build context's path in the repository and its git tree, under a prefix this project controls.
+# With the base, they are everything this image is built from but the commit it is stamped with, so
+# an image equal in both is this one under a later commit - which the update check on a host says,
+# rather than offering the application's changes as the proxy's.
+ARG HOMESPOOL_CONTEXT_PATH=
+ARG HOMESPOOL_CONTEXT_TREE=
+LABEL io.github.henrikottesorensen.homespool.context.path="${HOMESPOOL_CONTEXT_PATH}" \
+      io.github.henrikottesorensen.homespool.context.tree="${HOMESPOOL_CONTEXT_TREE}"

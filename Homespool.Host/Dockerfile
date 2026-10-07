@@ -199,6 +199,17 @@ LABEL org.opencontainers.image.title="Homespool" \
       org.opencontainers.image.base.name="${HOMESPOOL_BASE_IMAGE}" \
       org.opencontainers.image.base.digest="${HOMESPOOL_BASE_DIGEST}"
 
+# The day the packages were refreshed, and the build context's path in the repository and its git
+# tree, under a prefix this project controls. With the base, they are everything this image is built
+# from but the commit it is stamped with, which is what the update check on a host compares to tell a
+# new image from the same one published again.
+ARG HOMESPOOL_APT_REFRESH=
+ARG HOMESPOOL_CONTEXT_PATH=
+ARG HOMESPOOL_CONTEXT_TREE=
+LABEL io.github.henrikottesorensen.homespool.packages.refreshed="${HOMESPOOL_APT_REFRESH}" \
+      io.github.henrikottesorensen.homespool.context.path="${HOMESPOOL_CONTEXT_PATH}" \
+      io.github.henrikottesorensen.homespool.context.tree="${HOMESPOOL_CONTEXT_TREE}"
+
 # /health/live, not /health. Docker marks the container unhealthy on failure, and orchestrators that
 # act on that (Swarm, autoheal sidecars) restart it - so this must only fail for faults a restart
 # fixes. A database rejecting writes is not one: restarting discards everything still buffered.

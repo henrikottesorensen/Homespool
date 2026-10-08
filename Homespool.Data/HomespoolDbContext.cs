@@ -705,6 +705,10 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.Property(e => e.State)
                   .HasConversion<string>();
 
+            // By name, as FileOnPrinter.HoldReason is, and for the same reasons.
+            entity.Property(e => e.HoldReason)
+                  .HasConversion<string>();
+
             // No foreign key to HSFile, deliberately: this records a name and a digest rather than
             // pointing at a row, so a renamed or deleted file leaves history intact. See PrintJob.
 

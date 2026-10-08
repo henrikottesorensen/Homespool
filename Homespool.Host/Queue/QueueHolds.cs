@@ -50,6 +50,53 @@ internal sealed class QueueHolds
     }
 
     /// <summary>
+    /// Adds the one history row a hold leaves: the entry's file, failed at <paramref name="at"/>, in
+    /// <paramref name="recorded"/>'s words, and marked as the record of <paramref name="hold"/>. Not
+    /// saved.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Written on the transition into the hold, in the same save</b>, so history shows the file and
+    /// why where a person looking back for their print will look. A row per re-check would turn it
+    /// into a log, and the queue entry itself stays: somebody still wants this printed.
+    /// </para>
+    /// <para>
+    /// <b>The mark is what keeps the hold to one notification.</b> The hold itself is announced, to
+    /// everybody who can see the queue, in the queue's own sentence; a row closed as failed is
+    /// otherwise announced as well, to whoever queued the file, and would tell them the same thing
+    /// twice. See <see cref="PrintJob.HoldReason"/>.
+    /// </para>
+    /// </remarks>
+    /// <param name="dbContext">The pass's context.</param>
+    /// <param name="printerId">The printer whose queue is held.</param>
+    /// <param name="head">The entry the queue is held behind.</param>
+    /// <param name="hold">The hold being entered.</param>
+    /// <param name="recorded">What happened, in English or in the printer's own words.</param>
+    /// <param name="at">The moment, which is both the row's start and its end: nothing printed.</param>
+    public static void AddHoldRecord(HomespoolDbContext dbContext,
+                                     int printerId,
+                                     QueuedPrint head,
+                                     PrintHoldReason hold,
+                                     string? recorded,
+                                     DateTimeOffset at)
+    {
+        dbContext.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            PrintUuid = head.PrintUuid,
+            FileName = head.File!.Name,
+            Digest = head.File.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
+            StartedAt = at,
+            EndedAt = at,
+            State = PrintState.Failed,
+            Reason = recorded,
+            HoldReason = hold,
+        });
+    }
+
+    /// <summary>
     /// Counts a refusal that says something about this file, and holds the queue once the printer has
     /// given the same answer <see cref="RefusalRetries.HoldAfter"/> times running.
     /// </summary>
@@ -103,26 +150,15 @@ internal sealed class QueueHolds
 
         // The printer's words, not a sentence of ours: PrintJob.Reason records what was said at the
         // time, and HandleRefusalAsync writes a refused print's reason the same way.
-        dbContext.PrintJobs.Add(new PrintJob
-        {
-            PrinterId = printerId,
-            PrintUuid = head.PrintUuid,
-            FileName = head.File!.Name,
-            Digest = head.File.Digest,
-            QueuedByUserId = head.QueuedByUserId,
-            QueuedByScope = head.QueuedByScope,
-            StartedAt = now,
-            EndedAt = now,
-            State = PrintState.Failed,
-            Reason = onPrinter.TransferRefusalReason ?? onPrinter.TransferRefusalCode,
-        });
+        AddHoldRecord(dbContext, printerId, head, holdAs,
+                      onPrinter.TransferRefusalReason ?? onPrinter.TransferRefusalCode, now);
 
         if (holdAs == PrintHoldReason.TransferAborted)
         {
             _logger.LogWarning(
                 "[{PrinterId}] gave up the transfer of {FileName} {Count} times running; holding the queue " +
                 "until somebody cancels or re-queues it.",
-                printerId, head.File.Name, count);
+                printerId, head.File!.Name, count);
 
             return;
         }
@@ -130,7 +166,7 @@ internal sealed class QueueHolds
         _logger.LogWarning(
             "[{PrinterId}] refused the transfer of {FileName} {Count} times running with the same answer, " +
             "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
-            printerId, head.File.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
+            printerId, head.File!.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
             LogText.Clean(onPrinter.TransferRefusalCode));
     }
 
@@ -203,19 +239,7 @@ internal sealed class QueueHolds
 
         string recorded = $"{head.File!.Name} arrived on the printer, which never said what it called the file.";
 
-        dbContext.PrintJobs.Add(new PrintJob
-        {
-            PrinterId = printerId,
-            PrintUuid = head.PrintUuid,
-            FileName = head.File.Name,
-            Digest = head.File.Digest,
-            QueuedByUserId = head.QueuedByUserId,
-            QueuedByScope = head.QueuedByScope,
-            StartedAt = now,
-            EndedAt = now,
-            State = PrintState.Failed,
-            Reason = recorded,
-        });
+        AddHoldRecord(dbContext, printerId, head, PrintHoldReason.PrinterPathUnknown, recorded, now);
 
         _logger.LogWarning("[{PrinterId}] {Reason} Holding the queue until somebody cancels or re-queues it.",
                            printerId, recorded);
@@ -241,19 +265,7 @@ internal sealed class QueueHolds
 
         string recorded = $"The transfer of {head.File!.Name} was stopped at the printer.";
 
-        dbContext.PrintJobs.Add(new PrintJob
-        {
-            PrinterId = printerId,
-            PrintUuid = head.PrintUuid,
-            FileName = head.File.Name,
-            Digest = head.File.Digest,
-            QueuedByUserId = head.QueuedByUserId,
-            QueuedByScope = head.QueuedByScope,
-            StartedAt = now,
-            EndedAt = now,
-            State = PrintState.Failed,
-            Reason = recorded,
-        });
+        AddHoldRecord(dbContext, printerId, head, PrintHoldReason.TransferStopped, recorded, now);
 
         _logger.LogWarning("[{PrinterId}] {Reason} Holding the queue until somebody cancels or re-queues it.",
                            printerId, recorded);
@@ -279,19 +291,7 @@ internal sealed class QueueHolds
 
         string recorded = $"{head.File!.Name} is 4 GiB or more, which is larger than a printer can be sent.";
 
-        dbContext.PrintJobs.Add(new PrintJob
-        {
-            PrinterId = printerId,
-            PrintUuid = head.PrintUuid,
-            FileName = head.File.Name,
-            Digest = head.File.Digest,
-            QueuedByUserId = head.QueuedByUserId,
-            QueuedByScope = head.QueuedByScope,
-            StartedAt = now,
-            EndedAt = now,
-            State = PrintState.Failed,
-            Reason = recorded,
-        });
+        AddHoldRecord(dbContext, printerId, head, PrintHoldReason.FileTooLarge, recorded, now);
 
         _logger.LogWarning("[{PrinterId}] {Reason} Holding the queue until somebody cancels or re-queues it.",
                            printerId, recorded);
@@ -337,19 +337,7 @@ internal sealed class QueueHolds
         // said at the time, and the live hold is what a reader acts on, in their own language.
         string recorded = $"{head.File!.Name} could not be read from this server's storage to send it to the printer.";
 
-        dbContext.PrintJobs.Add(new PrintJob
-        {
-            PrinterId = printerId,
-            PrintUuid = head.PrintUuid,
-            FileName = head.File.Name,
-            Digest = head.File.Digest,
-            QueuedByUserId = head.QueuedByUserId,
-            QueuedByScope = head.QueuedByScope,
-            StartedAt = now,
-            EndedAt = now,
-            State = PrintState.Failed,
-            Reason = recorded,
-        });
+        AddHoldRecord(dbContext, printerId, head, PrintHoldReason.FileUnreadable, recorded, now);
 
         _logger.LogWarning(unreadable, "[{PrinterId}] {Reason} The queue holds, and tries it again every {Recheck}.",
                            printerId, recorded, QueueAdvancer.BlockRecheckAfter);

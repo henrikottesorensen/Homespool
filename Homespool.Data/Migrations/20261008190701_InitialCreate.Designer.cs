@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261008143301_InitialCreate")]
+    [Migration("20261008190701_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -479,6 +479,9 @@ namespace Homespool.Data.Migrations
 
                     b.Property<int?>("FirmwareJobId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("HoldReason")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("PrintUuid")
                         .HasColumnType("TEXT");

@@ -670,6 +670,7 @@ namespace Homespool.Data.Migrations
                     WithdrawnByUserId = table.Column<long>(type: "INTEGER", nullable: true),
                     WithdrawnByScope = table.Column<string>(type: "TEXT", maxLength: 512, nullable: true),
                     Reason = table.Column<string>(type: "TEXT", nullable: true),
+                    HoldReason = table.Column<string>(type: "TEXT", nullable: true),
                     FilamentAtStart = table.Column<float>(type: "REAL", nullable: true),
                     FilamentAtEnd = table.Column<float>(type: "REAL", nullable: true)
                 },

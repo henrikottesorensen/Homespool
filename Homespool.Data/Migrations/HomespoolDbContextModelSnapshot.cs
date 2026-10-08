@@ -477,6 +477,9 @@ namespace Homespool.Data.Migrations
                     b.Property<int?>("FirmwareJobId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("HoldReason")
+                        .HasColumnType("TEXT");
+
                     b.Property<Guid>("PrintUuid")
                         .HasColumnType("TEXT");
 

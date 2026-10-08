@@ -1626,6 +1626,9 @@ public sealed class QueueAdvancer : BackgroundService
 
             if (onPrinter is not null)
             {
+                // The row is this hold's record, so the hold is announced and the row's ending is not.
+                // Without a hold - no entry, or no copy left to hold - the ending is the only news.
+                commanded.HoldReason = PrintHoldReason.PrintStartUnresolved;
                 onPrinter.HoldReason = PrintHoldReason.PrintStartUnresolved;
                 onPrinter.HoldPrinterFreeBytes = null;
                 onPrinter.HoldPrinterFileBytes = null;
@@ -2100,8 +2103,10 @@ public sealed class QueueAdvancer : BackgroundService
                     new QueueHolds(_timeProvider, _logger).RecordStartRefusal(printerId, head, onPrinter, reason))
                 {
                     // The hold's one history row is this print, refused, in the printer's words - and
-                    // the entry stays, held, for a person to cancel or queue again.
+                    // the entry stays, held, for a person to cancel or queue again. Marked as the
+                    // hold's, so the hold is what is announced.
                     commanded.Reason = onPrinter.StartRefusalReason;
+                    commanded.HoldReason = PrintHoldReason.PrintRefused;
                     Close(commanded, PrintState.Failed, _timeProvider.GetUtcNow());
                     break;
                 }

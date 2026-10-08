@@ -508,19 +508,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
 
             // Written once, on the transition. A row per tick would turn history into a log, and the
             // queue entry itself stays put - somebody still wants this printed.
-            dbContext.PrintJobs.Add(new PrintJob
-            {
-                PrinterId = printerId,
-                PrintUuid = head.PrintUuid,
-                FileName = head.File.Name,
-                Digest = head.File.Digest,
-                QueuedByUserId = head.QueuedByUserId,
-                QueuedByScope = head.QueuedByScope,
-                StartedAt = now,
-                EndedAt = now,
-                State = PrintState.Failed,
-                Reason = recorded,
-            });
+            QueueHolds.AddHoldRecord(dbContext, printerId, head, PrintHoldReason.InsufficientSpace, recorded, now);
 
             _logger.LogWarning("[{PrinterId}] {Reason} The queue holds until space is freed.", printerId, recorded);
         }

@@ -82,7 +82,9 @@ namespace Homespool.Host.Telemetry;
 /// a <c>finally</c> because the loop drains by definition, and nothing can interrupt an item
 /// mid-processing because nothing cancels it. The failure that started it was real: an MK3.5 session's
 /// telemetry and command-ack events from an active print vanished across a dev-server restart.
-/// <c>HostOptions.ShutdownTimeout</c> remains the backstop if the database is genuinely stuck.
+/// What a database that is genuinely stuck can cost is bounded instead by a deadline the writer takes
+/// from <c>HostOptions.ShutdownTimeout</c>, so it gives up and reports before the host stops waiting
+/// - see <see cref="BeginShutdownClock"/>.
 /// </para>
 /// </remarks>
 public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITelemetryHealthSource, ITelemetryEviction
@@ -123,22 +125,18 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private const int MaxPendingEventBatches = 10;
 
     /// <summary>
-    /// How many times the shutdown flush is attempted before the buffers are declared lost.
+    /// How many times the shutdown write is attempted before what it carries is declared lost.
     /// </summary>
     /// <remarks>
-    /// The only retried flush in the class, because it is the only one with no next attempt behind
+    /// The only retried write in the class, because it is the only one with no next attempt behind
     /// it. While running, a failed flush costs nothing - the buffers are kept and the timer comes
     /// round again seconds later. At shutdown the loop has already exited, so a single transient
     /// failure (SQLite busy, a WAL checkpoint, a connection not yet released by whatever else just
     /// used the file) silently takes everything buffered with it.
     ///
-    /// Bounded and short: a database that is genuinely down will not recover inside a shutdown, and
-    /// nothing here should be able to hold the process open for long.
+    /// A ceiling, not a promise: an attempt starts only while the shutdown deadline leaves it time
+    /// to wait - see <see cref="ShutdownWait"/>.
     /// </remarks>
-    // Two, down from three (2026-07-30): each attempt is genuinely bounded now, so the budget
-    // arithmetic in MaxShutdownFlushDuration is real - and at three bounded attempts plus the
-    // in-flight flush the total no longer fitted the container's stop grace. Two patient attempts
-    // beat three that get the process SIGKILLed before the loss is even reported.
     private const int FinalFlushAttempts = 2;
 
     private static readonly TimeSpan FinalFlushRetryDelay = TimeSpan.FromMilliseconds(250);
@@ -157,27 +155,40 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private static readonly TimeSpan EvictionTimeout = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// What one shutdown flush attempt may spend waiting on the database, ignoring
+    /// The most one shutdown save may spend waiting on the database, ignoring
     /// <see cref="StorageOptions.BusyTimeoutMilliseconds"/>, which is sized for a running service.
     /// </summary>
     /// <remarks>
-    /// A shutdown has a budget a running service does not, and it is set outside the process: the
-    /// container runtime SIGKILLs after its grace period, so an attempt that would have succeeded at
-    /// twelve seconds is not patient, it is simply killed - and killed mid-drain, which loses the
-    /// buffers *and* the log line saying what was lost. Giving up sooner and reporting is strictly
-    /// better than waiting longer and being terminated. See <see cref="MaxShutdownFlushDuration"/>
-    /// for the arithmetic this feeds.
-    /// </remarks>
-    /// <remarks>
-    /// Chosen from the outside in, not picked for feel. A 15 s stop grace has to cover three things,
-    /// and the first is easy to forget: the flush the drain loop is *already inside* when SIGTERM
-    /// arrives, which runs to the ordinary <see cref="StorageOptions.BusyTimeoutMilliseconds"/>
-    /// budget before the loop can even see that it is shutting down. Then these attempts, then
-    /// process teardown. Leaving that first term out is what left a measured shutdown at 11 s
-    /// against an 11 s timeout - still killed, still no report. Deliberately as patient as the
-    /// arithmetic allows, since the cost of giving up early is data a longer wait would have saved.
+    /// A cap on each save, so a lock that clears in a second or two is still ridden out while a
+    /// second attempt keeps room to run. The shutdown deadline lowers it as time runs out, and it
+    /// never raises it - see <see cref="ShutdownWait"/>.
     /// </remarks>
     private static readonly TimeSpan FinalFlushCommandBudget = TimeSpan.FromMilliseconds(3000);
+
+    /// <summary>
+    /// What the shutdown deadline keeps back from <c>HostOptions.ShutdownTimeout</c>, for the writer's
+    /// report and for the hosted services the host stops after this one.
+    /// </summary>
+    /// <remarks>
+    /// The host stops waiting at its timeout and the process exits under whatever is still running.
+    /// A save still waiting then is not patient, it is cut off - and the log line saying what was
+    /// lost goes with it. Giving up in time to report is strictly better than waiting longer and
+    /// being terminated.
+    /// </remarks>
+    private static readonly TimeSpan ShutdownReserve = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How far past its timeout a save that never got the lock can still return.
+    /// </summary>
+    /// <remarks>
+    /// Microsoft.Data.Sqlite retries a busy statement until its timeout has elapsed, sleeping 150 ms
+    /// between tries and checking the time only between them. With <c>busy_timeout</c> at half the
+    /// budget (<see cref="ApplyWriterCommandTimeoutAsync"/>), the second check lands at the budget
+    /// plus that sleep, so a held lock gives up about 150 ms late, and later still on a loaded
+    /// machine. Kept back from each save's wait so a save given the last of the time does not run
+    /// past the deadline.
+    /// </remarks>
+    private static readonly TimeSpan SaveOvershoot = TimeSpan.FromMilliseconds(500);
 
     private readonly Channel<TelemetryWriteItem> _channel;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -185,6 +196,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private readonly StorageOptions _options;
     private readonly ILogger<TelemetryWriter> _logger;
     private readonly TimeProvider _timeProvider;
+
+    // How long the host waits for its hosted services to stop; the shutdown deadline is taken from it.
+    private readonly TimeSpan _shutdownTimeout;
 
     // Told how each printer's state moved - see ILiveStateObserver. Optional, so a writer built for a
     // test that does not care has nobody to tell.
@@ -228,17 +242,25 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     private int _consecutiveFlushFailures;
     private volatile bool _shuttingDown;
 
+    // When the writer's shutdown work must be finished by - see BeginShutdownClock. UTC ticks, zero
+    // until shutdown starts, so it can be set from the lifetime's callback thread and read on the
+    // drain loop without a lock.
+    private long _shutdownDeadlineTicks;
+
     public TelemetryWriter(IServiceScopeFactory scopeFactory,
                            IOptionsMonitor<StorageOptions> options,
                            ILogger<TelemetryWriter> logger,
                            TimeProvider timeProvider,
                            IEnumerable<ILiveStateObserver>? observers = null,
-                           IEnumerable<IPrinterEventObserver>? eventObservers = null)
+                           IEnumerable<IPrinterEventObserver>? eventObservers = null,
+                           IOptions<HostOptions>? hostOptions = null,
+                           IHostApplicationLifetime? lifetime = null)
     {
         _scopeFactory = scopeFactory;
         _observers = [.. observers ?? []];
         _eventObservers = [.. eventObservers ?? []];
         _storage = options;
+        _shutdownTimeout = (hostOptions?.Value ?? new HostOptions()).ShutdownTimeout;
 
         // Captured, deliberately, and not read from the monitor at the point of use like the ingest
         // throttle below. The batch size and flush interval are graded as needing a restart because
@@ -261,6 +283,13 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 SingleReader = true,
                 SingleWriter = false,
             }, OnItemDropped);
+
+        // The host's timeout starts counting when it begins stopping, and the services stopped
+        // before this one spend from it. ApplicationStopping fires at or before that moment, so a
+        // deadline measured from it is never later than the host's own. Without a lifetime - a
+        // writer built by a test - StopAsync starts the clock instead. Last, because a token
+        // already cancelled runs the callback here and now.
+        lifetime?.ApplicationStopping.Register(BeginShutdownClock);
     }
 
     /// <summary>
@@ -454,23 +483,6 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         }
     }
 
-    /// <summary>
-    /// Worst case wall-clock time the shutdown drain can spend on its final flush: every attempt
-    /// timing out, plus the delays between them.
-    /// </summary>
-    /// <remarks>
-    /// Public because it is one end of a chain that spans three files and used to be settled in none
-    /// of them: this budget must fit inside <c>HostOptions.ShutdownTimeout</c> (set from it in
-    /// <c>Program.cs</c>), which must in turn fit inside the container runtime's stop grace period
-    /// (<c>compose.yaml</c>). Before 2026-07-30 the middle value was the framework default of 30 s
-    /// and the outer one Docker's default of 10 s, so the inner budget - three attempts that could
-    /// each block ~10 s - overran both, and every shutdown against a stuck database was SIGKILLed
-    /// with nothing logged about what it lost. <c>TelemetryWriterShutdownBudgetTests</c> pins the
-    /// ordering so a future edit to the attempt count cannot quietly break it again.
-    /// </remarks>
-    public static TimeSpan MaxShutdownFlushDuration =>
-        (FinalFlushCommandBudget * FinalFlushAttempts) + (FinalFlushRetryDelay * (FinalFlushAttempts - 1));
-
     /// <inheritdoc />
     public TelemetryHealthSnapshot Current => _health;
 
@@ -523,11 +535,65 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// </remarks>
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
+        // A no-op when ApplicationStopping already started it, which in a host it has.
+        BeginShutdownClock();
+
         // Set before the writer end closes, so the drain loop sees it for every item it still has.
         _shuttingDown = true;
         _channel.Writer.TryComplete();
 
         await base.StopAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Fixes the moment the writer's shutdown work must be finished by: the host's
+    /// <c>ShutdownTimeout</c> from now, less <see cref="ShutdownReserve"/>. Only the first call counts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>One deadline, checked as the work runs, rather than a sum of each step's worst case.</b> A
+    /// sum has to be kept in step with the code by hand, and the steps it leaves out are exactly the
+    /// ones added after it was written. Here every save after the drain loop asks
+    /// <see cref="ShutdownWait"/> what is left, so a step added later is bounded without anyone
+    /// remembering to count it.
+    /// </para>
+    /// <para>
+    /// <b>The flush already running when shutdown begins is not shortened</b> - nothing here cancels
+    /// work in flight, see the class remarks - but its time comes off the same deadline, as does
+    /// whatever the services stopped before this one spent.
+    /// </para>
+    /// </remarks>
+    private void BeginShutdownClock()
+    {
+        long deadline = (_timeProvider.GetUtcNow() + _shutdownTimeout - ShutdownReserve).UtcTicks;
+
+        Interlocked.CompareExchange(ref _shutdownDeadlineTicks, deadline, 0);
+    }
+
+    /// <summary>
+    /// What one save after the drain loop may wait for the database: the time left before the
+    /// shutdown deadline, in whole seconds and capped at <see cref="FinalFlushCommandBudget"/>, or
+    /// null when not even a second is left and the save should not start.
+    /// </summary>
+    /// <remarks>
+    /// Whole seconds because that is what binds: the connection's <c>DefaultTimeout</c> is an
+    /// integer number of seconds, and <see cref="ApplyWriterCommandTimeoutAsync"/> rounds a budget up
+    /// to one. Rounding down here is what keeps that rounding from carrying a save past the deadline.
+    /// </remarks>
+    private TimeSpan? ShutdownWait()
+    {
+        long deadlineTicks = Interlocked.Read(ref _shutdownDeadlineTicks);
+
+        if (deadlineTicks == 0)
+        {
+            BeginShutdownClock();
+            deadlineTicks = Interlocked.Read(ref _shutdownDeadlineTicks);
+        }
+
+        TimeSpan left = new DateTimeOffset(deadlineTicks, TimeSpan.Zero) - _timeProvider.GetUtcNow() - SaveOvershoot;
+        double seconds = Math.Floor(Math.Min(left.TotalSeconds, FinalFlushCommandBudget.TotalSeconds));
+
+        return seconds >= 1 ? TimeSpan.FromSeconds(seconds) : null;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -662,6 +728,16 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // acknowledgement must not be left waiting for a loop that has stopped.
         DrainRemovals(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, removals);
 
+        // In memory, the telemetry store ends with this process, so writing the buffers into it now
+        // would spend the shutdown deadline on rows nobody can read. What outlives the restart goes
+        // to the application database instead, in one write.
+        if (_options.TelemetryInMemory)
+        {
+            await SaveForRestartAsync(cache, pendingPrinterInfo, pendingDriveListings);
+
+            return;
+        }
+
         // Whatever the last partial batch left buffered. Reached only via the break above, so the
         // channel is already empty - this is about the in-memory buffers, nothing else.
         //
@@ -670,8 +746,24 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // the success signal.
         for (int attempt = 1; attempt <= FinalFlushAttempts; attempt++)
         {
+            // Before the deadline is asked: an idle deployment has nothing to write, and running out
+            // of time for nothing is not worth a warning.
+            if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && dirtyPrinterIds.Count == 0)
+            {
+                break;
+            }
+
+            if (ShutdownWait() is null)
+            {
+                _logger.LogWarning(
+                    "Shutdown time ran out before telemetry flush attempt {Attempt} of {Attempts} could start.",
+                    attempt, FinalFlushAttempts);
+
+                break;
+            }
+
             await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings,
-                                 CancellationToken.None, FinalFlushCommandBudget);
+                                 CancellationToken.None, againstShutdownDeadline: true);
 
             if (pendingSamples.Count == 0 && pendingEvents.Count == 0)
             {
@@ -687,10 +779,6 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                 await Task.Delay(FinalFlushRetryDelay);
             }
         }
-
-        // Independent of whether the flush above succeeded: the cache is the authority on what each
-        // printer last reported, and that is worth saving even when the history it came from is not.
-        await PersistLiveStateForRestartAsync(cache);
 
         // The only place that can honestly report whether shutdown saved everything, and the signal
         // an operator waiting out the drain is looking for. SafeFlushAsync leaves the buffers
@@ -709,8 +797,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
-    /// Writes each printer's last-known state to the application database as the process stops, so a
-    /// restart does not lose it. Only when telemetry is held in memory.
+    /// Saves what must outlive a restart when telemetry is held in memory: each printer's
+    /// last-known state, and what the printers said about themselves since the last flush. Retried
+    /// within the shutdown deadline, and always reports how it ended.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -722,16 +811,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// appliance this was measured against had been off for six days.
     /// </para>
     /// <para>
+    /// <b>The buffered samples and events are not written anywhere.</b> Their store ends with this
+    /// process, so a write into it now could only spend the deadline this save needs. That leaves
+    /// one write, to one database, and so one wait for its lock.
+    /// </para>
+    /// <para>
     /// <b>What it costs is one row per printer, once, at shutdown</b> - so it does not reintroduce the
     /// write rate the setting exists to remove. An unclean stop still loses it, which is the same
     /// trade <see cref="StorageOptions.WriteFlushIntervalSeconds"/> already makes for buffered
     /// telemetry.
-    /// </para>
-    /// <para>
-    /// <b>The rows are read back before they are written</b>, rather than reusing
-    /// <c>LiveStateCacheEntry.ExistsInDatabase</c>: that flag tracks the telemetry database, which in
-    /// this mode is a different one, and trusting it here would issue an <c>UPDATE</c> matching no
-    /// rows on the first shutdown after a printer was first seen.
     /// </para>
     /// <para>
     /// <b>A failure is logged, never thrown.</b> This runs after the drain loop has ended, on the way
@@ -739,59 +827,115 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// worse than the thing it was trying to prevent.
     /// </para>
     /// </remarks>
-    private async Task PersistLiveStateForRestartAsync(Dictionary<int, LiveStateCacheEntry> cache)
+    private async Task SaveForRestartAsync(Dictionary<int, LiveStateCacheEntry> cache,
+                                           Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                           Dictionary<int, PendingDriveListing> pendingDriveListings)
     {
-        if (!_options.TelemetryInMemory || cache.Count == 0)
+        if (cache.Count == 0 && pendingPrinterInfo.Count == 0 && pendingDriveListings.Count == 0)
         {
             return;
         }
 
-        try
+        for (int attempt = 1; attempt <= FinalFlushAttempts; attempt++)
         {
-            using IServiceScope scope = _scopeFactory.CreateScope();
-            HomespoolDbContext durable = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
-            await ApplyWriterCommandTimeoutAsync(durable, FinalFlushCommandBudget, CancellationToken.None);
-
-            List<int> printerIds = [.. cache.Keys];
-
-            // Untracked, and that is required rather than tidy: the cache's own instances are attached
-            // below, and a tracked read of the same keys would put two instances of one entity in the
-            // change tracker and throw.
-            List<PrinterLiveState> stored = await durable.PrinterLiveStates
-                                                         .AsNoTracking()
-                                                         .Include(state => state.Slots)
-                                                         .Where(state => printerIds.Contains(state.PrinterId))
-                                                         .ToListAsync(CancellationToken.None);
-
-            HashSet<int> storedPrinters = [.. stored.Select(state => state.PrinterId)];
-            HashSet<(int printerId, int slotNumber)> storedSlots =
-                [.. stored.SelectMany(state => state.Slots).Select(slot => (slot.PrinterId, slot.SlotNumber))];
-
-            foreach ((int printerId, LiveStateCacheEntry entry) in cache)
+            if (ShutdownWait() is not TimeSpan wait)
             {
-                durable.Attach(entry.State);
-                durable.Entry(entry.State).State =
-                    storedPrinters.Contains(printerId) ? EntityState.Modified : EntityState.Added;
+                _logger.LogWarning(
+                    "Shutdown time ran out before last-known printer state could be saved (attempt {Attempt} of {Attempts}); printers that are offline will read as never connected until they reconnect.",
+                    attempt, FinalFlushAttempts);
 
-                foreach (PrinterLiveSlotState slot in entry.State.Slots)
-                {
-                    durable.Entry(slot).State = storedSlots.Contains((printerId, slot.SlotNumber)) ?
-                        EntityState.Modified :
-                        EntityState.Added;
-                }
+                return;
             }
 
-            await durable.SaveChangesAsync(CancellationToken.None);
+            try
+            {
+                await WriteForRestartAsync(cache, pendingPrinterInfo, pendingDriveListings, wait);
 
-            _logger.LogInformation(
-                "Saved last-known state for {PrinterCount} printer(s) so it survives this restart; telemetry history is in memory only and is not.",
-                cache.Count);
+                _logger.LogInformation(
+                    "Saved last-known state for {PrinterCount} printer(s) so it survives this restart; telemetry history is in memory only and is not.",
+                    cache.Count);
+
+                return;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                if (attempt == FinalFlushAttempts)
+                {
+                    _logger.LogError(
+                        e, "Could not save last-known printer state on shutdown; printers that are offline will read as never connected until they reconnect.");
+
+                    return;
+                }
+
+                _logger.LogWarning(
+                    e, "Saving last-known printer state failed during shutdown (attempt {Attempt} of {Attempts}); retrying.",
+                    attempt, FinalFlushAttempts);
+
+                await Task.Delay(FinalFlushRetryDelay);
+            }
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+    }
+
+    /// <summary>
+    /// One attempt at <see cref="SaveForRestartAsync"/>'s write, in one transaction against the
+    /// application database.
+    /// </summary>
+    /// <remarks>
+    /// <b>The live-state rows are read back before they are written</b>, rather than reusing
+    /// <c>LiveStateCacheEntry.ExistsInDatabase</c>: that flag tracks the telemetry database, which in
+    /// this mode is a different one, and trusting it here would issue an <c>UPDATE</c> matching no
+    /// rows on the first shutdown after a printer was first seen.
+    /// </remarks>
+    /// <param name="cache">Each printer's live state, the authority on what it last reported.</param>
+    /// <param name="pendingPrinterInfo">Identity heard since the last flush.</param>
+    /// <param name="pendingDriveListings">Drive listings heard since the last flush.</param>
+    /// <param name="wait">What the save may wait for the database's lock.</param>
+    private async Task WriteForRestartAsync(Dictionary<int, LiveStateCacheEntry> cache,
+                                            Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                            Dictionary<int, PendingDriveListing> pendingDriveListings,
+                                            TimeSpan wait)
+    {
+        using IServiceScope scope = _scopeFactory.CreateScope();
+        HomespoolDbContext durable = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+        await ApplyWriterCommandTimeoutAsync(durable, wait, CancellationToken.None);
+
+        List<int> printerIds = [.. cache.Keys];
+
+        // Untracked, and that is required rather than tidy: the cache's own instances are attached
+        // below, and a tracked read of the same keys would put two instances of one entity in the
+        // change tracker and throw.
+        List<PrinterLiveState> stored = await durable.PrinterLiveStates
+                                                     .AsNoTracking()
+                                                     .Include(state => state.Slots)
+                                                     .Where(state => printerIds.Contains(state.PrinterId))
+                                                     .ToListAsync(CancellationToken.None);
+
+        HashSet<int> storedPrinters = [.. stored.Select(state => state.PrinterId)];
+        HashSet<(int printerId, int slotNumber)> storedSlots =
+            [.. stored.SelectMany(state => state.Slots).Select(slot => (slot.PrinterId, slot.SlotNumber))];
+
+        foreach ((int printerId, LiveStateCacheEntry entry) in cache)
         {
-            _logger.LogError(
-                e, "Could not save last-known printer state on shutdown; printers that are offline will read as never connected until they reconnect.");
+            durable.Attach(entry.State);
+            durable.Entry(entry.State).State =
+                storedPrinters.Contains(printerId) ? EntityState.Modified : EntityState.Added;
+
+            foreach (PrinterLiveSlotState slot in entry.State.Slots)
+            {
+                durable.Entry(slot).State = storedSlots.Contains((printerId, slot.SlotNumber)) ?
+                    EntityState.Modified :
+                    EntityState.Added;
+            }
         }
+
+        // Every printer in the cache, not only those a flush just covered: a material change whose
+        // own save failed earlier is still pending on a printer that has not been heard from since.
+        HashSet<int> materialWritebacks = await StageMachineFactsAsync(durable, cache, printerIds, pendingPrinterInfo, pendingDriveListings,
+                                                                       CancellationToken.None);
+
+        await durable.SaveChangesAsync(CancellationToken.None);
+
+        ClearMachineFacts(cache, materialWritebacks, pendingPrinterInfo, pendingDriveListings);
     }
 
     /// <summary>
@@ -1492,8 +1636,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     /// <param name="context">The context whose commands are being bounded.</param>
     /// <param name="budget">
     /// The wait to allow, or null for <see cref="StorageOptions.BusyTimeoutMilliseconds"/>. The
-    /// shutdown flush passes <see cref="FinalFlushCommandBudget"/> instead, because its deadline
-    /// comes from the container runtime rather than from configuration.
+    /// saves after the drain loop pass what <see cref="ShutdownWait"/> allows instead, because their
+    /// deadline comes from the host rather than from configuration.
     /// </param>
     /// <param name="cancellationToken">Cancels the pragma statement, when one is issued.</param>
     // CA2100/EF1002: SQLite does not accept bound parameters in PRAGMA, so the value is
@@ -1615,12 +1759,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                       Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                       Dictionary<int, PendingDriveListing> pendingDriveListings,
                                       CancellationToken cancellationToken,
-                                      TimeSpan? commandBudget = null)
+                                      bool againstShutdownDeadline = false)
     {
         try
         {
             await FlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings, cancellationToken,
-                             commandBudget);
+                             againstShutdownDeadline);
 
             _consecutiveFlushFailures = 0;
             _lastFlushAt = _timeProvider.GetUtcNow();
@@ -1708,7 +1852,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                   Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                   Dictionary<int, PendingDriveListing> pendingDriveListings,
                                   CancellationToken cancellationToken,
-                                  TimeSpan? commandBudget = null)
+                                  bool againstShutdownDeadline = false)
     {
         if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && dirtyPrinterIds.Count == 0)
         {
@@ -1720,8 +1864,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         HomespoolDbContext durable = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
 
-        await ApplyWriterCommandTimeoutAsync(durable, commandBudget, cancellationToken);
-        await ApplyWriterCommandTimeoutAsync(telemetry, commandBudget, cancellationToken);
+        await ApplyWriterCommandTimeoutAsync(telemetry, SaveWait(againstShutdownDeadline), cancellationToken);
 
         // Every cache mutation below is recorded rather than applied directly, and only carried out
         // once the save it belongs to has actually succeeded. Applying any of them early would leave
@@ -1810,9 +1953,59 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // rows that stay in the application database whatever the telemetry store is doing. Every
         // write here is a last-writer-wins upsert of the machine as it currently stands, so a failure
         // costs a retry that writes the same values again rather than anything lost.
+        //
+        // Its wait is set only now, because at shutdown it is a second wait for a lock: on disk both
+        // halves queue for the same file, and the first may have used most of the time left.
+        await ApplyWriterCommandTimeoutAsync(durable, SaveWait(againstShutdownDeadline), cancellationToken);
+
+        HashSet<int> materialWritebacks = await StageMachineFactsAsync(durable, cache, flushedPrinters, pendingPrinterInfo, pendingDriveListings,
+                                                                       cancellationToken);
+
+        if (durable.ChangeTracker.HasChanges())
+        {
+            await durable.SaveChangesAsync(cancellationToken);
+        }
+
+        ClearMachineFacts(cache, materialWritebacks, pendingPrinterInfo, pendingDriveListings);
+    }
+
+    /// <summary>
+    /// What a flush's save may wait for the database's lock: the configured budget while running, or
+    /// whatever the shutdown deadline still allows.
+    /// </summary>
+    /// <exception cref="TimeoutException">At shutdown, with not even a second left for the save.</exception>
+    private TimeSpan? SaveWait(bool againstShutdownDeadline)
+    {
+        if (!againstShutdownDeadline)
+        {
+            return null;
+        }
+
+        return ShutdownWait() ??
+            throw new TimeoutException("Shutdown time ran out before this save could start.");
+    }
+
+    /// <summary>
+    /// Stages on <paramref name="durable"/> what the printers said about themselves: the material
+    /// each has loaded, the identity an <c>INFO</c> reported, its tools and its drive listing.
+    /// </summary>
+    /// <returns>The printers whose material writeback was staged, for <see cref="ClearMachineFacts"/>.</returns>
+    /// <param name="durable">The application database's context, saved by the caller.</param>
+    /// <param name="cache">Each printer's live state, carrying any material change still to write.</param>
+    /// <param name="printerIds">The printers whose material change to stage.</param>
+    /// <param name="pendingPrinterInfo">Identity heard since the last flush.</param>
+    /// <param name="pendingDriveListings">Drive listings heard since the last flush.</param>
+    /// <param name="cancellationToken">Cancels the reads staging needs.</param>
+    private async Task<HashSet<int>> StageMachineFactsAsync(HomespoolDbContext durable,
+                                                            Dictionary<int, LiveStateCacheEntry> cache,
+                                                            IEnumerable<int> printerIds,
+                                                            Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                                            Dictionary<int, PendingDriveListing> pendingDriveListings,
+                                                            CancellationToken cancellationToken)
+    {
         HashSet<int> materialWritebacks = [];
 
-        foreach (int printerId in flushedPrinters)
+        foreach (int printerId in printerIds)
         {
             LiveStateCacheEntry entry = cache[printerId];
 
@@ -1822,8 +2015,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             }
 
             // A tracked single-property update, not ExecuteUpdateAsync: that runs as its own
-            // immediate statement against the database, independent of the SaveChangesAsync below, so
-            // a later failure would leave it committed on its own. Attaching an unloaded stub and
+            // immediate statement against the database, independent of the caller's SaveChangesAsync,
+            // so a later failure would leave it committed on its own. Attaching an unloaded stub and
             // marking only LoadedMaterial as changed folds it into the same call as the rest.
             Printer printerStub = new() { Id = printerId };
             durable.Attach(printerStub);
@@ -1838,19 +2031,28 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         await ApplyPrinterInfoAsync(durable, pendingPrinterInfo, cancellationToken);
         await ApplyDriveListingsAsync(durable, pendingDriveListings, cancellationToken);
 
-        if (durable.ChangeTracker.HasChanges())
-        {
-            await durable.SaveChangesAsync(cancellationToken);
-        }
+        return materialWritebacks;
+    }
 
+    /// <summary>
+    /// Forgets what <see cref="StageMachineFactsAsync"/> staged, once the save carrying it has
+    /// succeeded.
+    /// </summary>
+    /// <remarks>
+    /// Only past that save: a failure leaves the pending identity in place so the next attempt still
+    /// applies it. INFO arrives once per connection, so dropping it on a failure would mean the
+    /// printer's firmware stayed wrong until it next reconnected.
+    /// </remarks>
+    private static void ClearMachineFacts(Dictionary<int, LiveStateCacheEntry> cache,
+                                          HashSet<int> materialWritebacks,
+                                          Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                          Dictionary<int, PendingDriveListing> pendingDriveListings)
+    {
         foreach (int printerId in materialWritebacks)
         {
             cache[printerId].PendingLoadedMaterial = Field<string?>.Absent;
         }
 
-        // Cleared only here, past their own save: a failed durable half leaves the pending identity in
-        // place so the next attempt still applies it. INFO arrives once per connection, so dropping it
-        // on a failure would mean the printer's firmware stayed wrong until it next reconnected.
         pendingPrinterInfo.Clear();
         pendingDriveListings.Clear();
     }

@@ -38,6 +38,25 @@ namespace Homespool.Host;
 
 public static class Program
 {
+    /// <summary>
+    /// How long the host waits for its hosted services to stop before the process exits under them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The middle of three limits, each inside the next.</b> <c>TelemetryWriter</c> takes its
+    /// shutdown deadline from this and gives up in time to report what it could not save; this has
+    /// to end inside the container runtime's <c>stop_grace_period</c> in <c>compose.yaml</c>, after
+    /// which the process is SIGKILLed with nothing logged at all. <c>TelemetryWriterShutdownBudgetTests</c>
+    /// pins the outer pair, since <c>compose.yaml</c> is not code.
+    /// </para>
+    /// <para>
+    /// <b>As long as that ordering allows</b>, because the writer's last saves are the ones with
+    /// nothing behind them: time cut from here is time a briefly locked database no longer gets to
+    /// clear in.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(12);
+
     public static int Main(string[] args)
     {
         // Answered before anything else starts, because none of them is a server run at all - see
@@ -538,26 +557,7 @@ public static class Program
             builder.Services.AddSingleton<Telemetry.ITelemetryEviction>(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
             builder.Services.AddHostedService(sp => sp.GetRequiredService<Telemetry.TelemetryWriter>());
 
-            // The middle link in a three-part budget that no single file used to own: the writer's
-            // shutdown flush must finish inside this, and this must finish inside the container
-            // runtime's stop grace period (compose.yaml, stop_grace_period). Derived rather than
-            // written as a number, so raising FinalFlushAttempts cannot silently outgrow it - which
-            // is exactly what happened with the framework's 30 s default, where three attempts that
-            // could each block ~10 s landed on the timeout and every shutdown against a stuck
-            // database was killed mid-drain, losing the buffers and the log line naming the loss.
-            // Two terms, not one: the drain cannot start until the flush already in flight when
-            // SIGTERM arrived has finished, and that one runs to the ordinary busy budget. Omitting
-            // it put the timeout below the drain's real worst case, so the process was still killed
-            // mid-shutdown - just 19 s sooner than before.
-            StorageOptions shutdownStorageOptions = builder.Configuration
-                                                           .GetSection(StorageOptions.SectionName)
-                                                           .Get<StorageOptions>() ?? new StorageOptions();
-
-            TimeSpan shutdownTimeout = Telemetry.TelemetryWriter.MaxShutdownFlushDuration +
-                                       TimeSpan.FromMilliseconds(shutdownStorageOptions.BusyTimeoutMilliseconds) +
-                                       TimeSpan.FromSeconds(1.5);
-
-            builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = shutdownTimeout);
+            builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = ShutdownTimeout);
 
             builder.Services.AddHomespoolHealthChecks();
 

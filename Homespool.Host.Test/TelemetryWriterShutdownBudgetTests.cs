@@ -2,34 +2,28 @@ using System;
 
 using AwesomeAssertions;
 
+using Homespool.Data;
 using Homespool.Host.Telemetry;
 
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// The shutdown budget spans three files and is enforced by none of them at runtime, so it is
-/// pinned here instead.
+/// The outer pair of the shutdown limits spans code and deployment configuration, and nothing
+/// enforces it at runtime, so it is pinned here instead.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Three values have to stay ordered: <see cref="TelemetryWriter.MaxShutdownFlushDuration"/> (the
-/// writer's worst case, every final-flush attempt timing out) fits inside
-/// <c>HostOptions.ShutdownTimeout</c>, which fits inside <c>compose.yaml</c>'s
-/// <c>stop_grace_period</c>. Only the first two are code; the outer one is deployment
-/// configuration, which is why the ceiling below is written as a literal and cross-referenced
-/// rather than derived.
+/// Three limits sit each inside the next: <see cref="TelemetryWriter"/>'s shutdown deadline, which it
+/// takes from <see cref="Program.ShutdownTimeout"/> and keeps to while it runs; that timeout; and
+/// <c>compose.yaml</c>'s <c>stop_grace_period</c>, after which the container runtime SIGKILLs the
+/// process. The inner pair holds by construction and is tested against a held lock in
+/// <c>TelemetryWriterTests</c> and <c>TelemetryInMemoryStoreTests</c>. The outer pair is a number in
+/// a file that is not code, which is why the ceiling below is a literal and cross-referenced rather
+/// than derived.
 /// </para>
 /// <para>
-/// The ordering is not hypothetical. Measured 2026-07-30 with an outside connection holding the
-/// write lock: three attempts that could each block ~10 s summed to ~30 s, landing exactly on the
-/// framework's default <c>ShutdownTimeout</c>, so the process was killed part-way through its drain
-/// - losing the buffered telemetry and, worse, the log line that would have said how much was lost.
-/// Docker's own 10 s default would have killed it sooner still. The failure mode is silent by
-/// construction: nothing logs when the thing that would have logged is what got killed.
-/// </para>
-/// <para>
-/// So this test exists to fail loudly if someone raises <c>FinalFlushAttempts</c> or the per-attempt
-/// budget without revisiting the two outer numbers.
+/// The failure mode is silent by construction: a process killed mid-drain loses the buffered
+/// telemetry and the log line that would have said how much was lost.
 /// </para>
 /// </remarks>
 public class TelemetryWriterShutdownBudgetTests
@@ -40,43 +34,38 @@ public class TelemetryWriterShutdownBudgetTests
     private static readonly TimeSpan ContainerStopGracePeriod = TimeSpan.FromSeconds(15);
 
     /// <summary>
-    /// Room for everything else a shutdown does before and after the drain - Kestrel finishing its
-    /// in-flight requests, the other hosted services, process teardown - plus the margin that keeps
-    /// a SIGKILL from landing on the drain's last attempt.
+    /// Room for what happens after the host stops waiting - <c>Main</c> returning, the log flushed,
+    /// the process exiting - plus the margin that keeps a SIGKILL from landing on the writer's report.
     /// </summary>
-    private static readonly TimeSpan NonDrainShutdownAllowance = TimeSpan.FromSeconds(2);
-
-    /// <summary>
-    /// The flush already running when SIGTERM arrives, which finishes on the ordinary
-    /// <see cref="Homespool.Data.StorageOptions.BusyTimeoutMilliseconds"/> budget before the loop can
-    /// act on the shutdown at all. Easy to forget, and forgetting it is what left a measured
-    /// shutdown at 11 s against an 11 s timeout - killed, with no report, exactly as before.
-    /// </summary>
-    private static readonly TimeSpan InFlightFlushAllowance = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan AfterHostTimeoutAllowance = TimeSpan.FromSeconds(2);
 
     [Fact]
-    public void TheWholeShutdownDrainFitsInsideTheContainerStopGracePeriod()
+    public void TheHostsShutdownTimeoutEndsInsideTheContainerStopGracePeriod()
     {
-        (TelemetryWriter.MaxShutdownFlushDuration + InFlightFlushAllowance)
-            .Should().BeLessThan(ContainerStopGracePeriod - NonDrainShutdownAllowance,
-                                 "the drain has to finish and report what it lost before the container runtime SIGKILLs it - " +
-                                 "a shutdown killed mid-flush loses the buffers and the record of losing them");
+        (Program.ShutdownTimeout + AfterHostTimeoutAllowance)
+            .Should().BeLessThan(ContainerStopGracePeriod,
+                                 "the writer reports what it lost just before the host stops waiting, and that report has to " +
+                                 "be written before the container runtime SIGKILLs the process");
     }
 
     /// <summary>
-    /// The budget must also stay worth having: patient enough that a lock which clears in a second
-    /// or two is still ridden out rather than abandoned.
+    /// The timeout must also stay worth having: after the flush already running when shutdown begins,
+    /// there has to be time left for a final save to ride out a brief lock.
     /// </summary>
     /// <remarks>
-    /// The cost of giving up early is data that a slightly longer wait would have saved, on the one
-    /// flush with nothing behind it. A floor here stops a future "just make shutdown faster" from
-    /// quietly trading that away.
+    /// That flush runs to the ordinary <see cref="StorageOptions.BusyTimeoutMilliseconds"/> and is not
+    /// shortened, so it can take that much of the deadline before the final save starts. Five seconds
+    /// beyond it covers one full three-second save, the writer's one-second reserve and the half
+    /// second it keeps back for a save running late. A floor here stops a future "just make shutdown
+    /// faster" from quietly giving the last save nothing.
     /// </remarks>
     [Fact]
-    public void TheShutdownFlushIsStillPatientEnoughToRideOutBriefContention()
+    public void TheShutdownTimeoutLeavesAFinalSaveTimeAfterTheFlushInFlight()
     {
-        TelemetryWriter.MaxShutdownFlushDuration
-                       .Should().BeGreaterThan(TimeSpan.FromSeconds(5),
-                                               "a shutdown that gives up almost immediately discards data a short wait would have saved");
+        TimeSpan inFlightFlush = TimeSpan.FromMilliseconds(new StorageOptions().BusyTimeoutMilliseconds);
+
+        (Program.ShutdownTimeout - inFlightFlush)
+            .Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(5),
+                                             "a shutdown that gives up almost immediately discards data a short wait would have saved");
     }
 }

@@ -383,12 +383,11 @@ services:
       - homespool
       - homespool-cameras
 
-    # The outermost of three shutdown budgets and the only one Docker enforces: SIGTERM, then
-    # SIGKILL after this. The app's own two - TelemetryWriter's final flush and
-    # HostOptions.ShutdownTimeout - are sized to finish inside it pinned by 
-    # TelemetryWriterShutdownBudgetTests). Raise it if a deployment ever needs a longer drain;
-    # never lower it below the app's own timeout, or the SIGKILL lands mid-flush
-    # and the report of what was lost is lost with it.
+    # The outermost of three shutdown limits and the only one Docker enforces: SIGTERM, then
+    # SIGKILL after this. The app's own two - Program.ShutdownTimeout, and the deadline
+    # TelemetryWriter takes from it - end inside it (pinned by TelemetryWriterShutdownBudgetTests).
+    # Raise it if a deployment ever needs a longer drain; never lower it below the app's own
+    # timeout, or the SIGKILL lands mid-flush and the report of what was lost is lost with it.
     stop_grace_period: 15s
 
     # What brings the app back after it stops, whether it crashed or an administrator pressed

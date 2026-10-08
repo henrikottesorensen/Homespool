@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -9,10 +10,13 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
@@ -177,9 +181,10 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </summary>
     private async Task<TelemetryWriter> StartWriterAsync(StorageOptions options,
                                                          TimeSpan? trimWarningInterval = null,
-                                                         IPrinterEventObserver? eventObserver = null)
+                                                         IPrinterEventObserver? eventObserver = null,
+                                                         HostOptions? hostOptions = null)
     {
-        TelemetryWriter writer = await BuildWriterAsync(options, trimWarningInterval, eventObserver);
+        TelemetryWriter writer = await BuildWriterAsync(options, trimWarningInterval, eventObserver, hostOptions);
 
         await writer.StartAsync(CancellationToken.None);
 
@@ -192,7 +197,8 @@ public sealed class TelemetryWriterTests : IDisposable
     /// </summary>
     private async Task<TelemetryWriter> BuildWriterAsync(StorageOptions options,
                                                          TimeSpan? trimWarningInterval = null,
-                                                         IPrinterEventObserver? eventObserver = null)
+                                                         IPrinterEventObserver? eventObserver = null,
+                                                         HostOptions? hostOptions = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite($"Data Source={_databasePath}"));
@@ -212,7 +218,8 @@ public sealed class TelemetryWriterTests : IDisposable
                                       TestOptions.Monitor(options),
                                       _fakeLogger,
                                       TimeProvider.System,
-                                      eventObservers: eventObserver is null ? null : [eventObserver])
+                                      eventObservers: eventObserver is null ? null : [eventObserver],
+                                      hostOptions: hostOptions is null ? null : Options.Create(hostOptions))
         {
             SampleTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
             EventTrimWarningInterval = trimWarningInterval ?? TimeSpan.FromSeconds(10),
@@ -339,6 +346,59 @@ public sealed class TelemetryWriterTests : IDisposable
 
         (await SampleCountAsync(verify)).Should().Be(25,
                                                      $"a transient failure at shutdown must not lose the buffer - there is no later flush to save it.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// A locked database cannot hold the shutdown flush past the host's timeout.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The host stops waiting at its timeout and the process exits under whatever is still running,
+    /// so a flush still waiting then loses the buffers and the report of losing them. The writer
+    /// keeps to a deadline taken from that timeout instead of a fixed budget per attempt.
+    /// </para>
+    /// <para>
+    /// An outside connection holds the write lock throughout, so every attempt waits as long as it
+    /// is allowed. With a four-second host timeout the deadline allows one two-second attempt and
+    /// then runs out; two attempts at the full three-second cap take over six seconds.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ALockedDatabaseCannotHoldTheShutdownFlushPastTheHostsTimeout()
+    {
+        // Arrange - nothing flushes until shutdown: the batch size is unreachable and the timer long.
+        TimeSpan hostTimeout = TimeSpan.FromSeconds(4);
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30),
+                                                        hostOptions: new HostOptions { ShutdownTimeout = hostTimeout });
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", Progress = 1 });
+
+        // Unpooled, so disposing really closes the connection and ends the transaction with it.
+        await using SqliteConnection holder = new(new SqliteConnectionStringBuilder
+        {
+            DataSource = _databasePath,
+            Pooling = false,
+        }.ToString());
+
+        await holder.OpenAsync(TestContext.Current.CancellationToken);
+
+        await using (SqliteCommand begin = holder.CreateCommand())
+        {
+            begin.CommandText = "BEGIN IMMEDIATE;";
+            await begin.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+        }
+
+        // Act
+        Stopwatch stopping = Stopwatch.StartNew();
+        await writer.StopAsync(CancellationToken.None);
+        stopping.Stop();
+
+        // Assert
+        stopping.Elapsed.Should().BeLessThan(hostTimeout, $"the writer must be done before the host stops waiting for it.\n{LogDump()}");
+
+        LogRecords.Should().Contain(record => record.Level == LogLevel.Warning && record.Message.Contains("lost with this process"),
+                                    $"the loss has to be reported before the host stops waiting.\n{LogDump()}");
     }
 
     /// <summary>

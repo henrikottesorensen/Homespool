@@ -319,6 +319,62 @@ public sealed class FileSenderTests : IDisposable
     }
 
     /// <summary>
+    /// A caller cancelled before the printer had the command revokes the offer; one cancelled after
+    /// leaves it standing, on either download, because the printer will come for the bytes.
+    /// </summary>
+    /// <remarks>
+    /// Revoked after delivery, the encrypted download's fetch is answered 404 and the inline one's
+    /// chunk requests are refused as an unknown hash. Left standing before delivery, the offer would
+    /// make the queue wait out its lifetime on a transfer that is not running.
+    /// </remarks>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task ACancelledSendRevokesTheOfferOnlyIfThePrinterNeverHadTheCommand(bool canStreamChunks, bool delivered)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync();
+        StoredFile file = WriteFile("model.gcode", 4096);
+        IPrinterConnectionActor actor = Connect(canStreamChunks, PrinterEventType.Finished);
+
+        using CancellationTokenSource cts = new();
+        await cts.CancelAsync();
+
+        OperationCanceledException cancelled = delivered ?
+            new CommandCancelledAfterDeliveryException(PrinterId, 7, cts.Token) :
+            new OperationCanceledException(cts.Token);
+
+        actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
+             .Returns<Task<CommandSendResult>>(_ => throw cancelled);
+
+        // Act
+        Func<Task> act = async () => await NewSender(context).SendAsync(
+            await context.Printers.SingleAsync(TestContext.Current.CancellationToken),
+            file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
+
+        // Assert
+        (await act.Should().ThrowAsync<OperationCanceledException>()).Which.Should().BeSameAs(cancelled);
+
+        string token = SentCommand(actor) switch
+        {
+            StartConnectDownload inline => inline.Hash,
+            StartEncryptedDownload encrypted => Convert.ToHexStringLower(encrypted.Iv),
+            ISendableCommand other => throw new InvalidOperationException($"Unexpected {other.WireName}."),
+        };
+
+        _offers.TryOpen(token, PrinterId, out ITransferContent? content)
+               .Should().Be(delivered, delivered ? "the printer will come for these bytes" : "nothing will come for them");
+        content?.Dispose();
+
+        if (!canStreamChunks)
+        {
+            (_encrypted.Find(token) is not null).Should().Be(delivered, "the key follows the offer");
+        }
+    }
+
+    /// <summary>
     /// A send that throws - the printer vanishing mid-send, say - cleans up the same two stores.
     /// The throw propagates; the cleanup happens first.
     /// </summary>

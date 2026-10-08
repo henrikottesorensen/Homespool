@@ -394,6 +394,40 @@ public sealed class TransferServiceTests : IDisposable
     }
 
     /// <summary>
+    /// A send whose caller stopped waiting after the printer had the download is recorded as taken,
+    /// under its command, as an unanswered one is: the offer stands and the printer is fetching, so its
+    /// end has to find the attempt it ends. One the printer never had records no command.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ASendCancelledAfterThePrinterHadItIsRecordedAsTaken(bool delivered)
+    {
+        // Arrange
+        HSFile file = await SeedAsync();
+        using CancellationTokenSource gone = new();
+        await gone.CancelAsync();
+
+        OperationCanceledException cancelled = delivered ?
+            new CommandCancelledAfterDeliveryException(PrinterId, DownloadCommandId, gone.Token) :
+            new OperationCanceledException(gone.Token);
+
+        ConnectAnsweringDownloadsWith(Task.FromException<CommandSendResult>(cancelled));
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        // Act
+        Func<Task> send = () => transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
+
+        // Assert
+        await send.Should().ThrowAsync<OperationCanceledException>();
+
+        FileOnPrinter row = await ReadRowAsync();
+
+        row.TransferCommandId.Should().Be(delivered ? DownloadCommandId : null,
+                                          delivered ? "the printer took it under that command" : "the printer never had it");
+    }
+
+    /// <summary>
     /// A person's send the printer takes replaces whatever the queue had in flight - the printer has one
     /// transfer slot - so its end is awaited instead, and its abort is not counted against the queued
     /// entry.

@@ -569,6 +569,8 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// <b>Once the command has gone, what it did is saved whatever the caller does.</b> Its token
     /// cancels the procedure up to the offer; after it, a person leaving the page or the host
     /// stopping must not leave an accepted transfer unrecorded - its end would then match nothing.
+    /// A caller cancelled while the printer already had the command is told so by
+    /// <see cref="CommandCancelledAfterDeliveryException"/>, and the attempt is recorded as taken.
     /// </para>
     /// <para>
     /// <b>A send that fell short clears the stamp</b> - not connected, another command in flight, the
@@ -682,14 +684,22 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
                               .SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName), request.Caller,
                                          cancellationToken);
         }
-        catch (CommandResponseTimedOutException e)
+        catch (Exception e) when (e is CommandResponseTimedOutException or CommandCancelledAfterDeliveryException)
         {
             // Not an answer, and the stamp stays: firmware acknowledges a download late when it is busy
             // and starts fetching either way, and FileSender leaves the offer standing for exactly
             // that reason. The digest is recorded for the same reason - if these bytes are arriving, an
             // older digest beside them would have them deleted and sent again for nothing - and the
-            // command's id, which the transfer's end will name.
-            PrinterDriveCopies.RecordTaken(onPrinter, digest, e.CommandId);
+            // command's id, which the transfer's end will name. A caller that stopped waiting once the
+            // printer had the command leaves the same transfer running, and is recorded the same way.
+            uint? commandId = e switch
+            {
+                CommandResponseTimedOutException timedOut => timedOut.CommandId,
+                CommandCancelledAfterDeliveryException cancelled => cancelled.CommandId,
+                _ => null,
+            };
+
+            PrinterDriveCopies.RecordTaken(onPrinter, digest, commandId);
             ReplaceQueuedAttempt(policy, onPrinter);
             await dbContext.SaveChangesAsync(CancellationToken.None);
 

@@ -384,6 +384,13 @@ jobs:
       - name: Test the image publishing script
         run: ./tests/publish-images.test.sh
 
+      # What a card built from a release accepts as its published images - the commit, for arm64,
+      # under the version - that they are pulled into the card's store rather than loaded, so the
+      # card's update check can tell them for the published ones, and the .env.example it ships.
+      # docker is a stub; jq is real.
+      - name: Test the Pi card's release images
+        run: ./tests/pi-release-images.test.sh
+
       # What the scan counts as relevant - a fixable CRITICAL or HIGH, a newer .NET security release,
       # a Homespool fix - what it records without counting, and that it pushes no verdict when a
       # source failed. docker, curl and oras are stubs; jq is real, because the verdict is jq.

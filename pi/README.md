@@ -53,7 +53,8 @@ afternoon in qemu.
 
 | file | what it is |
 |---|---|
-| `build.sh` | the entry point: builds the app images, stages the payload, drives the image build |
+| `build.sh` | the entry point: builds the app images (or, for a release, checks the published ones), stages the payload, drives the image build |
+| `release-images.sh` | a release card's images: checks GHCR has them for the release's commit, and pulls them into the card's store |
 | `Dockerfile.builder` | Debian trixie + `rpi-image-gen`, pinned to a SHA. Its supported host is Debian arm64, which macOS is not — hence a container |
 | `config/homespool.yaml` | the image definition: device layer, partition sizes, keyboard, which layers |
 | `layer/homespool-rpi-all.yaml` | the device layer that puts **both** kernels on one card |
@@ -62,7 +63,7 @@ afternoon in qemu.
 
 The container images are **baked into the card's Docker store**, not pulled and not loaded on the
 board. `build.sh` splits the image build in two (`-f`, then `-i`) and, in between, points a real
-`dockerd` at the half-built root filesystem's `/var/lib/docker` to load them there.
+`dockerd` at the half-built root filesystem's `/var/lib/docker` to put them there.
 
 That split is worth the trouble. Doing it with `docker load` on first boot would make every install
 repeat ~700 MB of layer unpacking and minutes of Pi 3 CPU — on an SD card — to arrive at a state
@@ -70,8 +71,19 @@ byte-identical on every card. Doing it here costs one sequential write at flash 
 also has to be a real daemon: `/var/lib/docker` is not a directory you can assemble by copying,
 because overlay2's layer tree and the content store are daemon-managed.
 
-Nothing is published to a registry yet; when there is a tagged release the `docker save` becomes a
-`docker pull` and nothing else changes.
+**Which images depends on what is checked out.** On a release — `HEAD` carries a `v` tag such as
+`v0.1` and the tree is clean — nothing is built: that daemon pulls the release's published images from
+`ghcr.io/henrikottesorensen`, for arm64, under the version's tag, and `build.sh` refuses unless each
+one carries the commit checked out. It checks that before the root filesystem is built, too, so a
+release that is not published, or whose packages are still private, fails in seconds. The card's
+`.env` names the registry, so the stack follows `latest` there — see
+[Checking for newer images](#checking-for-newer-images). Pulled, not saved and loaded: only a pull
+records the registry's digest for an image, and that digest is how the card's update check knows its
+images are the published ones.
+
+Anything else is built here from the working tree, saved with `docker save` and loaded into the
+card's store, under the names `.env`'s `REGISTRY` gives them — plain `homespool` and so on when it is
+unset.
 
 ## The two things that surprise people
 
@@ -310,9 +322,8 @@ sudo reboot
 `journalctl -u unattended-upgrades` and `/var/log/unattended-upgrades/` are where it says what it
 did. There is no MTA on the card, so nothing is mailed anywhere.
 
-**This does not update Homespool itself.** The application's container images are baked into the
-card's Docker store, and `unattended-upgrades` only ever touches Debian packages. Moving the stack
-to a new version is a separate job and, until there is a tagged release to pull, means a new card.
+**This does not update Homespool itself.** `unattended-upgrades` only ever touches Debian packages;
+the application's container images are updated by pulling them, below.
 
 ## Checking for newer images
 
@@ -321,16 +332,26 @@ stack is running with the ones their registry publishes, and says what pulling a
 bring — Homespool fixes, .NET security releases, a rebuild on newer packages — in the journal and on
 the administrators' banner. **It only reports: nothing is ever pulled or restarted by itself.**
 
-On a card built from this repository, that report is short. The images were built on the machine
-that made the card and are named after no registry, so there is nothing published to compare them
-with; the check says so, with the date they were built, and cannot tell whether fixes have come out
-since. It becomes useful once the card runs published images — a card built with `REGISTRY` set, or
-one whose `.env` points at a registry and has pulled from it. Then, when the banner says a newer
-image is worth taking:
+**A card built from a release follows `latest` on GHCR.** It carries that release's published images,
+and its `.env` says `REGISTRY=ghcr.io/henrikottesorensen` with no `HOMESPOOL_TAG`, so the check
+compares it with whatever release `latest` is now. When the banner says a newer image is worth
+taking:
 
 ```bash
 cd /opt/homespool && docker compose pull && docker compose up -d
 ```
+
+That moves the card to the newest release; its database migrates on start. **A pull brings only the
+images.** `compose.yaml` and `.env.example` in `/opt/homespool` stay as the card was written, and the
+report says when the repository's `compose.yaml` has changed since — compare the two then. To stay
+on one release instead, add `HOMESPOOL_TAG=0.1` (its version) to `.env`; the check then compares
+with that tag alone, which a later release does not move.
+
+On a card built from anything but a release, that report is short. The images were built on the
+machine that made the card and are named after no registry, so there is nothing published to compare
+them with; the check says so, with the date they were built, and cannot tell whether fixes have come
+out since. Such a card has no update path but a new one, or pointing its `.env` at a registry that
+publishes these images and pulling from it.
 
 ## Getting a shell on the board
 

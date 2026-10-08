@@ -27,7 +27,7 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/homespool
 
-# The container images are ALREADY in /var/lib/docker - pi/build.sh loaded them into this card's
+# The container images are ALREADY in /var/lib/docker - pi/build.sh put them into this card's
 # Docker store while building it, so this normally does nothing. It fires only if somebody has
 # deliberately staged a tarball: a hand-built card, or a rescue after a bad bake. No tarball ships.
 #

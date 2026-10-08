@@ -14,9 +14,12 @@
 # one is not. Then the SD-card image, assembled by rpi-image-gen inside a privileged Debian container
 # because its supported host is Debian arm64 and macOS is not that.
 #
-# The container images are baked into the card rather than pulled. Nothing is published to a registry
-# yet; when there is a tagged release, the docker save below becomes a docker pull and nothing else
-# in here changes.
+# The container images are baked into the card's Docker store either way, so the board never builds
+# or pulls them to start. FROM A RELEASE - HEAD a v-tag, the tree clean - nothing is built: the
+# release's published images are pulled from GHCR into that store under their registry names, and
+# the card's .env names the registry, so its update check compares them with what is published and
+# `docker compose pull` moves it to the next release. From anything else the images are built here
+# and named as .env's REGISTRY says, and the card's check reports them as built from source.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -134,49 +137,67 @@ if [ "$(uname -m)" != "arm64" ] && [ "$(uname -m)" != "aarch64" ]; then
 fi
 
 # ------------------------------------------------------------------------------------------------
-# 1. The application images, native arm64.
+# 1. The application images: a release's published ones, or built here, native arm64.
 # ------------------------------------------------------------------------------------------------
-echo "==> Building the Homespool container images for arm64"
-# Stamp the commit into the images. It matters more on a card than anywhere else: this artefact gets
-# written to an SD card, posted, and run for months by somebody who never built it, and "which build
-# is this?" then has exactly one answer - `docker compose run --rm homespool --version`. Compose
-# cannot compute it (no command substitution), so it is computed here; see tools/gitref.sh.
-#
-# --pull for the reason ../build.sh gives: the base images float so that their security rebuilds
-# arrive, and without it this bakes whatever copy of aspnet:10.0 the build host happened to keep -
-# onto a card that will then run it for months.
-#
-# HOMESPOOL_APT_REFRESH for the same reason ../build.sh passes it: without a value that changes, the
-# application image's apt upgrade stays cached at whatever day it first ran on this base.
-#
-# The base digests for the same reason ../build.sh resolves them: so a card's images can say which
-# base they were built on, which on a card that runs for months is the question that will be asked.
-# The camera sidecar's Go toolchain and the Go modules it takes newer than go2rtc's release too, for
-# the same reason. And the release version, so a card built from a release says which, and each
-# build context's tree, so the card's images carry every label a published image does.
-HOMESPOOL_GITREF="$("$repo_root/tools/gitref.sh")"
-export HOMESPOOL_GITREF
-HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
-export HOMESPOOL_APT_REFRESH
-HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/Homespool.Host/Dockerfile")"
-HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
-HOMESPOOL_ALPINE_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/go2rtc/Dockerfile")"
-sidecar_dockerfile="$repo_root/go2rtc/Dockerfile"
-HOMESPOOL_GOLANG_DIGEST="$("$repo_root/tools/base-digest.sh" "$sidecar_dockerfile" \
-    HOMESPOOL_BUILDER_IMAGE)"
-HOMESPOOL_GO_MODULES="$("$repo_root/tools/go-module-versions.sh" "$sidecar_dockerfile")"
-export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST HOMESPOOL_ALPINE_DIGEST
-export HOMESPOOL_GOLANG_DIGEST HOMESPOOL_GO_MODULES
-HOMESPOOL_APP_TREE="$("$repo_root/tools/context-tree.sh" .)"
-HOMESPOOL_PROXY_TREE="$("$repo_root/tools/context-tree.sh" nginx)"
-HOMESPOOL_GO2RTC_TREE="$("$repo_root/tools/context-tree.sh" go2rtc)"
-export HOMESPOOL_APP_TREE HOMESPOOL_PROXY_TREE HOMESPOOL_GO2RTC_TREE
+# Where a release's images are published - .github/workflows/publish-images.yml pushes them there.
+# Not .env's REGISTRY, which says where this machine's own builds go, and is no place for a card
+# that is posted to somebody else to follow.
+release_registry="ghcr.io/henrikottesorensen"
+
+# The version only when HEAD carries a v-tag and the tree is clean, so a card built from a release
+# carries exactly what the release published, and anything else is built from what is checked out.
 HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"
 export HOMESPOOL_VERSION
-# latest whatever the shell or .env says: the card's compose.yaml asks for latest when nothing pins
-# it, and the docker save below names exactly that. The environment wins over .env for compose.
-export HOMESPOOL_TAG=latest
-docker --log-level warn compose -f "$repo_root/compose.yaml" build --pull
+
+if [ -n "$HOMESPOOL_VERSION" ]; then
+    # The revision label the publish stamped, from the same tool, so the comparison is exact.
+    release_commit="$("$repo_root/tools/gitref.sh")"
+    echo "==> Release $HOMESPOOL_VERSION: checking its published images"
+    "$pi_dir/release-images.sh" check "$release_registry" "$HOMESPOOL_VERSION" "$release_commit"
+else
+    echo "==> Building the Homespool container images for arm64"
+    # Stamp the commit into the images. It matters more on a card than anywhere else: this artefact
+    # gets written to an SD card, posted, and run for months by somebody who never built it, and
+    # "which build is this?" then has exactly one answer -
+    # `docker compose run --rm homespool --version`. Compose cannot compute it (no command
+    # substitution), so it is computed here; see tools/gitref.sh.
+    #
+    # --pull for the reason ../build.sh gives: the base images float so that their security rebuilds
+    # arrive, and without it this bakes whatever copy of aspnet:10.0 the build host happened to keep
+    # - onto a card that will then run it for months.
+    #
+    # HOMESPOOL_APT_REFRESH for the same reason ../build.sh passes it: without a value that changes,
+    # the application image's apt upgrade stays cached at whatever day it first ran on this base.
+    #
+    # The base digests for the same reason ../build.sh resolves them: so a card's images can say
+    # which base they were built on, which on a card that runs for months is the question that will
+    # be asked. The camera sidecar's Go toolchain and the Go modules it takes newer than go2rtc's
+    # release too, for the same reason. And each build context's tree, so the card's images carry
+    # every label a published image does.
+    HOMESPOOL_GITREF="$("$repo_root/tools/gitref.sh")"
+    export HOMESPOOL_GITREF
+    HOMESPOOL_APT_REFRESH="$(date -u +%Y-%m-%d)"
+    export HOMESPOOL_APT_REFRESH
+    HOMESPOOL_ASPNET_DIGEST="$("$repo_root/tools/base-digest.sh" \
+        "$repo_root/Homespool.Host/Dockerfile")"
+    HOMESPOOL_NGINX_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/nginx/Dockerfile")"
+    HOMESPOOL_ALPINE_DIGEST="$("$repo_root/tools/base-digest.sh" "$repo_root/go2rtc/Dockerfile")"
+    sidecar_dockerfile="$repo_root/go2rtc/Dockerfile"
+    HOMESPOOL_GOLANG_DIGEST="$("$repo_root/tools/base-digest.sh" "$sidecar_dockerfile" \
+        HOMESPOOL_BUILDER_IMAGE)"
+    HOMESPOOL_GO_MODULES="$("$repo_root/tools/go-module-versions.sh" "$sidecar_dockerfile")"
+    export HOMESPOOL_ASPNET_DIGEST HOMESPOOL_NGINX_DIGEST HOMESPOOL_ALPINE_DIGEST
+    export HOMESPOOL_GOLANG_DIGEST HOMESPOOL_GO_MODULES
+    HOMESPOOL_APP_TREE="$("$repo_root/tools/context-tree.sh" .)"
+    HOMESPOOL_PROXY_TREE="$("$repo_root/tools/context-tree.sh" nginx)"
+    HOMESPOOL_GO2RTC_TREE="$("$repo_root/tools/context-tree.sh" go2rtc)"
+    export HOMESPOOL_APP_TREE HOMESPOOL_PROXY_TREE HOMESPOOL_GO2RTC_TREE
+    # latest whatever the shell or .env says: the card's compose.yaml asks for latest when nothing
+    # pins it, and the docker save below names exactly that. The environment wins over .env for
+    # compose.
+    export HOMESPOOL_TAG=latest
+    docker --log-level warn compose -f "$repo_root/compose.yaml" build --pull
+fi
 
 # ------------------------------------------------------------------------------------------------
 # 2. The payload: everything the card needs at /opt/homespool.
@@ -189,7 +210,14 @@ rm -rf "$payload_dir"
 mkdir -p "$payload_dir/nginx" "$payload_dir/go2rtc"
 
 cp "$repo_root/compose.yaml" "$payload_dir/"
-cp "$repo_root/.env.example"  "$payload_dir/"
+# A release card's names the registry its images came from, so the .env first boot creates from it
+# does too: the stack then asks for those names, and follows latest there.
+if [ -n "$HOMESPOOL_VERSION" ]; then
+    "$pi_dir/release-images.sh" env-example "$release_registry" \
+        "$repo_root/.env.example" "$payload_dir/.env.example"
+else
+    cp "$repo_root/.env.example" "$payload_dir/"
+fi
 # The board configures itself with this on first boot, and an operator can re-run it over SSH to add
 # SMTP or repoint PRINTER_HOST later. Mode carried explicitly: systemd ExecStart needs it executable,
 # and cp -a into the image preserves whatever arrives here.
@@ -224,31 +252,36 @@ mkdir -p "$payload_dir/update-check"
 cp -R "$repo_root/update-check/." "$payload_dir/update-check/"
 chmod 0755 "$payload_dir/update-check"/*.sh
 
-# Deliberately NOT into the payload. This tarball never reaches the card: it is loaded into the
-# card's Docker store during the build (step 4), so the Pi boots with the images already unpacked.
-# Shipping it as well would put ~200 MB on the card that exists only to be expanded and deleted.
-echo "==> Saving the container images (the slow part, ~700 MB uncompressed)"
+# A release's images are pulled straight into the card's store in step 4 instead - see there.
 mkdir -p "$images_dir"
+if [ -z "$HOMESPOOL_VERSION" ]; then
+    # Deliberately NOT into the payload. This tarball never reaches the card: it is loaded into the
+    # card's Docker store during the build (step 4), so the Pi boots with the images already
+    # unpacked. Shipping it as well would put ~200 MB on the card that exists only to be expanded
+    # and deleted.
+    echo "==> Saving the container images (the slow part, ~700 MB uncompressed)"
 
-# The same REGISTRY prefix compose.yaml applies, read from .env the way compose reads it - otherwise
-# setting it would tag the built images one way and have this look for them the other, and the only
-# symptom would be `docker save` failing on an image nobody can see is missing. The card needs no
-# registry at run time either way: whatever these are called, they are already in its store, and its
-# compose.yaml asks for the same names because it expands the same variable.
-#
-# A checkout with no .env - every fresh clone - is the common case, not an error, and it is tested
-# for rather than read through: sed exits non-zero on a missing file, pipefail carries that out of
-# the substitution, and set -e then ends the script here with nothing printed.
-registry="${REGISTRY:-}"
-if [ -z "$registry" ] && [ -f "$repo_root/.env" ]; then
-    registry="$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" | tail -1)"
+    # The same REGISTRY prefix compose.yaml applies, read from .env the way compose reads it -
+    # otherwise setting it would tag the built images one way and have this look for them the
+    # other, and the only symptom would be `docker save` failing on an image nobody can see is
+    # missing. The card needs no registry at run time either way: whatever these are called, they
+    # are already in its store, and its compose.yaml asks for the same names because it expands the
+    # same variable.
+    #
+    # A checkout with no .env - every fresh clone - is the common case, not an error, and it is
+    # tested for rather than read through: sed exits non-zero on a missing file, pipefail carries
+    # that out of the substitution, and set -e then ends the script here with nothing printed.
+    registry="${REGISTRY:-}"
+    if [ -z "$registry" ] && [ -f "$repo_root/.env" ]; then
+        registry="$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" | tail -1)"
+    fi
+    image_prefix="${registry:+${registry}/}"
+
+    docker save "${image_prefix}homespool:latest" "${image_prefix}homespool-proxy:latest" \
+        "${image_prefix}homespool-go2rtc:latest" \
+        | gzip -1 > "$images_dir/homespool-images.tar.gz"
+    echo "    $(du -h "$images_dir/homespool-images.tar.gz" | cut -f1) saved"
 fi
-image_prefix="${registry:+${registry}/}"
-
-docker save "${image_prefix}homespool:latest" "${image_prefix}homespool-proxy:latest" \
-    "${image_prefix}homespool-go2rtc:latest" \
-    | gzip -1 > "$images_dir/homespool-images.tar.gz"
-echo "    $(du -h "$images_dir/homespool-images.tar.gz" | cut -f1) saved"
 
 # ------------------------------------------------------------------------------------------------
 # 3. The builder.
@@ -398,7 +431,14 @@ if [ -z "$ready" ]; then
     exit 1
 fi
 
-docker exec homespool-dind docker load -i /images/homespool-images.tar.gz
+# A release's images pulled here rather than saved and loaded: only a pull records the registry's
+# digest for an image, and the card's update check knows its images are the published ones by it.
+if [ -n "$HOMESPOOL_VERSION" ]; then
+    "$pi_dir/release-images.sh" pull homespool-dind \
+        "$release_registry" "$HOMESPOOL_VERSION" "$release_commit"
+else
+    docker exec homespool-dind docker load -i /images/homespool-images.tar.gz
+fi
 echo "    loaded into the card's store:"
 docker exec homespool-dind docker image ls --format '      {{.Repository}}:{{.Tag}} {{.Size}}'
 

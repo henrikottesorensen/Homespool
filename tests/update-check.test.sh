@@ -528,6 +528,35 @@ if test_case "the application's entry counts the commits that changed compose.ya
         "and only the application's entry says so"
 fi
 
+if test_case "a card built from a release is compared with GHCR, and current"; then
+    # What pi/build.sh puts in a release card's store: GHCR's names, followed at latest, each pulled
+    # so it records the registry's digest.
+    ghcr="ghcr.io/henrikottesorensen"
+    for pair in homespool:homespool proxy:homespool-proxy go2rtc:homespool-go2rtc; do
+        service="${pair%%:*}" name="${pair#*:}"
+        export "STUB_REF_$service=$ghcr/$name:latest"
+        jq --arg d "$ghcr/$name@sha256:published-$service" '.RepoDigests = [$d]' \
+            "$scratch/fixtures/running-$service.json" > "$scratch/fixtures/running.tmp"
+        mv "$scratch/fixtures/running.tmp" "$scratch/fixtures/running-$service.json"
+    done
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_contains "$log" "imagetools inspect --format {{.Manifest.Digest}} $ghcr/homespool-go2rtc:latest" \
+        "GHCR is asked for the tag the card follows"
+    assert_equals "$(field '[.services[].status] | join(",")')" "current,current,current" \
+        "all three are the published images, not local"
+fi
+
+if test_case "a release's images loaded rather than pulled cannot be told for the published ones"; then
+    # docker load brings no digest, which is why pi/build.sh pulls a release into the card's store.
+    for service in homespool proxy go2rtc; do
+        jq '.RepoDigests = []' "$scratch/fixtures/running-$service.json" > "$scratch/fixtures/running.tmp"
+        mv "$scratch/fixtures/running.tmp" "$scratch/fixtures/running-$service.json"
+    done
+    check
+    assert_equals "$(app .status)" "newer" "the very image published is reported as an update"
+fi
+
 if test_case "a current image says which revision it runs"; then
     check
     assert_equals "$(field '[.services[].running.revision] | unique | join(",")')" "$running_rev" \

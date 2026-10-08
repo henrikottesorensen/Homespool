@@ -229,6 +229,21 @@ public class FileOnPrinter
     /// </remarks>
     public string? StartRefusalReason { get; set; }
 
+    /// <summary>
+    /// How many times the printer has been asked what it calls this file, since it arrived without
+    /// saying, and has not told us; or null when no ask is outstanding.
+    /// </summary>
+    /// <remarks>
+    /// <b>A count of asks rather than a deadline from <see cref="ArrivedAt"/></b>, because only asking
+    /// is evidence: a printer that was off has not been asked, and a file queued again is to be asked
+    /// about afresh. At <c>QueueAdvancer.PathAsksBeforeHold</c> the queue holds with
+    /// <see cref="PrintHoldReason.PrinterPathUnknown"/>; lifting a hold clears it.
+    /// </remarks>
+    public int? PathAskCount { get; set; }
+
+    /// <summary>When the printer was last asked what it calls this file; the clock the next ask waits on.</summary>
+    public DateTimeOffset? PathAskedAt { get; set; }
+
     /// <summary>When the printer reported the transfer finished. Null until it has.</summary>
     /// <remarks>
     /// <b><c>TRANSFER_FINISHED</c>, not the first <c>FILE_INFO</c></b>, which firmware sends a few

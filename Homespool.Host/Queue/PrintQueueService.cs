@@ -243,13 +243,9 @@ public class PrintQueueService
 
         if (personHeld is not null)
         {
-            personHeld.HoldReason = null;
-            personHeld.BlockedAt = null;
-
-            // A fresh count as well as a lifted hold, or the next identical refusal would re-hold at
-            // once and the re-queue would buy a single attempt.
-            TransferRetryRules.Forget(personHeld);
-            PrintStartRetryRules.Forget(personHeld);
+            // A fresh count as well as a lifted hold - of refusals and of unanswered asks alike - or
+            // the next attempt would re-hold at once and the re-queue would buy nothing.
+            QueueHolds.ClearHold(personHeld);
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);

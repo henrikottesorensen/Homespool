@@ -244,12 +244,14 @@ public enum PrintHoldReason
     /// <b>A print is started by the printer's name for a file, not ours.</b> The drive gives every file
     /// an 8.3 alias whose counter depends on what else is on it, and the queue prints by that alias -
     /// so a file whose <c>FILE_INFO</c> never came cannot be printed, and a guessed alias could print
-    /// another file. The loop asks the printer by the long name, and holds here when a quarter of an
-    /// hour of asking has brought no name.
+    /// another file. The loop asks the printer by the long name, a minute apart, and holds here when
+    /// fifteen asks the printer was actually sent have brought no name - however long ago the file
+    /// arrived, and however long the printer was away in between.
     /// </para>
     /// <para>
     /// <b>Its exit is a person</b>, as for <see cref="PrintStartUnresolved"/>. Cancelling the entry
-    /// moves the queue past it; queueing the file again clears it and the loop asks again.
+    /// moves the queue past it; queueing the file again clears it and the count, and the loop asks
+    /// afresh.
     /// </para>
     /// </remarks>
     PrinterPathUnknown = 13,

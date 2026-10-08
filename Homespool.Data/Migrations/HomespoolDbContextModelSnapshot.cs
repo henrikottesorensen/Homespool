@@ -143,6 +143,12 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("HoldReason")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("PathAskCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("PathAskedAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("PrinterId")
                         .HasColumnType("INTEGER");
 

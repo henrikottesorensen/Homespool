@@ -1027,21 +1027,26 @@ public sealed class QueueAdvancerTests : IDisposable
         IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.Rejected, "Something firmware has not said before"));
         using QueueAdvancer advancer = NewAdvancer();
 
-        _clock.Advance(QueueAdvancer.PathUnresolvableAfter - TimeSpan.FromSeconds(1));
-        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        _clock.Advance(QueueAdvancer.PathAskAfter);
+
+        for (int ask = 1; ask < QueueAdvancer.PathAsksBeforeHold; ask++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(QueueAdvancer.BlockRecheckAfter);
+        }
 
         context.ChangeTracker.Clear();
         (await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken)).HoldReason
-            .Should().BeNull("a second short of the bound is still asking");
+            .Should().BeNull("one ask short of the bound is still asking");
 
         // Act
-        _clock.Advance(TimeSpan.FromSeconds(1));
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         // Assert
         context.ChangeTracker.Clear();
         FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
+        CommandsSent(actor).OfType<SendFileInfo>().Should().HaveCount(QueueAdvancer.PathAsksBeforeHold);
         row.HoldReason.Should().Be(PrintHoldReason.PrinterPathUnknown);
         row.PrinterPath.Should().BeNull("nothing guessed one");
 
@@ -1052,13 +1057,108 @@ public sealed class QueueAdvancerTests : IDisposable
             "a hold is not a cancellation");
 
         // And the hold stands, asking nothing further.
-        int askedBefore = CommandsSent(actor).OfType<SendFileInfo>().Count();
         _clock.Advance(TimeSpan.FromHours(1));
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
-        CommandsSent(actor).OfType<SendFileInfo>().Should().HaveCount(askedBefore);
+        CommandsSent(actor).OfType<SendFileInfo>().Should().HaveCount(QueueAdvancer.PathAsksBeforeHold);
         CommandsSent(actor).OfType<Printing.StartPrint>().Should().BeEmpty();
         (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A printer back from a long absence is asked about a file that arrived before it went, rather
+    /// than held for the time it was away.
+    /// </summary>
+    /// <remarks>
+    /// The bound used to run from the arrival, and the queue does nothing for a printer that is not
+    /// connected - so the first pass after an absence longer than the bound held without a question.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnnamedFileOnAPrinterBackFromALongAbsenceIsAskedAboutNotHeld()
+    {
+        // Arrange - arrived, then three hours with no printer at all
+        await using HomespoolDbContext context = await SeedUnnamedArrivalAsync();
+        _clock.Advance(TimeSpan.FromHours(3));
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Unanswered(CommandSendOutcome.ResponseTimedOut));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        CommandsSent(actor).OfType<SendFileInfo>().Should().HaveCount(1, "the printer is asked as soon as it is back");
+        row.HoldReason.Should().BeNull("an absence is not the printer declining to answer");
+        row.PathAskCount.Should().Be(1);
+    }
+
+    /// <summary>
+    /// Queueing a held file again asks the printer afresh, rather than re-holding on the next pass.
+    /// </summary>
+    [Fact]
+    public async Task ARequeuedFileThePrinterWouldNotNameIsAskedAboutAgain()
+    {
+        // Arrange - held at the bound, long after it arrived
+        await using HomespoolDbContext context = await SeedUnnamedArrivalAsync();
+        await WriteFileOnDiskAsync("queued.bgcode");
+
+        FileOnPrinter held = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        held.HoldReason = PrintHoldReason.PrinterPathUnknown;
+        held.BlockedAt = _clock.GetUtcNow();
+        held.PathAskCount = QueueAdvancer.PathAsksBeforeHold;
+        held.PathAskedAt = _clock.GetUtcNow();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Unanswered(CommandSendOutcome.ResponseTimedOut));
+        _clock.Advance(TimeSpan.FromHours(2));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - somebody queues it again, and the loop takes its next pass
+        await using (AsyncServiceScope scope = _advancerServices!.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<PrintQueueService>()
+                       .EnqueueAsync(PrinterId, Caller.Unscoped(1), "queued.bgcode", TestContext.Current.CancellationToken);
+        }
+
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        CommandsSent(actor).OfType<SendFileInfo>().Should().HaveCount(1, "queueing again is asking for the printer to be asked again");
+        row.HoldReason.Should().BeNull("one ask is not the bound");
+        row.PathAskCount.Should().Be(1, "the count started over");
+    }
+
+    /// <summary>
+    /// An ask that never reached the printer is not counted towards the bound.
+    /// </summary>
+    [Fact]
+    public async Task AnAskThatNeverReachedThePrinterIsNotCounted()
+    {
+        // Arrange - a printer that drops every command before it is written
+        await using HomespoolDbContext context = await SeedUnnamedArrivalAsync();
+        ConnectAnswering(_ => Unanswered(CommandSendOutcome.NotConnected));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        _clock.Advance(QueueAdvancer.PathAskAfter);
+
+        // Act - more passes than the bound, each after the recheck
+        for (int pass = 0; pass <= QueueAdvancer.PathAsksBeforeHold; pass++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(QueueAdvancer.BlockRecheckAfter);
+        }
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().BeNull("the printer was never asked");
+        row.PathAskCount.Should().BeNull();
     }
 
     /// <summary>

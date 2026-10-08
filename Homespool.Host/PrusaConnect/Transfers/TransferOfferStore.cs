@@ -348,6 +348,14 @@ public sealed class TransferOfferStore : ITransferContentStore, ITransferOffers
                                            !offer.IsAbandoned(maxLifetime));
     }
 
+    /// <inheritdoc />
+    public bool HasStandingOffer(int printerId)
+    {
+        TimeSpan maxLifetime = _options.CurrentValue.TransferOfferMaxLifetime;
+
+        return _offers.Values.Any(offer => offer.PrinterId == printerId && !offer.IsAbandoned(maxLifetime));
+    }
+
     private void RetireAbandoned(string token, PinnedOffer offer)
     {
         if (_offers.TryRemove(new KeyValuePair<string, PinnedOffer>(token, offer)))

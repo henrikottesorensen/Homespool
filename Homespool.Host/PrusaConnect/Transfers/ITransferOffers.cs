@@ -74,4 +74,22 @@ public interface ITransferOffers
     /// </para>
     /// </remarks>
     bool IsOffered(int printerId, string fileName);
+
+    /// <summary>
+    /// Whether any offer still stands for <paramref name="printerId"/>: a transfer the printer may be
+    /// pulling, or has been told to fetch.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What a firmware install asks before it flashes: the printer restarts under any transfer still
+    /// running, whoever started it. Its own image's offer is gone by the time it flashes - released as
+    /// the transfer's end arrives, before that end is saved and read as the image having arrived.
+    /// </para>
+    /// <para>
+    /// <b>Standing offers only, unlike <see cref="IsOffered"/></b>: one released by its transfer's end
+    /// is a transfer that has ended. The minute <see cref="IsOffered"/> adds covers the event log
+    /// catching up, which the queue reads and an install does not.
+    /// </para>
+    /// </remarks>
+    bool HasStandingOffer(int printerId);
 }

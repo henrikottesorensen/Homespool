@@ -22,6 +22,7 @@ using Homespool.Host.Firmware;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Host.Test;
 using Homespool.Model;
@@ -107,6 +108,10 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
                         .AnyAsync(row => row.PrinterId == printerId, TestContext.Current.CancellationToken))
                 .Should().BeFalse("nothing of the image is left recorded on that drive");
         }
+
+        TransferService transfers = _factory.Services.GetRequiredService<TransferService>();
+        transfers.TryHoldForInstall(printerId, 1).Should().BeTrue("the install let go of the printer's sends once done");
+        transfers.ReleaseInstall(printerId);
 
         await back.CloseAsync(TestContext.Current.CancellationToken);
         await backRun.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
@@ -526,6 +531,48 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
         // Assert
         refused.Should().BeOfType<PrinterInstallingFirmwareException>();
         flashed.Should().BeTrue("the flash's own send goes");
+
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// The review's case: a file sent straight to the printer before the flash, which the printer is
+    /// still pulling. Its offer stands, so the flash is refused before anything is sent - and lets go
+    /// of the printer's sends again.
+    /// </summary>
+    [Fact]
+    public async Task AFlashIsRefusedWhileAnotherFileIsStillBeingPulled()
+    {
+        // Arrange - a connected, idle printer, offered another file a moment ago
+        (PrinterIdentity identity, string token, int printerId, long ownerId) = await EnrolCoreOneAsync();
+        await using FakePrinterClient fake = await ConnectAsync(identity, token);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+        await WaitForModelAsync(printerId);
+
+        FirmwareImage image = await StoreAsync(ownerId, printerId);
+        Guid uuid = await UuidOfAsync(printerId);
+
+        string pulled = Path.Combine(_scratch.Path, "being-pulled.gcode");
+        await File.WriteAllBytesAsync(pulled, new byte[4096], TestContext.Current.CancellationToken);
+        _factory.Services.GetRequiredService<ITransferOffers>().Offer(Convert.ToHexStringLower(Guid.NewGuid().ToByteArray()), pulled, printerId)
+                .Should().NotBeNull();
+
+        using HttpClient owner = await EnrolmentFlowHelper.SignInAsAsync(_factory, await EnrolmentFlowHelper.FindUserAsync(_factory, ownerId));
+        await EnrolmentFlowHelper.ReauthenticateAsync(owner);
+
+        // Act
+        string page = await PostFlashAsync(owner, uuid, image.Digest);
+
+        // Assert
+        page.Should().Contain("is busy");
+        _factory.Services.GetRequiredService<FirmwareFlashes>().For(printerId).Should().BeNull();
+        fake.ReceivedCommands.Should().NotContain(frame => frame.TryGetJsonCommandName() == "START_ENCRYPTED_DOWNLOAD" ||
+                                                           frame.TryGetJsonCommandName() == "START_CONNECT_DOWNLOAD");
+
+        TransferService transfers = _factory.Services.GetRequiredService<TransferService>();
+        transfers.TryHoldForInstall(printerId, 1).Should().BeTrue("a refused install holds nothing");
+        transfers.ReleaseInstall(printerId);
 
         await fake.CloseAsync(TestContext.Current.CancellationToken);
         await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);

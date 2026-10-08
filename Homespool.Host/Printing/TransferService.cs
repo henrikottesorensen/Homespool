@@ -15,7 +15,6 @@ using Microsoft.Extensions.Logging;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
-using Homespool.Host.Firmware;
 using Homespool.Host.Pages;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
@@ -51,6 +50,11 @@ namespace Homespool.Host.Printing;
 /// pass, which settles first, waiting behind every one of them. Refused with
 /// <see cref="CommandAlreadyInFlightException"/>, what a second command to a busy printer has always
 /// got, and the queue settles only when no send is waiting (<see cref="SettleUnlessSendingAsync"/>).
+/// </para>
+/// <para>
+/// <b>A firmware install holds the mailbox</b> (<see cref="TryHoldForInstall"/>): from then until it
+/// ends, only its own image is admitted. Taken under the same lock that admits a send, and only when
+/// no send is waiting or under way, so a flash and a send never both believe the printer is theirs.
 /// </para>
 /// <para>
 /// <b>Settled when the printer reports, not when the queue looks.</b> <see cref="TelemetryWriter"/>
@@ -131,10 +135,10 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         Mailbox mailbox = MailboxFor(request.PrinterId);
 
         // Admitted and posted under one lock, so a settle that must not wait behind a send cannot be
-        // posted between the check and the post.
+        // posted between the check and the post - nor a firmware install hold taken between them.
         lock (mailbox.Gate)
         {
-            if (mailbox.SendPending)
+            if (mailbox.SendPending || (mailbox.InstallingImage is long image && image != request.FileId))
             {
                 return Task.FromException<TransferResult>(new CommandAlreadyInFlightException(request.PrinterId));
             }
@@ -190,6 +194,40 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     }
 
     /// <summary>
+    /// Holds this printer's sends for a firmware install of the stored image
+    /// <paramref name="imageFileId"/>: until <see cref="ReleaseInstall"/>, a send of any other file is
+    /// refused. False, holding nothing, when a send is already waiting or under way or another install
+    /// holds the printer.
+    /// </summary>
+    public bool TryHoldForInstall(int printerId, long imageFileId)
+    {
+        Mailbox mailbox = MailboxFor(printerId);
+
+        lock (mailbox.Gate)
+        {
+            if (mailbox.SendPending || mailbox.InstallingImage is not null)
+            {
+                return false;
+            }
+
+            mailbox.InstallingImage = imageFileId;
+
+            return true;
+        }
+    }
+
+    /// <summary>Ends a firmware install's hold on this printer's sends. Harmless when there is none.</summary>
+    public void ReleaseInstall(int printerId)
+    {
+        Mailbox mailbox = MailboxFor(printerId);
+
+        lock (mailbox.Gate)
+        {
+            mailbox.InstallingImage = null;
+        }
+    }
+
+    /// <summary>
     /// Sends one of a user's files to a printer outside the queue - the API's send and the Files
     /// page's - and hands back every answer, holding and counting nothing.
     /// </summary>
@@ -229,14 +267,14 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         {
             await scope.ServiceProvider.GetRequiredService<PrinterAccessService>()
                        .RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
+        }
 
-            // The install sends its own image this way, and nothing else goes while it runs: the flash
-            // restarts the printer under any transfer still going.
-            if (scope.ServiceProvider.GetRequiredService<IFirmwareInstallations>().ImageBeingInstalled(printer.Id) is long image &&
-                image != indexed.Id)
-            {
-                throw new PrinterInstallingFirmwareException(printer.Id, PrinterDisplayName.For(printer));
-            }
+        // The install sends its own image this way, and nothing else goes while it runs: the flash
+        // restarts the printer under any transfer still going. Asked here for the sentence; the
+        // mailbox's admission is what holds, should an install take the printer in between.
+        if (InstallHeldFor(printer.Id) is long image && image != indexed.Id)
+        {
+            throw new PrinterInstallingFirmwareException(printer.Id, PrinterDisplayName.For(printer));
         }
 
         TransferResult result = await SendAsync(new TransferRequest(printer.Id, indexed.Id, caller, new DirectSend(file)),
@@ -392,6 +430,16 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         if (_stoppingToken.IsCancellationRequested || !MailboxFor(printerId).Messages.Writer.TryWrite(message))
         {
             message.Cancel(_stoppingToken);
+        }
+    }
+
+    private long? InstallHeldFor(int printerId)
+    {
+        Mailbox mailbox = MailboxFor(printerId);
+
+        lock (mailbox.Gate)
+        {
+            return mailbox.InstallingImage;
         }
     }
 
@@ -1091,6 +1139,12 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
 
         /// <summary>Whether a send is waiting or under way. Read and written under <see cref="Gate"/>.</summary>
         public bool SendPending { get; set; }
+
+        /// <summary>
+        /// The stored image a firmware install holds this printer for, the only file admitted while it
+        /// does; null when none does. Read and written under <see cref="Gate"/>.
+        /// </summary>
+        public long? InstallingImage { get; set; }
 
         /// <summary>Last <c>PrinterEvent</c> id settled. Loop-only.</summary>
         public long Watermark { get; set; }

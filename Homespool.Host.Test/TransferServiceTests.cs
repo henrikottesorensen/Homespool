@@ -18,7 +18,6 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
-using Homespool.Host.Firmware;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
@@ -75,7 +74,6 @@ public sealed class TransferServiceTests : IDisposable
         services.AddScoped<PrinterAccessService>();
         services.AddSingleton(_registry);
         services.AddScoped<PrinterCommandService>();
-        services.AddSingleton(Substitute.For<IFirmwareInstallations>());
         services.Configure<PrintFileStorageOptions>(options => options.Directory = _storeRoot);
         services.AddSingleton<IHostEnvironmentAccessor>(new HostEnvironmentAccessor(_storeRoot));
         services.AddSingleton<TimeProvider>(_clock);
@@ -191,6 +189,71 @@ public sealed class TransferServiceTests : IDisposable
         await transfers.SendAsync(Request(file), TestContext.Current.CancellationToken)
                        .WaitAsync(Bound, TestContext.Current.CancellationToken);
         DownloadsOffered(actor).Should().Be(2, "the refused send offered nothing, and the one after the first was let through");
+    }
+
+    /// <summary>
+    /// A firmware install holds the printer: any other file is refused, as a busy printer refuses,
+    /// its own image is let through, and once it lets go everything is again.
+    /// </summary>
+    [Fact]
+    public async Task AnInstallHoldAdmitsOnlyItsOwnImage()
+    {
+        // Arrange
+        HSFile file = await SeedAsync();
+        TaskCompletionSource<CommandSendResult> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource offered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IPrinterConnectionActor actor = ConnectAnsweringDownloadsWith(answer.Task, offered);
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+        answer.SetResult(TakenAs(DownloadCommandId));
+
+        // Act
+        bool held = transfers.TryHoldForInstall(PrinterId, file.Id + 1);
+        Func<Task> other = () => transfers.SendAsync(Request(file), TestContext.Current.CancellationToken)
+                                          .WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Assert
+        held.Should().BeTrue();
+        await other.Should().ThrowAsync<CommandAlreadyInFlightException>();
+        DownloadsOffered(actor).Should().Be(0);
+
+        // Act - the install's own image, then let go
+        transfers.ReleaseInstall(PrinterId);
+        transfers.TryHoldForInstall(PrinterId, file.Id).Should().BeTrue();
+        await transfers.SendAsync(Request(file), TestContext.Current.CancellationToken)
+                       .WaitAsync(Bound, TestContext.Current.CancellationToken);
+        transfers.ReleaseInstall(PrinterId);
+        transfers.TryHoldForInstall(PrinterId, file.Id + 1).Should().BeTrue("let go, it can be held again");
+
+        // Assert
+        DownloadsOffered(actor).Should().Be(1, "the held image went");
+    }
+
+    /// <summary>
+    /// An install cannot take a printer a send is waiting on or still offering to: the send was there
+    /// first, and the install must find out now rather than flash under it.
+    /// </summary>
+    [Fact]
+    public async Task AnInstallCannotHoldAPrinterWithASendUnderWay()
+    {
+        // Arrange - a send holding the printer's mailbox on its answer
+        HSFile file = await SeedAsync();
+        TaskCompletionSource<CommandSendResult> answer = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource offered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ConnectAnsweringDownloadsWith(answer.Task, offered);
+        TransferService transfers = _services.GetRequiredService<TransferService>();
+
+        Task<TransferResult> send = transfers.SendAsync(Request(file), TestContext.Current.CancellationToken);
+        await offered.Task.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Act
+        bool held = transfers.TryHoldForInstall(PrinterId, file.Id + 1);
+
+        // Assert
+        held.Should().BeFalse();
+
+        answer.SetResult(TakenAs(DownloadCommandId));
+        await send.WaitAsync(Bound, TestContext.Current.CancellationToken);
+        transfers.TryHoldForInstall(PrinterId, file.Id + 1).Should().BeTrue("the send has ended");
     }
 
     /// <summary>

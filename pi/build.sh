@@ -15,11 +15,11 @@
 # because its supported host is Debian arm64 and macOS is not that.
 #
 # The container images are baked into the card's Docker store either way, so the board never builds
-# or pulls them to start. FROM A RELEASE - HEAD a v-tag, the tree clean - nothing is built: the
-# release's published images are pulled from GHCR into that store under their registry names, and
-# the card's .env names the registry, so its update check compares them with what is published and
-# `docker compose pull` moves it to the next release. From anything else the images are built here
-# and named as .env's REGISTRY says, and the card's check reports them as built from source.
+# or pulls them to start. EVERY CARD NAMES THEM FOR GHCR, and its .env says REGISTRY is GHCR, so its
+# update check compares them with what is published there and `docker compose pull` moves it to the
+# latest release. FROM A RELEASE - HEAD a v-tag, the tree clean - nothing is built: the release's
+# published images are pulled into that store. From anything else they are built here under the
+# same names.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -139,10 +139,11 @@ fi
 # ------------------------------------------------------------------------------------------------
 # 1. The application images: a release's published ones, or built here, native arm64.
 # ------------------------------------------------------------------------------------------------
-# Where a release's images are published - .github/workflows/publish-images.yml pushes them there.
-# Not .env's REGISTRY, which says where this machine's own builds go, and is no place for a card
-# that is posted to somebody else to follow.
-release_registry="ghcr.io/henrikottesorensen"
+# Where the releases are published - .github/workflows/publish-images.yml pushes them there - and so
+# the registry every card's images are named for, built here or pulled. Not .env's REGISTRY, which
+# says where this machine's own builds go, and is no place for a card that is posted to somebody
+# else to follow.
+card_registry="ghcr.io/henrikottesorensen"
 
 # The version only when HEAD carries a v-tag and the tree is clean, so a card built from a release
 # carries exactly what the release published, and anything else is built from what is checked out.
@@ -153,7 +154,7 @@ if [ -n "$HOMESPOOL_VERSION" ]; then
     # The revision label the publish stamped, from the same tool, so the comparison is exact.
     release_commit="$("$repo_root/tools/gitref.sh")"
     echo "==> Release $HOMESPOOL_VERSION: checking its published images"
-    "$pi_dir/release-images.sh" check "$release_registry" "$HOMESPOOL_VERSION" "$release_commit"
+    "$pi_dir/release-images.sh" check "$card_registry" "$HOMESPOOL_VERSION" "$release_commit"
 else
     echo "==> Building the Homespool container images for arm64"
     # Stamp the commit into the images. It matters more on a card than anywhere else: this artefact
@@ -192,9 +193,10 @@ else
     HOMESPOOL_PROXY_TREE="$("$repo_root/tools/context-tree.sh" nginx)"
     HOMESPOOL_GO2RTC_TREE="$("$repo_root/tools/context-tree.sh" go2rtc)"
     export HOMESPOOL_APP_TREE HOMESPOOL_PROXY_TREE HOMESPOOL_GO2RTC_TREE
-    # latest whatever the shell or .env says: the card's compose.yaml asks for latest when nothing
-    # pins it, and the docker save below names exactly that. The environment wins over .env for
+    # GHCR's names and latest, whatever the shell or .env says: the card's .env names GHCR and pins
+    # no tag, and the docker save below names exactly those. The environment wins over .env for
     # compose.
+    export REGISTRY="$card_registry"
     export HOMESPOOL_TAG=latest
     docker --log-level warn compose -f "$repo_root/compose.yaml" build --pull
 fi
@@ -210,14 +212,10 @@ rm -rf "$payload_dir"
 mkdir -p "$payload_dir/nginx" "$payload_dir/go2rtc"
 
 cp "$repo_root/compose.yaml" "$payload_dir/"
-# A release card's names the registry its images came from, so the .env first boot creates from it
-# does too: the stack then asks for those names, and follows latest there.
-if [ -n "$HOMESPOOL_VERSION" ]; then
-    "$pi_dir/release-images.sh" env-example "$release_registry" \
-        "$repo_root/.env.example" "$payload_dir/.env.example"
-else
-    cp "$repo_root/.env.example" "$payload_dir/"
-fi
+# Naming the registry the card's images are named for, so the .env first boot creates from it does
+# too: the stack then asks for those names, and follows latest there.
+"$pi_dir/release-images.sh" env-example "$card_registry" \
+    "$repo_root/.env.example" "$payload_dir/.env.example"
 # The board configures itself with this on first boot, and an operator can re-run it over SSH to add
 # SMTP or repoint PRINTER_HOST later. Mode carried explicitly: systemd ExecStart needs it executable,
 # and cp -a into the image preserves whatever arrives here.
@@ -261,24 +259,9 @@ if [ -z "$HOMESPOOL_VERSION" ]; then
     # and deleted.
     echo "==> Saving the container images (the slow part, ~700 MB uncompressed)"
 
-    # The same REGISTRY prefix compose.yaml applies, read from .env the way compose reads it -
-    # otherwise setting it would tag the built images one way and have this look for them the
-    # other, and the only symptom would be `docker save` failing on an image nobody can see is
-    # missing. The card needs no registry at run time either way: whatever these are called, they
-    # are already in its store, and its compose.yaml asks for the same names because it expands the
-    # same variable.
-    #
-    # A checkout with no .env - every fresh clone - is the common case, not an error, and it is
-    # tested for rather than read through: sed exits non-zero on a missing file, pipefail carries
-    # that out of the substitution, and set -e then ends the script here with nothing printed.
-    registry="${REGISTRY:-}"
-    if [ -z "$registry" ] && [ -f "$repo_root/.env" ]; then
-        registry="$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" | tail -1)"
-    fi
-    image_prefix="${registry:+${registry}/}"
-
-    docker save "${image_prefix}homespool:latest" "${image_prefix}homespool-proxy:latest" \
-        "${image_prefix}homespool-go2rtc:latest" \
+    # The names the build above gave them, and the card's compose.yaml asks for.
+    docker save "$card_registry/homespool:latest" "$card_registry/homespool-proxy:latest" \
+        "$card_registry/homespool-go2rtc:latest" \
         | gzip -1 > "$images_dir/homespool-images.tar.gz"
     echo "    $(du -h "$images_dir/homespool-images.tar.gz" | cut -f1) saved"
 fi
@@ -435,7 +418,7 @@ fi
 # digest for an image, and the card's update check knows its images are the published ones by it.
 if [ -n "$HOMESPOOL_VERSION" ]; then
     "$pi_dir/release-images.sh" pull homespool-dind \
-        "$release_registry" "$HOMESPOOL_VERSION" "$release_commit"
+        "$card_registry" "$HOMESPOOL_VERSION" "$release_commit"
 else
     docker exec homespool-dind docker load -i /images/homespool-images.tar.gz
 fi

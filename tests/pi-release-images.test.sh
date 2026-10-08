@@ -278,21 +278,27 @@ fi
 
 # ---- pi/build.sh ----------------------------------------------------------------------------------
 
-if test_case "wiring: pi/build.sh checks, ships and pulls a release, and builds anything else"; then
+if test_case "wiring: pi/build.sh checks, ships and pulls a release, builds anything else, and names all for GHCR"; then
     build="$repo_root/pi/build.sh"
-    assert_contains "$(cat "$build")" 'release_registry="ghcr.io/henrikottesorensen"' \
-        "a release card's registry is GHCR's"
+    assert_contains "$(cat "$build")" 'card_registry="ghcr.io/henrikottesorensen"' \
+        "a card's registry is GHCR's"
     assert_contains "$(cat "$build")" 'HOMESPOOL_VERSION="$("$repo_root/tools/release-version.sh")"' \
         "a release is what tools/release-version.sh says"
-    assert_before '"$pi_dir/release-images.sh" check "$release_registry" "$HOMESPOOL_VERSION" "$release_commit"' \
+    assert_before '"$pi_dir/release-images.sh" check "$card_registry" "$HOMESPOOL_VERSION" "$release_commit"' \
         'run_imagegen -f' "$build" "the published images are checked before the root filesystem is built"
     # Step 1's branch: from its if to its fi, the check before the else, the build after it.
     awk '/^if \[ -n "\$HOMESPOOL_VERSION" \]; then$/ { on = 1 } on { print } on && /^fi$/ { exit }' \
         "$build" > "$scratch/step1"
     assert_before 'release-images.sh" check' 'else' "$scratch/step1" "a release is checked, not built"
     assert_before 'else' 'compose.yaml" build --pull' "$scratch/step1" "and anything else is built"
-    assert_contains "$(cat "$build")" '"$pi_dir/release-images.sh" env-example "$release_registry"' \
-        "the card's .env.example names the registry"
+    assert_before 'export REGISTRY="$card_registry"' 'compose.yaml" build --pull' "$scratch/step1" \
+        "under GHCR's names, whatever .env says"
+    # Unconditional: a line of its own, not indented under either branch.
+    assert_equals "$(grep -c '^"$pi_dir/release-images.sh" env-example "$card_registry"' "$build")" 1 \
+        "every card's .env.example names GHCR"
+    assert_contains "$(cat "$build")" 'docker save "$card_registry/homespool:latest" "$card_registry/homespool-proxy:latest"' \
+        "and a card built here saves the images under those names"
+    assert_not_contains "$(cat "$build")" '.env" 2>/dev/null' "the build's .env is not read for a card's names"
     assert_before 'docker run -d --name homespool-dind' '"$pi_dir/release-images.sh" pull homespool-dind' \
         "$build" "the images are pulled by the card's build daemon"
     assert_before '"$pi_dir/release-images.sh" pull homespool-dind' 'docker stop homespool-dind' \

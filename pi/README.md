@@ -82,8 +82,8 @@ records the registry's digest for an image, and that digest is how the card's up
 images are the published ones.
 
 Anything else is built here from the working tree, saved with `docker save` and loaded into the
-card's store, under the names `.env`'s `REGISTRY` gives them — plain `homespool` and so on when it is
-unset.
+card's store — under the same GHCR names, whatever `.env`'s `REGISTRY` says, so every card's `.env`
+names GHCR and follows `latest` there.
 
 ## The two things that surprise people
 
@@ -332,9 +332,8 @@ stack is running with the ones their registry publishes, and says what pulling a
 bring — Homespool fixes, .NET security releases, a rebuild on newer packages — in the journal and on
 the administrators' banner. **It only reports: nothing is ever pulled or restarted by itself.**
 
-**A card built from a release follows `latest` on GHCR.** It carries that release's published images,
-and its `.env` says `REGISTRY=ghcr.io/henrikottesorensen` with no `HOMESPOOL_TAG`, so the check
-compares it with whatever release `latest` is now. When the banner says a newer image is worth
+**Every card follows `latest` on GHCR.** Its `.env` says `REGISTRY=ghcr.io/henrikottesorensen` with
+no `HOMESPOOL_TAG`, so the check compares it with whatever release `latest` is now. When the banner says a newer image is worth
 taking:
 
 ```bash
@@ -347,11 +346,10 @@ report says when the repository's `compose.yaml` has changed since — compare t
 on one release instead, add `HOMESPOOL_TAG=0.1` (its version) to `.env`; the check then compares
 with that tag alone, which a later release does not move.
 
-On a card built from anything but a release, that report is short. The images were built on the
-machine that made the card and are named after no registry, so there is nothing published to compare
-them with; the check says so, with the date they were built, and cannot tell whether fixes have come
-out since. Such a card has no update path but a new one, or pointing its `.env` at a registry that
-publishes these images and pulling from it.
+A card built from anything but a release carries images built on the machine that made it, under
+the same names, so they were never pulled and the check cannot tell them for any published one: it
+reports them as newer whatever they are, and a pull replaces them with the latest release - which,
+on a card built from a commit after that release, is an older build.
 
 ## Getting a shell on the board
 

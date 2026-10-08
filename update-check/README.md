@@ -12,7 +12,7 @@ updating stays a thing you do.
 |---|---|
 | You build the images yourself with `./build.sh` | **Nothing.** They name no registry, so there is nothing published to compare with — the check says so and stops. |
 | You pull published images (`REGISTRY` set in `.env`) | Use this. |
-| A Raspberry Pi card | **Already installed**, and it runs from the first day. A card built from a release runs GHCR's images and follows `latest` there; any other card's are built from source, and reported as `local`. |
+| A Raspberry Pi card | **Already installed**, and it runs from the first day. Every card follows `latest` on GHCR: one built from a release runs that release's images, any other carries images built from source under the same names. |
 
 The registry has to allow **anonymous reads** of the three images. GHCR's public packages do. The
 check asks with no login on purpose: it should need nobody's credentials to find out whether

@@ -1,0 +1,94 @@
+# Publishes the three container images to GHCR when a release is published, so a card or a compose
+# stack pulls a release instead of being rebuilt from the repository.
+#
+# Through tools/publish-images.sh, which carries the rules - a clean tree, the full commit's tag
+# first, the version, latest last, each read back - and has its own suite in build-and-test.yml. Each
+# architecture is built natively on a runner of its own kind, for the reason pi/build.sh refuses an
+# x86 host: the other one would build under emulation. The last job combines them into one tag per
+# version, so an amd64 server and a Pi pull the same name.
+#
+# On `released` only: a pre-release fires `published` but not this, so it never moves latest. A
+# pre-release made a full release later fires it then. A failed run is retried with "Re-run failed
+# jobs"; there is no manual trigger, because one started from an older tag would move latest back.
+#
+# A package GHCR creates on the first push is private whatever the repository is, and an anonymous
+# pull - every card's - is refused until its visibility is changed in the package's settings, once
+# for each of homespool, homespool-proxy and homespool-go2rtc.
+name: publish images
+
+on:
+  release:
+    types: [released]
+
+# Read-only by default, as in build-and-test.yml; the two jobs that push widen it to packages alone.
+permissions:
+  contents: read
+
+# One publish at a time, never cancelled: two releases close together would otherwise race for latest,
+# and a cancelled merge leaves the commit's tag combined and latest where it was.
+concurrency:
+  group: publish-images
+  cancel-in-progress: false
+
+jobs:
+  platform:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # Pinned to a commit for the reason build-and-test.yml gives. No credentials left in .git/config:
+      # nothing here pushes to the repository, and this job's token can write packages.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The image's version label comes from the v-tag on HEAD (tools/release-version.sh), and a
+      # release named anything else would publish the commit and move latest with no version at all.
+      - name: Check the release is a version
+        run: |
+          version="$(tools/release-version.sh)"
+          if [ -z "$version" ] || [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::release $GITHUB_REF_NAME is not a v-tag naming a version, such as v0.1"
+            exit 1
+          fi
+
+      # GHCR wants a lower-case namespace; the owner's name is not guaranteed to be one.
+      - name: Sign in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          echo "REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Build and push this architecture
+        run: tools/publish-images.sh --platform
+
+  merge:
+    needs: platform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Sign in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          echo "REGISTRY=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      # The architectures are the matrix's runners, named as the daemon on each reports itself.
+      - name: Combine the architectures and move the tags
+        run: tools/publish-images.sh --merge amd64 arm64

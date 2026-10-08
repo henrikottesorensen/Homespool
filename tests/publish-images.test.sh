@@ -11,9 +11,10 @@
 # Each case builds a scratch git repository holding real copies of the script, tools/gitref.sh and
 # tools/release-version.sh, so a modified tree, a v-tag and a commit after one are real git states
 # rather than stubbed answers. build.sh and docker are stubs: build.sh records the tag it was asked to
-# build, and docker records every call and answers the three reads the script makes - the image
-# names, each image's revision label and its digest - from the environment. Nothing reaches a daemon
-# or a registry.
+# build, and docker records every call and answers the reads the script makes - the image names, the
+# daemon's architecture, each image's revision label and digest, and each index's platforms - from
+# the environment.
+# Nothing reaches a daemon or a registry.
 set -uo pipefail
 
 tests_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -122,7 +123,24 @@ case "$1" in
             push) [ -n "${STUB_PUSH_FAILS:-}" ] && exit 1 ;;
         esac
         ;;
+    version) printf '%s\n' "${STUB_ARCH:-amd64}" ;;
     push) [ -n "${STUB_PUSH_FAILS:-}" ] && exit 1 ;;
+    buildx)
+        case "$3" in
+            create) [ -n "${STUB_PUSH_FAILS:-}" ] && exit 1 ;;
+            # imagetools inspect --format <format> <reference>: an index of the platforms named
+            inspect)
+                case "$5" in
+                    *Manifest.Digest*) printf 'sha256:beadfeed\n' ;;
+                    *)
+                        for arch in ${STUB_INDEX_ARCHS-amd64 arm64}; do
+                            printf '%s %s\n' "$arch" "${STUB_REVISION:-$STUB_COMMIT}"
+                        done
+                        ;;
+                esac
+                ;;
+        esac
+        ;;
     image)
         # image inspect --format <format> <reference>
         case "$4" in
@@ -144,13 +162,13 @@ STUB
     export STUB_REGISTRY="registry.example.net"
     export STUB_COMMIT
     STUB_COMMIT="$(git -C "$scratch/repo" rev-parse HEAD)"
-    unset STUB_REVISION STUB_PUSH_FAILS
+    unset STUB_REVISION STUB_PUSH_FAILS STUB_ARCH STUB_INDEX_ARCHS
     : > "$STUB_LOG"
     return 0
 }
 
 publish() {
-    output="$("$scratch/repo/tools/publish-images.sh" 2>&1)"
+    output="$("$scratch/repo/tools/publish-images.sh" "$@" 2>&1)"
     status=$?
     log="$(cat "$STUB_LOG")"
 }
@@ -240,6 +258,97 @@ if test_case "fails when the registry holds a different revision"; then
     publish
     assert_status "$status" 1 "a mismatch fails the publish"
     assert_contains "$output" "is revision '$STUB_REVISION' in the registry" "and names what it found"
+fi
+
+if test_case "--platform pushes this machine's architecture under the commit, and nothing else"; then
+    git_in tag v0.1
+    export STUB_ARCH=arm64
+    publish --platform
+    reg="registry.example.net"
+    assert_status "$status" 0 "a platform publishes"
+    assert_contains "$log" "build.sh HOMESPOOL_TAG=$STUB_COMMIT-arm64" "it builds under the commit and the architecture"
+    assert_contains "$log" "compose -f $scratch/repo/compose.yaml push homespool proxy go2rtc" \
+        "it pushes all three"
+    assert_contains "$log" "pull --quiet $reg/homespool-go2rtc:$STUB_COMMIT-arm64" "and reads each back"
+    assert_not_contains "$log" ":latest" "latest does not move"
+    assert_not_contains "$log" ":0.1" "nor does the release's tag"
+    assert_not_contains "$log" "imagetools" "nothing is combined"
+fi
+
+if test_case "--merge combines the architectures under the commit, then the version, then latest"; then
+    git_in tag v0.1
+    publish --merge amd64 arm64
+    reg="registry.example.net"
+    assert_status "$status" 0 "a merge publishes"
+    assert_contains "$output" "as release 0.1" "it says which release"
+    assert_not_contains "$log" "build.sh" "nothing is built"
+    assert_contains "$log" \
+        "buildx imagetools create --tag $reg/homespool-proxy:$STUB_COMMIT $reg/homespool-proxy:$STUB_COMMIT-amd64 $reg/homespool-proxy:$STUB_COMMIT-arm64" \
+        "the commit's tag is an index of every architecture"
+    assert_contains "$log" "buildx imagetools create --tag $reg/homespool:latest $reg/homespool:$STUB_COMMIT" \
+        "latest is the commit's index"
+    assert_before "buildx imagetools create --tag $reg/homespool-go2rtc:$STUB_COMMIT $reg/homespool-go2rtc:$STUB_COMMIT-amd64 $reg/homespool-go2rtc:$STUB_COMMIT-arm64" \
+        "buildx imagetools create --tag $reg/homespool:0.1 $reg/homespool:$STUB_COMMIT" \
+        "every commit tag goes out before any other"
+    assert_before "buildx imagetools create --tag $reg/homespool:0.1 $reg/homespool:$STUB_COMMIT" \
+        "buildx imagetools create --tag $reg/homespool:latest $reg/homespool:$STUB_COMMIT" \
+        "the version before latest"
+    assert_contains "$log" "buildx imagetools inspect --format" "each tag is read back from the registry"
+    assert_contains "$output" "==> $reg/homespool:latest (amd64 arm64)  sha256:beadfeed" \
+        "latest is read back, with every architecture"
+    assert_contains "$output" "==> $reg/homespool-go2rtc:0.1 (amd64 arm64)  sha256:beadfeed" \
+        "the version is read back"
+    assert_not_contains "$log" "pull" "nothing is pulled"
+fi
+
+if test_case "--merge fails when an index lacks an architecture"; then
+    export STUB_INDEX_ARCHS=amd64
+    publish --merge amd64 arm64
+    assert_status "$status" 1 "a missing architecture fails the publish"
+    assert_contains "$output" "holds no arm64 image of $STUB_COMMIT; it holds: amd64 $STUB_COMMIT" \
+        "and names what it found"
+fi
+
+if test_case "--merge fails when an architecture is another revision"; then
+    export STUB_REVISION="0000000000000000000000000000000000000000"
+    publish --merge amd64 arm64
+    assert_status "$status" 1 "a mismatch fails the publish"
+    assert_contains "$output" "holds no amd64 image of $STUB_COMMIT" "and says which"
+fi
+
+if test_case "--merge's failed push never moves latest"; then
+    export STUB_PUSH_FAILS=1
+    publish --merge amd64 arm64
+    assert_status "$status" 1 "the failure stops the script"
+    assert_not_contains "$log" ":latest" "latest is not created"
+fi
+
+if test_case "--merge refuses without architectures, or with one no tag can carry"; then
+    publish --merge
+    assert_status "$status" 1 "no architectures is refused"
+    assert_contains "$output" "--merge needs the architectures" "and says why"
+    publish --merge amd64 "linux/arm64"
+    assert_status "$status" 1 "a platform where an architecture goes is refused"
+    assert_contains "$output" "'linux/arm64' is not an architecture" "and says why"
+    assert_not_contains "$log" "imagetools" "nothing is combined"
+fi
+
+if test_case "refuses a modified tree with --platform and --merge too"; then
+    printf 'edit\n' > "$scratch/repo/untracked.txt"
+    publish --platform
+    assert_status "$status" 1 "--platform refuses a modified tree"
+    publish --merge amd64 arm64
+    assert_status "$status" 1 "--merge refuses a modified tree"
+    assert_not_contains "$log" "build.sh" "nothing is built"
+    assert_not_contains "$log" "push" "nothing is pushed"
+    assert_not_contains "$log" "imagetools" "nothing is combined"
+fi
+
+if test_case "refuses an argument it does not know"; then
+    publish --latest
+    assert_status "$status" 1 "an unknown argument is refused"
+    assert_contains "$output" "unknown argument: --latest" "and says why"
+    assert_not_contains "$log" "build.sh" "nothing is built"
 fi
 
 echo

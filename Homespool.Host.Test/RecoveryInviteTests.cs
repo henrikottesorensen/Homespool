@@ -138,6 +138,7 @@ public sealed class RecoveryInviteTests : IDisposable
         await users.ResetAuthenticatorKeyAsync(subject);
         (await users.SetTwoFactorEnabledAsync(subject, true)).Succeeded.Should().BeTrue();
         string? keyBefore = await users.GetAuthenticatorKeyAsync(subject);
+        string oldCode = (await users.GenerateNewTwoFactorRecoveryCodesAsync(subject, 10))!.First();
 
         InvitationService invitations = NewInvitationService(context);
         (Invitation invite, string token) = await invitations.CreateRecoveryAsync(
@@ -155,6 +156,13 @@ public sealed class RecoveryInviteTests : IDisposable
         {
             (await users.GetAuthenticatorKeyAsync(subject)).Should()
                 .NotBe(keyBefore, "a flag turned off while the old key still verifies is a second factor somebody can turn back on");
+            (await users.CountRecoveryCodesAsync(subject)).Should()
+                .Be(0, "codes left standing come back into force beside the next authenticator, which mints none");
+        }
+        else
+        {
+            (await users.RedeemTwoFactorRecoveryCodeAsync(subject, oldCode)).Succeeded.Should()
+                .BeTrue("a recovery that leaves the second factor leaves all of it");
         }
     }
 

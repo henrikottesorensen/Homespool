@@ -2649,7 +2649,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>If you reset your authenticator key, your authenticator app will stop working until you set it up again.</value>
   </data>
   <data name="TwoFactor_ResetKeyDisables" xml:space="preserve">
-    <value>This turns two-factor authentication off until you have verified the new key. If you do not finish setting up your authenticator app, you may lose access to your account.</value>
+    <value>This turns two-factor authentication off, and your recovery codes stop working, until you have verified the new key — you get a new set then. If you do not finish setting up your authenticator app, you may lose access to your account.</value>
   </data>
   <data name="TwoFactor_ResetKeyButton" xml:space="preserve">
     <value>Reset authenticator key</value>
@@ -3115,7 +3115,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>If this person has lost their password, send them a single-use link that lets them set a new one. It goes to the address above, and it is shown here once so you can pass it on another way.</value>
   </data>
   <data name="AdminUsers_ClearAuthenticator" xml:space="preserve">
-    <value>They have lost their authenticator too — clear it as well</value>
+    <value>They have lost their authenticator too — clear it and their recovery codes as well</value>
   </data>
   <data name="AdminUsers_SendRecovery" xml:space="preserve">
     <value>Send a recovery link</value>
@@ -3142,7 +3142,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>An administrator sent you this link to get back into your account. Choose a new password; the API tokens the account held are revoked.</value>
   </data>
   <data name="Account_RecoverClearsTwoFactor" xml:space="preserve">
-    <value>Your authenticator is cleared as well, so you can set one up again afterwards.</value>
+    <value>Your authenticator and your recovery codes are cleared as well, so you can set them up again afterwards.</value>
   </data>
   <data name="Account_RecoveryDeactivated" xml:space="preserve">
     <value>That account is deactivated, so it cannot be recovered.</value>

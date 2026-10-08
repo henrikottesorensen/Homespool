@@ -2526,7 +2526,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Nulstiller du din godkendelsesnøgle, holder din tofaktorapp op med at virke, indtil du sætter den op igen.</value>
   </data>
   <data name="TwoFactor_ResetKeyDisables" xml:space="preserve">
-    <value>Det slår tofaktorgodkendelse fra, indtil du har bekræftet den nye nøgle. Gør du ikke opsætningen af din tofaktorapp færdig, kan du miste adgangen til din konto.</value>
+    <value>Det slår tofaktorgodkendelse fra, og dine gendannelseskoder holder op med at virke, indtil du har bekræftet den nye nøgle – så får du et nyt sæt. Gør du ikke opsætningen af din tofaktorapp færdig, kan du miste adgangen til din konto.</value>
   </data>
   <data name="TwoFactor_ResetKeyButton" xml:space="preserve">
     <value>Nulstil godkendelsesnøgle</value>
@@ -2989,7 +2989,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Hvis denne person har mistet sin adgangskode, kan du sende et engangslink, der lader dem vælge en ny. Det sendes til adressen ovenfor og vises her én gang, så du kan give det videre på anden vis.</value>
   </data>
   <data name="AdminUsers_ClearAuthenticator" xml:space="preserve">
-    <value>De har også mistet deres godkendelsesapp — ryd den med</value>
+    <value>De har også mistet deres godkendelsesapp — ryd den og deres gendannelseskoder med</value>
   </data>
   <data name="AdminUsers_SendRecovery" xml:space="preserve">
     <value>Send et gendannelseslink</value>
@@ -3016,7 +3016,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>En administrator har sendt dig dette link, så du kan komme ind på din konto igen. Vælg en ny adgangskode; de API-tokens, kontoen havde, bliver tilbagekaldt.</value>
   </data>
   <data name="Account_RecoverClearsTwoFactor" xml:space="preserve">
-    <value>Din godkendelsesapp ryddes også, så du kan sætte en op igen bagefter.</value>
+    <value>Din godkendelsesapp og dine gendannelseskoder ryddes også, så du kan sætte dem op igen bagefter.</value>
   </data>
   <data name="Account_RecoveryDeactivated" xml:space="preserve">
     <value>Den konto er deaktiveret, så den kan ikke gendannes.</value>

@@ -90,12 +90,28 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// The brightness the printer will report once it has finished this command, when it is a
     /// <see cref="SetLedIntensity"/>; null for every other command.
     /// </param>
+    /// <param name="ExpectsReply">
+    /// False for a command the printer cannot answer. Such a command is pending only while parked or
+    /// with a poll, and leaves the slot the moment it is delivered: there is no answer to wait for.
+    /// </param>
+    /// <param name="Delivered">
+    /// Whether the printer has it: written, or taken by a poll that went on to send it. False between
+    /// a poll's take and its <see cref="CommandDeliveredMessage"/> or give-back, the one stretch in
+    /// which a caller who stops waiting cannot yet be told which.
+    /// </param>
+    /// <param name="CallerToken">
+    /// The caller's own token, read by the loop at each point where the command could still be kept
+    /// from the printer.
+    /// </param>
     private sealed record Pending(uint CommandId,
                                   string WireName,
                                   TaskCompletionSource<CommandSendResult> Completion,
                                   long? SentAt,
                                   long? ParkedAt,
-                                  int? LightingIntensity);
+                                  int? LightingIntensity,
+                                  bool ExpectsReply,
+                                  bool Delivered,
+                                  CancellationToken CallerToken);
 
     /// <summary>
     /// The connection as a chunk carrier, for the transfer engine.
@@ -303,10 +319,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // answering event; without the flag the caller's continuation would run inline on the loop,
         // delaying the next message until it's done.
         TaskCompletionSource<CommandSendResult> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        SendCommandMessage send = new(command, completion, cancellationToken);
 
         try
         {
-            await _mailbox.Writer.WriteAsync(new SendCommandMessage(command, completion, cancellationToken), cancellationToken);
+            await _mailbox.Writer.WriteAsync(send, cancellationToken);
         }
         catch (ChannelClosedException)
         {
@@ -315,9 +332,39 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return new CommandSendResult(CommandSendOutcome.NotConnected, null);
         }
 
-        // WaitAsync binds only the caller's own token. Disconnect and timeout complete the task
-        // itself, from the loop - there is nothing here to distinguish, hence no exception filters.
-        return await completion.Task.WaitAsync(cancellationToken);
+        try
+        {
+            // WaitAsync binds only the caller's own token. Disconnect and timeout complete the task
+            // itself, from the loop.
+            return await completion.Task.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (send.TryAbandon())
+            {
+                // Still queued, and now the loop will drop it unread: nothing reached the printer.
+                throw;
+            }
+
+            // The loop has it, and the token says only that this caller has stopped, not where the
+            // command is - a poll may already have taken it. The loop knows, so it is asked: a command
+            // it can still keep from the printer comes back cancelled, one the printer has as
+            // CommandCancelledAfterDelivery. TryWrite, because a full mailbox must not hold a caller
+            // that is leaving; the loop also reads the token wherever that answer is decided, so a
+            // lost request costs only the bound.
+            _mailbox.Writer.TryWrite(new CancelSendMessage(completion));
+
+            try
+            {
+                return await completion.Task.WaitAsync(SendTimeout);
+            }
+            catch (TimeoutException)
+            {
+                // A loop this slow to answer may be mid-write of this very command. Undecided is
+                // reported as delivered, the answer that cannot leave the printer fetching nothing.
+                throw new Exceptions.CommandCancelledAfterDeliveryException(_printerId, null, cancellationToken);
+            }
+        }
     }
 
     /// <summary>Completes the mailbox. The loop drains what is already queued, fails any in-flight
@@ -468,6 +515,14 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             case ReturnCollectedCommandMessage returned:
                 await HandleReturnCollectedAsync(returned);
                 break;
+
+            case CommandDeliveredMessage delivered:
+                HandleDelivered(delivered);
+                break;
+
+            case CancelSendMessage cancel:
+                HandleCancelSend(cancel);
+                break;
         }
     }
 
@@ -484,6 +539,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     {
         // Polling at all, even with nothing to collect, is a printer collecting again.
         _uncollected = false;
+
+        // A parked command whose caller has stopped waiting is kept from the printer. Read here as
+        // well as on the caller's cancel request, because a poll already queued ahead of that request
+        // would otherwise hand the command over regardless - and the caller, told it was cancelled,
+        // would revoke whatever the printer then came back for.
+        if (_pending is { SentAt: null } waiting && waiting.CallerToken.IsCancellationRequested)
+        {
+            WithdrawCancelled();
+            take.Completion.TrySetResult(null);
+
+            return;
+        }
 
         PendingCommand? parked = _connection.TakeParkedCommand();
 
@@ -517,13 +584,25 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// after the response timeout, or after anything else took the slot, has nothing to give back to.
     /// A parked command always has <c>ParkedAt</c>, so a written one is never re-parked.
     /// </para>
+    /// <para>
+    /// <b>Withdrawn instead when its caller has stopped waiting.</b> The printer never had it, so it
+    /// is settled as a cancellation like any other command kept from the printer.
+    /// </para>
     /// </remarks>
     private async Task HandleReturnCollectedAsync(ReturnCollectedCommandMessage returned)
     {
         PendingCommand command = returned.Command;
 
-        if (_pending is not { SentAt: not null, ParkedAt: not null } pending || pending.CommandId != command.CommandId)
+        if (_pending is not { SentAt: not null, ParkedAt: not null, Delivered: false } pending ||
+            pending.CommandId != command.CommandId)
         {
+            return;
+        }
+
+        if (pending.CallerToken.IsCancellationRequested)
+        {
+            WithdrawCancelled();
+
             return;
         }
 
@@ -533,6 +612,103 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         _logger.LogInformation("command {CommandId} ({Command}) was collected by a poll that ended before it was sent; parked again",
                                pending.CommandId, pending.WireName);
+    }
+
+    /// <summary>
+    /// The HTTP transport confirming a command it took is going out: the printer has it now.
+    /// </summary>
+    /// <remarks>
+    /// A command that expects no reply is settled here, as <see cref="CommandSendOutcome.Dispatched"/>,
+    /// and gives up the slot: delivery is the whole of its outcome. One that expects a reply keeps the
+    /// slot and its response clock, which has been running since the take.
+    /// </remarks>
+    private void HandleDelivered(CommandDeliveredMessage delivered)
+    {
+        if (_pending is not { SentAt: not null, Delivered: false } pending ||
+            pending.CommandId != delivered.Command.CommandId)
+        {
+            return;
+        }
+
+        if (pending.ExpectsReply)
+        {
+            _pending = pending with { Delivered = true };
+            TellIfCallerGone(_pending);
+
+            return;
+        }
+
+        _pending = null;
+
+        if (!TellIfCallerGone(pending))
+        {
+            pending.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Dispatched, null)
+            {
+                CommandId = pending.CommandId,
+            });
+        }
+    }
+
+    /// <summary>
+    /// Settles the send of a caller that has stopped waiting: withdrawn if the printer does not have it
+    /// yet, reported as delivered if it does.
+    /// </summary>
+    /// <remarks>
+    /// Nothing to do when the send no longer holds the slot - its own check cancelled it, or it was
+    /// answered or refused before this arrived - nor while a poll holds it, because that poll's
+    /// give-back or delivery is what decides, and both read the caller's token.
+    /// </remarks>
+    private void HandleCancelSend(CancelSendMessage cancel)
+    {
+        if (_pending is not Pending pending || !ReferenceEquals(pending.Completion, cancel.Completion))
+        {
+            return;
+        }
+
+        if (pending.SentAt is null)
+        {
+            WithdrawCancelled();
+        }
+        else if (pending.Delivered)
+        {
+            TellIfCallerGone(pending);
+        }
+    }
+
+    /// <summary>
+    /// Takes back a command whose caller stopped waiting before the printer had it, and settles it as
+    /// cancelled.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="WithdrawParked"/>, says nothing about the printer, so the next send parks as
+    /// usual rather than being refused as uncollected.
+    /// </remarks>
+    private void WithdrawCancelled()
+    {
+        Pending withdrawn = _pending!;
+
+        _pending = null;
+        _connection.TakeParkedCommand();
+        _logger.LogDebug("command {CommandId} ({Command}) withdrawn before the printer had it: its caller stopped waiting",
+                         withdrawn.CommandId, withdrawn.WireName);
+        withdrawn.Completion.TrySetCanceled(withdrawn.CallerToken);
+    }
+
+    /// <summary>
+    /// Tells a caller that has stopped waiting that the printer has its command. False, and nothing
+    /// told, while the caller is still there.
+    /// </summary>
+    private bool TellIfCallerGone(Pending delivered)
+    {
+        if (!delivered.CallerToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        Fail(delivered.Completion,
+             new Exceptions.CommandCancelledAfterDeliveryException(_printerId, delivered.CommandId, delivered.CallerToken));
+
+        return true;
     }
 
     private async Task HandleSendAsync(SendCommandMessage send)
@@ -545,8 +721,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // The window this closes is the whole queueing delay. What it cannot close is the few
         // instructions between here and the write completing, and that is deliberate: the send takes
         // CancellationToken.None because letting one caller's cancellation abort a write mid-frame
-        // would corrupt the stream for every other user of this connection.
-        if (send.CallerToken.IsCancellationRequested)
+        // would corrupt the stream for every other user of this connection. A caller cancelled in
+        // that window finds the send already taken, and asks this loop what became of it.
+        if (!send.TryTake() || send.CallerToken.IsCancellationRequested)
         {
             send.Completion.TrySetCanceled(send.CallerToken);
 
@@ -647,12 +824,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // because a send that never reached the printer is not traffic.
         TrafficLog?.RecordOutbound(_printerId, commandId, send.Command);
 
-        if (!send.Command.ExpectsReply)
+        bool written = handover == CommandHandover.Written;
+
+        if (!send.Command.ExpectsReply && written)
         {
-            // Never takes the in-flight slot, because nothing would ever free it: the printer cannot
-            // answer this command (RESET_PRINTER reboots instead of replying). Holding the slot would
-            // block every later command until the response timeout expired, and then report failure
-            // for a command that succeeded.
+            // Written and done: the printer cannot answer this command (RESET_PRINTER reboots instead
+            // of replying), so holding the slot would block every later command until the response
+            // timeout expired, and then report failure for a command that succeeded.
+            //
+            // Parked is different. The printer does not have it yet, so it holds the slot like any
+            // other parked command - the one-in-flight rule, the collect clock and teardown all apply -
+            // and is reported Dispatched when a poll delivers it.
             //
             // So this one logs "sent" and never logs an answer. That is the protocol, not a lost ack.
             send.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Dispatched, null) { CommandId = commandId });
@@ -664,14 +846,23 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // response clock when the printer collects, in HandleTakePending, on this same loop. Every
         // pending command has exactly one clock running, so none is ever waited on without a bound.
         long now = Stopwatch.GetTimestamp();
-        bool written = handover == CommandHandover.Written;
 
         _pending = new Pending(commandId,
                                send.Command.WireName,
                                send.Completion,
                                written ? now : null,
                                written ? null : now,
-                               send.Command is SetLedIntensity light ? PrinterLighting.ReadBack(light.Intensity) : null);
+                               send.Command is SetLedIntensity light ? PrinterLighting.ReadBack(light.Intensity) : null,
+                               send.Command.ExpectsReply,
+                               Delivered: written,
+                               send.CallerToken);
+
+        if (written)
+        {
+            // A caller that stopped during the write is told now, should its cancel request not have
+            // fit in the mailbox.
+            TellIfCallerGone(_pending);
+        }
     }
 
     private void HandleEvent(InboundEventMessage message)

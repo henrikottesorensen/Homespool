@@ -66,8 +66,10 @@ public interface IPrinterConnectionActor : IPrinterLink
     /// <summary>
     /// Sends a command and awaits the printer's correlated reply. <paramref name="cancellationToken"/>
     /// is the caller's own (e.g. the HTTP request being aborted) and propagates as an ordinary
-    /// <see cref="OperationCanceledException"/>; disconnect and timeout are the actor's business and
-    /// come back as <see cref="CommandSendOutcome"/> values instead.
+    /// <see cref="OperationCanceledException"/> when the command never reached the printer, and as
+    /// <see cref="Exceptions.CommandCancelledAfterDeliveryException"/> when it did; disconnect and
+    /// timeout are the actor's business and come back as <see cref="CommandSendOutcome"/> values
+    /// instead.
     /// </summary>
     Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken);
 }

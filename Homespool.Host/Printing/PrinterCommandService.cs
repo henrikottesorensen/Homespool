@@ -67,10 +67,15 @@ public class PrinterCommandService
     /// The printer never answered within <c>PrusaConnectOptions.CommandResponseTimeout</c>. It says
     /// nothing about whether the command was acted on - the frame was written to the socket.
     /// </exception>
+    /// <exception cref="CommandCancelledAfterDeliveryException">
+    /// <paramref name="cancellationToken"/> was cancelled after the printer already had the command,
+    /// which may still be acted on. A plain <see cref="System.OperationCanceledException"/> means it
+    /// never reached the printer.
+    /// </exception>
     /// <returns>
     /// The printer's actual answer - e.g. <c>Rejected</c>/"No print to pause" - not just whether the
     /// send succeeded. <b>Null</b> for a command declaring
-    /// <see cref="ISendableCommand.ExpectsReply"/> false, where the frame was written and no answer
+    /// <see cref="ISendableCommand.ExpectsReply"/> false, where the printer has it and no answer
     /// will ever come: that is success, not a shortfall, and callers must not read it as failure. See
     /// <see cref="CommandSendOutcome.Dispatched"/>.
     /// </returns>

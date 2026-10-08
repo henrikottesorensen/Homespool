@@ -596,8 +596,8 @@ public class PrinterConnectionActorTests
     /// <summary>
     /// The caller's own token (e.g. the HTTP request itself being aborted) is a different case from
     /// disconnect or timeout and must not be swallowed into a CommandSendResult nobody will ever
-    /// read - it propagates as an ordinary OperationCanceledException, which ASP.NET Core already
-    /// handles.
+    /// read - it propagates as an OperationCanceledException, which ASP.NET Core already handles.
+    /// Here the frame is already written, so it is the kind that says the printer has the command.
     /// </summary>
     [Fact]
     public async Task SendCommandAsyncPropagatesCancellationFromTheCallersOwnToken()
@@ -614,7 +614,10 @@ public class PrinterConnectionActorTests
         await cts.CancelAsync();
 
         // Assert
-        await Assert.ThrowsAsync<TaskCanceledException>(() => Eventually(sendTask));
+        CommandCancelledAfterDeliveryException thrown =
+            await Assert.ThrowsAsync<CommandCancelledAfterDeliveryException>(() => Eventually(sendTask));
+        thrown.CommandId.Should().Be(CommandIdOf(sentFrames[0]));
+        thrown.CancellationToken.Should().Be(cts.Token);
 
         actor.Complete();
         await Eventually(actor.Completion);
@@ -1370,6 +1373,338 @@ public class PrinterConnectionActorTests
         sentFrames.Should().HaveCount(1, "a command the printer already has is never written again");
 
         actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A command the printer cannot answer, parked for a poll, holds the in-flight slot until a poll
+    /// delivers it, and only then is reported <see cref="CommandSendOutcome.Dispatched"/>.
+    /// </summary>
+    /// <remarks>
+    /// Reported at the park, it left the slot empty while the command still sat in the connection, and
+    /// the next send, finding the slot free, reached a connection already holding one and threw.
+    /// </remarks>
+    [Fact]
+    public async Task AParkedCommandThatExpectsNoReplyHoldsTheSlotUntilAPollDeliversIt()
+    {
+        // Arrange
+        ITelemetrySink sink = Substitute.For<ITelemetrySink>();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+
+        Task<CommandSendResult> reset = await SendAndParkAsync(actor, sink, new ResetPrinter(), CancellationToken.None);
+        reset.IsCompleted.Should().BeFalse("the printer does not have it yet");
+
+        // Act
+        CommandSendResult refused = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+
+        // Assert
+        refused.Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight, "one command is in flight until the printer has it");
+        collected.Command.Should().BeOfType<ResetPrinter>();
+
+        CommandSendResult result = await Eventually(reset);
+        result.Outcome.Should().Be(CommandSendOutcome.Dispatched);
+        result.CommandId.Should().Be(collected.CommandId);
+
+        // Delivered, it gives up the slot: the next command parks for the next poll.
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
+        (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!
+            .Command.Should().BeOfType<PrusaConnect.Commands.ResumePrint>();
+
+        actor.Complete();
+        (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A command the printer cannot answer is withdrawn like any other parked command when nobody
+    /// collects it, and its caller told it never left.
+    /// </summary>
+    [Fact]
+    public async Task AParkedCommandThatExpectsNoReplyNobodyCollectsIsWithdrawnAsNotConnected()
+    {
+        // Arrange
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System),
+                                                collectTimeout: TimeSpan.FromMilliseconds(50));
+
+        // Act
+        CommandSendResult result = await Eventually(actor.SendCommandAsync(new ResetPrinter(), CancellationToken.None));
+
+        // Assert
+        result.Outcome.Should().Be(CommandSendOutcome.NotConnected);
+        (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))
+            .Should().BeNull("a withdrawn command must not be handed to a later poll");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A command the printer cannot answer, taken by a poll that ended before its response, is given
+    /// back and delivered by the next poll - not reported sent by the one that dropped it.
+    /// </summary>
+    [Fact]
+    public async Task ACommandThatExpectsNoReplyTakenByAnAbortedPollIsDeliveredByTheNextOne()
+    {
+        // Arrange
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+
+        Task<CommandSendResult> reset = actor.SendCommandAsync(new ResetPrinter(), CancellationToken.None);
+
+        // Act
+        await AbortAPollAfterItsTakeAsync(actor, sink, TimeSpan.Zero);
+        reset.IsCompleted.Should().BeFalse("the poll that took it never sent it");
+
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+
+        // Assert
+        collected.Command.Should().BeOfType<ResetPrinter>();
+        (await Eventually(reset)).Outcome.Should().Be(CommandSendOutcome.Dispatched);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A caller that stops waiting while its command is parked takes the command back with it: the next
+    /// poll finds nothing, and the caller's cancellation says the printer never had it.
+    /// </summary>
+    /// <remarks>
+    /// The case behind a download's 404: told it was cancelled, the sender revokes the offer, so a
+    /// printer that still collected the command would fetch bytes that are no longer there. The next
+    /// send then parks as usual - a caller leaving says nothing about the printer, unlike a command
+    /// left uncollected.
+    /// </remarks>
+    [Fact]
+    public async Task CancellingAParkedCommandWithdrawsIt()
+    {
+        // Arrange
+        ITelemetrySink sink = Substitute.For<ITelemetrySink>();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+        using CancellationTokenSource cts = new();
+
+        Task<CommandSendResult> send = await SendAndParkAsync(actor, sink, new PrusaConnect.Commands.PausePrint(), cts.Token);
+
+        // Act
+        await cts.CancelAsync();
+
+        // Assert
+        OperationCanceledException thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Eventually(send));
+        thrown.Should().NotBeOfType<CommandCancelledAfterDeliveryException>("the printer never had it");
+
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
+        (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!
+            .Command.Should().BeOfType<PrusaConnect.Commands.ResumePrint>("the cancelled command is gone, and the slot with it");
+
+        actor.Complete();
+        (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A poll already queued when the caller stops waiting does not get the command: the loop reads
+    /// the caller's token at the take, not only when the caller's request to settle arrives behind it.
+    /// </summary>
+    [Fact]
+    public async Task APollQueuedAheadOfACancelDoesNotGetTheCommand()
+    {
+        // Arrange
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+        using CancellationTokenSource cts = new();
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), cts.Token);
+
+        // Parked, then the loop held, so the poll's take queues behind the hold and the caller's
+        // request to settle behind the take.
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING" }),
+                              CancellationToken.None);
+        await WaitUntilAsync(() => sink.IsHeld);
+
+        Task<PendingCommand?> poll = HttpCommandCollection.CollectAsync(actor, CancellationToken.None);
+
+        // Act
+        await cts.CancelAsync();
+        sink.Release();
+
+        // Assert
+        (await Eventually(poll)).Should().BeNull("its caller had gone before the poll was answered");
+
+        OperationCanceledException thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Eventually(send));
+        thrown.Should().NotBeOfType<CommandCancelledAfterDeliveryException>("the printer never had it");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A caller that stops waiting while a poll holds its command is answered by what the poll does
+    /// next: given back, the command never reached the printer and is withdrawn, not parked again.
+    /// </summary>
+    [Fact]
+    public async Task CancellingWhileAPollHoldsTheCommandThenAGiveBackWithdrawsIt()
+    {
+        // Arrange
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System));
+        using CancellationTokenSource cts = new();
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), cts.Token);
+        PendingCommand taken = await TakeAsync(actor);
+
+        // Act
+        await cts.CancelAsync();
+        await actor.PostAsync(new ReturnCollectedCommandMessage(taken), CancellationToken.None);
+
+        // Assert
+        OperationCanceledException thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Eventually(send));
+        thrown.Should().NotBeOfType<CommandCancelledAfterDeliveryException>("the poll gave it back unsent");
+
+        (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))
+            .Should().BeNull("a command whose caller has gone is not parked again");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// The other half: a poll that goes on to send the command answers a caller who stopped waiting
+    /// meanwhile with the printer having it, and the command keeps its slot until answered.
+    /// </summary>
+    [Fact]
+    public async Task CancellingWhileAPollHoldsTheCommandThenItsDeliverySaysThePrinterHasIt()
+    {
+        // Arrange
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System));
+        using CancellationTokenSource cts = new();
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), cts.Token);
+        PendingCommand taken = await TakeAsync(actor);
+
+        // Act
+        await cts.CancelAsync();
+        await actor.PostAsync(new CommandDeliveredMessage(taken), CancellationToken.None);
+
+        // Assert
+        CommandCancelledAfterDeliveryException thrown =
+            await Assert.ThrowsAsync<CommandCancelledAfterDeliveryException>(() => Eventually(send));
+        thrown.CommandId.Should().Be(taken.CommandId);
+
+        await AssertTheSlotIsHeldUntilAnsweredAsync(actor, taken.CommandId);
+    }
+
+    /// <summary>
+    /// A command the printer cannot answer, delivered after its caller stopped waiting, is reported as
+    /// having reached the printer rather than as sent to a caller who is no longer there.
+    /// </summary>
+    [Fact]
+    public async Task ACommandThatExpectsNoReplyDeliveredAfterItsCallerLeftSaysThePrinterHasIt()
+    {
+        // Arrange
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System));
+        using CancellationTokenSource cts = new();
+
+        Task<CommandSendResult> reset = actor.SendCommandAsync(new ResetPrinter(), cts.Token);
+        PendingCommand taken = await TakeAsync(actor);
+
+        // Act
+        await cts.CancelAsync();
+        await actor.PostAsync(new CommandDeliveredMessage(taken), CancellationToken.None);
+
+        // Assert
+        (await Assert.ThrowsAsync<CommandCancelledAfterDeliveryException>(() => Eventually(reset)))
+            .CommandId.Should().Be(taken.CommandId);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A caller that stops waiting after a poll delivered its command is told the printer has it, at
+    /// once rather than at the response timeout, and the command keeps its slot until answered.
+    /// </summary>
+    [Fact]
+    public async Task CancellingAfterAPollDeliveredTheCommandSaysThePrinterHasIt()
+    {
+        // Arrange
+        ITelemetrySink sink = Substitute.For<ITelemetrySink>();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+        using CancellationTokenSource cts = new();
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), cts.Token);
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+
+        // The collect only queues its confirmation; this is the case where the loop has handled it
+        // before the caller stops, so the caller's own request is what settles the send.
+        await DrainAsync(actor, sink);
+
+        // Act
+        await cts.CancelAsync();
+
+        // Assert
+        (await Assert.ThrowsAsync<CommandCancelledAfterDeliveryException>(() => Eventually(send)))
+            .CommandId.Should().Be(collected.CommandId);
+
+        await AssertTheSlotIsHeldUntilAnsweredAsync(actor, collected.CommandId);
+    }
+
+    /// <summary>
+    /// Sends <paramref name="command"/> and returns once the loop has handled the send.
+    /// </summary>
+    private static async Task<Task<CommandSendResult>> SendAndParkAsync(PrinterConnectionActor actor,
+                                                                        ITelemetrySink sink,
+                                                                        ISendableCommand command,
+                                                                        CancellationToken cancellationToken)
+    {
+        Task<CommandSendResult> send = actor.SendCommandAsync(command, cancellationToken);
+
+        await DrainAsync(actor, sink);
+
+        return send;
+    }
+
+    /// <summary>
+    /// Returns once the loop has handled everything posted before this call, which a telemetry
+    /// message posted behind it proves by FIFO.
+    /// </summary>
+    private static async Task DrainAsync(PrinterConnectionActor actor, ITelemetrySink sink)
+    {
+        int before = sink.ReceivedCalls().Count();
+
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" }),
+                              CancellationToken.None);
+        await WaitUntilAsync(() => sink.ReceivedCalls().Count() > before);
+    }
+
+    /// <summary>
+    /// A poll's take on its own, without the give-back or delivery <see cref="HttpCommandCollection"/>
+    /// follows it with, so a test can act in between.
+    /// </summary>
+    private static async Task<PendingCommand> TakeAsync(PrinterConnectionActor actor)
+    {
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+
+        return (await Eventually(take.Task))!;
+    }
+
+    /// <summary>
+    /// A command whose caller has gone still holds the slot until the printer answers it, then frees
+    /// it - and the actor is completed.
+    /// </summary>
+    private static async Task AssertTheSlotIsHeldUntilAnsweredAsync(PrinterConnectionActor actor, uint commandId)
+    {
+        (await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None)))
+            .Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight, "the printer has the first command and may still answer it");
+
+        await actor.PostAsync(EventAnswering(commandId), CancellationToken.None);
+
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
+        (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!
+            .Command.Should().BeOfType<PrusaConnect.Commands.ResumePrint>("the answer freed the slot");
+
+        actor.Complete();
+        (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
         await Eventually(actor.Completion);
     }
 

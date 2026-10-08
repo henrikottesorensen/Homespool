@@ -46,7 +46,30 @@ public abstract record ConnectionMessage
 public sealed record SendCommandMessage(
     ISendableCommand Command,
     TaskCompletionSource<CommandSendResult> Completion,
-    CancellationToken CallerToken) : ConnectionMessage;
+    CancellationToken CallerToken) : ConnectionMessage
+{
+    private const int Queued = 0;
+    private const int Taken = 1;
+    private const int Abandoned = 2;
+
+    // The one piece of a send that two threads write, and only once: whichever of the loop and a
+    // cancelled caller gets here first decides whether the loop acts on it at all. A caller that wins
+    // can leave at once, knowing the command will never be written; one that loses has to ask the
+    // loop what happened, because by then the loop may have handed it to the printer.
+    private int _state = Queued;
+
+    /// <summary>The loop taking this send. False when its caller abandoned it first.</summary>
+    internal bool TryTake()
+    {
+        return Interlocked.CompareExchange(ref _state, Taken, Queued) == Queued;
+    }
+
+    /// <summary>The caller abandoning this send before the loop took it. False once the loop has it.</summary>
+    internal bool TryAbandon()
+    {
+        return Interlocked.CompareExchange(ref _state, Abandoned, Queued) == Queued;
+    }
+}
 
 /// <summary>
 /// An event parsed off the wire. May answer the in-flight command (matching <c>command_id</c>)
@@ -96,3 +119,27 @@ public sealed record TakePendingCommandMessage(TaskCompletionSource<PendingComma
 /// delivered and its response clock decides.
 /// </remarks>
 public sealed record ReturnCollectedCommandMessage(PendingCommand Command) : ConnectionMessage;
+
+/// <summary>
+/// The HTTP transport confirming that a command it took is going out in its POST's response: the
+/// request was still there once the command was in hand, so nothing will give it back.
+/// </summary>
+/// <remarks>
+/// Every take that hands over a command is followed by exactly one of this or a
+/// <see cref="ReturnCollectedCommandMessage"/>, so between the two the loop knows the command is with
+/// a poll but not yet whether it will leave. A command that expects no reply is reported sent only on
+/// this, and a caller that gave up meanwhile is told the printer has it.
+/// </remarks>
+public sealed record CommandDeliveredMessage(PendingCommand Command) : ConnectionMessage;
+
+/// <summary>
+/// A caller of <see cref="IPrinterConnectionActor.SendCommandAsync"/> whose token was cancelled,
+/// asking the loop to settle its send: withdrawn if it has not reached the printer, otherwise
+/// reported as having reached it.
+/// </summary>
+/// <remarks>
+/// The loop decides because only the loop knows. The caller's own view of the race - "my token
+/// fired" - says nothing about whether a poll had already taken the command, and a sender holding
+/// something the printer will come back for has to know which.
+/// </remarks>
+public sealed record CancelSendMessage(TaskCompletionSource<CommandSendResult> Completion) : ConnectionMessage;

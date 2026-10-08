@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -6,7 +7,8 @@ namespace Homespool.Host.PrusaConnect;
 
 /// <summary>
 /// The HTTP transport's half of collecting a parked command: asks the actor for it on behalf of a
-/// telemetry POST, and gives it back if that POST ended before its response could carry it.
+/// telemetry POST, then gives it back if that POST ended before its response could carry it, or
+/// confirms that the response will.
 /// </summary>
 public static class HttpCommandCollection
 {
@@ -28,6 +30,11 @@ public static class HttpCommandCollection
     /// write completing proves only that the proxy in front of us has the bytes, so that command
     /// stays delivered and the printer's answer, or its absence, decides.
     /// </para>
+    /// <para>
+    /// <b>The request is read once, and the actor told the result either way</b> - given back, or
+    /// confirmed as going out. Read twice, a request ending between the reads would be confirmed and
+    /// then thrown away, and the actor would count as delivered a command no response carried.
+    /// </para>
     /// </remarks>
     public static async Task<PendingCommand?> CollectAsync(IPrinterConnectionActor actor, CancellationToken requestAborted)
     {
@@ -36,12 +43,17 @@ public static class HttpCommandCollection
         await actor.PostAsync(new TakePendingCommandMessage(take), requestAborted);
 
         PendingCommand? pending = await take.Task;
+        bool aborted = requestAborted.IsCancellationRequested;
 
-        if (pending is not null && requestAborted.IsCancellationRequested)
+        if (pending is not null)
         {
+            ConnectionMessage settled = aborted ?
+                new ReturnCollectedCommandMessage(pending) :
+                new CommandDeliveredMessage(pending);
+
             try
             {
-                await actor.PostAsync(new ReturnCollectedCommandMessage(pending), CancellationToken.None);
+                await actor.PostAsync(settled, CancellationToken.None);
             }
             catch (ChannelClosedException)
             {
@@ -50,7 +62,10 @@ public static class HttpCommandCollection
             }
         }
 
-        requestAborted.ThrowIfCancellationRequested();
+        if (aborted)
+        {
+            throw new OperationCanceledException(requestAborted);
+        }
 
         return pending;
     }

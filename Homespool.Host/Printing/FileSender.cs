@@ -310,6 +310,13 @@ public class FileSender
             // printer really did not take the command.
             throw;
         }
+        catch (CommandCancelledAfterDeliveryException)
+        {
+            // The offer stands here too, for the same reason: the caller stopped waiting, but the
+            // printer already had the command and will come for the bytes. A plain cancellation is
+            // different - it means the command was kept from the printer - and falls through below.
+            throw;
+        }
         catch
         {
             revoke();

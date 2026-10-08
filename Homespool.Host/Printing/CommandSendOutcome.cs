@@ -25,8 +25,8 @@ public enum CommandSendOutcome
     Completed = 1,
 
     /// <summary>
-    /// The frame was written, and no answer is expected - the command is one the printer
-    /// structurally cannot acknowledge. <see cref="CommandSendResult.Response"/> is null, and that is
+    /// The printer has the command - written to its socket, or carried by the response to its poll -
+    /// and no answer is expected: the command is one the printer structurally cannot acknowledge. <see cref="CommandSendResult.Response"/> is null, and that is
     /// success rather than a shortfall.
     /// </summary>
     /// <remarks>

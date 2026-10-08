@@ -850,6 +850,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed, "history gets one row, on the transition");
         recorded.Reason.Should().Be("Can't print now", "the printer's words, as a terminal refusal records them");
+        recorded.HoldReason.Should().Be(PrintHoldReason.PrintRefused, "the record is the hold's, so the hold is what is announced");
         recorded.EndedAt.Should().NotBeNull("the row is closed, or the printer's one open-print slot stays taken");
         recorded.PrintUuid.Should().Be(QueuedPrintUuid);
 
@@ -1052,6 +1053,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed, "history gets one row, on the transition");
+        recorded.HoldReason.Should().Be(PrintHoldReason.PrinterPathUnknown, "the record is the hold's, so the hold is what is announced");
         recorded.PrintUuid.Should().Be(QueuedPrintUuid);
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "a hold is not a cancellation");
@@ -2277,6 +2279,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed, "history gets one row, on the transition");
         recorded.Reason.Should().Be("Failed to create directory");
+        recorded.HoldReason.Should().Be(PrintHoldReason.TransferRefused, "the record is the hold's, so the hold is what is announced");
 
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "a hold is not a cancellation");
@@ -3138,6 +3141,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob given = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
 
         given.State.Should().Be(PrintState.Unknown, "it stopped being observable without saying how");
+        given.HoldReason.Should().Be(PrintHoldReason.PrintStartUnresolved, "the row is the hold's record");
         given.EndedAt.Should().NotBeNull("the open-print slot cannot be held for ever");
 
         FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
@@ -4349,6 +4353,36 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A drive without room for the file holds the queue, and the one history row the hold leaves is
+    /// marked as the hold's.
+    /// </summary>
+    [Fact]
+    public async Task AFullDriveHoldsWithOneRecordMarkedAsTheHolds()
+    {
+        // Arrange - a byte free, and the file is eleven
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAnswering(command => command is SendInfo ?
+                                                             Answered(PrinterEventType.Info,
+                                                                      json: "{\"storages\":[{\"mountpoint\":\"/usb\",\"free_space\":1}]}") :
+                                                             Answered(PrinterEventType.Finished));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+
+        OfferedPaths(actor).Should().BeEmpty("there is no room for it");
+        row.HoldReason.Should().Be(PrintHoldReason.InsufficientSpace);
+        recorded.State.Should().Be(PrintState.Failed);
+        recorded.HoldReason.Should().Be(PrintHoldReason.InsufficientSpace, "the record is the hold's, so the hold is what is announced");
+    }
+
+    /// <summary>
     /// An offer the printer did not answer in time may be a transfer running - firmware acknowledges a
     /// download late when it is busy - so it is waited on while the offer stands, and offered again
     /// once the offer goes uncollected.
@@ -4614,6 +4648,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed);
         recorded.Reason.Should().Be(TransferRetryRules.TransferAbortedCode);
+        recorded.HoldReason.Should().Be(PrintHoldReason.TransferAborted, "the record is the hold's, so the hold is what is announced");
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "somebody still wants this printed, and decides what happens next");
     }
@@ -4716,6 +4751,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed);
         recorded.Reason.Should().Contain("stopped at the printer");
+        recorded.HoldReason.Should().Be(PrintHoldReason.TransferStopped, "the record is the hold's, so the hold is what is announced");
     }
 
     /// <summary>
@@ -5069,6 +5105,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed);
         recorded.Reason.Should().Contain("queued.bgcode", "history says which file, once, however many passes find the hold");
+        recorded.HoldReason.Should().Be(PrintHoldReason.FileTooLarge, "the record is the hold's, so the hold is what is announced");
 
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "somebody still wants this printed");
     }
@@ -5674,6 +5711,7 @@ public sealed class QueueAdvancerTests : IDisposable
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed);
         recorded.Reason.Should().Contain("queued.bgcode", "history says which file, once, however long the hold lasts");
+        recorded.HoldReason.Should().Be(PrintHoldReason.FileUnreadable, "the record is the hold's, so the hold is what is announced");
 
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "somebody still wants this printed");

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -312,6 +313,55 @@ public sealed class NotificationWatcherTests : IAsyncLifetime
 
         await SetHoldAsync(PrintHoldReason.InsufficientSpace);
         (await LookAsync()).Should().ContainSingle("a different reason is a different thing to sort out");
+    }
+
+    /// <summary>
+    /// A hold and the history row it leaves are one event, announced once, as the hold; a failed print
+    /// that holds nothing is still announced as an ending.
+    /// </summary>
+    /// <remarks>
+    /// The record is closed as failed - or as however a commanded print turned out - in the same save
+    /// as the hold, and was announced to whoever queued the file as well as the hold to the team.
+    /// </remarks>
+    [Fact]
+    public async Task AHoldAndItsRecordAreAnnouncedOnceAsTheHold()
+    {
+        await LookAsync();
+
+        await WithDbAsync(async db =>
+        {
+            db.FilesOnPrinters.Add(new FileOnPrinter
+            {
+                PrinterId = _printerId,
+                FileId = _fileId,
+                HoldReason = PrintHoldReason.TransferRefused,
+                BlockedAt = DateTimeOffset.UtcNow,
+            });
+
+            foreach (PrintState state in new[] { PrintState.Failed, PrintState.Finished })
+            {
+                db.PrintJobs.Add(new PrintJob
+                {
+                    PrintUuid = Guid.NewGuid(),
+                    PrinterId = _printerId,
+                    FileName = "benchy.bgcode",
+                    QueuedByUserId = _userId,
+                    StartedAt = DateTimeOffset.UtcNow,
+                    EndedAt = DateTimeOffset.UtcNow,
+                    State = state,
+                    HoldReason = PrintHoldReason.TransferRefused,
+                });
+            }
+
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        });
+
+        await AddEndedJobAsync(PrintState.Failed, DateTimeOffset.UtcNow);
+
+        List<PrinterHappening> published = await LookAsync();
+
+        published.OfType<QueueHeld>().Should().ContainSingle();
+        published.OfType<PrintEnded>().Should().ContainSingle("only the failed print that held nothing is an ending to announce");
     }
 
     /// <summary>A connection that is open and does nothing, for the registry to count as connected.</summary>

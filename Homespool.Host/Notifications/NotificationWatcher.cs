@@ -27,6 +27,11 @@ namespace Homespool.Host.Notifications;
 /// also means a change rolled back is never announced, and nothing here can slow the queue down.
 /// </para>
 /// <para>
+/// <b>A hold is announced once, as a hold.</b> Each one leaves a failed row in history in the same
+/// save, marked with <c>PrintJob.HoldReason</c>; that row's end is not announced, or the person who
+/// queued the file would hear about one event twice.
+/// </para>
+/// <para>
 /// <b>A print is announced by its end time, a hold by its appearance.</b> <c>EndedAt</c> is written
 /// once, so a watermark on it finds each end exactly once. A hold has no such moment -
 /// <c>BlockedAt</c> is when it was last confirmed, rewritten while it lasts - so holds are compared
@@ -170,7 +175,7 @@ public sealed class NotificationWatcher : BackgroundService
         var ended = await db.PrintJobs
                             .AsNoTracking()
                             .Where(job => job.EndedAt != null && job.EndedAt >= since)
-                            .Select(job => new { job.Id, job.PrinterId, job.State, EndedAt = job.EndedAt!.Value })
+                            .Select(job => new { job.Id, job.PrinterId, job.State, job.HoldReason, EndedAt = job.EndedAt!.Value })
                             .ToListAsync(cancellationToken);
 
         foreach (var job in ended)
@@ -181,8 +186,9 @@ public sealed class NotificationWatcher : BackgroundService
             }
 
             // Unknown is a row the loop closed because it could not find out - announcing a guess as
-            // news would be worse than silence, and the history page already says so.
-            if (Announced.Contains(job.State))
+            // news would be worse than silence, and the history page already says so. A hold's own
+            // record is announced as the hold, by LookForHoldsAsync; this would say it a second time.
+            if (Announced.Contains(job.State) && job.HoldReason is null)
             {
                 _queue.Publish(new PrintEnded(job.PrinterId, job.Id));
             }

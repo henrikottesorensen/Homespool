@@ -262,6 +262,24 @@ public class PrintJob
     public string? Reason { get; set; }
 
     /// <summary>
+    /// The hold this row is the history record of, or null when it records a print rather than a
+    /// queue that stopped.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A hold leaves one row in history, written in the same save as the hold</b> - the file and
+    /// why, where a person looking back for their print will look. Most such rows never printed
+    /// anything; one that closes a commanded print can record how that print ended.
+    /// </para>
+    /// <para>
+    /// <b>What it is for is telling the two apart afterwards.</b> The hold is announced as a hold, to
+    /// everybody who can see the queue and in the queue's own sentence; announcing its record as a
+    /// print that ended as well would tell the person who queued it the same thing twice.
+    /// </para>
+    /// </remarks>
+    public PrintHoldReason? HoldReason { get; set; }
+
+    /// <summary>
     /// The printer's lifetime filament odometer, in millimetres, as first reported during this print.
     /// </summary>
     /// <remarks>

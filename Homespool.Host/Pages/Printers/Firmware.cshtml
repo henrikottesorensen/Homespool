@@ -125,3 +125,10 @@ else
     <input type="file" name="file" accept=".bbf" class="form-control" aria-label="@Localiser["Firmware_UploadLabel"]" required />
     <button type="submit" class="btn btn-primary text-nowrap">@Localiser["Files_Upload"]</button>
 </form>
+
+@* The flash's progress refreshes itself only with live-region.js, and a success line takes itself away
+   only with dismiss-alert.js - neither is in the layout, so a page using either loads it. *@
+@section Scripts {
+    <script src="~/js/live-region.js" asp-append-version="true"></script>
+    <script src="~/js/dismiss-alert.js" asp-append-version="true"></script>
+}

@@ -52,6 +52,11 @@ namespace Homespool.Host.Firmware;
 /// them.
 /// </para>
 /// <para>
+/// <b>The signature first, and nothing after the firmware read before it holds.</b> The entries -
+/// a littlefs image among them - are parsed only once the bytes before them are known to be Prusa's,
+/// at the cost of reading the firmware a second time to find their digests in it.
+/// </para>
+/// <para>
 /// <b>Why Homespool checks at all, when the printer's bootloader does.</b> The bootloader checks only while
 /// the printer's appendix is intact. Once it is broken, the printer flashes anything - so for such a
 /// printer this check is the only one there is, and it refuses what is not Prusa's whatever the
@@ -174,8 +179,8 @@ public sealed class PrusaFirmwareVerifier
     /// Reads <paramref name="content"/> from where it stands to its end, and says what it is.
     /// </summary>
     /// <param name="content">
-    /// The image, positioned at its first byte. Must be seekable: the entries after the firmware are
-    /// read first, so that one pass over the firmware both hashes it and finds their digests in it.
+    /// The image, positioned at its first byte. Must be seekable: the firmware is read twice, once for
+    /// its signature and again, after the entries behind it, to find their digests in it.
     /// </param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The verdict, with the header whenever one could be read.</returns>
@@ -204,16 +209,10 @@ public sealed class PrusaFirmwareVerifier
 
         PrusaFirmwareHeader header = ReadHeader(head);
 
-        content.Seek(start + FirmwareOffset + header.FirmwareLength, SeekOrigin.Begin);
-        Entries entries = await ReadEntriesAsync(content, cancellationToken);
-        content.Seek(start + FirmwareOffset, SeekOrigin.Begin);
-
-        DigestSearch search = new(entries.Digests);
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(head.AsSpan(SignedFrom));
-        search.Scan(head.AsSpan(SignedFrom));
 
-        if (!await HashAsync(content, header.FirmwareLength, hash, search, cancellationToken))
+        if (!await ReadThroughAsync(content, header.FirmwareLength, hash, search: null, cancellationToken))
         {
             return new PrusaFirmwareCheck(PrusaFirmwareVerdict.Truncated, header);
         }
@@ -237,13 +236,23 @@ public sealed class PrusaFirmwareVerifier
             return new PrusaFirmwareCheck(PrusaFirmwareVerdict.SignatureInvalid, header);
         }
 
-        // The firmware is Prusa's from here on; what is left is whether everything after it is too.
+        // The firmware is Prusa's from here on, and only now is anything after it read - a littlefs
+        // image included - so nothing but bytes Prusa signed is parsed before the signature holds.
+        // The stream stands where the firmware ended, which is where the entries begin.
+        Entries entries = await ReadEntriesAsync(content, cancellationToken);
+
         if (entries.Verdict != PrusaFirmwareVerdict.Verified)
         {
             return new PrusaFirmwareCheck(entries.Verdict, header);
         }
 
-        if (!search.FoundAll)
+        // A second pass over the signed bytes, for the digests the entries carry.
+        DigestSearch search = new(entries.Digests);
+        search.Scan(head.AsSpan(SignedFrom));
+        content.Seek(start + FirmwareOffset, SeekOrigin.Begin);
+
+        if (!await ReadThroughAsync(content, header.FirmwareLength, hash: null, search, cancellationToken) ||
+            !search.FoundAll)
         {
             return new PrusaFirmwareCheck(PrusaFirmwareVerdict.ResourcesChanged, header);
         }
@@ -349,7 +358,7 @@ public sealed class PrusaFirmwareVerifier
             {
                 using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
-                if (!await HashAsync(content, length, hash, search: null, cancellationToken))
+                if (!await ReadThroughAsync(content, length, hash, search: null, cancellationToken))
                 {
                     return new Entries(PrusaFirmwareVerdict.Truncated, []);
                 }
@@ -406,14 +415,14 @@ public sealed class PrusaFirmwareVerifier
     }
 
     /// <summary>
-    /// Appends the next <paramref name="length"/> bytes to <paramref name="hash"/>, and shows them to
-    /// <paramref name="search"/> when there is one; false when the stream ends first.
+    /// Reads the next <paramref name="length"/> bytes, appending them to <paramref name="hash"/> and
+    /// showing them to <paramref name="search"/>, each when there is one; false when the stream ends first.
     /// </summary>
-    private static async Task<bool> HashAsync(Stream content,
-                                              long length,
-                                              IncrementalHash hash,
-                                              DigestSearch? search,
-                                              CancellationToken cancellationToken)
+    private static async Task<bool> ReadThroughAsync(Stream content,
+                                                     long length,
+                                                     IncrementalHash? hash,
+                                                     DigestSearch? search,
+                                                     CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[BufferSize];
         long remaining = length;
@@ -428,7 +437,7 @@ public sealed class PrusaFirmwareVerifier
                 return false;
             }
 
-            hash.AppendData(buffer.AsSpan(0, read));
+            hash?.AppendData(buffer.AsSpan(0, read));
             search?.Scan(buffer.AsSpan(0, read));
             remaining -= read;
         }

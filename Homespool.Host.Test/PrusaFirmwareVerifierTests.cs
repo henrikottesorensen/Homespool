@@ -577,6 +577,31 @@ public sealed class PrusaFirmwareVerifierTests
         check.Verdict.Should().Be(PrusaFirmwareVerdict.SignatureInvalid);
     }
 
+    /// <summary>
+    /// Nothing after the firmware is read until the signature holds: a file that is not Prusa's has
+    /// its tail - a littlefs image, in an older release - never parsed at all.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NothingAfterTheFirmwareIsReadBeforeTheSignatureHolds(bool older)
+    {
+        // Arrange - signed with another key
+        byte[] entries = older ?
+            [.. TestFirmwareImages.ImageEntries(1, LittlefsFixture.Tree.Image, 256, 96, LittlefsFixture.Tree.Hash),
+             .. TestFirmwareImages.ImageEntries(5, LittlefsFixture.Rewritten.Image, 256, 64, LittlefsFixture.Rewritten.Hash)] :
+            TestFirmwareImages.Entries(TestFirmwareImages.ResourcesTarball, TestFirmwareImages.BootloaderTarball);
+        byte[] image = TestFirmwareImages.Build(signedWith: TestFirmwareImages.OtherKey, entries: entries);
+        await using TrickleStream stream = new(image, 4096);
+
+        // Act
+        PrusaFirmwareCheck check = await _verifier.CheckAsync(stream, TestContext.Current.CancellationToken);
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.SignatureInvalid);
+        stream.Furthest.Should().BeLessThanOrEqualTo(EntriesFrom, "the entries begin where the firmware ends");
+    }
+
     [Fact]
     public async Task AStreamThatCannotSeekIsRefused()
     {
@@ -745,9 +770,15 @@ public sealed class PrusaFirmwareVerifierTests
             set => _inner.Position = value;
         }
 
+        /// <summary>The furthest byte any read has reached.</summary>
+        public long Furthest { get; private set; }
+
         public override int Read(byte[] buffer, int offset, int count)
         {
-            return _inner.Read(buffer, offset, Math.Min(count, perRead));
+            int read = _inner.Read(buffer, offset, Math.Min(count, perRead));
+            Furthest = Math.Max(Furthest, _inner.Position);
+
+            return read;
         }
 
         public override long Seek(long offset, SeekOrigin origin)

@@ -25,8 +25,9 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// </summary>
 /// <remarks>
 /// <b>A recovery code is a credential, so minting one is a credential change.</b> Ten of them are ten
-/// offline keys to this account that survive a password change, a re-keyed authenticator and a
-/// sign-out everywhere; a session somebody else got hold of must not be able to walk away with a set.
+/// offline keys to this account that survive a password change, turning two-factor off and a sign-out
+/// everywhere - only a reset of the authenticator, its owner's or a recovery's, ends them; a session
+/// somebody else got hold of must not be able to walk away with a set.
 /// The proof is <see cref="RecentProof"/>, earned at <c>Account/Reauthenticate</c> with any credential
 /// the account holds - and not the authenticator code in particular, because the codes are for the
 /// person whose authenticator is gone. The whole page is gated, GET included.

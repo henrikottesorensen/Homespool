@@ -157,6 +157,59 @@ public sealed class TwoFactorEnrolmentTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The recovery codes are re-keyed with the authenticator: the old set stops answering, and
+    /// setting the app up again shows a new one. Enabling mints codes only for an account with none,
+    /// so a set that outlived the reset would come back into force with the new key, unannounced.
+    /// </summary>
+    [Fact]
+    public async Task ResettingTheAuthenticatorEndsTheOldRecoveryCodesAndSettingUpAgainShowsNewOnes()
+    {
+        (HSUser user, CookieJar jar) = await SeedAsync("reset-codes@example.com", withTwoFactor: true);
+
+        string oldCode;
+
+        using (IServiceScope scope = _factory.Services.CreateScope())
+        {
+            UserManager<HSUser> userManager = scope.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+            HSUser fresh = await userManager.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)) ??
+                           throw new InvalidOperationException("the account should exist");
+
+            oldCode = (await userManager.GenerateNewTwoFactorRecoveryCodesAsync(fresh, 10))!.First();
+        }
+
+        using HttpClient client = CreateClient();
+
+        await ProveAsync(client, jar);
+        string resetToken = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/ResetAuthenticator");
+
+        using HttpResponseMessage reset = await PostAsync(client, jar, "/Account/Manage/ResetAuthenticator", new()
+        {
+            ["__RequestVerificationToken"] = resetToken,
+        });
+
+        reset.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        (await StoredRecoveryCodeCountAsync(user.Id)).Should().Be(0, "the codes are part of the second factor that was reset");
+
+        string enableToken = await GetAntiforgeryTokenAsync(client, jar, "/Account/Manage/EnableAuthenticator");
+
+        using HttpResponseMessage enabled = await PostAsync(client, jar, "/Account/Manage/EnableAuthenticator", new()
+        {
+            ["Input.Code"] = await CurrentCodeAsync(user.Id),
+            ["__RequestVerificationToken"] = enableToken,
+        });
+
+        await ShouldShowLiveCodesAndCarryNoneAsync(enabled, user.Id);
+
+        using IServiceScope after = _factory.Services.CreateScope();
+        UserManager<HSUser> users = after.ServiceProvider.GetRequiredService<UserManager<HSUser>>();
+        HSUser account = await users.FindByIdAsync(user.Id.ToString(CultureInfo.InvariantCulture)) ??
+                         throw new InvalidOperationException("the account should still exist");
+
+        (await users.RedeemTwoFactorRecoveryCodeAsync(account, oldCode)).Succeeded
+            .Should().BeFalse("a code from before the reset must not answer beside the new key");
+    }
+
+    /// <summary>
     /// The pages that act on two-factor, reached with it off - by a typed URL, or a tab left open
     /// while it was turned off elsewhere. Nothing links there in that state, so the reader is sent to
     /// the page that shows the real one, not to an error page, and nothing is minted on the way.

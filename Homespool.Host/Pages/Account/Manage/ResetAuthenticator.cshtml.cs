@@ -1,19 +1,18 @@
 // Licensed to the .NET Foundation under one or more agreements.
 // The .NET Foundation licenses this file to you under the MIT license.
 
-using System.Threading;
+using System;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
 
+using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
-using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
 namespace Homespool.Host.Pages.Account.Manage;
@@ -39,16 +38,17 @@ namespace Homespool.Host.Pages.Account.Manage;
 /// GET included, so a person arrives having proved rather than being turned away at the button.
 /// </para>
 /// <para>
-/// <b>The two writes are one transaction</b>, because it is several round trips rather than
-/// several entities. The state worth making unreachable here is the
-/// half-done one: two-factor off while the old app still works, which reads to the account holder as
-/// a reset that did nothing while quietly having removed their second factor.
+/// <b>The recovery codes go with the key</b>, through <see cref="HSUserManager.ClearTwoFactorAsync"/>.
+/// They are the same second factor in another form, and the device that went missing was often kept
+/// with them; left standing, they would come back into force when the new key is verified, which
+/// mints a fresh set only for an account that has none. The flag, the key and the codes are one
+/// save, so no half-done state - two-factor off while the old app still works - can be left behind.
 /// </para>
 /// <para>
-/// <b><see cref="LocalSignIn.RefreshSignInAsync"/> is not optional and runs after the
-/// commit.</b> Re-keying moves the security stamp, which invalidates the cookie that made this
-/// request - without the refresh the reader is signed out mid-flow, and refreshing before the commit
-/// would mint a cookie for a stamp that a rollback would take away.
+/// <b><see cref="LocalSignIn.RefreshSignInAsync"/> is not optional and runs after the save.</b>
+/// Re-keying moves the security stamp, which invalidates the cookie that made this request - without
+/// the refresh the reader is signed out mid-flow, and refreshing before the save would mint a cookie
+/// for a stamp that a failed save would take away.
 /// </para>
 /// </remarks>
 [Authorize]
@@ -57,19 +57,16 @@ public class ResetAuthenticatorModel : StatusMessagePageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly LocalSignIn _signIn;
-    private readonly UnitOfWork _unitOfWork;
     private readonly ILogger<ResetAuthenticatorModel> _logger;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     public ResetAuthenticatorModel(UserManager<HSUser> userManager,
                                    LocalSignIn signIn,
-                                   UnitOfWork unitOfWork,
                                    ILogger<ResetAuthenticatorModel> logger,
                                    IStringLocalizer<SharedResource> localiser)
     {
         _userManager = userManager;
         _signIn = signIn;
-        _unitOfWork = unitOfWork;
         _logger = logger;
         _localiser = localiser;
     }
@@ -85,7 +82,7 @@ public class ResetAuthenticatorModel : StatusMessagePageModel
         return Page();
     }
 
-    public async Task<IActionResult> OnPostAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> OnPostAsync()
     {
         HSUser? user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -95,12 +92,13 @@ public class ResetAuthenticatorModel : StatusMessagePageModel
 
         string userId = await _userManager.GetUserIdAsync(user);
 
-        await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
-        {
-            await _userManager.SetTwoFactorEnabledAsync(user, false);
-            await _userManager.ResetAuthenticatorKeyAsync(user);
+        HSUserManager users = _userManager as HSUserManager ??
+                              throw new NotSupportedException("Resetting the authenticator needs HSUserManager.");
 
-            await transaction.CommitAsync(cancellationToken);
+        IdentityResult cleared = await users.ClearTwoFactorAsync(user);
+        if (!cleared.Succeeded)
+        {
+            throw new InvalidOperationException("Unexpected error occurred resetting the authenticator.");
         }
 
         _logger.LogInformation("User with ID '{UserId}' has reset their authenticator app key.", userId);

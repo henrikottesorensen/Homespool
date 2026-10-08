@@ -391,10 +391,10 @@ public class RegisterModel : PageModel
     /// opposite of a password change made from inside a live session.
     /// </para>
     /// <para>
-    /// <b>The authenticator is cleared only when the invite says so.</b> Restoring a password gives
-    /// the account back to somebody who can still prove possession of their device; clearing the
-    /// second factor as well hands whoever holds the link the entire account, which is a thing an
-    /// administrator decides deliberately when issuing.
+    /// <b>The second factor is cleared only when the invite says so</b> - the authenticator and the
+    /// recovery codes together. Restoring a password gives the account back to somebody who can still
+    /// prove possession of their device; clearing the second factor as well hands whoever holds the
+    /// link the entire account, which is a thing an administrator decides deliberately when issuing.
     /// </para>
     /// <para>
     /// <b>One transaction, and the mail is outside it.</b> Every half-done state here is worse than
@@ -449,19 +449,20 @@ public class RegisterModel : PageModel
 
             if (invitation.ClearsTwoFactor)
             {
-                // Both halves, as Manage/ResetAuthenticator does: turning the flag off while the old
-                // key still verifies leaves a second factor somebody can turn back on without ever
-                // holding the device.
-                IdentityResult disabled = await _userManager.SetTwoFactorEnabledAsync(subject, false);
+                // The flag, the key and the recovery codes, as Manage/ResetAuthenticator clears them:
+                // the old key or the old codes left standing are a second factor that comes back into
+                // force without anybody holding the device.
+                HSUserManager users = _userManager as HSUserManager ??
+                                      throw new NotSupportedException("Clearing two-factor needs HSUserManager.");
 
-                if (!disabled.Succeeded)
+                IdentityResult cleared = await users.ClearTwoFactorAsync(subject);
+
+                if (!cleared.Succeeded)
                 {
-                    AddErrors(disabled);
+                    AddErrors(cleared);
 
                     return Page();
                 }
-
-                await _userManager.ResetAuthenticatorKeyAsync(subject);
             }
 
             revoked = await _apiTokens.RevokeAllForUserAsync(subject.Id, cancellationToken);

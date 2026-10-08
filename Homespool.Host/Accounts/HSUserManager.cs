@@ -1,5 +1,6 @@
 // RemoveLoginAsync, RemovePasskeyAsync and UpdateUserAsync are transcribed from dotnet/aspnetcore at v10.0.12
-// (src/Identity/Extensions.Core/src/UserManager.cs), changed as described on each.
+// (src/Identity/Extensions.Core/src/UserManager.cs), changed as described on each; ClearTwoFactorAsync joins
+// its SetTwoFactorEnabledAsync and ResetAuthenticatorKeyAsync into one save.
 //
 // The MIT License (MIT)
 //
@@ -138,20 +139,48 @@ public sealed class HSUserManager : UserManager<HSUser>
         }
 
         await loginStore.RemoveLoginAsync(user, loginProvider, providerKey, CancellationToken);
-
-        // The framework's UpdateSecurityStampInternal and NewSecurityStamp, both private: twenty random
-        // bytes as unpadded upper-case base32. The value is opaque; only that it changes matters.
-        if (SupportsUserSecurityStamp)
-        {
-            IUserSecurityStampStore<HSUser> securityStore = Store as IUserSecurityStampStore<HSUser> ??
-                throw new NotSupportedException("The user store does not implement IUserSecurityStampStore<HSUser>.");
-
-            string stamp = Base32.Rfc4648.Encode(RandomNumberGenerator.GetBytes(20), padding: false);
-            await securityStore.SetSecurityStampAsync(user, stamp, CancellationToken);
-        }
+        await ReplaceSecurityStampAsync(user);
 
         // Validated, normalised and saved as every other update is: UpdateUserAsync runs the user
         // validators, refreshes the normalised name and address, then Store.UpdateAsync.
+        return await UpdateUserAsync(user);
+    }
+
+    /// <summary>
+    /// Forgets <paramref name="user"/>'s second factor: two-factor off, a new authenticator key, and no
+    /// recovery codes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>For an account whose second factor is no longer trusted</b> - its owner re-keying a lost
+    /// device, or a recovery an administrator issued to clear it. The recovery codes are part of that
+    /// factor: enabling an authenticator mints a set only when the account has none, so codes left
+    /// standing here would come back into force, unannounced, beside the new key. Emptied, the next
+    /// enable shows a fresh set.
+    /// </para>
+    /// <para>
+    /// <b>One stamp and one save</b>, rather than the framework's two-factor and key resets one after
+    /// the other: the three writes land together or not at all, so no caller needs a transaction for
+    /// them, and none can leave the flag off while the old key or the old codes still answer.
+    /// </para>
+    /// </remarks>
+    public async Task<IdentityResult> ClearTwoFactorAsync(HSUser user)
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(user);
+
+        IUserTwoFactorStore<HSUser> twoFactorStore = Store as IUserTwoFactorStore<HSUser> ??
+            throw new NotSupportedException("The user store does not implement IUserTwoFactorStore<HSUser>.");
+        IUserAuthenticatorKeyStore<HSUser> keyStore = Store as IUserAuthenticatorKeyStore<HSUser> ??
+            throw new NotSupportedException("The user store does not implement IUserAuthenticatorKeyStore<HSUser>.");
+        IUserTwoFactorRecoveryCodeStore<HSUser> codeStore = Store as IUserTwoFactorRecoveryCodeStore<HSUser> ??
+            throw new NotSupportedException("The user store does not implement IUserTwoFactorRecoveryCodeStore<HSUser>.");
+
+        await twoFactorStore.SetTwoFactorEnabledAsync(user, false, CancellationToken);
+        await keyStore.SetAuthenticatorKeyAsync(user, GenerateNewAuthenticatorKey(), CancellationToken);
+        await codeStore.ReplaceCodesAsync(user, [], CancellationToken);
+        await ReplaceSecurityStampAsync(user);
+
         return await UpdateUserAsync(user);
     }
 
@@ -438,6 +467,25 @@ public sealed class HSUserManager : UserManager<HSUser>
         await UpdateNormalizedEmailAsync(user);
 
         return await Store.UpdateAsync(user, CancellationToken);
+    }
+
+    /// <summary>
+    /// The framework's <c>UpdateSecurityStampInternal</c> and <c>NewSecurityStamp</c>, both private:
+    /// twenty random bytes as unpadded upper-case base32, set without saving. The value is opaque; only
+    /// that it changes matters.
+    /// </summary>
+    private async Task ReplaceSecurityStampAsync(HSUser user)
+    {
+        if (!SupportsUserSecurityStamp)
+        {
+            return;
+        }
+
+        IUserSecurityStampStore<HSUser> securityStore = Store as IUserSecurityStampStore<HSUser> ??
+            throw new NotSupportedException("The user store does not implement IUserSecurityStampStore<HSUser>.");
+
+        string stamp = Base32.Rfc4648.Encode(RandomNumberGenerator.GetBytes(20), padding: false);
+        await securityStore.SetSecurityStampAsync(user, stamp, CancellationToken);
     }
 
     private IUserPasskeyStore<HSUser> PasskeyStore()

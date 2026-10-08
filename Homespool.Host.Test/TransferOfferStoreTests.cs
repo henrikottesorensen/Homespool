@@ -509,6 +509,32 @@ public sealed class TransferOfferStoreTests : IDisposable
         _store.IsOffered(Printer, name).Should().BeFalse("by now the printer's report has been read");
     }
 
+    /// <summary>
+    /// What a firmware install asks: whether the printer may be pulling anything. A standing offer
+    /// counts; one its transfer's end released does not, unlike for the queue.
+    /// </summary>
+    [Fact]
+    public void AStandingOfferCountsUntilItsTransferEnds()
+    {
+        // Arrange
+        string file = WriteFile();
+        string name = Path.GetFileName(file);
+        string token = Offer(Printer, file);
+
+        // Act, Assert
+        _store.HasStandingOffer(Printer).Should().BeTrue("a file is offered to that printer");
+        _store.HasStandingOffer(OtherPrinter).Should().BeFalse("the offer is that printer's alone");
+
+        // Act - the printer pulls it, and the transfer ends
+        _store.TryOpen(token, Printer, out ITransferContent? content).Should().BeTrue();
+        content!.Dispose();
+        _store.Release(Printer, token);
+
+        // Assert
+        _store.HasStandingOffer(Printer).Should().BeFalse("its transfer has ended");
+        _store.IsOffered(Printer, name).Should().BeTrue("while the queue's question still counts it for the minute");
+    }
+
     private string Offer(int printerId)
     {
         return Offer(printerId, WriteFile());

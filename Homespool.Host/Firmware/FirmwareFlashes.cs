@@ -18,6 +18,7 @@ using Homespool.Host.Pages;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
+using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Host.Services;
 using Homespool.Model;
@@ -44,8 +45,17 @@ namespace Homespool.Host.Firmware;
 /// <para>
 /// <b>Nothing in Homespool gives the printer work while it runs</b>
 /// (<see cref="IFirmwareInstallations"/>): the queue waits, so a print queued meanwhile starts once
-/// the printer is back rather than in the moments before the flash resets it, and a direct send of
-/// another file is refused. The queue is why the second check does not ask about queued prints.
+/// the printer is back rather than in the moments before the flash resets it. The queue is why the
+/// second check does not ask about queued prints.
+/// </para>
+/// <para>
+/// <b>Nor a transfer: the printer is held before it is checked.</b> The install takes the printer's
+/// send mailbox (<see cref="TransferService.TryHoldForInstall"/>) only when no send is waiting or
+/// under way, and from then on a send of any other file is refused. A transfer a send started
+/// earlier, which the printer may still be pulling after the send has returned, shows as a standing
+/// offer (<see cref="ITransferOffers.HasStandingOffer"/>) - the only way a printer fetches bytes -
+/// and both checks refuse while one stands. Held first and checked second, a send cannot slip in
+/// between.
 /// </para>
 /// <para>
 /// <b>Through the transfer path every file takes</b>, as the person's own send: the mailbox, the
@@ -66,6 +76,7 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
     private readonly Lock _gate = new();
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PrinterConnectionRegistry _registry;
+    private readonly TransferService _transfers;
     private readonly FirmwareFlashTimings _timings;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<FirmwareFlashes> _logger;
@@ -73,6 +84,7 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
 
     public FirmwareFlashes(IServiceScopeFactory scopeFactory,
                            PrinterConnectionRegistry registry,
+                           TransferService transfers,
                            FirmwareFlashTimings timings,
                            TimeProvider timeProvider,
                            IHostApplicationLifetime lifetime,
@@ -82,6 +94,7 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
 
         _scopeFactory = scopeFactory;
         _registry = registry;
+        _transfers = transfers;
         _timings = timings;
         _timeProvider = timeProvider;
         _logger = logger;
@@ -148,21 +161,54 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
             {
                 throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.NoSuchImage);
             }
-
-            await RequireReadyAsync(scope.ServiceProvider, printerId, printerName, queueMatters: true, cancellationToken);
         }
 
         FirmwareFlashStatus status = new(printerId, image.Row.Id, image.Row.Name, image.Header.Version, FirmwareFlashStage.Sending,
                                          _timeProvider.GetUtcNow());
+        FirmwareFlashStatus? previous;
 
+        // Claimed before the printer is checked, so nothing can start on it between the check and the
+        // claim: the mailbox refuses other sends and the queue waits from here.
         lock (_gate)
         {
-            if (For(printerId)?.IsRunning == true)
+            previous = For(printerId);
+
+            if (previous?.IsRunning == true)
             {
                 throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.AlreadyFlashing);
             }
 
+            if (!_transfers.TryHoldForInstall(printerId, image.Row.Id))
+            {
+                throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.Busy);
+            }
+
             _flashes[printerId] = status;
+        }
+
+        try
+        {
+            await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
+            await RequireReadyAsync(scope.ServiceProvider, printerId, printerName, queueMatters: true, cancellationToken);
+        }
+        catch
+        {
+            // Refused: as if never started - the hold let go, and the page showing what it showed before.
+            lock (_gate)
+            {
+                if (previous is null)
+                {
+                    _flashes.TryRemove(printerId, out _);
+                }
+                else
+                {
+                    _flashes[printerId] = previous;
+                }
+            }
+
+            _transfers.ReleaseInstall(printerId);
+
+            throw;
         }
 
         _logger.LogInformation("[{PrinterId}] installing firmware {Version} from {FileName}, for user {UserId}",
@@ -174,8 +220,8 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
     }
 
     /// <summary>
-    /// The printer is connected, idle or finished, and - when <paramref name="queueMatters"/> - has
-    /// nothing queued; or why not.
+    /// The printer is connected, idle or finished, pulling no file, and - when
+    /// <paramref name="queueMatters"/> - has nothing queued; or why not.
     /// </summary>
     private static async Task RequireReadyAsync(IServiceProvider services,
                                                 int printerId,
@@ -191,7 +237,12 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
             throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.NotConnected);
         }
 
-        if (!PhysicalChangeRules.IsAllowed(snapshot.Status) || snapshot.PrintInFlight || snapshot.TransferInFlight)
+        // The snapshot's transfer is the queue head's alone; any other file still being pulled - a
+        // direct send that returned before the install began - stands as an offer until it ends. The
+        // install's own image is no exception: its offer is gone before it reads as arrived.
+        bool pulling = services.GetRequiredService<ITransferOffers>().HasStandingOffer(printerId);
+
+        if (!PhysicalChangeRules.IsAllowed(snapshot.Status) || snapshot.PrintInFlight || snapshot.TransferInFlight || pulling)
         {
             throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.Busy);
         }
@@ -291,6 +342,11 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
             // silently and leave the page saying the flash is still under way.
             _logger.LogError(e, "[{PrinterId}] firmware {Version} not installed", printerId, version);
             Fail(printerId, new MessageKey("Firmware_FailedUnexpectedly", [printerName]));
+        }
+        finally
+        {
+            // Done or failed, the printer takes sends again.
+            _transfers.ReleaseInstall(printerId);
         }
     }
 

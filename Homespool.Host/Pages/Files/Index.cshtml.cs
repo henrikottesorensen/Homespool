@@ -349,7 +349,7 @@ public class IndexModel : PageModel
         try
         {
             StoredFile? stored = await _files.PublishAsync(CallerResolver.For(userId.Value, User), staged.Token, overwrite: false,
-                                                           cancellationToken, UserName());
+                                                           UserName());
 
             (StatusMessage, StatusSuccess) = (_localiser["Files_UploadedFile", stored!.FileName], true);
         }
@@ -368,8 +368,7 @@ public class IndexModel : PageModel
                                                         string? sort,
                                                         bool? desc,
                                                         Guid? printerUuid,
-                                                        bool? compatible,
-                                                        CancellationToken cancellationToken)
+                                                        bool? compatible)
     {
         long? userId = UserId();
 
@@ -378,8 +377,7 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        StoredFile? stored = await _files.PublishAsync(CallerResolver.For(userId.Value, User), token, overwrite: true, cancellationToken,
-                                                       UserName());
+        StoredFile? stored = await _files.PublishAsync(CallerResolver.For(userId.Value, User), token, overwrite: true, UserName());
 
         (StatusMessage, StatusSuccess) = stored is null ?
             (_localiser["Files_UploadGone"], false) :

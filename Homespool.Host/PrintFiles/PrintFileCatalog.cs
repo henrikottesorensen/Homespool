@@ -349,7 +349,7 @@ public sealed class PrintFileCatalog
         PublishedFile published =
             await _store.SaveAsync(caller.UserId, fileName, content, overwrite, cancellationToken, userName);
 
-        await IndexAsync(caller.UserId, published, cancellationToken);
+        await IndexAsync(caller.UserId, published);
 
         return published.File;
     }
@@ -378,7 +378,6 @@ public sealed class PrintFileCatalog
     public async Task<StoredFile?> PublishAsync(Caller caller,
                                                 string token,
                                                 bool overwrite,
-                                                CancellationToken cancellationToken,
                                                 string? userName = null)
     {
         CredentialScope.Require(caller, RequiredToWrite(overwrite));
@@ -390,7 +389,7 @@ public sealed class PrintFileCatalog
             return null;
         }
 
-        await IndexAsync(caller.UserId, published, cancellationToken);
+        await IndexAsync(caller.UserId, published);
 
         return published.File;
     }
@@ -503,13 +502,22 @@ public sealed class PrintFileCatalog
 
     /// <summary>Writes or refreshes the row for a file that has just been published.</summary>
     /// <remarks>
+    /// <para>
     /// <b>Where the file's own account of itself is read</b>, because it is the one place both
     /// upload paths meet and the bytes have just landed on local disk. It reads a header and a tail
     /// rather than the whole file, so the cost does not scale with the upload.
+    /// </para>
+    /// <para>
+    /// <b>Not cancellable, so it takes no token.</b> The publish before it cannot be undone, and an
+    /// overwrite left unindexed keeps the old row's digest and metadata on the new bytes: a printer's
+    /// copy of the old version reads as current, and the compatibility check reads the old slicing.
+    /// The request's token is cancelled by a client that disconnects, which says nothing about whether
+    /// the row should be written.
+    /// </para>
     /// </remarks>
-    private async Task IndexAsync(long userId, PublishedFile published, CancellationToken cancellationToken)
+    private async Task IndexAsync(long userId, PublishedFile published)
     {
-        HSFile? row = await FindRowAsync(userId, published.File.FileName, cancellationToken);
+        HSFile? row = await FindRowAsync(userId, published.File.FileName, CancellationToken.None);
         bool inserted = row is null;
 
         row ??= Insert(userId, published.File, published.Digest);
@@ -518,7 +526,7 @@ public sealed class PrintFileCatalog
 
         try
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(CancellationToken.None);
         }
         catch (DbUpdateException) when (inserted)
         {
@@ -527,13 +535,13 @@ public sealed class PrintFileCatalog
             // exists once, so drop our insert and write onto the row that won.
             _dbContext.Entry(row).State = EntityState.Detached;
 
-            HSFile winner = await FindRowAsync(userId, published.File.FileName, cancellationToken) ??
+            HSFile winner = await FindRowAsync(userId, published.File.FileName, CancellationToken.None) ??
                             throw new InvalidOperationException(
                                 $"Indexing {published.File.FileName} failed on a duplicate row that then could not be found.");
 
             Apply(winner, published);
 
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(CancellationToken.None);
         }
     }
 

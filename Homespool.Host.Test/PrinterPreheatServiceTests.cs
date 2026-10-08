@@ -16,6 +16,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Firmware;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -164,7 +165,7 @@ public sealed class PrinterPreheatServiceTests : IDisposable
 
         return new PrinterPreheatService(new PrinterCommandService(access, _registry),
                                          access,
-                                         new QueueSnapshotReader(context, TestTelemetryContext.For(context), _registry, TimeProvider.System, access, Substitute.For<ITransferOffers>()),
+                                         new QueueSnapshotReader(context, TestTelemetryContext.For(context), _registry, TimeProvider.System, access, Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>()),
                                          new ToolTargetReader(context, TestTelemetryContext.For(context)));
     }
 

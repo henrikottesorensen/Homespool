@@ -19,6 +19,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Firmware;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -517,7 +518,7 @@ public sealed class PrinterRemovalServiceTests : IDisposable
             new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
             new QueueSnapshotReader(context, TestTelemetryContext.For(context), registry, TimeProvider.System,
                                     new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                    Substitute.For<ITransferOffers>()),
+                                    Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>()),
             registry,
             telemetry ?? Substitute.For<ITelemetryEviction>(),
             NullLogger<PrinterRemovalService>.Instance);

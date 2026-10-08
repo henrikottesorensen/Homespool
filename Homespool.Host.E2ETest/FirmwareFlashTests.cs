@@ -17,7 +17,9 @@ using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
 using Homespool.Host.Controllers;
+using Homespool.Host.Exceptions;
 using Homespool.Host.Firmware;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.Queue;
@@ -387,6 +389,148 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
         await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// <see cref="Capability.Print"/> is asked when the flash starts, not left to the send - which an
+    /// image already on the drive skips. A key holding <see cref="Capability.ManagePrinter"/> alone is
+    /// refused before anything is asked of the printer.
+    /// </summary>
+    [Fact]
+    public async Task AFlashWantsPrintAsWellAsManagePrinter()
+    {
+        // Arrange
+        (_, _, int printerId, long ownerId) = await EnrolCoreOneAsync();
+        await SetModelAsync(printerId);
+        FirmwareImage image = await StoreAsync(ownerId, printerId);
+        FirmwareFlashes flashes = _factory.Services.GetRequiredService<FirmwareFlashes>();
+
+        // Act
+        Func<Task> withoutPrint = () => flashes.StartAsync(Caller.Scoped(ownerId, CapabilitySet.Parse("ViewPrinter ManagePrinter")),
+                                                           printerId, image.Digest, TestContext.Current.CancellationToken);
+        Func<Task> withoutManage = () => flashes.StartAsync(Caller.Scoped(ownerId, CapabilitySet.Parse("ViewPrinter Print")),
+                                                            printerId, image.Digest, TestContext.Current.CancellationToken);
+
+        // Assert
+        await withoutPrint.Should().ThrowAsync<CredentialScopeDeniedException>();
+        await withoutManage.Should().ThrowAsync<CredentialScopeDeniedException>();
+        flashes.For(printerId).Should().BeNull();
+    }
+
+    /// <summary>
+    /// The printer's state is checked again once the image is there: one somebody started printing on
+    /// meanwhile is not flashed.
+    /// </summary>
+    [Fact]
+    public async Task APrinterThatBecameBusyWhileTheImageArrivedIsNotFlashed()
+    {
+        // Arrange - the printer starts printing as it is asked whether the name is free, before the send
+        (PrinterIdentity identity, string token, int printerId, long ownerId) = await EnrolCoreOneAsync();
+        await using FakePrinterClient fake = await ConnectAsync(identity, token,
+                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO",
+                                                                                    device => device.ForceState(DeviceState.Printing)));
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+        await WaitForModelAsync(printerId);
+
+        FirmwareImage image = await StoreAsync(ownerId, printerId);
+        Guid uuid = await UuidOfAsync(printerId);
+
+        using HttpClient owner = await EnrolmentFlowHelper.SignInAsAsync(_factory, await EnrolmentFlowHelper.FindUserAsync(_factory, ownerId));
+        await EnrolmentFlowHelper.ReauthenticateAsync(owner);
+
+        // Act
+        await PostFlashAsync(owner, uuid, image.Digest);
+
+        // Assert
+        FirmwareFlashStatus finished = await FinishedAsync(printerId);
+
+        finished.Stage.Should().Be(FirmwareFlashStage.Failed);
+        finished.Problem!.Key.Should().Be("Error_FirmwareFlashBusy");
+        fake.Device.Storage.Find(FlashFirmware.DrivePath).Should().NotBeNull("the image did arrive");
+        fake.ReceivedCommands.Should().NotContain(frame => IsFlashLine(frame));
+
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A print queued while the flash runs waits for it - the queue stands still rather than start a
+    /// print the flash would reset - and the flash goes on.
+    /// </summary>
+    [Fact]
+    public async Task APrintQueuedDuringTheFlashWaitsAndTheFlashGoesOn()
+    {
+        // Arrange - a print is queued as the printer is asked whether the name is free, before the send
+        (PrinterIdentity identity, string token, int printerId, long ownerId) = await EnrolCoreOneAsync();
+        QueueSnapshot? during = null;
+
+        await using FakePrinterClient fake = await ConnectAsync(identity, token,
+                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO", _ =>
+                                                                {
+                                                                    QueueAPrintAsync(ownerId, printerId).GetAwaiter().GetResult();
+                                                                    during = SnapshotAsync(printerId).GetAwaiter().GetResult();
+                                                                }));
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+        await WaitForModelAsync(printerId);
+
+        FirmwareImage image = await StoreAsync(ownerId, printerId);
+        Guid uuid = await UuidOfAsync(printerId);
+
+        using HttpClient owner = await EnrolmentFlowHelper.SignInAsAsync(_factory, await EnrolmentFlowHelper.FindUserAsync(_factory, ownerId));
+        await EnrolmentFlowHelper.ReauthenticateAsync(owner);
+
+        // Act
+        await PostFlashAsync(owner, uuid, image.Digest);
+
+        bool flashed = await FakePrinterConnections.WaitUntilAsync(() => fake.ReceivedCommands.Any(IsFlashLine), TimeSpan.FromSeconds(60));
+
+        // Assert
+        FirmwareFlashStatus? status = _factory.Services.GetRequiredService<FirmwareFlashes>().For(printerId);
+        flashed.Should().BeTrue("a print queued after the start does not stop the flash; the flash reads {0} {1}", status?.Stage, status?.Problem?.Key);
+        during.Should().NotBeNull();
+        during!.FirmwareInstalling.Should().BeTrue();
+        QueueRules.Decide(during).Should().Be(QueueAction.Wait(QueueWaitReason.FirmwareInstalling));
+
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Another file sent straight to the printer while the flash runs is refused - the flash would
+    /// restart the printer under it - and the flash's own send is not.
+    /// </summary>
+    [Fact]
+    public async Task AnotherFileIsNotSentWhileTheFlashRuns()
+    {
+        // Arrange - somebody sends a file as the printer is asked whether the name is free
+        (PrinterIdentity identity, string token, int printerId, long ownerId) = await EnrolCoreOneAsync();
+        Exception? refused = null;
+
+        await using FakePrinterClient fake = await ConnectAsync(identity, token,
+                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO", _ =>
+                                                                {
+                                                                    refused = SendAnotherFileAsync(ownerId, printerId).GetAwaiter().GetResult();
+                                                                }));
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+        await WaitForModelAsync(printerId);
+
+        FirmwareImage image = await StoreAsync(ownerId, printerId);
+        Guid uuid = await UuidOfAsync(printerId);
+
+        using HttpClient owner = await EnrolmentFlowHelper.SignInAsAsync(_factory, await EnrolmentFlowHelper.FindUserAsync(_factory, ownerId));
+        await EnrolmentFlowHelper.ReauthenticateAsync(owner);
+
+        // Act
+        await PostFlashAsync(owner, uuid, image.Digest);
+
+        bool flashed = await FakePrinterConnections.WaitUntilAsync(() => fake.ReceivedCommands.Any(IsFlashLine), TimeSpan.FromSeconds(60));
+
+        // Assert
+        refused.Should().BeOfType<PrinterInstallingFirmwareException>();
+        flashed.Should().BeTrue("the flash's own send goes");
+
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
     /// <summary>Without a recent proof the post goes to prove first, and nothing starts.</summary>
     [Fact]
     public async Task InstallingWantsARecentProof()
@@ -438,8 +582,10 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
 
     private async Task<FakePrinterClient> ConnectAsync(PrinterIdentity identity, string token, CommandAnswerPolicy? policy = null)
     {
-        // Telemetry, so the printer reports a status: without one it reads as unknown, which is not idle.
-        FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = new SyntheticTelemetrySource(), Policy = policy })
+        // Telemetry, so the printer reports a status: without one it reads as unknown, which is not
+        // idle. Often, so a state a test forces is reported within moments.
+        SyntheticTelemetrySource telemetry = new() { IdleInterval = TimeSpan.FromMilliseconds(200) };
+        FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = telemetry, Policy = policy })
         {
             Token = token,
         };
@@ -538,6 +684,48 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
+    /// <summary>Sends one of the owner's files straight to the printer, and answers what refused it, if anything did.</summary>
+    private async Task<Exception?> SendAnotherFileAsync(long userId, int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        HSFile file = new()
+        {
+            Type = FileType.GCode,
+            UserId = userId,
+            Name = "direct-cube.gcode",
+            Size = 1024,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+
+        context.Files.Add(file);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Printer printer = await context.Printers.SingleAsync(candidate => candidate.Id == printerId, TestContext.Current.CancellationToken);
+
+        try
+        {
+            await scope.ServiceProvider.GetRequiredService<TransferService>()
+                       .SendDirectAsync(printer, file, new StoredFile(file.Name, Path.Combine(_scratch.Path, file.Name), file.Size, file.UploadedAt),
+                                        Caller.Unscoped(userId), TestContext.Current.CancellationToken);
+
+            return null;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return e;
+        }
+    }
+
+    private async Task<QueueSnapshot> SnapshotAsync(int printerId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        return await scope.ServiceProvider.GetRequiredService<QueueSnapshotReader>()
+                          .ReadAsync(printerId, TestContext.Current.CancellationToken);
+    }
+
     private async Task<Guid> UuidOfAsync(int printerId)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
@@ -580,4 +768,20 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
 
     /// <summary>What <see cref="FlashedCoreOneAsync"/> leaves: the printer, its owner, and the image it was flashed with.</summary>
     private sealed record Flashed(int PrinterId, long OwnerId, Guid Uuid, FirmwareImage Image, PrinterIdentity Identity, string Token);
+
+    /// <summary>Answers as firmware does, having first done something when one command arrives.</summary>
+    private sealed class OnCommandPolicy(PrinterIdentity identity, string command, Action<FakeDevice> onCommand) : CommandAnswerPolicy
+    {
+        private readonly FirmwareFaithfulPolicy _firmware = new(identity, TimeProvider.System);
+
+        public override IReadOnlyList<PlannedReply> Answer(ServerCommandFrame frame, FakeDevice device)
+        {
+            if (frame.TryGetJsonCommandName() == command)
+            {
+                onCommand(device);
+            }
+
+            return _firmware.Answer(frame, device);
+        }
+    }
 }

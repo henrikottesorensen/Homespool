@@ -18,6 +18,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Firmware;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
@@ -74,6 +75,7 @@ public sealed class TransferServiceTests : IDisposable
         services.AddScoped<PrinterAccessService>();
         services.AddSingleton(_registry);
         services.AddScoped<PrinterCommandService>();
+        services.AddSingleton(Substitute.For<IFirmwareInstallations>());
         services.Configure<PrintFileStorageOptions>(options => options.Directory = _storeRoot);
         services.AddSingleton<IHostEnvironmentAccessor>(new HostEnvironmentAccessor(_storeRoot));
         services.AddSingleton<TimeProvider>(_clock);

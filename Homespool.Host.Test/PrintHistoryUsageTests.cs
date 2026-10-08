@@ -14,6 +14,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Firmware;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
@@ -258,7 +259,7 @@ public sealed class PrintHistoryUsageTests : IDisposable
                                                                new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance),
                                                                TimeProvider.System,
                                                                new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                                               Substitute.For<ITransferOffers>()),
+                                                               Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>()),
                                        new UserNameLookup(context));
     }
 

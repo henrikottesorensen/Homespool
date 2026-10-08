@@ -15,6 +15,8 @@ using Microsoft.Extensions.Logging;
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Firmware;
+using Homespool.Host.Pages;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Host.Queue;
@@ -201,6 +203,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// <exception cref="PrintFileTooLargeException">The file is too large for a printer to be sent.</exception>
     /// <exception cref="CredentialScopeDeniedException">The credential's scope does not allow printing on it.</exception>
     /// <exception cref="TeamAccessDeniedException">The printer's team does not allow this caller to print.</exception>
+    /// <exception cref="PrinterInstallingFirmwareException">Firmware is being installed on the printer, from another file.</exception>
     /// <remarks>
     /// <para>
     /// Through the printer's mailbox like the queue's sends, so the attempt is recorded before its end
@@ -226,6 +229,14 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         {
             await scope.ServiceProvider.GetRequiredService<PrinterAccessService>()
                        .RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
+
+            // The install sends its own image this way, and nothing else goes while it runs: the flash
+            // restarts the printer under any transfer still going.
+            if (scope.ServiceProvider.GetRequiredService<IFirmwareInstallations>().ImageBeingInstalled(printer.Id) is long image &&
+                image != indexed.Id)
+            {
+                throw new PrinterInstallingFirmwareException(printer.Id, PrinterDisplayName.For(printer));
+            }
         }
 
         TransferResult result = await SendAsync(new TransferRequest(printer.Id, indexed.Id, caller, new DirectSend(file)),

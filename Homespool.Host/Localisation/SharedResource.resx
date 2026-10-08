@@ -2025,6 +2025,9 @@
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>File name is empty, or is a directory reference, once its directory part is removed.</value>
   </data>
+  <data name="Error_PrinterInstallingFirmware" xml:space="preserve">
+    <value>Firmware is being installed on {0}. Send files to it once it is back.</value>
+  </data>
   <data name="Error_PrinterNotConnected" xml:space="preserve">
     <value>That printer is not connected.</value>
   </data>
@@ -2253,6 +2256,9 @@
   <data name="Queue_WaitTransferAbortRetryingUnnamed" xml:space="preserve">
     <value>The printer gave up transferring the next file. Trying again shortly.</value>
     <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
+  </data>
+  <data name="Queue_WaitFirmwareInstalling" xml:space="preserve">
+    <value>Waiting for the firmware install to finish.</value>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">
     <value>Waiting for the printer to confirm the file&apos;s name.</value>
@@ -3526,6 +3532,9 @@ A stick that already works with your printer is the right stick. If you are form
   </data>
   <data name="Error_FirmwareNotPrusas" xml:space="preserve">
     <value>‘{0}’ is not signed by Prusa, so it is not accepted.</value>
+  </data>
+  <data name="Error_FirmwareOnAPrinter" xml:space="preserve">
+    <value>‘{0}’ is being installed on a printer, or is still on a printer’s drive after an install, so it is kept until it is gone from there.</value>
   </data>
   <data name="Error_FirmwareResourcesUnreadable" xml:space="preserve">
     <value>‘{0}’ is Prusa’s firmware, but Homespool cannot check the resources packed after it. Images older than version 6.6 pack them in a way it does not read.</value>

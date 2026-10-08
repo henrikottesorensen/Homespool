@@ -55,6 +55,7 @@ public static class QueueWaitDescription
                 MessageKey.For("Queue_WaitTransferAbortRetrying", fileName),
             QueueWaitReason.AwaitingPrinterPath => MessageKey.For("Queue_WaitAwaitingPath"),
             QueueWaitReason.PrinterNotAvailable => MessageKey.For("Queue_WaitPrinterNotReady"),
+            QueueWaitReason.FirmwareInstalling => MessageKey.For("Queue_WaitFirmwareInstalling"),
             QueueWaitReason.QueuerLostAccess => fileName is null ?
                 MessageKey.For("Queue_WaitQueuerLostAccessUnnamed") :
                 MessageKey.For("Queue_WaitQueuerLostAccess", fileName),

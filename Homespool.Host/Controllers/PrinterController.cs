@@ -221,7 +221,7 @@ public class PrinterController : ControllerBase
 
             return TypedResults.NoContent();
         }
-        catch (PrintFileUnreadableException e)
+        catch (Exception e) when (e is PrintFileUnreadableException or PrinterInstallingFirmwareException)
         {
             return this.ConflictProblem(e.Message);
         }

@@ -96,6 +96,13 @@ public static class QueueRules
             return QueueAction.Nothing;
         }
 
+        if (situation.FirmwareInstalling)
+        {
+            // Ahead of everything a send or a print would follow from: the flash resets the printer,
+            // and it is the install that decides when the printer is back.
+            return QueueAction.Wait(QueueWaitReason.FirmwareInstalling);
+        }
+
         if (situation.TransferInFlight && head.PrinterPath is null)
         {
             // Nothing to send - firmware has one system-wide transfer slot - and nothing to print yet,

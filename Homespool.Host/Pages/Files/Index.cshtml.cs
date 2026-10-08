@@ -545,7 +545,7 @@ public class IndexModel : PageModel
                     (_localiser["Files_Refused", PrinterName(printer), outcome!.Reason ?? string.Empty], false) :
                     (_localiser["Files_Sending", file.FileName, PrinterName(printer)], true);
         }
-        catch (PrintFileUnreadableException e)
+        catch (Exception e) when (e is PrintFileUnreadableException or PrinterInstallingFirmwareException)
         {
             (StatusMessage, StatusSuccess) = (_errors.For(e), false);
         }

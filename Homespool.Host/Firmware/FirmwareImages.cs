@@ -59,6 +59,7 @@ public sealed class FirmwareImages
     private readonly PrinterAccessService _access;
     private readonly HomespoolDbContext _dbContext;
     private readonly PrusaFirmwareVerifier _verifier;
+    private readonly IFirmwareInstallations _installations;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<FirmwareImages> _logger;
     private readonly string _root;
@@ -66,6 +67,7 @@ public sealed class FirmwareImages
     public FirmwareImages(PrinterAccessService access,
                           HomespoolDbContext dbContext,
                           PrusaFirmwareVerifier verifier,
+                          IFirmwareInstallations installations,
                           IOptionsMonitor<FirmwareStorageOptions> options,
                           IHostEnvironmentAccessor environment,
                           TimeProvider timeProvider,
@@ -77,6 +79,7 @@ public sealed class FirmwareImages
         _access = access;
         _dbContext = dbContext;
         _verifier = verifier;
+        _installations = installations;
         _timeProvider = timeProvider;
         _logger = logger;
         _root = Path.IsPathRooted(options.CurrentValue.Directory) ?
@@ -287,11 +290,17 @@ public sealed class FirmwareImages
     /// offered the button.
     /// </para>
     /// <para>
+    /// <b>Not while it is on a printer</b> - being installed, or recorded on a drive because the
+    /// clean-up after an install did not go through. That record is what lets the printer's next
+    /// install clear the drive's one name, and it would go with the row; refused instead, so another
+    /// team's delete cannot leave a printer with a <c>FIRMWARE.BBF</c> nothing recognises.
+    /// </para>
+    /// <para>
     /// <b>Row first, then bytes</b>, the catalogue's order: an interruption leaves a file with no row,
-    /// which nothing offers, never a row whose file is gone. Copies already on printers are knowledge
-    /// about those drives and go with the row.
+    /// which nothing offers, never a row whose file is gone.
     /// </para>
     /// </remarks>
+    /// <exception cref="FirmwareImageRefusedException">The image is on a printer.</exception>
     /// <exception cref="TeamAccessDeniedException">The caller may not manage this printer.</exception>
     public async Task<string?> DeleteAsync(Caller caller, int printerId, string digest, CancellationToken cancellationToken)
     {
@@ -314,6 +323,12 @@ public sealed class FirmwareImages
         if (!check.IsVerified || !PrusaFirmwareCompatibility.Fits(check.Header!, printer.Model))
         {
             return null;
+        }
+
+        if (_installations.IsInstallingImage(row.Id) ||
+            await _dbContext.FilesOnPrinters.AnyAsync(copy => copy.FileId == row.Id, cancellationToken))
+        {
+            throw new FirmwareImageRefusedException(row.Name, FirmwareImageRefusal.OnAPrinter, check);
         }
 
         _dbContext.Files.Remove(row);

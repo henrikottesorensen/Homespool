@@ -21,6 +21,7 @@ using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Certificates;
+using Homespool.Host.Firmware;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
@@ -154,7 +155,7 @@ public sealed class IndexModelTests : IDisposable
         PrintHistoryService history = new(context,
                                           access,
                                           new QueueSnapshotReader(context, TestTelemetryContext.For(context), connectionRegistry,
-                                                                  TimeProvider.System, access, Substitute.For<ITransferOffers>()),
+                                                                  TimeProvider.System, access, Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>()),
                                           new UserNameLookup(context));
         PrintQueueService queue = new(context, access, catalog, TimeProvider.System, QueueSignal, history, new TeamCapabilityLookup(context));
 

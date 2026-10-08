@@ -16,6 +16,7 @@ using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Firmware;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
@@ -1307,7 +1308,7 @@ public sealed class PrintQueueServiceTests : IDisposable
                                                                new PrinterConnectionRegistry(TimeProvider.System, NullLogger<PrinterConnectionRegistry>.Instance),
                                                                TimeProvider.System,
                                                                new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                                               Substitute.For<ITransferOffers>()),
+                                                               Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>()),
                                        new UserNameLookup(context));
     }
 

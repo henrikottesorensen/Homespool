@@ -9,7 +9,9 @@ using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging.Testing;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 
@@ -709,6 +711,31 @@ public sealed class TransferServiceTests : IDisposable
                     .FilesOnPrinters
                     .AnyAsync(TestContext.Current.CancellationToken))
             .Should().BeFalse("nothing was reserved on the drive for a send that was never allowed");
+    }
+
+    /// <summary>
+    /// A cancellation the stop did not ask for, while listing the printers to settle at start, is
+    /// logged like any other failure there - not let out of the service, which would stop the host.
+    /// </summary>
+    [Fact]
+    public async Task ACancellationNobodyAskedForListingThePrintersAtStartIsLogged()
+    {
+        // Arrange - the scope the listing runs in cancelled by something other than the stop
+        IServiceScopeFactory scopeFactory = Substitute.For<IServiceScopeFactory>();
+        scopeFactory.CreateScope().Returns(_ => throw new OperationCanceledException("not the service's stop"));
+        FakeLogger<TransferService> logger = new();
+        using TransferService transfers = new(scopeFactory, _clock, logger);
+
+        // Act
+        await transfers.StartAsync(TestContext.Current.CancellationToken);
+        Func<Task> start = () => transfers.ExecuteTask!.WaitAsync(Bound, TestContext.Current.CancellationToken);
+
+        // Assert
+        await start.Should().NotThrowAsync("an exception out of ExecuteAsync stops the host");
+        logger.Collector.GetSnapshot().Should().Contain(record => record.Level == LogLevel.Error &&
+                                                                  record.Exception is OperationCanceledException);
+
+        await transfers.StopAsync(TestContext.Current.CancellationToken);
     }
 
     private static Caller Owner => Caller.Scoped(1, CapabilitySet.Everything);

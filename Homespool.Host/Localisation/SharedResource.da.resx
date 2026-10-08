@@ -2124,6 +2124,9 @@
   <data name="Queue_HoldPrintRefused" xml:space="preserve">
     <value>Printeren afviste at begynde at printe {0} {1} gange i træk, hver gang med beskeden &quot;{2}&quot;. Nye forsøg har ikke ændret svaret, så køen er gået i stå. Se efter på printeren, og annuller så dette print, eller sæt det i kø igen for at prøve igen.</value>
   </data>
+  <data name="Queue_HoldPrinterPathUnknown" xml:space="preserve">
+    <value>{0} er nået frem til printeren, men printeren har ikke oplyst, hvad den kalder filen, og at printe den under et gættet navn kunne printe en anden fil. Køen er gået i stå. Se efter på printerens drev, og annuller så dette print, eller sæt det i kø igen for at spørge igen.</value>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
   </data>

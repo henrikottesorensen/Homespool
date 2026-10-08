@@ -223,8 +223,9 @@ public class PrintQueueService
         // establish whether a previous START_PRINT took; a transfer the printer kept refusing or kept
         // abandoning (TransferRefused, TransferAborted), and a print it kept refusing to start
         // (PrintRefused), where waiting has already been tried; a transfer somebody stopped at the
-        // printer (TransferStopped); and a file too large to send (FileTooLarge), which a smaller one
-        // under the same name answers. Asking for the file now is somebody saying they have looked.
+        // printer (TransferStopped); a file too large to send (FileTooLarge), which a smaller one
+        // under the same name answers; and a file the printer would not name (PrinterPathUnknown),
+        // which queueing again asks about afresh. Asking for the file now is somebody saying they have looked.
         // Scoped to those - the other holds are conditions on the printer the loop re-checks itself,
         // and none of them is cleared by wanting the file more.
         FileOnPrinter? personHeld = await _dbContext.FilesOnPrinters
@@ -236,7 +237,8 @@ public class PrintQueueService
                                                                 row.HoldReason == PrintHoldReason.TransferAborted ||
                                                                 row.HoldReason == PrintHoldReason.TransferStopped ||
                                                                 row.HoldReason == PrintHoldReason.FileTooLarge ||
-                                                                row.HoldReason == PrintHoldReason.PrintRefused),
+                                                                row.HoldReason == PrintHoldReason.PrintRefused ||
+                                                                row.HoldReason == PrintHoldReason.PrinterPathUnknown),
                                                         cancellationToken);
 
         if (personHeld is not null)

@@ -368,6 +368,8 @@ public class PrintHistoryService
                 hold.StartRefusalCount ?? 0,
                 hold.StartRefusalReason ?? string.Empty),
 
+            PrintHoldReason.PrinterPathUnknown => MessageKey.For("Queue_HoldPrinterPathUnknown", hold.FileName),
+
             // Undefined is not a hold, and neither is null. Both answer "nothing is in the way"
             // rather than inventing a sentence for a value nothing writes.
             _ => null,

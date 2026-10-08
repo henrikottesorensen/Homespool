@@ -598,6 +598,20 @@ public class QueueRulesTests
     }
 
     /// <summary>
+    /// A file the printer would not name is held as that, and never sent to the transfer branch: it is
+    /// on the drive already.
+    /// </summary>
+    [Fact]
+    public void AnUnnamedFileHoldIsNotRoutedToTheTransferPath()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: true, path: null) with { HoldReason = PrintHoldReason.PrinterPathUnknown });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.PrinterPathUnknown);
+    }
+
+    /// <summary>
     /// The page stays quiet where something else already speaks: an active print announces itself, and
     /// the space banner carries its own numbers.
     /// </summary>

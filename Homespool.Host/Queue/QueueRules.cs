@@ -156,6 +156,9 @@ public static class QueueRules
                 // Out of it as well: the file is on the drive, and the printer has refused to print it
                 // the same way for every attempt the budget allowed.
                 PrintHoldReason.PrintRefused => QueueWaitReason.PrintRefused,
+
+                // And here: the file is on the drive, and only the printer's name for it is missing.
+                PrintHoldReason.PrinterPathUnknown => QueueWaitReason.PrinterPathUnknown,
                 _ => QueueWaitReason.InsufficientSpace,
             });
         }
@@ -180,7 +183,8 @@ public static class QueueRules
         if (head.PrinterPath is null)
         {
             // Arrived, but the FILE_INFO that names it has not been seen. Printing the path we sent
-            // rather than the one the printer reported is the guess this refuses to make.
+            // rather than the one the printer reported is the guess this refuses to make; the advancer
+            // asks the printer instead, and holds once asking has gone on too long.
             return QueueAction.Wait(QueueWaitReason.AwaitingPrinterPath);
         }
 

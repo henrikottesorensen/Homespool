@@ -235,4 +235,22 @@ public enum PrintHoldReason
     /// </para>
     /// </remarks>
     PrintRefused = 12,
+
+    /// <summary>
+    /// The file arrived on the printer, and the printer would not say what it calls it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A print is started by the printer's name for a file, not ours.</b> The drive gives every file
+    /// an 8.3 alias whose counter depends on what else is on it, and the queue prints by that alias -
+    /// so a file whose <c>FILE_INFO</c> never came cannot be printed, and a guessed alias could print
+    /// another file. The loop asks the printer by the long name, and holds here when a quarter of an
+    /// hour of asking has brought no name.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person</b>, as for <see cref="PrintStartUnresolved"/>. Cancelling the entry
+    /// moves the queue past it; queueing the file again clears it and the loop asks again.
+    /// </para>
+    /// </remarks>
+    PrinterPathUnknown = 13,
 }

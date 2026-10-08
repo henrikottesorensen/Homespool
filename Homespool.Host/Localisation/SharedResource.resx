@@ -2222,6 +2222,10 @@
     <value>The printer refused to start printing {0} {1} times in a row, each time saying &quot;{2}&quot;. Trying again has not changed its answer, so the queue has stopped. Check the printer, then cancel this print, or queue it again to retry.</value>
     <comment>{0} is the file name, {1} how many refusals (always more than one), {2} the printer's own words, untranslated and quoted as sent. The printer reported itself ready each time, so the thing to check is at the machine rather than on the page. Queueing it again lifts this hold and starts a fresh set of attempts.</comment>
   </data>
+  <data name="Queue_HoldPrinterPathUnknown" xml:space="preserve">
+    <value>{0} arrived on the printer, but the printer has not said what it calls the file, and printing it under a guessed name could print a different one. The queue has stopped. Check the printer&apos;s drive, then cancel this print, or queue it again to ask again.</value>
+    <comment>{0} is the file name. The printer gives every file a short name of its own on the drive, and a print has to be started by that name; asking for a quarter of an hour has not brought it. Queueing it again lifts this hold and the printer is asked afresh.</comment>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} is sliced for abrasive filament and this printer reports no hardened nozzle. It has been queued, but it will not start until the printer reports that a hardened nozzle is fitted.</value>
     <comment>Queued rather than refused: fitting a hardened nozzle and letting the printer say so releases it with nothing pressed here.</comment>

@@ -221,4 +221,14 @@ public enum QueueWaitReason
     /// carries the sentence, with the printer's words in it.
     /// </remarks>
     PrintRefused = 19,
+
+    /// <summary>
+    /// The head arrived and the printer would not name it however long it was asked, and the queue
+    /// holds until a person acts - see <see cref="PrintHoldReason.PrinterPathUnknown"/>.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="AwaitingPrinterPath"/>, once the loop has stopped asking. Not routed back into the
+    /// transfer path: the file is on the drive. The hold banner carries the sentence.
+    /// </remarks>
+    PrinterPathUnknown = 20,
 }

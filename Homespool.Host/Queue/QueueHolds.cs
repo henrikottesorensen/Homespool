@@ -180,6 +180,45 @@ internal sealed class QueueHolds
     }
 
     /// <summary>
+    /// Holds the queue behind a file that arrived and that the printer would not name, however long it
+    /// was asked.
+    /// </summary>
+    /// <remarks>
+    /// A print has to be started by the printer's own name for the file, and guessing it could print
+    /// a different file: see <see cref="PrintHoldReason.PrinterPathUnknown"/>. History gets one row, as
+    /// for the other holds, in English - the column records what happened, the banner says it in the
+    /// reader's language.
+    /// </remarks>
+    public void HoldPathUnknown(HomespoolDbContext dbContext, int printerId, QueuedPrint head, FileOnPrinter onPrinter)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        onPrinter.HoldReason = PrintHoldReason.PrinterPathUnknown;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = now;
+
+        string recorded = $"{head.File!.Name} arrived on the printer, which never said what it called the file.";
+
+        dbContext.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            PrintUuid = head.PrintUuid,
+            FileName = head.File.Name,
+            Digest = head.File.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
+            StartedAt = now,
+            EndedAt = now,
+            State = PrintState.Failed,
+            Reason = recorded,
+        });
+
+        _logger.LogWarning("[{PrinterId}] {Reason} Holding the queue until somebody cancels or re-queues it.",
+                           printerId, recorded);
+    }
+
+    /// <summary>
     /// Holds the queue behind a file whose transfer somebody stopped at the printer.
     /// </summary>
     /// <remarks>

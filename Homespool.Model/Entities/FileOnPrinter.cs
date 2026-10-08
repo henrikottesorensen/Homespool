@@ -237,7 +237,8 @@ public class FileOnPrinter
     /// <b>A count of asks rather than a deadline from <see cref="ArrivedAt"/></b>, because only asking
     /// is evidence: a printer that was off has not been asked, and a file queued again is to be asked
     /// about afresh. At <c>QueueAdvancer.PathAsksBeforeHold</c> the queue holds with
-    /// <see cref="PrintHoldReason.PrinterPathUnknown"/>; lifting a hold clears it.
+    /// <see cref="PrintHoldReason.PrinterPathUnknown"/>. It belongs to one arrival, so a new transfer
+    /// taken or arrived, the copy deleted, the name found and a hold lifted all clear it.
     /// </remarks>
     public int? PathAskCount { get; set; }
 

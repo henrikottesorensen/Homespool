@@ -1731,8 +1731,7 @@ public sealed class QueueAdvancer : BackgroundService
         if (!refused && answer?.Answer?.Path is string path)
         {
             onPrinter.PrinterPath = path;
-            onPrinter.PathAskCount = null;
-            onPrinter.PathAskedAt = null;
+            PrinterDriveCopies.ForgetPathAsks(onPrinter);
             await dbContext.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}, by asking",

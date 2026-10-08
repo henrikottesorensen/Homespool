@@ -1162,6 +1162,123 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A file sent again starts its asks after a name from nothing, rather than one short of the hold.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect</b>: the count outlived the arrival it was about, so the new copy's first
+    /// unanswered ask was the fifteenth and held the queue.
+    /// </remarks>
+    [Fact]
+    public async Task AFileThatArrivesAgainIsNotHeldOnTheAsksAboutItsLastArrival()
+    {
+        // Arrange - asked one short of the bound about an earlier arrival, and sent again since
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.FilesOnPrinters.Add(new FileOnPrinter
+        {
+            PrinterId = PrinterId,
+            FileId = file.Id,
+            DriveName = file.Name,
+            Digest = SeededDigest,
+            TransferStartedAt = _clock.GetUtcNow(),
+            TransferCommandId = StartCommandId,
+            PathAskCount = QueueAdvancer.PathAsksBeforeHold - 1,
+            PathAskedAt = _clock.GetUtcNow(),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        await AddTransferEndAsync(PrinterEventType.TransferFinished, "/usb/queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Unanswered(CommandSendOutcome.ResponseTimedOut));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - one pass settles the arrival, the next asks after its name once the grace has run out
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        _clock.Advance(QueueAdvancer.BlockRecheckAfter);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.ArrivedAt.Should().NotBeNull("the transfer finished");
+        CommandsSent(actor).OfType<SendFileInfo>().Should().HaveCount(1);
+        row.HoldReason.Should().BeNull("one ask about this arrival is not the bound");
+        row.PathAskCount.Should().Be(1, "the count belongs to the arrival it was about");
+    }
+
+    /// <summary>
+    /// A transfer the printer takes forgets the asks after the copy it replaces.
+    /// </summary>
+    [Fact]
+    public async Task ATakenTransferForgetsTheAsksAboutTheCopyBefore()
+    {
+        // Arrange - nothing of ours on the drive, and a count left from a copy that was there
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+
+        context.FilesOnPrinters.Add(new FileOnPrinter
+        {
+            PrinterId = PrinterId,
+            FileId = file.Id,
+            DriveName = file.Name,
+            PathAskCount = QueueAdvancer.PathAsksBeforeHold - 1,
+            PathAskedAt = _clock.GetUtcNow(),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        IPrinterConnectionActor actor = ConnectAccepting();
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        OfferedPaths(actor).Should().Equal(["/usb/queued.bgcode"]);
+        row.TransferCommandId.Should().NotBeNull("the printer took it");
+        row.PathAskCount.Should().BeNull();
+        row.PathAskedAt.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Deleting an older copy forgets the asks after its name, even when the newer one is not sent.
+    /// </summary>
+    [Fact]
+    public async Task DeletingAnOlderCopyForgetsTheAsksAboutIt()
+    {
+        // Arrange - an arrived, never-named copy, asked about, and then the file overwritten
+        await using HomespoolDbContext context = await SeedUnnamedArrivalAsync();
+        await WriteFileOnDiskAsync("queued.bgcode");
+
+        FileOnPrinter asked = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        asked.PathAskCount = QueueAdvancer.PathAsksBeforeHold - 1;
+        asked.PathAskedAt = _clock.GetUtcNow();
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await OverwriteSeededFileAsync(context);
+
+        // The delete goes through; the offer after it never reaches the printer.
+        ConnectAnswering(command => command is DeleteFile ?
+                             Answered(PrinterEventType.Finished) :
+                             Unanswered(CommandSendOutcome.NotConnected));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.Digest.Should().BeNull("the older copy is gone, and nothing replaced it");
+        row.PathAskCount.Should().BeNull();
+        row.PathAskedAt.Should().BeNull();
+    }
+
+    /// <summary>
     /// A transfer that has been "in flight" for longer than any real one could be is treated as gone,
     /// and the file is offered again.
     /// </summary>

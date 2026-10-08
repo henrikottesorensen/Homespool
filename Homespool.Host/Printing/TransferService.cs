@@ -1010,8 +1010,10 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         {
             row.ArrivedAt = printerEvent.Timestamp;
 
-            // A count of aborts survives acceptance, so it ends here.
+            // A count of aborts survives acceptance, so it ends here; and the asks after a name were
+            // about an earlier arrival, if any.
             TransferRetryRules.Forget(row);
+            PrinterDriveCopies.ForgetPathAsks(row);
 
             _logger.LogInformation("[{PrinterId}] {FileName} has arrived", printerId, ForLog(driveName));
 

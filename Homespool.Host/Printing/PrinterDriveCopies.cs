@@ -67,7 +67,8 @@ public sealed class PrinterDriveCopies
     /// <remarks>
     /// <b>Whatever the row said had arrived is forgotten with it</b>: the drive now holds a transfer of
     /// these bytes in progress, not what was there before, and only its own end says it has arrived -
-    /// the end naming <paramref name="commandId"/>, and no earlier one.
+    /// the end naming <paramref name="commandId"/>, and no earlier one. So are the asks after the old
+    /// copy's name: see <see cref="ForgetPathAsks"/>.
     /// </remarks>
     /// <param name="row">The <i>(file, printer)</i> row.</param>
     /// <param name="digest">The digest of the bytes offered.</param>
@@ -79,6 +80,25 @@ public sealed class PrinterDriveCopies
         row.Digest = digest;
         row.ArrivedAt = null;
         row.TransferCommandId = commandId;
+        ForgetPathAsks(row);
+    }
+
+    /// <summary>
+    /// Forgets the asks after what the printer calls the copy on its drive. Not saved.
+    /// </summary>
+    /// <remarks>
+    /// <b>The count is about one arrival</b>, and the queue holds once it reaches its bound - so it
+    /// goes whenever the row stops describing that arrival: a new transfer taken or arrived, the copy
+    /// deleted, the name found, a hold lifted. Left behind, a copy sent again would start one ask
+    /// short of the hold.
+    /// </remarks>
+    /// <param name="row">The <i>(file, printer)</i> row.</param>
+    public static void ForgetPathAsks(FileOnPrinter row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        row.PathAskCount = null;
+        row.PathAskedAt = null;
     }
 
     /// <summary>
@@ -145,6 +165,7 @@ public sealed class PrinterDriveCopies
         row.ArrivedAt = null;
         row.PrinterPath = null;
         row.TransferCommandId = null;
+        ForgetPathAsks(row);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return new OutdatedCopyOutcome(OutdatedCopyRemoval.Removed);

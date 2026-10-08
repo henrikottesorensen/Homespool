@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Exceptions;
+using Homespool.Host.Printing;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -45,8 +46,7 @@ internal sealed class QueueHolds
         onPrinter.BlockedAt = null;
         TransferRetryRules.Forget(onPrinter);
         PrintStartRetryRules.Forget(onPrinter);
-        onPrinter.PathAskCount = null;
-        onPrinter.PathAskedAt = null;
+        PrinterDriveCopies.ForgetPathAsks(onPrinter);
     }
 
     /// <summary>

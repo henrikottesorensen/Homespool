@@ -132,6 +132,20 @@ public class GcodeAllowListTests
     }
 
     /// <summary>
+    /// The flash line is admitted as exactly the bytes that go on the wire: a frame is sent as it
+    /// was checked, so a space or newline around it is not trimmed away first.
+    /// </summary>
+    [Theory]
+    [InlineData(" M997 /usb/FIRMWARE.BBF")]
+    [InlineData("M997 /usb/FIRMWARE.BBF ")]
+    [InlineData("M997 /usb/FIRMWARE.BBF\n")]
+    [InlineData("\nM997 /usb/FIRMWARE.BBF")]
+    public void TheFlashLineWithAnythingAroundItIsRefused(string body)
+    {
+        GcodeAllowList.IsAllowed(body).Should().BeFalse();
+    }
+
+    /// <summary>
     /// The flash line never shares a frame: the board resets on it, so nothing after it runs, and a
     /// line before it would be a way to ride along with the one admitted reflash.
     /// </summary>

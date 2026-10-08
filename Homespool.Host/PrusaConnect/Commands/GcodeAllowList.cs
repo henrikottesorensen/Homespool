@@ -138,9 +138,10 @@ public static class GcodeAllowList
             return false;
         }
 
-        // Ordinal and whole: the one flash line is admitted as a frame of its own and in no other
-        // spelling, before any splitting could let it ride beside another line.
-        if (string.Equals(body.Trim(), FlashFirmware.FlashLine, StringComparison.Ordinal))
+        // Ordinal, whole and untrimmed: the one flash line is admitted as a frame of its own and in no
+        // other spelling, before any splitting could let it ride beside another line - and the string
+        // checked is the string sent, so no space or newline around it goes out unseen.
+        if (string.Equals(body, FlashFirmware.FlashLine, StringComparison.Ordinal))
         {
             return true;
         }

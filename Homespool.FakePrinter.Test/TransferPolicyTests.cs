@@ -73,6 +73,40 @@ public class TransferPolicyTests
         rejection.RootElement.GetProperty("machine_reason").GetString().Should().Be("TRANSFER_IN_PROGRESS");
     }
 
+    /// <summary>
+    /// A download onto a file that exists is refused, never an overwrite - firmware's
+    /// <c>Transfer::begin</c> checks the destination once it holds the slot.
+    /// </summary>
+    [Fact]
+    public void ADownloadOntoAFileThatExistsIsRefused()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.Storage.AddFile("/usb/model.bgcode", 10, modified: 0);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartDownload(11, size: 4096), _device);
+
+        using JsonDocument rejection = Parse(replies[0]);
+        rejection.RootElement.GetProperty("event").GetString().Should().Be("REJECTED");
+        rejection.RootElement.GetProperty("reason").GetString().Should().Be("File already exists");
+        rejection.RootElement.GetProperty("machine_reason").GetString().Should().Be("FILE_EXISTS");
+        _device.Transfer.Should().BeNull();
+        _device.Storage.Find("/usb/model.bgcode")!.Size.Should().Be(10, "the file on the drive is untouched");
+    }
+
+    /// <summary>The slot is taken before the destination is looked at, so a busy slot is the answer when both apply.</summary>
+    [Fact]
+    public void ABusySlotIsTheAnswerBeforeAnExistingFile()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        policy.Answer(StartDownload(11, size: 4096, path: "/usb/other.bgcode"), _device);
+        _device.Storage.AddFile("/usb/model.bgcode", 10, modified: 0);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(StartDownload(12, size: 4096), _device);
+
+        using JsonDocument rejection = Parse(replies[0]);
+        rejection.RootElement.GetProperty("machine_reason").GetString().Should().Be("TRANSFER_IN_PROGRESS");
+    }
+
     /// <summary>Paths the printer would refuse, refused the same way and for the same reasons.</summary>
     [Theory]
     [InlineData("/home/model.bgcode", "Not allowed outside /usb")]

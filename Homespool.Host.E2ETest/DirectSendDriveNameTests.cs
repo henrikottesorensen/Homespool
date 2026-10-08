@@ -141,8 +141,9 @@ public sealed class DirectSendDriveNameTests : IAsyncLifetime
     /// </summary>
     /// <remarks>
     /// <b>The delete is the assertion that matters here.</b> Firmware refuses a transfer onto a name
-    /// it already holds, which used to leave no way to get the newer version there at all; this fake
-    /// replaces the file instead, so only the delete it was sent shows the server doing its part.
+    /// it already holds, which used to leave no way to get the newer version there at all - and this
+    /// fake refuses it the same way, so the newer version arriving is itself proof the older copy was
+    /// deleted first.
     /// </remarks>
     [Fact]
     public async Task AnOverwrittenFileReplacesItsOlderCopyOnTheDrive()

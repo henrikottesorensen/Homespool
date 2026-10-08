@@ -45,6 +45,15 @@ else
                in a tag helper's attribute area, which Razor refuses outright. *@
             <a class="printer-shortcut" asp-page="/Printers/Detail" asp-route-uuid="@shortcut.Printer.Uuid"
                data-drop-target data-drop-uuid="@shortcut.Printer.Uuid">
+                @* Built here rather than inline on the tag helper: a Localiser lookup carries double
+                   quotes of its own, and nesting those inside an attribute is a parse error. *@
+                @{
+                    string? firmware = PrinterFirmwareRelease.For(shortcut.Printer.Firmware);
+                    string? firmwareTitle = shortcut.Printer.Firmware is string stated && firmware is not null ?
+                        Localiser["Printers_Firmware", stated.Trim()].Value :
+                        null;
+                }
+
                 <span class="printer-shortcut-drawing">
                     <partial name="_PrinterIcon" model="shortcut.FormFactor" />
                 </span>
@@ -104,6 +113,20 @@ else
                         @if (!string.IsNullOrWhiteSpace(shortcut.Material))
                         {
                             <span class="printer-plaque-stat-end typed-name">@shortcut.Material</span>
+                        }
+                    </span>
+
+                    @* The firmware version, on a line of its own under the queue and on its left edge.
+                       Always rendered, like the row above and for the same reason: a tile without it
+                       would sit that row a line lower than its neighbours'. Bare, as the filament is;
+                       a screen reader gets the label, and the tooltip the whole string with it. Kept
+                       for a disconnected printer, like the filament: what it last ran is still what
+                       it runs, until it says otherwise. *@
+                    <span class="printer-plaque-stats printer-plaque-firmware" title="@firmwareTitle">
+                        @if (firmware is not null)
+                        {
+                            <span class="visually-hidden">@Localiser["Printers_Firmware", firmware]</span>
+                            <span aria-hidden="true">@firmware</span>
                         }
                     </span>
                 </span>

@@ -185,6 +185,36 @@ public sealed class FrontPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>A tile names the firmware its printer last reported</b>, bare under the queue and without
+    /// the build number, which the tooltip keeps. Read from the poll, which is the render that has to
+    /// keep it.
+    /// </summary>
+    [Fact]
+    public async Task ATileNamesTheFirmwareItsPrinterReported()
+    {
+        // Arrange
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "front-firmware@example.com");
+
+        (int reported, _) = SeedPrinters(user.Id, "Upgraded", "Never Heard From");
+        SetFirmware(reported, "6.8.1+12345");
+
+        // Act
+        string fragment = await (await client.GetAsync("/?handler=Tiles", TestContext.Current.CancellationToken))
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        fragment.Should().Contain("<span aria-hidden=\"true\">6.8.1</span>", "the release is shown bare");
+        fragment.Should().Contain("<span class=\"visually-hidden\">Firmware 6.8.1</span>", "and read out with its label");
+        fragment.Should().Contain("title=\"Firmware 6.8.1&#x2B;12345\"", "the tooltip has the label and the whole version, its plus encoded");
+        fragment.Should().NotContain(">6.8.1&#x2B;12345<", "the build number is not on the tile itself");
+        fragment.Split("printer-plaque-firmware").Should().HaveCount(3, "both tiles carry the line, so the row above stays level");
+        fragment.Split("aria-hidden=\"true\">").Should().HaveCount(2, "but only the printer that reported has a version in it");
+
+        client.Dispose();
+    }
+
+    /// <summary>
     /// <b>The page actually wires the drop up.</b> Every other test here posts to the handlers
     /// directly, which passes perfectly well while the markup that would reach them is missing - and
     /// that is exactly what happened: a drop did nothing at all and nothing was red.
@@ -536,6 +566,15 @@ public sealed class FrontPageTests : IAsyncLifetime
         context.SaveChanges();
 
         return (first.Id, second.Id);
+    }
+
+    private void SetFirmware(int printerId, string firmware)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        context.Printers.Single(printer => printer.Id == printerId).Firmware = firmware;
+        context.SaveChanges();
     }
 
     private void SeedJobs(int printerId, long userId, int count)

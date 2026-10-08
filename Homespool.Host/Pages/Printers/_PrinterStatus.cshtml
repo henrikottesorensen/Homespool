@@ -27,10 +27,27 @@
                 <span class="badge printer-status-badge @PrinterStatusBadge.For(liveState?.Status)">@Model.StatusWord(liveState?.Status)</span>
             }
 
-            @if (liveState is not null)
+            @* The version beside the age, both quiet: neither is what the printer is doing, and the
+               badge on the left is. One span, so the pair stays together on the right when the row
+               wraps rather than the version drifting into the middle. *@
+            @{
+                string? firmware = PrinterFirmwareRelease.For(Model.Firmware);
+            }
+            @if (firmware is not null || liveState is not null)
             {
                 <span class="text-body-secondary small">
-                    @Localiser["Printers_Updated", Model.LastSeenDescription(liveState.LastSeenAt)]
+                    @if (firmware is not null)
+                    {
+                        <span class="printer-status-firmware typed-name" title="@PrinterFirmwareRelease.Tooltip(Model.Firmware)">@Localiser["Printers_Firmware", firmware]</span>
+                    }
+                    @if (firmware is not null && liveState is not null)
+                    {
+                        <text> &middot; </text>
+                    }
+                    @if (liveState is not null)
+                    {
+                        @Localiser["Printers_Updated", Model.LastSeenDescription(liveState.LastSeenAt)]
+                    }
                 </span>
             }
         </div>

@@ -2533,6 +2533,9 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Printers_Updated" xml:space="preserve">
     <value>Updated {0}</value>
   </data>
+  <data name="Printers_Firmware" xml:space="preserve">
+    <value>Firmware {0}</value>
+  </data>
   <data name="Printers_TimeLeft" xml:space="preserve">
     <value>{0} left</value>
   </data>

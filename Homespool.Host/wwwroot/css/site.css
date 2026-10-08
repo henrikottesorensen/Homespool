@@ -884,6 +884,7 @@ body.camera-maximised-open {
   color: inherit;
   background-color: var(--bs-body-bg);
   transition: border-color .15s ease-in-out, background-color .15s ease-in-out;
+
 }
 
 .printer-shortcut:hover,
@@ -993,6 +994,25 @@ body.camera-maximised-open {
   margin-left: auto;
 }
 
+/* The firmware version, a row of its own under the queue and the filament, against the right edge
+   under the filament. A line tall even when empty, so a printer that has never reported keeps the row
+   above level with its neighbours'. One value rather than two, so a block and not the row's flex:
+   truncated rather than wrapped, because the string is the printer's own and nothing bounds it, and
+   the tooltip has it whole.
+
+   contain: inline-size, because truncating the text is not enough: an unbreakable line still sets
+   the tile's minimum width, so one long version widened every tile on the page and a phone that fits
+   two across showed one. Contained, the line takes its width from the tile and never the other way. */
+.printer-plaque-firmware {
+  display: block;
+  contain: inline-size;
+  min-height: 1lh;
+  overflow: hidden;
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* A tile with a file over it. Border and tint rather than a dashed outline: the tile already has an
    edge, and swapping it for a dashed one moves the boundary by a pixel and makes the whole grid
    twitch as the pointer crosses between two tiles. */
@@ -1086,6 +1106,14 @@ body.camera-maximised-open {
   width: 100%;
   max-width: 22rem;
   margin-top: .25rem;
+}
+
+/* The firmware version on the left here, where the tile has it on the right. The cap above puts
+   this block's right edge mid-card rather than at the card's edge, so a version with no filament
+   over it would float in the middle of nothing; on the left it lines up with everything else the
+   plaque says. */
+.printer-card-live .printer-plaque-firmware {
+  text-align: start;
 }
 
 /* The buttons, right-aligned on a wide screen and left-aligned when they drop under the plaque -

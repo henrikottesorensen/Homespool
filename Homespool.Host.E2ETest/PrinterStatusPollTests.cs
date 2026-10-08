@@ -295,6 +295,46 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>The card names the firmware beside its age</b>, without the build number, which the tooltip
+    /// keeps.
+    /// </summary>
+    [Fact]
+    public async Task TheCardNamesTheFirmwareBesideItsAge()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("status-firmware@example.com",
+                                                         state: new PrinterLiveState { LastSeenAt = DateTimeOffset.UtcNow },
+                                                         firmware: "6.8.1+12345");
+
+        using (client)
+        {
+            string fragment = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status");
+
+            fragment.Should().Contain("Firmware 6.8.1", "the release is on the card");
+            fragment.Should().Contain("title=\"6.8.1&#x2B;12345\"", "and the whole version is in its tooltip, its plus encoded");
+            fragment.Should().MatchRegex(@"Firmware 6\.8\.1</span>\s*&middot;\s*Updated", "beside the age, not instead of it");
+        }
+    }
+
+    /// <summary>
+    /// A printer that has never reported a version says nothing about one - not an empty label.
+    /// </summary>
+    [Fact]
+    public async Task TheCardSaysNothingOfAFirmwareNeverReported()
+    {
+        (Guid uuid, HttpClient client) = await SeedAsync("status-no-firmware@example.com",
+                                                         state: new PrinterLiveState { LastSeenAt = DateTimeOffset.UtcNow });
+
+        using (client)
+        {
+            string fragment = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status");
+
+            fragment.Should().NotContain("printer-status-firmware");
+            fragment.Should().NotMatchRegex(@"&middot;\s*Updated", "there is nothing for the age to sit beside");
+            fragment.Should().Contain("Updated", "and the age is still there on its own");
+        }
+    }
+
+    /// <summary>
     /// A printer waiting for somebody says what for, in the fragment the page refreshes.
     /// </summary>
     /// <remarks>
@@ -601,7 +641,8 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
     private async Task<(Guid uuid, HttpClient client)> SeedAsync(string email,
                                                                  PrinterLiveState? state = null,
                                                                  int samples = 0,
-                                                                 string? model = null)
+                                                                 string? model = null,
+                                                                 string? firmware = null)
     {
         (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, email);
 
@@ -619,6 +660,7 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
             TeamId = membership.TeamId,
             Name = "Garage MK3.5",
             Model = model,
+            Firmware = firmware,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

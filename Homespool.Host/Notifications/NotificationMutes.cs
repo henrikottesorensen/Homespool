@@ -49,7 +49,7 @@ public static class NotificationMutes
         }
 
         return stored.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                     .Select(name => Enum.TryParse(name, ignoreCase: false, out NotificationKind kind) ? kind : NotificationKind.Undefined)
+                     .Select(name => EnumValues.TryParseName(name, out NotificationKind kind) ? kind : NotificationKind.Undefined)
                      .Where(kind => kind.IsSet())
                      .ToHashSet();
     }

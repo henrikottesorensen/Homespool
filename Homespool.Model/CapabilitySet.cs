@@ -88,9 +88,10 @@ public sealed class CapabilitySet : IReadOnlyCollection<Capability>
         foreach (string name in stored.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries |
                                                             StringSplitOptions.TrimEntries))
         {
-            // Case-sensitive on purpose: the writer is this class, so a difference in case means
-            // something else wrote the column, which is exactly what Unrecognised exists to report.
-            if (Enum.TryParse(name, out Capability capability) && capability.IsSet())
+            // A name exactly, on purpose: the writer is this class, so a different case, a numeral or a
+            // comma list means something else wrote the column, which is exactly what Unrecognised
+            // exists to report. The comma list is the dangerous one - four views ORed are ManagePrinter.
+            if (EnumValues.TryParseName(name, out Capability capability) && capability.IsSet())
             {
                 granted.Add(capability);
             }

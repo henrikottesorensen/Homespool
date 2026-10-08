@@ -177,4 +177,17 @@ public sealed class AttentionWatchTests
         NotificationMutes.Parse("QueueHeld SomethingRemoved Undefined").Should().BeEquivalentTo([NotificationKind.QueueHeld]);
         NotificationMutes.Parse(null).Should().BeEmpty();
     }
+
+    /// <summary>
+    /// Only a kind's name mutes it: <c>PrinterLost,PrinterNeedsAttention</c> ORs to
+    /// <see cref="NotificationKind.ServiceHealth"/>, which the framework's enum parser would hand back
+    /// as though the row had named it.
+    /// </summary>
+    [Theory]
+    [InlineData("PrinterLost,PrinterNeedsAttention")]
+    [InlineData("7")]
+    public void ANumeralOrACommaListMutesNothing(string stored)
+    {
+        NotificationMutes.Parse(stored).Should().BeEmpty();
+    }
 }

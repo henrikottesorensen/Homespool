@@ -296,6 +296,42 @@ public sealed class TelemetryWriterTests : IDisposable
     }
 
     /// <summary>
+    /// Makes every update of a printer row fail, and returns an action that lets them through again.
+    /// </summary>
+    /// <remarks>
+    /// Fails the application-database half of a flush on its own: the telemetry half writes samples,
+    /// events and live state, and never updates a printer row, so it still commits.
+    /// </remarks>
+    private async Task<Func<Task>> BreakPrinterUpdatesAsync()
+    {
+        await using HomespoolDbContext context = NewVerificationContext();
+
+        await context.Database.ExecuteSqlRawAsync(
+            "CREATE TRIGGER refuse_printer_update BEFORE UPDATE ON Printers BEGIN SELECT RAISE(ABORT, 'printer updates refused by the test'); END;",
+            TestContext.Current.CancellationToken);
+
+        return async () =>
+        {
+            await using HomespoolDbContext restore = NewVerificationContext();
+
+            await restore.Database.ExecuteSqlRawAsync("DROP TRIGGER refuse_printer_update;", TestContext.Current.CancellationToken);
+        };
+    }
+
+    /// <summary>An <c>INFO</c> naming the firmware and model, as a printer sends on connecting.</summary>
+    private static EventDTO InfoEvent()
+    {
+        using JsonDocument payload = JsonDocument.Parse("""{"firmware":"6.5.7","printer_type":"1.3.5"}""");
+
+        return new EventDTO
+        {
+            EventType = PrinterEventType.Info,
+            Status = "IDLE",
+            Data = payload.RootElement.Clone(),
+        };
+    }
+
+    /// <summary>
     /// A shutdown flush that fails once still saves the buffers on a later attempt.
     /// </summary>
     /// <remarks>
@@ -399,6 +435,178 @@ public sealed class TelemetryWriterTests : IDisposable
 
         LogRecords.Should().Contain(record => record.Level == LogLevel.Warning && record.Message.Contains("lost with this process"),
                                     $"the loss has to be reported before the host stops waiting.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// A shutdown whose application-database save fails once still saves the printer's identity.
+    /// </summary>
+    /// <remarks>
+    /// The telemetry half commits and clears its buffers before the application half is tried, so
+    /// after this failure the samples and events are gone and only the identity is left. A retry has
+    /// to be able to write that half on its own.
+    /// </remarks>
+    [Fact]
+    public async Task AShutdownWhoseApplicationSaveFailsOnceStillSavesTheIdentity()
+    {
+        // Arrange - nothing flushes until shutdown: the batch size is unreachable and the timer long.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, InfoEvent());
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        Func<Task> allowPrinterUpdates = await BreakPrinterUpdatesAsync();
+
+        // Act - stop while the printer row refuses the identity, then let it through mid-retry.
+        Task stopping = writer.StopAsync(CancellationToken.None);
+
+        bool firstAttemptFailed = await LoggedAsync(record =>
+                                                        record.Level == LogLevel.Warning &&
+                                                        record.Message.Contains("during shutdown"));
+
+        firstAttemptFailed.Should().BeTrue($"an identity still unwritten after the first attempt has to be retried.\n{LogDump()}");
+
+        await allowPrinterUpdates();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        // Assert
+        await using HomespoolDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
+
+        printer.Firmware.Should().Be("6.5.7", $"a transient failure at shutdown must not lose the identity.\n{LogDump()}");
+        (await SampleCountAsync(verify)).Should().Be(1, "the telemetry half committed on the first attempt, and only once");
+    }
+
+    /// <summary>
+    /// A shutdown whose application-database save keeps failing reports the identity as lost.
+    /// </summary>
+    [Fact]
+    public async Task AShutdownWhoseApplicationSaveAlwaysFailsReportsTheLoss()
+    {
+        // Arrange - nothing flushes until shutdown: the batch size is unreachable and the timer long.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, InfoEvent());
+
+        await BreakPrinterUpdatesAsync();
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        LogRecords.Should().NotContain(record => record.Message.Contains("drained to the database"),
+                                       $"the identity was never written, so shutdown did not save everything.\n{LogDump()}");
+
+        LogRecords.Should().Contain(record => record.Level == LogLevel.Warning &&
+                                              record.Message.Contains("lost with this process") &&
+                                              record.StructuredState!.Any(kv => kv.Key == "PrinterCount" && kv.Value == "1"),
+                                    $"the report has to name what was lost.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// An identity left behind by a failed application-database save is written by a later flush,
+    /// though the printer sends nothing more.
+    /// </summary>
+    /// <remarks>
+    /// <c>INFO</c> arrives once per connection, so nothing the printer sends later carries it again.
+    /// </remarks>
+    [Fact]
+    public async Task AnIdentityLeftByAFailedSaveIsWrittenWithoutFurtherTraffic()
+    {
+        // Arrange - a fast timer, so the retry needs nothing further from the printer.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync();
+
+        Func<Task> allowPrinterUpdates = await BreakPrinterUpdatesAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, InfoEvent());
+
+        bool firstAttemptFailed = await LoggedAsync(FlushFailed);
+        firstAttemptFailed.Should().BeTrue($"the arrangement depends on the identity's save failing.\n{LogDump()}");
+
+        LogRecords.First(FlushFailed).StructuredState.Should().Contain(kv => kv.Key == "PrinterCount" && kv.Value == "1",
+                                                                      "with the samples and events written, the failure has to say what it left");
+
+        // Act
+        await allowPrinterUpdates();
+
+        // Assert
+        bool written = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext verify = NewVerificationContext();
+
+            return await verify.Printers.AnyAsync(p => p.Firmware == "6.5.7", TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(5));
+
+        written.Should().BeTrue($"the identity has to be retried on its own once the database accepts it.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// An identity left behind by a failed application-database save while running is written at
+    /// shutdown, though no telemetry is buffered by then.
+    /// </summary>
+    [Fact]
+    public async Task AnIdentityLeftByAFailedSaveIsWrittenAtShutdown()
+    {
+        // Arrange - the INFO alone reaches the batch size, and the timer never comes round, so the
+        // failed save is retried only by shutdown.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1, flushIntervalSeconds: 30));
+        await SeedPrinterAsync();
+
+        Func<Task> allowPrinterUpdates = await BreakPrinterUpdatesAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, InfoEvent());
+
+        bool firstAttemptFailed = await LoggedAsync(FlushFailed);
+        firstAttemptFailed.Should().BeTrue($"the arrangement depends on the identity's save failing.\n{LogDump()}");
+
+        await allowPrinterUpdates();
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        await using HomespoolDbContext verify = NewVerificationContext();
+        Printer printer = await verify.Printers.SingleAsync(TestContext.Current.CancellationToken);
+
+        printer.Firmware.Should().Be("6.5.7", $"shutdown is the identity's last chance to be written.\n{LogDump()}");
+    }
+
+    /// <summary>
+    /// A loaded material left behind by a failed application-database save is written by a later
+    /// flush, though the printer sends nothing more.
+    /// </summary>
+    /// <remarks>
+    /// The later flush covers no printer at all, so the material has to be found on the printer's
+    /// cache entry rather than through the printers that flush covers.
+    /// </remarks>
+    [Fact]
+    public async Task AMaterialLeftByAFailedSaveIsWrittenWithoutFurtherTraffic()
+    {
+        // Arrange - a fast timer, so the retry needs nothing further from the printer.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(batchSize: 1000, flushIntervalSeconds: 0.1));
+        await SeedPrinterAsync();
+
+        Func<Task> allowPrinterUpdates = await BreakPrinterUpdatesAsync();
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE", Material = "PLA" });
+
+        bool firstAttemptFailed = await LoggedAsync(FlushFailed);
+        firstAttemptFailed.Should().BeTrue($"the arrangement depends on the material's save failing.\n{LogDump()}");
+
+        // Act
+        await allowPrinterUpdates();
+
+        // Assert
+        bool written = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext verify = NewVerificationContext();
+
+            return await verify.Printers.AnyAsync(p => p.LoadedMaterial == "PLA", TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(5));
+
+        written.Should().BeTrue($"the material has to be retried on its own once the database accepts it.\n{LogDump()}");
     }
 
     /// <summary>

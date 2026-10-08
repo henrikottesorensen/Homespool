@@ -743,12 +743,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         //
         // Retried, unlike every flush before it: see FinalFlushAttempts. SafeFlushAsync leaves the
         // buffers populated when it fails and clears them when it succeeds, so their emptiness is
-        // the success signal.
+        // the success signal - all of them, since a flush can commit the telemetry half and still
+        // fail the application half, leaving only what the printers said about themselves.
+        int unwrittenPrinters = UnwrittenPrinterCount(cache, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings);
+
         for (int attempt = 1; attempt <= FinalFlushAttempts; attempt++)
         {
             // Before the deadline is asked: an idle deployment has nothing to write, and running out
             // of time for nothing is not worth a warning.
-            if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && dirtyPrinterIds.Count == 0)
+            if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && unwrittenPrinters == 0)
             {
                 break;
             }
@@ -765,7 +768,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             await SafeFlushAsync(cache, pendingSamples, pendingEvents, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings,
                                  CancellationToken.None, againstShutdownDeadline: true);
 
-            if (pendingSamples.Count == 0 && pendingEvents.Count == 0)
+            unwrittenPrinters = UnwrittenPrinterCount(cache, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings);
+
+            if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && unwrittenPrinters == 0)
             {
                 break;
             }
@@ -773,8 +778,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             if (attempt < FinalFlushAttempts)
             {
                 _logger.LogWarning(
-                    "Telemetry flush failed during shutdown (attempt {Attempt} of {Attempts}); retrying before giving up on {SampleCount} samples and {EventCount} events.",
-                    attempt, FinalFlushAttempts, pendingSamples.Count, pendingEvents.Count);
+                    "Telemetry flush failed during shutdown (attempt {Attempt} of {Attempts}); retrying before giving up on {SampleCount} samples, {EventCount} events and the last report from {PrinterCount} printer(s).",
+                    attempt, FinalFlushAttempts, pendingSamples.Count, pendingEvents.Count, unwrittenPrinters);
 
                 await Task.Delay(FinalFlushRetryDelay);
             }
@@ -784,11 +789,11 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // an operator waiting out the drain is looking for. SafeFlushAsync leaves the buffers
         // populated when a flush fails, so anything still here is about to die with the process -
         // that is a Warning, not a silent exit.
-        if (pendingSamples.Count > 0 || pendingEvents.Count > 0)
+        if (pendingSamples.Count > 0 || pendingEvents.Count > 0 || unwrittenPrinters > 0)
         {
             _logger.LogWarning(
-                "Telemetry drain finished with {SampleCount} samples and {EventCount} events unwritten; they are lost with this process.",
-                pendingSamples.Count, pendingEvents.Count);
+                "Telemetry drain finished with {SampleCount} samples, {EventCount} events and the last report from {PrinterCount} printer(s) unwritten; they are lost with this process.",
+                pendingSamples.Count, pendingEvents.Count, unwrittenPrinters);
         }
         else
         {
@@ -928,9 +933,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             }
         }
 
-        // Every printer in the cache, not only those a flush just covered: a material change whose
-        // own save failed earlier is still pending on a printer that has not been heard from since.
-        HashSet<int> materialWritebacks = await StageMachineFactsAsync(durable, cache, printerIds, pendingPrinterInfo, pendingDriveListings,
+        HashSet<int> materialWritebacks = await StageMachineFactsAsync(durable, cache, pendingPrinterInfo, pendingDriveListings,
                                                                        CancellationToken.None);
 
         await durable.SaveChangesAsync(CancellationToken.None);
@@ -1774,8 +1777,9 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             _consecutiveFlushFailures++;
 
             _logger.LogError(
-                e, "Telemetry flush failed; {SampleCount} samples and {EventCount} events remain pending for the next attempt.",
-                pendingSamples.Count, pendingEvents.Count);
+                e, "Telemetry flush failed; {SampleCount} samples, {EventCount} events and the last report from {PrinterCount} printer(s) remain pending for the next attempt.",
+                pendingSamples.Count, pendingEvents.Count,
+                UnwrittenPrinterCount(cache, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings));
         }
         finally
         {
@@ -1854,7 +1858,12 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                   CancellationToken cancellationToken,
                                   bool againstShutdownDeadline = false)
     {
-        if (pendingSamples.Count == 0 && pendingEvents.Count == 0 && dirtyPrinterIds.Count == 0)
+        // What the printers said about themselves counts, not only telemetry: after a flush whose
+        // application half failed, that is all there is left, and nothing the printer sends later
+        // brings an INFO back.
+        if (pendingSamples.Count == 0 &&
+            pendingEvents.Count == 0 &&
+            UnwrittenPrinterCount(cache, dirtyPrinterIds, pendingPrinterInfo, pendingDriveListings) == 0)
         {
             return;
         }
@@ -1864,7 +1873,15 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         HomespoolDbContext durable = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
         TelemetryDbContext telemetry = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
 
-        await ApplyWriterCommandTimeoutAsync(telemetry, SaveWait(againstShutdownDeadline), cancellationToken);
+        // Empty when this flush is retrying only the application half. Its wait is then not asked
+        // for at all: at shutdown that would be a second wait for the lock out of the deadline, and
+        // with under a second left SaveWait throws, failing a save that needed nothing from here.
+        bool telemetryPending = pendingSamples.Count > 0 || pendingEvents.Count > 0 || dirtyPrinterIds.Count > 0;
+
+        if (telemetryPending)
+        {
+            await ApplyWriterCommandTimeoutAsync(telemetry, SaveWait(againstShutdownDeadline), cancellationToken);
+        }
 
         // Every cache mutation below is recorded rather than applied directly, and only carried out
         // once the save it belongs to has actually succeeded. Applying any of them early would leave
@@ -1923,7 +1940,10 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
             newlyPersisted.Add((entry, newSlotNumbers));
         }
 
-        await telemetry.SaveChangesAsync(cancellationToken);
+        if (telemetryPending)
+        {
+            await telemetry.SaveChangesAsync(cancellationToken);
+        }
 
         // Only reached once that save has actually succeeded.
         foreach ((LiveStateCacheEntry entry, List<int> newSlotNumbers) in newlyPersisted)
@@ -1941,10 +1961,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         TellSaved(pendingEvents);
 
         // Cleared here rather than at the end, so a failure in the durable half below cannot cause
-        // these rows to be written a second time. The dirty set is carried forward first: the durable
-        // half still needs to know which printers this flush covered.
-        List<int> flushedPrinters = [.. dirtyPrinterIds];
-
+        // these rows to be written a second time.
         pendingSamples.Clear();
         pendingEvents.Clear();
         dirtyPrinterIds.Clear();
@@ -1958,7 +1975,7 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // halves queue for the same file, and the first may have used most of the time left.
         await ApplyWriterCommandTimeoutAsync(durable, SaveWait(againstShutdownDeadline), cancellationToken);
 
-        HashSet<int> materialWritebacks = await StageMachineFactsAsync(durable, cache, flushedPrinters, pendingPrinterInfo, pendingDriveListings,
+        HashSet<int> materialWritebacks = await StageMachineFactsAsync(durable, cache, pendingPrinterInfo, pendingDriveListings,
                                                                        cancellationToken);
 
         if (durable.ChangeTracker.HasChanges())
@@ -1986,29 +2003,58 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
     }
 
     /// <summary>
+    /// How many printers have a report a flush has still to write: live state, an identity, a drive
+    /// listing or a loaded material. Samples and events are counted by their own buffers.
+    /// </summary>
+    /// <remarks>
+    /// The one definition of "nothing left" beside those two buffers, for deciding whether to flush,
+    /// whether shutdown saved everything, and what a failure reports. A flush that commits the
+    /// telemetry half and fails the application half leaves only the last three behind.
+    /// </remarks>
+    /// <param name="cache">Each printer's live state, carrying any material change still to write.</param>
+    /// <param name="dirtyPrinterIds">The printers whose live state is still to write.</param>
+    /// <param name="pendingPrinterInfo">Identity heard and not yet written.</param>
+    /// <param name="pendingDriveListings">Drive listings heard and not yet written.</param>
+    private static int UnwrittenPrinterCount(Dictionary<int, LiveStateCacheEntry> cache,
+                                             HashSet<int> dirtyPrinterIds,
+                                             Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
+                                             Dictionary<int, PendingDriveListing> pendingDriveListings)
+    {
+        HashSet<int> printers = [.. dirtyPrinterIds, .. pendingPrinterInfo.Keys, .. pendingDriveListings.Keys];
+
+        foreach ((int printerId, LiveStateCacheEntry entry) in cache)
+        {
+            if (entry.PendingLoadedMaterial.IsPresent)
+            {
+                printers.Add(printerId);
+            }
+        }
+
+        return printers.Count;
+    }
+
+    /// <summary>
     /// Stages on <paramref name="durable"/> what the printers said about themselves: the material
     /// each has loaded, the identity an <c>INFO</c> reported, its tools and its drive listing.
     /// </summary>
     /// <returns>The printers whose material writeback was staged, for <see cref="ClearMachineFacts"/>.</returns>
     /// <param name="durable">The application database's context, saved by the caller.</param>
     /// <param name="cache">Each printer's live state, carrying any material change still to write.</param>
-    /// <param name="printerIds">The printers whose material change to stage.</param>
     /// <param name="pendingPrinterInfo">Identity heard since the last flush.</param>
     /// <param name="pendingDriveListings">Drive listings heard since the last flush.</param>
     /// <param name="cancellationToken">Cancels the reads staging needs.</param>
     private async Task<HashSet<int>> StageMachineFactsAsync(HomespoolDbContext durable,
                                                             Dictionary<int, LiveStateCacheEntry> cache,
-                                                            IEnumerable<int> printerIds,
                                                             Dictionary<int, PrinterIdentityUpdate> pendingPrinterInfo,
                                                             Dictionary<int, PendingDriveListing> pendingDriveListings,
                                                             CancellationToken cancellationToken)
     {
         HashSet<int> materialWritebacks = [];
 
-        foreach (int printerId in printerIds)
+        // Every printer in the cache, not only those the flush covered: a material change whose own
+        // save failed is still pending on a printer that may not have been heard from since.
+        foreach ((int printerId, LiveStateCacheEntry entry) in cache)
         {
-            LiveStateCacheEntry entry = cache[printerId];
-
             if (!entry.PendingLoadedMaterial.IsPresent)
             {
                 continue;

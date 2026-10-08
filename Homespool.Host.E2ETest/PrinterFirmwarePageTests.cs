@@ -73,6 +73,11 @@ public sealed class PrinterFirmwarePageTests : IAsyncLifetime
             page.Should().Contain("Firmware: Workshop Core One");
             page.Should().Contain("This printer runs firmware 6.8.1+12345.");
             page.Should().Contain("No stored firmware fits this printer yet.");
+
+            // The progress of a flash refreshes itself only with this script, which the layout does not
+            // load - and these tests read the page without running any, so its absence is asserted here.
+            page.Should().Contain("/js/live-region.", "the file name carries a fingerprint");
+            page.Should().Contain("/js/dismiss-alert.");
         }
     }
 

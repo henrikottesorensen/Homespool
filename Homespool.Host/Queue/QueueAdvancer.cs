@@ -61,6 +61,33 @@ namespace Homespool.Host.Queue;
 public sealed class QueueAdvancer : BackgroundService
 {
     /// <summary>
+    /// How many times the loop asks the printer what it called a file, without being told, before it
+    /// gives up and holds the queue - one ask per <see cref="BlockRecheckAfter"/>, so a quarter of an
+    /// hour of asking.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Counted in asks the printer was sent, not in time since the file arrived.</b> A printer that
+    /// was off for an hour has not been asked anything in that hour, and a person who queues the file
+    /// again is asking for the printer to be asked again; a bound on the clock would hold both at once
+    /// without a single question. An ask that never reached the printer - not connected, another
+    /// command in the way - is not counted.
+    /// </para>
+    /// <para>
+    /// <b>Reached only by a printer that will not name a file it holds</b> - every ask unanswered, or
+    /// answered with nothing to print by. A file that is not there is told apart at the first answer,
+    /// and sent again.
+    /// </para>
+    /// <para>
+    /// <b>There is a bound at all because the wait had none</b>, and a queue stopped behind a sentence
+    /// saying it is waiting for the printer reads as working while it never moves. It holds rather
+    /// than guessing at the 8.3 name, because a wrong guess prints a different file. See
+    /// <see cref="PrintHoldReason.PrinterPathUnknown"/>.
+    /// </para>
+    /// </remarks>
+    public const int PathAsksBeforeHold = 15;
+
+    /// <summary>
     /// How often the loop looks, absent a poke. Slow on purpose: the things it waits for are a
     /// transfer finishing and a person clearing a bed, both measured in minutes, and
     /// <see cref="QueueSignal"/> covers the one case where a human is watching.
@@ -160,25 +187,6 @@ public sealed class QueueAdvancer : BackgroundService
     public static readonly TimeSpan PathAskAfter = TimeSpan.FromSeconds(30);
 
     /// <summary>
-    /// How long after a file has arrived the loop goes on asking the printer what it called it before
-    /// it gives up and holds the queue.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// <b>Reached only by a printer that is connected and will not name a file it holds</b> - every
-    /// ask unanswered, or answered with nothing to print by, for a quarter of an hour. A file that is
-    /// not there is told apart at the first answer, and sent again.
-    /// </para>
-    /// <para>
-    /// <b>There is a bound at all because the wait had none</b>, and a queue stopped behind a sentence
-    /// saying it is waiting for the printer reads as working while it never moves. It holds rather
-    /// than guessing at the 8.3 name, because a wrong guess prints a different file. See
-    /// <see cref="PrintHoldReason.PrinterPathUnknown"/>.
-    /// </para>
-    /// </remarks>
-    public static readonly TimeSpan PathUnresolvableAfter = TimeSpan.FromMinutes(15);
-
-    /// <summary>
     /// How much of a path or a reason the printer wrote is worth a log line. A drive path tops out
     /// near 260 characters; an event may be a megabyte, and its strings are the sender's to size.
     /// </summary>
@@ -227,17 +235,6 @@ public sealed class QueueAdvancer : BackgroundService
     /// See <see cref="ObserveFilament"/>.
     /// </remarks>
     private readonly ConcurrentDictionary<int, long> _seenAtOpeningReading = [];
-
-    /// <summary>
-    /// Per printer, the <i>(file, printer)</i> row last asked what the printer calls it, and when - so
-    /// a file waiting on its name costs a question per <see cref="BlockRecheckAfter"/>, not per pass.
-    /// </summary>
-    /// <remarks>
-    /// An optimisation rather than state, like <see cref="_examinedPanelJobs"/>: a restart costs one
-    /// question asked early. The bound on asking is <see cref="FileOnPrinter.ArrivedAt"/>, which is
-    /// stored. See <see cref="AskForPrinterPathAsync"/>.
-    /// </remarks>
-    private readonly ConcurrentDictionary<int, (long row, DateTimeOffset at)> _pathAsked = [];
 
     /// <summary>
     /// One pass at a time per printer.
@@ -1641,7 +1638,8 @@ public sealed class QueueAdvancer : BackgroundService
 
     /// <summary>
     /// Asks the printer what it calls a file that has arrived and was never named, and records the
-    /// answer - or holds the queue once asking has gone on for <see cref="PathUnresolvableAfter"/>.
+    /// answer - or holds the queue once it has been asked <see cref="PathAsksBeforeHold"/> times
+    /// without saying.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -1652,9 +1650,14 @@ public sealed class QueueAdvancer : BackgroundService
     /// </para>
     /// <para>
     /// <b><c>File not found</c> is the drive correcting us</b>, as it is for a refused start: the
-    /// belief is cleared and the file sent again. Anything else that is not a name - no answer, a
-    /// refusal nobody has read, an answer without a path - is asked again after
-    /// <see cref="BlockRecheckAfter"/>, until the bound.
+    /// belief is cleared and the file sent again. Anything else that is not a name - no answer in time,
+    /// one that could not be read, a refusal nobody has read, an answer without a path - is counted,
+    /// and asked again after <see cref="BlockRecheckAfter"/>.
+    /// </para>
+    /// <para>
+    /// <b>The count and the time of the last ask are stored on the row</b>, so a pass decides from
+    /// what it reads, as the rest of this loop does, and a restart neither forgets the asks already
+    /// made nor asks early.
     /// </para>
     /// </remarks>
     private async Task AskForPrinterPathAsync(AsyncServiceScope scope,
@@ -1675,27 +1678,15 @@ public sealed class QueueAdvancer : BackgroundService
 
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
-        if (now - arrivedAt >= PathUnresolvableAfter)
-        {
-            new QueueHolds(_timeProvider, _logger).HoldPathUnknown(dbContext, printerId, head, onPrinter);
-            await dbContext.SaveChangesAsync(cancellationToken);
-
-            return;
-        }
-
         if (now - arrivedAt < PathAskAfter ||
-            (_pathAsked.TryGetValue(printerId, out (long row, DateTimeOffset at) asked) &&
-             asked.row == onPrinter.Id &&
-             now - asked.at < BlockRecheckAfter))
+            (onPrinter.PathAskedAt is DateTimeOffset askedAt && now - askedAt < BlockRecheckAfter))
         {
             return;
         }
-
-        _pathAsked[printerId] = (onPrinter.Id, now);
 
         string driveName = onPrinter.DriveName ?? head.File!.Name;
         PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
-        CommandOutcome<FileInfoEventDataDTO>? answer;
+        CommandOutcome<FileInfoEventDataDTO>? answer = null;
 
         try
         {
@@ -1709,46 +1700,62 @@ public sealed class QueueAdvancer : BackgroundService
                                                                             cancellationToken));
         }
         catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
-                                      CommandResponseTimedOutException or CommandSendTimedOutException or
-                                      TeamAccessDeniedException or CredentialScopeDeniedException or
-                                      CommandAnswerUnreadableException)
+                                      CommandSendTimedOutException or TeamAccessDeniedException or
+                                      CredentialScopeDeniedException)
         {
+            // Never reached the printer, so it has not been asked, and nothing is counted.
             _logger.LogDebug(e, "[{PrinterId}] could not ask what {FileName} is called on the drive", printerId, driveName);
 
             return;
         }
-
-        if (answer?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+        catch (Exception e) when (e is CommandResponseTimedOutException or CommandAnswerUnreadableException)
         {
-            if (answer.Reason == PrinterDriveCopies.NotFound)
-            {
-                _logger.LogInformation("[{PrinterId}] the drive does not have {FileName} after all; sending it again",
-                                       printerId, driveName);
+            // Asked, and told nothing usable: counted below like any other answer without a name.
+            _logger.LogDebug(e, "[{PrinterId}] asked what {FileName} is called on the drive, and had no answer to read",
+                             printerId, driveName);
+        }
 
-                dbContext.FilesOnPrinters.Remove(onPrinter);
-                await dbContext.SaveChangesAsync(cancellationToken);
+        bool refused = answer?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed;
 
-                return;
-            }
+        if (refused && answer!.Reason == PrinterDriveCopies.NotFound)
+        {
+            _logger.LogInformation("[{PrinterId}] the drive does not have {FileName} after all; sending it again",
+                                   printerId, driveName);
 
-            _logger.LogDebug("[{PrinterId}] the printer would not say what {FileName} is called: {Reason}",
-                             printerId, driveName, ForLog(answer.Reason));
+            dbContext.FilesOnPrinters.Remove(onPrinter);
+            await dbContext.SaveChangesAsync(cancellationToken);
 
             return;
         }
 
-        if (answer?.Answer?.Path is not string path)
+        if (!refused && answer?.Answer?.Path is string path)
         {
-            _logger.LogDebug("[{PrinterId}] the printer described {FileName} without a path", printerId, driveName);
+            onPrinter.PrinterPath = path;
+            onPrinter.PathAskCount = null;
+            onPrinter.PathAskedAt = null;
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}, by asking",
+                                   printerId, driveName, ForLog(path));
 
             return;
         }
 
-        onPrinter.PrinterPath = path;
+        onPrinter.PathAskCount = (onPrinter.PathAskCount ?? 0) + 1;
+        onPrinter.PathAskedAt = now;
+
+        if (onPrinter.PathAskCount >= PathAsksBeforeHold)
+        {
+            new QueueHolds(_timeProvider, _logger).HoldPathUnknown(dbContext, printerId, head, onPrinter);
+        }
+        else
+        {
+            _logger.LogDebug("[{PrinterId}] the printer did not say what {FileName} is called ({Count} of {AsksBeforeHold}): {Reason}",
+                             printerId, driveName, onPrinter.PathAskCount, PathAsksBeforeHold,
+                             ForLog(answer?.Reason));
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}, by asking",
-                               printerId, driveName, ForLog(path));
     }
 
     /// <summary>Has the head's file sent to the printer, under the queue's policy.</summary>

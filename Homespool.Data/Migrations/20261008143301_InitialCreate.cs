@@ -495,6 +495,8 @@ namespace Homespool.Data.Migrations
                     StartRefusalCount = table.Column<int>(type: "INTEGER", nullable: true),
                     StartRefusedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     StartRefusalReason = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
+                    PathAskCount = table.Column<int>(type: "INTEGER", nullable: true),
+                    PathAskedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     ArrivedAt = table.Column<long>(type: "INTEGER", nullable: true),
                     PrinterPath = table.Column<string>(type: "TEXT", nullable: true),
                     DriveName = table.Column<string>(type: "TEXT", nullable: true),

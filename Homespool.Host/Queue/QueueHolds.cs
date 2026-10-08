@@ -33,8 +33,9 @@ internal sealed class QueueHolds
     /// Lifts a hold, and clears what was recorded about it.
     /// </summary>
     /// <remarks>
-    /// One place, because a hold is several fields rather than one and leaving a stale byte count or
-    /// refusal behind a cleared reason would put words on a page that describe nothing.
+    /// One place, used by the loop and by queueing a file again alike, because a hold is several
+    /// fields rather than one: a stale byte count or refusal left behind a cleared reason would put
+    /// words on a page that describe nothing, and a count left at its bound would hold again at once.
     /// </remarks>
     public static void ClearHold(FileOnPrinter onPrinter)
     {
@@ -44,6 +45,8 @@ internal sealed class QueueHolds
         onPrinter.BlockedAt = null;
         TransferRetryRules.Forget(onPrinter);
         PrintStartRetryRules.Forget(onPrinter);
+        onPrinter.PathAskCount = null;
+        onPrinter.PathAskedAt = null;
     }
 
     /// <summary>

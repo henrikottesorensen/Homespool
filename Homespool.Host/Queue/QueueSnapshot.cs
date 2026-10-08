@@ -48,6 +48,9 @@ namespace Homespool.Host.Queue;
 /// Whether the authority the head was queued under may no longer print on this printer - see
 /// <see cref="QueueWaitReason.QueuerLostAccess"/>.
 /// </param>
+/// <param name="FirmwareInstalling">
+/// Whether firmware is being installed on the printer - see <see cref="QueueWaitReason.FirmwareInstalling"/>.
+/// </param>
 public sealed record QueueSnapshot(
     bool Connected,
     PrinterStatus Status,
@@ -57,4 +60,5 @@ public sealed record QueueSnapshot(
     PrintHoldReason? HoldReason = null,
     bool TransferRetryPending = false,
     bool HeadAuthorityLapsed = false,
-    bool TransferRetryAfterAbort = false);
+    bool TransferRetryAfterAbort = false,
+    bool FirmwareInstalling = false);

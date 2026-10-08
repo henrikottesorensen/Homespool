@@ -1,6 +1,8 @@
 using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 
@@ -26,7 +28,28 @@ public sealed class PrusaFirmwareVerifierTests
 {
     private const int FirmwareLength = TestFirmwareImages.FirmwareLength;
 
+    /// <summary>Where the entries after the firmware begin in a built image.</summary>
+    private const int EntriesFrom = PrusaFirmwareVerifier.FirmwareOffset + FirmwareLength;
+
+    /// <summary>An entry's type and length, before its content.</summary>
+    private const int EntryHeader = 5;
+
+    private const int DigestLength = PrusaFirmwareVerifier.DigestLength;
+
     private readonly PrusaFirmwareVerifier _verifier = TestFirmwareImages.Verifier;
+
+    /// <summary>Which tarball a test changes.</summary>
+    public enum TarballChange
+    {
+        /// <summary>Never set.</summary>
+        Undefined = 0,
+
+        /// <summary>The resources tarball, the first entry.</summary>
+        Resources = 1,
+
+        /// <summary>The bootloader tarball, the third.</summary>
+        Bootloader = 2,
+    }
 
     [Fact]
     public async Task AnImageSignedWithTheKeyIsVerified()
@@ -169,22 +192,291 @@ public sealed class PrusaFirmwareVerifierTests
         check.Verdict.Should().Be(PrusaFirmwareVerdict.NotAnImage);
     }
 
-    /// <summary>
-    /// The entries after the firmware are outside the signature, as Prusa packs them - the signed
-    /// firmware checks them itself when it installs them. Pinned so a change here is a decision.
-    /// </summary>
     [Fact]
-    public async Task TheEntriesAfterTheFirmwareAreNotSigned()
+    public async Task AVerifiedImageIsNamedByTheDigestItsSignatureCovers()
     {
         // Arrange
         byte[] image = TestFirmwareImages.Build();
-        image[^1] ^= 1;
 
         // Act
         PrusaFirmwareCheck check = await CheckAsync(image);
 
         // Assert
+        check.SignedDigest.Should().Be(Base64Url.EncodeToString(SHA256.HashData(SignedRegion(image))));
+    }
+
+    [Fact]
+    public async Task ARefusedImageIsNotNamed()
+    {
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(signed: false));
+
+        // Assert
+        check.SignedDigest.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Each tarball after the firmware is outside the signature, so a changed byte in either is caught
+    /// by its digest entry.
+    /// </summary>
+    [Theory]
+    [InlineData(TarballChange.Resources)]
+    [InlineData(TarballChange.Bootloader)]
+    public async Task AChangedTarballByteIsRefused(TarballChange change)
+    {
+        // Arrange
+        byte[] image = TestFirmwareImages.Build();
+        int at = change == TarballChange.Resources ?
+            EntriesFrom + EntryHeader :
+            EntriesFrom + (3 * EntryHeader) + TestFirmwareImages.ResourcesTarball.Length + DigestLength;
+        image[at + 3] ^= 1;
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(image);
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+        check.Header!.Version.Should().Be("7.0.0+16903", "a refusal can still name what the file claimed to be");
+    }
+
+    /// <summary>
+    /// The reviewer's case: another tarball with a digest entry written to match. Only the signed
+    /// firmware's own copy of the digest refuses it.
+    /// </summary>
+    [Theory]
+    [InlineData(TarballChange.Resources)]
+    [InlineData(TarballChange.Bootloader)]
+    public async Task AnotherTarballWithAMatchingDigestEntryIsRefused(TarballChange change)
+    {
+        // Arrange
+        byte[] other = [.. TestFirmwareImages.ResourcesTarball.Reverse()];
+        byte[] entries = change == TarballChange.Resources ?
+            TestFirmwareImages.Entries(other, TestFirmwareImages.BootloaderTarball) :
+            TestFirmwareImages.Entries(TestFirmwareImages.ResourcesTarball, other);
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: entries));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>
+    /// The printer looks both tarballs up by value, trying each digest entry for each revision, so the
+    /// two in each other's places still install - and are accepted, as the same image.
+    /// </summary>
+    [Fact]
+    public async Task TheTwoTarballsInEachOthersPlacesAreTheSameImage()
+    {
+        // Arrange
+        byte[] swapped = TestFirmwareImages.Entries(TestFirmwareImages.BootloaderTarball, TestFirmwareImages.ResourcesTarball);
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: swapped));
+        PrusaFirmwareCheck original = await CheckAsync(TestFirmwareImages.Build());
+
+        // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.Verified);
+        check.SignedDigest.Should().Be(original.SignedDigest);
+    }
+
+    /// <summary>
+    /// A digest is found wherever it lies in the signed region, across the seam between the header and
+    /// the firmware - which the verifier reads as two pieces - included.
+    /// </summary>
+    [Fact]
+    public async Task ADigestAcrossTheHeadersEndIsFound()
+    {
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(resourcesDigestAt: TestFirmwareImages.HeaderLength - 16));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.Verified);
+    }
+
+    /// <summary>A digest across the seam between two of the firmware's read buffers is found too.</summary>
+    [Fact]
+    public async Task ADigestAcrossTwoReadsIsFound()
+    {
+        // Arrange - a stream that hands out ten bytes a read, so every digest straddles reads
+        byte[] image = TestFirmwareImages.Build();
+        await using TrickleStream stream = new(image, 10);
+
+        // Act
+        PrusaFirmwareCheck check = await _verifier.CheckAsync(stream, TestContext.Current.CancellationToken);
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.Verified);
+    }
+
+    [Fact]
+    public async Task BytesAfterTheLastEntryAreRefused()
+    {
+        // Arrange
+        byte[] image = [.. TestFirmwareImages.Build(), 0];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(image);
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    [Fact]
+    public async Task AnUnknownEntryAfterTheLastIsRefused()
+    {
+        // Arrange
+        byte[] image = [.. TestFirmwareImages.Build(), .. TestFirmwareImages.Entry(13, [1, 2, 3])];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(image);
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    /// <summary>
+    /// Without its bootloader tarball, a printer that needs the bootloader updated would wait for ever
+    /// for a file carrying one.
+    /// </summary>
+    [Fact]
+    public async Task AnImageMissingATarballIsRefused()
+    {
+        // Arrange
+        byte[] resourcesOnly = [.. TestFirmwareImages.Entry(9, TestFirmwareImages.ResourcesTarball),
+                                .. TestFirmwareImages.Entry(10, SHA256.HashData(TestFirmwareImages.ResourcesTarball))];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: resourcesOnly));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    [Fact]
+    public async Task AnImageWithNothingAfterTheFirmwareIsRefused()
+    {
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: []));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    /// <summary>
+    /// The layout before 6.6: a resources image with its block size and count, which nothing signed
+    /// vouches for.
+    /// </summary>
+    [Fact]
+    public async Task TheOlderLayoutIsRefused()
+    {
+        // Arrange
+        byte[] older = [.. TestFirmwareImages.Entry(1, TestFirmwareImages.ResourcesTarball),
+                        .. TestFirmwareImages.Entry(2, [0, 16, 0, 0]),
+                        .. TestFirmwareImages.Entry(3, [0, 2, 0, 0]),
+                        .. TestFirmwareImages.Entry(4, SHA256.HashData(TestFirmwareImages.ResourcesTarball))];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: older));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(33)]
+    public async Task ADigestEntryOfAnotherLengthIsRefused(int length)
+    {
+        // Arrange - the right digest, cut short or with a byte after it
+        byte[] digest = [.. SHA256.HashData(TestFirmwareImages.ResourcesTarball), 0];
+        byte[] entries = [.. TestFirmwareImages.Entry(9, TestFirmwareImages.ResourcesTarball),
+                          .. TestFirmwareImages.Entry(10, digest[..length]),
+                          .. TestFirmwareImages.Entry(11, TestFirmwareImages.BootloaderTarball),
+                          .. TestFirmwareImages.Entry(12, SHA256.HashData(TestFirmwareImages.BootloaderTarball))];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: entries));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    /// <summary>
+    /// The printer finds each entry by its type, so the bootloader's digest under any other type is a
+    /// digest it never finds - however right its length and its bytes.
+    /// </summary>
+    [Fact]
+    public async Task AnEntryOfAnotherTypeIsRefused()
+    {
+        // Arrange
+        byte[] entries = TestFirmwareImages.Entries(TestFirmwareImages.ResourcesTarball, TestFirmwareImages.BootloaderTarball);
+        entries[^(EntryHeader + DigestLength)] = 13;
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: entries));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    [Fact]
+    public async Task AnEmptyTarballIsRefused()
+    {
+        // Arrange
+        byte[] empty = [.. TestFirmwareImages.Entry(9, []),
+                        .. TestFirmwareImages.Entry(10, SHA256.HashData([])),
+                        .. TestFirmwareImages.Entry(11, TestFirmwareImages.BootloaderTarball),
+                        .. TestFirmwareImages.Entry(12, SHA256.HashData(TestFirmwareImages.BootloaderTarball))];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: empty));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(EntryHeader + 10)]
+    [InlineData(EntryHeader + 64 + EntryHeader + 10)]
+    public async Task AnImageThatEndsInsideItsEntriesIsTruncated(int keep)
+    {
+        // Arrange
+        byte[] image = TestFirmwareImages.Build()[..(EntriesFrom + keep)];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(image);
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.Truncated);
+    }
+
+    /// <summary>
+    /// The entries are checked after the signature, so an image that is not Prusa's is called that,
+    /// whatever follows its firmware.
+    /// </summary>
+    [Fact]
+    public async Task AnImageSignedWithAnotherKeyIsRefusedAsThatWhateverItsEntries()
+    {
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(signedWith: TestFirmwareImages.OtherKey, entries: []));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.SignatureInvalid);
+    }
+
+    [Fact]
+    public async Task AStreamThatCannotSeekIsRefused()
+    {
+        // Arrange
+        await using TrickleStream stream = new(TestFirmwareImages.Build(), 10, canSeek: false);
+
+        // Act
+        Func<Task> check = () => _verifier.CheckAsync(stream, TestContext.Current.CancellationToken);
+
+        // Assert
+        await check.Should().ThrowAsync<ArgumentException>();
     }
 
     [Theory]
@@ -241,8 +533,9 @@ public sealed class PrusaFirmwareVerifierTests
 
     /// <summary>
     /// Every official image in the repository's <c>firmware/</c> directory, which is never committed,
-    /// is verified with Prusa's key - and stops being once one byte of its firmware changes, so a
-    /// verifier that accepted anything would fail here too.
+    /// is verified with Prusa's key and named by its own signed digest - and stops being once one byte
+    /// of its firmware, or of its last tarball, changes, so a verifier that accepted anything would fail
+    /// here too.
     /// </summary>
     [Fact]
     public async Task EveryPrusaImageInTheFirmwareDirectoryIsVerified()
@@ -261,13 +554,21 @@ public sealed class PrusaFirmwareVerifierTests
             byte[] changed = (byte[])image.Clone();
             changed[PrusaFirmwareVerifier.FirmwareOffset + 500] ^= 1;
 
+            // The last entry is the bootloader's digest; a few bytes before it, inside its tarball.
+            byte[] changedTail = (byte[])image.Clone();
+            changedTail[^(EntryHeader + DigestLength + 100)] ^= 1;
+
             // Act
             PrusaFirmwareCheck check = await CheckAsync(image, PrusaFirmwareVerifier.Prusa);
             PrusaFirmwareCheck tampered = await CheckAsync(changed, PrusaFirmwareVerifier.Prusa);
+            PrusaFirmwareCheck tamperedTail = await CheckAsync(changedTail, PrusaFirmwareVerifier.Prusa);
 
             // Assert
             check.Verdict.Should().Be(PrusaFirmwareVerdict.Verified, Path.GetFileName(path));
+            check.SignedDigest.Should().Be(Base64Url.EncodeToString(image[PrusaFirmwareVerifier.SignatureLength..PrusaFirmwareVerifier.SignedFrom]),
+                                           Path.GetFileName(path));
             tampered.IsVerified.Should().BeFalse(Path.GetFileName(path));
+            tamperedTail.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged, Path.GetFileName(path));
         }
     }
 
@@ -294,5 +595,59 @@ public sealed class PrusaFirmwareVerifierTests
 
         return directory ??
                throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
+    }
+
+    /// <summary>A stream over bytes that hands out at most a few of them a read.</summary>
+    private sealed class TrickleStream(byte[] bytes, int perRead, bool canSeek = true) : Stream
+    {
+        private readonly MemoryStream _inner = new(bytes, writable: false);
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => canSeek;
+
+        public override bool CanWrite => false;
+
+        public override long Length => _inner.Length;
+
+        public override long Position
+        {
+            get => _inner.Position;
+            set => _inner.Position = value;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            return _inner.Read(buffer, offset, Math.Min(count, perRead));
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            return canSeek ? _inner.Seek(offset, origin) : throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override void SetLength(long value)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _inner.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 }

@@ -216,13 +216,20 @@ public class FirmwareModel : PageModel
             return refused;
         }
 
-        string? deleted = digest is null ?
-            null :
-            await _images.DeleteAsync(await CallerAsync(), Printer.Id, digest, cancellationToken);
+        try
+        {
+            string? deleted = digest is null ?
+                null :
+                await _images.DeleteAsync(await CallerAsync(), Printer.Id, digest, cancellationToken);
 
-        (StatusMessage, StatusSuccess) = deleted is null ?
-            (_localiser["Firmware_DeleteGone"].Value, false) :
-            (_localiser["Files_Deleted", deleted].Value, true);
+            (StatusMessage, StatusSuccess) = deleted is null ?
+                (_localiser["Firmware_DeleteGone"].Value, false) :
+                (_localiser["Files_Deleted", deleted].Value, true);
+        }
+        catch (FirmwareImageRefusedException e)
+        {
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+        }
 
         return RedirectToPage(new { uuid });
     }

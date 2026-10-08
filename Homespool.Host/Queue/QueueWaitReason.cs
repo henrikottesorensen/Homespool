@@ -190,4 +190,14 @@ public enum QueueWaitReason
     /// </summary>
     /// <remarks>Not routed back into the transfer path: the file is no smaller the next time. The hold banner carries the sentence.</remarks>
     FileTooLarge = 16,
+
+    /// <summary>
+    /// Firmware is being installed on the printer, and the queue waits until it is done or has failed.
+    /// </summary>
+    /// <remarks>
+    /// <b>Waits rather than refuses</b>: nothing queued is lost, and a print started in the moments
+    /// before the flash would be reset by it. The install's own check of the printer comes after the
+    /// image has arrived, so only the queue standing still keeps a print out of that gap.
+    /// </remarks>
+    FirmwareInstalling = 17,
 }

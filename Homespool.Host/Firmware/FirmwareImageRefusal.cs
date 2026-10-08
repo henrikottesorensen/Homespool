@@ -1,6 +1,6 @@
 namespace Homespool.Host.Firmware;
 
-/// <summary>Why an upload was not stored as a firmware image.</summary>
+/// <summary>Why an upload was not stored as a firmware image, or a stored one not deleted.</summary>
 public enum FirmwareImageRefusal
 {
     /// <summary>Never set. The zero value every enum here reserves for "nobody wrote this".</summary>
@@ -20,4 +20,10 @@ public enum FirmwareImageRefusal
 
     /// <summary>Another image is already stored under this name by the same person.</summary>
     NameTaken = 5,
+
+    /// <summary>
+    /// The image is being installed on a printer, or Homespool has it recorded on one's drive, so it is
+    /// not deleted: that printer's next install relies on the record to clear the drive's one name.
+    /// </summary>
+    OnAPrinter = 6,
 }

@@ -10,6 +10,8 @@ using AwesomeAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 
+using NSubstitute;
+
 using Homespool.Data;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
@@ -189,6 +191,71 @@ public sealed class FirmwareImagesTests : IDisposable
         (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
+    /// <summary>
+    /// The same firmware in other bytes - its signature in the other valid form, the tarballs in each
+    /// other's places - is the one image too, kept as first uploaded, so nobody is offered a look-alike
+    /// beside it.
+    /// </summary>
+    [Fact]
+    public async Task TheSameFirmwareInOtherBytesIsOneImage()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+        byte[] image = TestFirmwareImages.Build();
+        byte[] otherSignature = TestFirmwareImages.WithOtherSignature(image);
+        byte[] swapped = TestFirmwareImages.Build(entries: TestFirmwareImages.Entries(TestFirmwareImages.BootloaderTarball,
+                                                                                      TestFirmwareImages.ResourcesTarball));
+
+        // Act
+        FirmwareImage first = await StoreAsync(context, printer, image);
+        FirmwareImage second = await StoreAsync(context, printer, otherSignature, "twin.bbf");
+        FirmwareImage third = await StoreAsync(context, printer, swapped, "swapped.bbf");
+
+        // Assert
+        otherSignature.Should().NotEqual(image);
+        second.Digest.Should().Be(first.Digest);
+        third.Digest.Should().Be(first.Digest);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await File.ReadAllBytesAsync(Path.Combine(_root, first.Digest + ".bbf"), TestContext.Current.CancellationToken))
+            .Should().Equal(image);
+    }
+
+    /// <summary>The reviewer's case: Prusa's firmware with a byte of its resources changed.</summary>
+    [Fact]
+    public async Task AnImageWithChangedResourcesIsRefusedAndLeavesNothing()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+        byte[] image = TestFirmwareImages.Build();
+        image[^100] ^= 1;
+
+        // Act
+        Func<Task> store = () => StoreAsync(context, printer, image);
+
+        // Assert
+        FirmwareImageRefusedException refused = (await store.Should().ThrowAsync<FirmwareImageRefusedException>()).Which;
+        refused.ResourceKey.Should().Be("Error_FirmwareResourcesChanged");
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AnImageWhoseResourcesCannotBeReadIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+
+        // Act
+        Func<Task> store = () => StoreAsync(context, printer, [.. TestFirmwareImages.Build(), 0]);
+
+        // Assert
+        (await store.Should().ThrowAsync<FirmwareImageRefusedException>())
+            .Which.ResourceKey.Should().Be("Error_FirmwareResourcesUnreadable");
+    }
+
     [Fact]
     public async Task ADifferentImageUnderANameAlreadyUsedIsRefused()
     {
@@ -289,6 +356,60 @@ public sealed class FirmwareImagesTests : IDisposable
         // Assert
         await store.Should().ThrowAsync<UploadTooLargeException>();
         Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// An image Homespool has recorded on a printer's drive - an install whose clean-up did not go
+    /// through - is kept: the record is what that printer's next install clears the drive by, and it
+    /// would go with the image.
+    /// </summary>
+    [Fact]
+    public async Task AnImageRecordedOnAPrintersDriveIsNotDeleted()
+    {
+        // Arrange - recorded on another team's printer, deleted by this one's manager
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+        Printer othersPrinter = await AddPrinterOnAnotherTeamAsync(context, "7.1.0");
+        FirmwareImage stored = await StoreAsync(context, printer, TestFirmwareImages.Build());
+        long fileId = await context.Files.Select(row => row.Id).SingleAsync(TestContext.Current.CancellationToken);
+
+        context.FilesOnPrinters.Add(new FileOnPrinter { PrinterId = othersPrinter.Id, FileId = fileId, PrinterPath = "/usb/FIRMWARE.BBF" });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        Func<Task> delete = () => NewImages(context).DeleteAsync(Caller.Unscoped(Manager), printer.Id, stored.Digest,
+                                                                 TestContext.Current.CancellationToken);
+
+        // Assert
+        (await delete.Should().ThrowAsync<FirmwareImageRefusedException>()).Which.ResourceKey.Should().Be("Error_FirmwareOnAPrinter");
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await context.FilesOnPrinters.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        File.Exists(Path.Combine(_root, stored.Digest + ".bbf")).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Nor while it is being installed, before the send has recorded anything: the install is reading
+    /// it from the store.
+    /// </summary>
+    [Fact]
+    public async Task AnImageBeingInstalledIsNotDeleted()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+        FirmwareImage stored = await StoreAsync(context, printer, TestFirmwareImages.Build());
+        long fileId = await context.Files.Select(row => row.Id).SingleAsync(TestContext.Current.CancellationToken);
+
+        IFirmwareInstallations installations = Substitute.For<IFirmwareInstallations>();
+        installations.IsInstallingImage(fileId).Returns(true);
+
+        // Act
+        Func<Task> delete = () => NewImages(context, installations).DeleteAsync(Caller.Unscoped(Manager), printer.Id, stored.Digest,
+                                                                                TestContext.Current.CancellationToken);
+
+        // Assert
+        (await delete.Should().ThrowAsync<FirmwareImageRefusedException>()).Which.Refusal.Should().Be(FirmwareImageRefusal.OnAPrinter);
+        File.Exists(Path.Combine(_root, stored.Digest + ".bbf")).Should().BeTrue();
     }
 
     /// <summary>
@@ -447,11 +568,12 @@ public sealed class FirmwareImagesTests : IDisposable
         return printer;
     }
 
-    private FirmwareImages NewImages(HomespoolDbContext context)
+    private FirmwareImages NewImages(HomespoolDbContext context, IFirmwareInstallations? installations = null)
     {
         return new FirmwareImages(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
                                   context,
                                   TestFirmwareImages.Verifier,
+                                  installations ?? Substitute.For<IFirmwareInstallations>(),
                                   TestOptions.Monitor(new FirmwareStorageOptions { Directory = _root }),
                                   new HostEnvironmentAccessor(_root),
                                   TimeProvider.System,

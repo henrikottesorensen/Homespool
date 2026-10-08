@@ -21,6 +21,7 @@ using NSubstitute;
 using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Firmware;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
@@ -1033,7 +1034,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         return new QueueSnapshotReader(context, telemetry, _registry, _clock,
                                        new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
-                                       Substitute.For<ITransferOffers>());
+                                       Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>());
     }
 
     /// <summary>Puts real bytes where the store expects this user's file.</summary>
@@ -5782,6 +5783,7 @@ public sealed class QueueAdvancerTests : IDisposable
         // the staleness cases measure wall-clock time and pass for the wrong reason.
         services.AddSingleton<TimeProvider>(_clock);
         services.AddScoped<QueueSnapshotReader>();
+        services.AddSingleton(Substitute.For<IFirmwareInstallations>());
         services.AddSingleton<UserFileStore>();
         services.AddScoped<PrintFileCatalog>();
 

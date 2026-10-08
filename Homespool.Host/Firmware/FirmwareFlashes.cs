@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
+using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages;
@@ -36,15 +37,22 @@ namespace Homespool.Host.Firmware;
 /// </para>
 /// <para>
 /// <b>Refused up front, and checked again before the flash.</b> The printer must be connected, idle
-/// or finished by the rule a heater or an unload uses, and have nothing queued: the queue could
-/// otherwise start a print between the image arriving and the flash. The same check runs again
-/// immediately before <see cref="FlashFirmware"/> is sent, because the image takes minutes to arrive.
+/// or finished by the rule a heater or an unload uses, and have nothing queued. The printer's state is
+/// checked again immediately before <see cref="FlashFirmware"/> is sent, because the image takes
+/// minutes to arrive and somebody at the printer may have started a print meanwhile.
+/// </para>
+/// <para>
+/// <b>Nothing in Homespool gives the printer work while it runs</b>
+/// (<see cref="IFirmwareInstallations"/>): the queue waits, so a print queued meanwhile starts once
+/// the printer is back rather than in the moments before the flash resets it, and a direct send of
+/// another file is refused. The queue is why the second check does not ask about queued prints.
 /// </para>
 /// <para>
 /// <b>Through the transfer path every file takes</b>, as the person's own send: the mailbox, the
 /// record of what is on the drive, and the arrival and short path the printer reports. So the person
 /// needs <see cref="Capability.Print"/> on the printer as well as <see cref="Capability.ManagePrinter"/>,
-/// which every preset holding the second includes.
+/// asked when the flash starts - an image already on the drive is not sent again, and would otherwise
+/// be flashed without it.
 /// </para>
 /// <para>
 /// <b>One name on the drive, <see cref="FlashFirmware.DriveName"/></b> - see that class for why. Any
@@ -52,7 +60,7 @@ namespace Homespool.Host.Firmware;
 /// once the printer is back on its version.
 /// </para>
 /// </remarks>
-public sealed class FirmwareFlashes
+public sealed class FirmwareFlashes : IFirmwareInstallations
 {
     private readonly ConcurrentDictionary<int, FirmwareFlashStatus> _flashes = new();
     private readonly Lock _gate = new();
@@ -86,6 +94,24 @@ public sealed class FirmwareFlashes
         return _flashes.TryGetValue(printerId, out FirmwareFlashStatus? status) ? status : null;
     }
 
+    /// <inheritdoc />
+    public bool IsInstalling(int printerId)
+    {
+        return For(printerId)?.IsRunning == true;
+    }
+
+    /// <inheritdoc />
+    public long? ImageBeingInstalled(int printerId)
+    {
+        return For(printerId) is { IsRunning: true } status ? status.ImageId : null;
+    }
+
+    /// <inheritdoc />
+    public bool IsInstallingImage(long fileId)
+    {
+        return _flashes.Values.Any(status => status.IsRunning && status.ImageId == fileId);
+    }
+
     /// <summary>
     /// Starts installing the stored image <paramref name="digest"/> on <paramref name="printerId"/>,
     /// and returns once it is under way.
@@ -107,6 +133,10 @@ public sealed class FirmwareFlashes
             image = await scope.ServiceProvider.GetRequiredService<FirmwareImages>()
                                .FindForFlashingAsync(caller, printerId, digest, cancellationToken);
 
+            // Here rather than left to the send, which an image already on the drive skips.
+            await scope.ServiceProvider.GetRequiredService<PrinterAccessService>()
+                       .RequireAsync(printerId, caller, Capability.Print, cancellationToken);
+
             Printer printer = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                                          .Printers
                                          .AsNoTracking()
@@ -119,10 +149,10 @@ public sealed class FirmwareFlashes
                 throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.NoSuchImage);
             }
 
-            await RequireReadyAsync(scope.ServiceProvider, printerId, printerName, cancellationToken);
+            await RequireReadyAsync(scope.ServiceProvider, printerId, printerName, queueMatters: true, cancellationToken);
         }
 
-        FirmwareFlashStatus status = new(printerId, image.Row.Name, image.Header.Version, FirmwareFlashStage.Sending,
+        FirmwareFlashStatus status = new(printerId, image.Row.Id, image.Row.Name, image.Header.Version, FirmwareFlashStage.Sending,
                                          _timeProvider.GetUtcNow());
 
         lock (_gate)
@@ -143,10 +173,14 @@ public sealed class FirmwareFlashes
         return status;
     }
 
-    /// <summary>The printer is connected, idle or finished, and has nothing queued - or why not.</summary>
+    /// <summary>
+    /// The printer is connected, idle or finished, and - when <paramref name="queueMatters"/> - has
+    /// nothing queued; or why not.
+    /// </summary>
     private static async Task RequireReadyAsync(IServiceProvider services,
                                                 int printerId,
                                                 string printerName,
+                                                bool queueMatters,
                                                 CancellationToken cancellationToken)
     {
         QueueSnapshot snapshot = await services.GetRequiredService<QueueSnapshotReader>()
@@ -162,7 +196,7 @@ public sealed class FirmwareFlashes
             throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.Busy);
         }
 
-        if (snapshot.Head is not null)
+        if (queueMatters && snapshot.Head is not null)
         {
             throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.Queued);
         }
@@ -209,7 +243,8 @@ public sealed class FirmwareFlashes
 
             await using (AsyncServiceScope scope = _scopeFactory.CreateAsyncScope())
             {
-                await RequireReadyAsync(scope.ServiceProvider, printerId, printerName, cancellationToken);
+                // Not the queue: it has waited since the start, and anything queued since waits too.
+                await RequireReadyAsync(scope.ServiceProvider, printerId, printerName, queueMatters: false, cancellationToken);
 
                 flashedAt = _timeProvider.GetUtcNow();
 

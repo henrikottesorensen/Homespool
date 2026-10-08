@@ -496,6 +496,7 @@ public static class Program
             builder.Services.AddScoped<Firmware.FirmwareImages>();
             builder.Services.AddSingleton(Firmware.FirmwareFlashTimings.Default);
             builder.Services.AddSingleton<Firmware.FirmwareFlashes>();
+            builder.Services.AddSingleton<Firmware.IFirmwareInstallations>(sp => sp.GetRequiredService<Firmware.FirmwareFlashes>());
 
             // Cameras: options, the guarded HTTP client, the fetcher and the frame cache. The
             // handler carries the address policy, which reads as networking plumbing here and lives

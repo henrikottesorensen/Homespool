@@ -529,6 +529,21 @@ public class QueueRulesTests
     /// Guards the ordering: a stale refusal on a row whose file is now on the drive must not stop the
     /// print.
     /// </remarks>
+    /// <summary>
+    /// A file ready to print waits while firmware is installed: a print started in the moments before
+    /// the flash would be reset by it.
+    /// </summary>
+    [Fact]
+    public void NothingStartsWhileFirmwareIsInstalled()
+    {
+        QueueAction print = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: true, path: "/usb/A~1.BGC") with { FirmwareInstalling = true });
+        QueueAction send = QueueRules.Decide(Situation(PrinterStatus.Ready, arrived: false, path: null) with { FirmwareInstalling = true });
+
+        print.Should().Be(QueueAction.Wait(QueueWaitReason.FirmwareInstalling));
+        send.Should().Be(QueueAction.Wait(QueueWaitReason.FirmwareInstalling));
+    }
+
     [Fact]
     public void APendingRetryDoesNotStopAFileThatHasArrived()
     {
@@ -556,7 +571,8 @@ public class QueueRulesTests
                                   QueueWaitReason.TransferAbortRetrying or
                                   QueueWaitReason.AwaitingPrinterPath or
                                   QueueWaitReason.PrinterNotAvailable or
-                                  QueueWaitReason.QueuerLostAccess;
+                                  QueueWaitReason.QueuerLostAccess or
+                                  QueueWaitReason.FirmwareInstalling;
 
         MessageKey? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
 

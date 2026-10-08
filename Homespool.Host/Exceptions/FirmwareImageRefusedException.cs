@@ -63,12 +63,15 @@ public class FirmwareImageRefusedException : Exception, ILocalisableError
         FirmwareImageRefusal.WrongPrinter => "Error_FirmwareWrongPrinter",
         FirmwareImageRefusal.PrinterModelUnknown => "Error_FirmwarePrinterModelUnknown",
         FirmwareImageRefusal.NameTaken => "Error_FirmwareNameTaken",
+        FirmwareImageRefusal.OnAPrinter => "Error_FirmwareOnAPrinter",
         FirmwareImageRefusal.NotVerified => Check?.Verdict switch
         {
             PrusaFirmwareVerdict.Truncated => "Error_FirmwareTruncated",
             PrusaFirmwareVerdict.Damaged => "Error_FirmwareDamaged",
             PrusaFirmwareVerdict.NoSignature => "Error_FirmwareNoSignature",
             PrusaFirmwareVerdict.SignatureInvalid => "Error_FirmwareNotPrusas",
+            PrusaFirmwareVerdict.ResourcesUnreadable => "Error_FirmwareResourcesUnreadable",
+            PrusaFirmwareVerdict.ResourcesChanged => "Error_FirmwareResourcesChanged",
             _ => "Error_FirmwareNotAnImage",
         },
         _ => "Error_FirmwareNotAnImage",

@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 using Homespool.Data;
 using Homespool.Host.Authorisation;
+using Homespool.Host.Firmware;
 using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Transfers;
@@ -52,13 +53,15 @@ public class QueueSnapshotReader
     private readonly TimeProvider _timeProvider;
     private readonly PrinterAccessService _access;
     private readonly ITransferOffers _offers;
+    private readonly IFirmwareInstallations _installations;
 
     public QueueSnapshotReader(HomespoolDbContext dbContext,
                                TelemetryDbContext telemetry,
                                PrinterConnectionRegistry registry,
                                TimeProvider timeProvider,
                                PrinterAccessService access,
-                               ITransferOffers offers)
+                               ITransferOffers offers,
+                               IFirmwareInstallations installations)
     {
         _dbContext = dbContext;
         _telemetry = telemetry;
@@ -66,6 +69,7 @@ public class QueueSnapshotReader
         _timeProvider = timeProvider;
         _access = access;
         _offers = offers;
+        _installations = installations;
     }
 
     /// <summary>
@@ -173,7 +177,8 @@ public class QueueSnapshotReader
 
         if (head?.File is null)
         {
-            return new QueueSnapshot(connected, status, Head: null, TransferInFlight: false, printInFlight);
+            return new QueueSnapshot(connected, status, Head: null, TransferInFlight: false, printInFlight,
+                                     FirmwareInstalling: _installations.IsInstalling(printerId));
         }
 
         FileOnPrinter? onPrinter = await _dbContext.FilesOnPrinters
@@ -215,7 +220,8 @@ public class QueueSnapshotReader
             CompatibilityHold(head.File, printer, tools) ?? onPrinter?.HoldReason,
             TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()),
             authorityLapsed,
-            TransferRetryRules.IsCountingAborts(onPrinter));
+            TransferRetryRules.IsCountingAborts(onPrinter),
+            _installations.IsInstalling(printerId));
     }
 
     /// <summary>

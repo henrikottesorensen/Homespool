@@ -23,6 +23,7 @@ using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Cameras;
+using Homespool.Host.Firmware;
 using Homespool.Host.Localisation;
 using Homespool.Host.Pages.Printers;
 using Homespool.Host.PrintFiles;
@@ -138,7 +139,7 @@ public sealed class DetailModelTests : IDisposable
 
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
         QueueSnapshotReader snapshots = new(context, TestTelemetryContext.For(context), connectionRegistry, TimeProvider.System, access,
-                                            Substitute.For<ITransferOffers>());
+                                            Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>());
         PrintHistoryService history = new(context, access, snapshots, new UserNameLookup(context));
 
         PrintQueueService queueService = new(context, access,

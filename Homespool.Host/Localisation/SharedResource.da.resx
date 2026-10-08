@@ -1962,6 +1962,9 @@
   <data name="Error_FileNameUnusable" xml:space="preserve">
     <value>Filnavnet er tomt eller peger på en mappe, når mappedelen er fjernet.</value>
   </data>
+  <data name="Error_PrinterInstallingFirmware" xml:space="preserve">
+    <value>Der bliver installeret firmware på {0}. Send filer til den, når den er tilbage.</value>
+  </data>
   <data name="Error_PrinterNotConnected" xml:space="preserve">
     <value>Denne printer er ikke forbundet.</value>
   </data>
@@ -2147,6 +2150,9 @@
   </data>
   <data name="Queue_WaitTransferAbortRetryingUnnamed" xml:space="preserve">
     <value>Printeren opgav at overføre den næste fil. Prøver igen om lidt.</value>
+  </data>
+  <data name="Queue_WaitFirmwareInstalling" xml:space="preserve">
+    <value>Afventer at firmwareinstallationen bliver færdig.</value>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">
     <value>Afventer at printeren bekræfter filens navn.</value>
@@ -3404,6 +3410,15 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   </data>
   <data name="Error_FirmwareNotPrusas" xml:space="preserve">
     <value>‘{0}’ er ikke signeret af Prusa og bliver derfor ikke taget imod.</value>
+  </data>
+  <data name="Error_FirmwareOnAPrinter" xml:space="preserve">
+    <value>‘{0}’ er ved at blive installeret på en printer eller ligger stadig på en printers drev efter en installation, så den bliver ikke slettet, før den er væk derfra.</value>
+  </data>
+  <data name="Error_FirmwareResourcesUnreadable" xml:space="preserve">
+    <value>‘{0}’ er Prusas firmware, men Homespool kan ikke kontrollere ressourcerne, der er pakket efter den. Firmwarefiler fra før version 6.6 pakker dem på en måde, Homespool ikke kan læse.</value>
+  </data>
+  <data name="Error_FirmwareResourcesChanged" xml:space="preserve">
+    <value>‘{0}’ er Prusas firmware, men ressourcerne, der er pakket efter den, er ikke dem, den angiver: filen er ændret eller beskadiget, efter Prusa byggede den. Hent den igen hos Prusa.</value>
   </data>
   <data name="Error_FirmwareWrongPrinter" xml:space="preserve">
     <value>‘{0}’ er firmware {1} til en anden slags printer end {2}.</value>

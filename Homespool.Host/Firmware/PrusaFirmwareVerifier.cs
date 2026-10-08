@@ -1,5 +1,7 @@
 using System;
 using System.Buffers.Binary;
+using System.Buffers.Text;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -15,15 +17,32 @@ using Org.BouncyCastle.Math;
 namespace Homespool.Host.Firmware;
 
 /// <summary>
-/// Checks that a file is a Prusa firmware image (<c>.bbf</c>), intact and signed with one key.
+/// Checks that a file is a Prusa firmware image (<c>.bbf</c>), intact and signed with one key, down to
+/// its last byte.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>The layout</b>, from Prusa's <c>utils/pack_fw.py</c>: a 64-byte signature, the 32-byte SHA-256
-/// it signs, a 480-byte header, the firmware, then TLV entries (resources and the bootloader). The
-/// signature and the digest cover the header and the firmware - bytes 96 to the firmware's end - and
-/// nothing after. The TLVs are covered all the same, one step removed: the signed firmware carries
-/// the revision of the resources it expects, and refuses any other when it installs them.
+/// it signs, a 480-byte header, the firmware, then entries of a type byte, a little-endian 32-bit
+/// length and that many bytes. The signature and the digest cover the header and the firmware - bytes
+/// 96 to the firmware's end - and nothing after.
+/// </para>
+/// <para>
+/// <b>The entries are tied to the signature by the firmware itself.</b> The build writes each
+/// tarball's SHA-256 into the firmware before it is signed (<c>cmake/Utilities.cmake</c>, the
+/// <c>.resources_tarball_digest</c> and <c>.bootloader_tarball_digest</c> sections). So an image is
+/// whole when it ends in exactly the resources tarball, its digest, the bootloader tarball and its
+/// digest (types 9 to 12, in the order <c>pack_fw.py</c> writes them), each tarball hashes to its
+/// digest entry, and each digest occurs in the signed bytes. Nothing else gets through: the printer
+/// picks a <c>.bbf</c> by those unsigned digest entries, unpacks the tarball before it compares the
+/// hash, and on a mismatch retries for ever (<c>src/resources/bootstrap.cpp</c>), so a changed tarball
+/// would stop a printer until somebody removed the file at it. Where in the firmware a digest sits
+/// is not checked: it differs between builds, and the printer looks both entries up by value, so
+/// the two tarballs swapped with their digests still install.
+/// </para>
+/// <para>
+/// <b>Images before that layout are refused.</b> Releases before 6.6 carry resources as types 1 to 8,
+/// whose block sizes and counts nothing signed vouches for.
 /// </para>
 /// <para>
 /// <b>Why Homespool checks at all, when the printer's bootloader does.</b> The bootloader checks only while
@@ -58,6 +77,15 @@ public sealed class PrusaFirmwareVerifier
     public const int BbfVersion = 2;
 
     private const int BufferSize = 64 * 1024;
+
+    /// <summary>Bytes before each entry's content: its type, then its length.</summary>
+    private const int EntryHeaderLength = 5;
+
+    /// <summary>
+    /// The entries after the firmware, in the order <c>pack_fw.py</c> writes them: the resources
+    /// tarball, its digest, the bootloader tarball, its digest.
+    /// </summary>
+    private static readonly byte[] EntryTypes = [9, 10, 11, 12];
 
     /// <summary>
     /// Prusa's signing key, x then y, big-endian - exactly as it sits in each Buddy bootloader.
@@ -97,16 +125,25 @@ public sealed class PrusaFirmwareVerifier
     public static PrusaFirmwareVerifier Prusa { get; } = new(PrusaKey);
 
     /// <summary>
-    /// Reads <paramref name="content"/> from where it stands through the end of the firmware, and says
-    /// what it is.
+    /// Reads <paramref name="content"/> from where it stands to its end, and says what it is.
     /// </summary>
-    /// <param name="content">The image, positioned at its first byte. Need not be seekable.</param>
+    /// <param name="content">
+    /// The image, positioned at its first byte. Must be seekable: the entries after the firmware are
+    /// read first, so that one pass over the firmware both hashes it and finds their digests in it.
+    /// </param>
     /// <param name="cancellationToken">Cancels the read.</param>
     /// <returns>The verdict, with the header whenever one could be read.</returns>
+    /// <exception cref="ArgumentException"><paramref name="content"/> cannot seek.</exception>
     public async Task<PrusaFirmwareCheck> CheckAsync(Stream content, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(content);
 
+        if (!content.CanSeek)
+        {
+            throw new ArgumentException("The image is read out of order, so the stream must seek.", nameof(content));
+        }
+
+        long start = content.Position;
         byte[] head = new byte[FirmwareOffset];
 
         if (await content.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, cancellationToken) < head.Length)
@@ -121,10 +158,16 @@ public sealed class PrusaFirmwareVerifier
 
         PrusaFirmwareHeader header = ReadHeader(head);
 
+        content.Seek(start + FirmwareOffset + header.FirmwareLength, SeekOrigin.Begin);
+        Entries entries = await ReadEntriesAsync(content, cancellationToken);
+        content.Seek(start + FirmwareOffset, SeekOrigin.Begin);
+
+        DigestSearch search = new(entries.Digests);
         using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         hash.AppendData(head.AsSpan(SignedFrom));
+        search.Scan(head.AsSpan(SignedFrom));
 
-        if (!await HashFirmwareAsync(content, header.FirmwareLength, hash, cancellationToken))
+        if (!await HashAsync(content, header.FirmwareLength, hash, search, cancellationToken))
         {
             return new PrusaFirmwareCheck(PrusaFirmwareVerdict.Truncated, header);
         }
@@ -143,11 +186,23 @@ public sealed class PrusaFirmwareVerifier
             return new PrusaFirmwareCheck(PrusaFirmwareVerdict.NoSignature, header);
         }
 
-        PrusaFirmwareVerdict verdict = Signs(signature, digest) ?
-            PrusaFirmwareVerdict.Verified :
-            PrusaFirmwareVerdict.SignatureInvalid;
+        if (!Signs(signature, digest))
+        {
+            return new PrusaFirmwareCheck(PrusaFirmwareVerdict.SignatureInvalid, header);
+        }
 
-        return new PrusaFirmwareCheck(verdict, header);
+        // The firmware is Prusa's from here on; what is left is whether everything after it is too.
+        if (entries.Verdict != PrusaFirmwareVerdict.Verified)
+        {
+            return new PrusaFirmwareCheck(entries.Verdict, header);
+        }
+
+        if (!search.FoundAll)
+        {
+            return new PrusaFirmwareCheck(PrusaFirmwareVerdict.ResourcesChanged, header);
+        }
+
+        return new PrusaFirmwareCheck(PrusaFirmwareVerdict.Verified, header, Base64Url.EncodeToString(digest));
     }
 
     /// <summary>
@@ -190,13 +245,94 @@ public sealed class PrusaFirmwareVerifier
     }
 
     /// <summary>
-    /// Appends the next <paramref name="length"/> bytes to <paramref name="hash"/>; false when the
-    /// stream ends first.
+    /// Reads the entries after the firmware, from where <paramref name="content"/> stands to its end:
+    /// <see cref="PrusaFirmwareVerdict.Verified"/> with the two digests when they are exactly the four
+    /// <see cref="EntryTypes"/> and each tarball hashes to the digest after it.
     /// </summary>
-    private static async Task<bool> HashFirmwareAsync(Stream content,
-                                                      long length,
-                                                      IncrementalHash hash,
-                                                      CancellationToken cancellationToken)
+    private static async Task<Entries> ReadEntriesAsync(Stream content, CancellationToken cancellationToken)
+    {
+        byte[] entryHeader = new byte[EntryHeaderLength];
+        List<byte[]> digests = [];
+        byte[] tarballHash = [];
+
+        for (int i = 0; i < EntryTypes.Length; i++)
+        {
+            int read = await content.ReadAtLeastAsync(entryHeader, EntryHeaderLength, throwOnEndOfStream: false, cancellationToken);
+
+            if (read == 0)
+            {
+                return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+            }
+
+            if (read < EntryHeaderLength)
+            {
+                return new Entries(PrusaFirmwareVerdict.Truncated, []);
+            }
+
+            if (entryHeader[0] != EntryTypes[i])
+            {
+                return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+            }
+
+            uint length = BinaryPrimitives.ReadUInt32LittleEndian(entryHeader.AsSpan(1));
+
+            // Even entries are tarballs, each followed by its digest.
+            if (i % 2 == 0)
+            {
+                if (length == 0)
+                {
+                    return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+                }
+
+                using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+
+                if (!await HashAsync(content, length, hash, search: null, cancellationToken))
+                {
+                    return new Entries(PrusaFirmwareVerdict.Truncated, []);
+                }
+
+                tarballHash = hash.GetHashAndReset();
+
+                continue;
+            }
+
+            if (length != DigestLength)
+            {
+                return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+            }
+
+            byte[] digest = new byte[DigestLength];
+
+            if (await content.ReadAtLeastAsync(digest, DigestLength, throwOnEndOfStream: false, cancellationToken) < DigestLength)
+            {
+                return new Entries(PrusaFirmwareVerdict.Truncated, []);
+            }
+
+            if (!digest.AsSpan().SequenceEqual(tarballHash))
+            {
+                return new Entries(PrusaFirmwareVerdict.ResourcesChanged, []);
+            }
+
+            digests.Add(digest);
+        }
+
+        if (await content.ReadAsync(entryHeader.AsMemory(0, 1), cancellationToken) != 0)
+        {
+            return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+        }
+
+        return new Entries(PrusaFirmwareVerdict.Verified, digests);
+    }
+
+    /// <summary>
+    /// Appends the next <paramref name="length"/> bytes to <paramref name="hash"/>, and shows them to
+    /// <paramref name="search"/> when there is one; false when the stream ends first.
+    /// </summary>
+    private static async Task<bool> HashAsync(Stream content,
+                                              long length,
+                                              IncrementalHash hash,
+                                              DigestSearch? search,
+                                              CancellationToken cancellationToken)
     {
         byte[] buffer = new byte[BufferSize];
         long remaining = length;
@@ -212,9 +348,51 @@ public sealed class PrusaFirmwareVerifier
             }
 
             hash.AppendData(buffer.AsSpan(0, read));
+            search?.Scan(buffer.AsSpan(0, read));
             remaining -= read;
         }
 
         return true;
+    }
+
+    /// <summary>What the entries after the firmware came to, and the digests they carry.</summary>
+    private sealed record Entries(PrusaFirmwareVerdict Verdict, IReadOnlyList<byte[]> Digests);
+
+    /// <summary>
+    /// Looks for each of a few digests anywhere in bytes shown to it a piece at a time, a digest
+    /// split across two pieces included.
+    /// </summary>
+    private sealed class DigestSearch
+    {
+        private readonly IReadOnlyList<byte[]> _digests;
+        private readonly bool[] _found;
+
+        /// <summary>The last piece's final bytes, then the next piece: enough to see across the seam.</summary>
+        private readonly byte[] _window = new byte[DigestLength - 1 + BufferSize];
+
+        private int _carried;
+
+        public DigestSearch(IReadOnlyList<byte[]> digests)
+        {
+            _digests = digests;
+            _found = new bool[digests.Count];
+        }
+
+        public bool FoundAll => !_found.AsSpan().Contains(false);
+
+        /// <summary>Looks through <paramref name="piece"/>, which is at most a buffer long.</summary>
+        public void Scan(ReadOnlySpan<byte> piece)
+        {
+            piece.CopyTo(_window.AsSpan(_carried));
+            ReadOnlySpan<byte> window = _window.AsSpan(0, _carried + piece.Length);
+
+            for (int i = 0; i < _digests.Count; i++)
+            {
+                _found[i] |= window.IndexOf(_digests[i]) >= 0;
+            }
+
+            _carried = Math.Min(window.Length, DigestLength - 1);
+            window[^_carried..].CopyTo(_window);
+        }
     }
 }

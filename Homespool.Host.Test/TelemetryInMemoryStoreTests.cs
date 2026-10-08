@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -12,9 +13,11 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Testing;
+using Microsoft.Extensions.Options;
 
 using Homespool.Data;
 using Homespool.Host.PrusaConnect;
@@ -258,6 +261,136 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
 
         (await file.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken))
             .Should().Be(0, "history is still not written - one row per printer is, and nothing else");
+    }
+
+    /// <summary>
+    /// <b>At shutdown, what outlives the restart reaches the file in one write, and the buffered
+    /// history is not written at all.</b>
+    /// </summary>
+    /// <remarks>
+    /// The memory store ends with the process, so a final flush into it would only spend the
+    /// shutdown deadline. The material a printer reported is a fact about the machine, kept on its
+    /// row in the file, and has to arrive with the live state rather than depend on that flush.
+    /// Nothing flushes before the stop here: the batch is unreachable and the timer long, so the
+    /// shutdown write is the only one.
+    /// </remarks>
+    [Fact]
+    public async Task ShutdownSavesTheMachineToTheFileAndLeavesTheMemoryStoreAlone()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(options: new StorageOptions
+        {
+            TelemetryInMemory = true,
+            WriteBatchSize = 1000,
+            WriteFlushIntervalSeconds = 30,
+        });
+
+        writer.Enqueue(1, DateTimeOffset.UtcNow,
+                       PrusaTelemetryMapping.ToUpdate(new TelemetryDTO { Status = "PRINTING", Progress = 42, Material = "PLA" }));
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+        _writer = null;
+        writer.Dispose();
+
+        // Assert
+        await using HomespoolDbContext file = NewApplicationContext();
+
+        PrinterLiveState? persisted = await file.PrinterLiveStates
+                                                .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        persisted.Should().NotBeNull($"a restart must not forget what a printer last reported.\n{LogDump()}");
+        persisted!.Progress.Should().Be(42);
+
+        Printer printer = await file.Printers.SingleAsync(TestContext.Current.CancellationToken);
+        printer.LoadedMaterial.Should().Be("PLA", "the material loaded is a fact about the machine, saved with its live state");
+
+        await using TelemetryDbContext memory = TestTelemetryContext.ForConnectionString(_memoryConnectionString);
+
+        (await memory.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(0, "the memory store ends with the process, so shutdown writes nothing into it");
+    }
+
+    /// <summary>
+    /// <b>A writer whose shutdown time is already spent does not start a save it cannot finish</b>,
+    /// and says what that leaves behind.
+    /// </summary>
+    /// <remarks>
+    /// A host timeout no longer than the writer's reserve leaves no time at all, which makes the
+    /// deadline the only thing deciding the outcome - the database is free throughout.
+    /// </remarks>
+    [Fact]
+    public async Task AWriterOutOfShutdownTimeSavesNothingAndSaysSo()
+    {
+        // Arrange
+        TelemetryWriter writer = await StartWriterAsync(hostOptions: new HostOptions { ShutdownTimeout = TimeSpan.FromSeconds(1) });
+
+        writer.Enqueue(1, DateTimeOffset.UtcNow,
+                       PrusaTelemetryMapping.ToUpdate(new TelemetryDTO { Status = "PRINTING", Progress = 42 }));
+
+        // Act
+        await writer.StopAsync(CancellationToken.None);
+
+        // Assert
+        await using HomespoolDbContext file = NewApplicationContext();
+
+        (await file.PrinterLiveStates.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(0, $"no save may start once the shutdown deadline has passed.\n{LogDump()}");
+
+        _logs.GetSnapshot()
+             .Should().Contain(record => record.Level == LogLevel.Warning &&
+                                         record.Message.Contains("Shutdown time ran out before last-known printer state could be saved"),
+                               "a save skipped for want of time must still be reported");
+    }
+
+    /// <summary>
+    /// <b>A locked file cannot hold the shutdown past the host's timeout.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure this pins: the save of last-known state ran after the final flush with a budget
+    /// of its own that no limit counted, so a locked file could keep the writer busy after the host
+    /// had stopped waiting - and the process exited under it, taking the report with it.
+    /// </para>
+    /// <para>
+    /// An outside connection holds the write lock throughout, so every attempt waits its whole
+    /// budget. With a four-second host timeout the deadline allows one two-second attempt and then
+    /// runs out; two attempts at the full three-second cap take over six seconds.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ALockedFileCannotHoldTheShutdownPastTheHostsTimeout()
+    {
+        // Arrange
+        TimeSpan hostTimeout = TimeSpan.FromSeconds(4);
+        TelemetryWriter writer = await StartWriterAsync(hostOptions: new HostOptions { ShutdownTimeout = hostTimeout });
+
+        writer.Enqueue(1, DateTimeOffset.UtcNow,
+                       PrusaTelemetryMapping.ToUpdate(new TelemetryDTO { Status = "PRINTING", Progress = 42 }));
+
+        bool stored = await WaitUntilAsync(async () =>
+        {
+            await using TelemetryDbContext telemetry = TestTelemetryContext.ForConnectionString(_memoryConnectionString);
+
+            return await telemetry.PrinterLiveStates.AnyAsync(TestContext.Current.CancellationToken);
+        }, TimeSpan.FromSeconds(5));
+
+        stored.Should().BeTrue("the arrangement depends on the printer having been heard before the lock is taken");
+
+        await using SqliteConnection holder = await HoldTheFilesWriteLockAsync();
+
+        // Act
+        Stopwatch stopping = Stopwatch.StartNew();
+        await writer.StopAsync(CancellationToken.None);
+        stopping.Stop();
+
+        // Assert
+        stopping.Elapsed.Should().BeLessThan(hostTimeout, $"the writer must be done before the host stops waiting for it.\n{LogDump()}");
+
+        _logs.GetSnapshot()
+             .Should().Contain(record => record.Level >= LogLevel.Warning &&
+                                         record.Message.Contains("last-known printer state"),
+                               "what the lock cost has to be reported, not just survived");
     }
 
     /// <summary>
@@ -559,7 +692,9 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
     /// database on a file, the telemetry context on a shared in-memory database, and a keepalive
     /// holding the latter in existence.
     /// </summary>
-    private async Task<TelemetryWriter> StartWriterAsync(bool seedPrinter = true)
+    private async Task<TelemetryWriter> StartWriterAsync(bool seedPrinter = true,
+                                                         StorageOptions? options = null,
+                                                         HostOptions? hostOptions = null)
     {
         if (seedPrinter)
         {
@@ -580,17 +715,50 @@ public sealed class TelemetryInMemoryStoreTests : IDisposable
         }
 
         _writer = new TelemetryWriter(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                      TestOptions.Monitor(new StorageOptions
-                                      {
-                                          TelemetryInMemory = true,
-                                          WriteBatchSize = 1,
-                                          WriteFlushIntervalSeconds = 0.05,
-                                      }),
-                                      NullLogger<TelemetryWriter>.Instance,
-                                      TimeProvider.System);
+                                      TestOptions.Monitor(options ??
+                                                          new StorageOptions
+                                                          {
+                                                              TelemetryInMemory = true,
+                                                              WriteBatchSize = 1,
+                                                              WriteFlushIntervalSeconds = 0.05,
+                                                          }),
+                                      new FakeLogger<TelemetryWriter>(_logs),
+                                      TimeProvider.System,
+                                      hostOptions: hostOptions is null ? null : Options.Create(hostOptions));
 
         await _writer.StartAsync(CancellationToken.None);
 
         return _writer;
+    }
+
+    /// <summary>
+    /// Takes the application file's write lock from an outside connection, as a long sweep or a
+    /// backup would, and keeps it until the connection is disposed.
+    /// </summary>
+    /// <remarks>
+    /// Unpooled, so disposing really closes the connection and ends the transaction with it, rather
+    /// than returning a connection still inside <c>BEGIN IMMEDIATE</c> to the pool.
+    /// </remarks>
+    private async Task<SqliteConnection> HoldTheFilesWriteLockAsync()
+    {
+        SqliteConnection holder = new(new SqliteConnectionStringBuilder
+        {
+            DataSource = _databasePath,
+            Pooling = false,
+        }.ToString());
+
+        await holder.OpenAsync(TestContext.Current.CancellationToken);
+
+        await using SqliteCommand begin = holder.CreateCommand();
+        begin.CommandText = "BEGIN IMMEDIATE;";
+        await begin.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
+
+        return holder;
+    }
+
+    /// <summary>Renders the writer's captured log for a failure message.</summary>
+    private string LogDump()
+    {
+        return string.Join('\n', _logs.GetSnapshot().Select(r => $"{r.Level}: {r.Message}"));
     }
 }

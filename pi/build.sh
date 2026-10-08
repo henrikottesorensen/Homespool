@@ -235,7 +235,14 @@ mkdir -p "$images_dir"
 # symptom would be `docker save` failing on an image nobody can see is missing. The card needs no
 # registry at run time either way: whatever these are called, they are already in its store, and its
 # compose.yaml asks for the same names because it expands the same variable.
-registry="${REGISTRY:-$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" 2>/dev/null | tail -1)}"
+#
+# A checkout with no .env - every fresh clone - is the common case, not an error, and it is tested
+# for rather than read through: sed exits non-zero on a missing file, pipefail carries that out of
+# the substitution, and set -e then ends the script here with nothing printed.
+registry="${REGISTRY:-}"
+if [ -z "$registry" ] && [ -f "$repo_root/.env" ]; then
+    registry="$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" | tail -1)"
+fi
 image_prefix="${registry:+${registry}/}"
 
 docker save "${image_prefix}homespool:latest" "${image_prefix}homespool-proxy:latest" \
@@ -323,10 +330,17 @@ echo "    still has neither."
 # :ro is an accident guard and nothing more. A privileged container remounts a bind read-write in
 # one command, silently, and the write lands on the host - measured, not assumed. What holds is the
 # path that is never mounted, which is why the line above matters and this word does not.
+#
+# /tmp is a volume because genimage copies the root filesystem into it before mkfs, and the baked
+# Docker store carries overlay2 whiteouts - a layer that deletes a file records it as a 0,0 character
+# device, and the proxy's package purge makes hundreds. The container's own root is overlayfs, which
+# refuses to create a 0,0 device whoever asks, so in a plain /tmp every whiteout fails to copy and the
+# image is never written. A volume is ext4 underneath and takes them; genimage empties it afterwards.
 run_imagegen() {
     docker run --rm --privileged \
         -v "$pi_dir:/repo/pi:ro" \
         -v homespool-ig-work:/opt/rpi-image-gen/work \
+        -v homespool-ig-tmp:/tmp \
         homespool-imagegen \
         ./rpi-image-gen build "$1" -S /repo/pi -c homespool.yaml -- "${overrides[@]}"
 }

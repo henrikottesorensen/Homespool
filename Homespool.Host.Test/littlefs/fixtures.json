@@ -1,0 +1,6 @@
+[
+  { "image": "tree.img", "blockSize": 256, "blockCount": 96, "hash": "9df76e624779c064a3b6ade8ef14e1bf1675096705f86559117a14aa219b4f06" },
+  { "image": "rewritten.img", "blockSize": 256, "blockCount": 64, "hash": "f768c84ab1c5a283385448aef15e0903bcefb897ceb455e130b758ae98202221" },
+  { "image": "torn.img", "blockSize": 256, "blockCount": 64, "hash": "f768c84ab1c5a283385448aef15e0903bcefb897ceb455e130b758ae98202221" },
+  { "image": "older-block.img", "blockSize": 256, "blockCount": 96, "hash": "15580b173e51f218c968bd46d1ab73216efff4ab8bf759e468e57dad056c8d1f" }
+]

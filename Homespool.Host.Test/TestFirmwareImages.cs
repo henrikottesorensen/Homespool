@@ -81,6 +81,10 @@ internal static class TestFirmwareImages
     /// by default.
     /// </param>
     /// <param name="entries">What follows the firmware, in place of <see cref="Entries"/>.</param>
+    /// <param name="named">
+    /// The resources' and the bootloader's digests to compile into the firmware, in place of the two
+    /// tarballs' - an older release names its images' content hashes.
+    /// </param>
     public static byte[] Build(string prerelease = "",
                                byte bbfVersion = PrusaFirmwareVerifier.BbfVersion,
                                bool signed = true,
@@ -91,7 +95,8 @@ internal static class TestFirmwareImages
                                ushort build = 16903,
                                byte seed = 0,
                                int resourcesDigestAt = ResourcesDigestAt,
-                               byte[]? entries = null)
+                               byte[]? entries = null,
+                               (byte[] resources, byte[] bootloader)? named = null)
     {
         AsymmetricCipherKeyPair? key = signed ? signedWith ?? Key : null;
         const int headerLength = HeaderLength;
@@ -112,8 +117,8 @@ internal static class TestFirmwareImages
         }
 
         // What the build does with objcopy: each tarball's digest compiled into the firmware.
-        SHA256.HashData(BootloaderTarball).CopyTo(body, BootloaderDigestAt);
-        SHA256.HashData(ResourcesTarball).CopyTo(body, resourcesDigestAt);
+        (named?.bootloader ?? SHA256.HashData(BootloaderTarball)).CopyTo(body, BootloaderDigestAt);
+        (named?.resources ?? SHA256.HashData(ResourcesTarball)).CopyTo(body, resourcesDigestAt);
 
         byte[] digest = SHA256.HashData(body);
         byte[] signature = key is null ? new byte[PrusaFirmwareVerifier.SignatureLength] : Sign(digest, key);
@@ -128,6 +133,21 @@ internal static class TestFirmwareImages
     {
         return [.. Entry(9, resources), .. Entry(10, SHA256.HashData(resources)),
                 .. Entry(11, bootloader), .. Entry(12, SHA256.HashData(bootloader))];
+    }
+
+    /// <summary>
+    /// The four entries an older release writes for one littlefs image, from <paramref name="firstType"/>:
+    /// the image, its block size, its block count and its content hash.
+    /// </summary>
+    public static byte[] ImageEntries(byte firstType, byte[] image, uint blockSize, uint blockCount, byte[] contentHash)
+    {
+        byte[] size = new byte[4];
+        byte[] count = new byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(size, blockSize);
+        BinaryPrimitives.WriteUInt32LittleEndian(count, blockCount);
+
+        return [.. Entry(firstType, image), .. Entry((byte)(firstType + 1), size),
+                .. Entry((byte)(firstType + 2), count), .. Entry((byte)(firstType + 3), contentHash)];
     }
 
     /// <summary>One entry: its type, its length as a little-endian 32-bit number, its content.</summary>

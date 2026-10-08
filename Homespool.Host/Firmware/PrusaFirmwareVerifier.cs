@@ -42,8 +42,14 @@ namespace Homespool.Host.Firmware;
 /// the two tarballs swapped with their digests still install.
 /// </para>
 /// <para>
-/// <b>Images before that layout are refused.</b> Releases before 6.6 carry resources as types 1 to 8,
-/// whose block sizes and counts nothing signed vouches for.
+/// <b>Releases before 6.6 pack their resources as littlefs images</b>, types 1 to 8: the resources
+/// image, its block size, its block count and its content hash, then the same four for the bootloader.
+/// Here the firmware has the content hash compiled in - a hash over the files inside, not the image's
+/// bytes - and the printer mounts the image with the unsigned block size and count, copies the files
+/// out, hashes its copy and compares, retrying for ever on a mismatch. So each image is read with
+/// <see cref="LittlefsImage"/> under the size and count beside it, and its content hash must equal
+/// the hash entry, which must occur in the signed bytes: everything the printer uses is then fixed by
+/// them.
 /// </para>
 /// <para>
 /// <b>Why Homespool checks at all, when the printer's bootloader does.</b> The bootloader checks only while
@@ -83,10 +89,49 @@ public sealed class PrusaFirmwareVerifier
     private const int EntryHeaderLength = 5;
 
     /// <summary>
-    /// The entries after the firmware, in the order <c>pack_fw.py</c> writes them: the resources
-    /// tarball, its digest, the bootloader tarball, its digest.
+    /// The entries after the firmware since 6.6, in the order <c>pack_fw.py</c> writes them: the
+    /// resources tarball, its digest, the bootloader tarball, its digest.
     /// </summary>
-    private static readonly byte[] EntryTypes = [9, 10, 11, 12];
+    private static readonly Entry[] TarballLayout =
+    [
+        new(9, EntryKind.Tarball), new(10, EntryKind.TarballDigest),
+        new(11, EntryKind.Tarball), new(12, EntryKind.TarballDigest),
+    ];
+
+    /// <summary>
+    /// The entries after the firmware before 6.6: for the resources and then the bootloader, a littlefs
+    /// image, its block size, its block count and its content hash.
+    /// </summary>
+    private static readonly Entry[] ImageLayout =
+    [
+        new(1, EntryKind.Image), new(2, EntryKind.BlockSize), new(3, EntryKind.BlockCount), new(4, EntryKind.ImageHash),
+        new(5, EntryKind.Image), new(6, EntryKind.BlockSize), new(7, EntryKind.BlockCount), new(8, EntryKind.ImageHash),
+    ];
+
+    /// <summary>What an entry after the firmware holds.</summary>
+    private enum EntryKind
+    {
+        /// <summary>Never set.</summary>
+        Undefined = 0,
+
+        /// <summary>A tarball, which the next entry is the SHA-256 of.</summary>
+        Tarball = 1,
+
+        /// <summary>The SHA-256 of the tarball before it.</summary>
+        TarballDigest = 2,
+
+        /// <summary>A littlefs image, which the next three entries describe.</summary>
+        Image = 3,
+
+        /// <summary>The image's block size, a little-endian 32-bit number.</summary>
+        BlockSize = 4,
+
+        /// <summary>The image's block count, a little-endian 32-bit number.</summary>
+        BlockCount = 5,
+
+        /// <summary>The content hash of the files in the image.</summary>
+        ImageHash = 6,
+    }
 
     /// <summary>
     /// Prusa's signing key, x then y, big-endian - exactly as it sits in each Buddy bootloader.
@@ -247,16 +292,21 @@ public sealed class PrusaFirmwareVerifier
 
     /// <summary>
     /// Reads the entries after the firmware, from where <paramref name="content"/> stands to its end:
-    /// <see cref="PrusaFirmwareVerdict.Verified"/> with the two digests when they are exactly the four
-    /// <see cref="EntryTypes"/> and each tarball hashes to the digest after it.
+    /// <see cref="PrusaFirmwareVerdict.Verified"/> with the two digests when they are exactly one of the
+    /// two layouts and each tarball or image matches the digest after it.
     /// </summary>
     private static async Task<Entries> ReadEntriesAsync(Stream content, CancellationToken cancellationToken)
     {
         byte[] entryHeader = new byte[EntryHeaderLength];
         List<byte[]> digests = [];
-        byte[] tarballHash = [];
+        Entry[]? layout = null;
 
-        for (int i = 0; i < EntryTypes.Length; i++)
+        // What the next digest entry must be; null for an image that could not be read.
+        byte[]? expected = [];
+        byte[] image = [];
+        uint blockSize = 0;
+
+        for (int i = 0; layout is null || i < layout.Length; i++)
         {
             int read = await content.ReadAtLeastAsync(entryHeader, EntryHeaderLength, throwOnEndOfStream: false, cancellationToken);
 
@@ -270,21 +320,33 @@ public sealed class PrusaFirmwareVerifier
                 return new Entries(PrusaFirmwareVerdict.Truncated, []);
             }
 
-            if (entryHeader[0] != EntryTypes[i])
+            // The first entry says which layout this is.
+            layout ??= entryHeader[0] == TarballLayout[0].Type ? TarballLayout :
+                       entryHeader[0] == ImageLayout[0].Type ? ImageLayout :
+                       null;
+
+            if (layout is null || entryHeader[0] != layout[i].Type)
             {
                 return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
             }
 
             uint length = BinaryPrimitives.ReadUInt32LittleEndian(entryHeader.AsSpan(1));
+            EntryKind kind = layout[i].Kind;
 
-            // Even entries are tarballs, each followed by its digest.
-            if (i % 2 == 0)
+            if ((kind is EntryKind.Tarball or EntryKind.Image && length == 0) ||
+                (kind is EntryKind.BlockSize or EntryKind.BlockCount && length != 4) ||
+                (kind is EntryKind.TarballDigest or EntryKind.ImageHash && length != DigestLength))
             {
-                if (length == 0)
-                {
-                    return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
-                }
+                return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+            }
 
+            if (length > content.Length - content.Position)
+            {
+                return new Entries(PrusaFirmwareVerdict.Truncated, []);
+            }
+
+            if (kind == EntryKind.Tarball)
+            {
                 using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
                 if (!await HashAsync(content, length, hash, search: null, cancellationToken))
@@ -292,29 +354,39 @@ public sealed class PrusaFirmwareVerifier
                     return new Entries(PrusaFirmwareVerdict.Truncated, []);
                 }
 
-                tarballHash = hash.GetHashAndReset();
+                expected = hash.GetHashAndReset();
 
                 continue;
             }
 
-            if (length != DigestLength)
+            // Everything else is read whole: the digests and numbers are a few bytes, and an image is
+            // walked as a filesystem, which a stream cannot be.
+            byte[] value = new byte[length];
+            await content.ReadExactlyAsync(value, cancellationToken);
+
+            switch (kind)
             {
-                return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+                case EntryKind.Image:
+                    image = value;
+                    break;
+
+                case EntryKind.BlockSize:
+                    blockSize = BinaryPrimitives.ReadUInt32LittleEndian(value);
+                    break;
+
+                case EntryKind.BlockCount:
+                    expected = LittlefsImage.ContentHash(image, blockSize, BinaryPrimitives.ReadUInt32LittleEndian(value));
+                    break;
+
+                default:
+                    if (expected is null || !value.AsSpan().SequenceEqual(expected))
+                    {
+                        return new Entries(PrusaFirmwareVerdict.ResourcesChanged, []);
+                    }
+
+                    digests.Add(value);
+                    break;
             }
-
-            byte[] digest = new byte[DigestLength];
-
-            if (await content.ReadAtLeastAsync(digest, DigestLength, throwOnEndOfStream: false, cancellationToken) < DigestLength)
-            {
-                return new Entries(PrusaFirmwareVerdict.Truncated, []);
-            }
-
-            if (!digest.AsSpan().SequenceEqual(tarballHash))
-            {
-                return new Entries(PrusaFirmwareVerdict.ResourcesChanged, []);
-            }
-
-            digests.Add(digest);
         }
 
         if (await content.ReadAsync(entryHeader.AsMemory(0, 1), cancellationToken) != 0)
@@ -363,6 +435,9 @@ public sealed class PrusaFirmwareVerifier
 
         return true;
     }
+
+    /// <summary>One entry of a layout: its type byte, and what it holds.</summary>
+    private sealed record Entry(byte Type, EntryKind Kind);
 
     /// <summary>What the entries after the firmware came to, and the digests they carry.</summary>
     private sealed record Entries(PrusaFirmwareVerdict Verdict, IReadOnlyList<byte[]> Digests);

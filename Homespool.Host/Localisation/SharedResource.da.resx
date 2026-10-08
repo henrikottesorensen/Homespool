@@ -3415,7 +3415,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>‘{0}’ er ved at blive installeret på en printer eller ligger stadig på en printers drev efter en installation, så den bliver ikke slettet, før den er væk derfra.</value>
   </data>
   <data name="Error_FirmwareResourcesUnreadable" xml:space="preserve">
-    <value>‘{0}’ er Prusas firmware, men Homespool kan ikke kontrollere ressourcerne, der er pakket efter den. Firmwarefiler fra før version 6.6 pakker dem på en måde, Homespool ikke kan læse.</value>
+    <value>‘{0}’ er Prusas firmware, men Homespool kan ikke kontrollere ressourcerne, der er pakket efter den. De er ikke pakket, som Prusa pakker dem.</value>
   </data>
   <data name="Error_FirmwareResourcesChanged" xml:space="preserve">
     <value>‘{0}’ er Prusas firmware, men ressourcerne, der er pakket efter den, er ikke dem, den angiver: filen er ændret eller beskadiget, efter Prusa byggede den. Hent den igen hos Prusa.</value>

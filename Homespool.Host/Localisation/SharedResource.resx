@@ -3553,7 +3553,7 @@ A stick that already works with your printer is the right stick. If you are form
     <value>‘{0}’ is being installed on a printer, or is still on a printer’s drive after an install, so it is kept until it is gone from there.</value>
   </data>
   <data name="Error_FirmwareResourcesUnreadable" xml:space="preserve">
-    <value>‘{0}’ is Prusa’s firmware, but Homespool cannot check the resources packed after it. Images older than version 6.6 pack them in a way it does not read.</value>
+    <value>‘{0}’ is Prusa’s firmware, but Homespool cannot check the resources packed after it. They are not packed the way Prusa packs them.</value>
   </data>
   <data name="Error_FirmwareResourcesChanged" xml:space="preserve">
     <value>‘{0}’ is Prusa’s firmware, but the resources packed after it are not the ones it names: the file was changed or damaged after Prusa built it. Download it again from Prusa.</value>

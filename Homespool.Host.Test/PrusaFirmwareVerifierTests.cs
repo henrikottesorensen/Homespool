@@ -262,6 +262,24 @@ public sealed class PrusaFirmwareVerifierTests
     }
 
     /// <summary>
+    /// The review's case: the bootloader tarball twice. Each copy hashes to its digest, and that digest
+    /// is in the signed bytes - but a printer needing new resources finds no file naming them, and waits
+    /// in bootstrap for ever.
+    /// </summary>
+    [Fact]
+    public async Task OneTarballTwiceIsRefused()
+    {
+        // Arrange
+        byte[] twice = TestFirmwareImages.Entries(TestFirmwareImages.BootloaderTarball, TestFirmwareImages.BootloaderTarball);
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: twice));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>
     /// The printer looks both tarballs up by value, trying each digest entry for each revision, so the
     /// two in each other's places still install - and are accepted, as the same image.
     /// </summary>
@@ -364,23 +382,116 @@ public sealed class PrusaFirmwareVerifierTests
     }
 
     /// <summary>
-    /// The layout before 6.6: a resources image with its block size and count, which nothing signed
-    /// vouches for.
+    /// A release from before 6.6: two littlefs images, each with its block size, count and content
+    /// hash, and the firmware naming both hashes. Verified, and named by its signed digest like any other.
     /// </summary>
     [Fact]
-    public async Task TheOlderLayoutIsRefused()
+    public async Task AnOlderReleaseWhoseImagesHashToWhatItsFirmwareNamesIsVerified()
     {
-        // Arrange
-        byte[] older = [.. TestFirmwareImages.Entry(1, TestFirmwareImages.ResourcesTarball),
-                        .. TestFirmwareImages.Entry(2, [0, 16, 0, 0]),
-                        .. TestFirmwareImages.Entry(3, [0, 2, 0, 0]),
-                        .. TestFirmwareImages.Entry(4, SHA256.HashData(TestFirmwareImages.ResourcesTarball))];
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(OlderRelease());
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.Verified);
+        check.SignedDigest.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// A byte of a file in an image changed: the files the printer would copy out are not the ones its
+    /// firmware names, and it would retry them for ever.
+    /// </summary>
+    [Fact]
+    public async Task AnOlderReleaseWithAFileChangedIsRefused()
+    {
+        // Arrange - into /fonts/a.bin in the resources image
+        LittlefsFixture tree = LittlefsFixture.Tree;
+        byte[] image = (byte[])tree.Image.Clone();
+        image[image.AsSpan().IndexOf([.. Enumerable.Range(1500, 16).Select(k => (byte)((k * 31) + 1))]) + 8] ^= 1;
 
         // Act
-        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: older));
+        PrusaFirmwareCheck check = await CheckAsync(OlderRelease(resources: tree with { Image = image }));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>
+    /// The block count beside an image is unsigned, and is what the printer mounts it with; one that
+    /// is not the image's is refused, as littlefs would refuse to mount it.
+    /// </summary>
+    [Fact]
+    public async Task AnOlderReleaseWithAnotherBlockCountIsRefused()
+    {
+        // Arrange
+        LittlefsFixture tree = LittlefsFixture.Tree;
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(OlderRelease(resources: tree with { BlockCount = tree.BlockCount - 1 }));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>
+    /// The reviewer's case in the older layout: another image, with a content hash entry written to
+    /// match it. Only the signed firmware's own copy of the hash refuses it.
+    /// </summary>
+    [Fact]
+    public async Task AnOlderReleaseWithAnotherImageAndItsHashIsRefused()
+    {
+        // Arrange - the firmware names the tree for both; the bootloader entries carry another image
+        LittlefsFixture tree = LittlefsFixture.Tree;
+        byte[] entries = [.. ImageEntriesOf(1, tree), .. ImageEntriesOf(5, LittlefsFixture.Rewritten)];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: entries, named: (tree.Hash, tree.Hash)));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>The review's case in the older layout: the bootloader image twice.</summary>
+    [Fact]
+    public async Task AnOlderReleaseWithOneImageTwiceIsRefused()
+    {
+        // Arrange - the firmware names both images; the file carries the bootloader's in both places
+        LittlefsFixture resources = LittlefsFixture.Tree;
+        LittlefsFixture bootloader = LittlefsFixture.Rewritten;
+        byte[] entries = [.. ImageEntriesOf(1, bootloader), .. ImageEntriesOf(5, bootloader)];
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: entries, named: (resources.Hash, bootloader.Hash)));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>An older release without its bootloader image is not laid out as one.</summary>
+    [Fact]
+    public async Task AnOlderReleaseMissingAnImageIsRefused()
+    {
+        // Arrange
+        LittlefsFixture tree = LittlefsFixture.Tree;
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: ImageEntriesOf(1, tree),
+                                                                             named: (tree.Hash, tree.Hash)));
 
         // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
+    }
+
+    [Fact]
+    public async Task AnOlderReleaseThatEndsInsideAnImageIsTruncated()
+    {
+        // Arrange
+        byte[] release = OlderRelease();
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(release[..(EntriesFrom + EntryHeader + 1000)]);
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.Truncated);
     }
 
     [Theory]
@@ -554,9 +665,9 @@ public sealed class PrusaFirmwareVerifierTests
             byte[] changed = (byte[])image.Clone();
             changed[PrusaFirmwareVerifier.FirmwareOffset + 500] ^= 1;
 
-            // The last entry is the bootloader's digest; a few bytes before it, inside its tarball.
+            // The last entry is the bootloader's digest or content hash, which the signed firmware names.
             byte[] changedTail = (byte[])image.Clone();
-            changedTail[^(EntryHeader + DigestLength + 100)] ^= 1;
+            changedTail[^1] ^= 1;
 
             // Act
             PrusaFirmwareCheck check = await CheckAsync(image, PrusaFirmwareVerifier.Prusa);
@@ -595,6 +706,24 @@ public sealed class PrusaFirmwareVerifierTests
 
         return directory ??
                throw new InvalidOperationException($"No Homespool.slnx above {AppContext.BaseDirectory}.");
+    }
+
+    /// <summary>
+    /// A release laid out as before 6.6, its firmware naming the two images' content hashes: the tree
+    /// fixture for the resources and the rewritten one for the bootloader unless told otherwise.
+    /// </summary>
+    private static byte[] OlderRelease(LittlefsFixture? resources = null, LittlefsFixture? bootloader = null)
+    {
+        resources ??= LittlefsFixture.Tree;
+        bootloader ??= LittlefsFixture.Rewritten;
+
+        return TestFirmwareImages.Build(entries: [.. ImageEntriesOf(1, resources), .. ImageEntriesOf(5, bootloader)],
+                                        named: (resources.Hash, bootloader.Hash));
+    }
+
+    private static byte[] ImageEntriesOf(byte firstType, LittlefsFixture fixture)
+    {
+        return TestFirmwareImages.ImageEntries(firstType, fixture.Image, fixture.BlockSize, fixture.BlockCount, fixture.Hash);
     }
 
     /// <summary>A stream over bytes that hands out at most a few of them a read.</summary>

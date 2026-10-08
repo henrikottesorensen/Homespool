@@ -39,14 +39,14 @@ public enum PrusaFirmwareVerdict
 
     /// <summary>
     /// The firmware is signed, but what follows it is not laid out as the verifier reads it: not
-    /// exactly the resources tarball, its digest, the bootloader tarball and its digest, ending where
-    /// the file does. Images from before 6.6, where that layout began, carry it differently.
+    /// exactly the resources and bootloader tarballs with their digests, or before 6.6 the two littlefs
+    /// images with their block sizes, counts and content hashes, ending where the file does.
     /// </summary>
     ResourcesUnreadable = 7,
 
     /// <summary>
-    /// The firmware is signed, but a tarball after it is not the one the signed firmware names: the
-    /// file was changed after it was built.
+    /// The firmware is signed, but a tarball or image after it is not the one the signed firmware names:
+    /// the file was changed after it was built.
     /// </summary>
     ResourcesChanged = 8,
 }

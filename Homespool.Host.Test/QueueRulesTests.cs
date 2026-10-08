@@ -554,6 +554,64 @@ public class QueueRulesTests
     }
 
     /// <summary>
+    /// Between refused starts the decision is a wait, so a page does not say the print is next while
+    /// the loop is deliberately not sending it.
+    /// </summary>
+    [Fact]
+    public void ARefusedStartWaitingOutItsDelayIsNotReportedAsAboutToPrint()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: true, path: "/usb/A~1.BGC") with { PrintRetryPending = true });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.PrintRetrying);
+        QueueWaitDescription.NeedsAPerson(action.Reason).Should().BeFalse("the loop clears this itself");
+    }
+
+    /// <summary>
+    /// A pending start retry does not speak over a printer that has stopped being ready: that wait
+    /// names a remedy, and this one only says the loop is pausing.
+    /// </summary>
+    [Theory]
+    [InlineData(PrinterStatus.Idle, QueueWaitReason.PrinterNotAvailable)]
+    [InlineData(PrinterStatus.Printing, QueueWaitReason.PrinterBusy)]
+    public void APendingStartRetryGivesWayToAPrinterThatIsNotReady(PrinterStatus status, QueueWaitReason expected)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(status, arrived: true, path: "/usb/A~1.BGC") with { PrintRetryPending = true });
+
+        action.Reason.Should().Be(expected);
+    }
+
+    /// <summary>
+    /// A held refused start is its own wait, and never the transfer branch: the file is on the drive,
+    /// and the default for an unmapped hold would send it there to be re-asked about space.
+    /// </summary>
+    [Fact]
+    public void ARefusedStartHoldIsNotRoutedToTheTransferPath()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: true, path: "/usb/A~1.BGC") with { HoldReason = PrintHoldReason.PrintRefused });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.PrintRefused);
+    }
+
+    /// <summary>
+    /// A file the printer would not name is held as that, and never sent to the transfer branch: it is
+    /// on the drive already.
+    /// </summary>
+    [Fact]
+    public void AnUnnamedFileHoldIsNotRoutedToTheTransferPath()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: true, path: null) with { HoldReason = PrintHoldReason.PrinterPathUnknown });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.PrinterPathUnknown);
+    }
+
+    /// <summary>
     /// The page stays quiet where something else already speaks: an active print announces itself, and
     /// the space banner carries its own numbers.
     /// </summary>
@@ -569,6 +627,7 @@ public class QueueRulesTests
         bool expected = reason is QueueWaitReason.Transferring or
                                   QueueWaitReason.TransferRetrying or
                                   QueueWaitReason.TransferAbortRetrying or
+                                  QueueWaitReason.PrintRetrying or
                                   QueueWaitReason.AwaitingPrinterPath or
                                   QueueWaitReason.PrinterNotAvailable or
                                   QueueWaitReason.QueuerLostAccess or

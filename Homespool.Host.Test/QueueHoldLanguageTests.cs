@@ -86,6 +86,22 @@ public sealed class QueueHoldLanguageTests : IDisposable
     }
 
     /// <summary>
+    /// A refused start's hold quotes the printer verbatim in either language, as a refused transfer's
+    /// does.
+    /// </summary>
+    [Fact]
+    public void ARefusedStartQuotesThePrinterInEitherLanguage()
+    {
+        MessageKey hold = MessageKey.For("Queue_HoldPrintRefused", "bracket.bgcode", 6, "Can't print now");
+
+        InCulture("en-GB", () => TestLocaliser.Errors().For(hold))
+            .Should().StartWith("The printer refused to start printing bracket.bgcode 6 times in a row, each time saying \"Can't print now\".");
+
+        InCulture("da", () => TestLocaliser.Errors().For(hold))
+            .Should().StartWith("Printeren afviste at begynde at printe bracket.bgcode 6 gange i træk, hver gang med beskeden \"Can't print now\".");
+    }
+
+    /// <summary>
     /// Every hold a printer can be in has words behind it, in both languages.
     /// </summary>
     /// <remarks>
@@ -111,6 +127,8 @@ public sealed class QueueHoldLanguageTests : IDisposable
                 PrintHoldReason.TransferStopped => "Queue_HoldTransferStopped",
                 PrintHoldReason.TransferAborted => "Queue_HoldTransferAborted",
                 PrintHoldReason.FileTooLarge => "Queue_HoldFileTooLarge",
+                PrintHoldReason.PrintRefused => "Queue_HoldPrintRefused",
+                PrintHoldReason.PrinterPathUnknown => "Queue_HoldPrinterPathUnknown",
                 _ => throw new InvalidOperationException($"{reason} has no key; add one to PrintHistoryService too."),
             };
 

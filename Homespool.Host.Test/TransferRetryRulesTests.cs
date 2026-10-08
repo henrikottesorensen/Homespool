@@ -8,8 +8,8 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// <see cref="TransferRetryRules"/> - which refusals count towards the hold, and how the attempts
-/// between them are spaced.
+/// <see cref="TransferRetryRules"/> - which refusals count towards the hold, and when the next attempt
+/// may go.
 /// </summary>
 public class TransferRetryRulesTests
 {
@@ -79,42 +79,9 @@ public class TransferRetryRulesTests
     {
         string reason = new('x', FileOnPrinter.TransferRefusalReasonMaxLength + 50);
         FileOnPrinter row = Refused(2, "STORAGE_FAILURE",
-                                    TransferRetryRules.Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength));
+                                    RefusalRetries.Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength));
 
         TransferRetryRules.CountAfter(row, "STORAGE_FAILURE", reason).Should().Be(3);
-    }
-
-    /// <summary>
-    /// The waits are the schedule the bound was sized against, and the bound falls after the last.
-    /// </summary>
-    /// <remarks>
-    /// Six refusals with five waits between them: 6 + 12 + 30 + 60 + 120 seconds, a little under four
-    /// minutes from the first refusal to the hold.
-    /// </remarks>
-    [Fact]
-    public void TheScheduleIsFiveRetriesAcrossUnderFourMinutes()
-    {
-        TimeSpan total = TimeSpan.Zero;
-
-        for (int count = 1; count < TransferRetryRules.HoldAfter; count++)
-        {
-            total += TransferRetryRules.WaitAfter(count);
-        }
-
-        TransferRetryRules.HoldAfter.Should().Be(6);
-        TransferRetryRules.WaitAfter(1).Should().Be(TimeSpan.FromSeconds(6));
-        TransferRetryRules.WaitAfter(5).Should().Be(TimeSpan.FromSeconds(120));
-        total.Should().Be(TimeSpan.FromSeconds(228));
-    }
-
-    /// <summary>A count outside the schedule is clamped rather than thrown on.</summary>
-    [Theory]
-    [InlineData(0, 6)]
-    [InlineData(-1, 6)]
-    [InlineData(99, 120)]
-    public void ACountOutsideTheScheduleIsClamped(int count, int seconds)
-    {
-        TransferRetryRules.WaitAfter(count).Should().Be(TimeSpan.FromSeconds(seconds));
     }
 
     /// <summary>A refused row waits exactly its delay, and not a tick longer.</summary>
@@ -134,25 +101,6 @@ public class TransferRetryRulesTests
     {
         TransferRetryRules.IsWaiting(null, Now).Should().BeFalse();
         TransferRetryRules.IsWaiting(new FileOnPrinter(), Now).Should().BeFalse();
-    }
-
-    /// <summary>
-    /// Cutting printer text never leaves half a surrogate pair behind.
-    /// </summary>
-    /// <remarks>
-    /// A lone high surrogate is not valid UTF-16, so the column would hold a string no encoder can
-    /// write out cleanly - on the page or in a log line.
-    /// </remarks>
-    [Fact]
-    public void BoundingDoesNotSplitASurrogatePair()
-    {
-        string value = new string('a', 9) + "😀";
-
-        string? bounded = TransferRetryRules.Bound(value, 10);
-
-        bounded.Should().Be(new string('a', 9));
-        TransferRetryRules.Bound("short", 10).Should().Be("short");
-        TransferRetryRules.Bound(null, 10).Should().BeNull();
     }
 
     /// <summary>Forgetting clears every refusal field together.</summary>

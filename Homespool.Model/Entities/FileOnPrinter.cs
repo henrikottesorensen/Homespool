@@ -163,7 +163,7 @@ public class FileOnPrinter
     /// <b>Consecutive and identical, not a total.</b> A refusal whose code or text differs from the
     /// one recorded starts the count again at one, because a changing answer means the situation is
     /// moving and a retry may yet get through. An answer that never changes is the signal, and at
-    /// <c>TransferRetryRules.HoldAfter</c> the queue holds with
+    /// <c>RefusalRetries.HoldAfter</c> the queue holds with
     /// <see cref="PrintHoldReason.TransferRefused"/>.
     /// </para>
     /// <para>
@@ -193,6 +193,41 @@ public class FileOnPrinter
     /// that renders it must encode it and anything that logs it must clean it.
     /// </remarks>
     public string? TransferRefusalReason { get; set; }
+
+    /// <summary>
+    /// How many times running the printer has refused to start printing this file with the same
+    /// words, or null when the last <c>START_PRINT</c> of it was not refused that way.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><see cref="TransferRefusalCount"/>'s bound, for the other command the queue sends about a
+    /// file.</b> A refusal the loop does not recognise - <c>Can't print now</c> above all, which
+    /// firmware also says when <c>print_begin</c> does not take - is retried rather than treated as
+    /// terminal, and an answer that never changes would be retried for ever. Consecutive and identical
+    /// for the same reason as there; at <c>RefusalRetries.HoldAfter</c> the queue holds with
+    /// <see cref="PrintHoldReason.PrintRefused"/>.
+    /// </para>
+    /// <para>
+    /// <b>Columns of their own rather than the transfer's.</b> Sharing them would let a transfer's
+    /// refusal and a print's restart each other's count, and a hold would have to work out which
+    /// command it was about from what was stored.
+    /// </para>
+    /// </remarks>
+    public int? StartRefusalCount { get; set; }
+
+    /// <summary>When the printer last refused to start this file; the clock the next attempt waits on.</summary>
+    public DateTimeOffset? StartRefusedAt { get; set; }
+
+    /// <summary>
+    /// The printer's own words for the last refused start, kept as it sent them apart from the
+    /// length bound.
+    /// </summary>
+    /// <remarks>
+    /// <c>START_PRINT</c> refusals carry no machine-readable code, only these words - so they are both
+    /// what is compared and what a reader is shown. Text from a printer, rendered encoded and logged
+    /// cleaned, as <see cref="TransferRefusalReason"/> is.
+    /// </remarks>
+    public string? StartRefusalReason { get; set; }
 
     /// <summary>When the printer reported the transfer finished. Null until it has.</summary>
     /// <remarks>

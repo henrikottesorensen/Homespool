@@ -221,11 +221,13 @@ public class PrintQueueService
         // Queueing a file again is the deliberate act that answers the holds whose exit is a person:
         // an unresolved print start (PrintHoldReason.PrintStartUnresolved), where the loop could not
         // establish whether a previous START_PRINT took; a transfer the printer kept refusing or kept
-        // abandoning (TransferRefused, TransferAborted), where waiting has already been tried; and a
-        // transfer somebody stopped at the printer (TransferStopped); and a file too large to send
-        // (FileTooLarge), which a smaller one under the same name answers. Asking for the file now is
-        // somebody saying they have looked. Scoped to those - the other holds are conditions on the
-        // printer the loop re-checks itself, and none of them is cleared by wanting the file more.
+        // abandoning (TransferRefused, TransferAborted), and a print it kept refusing to start
+        // (PrintRefused), where waiting has already been tried; a transfer somebody stopped at the
+        // printer (TransferStopped); a file too large to send (FileTooLarge), which a smaller one
+        // under the same name answers; and a file the printer would not name (PrinterPathUnknown),
+        // which queueing again asks about afresh. Asking for the file now is somebody saying they have looked.
+        // Scoped to those - the other holds are conditions on the printer the loop re-checks itself,
+        // and none of them is cleared by wanting the file more.
         FileOnPrinter? personHeld = await _dbContext.FilesOnPrinters
                                                     .SingleOrDefaultAsync(
                                                         row => row.PrinterId == printerId &&
@@ -234,7 +236,9 @@ public class PrintQueueService
                                                                 row.HoldReason == PrintHoldReason.TransferRefused ||
                                                                 row.HoldReason == PrintHoldReason.TransferAborted ||
                                                                 row.HoldReason == PrintHoldReason.TransferStopped ||
-                                                                row.HoldReason == PrintHoldReason.FileTooLarge),
+                                                                row.HoldReason == PrintHoldReason.FileTooLarge ||
+                                                                row.HoldReason == PrintHoldReason.PrintRefused ||
+                                                                row.HoldReason == PrintHoldReason.PrinterPathUnknown),
                                                         cancellationToken);
 
         if (personHeld is not null)
@@ -245,6 +249,7 @@ public class PrintQueueService
             // A fresh count as well as a lifted hold, or the next identical refusal would re-hold at
             // once and the re-queue would buy a single attempt.
             TransferRetryRules.Forget(personHeld);
+            PrintStartRetryRules.Forget(personHeld);
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);

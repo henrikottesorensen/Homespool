@@ -221,7 +221,8 @@ public class QueueSnapshotReader
             TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()),
             authorityLapsed,
             TransferRetryRules.IsCountingAborts(onPrinter),
-            _installations.IsInstalling(printerId));
+            _installations.IsInstalling(printerId),
+            current && PrintStartRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()));
     }
 
     /// <summary>

@@ -150,6 +150,35 @@ public sealed class QueueAdvancer : BackgroundService
     public static readonly TimeSpan BlockRecheckAfter = TimeSpan.FromSeconds(60);
 
     /// <summary>
+    /// How long after a file has arrived the loop waits for the printer to name it before asking.
+    /// </summary>
+    /// <remarks>
+    /// The name ordinarily comes first: firmware sends the <c>FILE_INFO</c> a few seconds into a
+    /// transfer, long before it reports the transfer finished, so an arrived file without one is
+    /// already late. The wait covers the two reports reaching the database in either order.
+    /// </remarks>
+    public static readonly TimeSpan PathAskAfter = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// How long after a file has arrived the loop goes on asking the printer what it called it before
+    /// it gives up and holds the queue.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Reached only by a printer that is connected and will not name a file it holds</b> - every
+    /// ask unanswered, or answered with nothing to print by, for a quarter of an hour. A file that is
+    /// not there is told apart at the first answer, and sent again.
+    /// </para>
+    /// <para>
+    /// <b>There is a bound at all because the wait had none</b>, and a queue stopped behind a sentence
+    /// saying it is waiting for the printer reads as working while it never moves. It holds rather
+    /// than guessing at the 8.3 name, because a wrong guess prints a different file. See
+    /// <see cref="PrintHoldReason.PrinterPathUnknown"/>.
+    /// </para>
+    /// </remarks>
+    public static readonly TimeSpan PathUnresolvableAfter = TimeSpan.FromMinutes(15);
+
+    /// <summary>
     /// How much of a path or a reason the printer wrote is worth a log line. A drive path tops out
     /// near 260 characters; an event may be a megabyte, and its strings are the sender's to size.
     /// </summary>
@@ -198,6 +227,17 @@ public sealed class QueueAdvancer : BackgroundService
     /// See <see cref="ObserveFilament"/>.
     /// </remarks>
     private readonly ConcurrentDictionary<int, long> _seenAtOpeningReading = [];
+
+    /// <summary>
+    /// Per printer, the <i>(file, printer)</i> row last asked what the printer calls it, and when - so
+    /// a file waiting on its name costs a question per <see cref="BlockRecheckAfter"/>, not per pass.
+    /// </summary>
+    /// <remarks>
+    /// An optimisation rather than state, like <see cref="_examinedPanelJobs"/>: a restart costs one
+    /// question asked early. The bound on asking is <see cref="FileOnPrinter.ArrivedAt"/>, which is
+    /// stored. See <see cref="AskForPrinterPathAsync"/>.
+    /// </remarks>
+    private readonly ConcurrentDictionary<int, (long row, DateTimeOffset at)> _pathAsked = [];
 
     /// <summary>
     /// One pass at a time per printer.
@@ -671,6 +711,12 @@ public sealed class QueueAdvancer : BackgroundService
                 await TransferAsync(work, printerId, head, cancellationToken);
                 break;
 
+            case QueueActionKind.Wait when action.Reason is QueueWaitReason.AwaitingPrinterPath:
+                // The one wait nothing else ends: the report it waits for has already been missed, so
+                // only asking the printer can bring it.
+                await AskForPrinterPathAsync(scope, dbContext, printerId, head, cancellationToken);
+                break;
+
             case QueueActionKind.Wait:
                 _logger.LogDebug("[{PrinterId}] queue holding: {Reason}", printerId, action.Reason);
                 break;
@@ -1133,6 +1179,7 @@ public sealed class QueueAdvancer : BackgroundService
         dbContext.PrintJobs.Add(adopted);
         dbContext.QueuedPrints.Remove(claimed.Entry);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await ForgetStartRefusalsAsync(dbContext, printerId, claimed.Entry.FileId, cancellationToken);
 
         return adopted;
     }
@@ -1302,6 +1349,12 @@ public sealed class QueueAdvancer : BackgroundService
                 }
 
                 await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
+
+                if (entry is not null)
+                {
+                    await ForgetStartRefusalsAsync(dbContext, printerId, entry.FileId, cancellationToken);
+                }
+
                 break;
 
             case PrintStartVerdict.NeverStarted:
@@ -1341,7 +1394,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// uploaded under. Requiring both would refuse a match on a firmware that renders one.
     /// </para>
     /// <para>
-    /// <b>A refusal is classified on the prose</b>, as <see cref="HandleRefusal"/> is and for the
+    /// <b>A refusal is classified on the prose</b>, as <see cref="HandleRefusalAsync"/> is and for the
     /// same reason: these carry no machine-readable code. The wording is firmware's own, from its
     /// render fixtures, and an unrecognised one falls to
     /// <see cref="JobAnswer.Inconclusive"/> - never to a verdict, because a reason nobody has read
@@ -1586,6 +1639,118 @@ public sealed class QueueAdvancer : BackgroundService
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Asks the printer what it calls a file that has arrived and was never named, and records the
+    /// answer - or holds the queue once asking has gone on for <see cref="PathUnresolvableAfter"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The name is the printer's to give.</b> A print must be started by the 8.3 alias the drive
+    /// assigned, which depends on what else is on it; firmware's <c>FILE_INFO</c> answer to
+    /// <c>SEND_FILE_INFO</c> carries exactly that, asked about by the long name the file was sent
+    /// under - the question <see cref="QueueTransferPolicy"/> already asks of a file it finds there.
+    /// </para>
+    /// <para>
+    /// <b><c>File not found</c> is the drive correcting us</b>, as it is for a refused start: the
+    /// belief is cleared and the file sent again. Anything else that is not a name - no answer, a
+    /// refusal nobody has read, an answer without a path - is asked again after
+    /// <see cref="BlockRecheckAfter"/>, until the bound.
+    /// </para>
+    /// </remarks>
+    private async Task AskForPrinterPathAsync(AsyncServiceScope scope,
+                                              HomespoolDbContext dbContext,
+                                              int printerId,
+                                              QueuedPrint head,
+                                              CancellationToken cancellationToken)
+    {
+        FileOnPrinter? onPrinter = await dbContext.FilesOnPrinters
+                                                  .SingleOrDefaultAsync(row => row.PrinterId == printerId &&
+                                                                               row.FileId == head.FileId,
+                                                                        cancellationToken);
+
+        if (onPrinter?.ArrivedAt is not DateTimeOffset arrivedAt || onPrinter.PrinterPath is not null)
+        {
+            return;
+        }
+
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        if (now - arrivedAt >= PathUnresolvableAfter)
+        {
+            new QueueHolds(_timeProvider, _logger).HoldPathUnknown(dbContext, printerId, head, onPrinter);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            return;
+        }
+
+        if (now - arrivedAt < PathAskAfter ||
+            (_pathAsked.TryGetValue(printerId, out (long row, DateTimeOffset at) asked) &&
+             asked.row == onPrinter.Id &&
+             now - asked.at < BlockRecheckAfter))
+        {
+            return;
+        }
+
+        _pathAsked[printerId] = (onPrinter.Id, now);
+
+        string driveName = onPrinter.DriveName ?? head.File!.Name;
+        PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+        CommandOutcome<FileInfoEventDataDTO>? answer;
+
+        try
+        {
+            answer = await WhilePrinterAnswersAsync(scope,
+                                                    () => commands.AskAsync(printerId,
+                                                                            new PrusaConnect.Commands.SendFileInfo
+                                                                            {
+                                                                                Path = PrinterDriveNames.OnDrive(driveName),
+                                                                            },
+                                                                            CallerFor(head),
+                                                                            cancellationToken));
+        }
+        catch (Exception e) when (e is PrinterNotConnectedException or CommandAlreadyInFlightException or
+                                      CommandResponseTimedOutException or CommandSendTimedOutException or
+                                      TeamAccessDeniedException or CredentialScopeDeniedException or
+                                      CommandAnswerUnreadableException)
+        {
+            _logger.LogDebug(e, "[{PrinterId}] could not ask what {FileName} is called on the drive", printerId, driveName);
+
+            return;
+        }
+
+        if (answer?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+        {
+            if (answer.Reason == PrinterDriveCopies.NotFound)
+            {
+                _logger.LogInformation("[{PrinterId}] the drive does not have {FileName} after all; sending it again",
+                                       printerId, driveName);
+
+                dbContext.FilesOnPrinters.Remove(onPrinter);
+                await dbContext.SaveChangesAsync(cancellationToken);
+
+                return;
+            }
+
+            _logger.LogDebug("[{PrinterId}] the printer would not say what {FileName} is called: {Reason}",
+                             printerId, driveName, ForLog(answer.Reason));
+
+            return;
+        }
+
+        if (answer?.Answer?.Path is not string path)
+        {
+            _logger.LogDebug("[{PrinterId}] the printer described {FileName} without a path", printerId, driveName);
+
+            return;
+        }
+
+        onPrinter.PrinterPath = path;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("[{PrinterId}] {FileName} is on the drive as {PrinterPath}, by asking",
+                               printerId, driveName, ForLog(path));
+    }
+
     /// <summary>Has the head's file sent to the printer, under the queue's policy.</summary>
     /// <remarks>
     /// What the queue decides - whether there is a file, whether it fits, what a refusal means - is
@@ -1730,7 +1895,7 @@ public sealed class QueueAdvancer : BackgroundService
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
-                HandleRefusal(printerId, dbContext, head, commanded, outcome.Reason);
+                await HandleRefusalAsync(printerId, dbContext, head, commanded, outcome.Reason, cancellationToken);
                 await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
 
                 return;
@@ -1747,6 +1912,7 @@ public sealed class QueueAdvancer : BackgroundService
             // withdrawn while the printer was answering, the row also carries the request to stop it.
             dbContext.QueuedPrints.Remove(head);
             await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
+            await ForgetStartRefusalsAsync(dbContext, printerId, head.FileId, cancellationToken);
         }
         catch (Exception e) when (e is CommandAlreadyInFlightException or TeamAccessDeniedException or
                                       CredentialScopeDeniedException)
@@ -1807,6 +1973,30 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
+    /// Forgets the refused starts counted against a file on this printer, once the printer has taken
+    /// a print of it.
+    /// </summary>
+    /// <remarks>
+    /// <b>A statement of its own, after the save that records the print</b>, rather than a change
+    /// tracked into it: that save is what records a print the printer has taken, and a row gone from
+    /// under this one - its file sent again, or found missing - must not be able to undo it.
+    /// </remarks>
+    private static Task ForgetStartRefusalsAsync(HomespoolDbContext dbContext,
+                                                 int printerId,
+                                                 long fileId,
+                                                 CancellationToken cancellationToken)
+    {
+        return dbContext.FilesOnPrinters
+                        .Where(row => row.PrinterId == printerId &&
+                                      row.FileId == fileId &&
+                                      row.StartRefusalCount != null)
+                        .ExecuteUpdateAsync(set => set.SetProperty(row => row.StartRefusalCount, (int?)null)
+                                                      .SetProperty(row => row.StartRefusedAt, (DateTimeOffset?)null)
+                                                      .SetProperty(row => row.StartRefusalReason, (string?)null),
+                                            cancellationToken);
+    }
+
+    /// <summary>
     /// Applies the retry rules to a refused <c>START_PRINT</c> - firmware's own reason string decides.
     /// </summary>
     /// <remarks>
@@ -1822,19 +2012,29 @@ public sealed class QueueAdvancer : BackgroundService
     /// cleared and the file is offered again rather than the entry being failed.
     /// </para>
     /// <para>
+    /// <b>Waiting is bounded, though.</b> A transient answer, or one nobody has read, is retried on
+    /// <see cref="RefusalRetries"/>' waits, and the same answer
+    /// <see cref="RefusalRetries.HoldAfter"/> times running holds the queue as
+    /// <see cref="PrintHoldReason.PrintRefused"/>. The queue commands only a printer reporting
+    /// <c>READY</c>, so a printer still saying <c>Can't print now</c> after minutes of that disagrees
+    /// with its own report - and one whose <c>print_begin</c> fails on a broken file says it every time.
+    /// </para>
+    /// <para>
     /// <b>Every arm here settles <paramref name="commanded"/> except one, because a refusal is an
     /// answer - except one.</b> The row was opened before the command went out to survive the case
     /// where no answer comes at all; once the printer has said <i>no</i>, nothing is outstanding. A
     /// terminal refusal closes it as the failed print it is, and a transient one removes it - a row
-    /// per retry would turn history into a log of a printer repeating itself. The exception is
-    /// <c>No job in progress</c>, which is not the printer saying no: see that arm.
+    /// per retry would turn history into a log of a printer repeating itself - until the refusal that
+    /// holds the queue, which closes it as failed too. The exception is <c>No job in progress</c>,
+    /// which is not the printer saying no: see that arm.
     /// </para>
     /// </remarks>
-    private void HandleRefusal(int printerId,
-                               HomespoolDbContext dbContext,
-                               QueuedPrint head,
-                               PrintJob commanded,
-                               string? reason)
+    private async Task HandleRefusalAsync(int printerId,
+                                          HomespoolDbContext dbContext,
+                                          QueuedPrint head,
+                                          PrintJob commanded,
+                                          string? reason,
+                                          CancellationToken cancellationToken)
     {
         switch (reason)
         {
@@ -1842,9 +2042,9 @@ public sealed class QueueAdvancer : BackgroundService
                 _logger.LogInformation("[{PrinterId}] the drive no longer has {FileName}; sending it again",
                                        printerId, head.File?.Name);
 
-                dbContext.FilesOnPrinters
-                         .Where(row => row.PrinterId == printerId && row.FileId == head.FileId)
-                         .ExecuteDelete();
+                await dbContext.FilesOnPrinters
+                               .Where(row => row.PrinterId == printerId && row.FileId == head.FileId)
+                               .ExecuteDeleteAsync(cancellationToken);
 
                 dbContext.PrintJobs.Remove(commanded);
                 break;
@@ -1881,10 +2081,32 @@ public sealed class QueueAdvancer : BackgroundService
                 break;
 
             default:
-                // "Can't print now", and anything a future firmware adds. Waiting is free and the next
-                // tick asks again; treating an unrecognised reason as terminal would throw away a
-                // print for a string nobody has read yet.
-                _logger.LogDebug("[{PrinterId}] not printing yet: {Reason}", printerId, ForLog(reason));
+                // "Can't print now", and anything a future firmware adds. Treating an unrecognised
+                // reason as terminal would throw away a print for a string nobody has read yet, so it
+                // is retried - counted, spaced, and held once the same answer has come back too often.
+                FileOnPrinter? onPrinter = await dbContext.FilesOnPrinters
+                                                          .SingleOrDefaultAsync(
+                                                              row => row.PrinterId == printerId &&
+                                                                     row.FileId == head.FileId,
+                                                              cancellationToken);
+
+                if (onPrinter is not null &&
+                    new QueueHolds(_timeProvider, _logger).RecordStartRefusal(printerId, head, onPrinter, reason))
+                {
+                    // The hold's one history row is this print, refused, in the printer's words - and
+                    // the entry stays, held, for a person to cancel or queue again.
+                    commanded.Reason = onPrinter.StartRefusalReason;
+                    Close(commanded, PrintState.Failed, _timeProvider.GetUtcNow());
+                    break;
+                }
+
+                if (onPrinter is null)
+                {
+                    // Gone since the pass read it, so there is nothing to count against; the next
+                    // pass finds the file missing and sends it again.
+                    _logger.LogDebug("[{PrinterId}] not printing yet: {Reason}", printerId, ForLog(reason));
+                }
+
                 dbContext.PrintJobs.Remove(commanded);
                 break;
         }

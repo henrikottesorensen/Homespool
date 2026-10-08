@@ -53,6 +53,9 @@ public static class QueueWaitDescription
             QueueWaitReason.TransferAbortRetrying => fileName is null ?
                 MessageKey.For("Queue_WaitTransferAbortRetryingUnnamed") :
                 MessageKey.For("Queue_WaitTransferAbortRetrying", fileName),
+            QueueWaitReason.PrintRetrying => fileName is null ?
+                MessageKey.For("Queue_WaitPrintRetryingUnnamed") :
+                MessageKey.For("Queue_WaitPrintRetrying", fileName),
             QueueWaitReason.AwaitingPrinterPath => MessageKey.For("Queue_WaitAwaitingPath"),
             QueueWaitReason.PrinterNotAvailable => MessageKey.For("Queue_WaitPrinterNotReady"),
             QueueWaitReason.FirmwareInstalling => MessageKey.For("Queue_WaitFirmwareInstalling"),
@@ -60,8 +63,8 @@ public static class QueueWaitDescription
                 MessageKey.For("Queue_WaitQueuerLostAccessUnnamed") :
                 MessageKey.For("Queue_WaitQueuerLostAccess", fileName),
 
-            // InsufficientSpace and TransferRefused have their own banners, carrying the numbers or
-            // the printer's words; PrintStarting is already on the page as the active print;
+            // InsufficientSpace, TransferRefused and PrintRefused have their own banners, carrying the
+            // numbers or the printer's words; PrintStarting is already on the page as the active print;
             // PrinterBusy is the status card itself, showing a progress bar, an attention reason or
             // an error. All of them would be a second voice saying the same thing.
             _ => null,

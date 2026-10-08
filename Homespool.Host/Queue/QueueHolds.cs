@@ -13,7 +13,7 @@ namespace Homespool.Host.Queue;
 /// <summary>
 /// The queue's writes about a file that cannot go to a printer: a hold, the count behind one, and the
 /// one history row each hold leaves. Shared by the send and the end of a queued transfer, which hold
-/// for the same reasons in the same words.
+/// for the same reasons in the same words, and by the start of a print.
 /// </summary>
 internal sealed class QueueHolds
 {
@@ -43,18 +43,19 @@ internal sealed class QueueHolds
         onPrinter.HoldPrinterFileBytes = null;
         onPrinter.BlockedAt = null;
         TransferRetryRules.Forget(onPrinter);
+        PrintStartRetryRules.Forget(onPrinter);
     }
 
     /// <summary>
     /// Counts a refusal that says something about this file, and holds the queue once the printer has
-    /// given the same answer <see cref="TransferRetryRules.HoldAfter"/> times running.
+    /// given the same answer <see cref="RefusalRetries.HoldAfter"/> times running.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>Any code counts, including ones nobody has seen.</b> The default for an unrecognised refusal
     /// is still to retry - a string nobody has read is not grounds for throwing a print away - and
     /// this is what stops that default running for ever. Until the bound, the snapshot reports
-    /// <see cref="QueueWaitReason.TransferRetrying"/> for the wait <see cref="TransferRetryRules.WaitAfter"/>
+    /// <see cref="QueueWaitReason.TransferRetrying"/> for the wait <see cref="RefusalRetries.WaitAfter"/>
     /// sets, so the next attempt is spaced rather than immediate.
     /// </para>
     /// <para>
@@ -80,14 +81,14 @@ internal sealed class QueueHolds
 
         onPrinter.TransferRefusalCount = count;
         onPrinter.TransferRefusedAt = now;
-        onPrinter.TransferRefusalCode = TransferRetryRules.Bound(code, FileOnPrinter.TransferRefusalCodeMaxLength);
-        onPrinter.TransferRefusalReason = TransferRetryRules.Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength);
+        onPrinter.TransferRefusalCode = RefusalRetries.Bound(code, FileOnPrinter.TransferRefusalCodeMaxLength);
+        onPrinter.TransferRefusalReason = RefusalRetries.Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength);
 
-        if (count < TransferRetryRules.HoldAfter)
+        if (count < RefusalRetries.HoldAfter)
         {
             _logger.LogDebug("[{PrinterId}] {Code} {Count} of {HoldAfter} for {FileName}; trying again in {Wait}",
-                             printerId, LogText.Clean(onPrinter.TransferRefusalCode), count, TransferRetryRules.HoldAfter,
-                             head.File!.Name, TransferRetryRules.WaitAfter(count));
+                             printerId, LogText.Clean(onPrinter.TransferRefusalCode), count, RefusalRetries.HoldAfter,
+                             head.File!.Name, RefusalRetries.WaitAfter(count));
 
             return;
         }
@@ -98,7 +99,7 @@ internal sealed class QueueHolds
         onPrinter.BlockedAt = now;
 
         // The printer's words, not a sentence of ours: PrintJob.Reason records what was said at the
-        // time, and HandleRefusal writes a refused print's reason the same way.
+        // time, and HandleRefusalAsync writes a refused print's reason the same way.
         dbContext.PrintJobs.Add(new PrintJob
         {
             PrinterId = printerId,
@@ -128,6 +129,93 @@ internal sealed class QueueHolds
             "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
             printerId, head.File.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
             LogText.Clean(onPrinter.TransferRefusalCode));
+    }
+
+    /// <summary>
+    /// Counts a refused <c>START_PRINT</c> the loop would otherwise retry, and holds the queue once the
+    /// printer has refused the same way <see cref="RefusalRetries.HoldAfter"/> times running.
+    /// </summary>
+    /// <returns>Whether this refusal held the queue.</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>The print row is the caller's</b>, because what becomes of it is the difference between the
+    /// two outcomes: a retry leaves no trace in history, and the hold leaves exactly one, the refused
+    /// print closed as failed in the printer's own words.
+    /// </para>
+    /// <para>
+    /// Until the bound, the snapshot reports <see cref="QueueWaitReason.PrintRetrying"/> for the wait
+    /// <see cref="RefusalRetries.WaitAfter"/> sets, so the next attempt is spaced rather than sent on
+    /// the next pass.
+    /// </para>
+    /// </remarks>
+    public bool RecordStartRefusal(int printerId, QueuedPrint head, FileOnPrinter onPrinter, string? reason)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+        int count = PrintStartRetryRules.CountAfter(onPrinter, reason);
+
+        onPrinter.StartRefusalCount = count;
+        onPrinter.StartRefusedAt = now;
+        onPrinter.StartRefusalReason = RefusalRetries.Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength);
+
+        if (count < RefusalRetries.HoldAfter)
+        {
+            _logger.LogDebug("[{PrinterId}] not printing {FileName} yet: {Reason} ({Count} of {HoldAfter}); trying again in {Wait}",
+                             printerId, head.File!.Name, LogText.Clean(onPrinter.StartRefusalReason), count,
+                             RefusalRetries.HoldAfter, RefusalRetries.WaitAfter(count));
+
+            return false;
+        }
+
+        onPrinter.HoldReason = PrintHoldReason.PrintRefused;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = now;
+
+        _logger.LogWarning(
+            "[{PrinterId}] refused to start printing {FileName} {Count} times running with the same answer, " +
+            "{Reason}; holding the queue until somebody cancels or re-queues it.",
+            printerId, head.File!.Name, count, LogText.Clean(onPrinter.StartRefusalReason));
+
+        return true;
+    }
+
+    /// <summary>
+    /// Holds the queue behind a file that arrived and that the printer would not name, however long it
+    /// was asked.
+    /// </summary>
+    /// <remarks>
+    /// A print has to be started by the printer's own name for the file, and guessing it could print
+    /// a different file: see <see cref="PrintHoldReason.PrinterPathUnknown"/>. History gets one row, as
+    /// for the other holds, in English - the column records what happened, the banner says it in the
+    /// reader's language.
+    /// </remarks>
+    public void HoldPathUnknown(HomespoolDbContext dbContext, int printerId, QueuedPrint head, FileOnPrinter onPrinter)
+    {
+        DateTimeOffset now = _timeProvider.GetUtcNow();
+
+        onPrinter.HoldReason = PrintHoldReason.PrinterPathUnknown;
+        onPrinter.HoldPrinterFreeBytes = null;
+        onPrinter.HoldPrinterFileBytes = null;
+        onPrinter.BlockedAt = now;
+
+        string recorded = $"{head.File!.Name} arrived on the printer, which never said what it called the file.";
+
+        dbContext.PrintJobs.Add(new PrintJob
+        {
+            PrinterId = printerId,
+            PrintUuid = head.PrintUuid,
+            FileName = head.File.Name,
+            Digest = head.File.Digest,
+            QueuedByUserId = head.QueuedByUserId,
+            QueuedByScope = head.QueuedByScope,
+            StartedAt = now,
+            EndedAt = now,
+            State = PrintState.Failed,
+            Reason = recorded,
+        });
+
+        _logger.LogWarning("[{PrinterId}] {Reason} Holding the queue until somebody cancels or re-queues it.",
+                           printerId, recorded);
     }
 
     /// <summary>

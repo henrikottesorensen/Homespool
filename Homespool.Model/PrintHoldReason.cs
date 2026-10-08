@@ -212,4 +212,45 @@ public enum PrintHoldReason
     /// </para>
     /// </remarks>
     FileTooLarge = 11,
+
+    /// <summary>
+    /// The printer refused to start printing the file the same way, several times running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><see cref="TransferRefused"/>'s bound, for <c>START_PRINT</c>.</b> The queue sends a print
+    /// only to a printer reporting <c>READY</c>, so a refusal means firmware disagrees with that - its
+    /// own <c>remote_print_ready</c> says no, or <c>print_begin</c> did not take, which a broken
+    /// partial on the drive does every time. Both answer <c>Can't print now</c>, which is retried, as
+    /// is any reason nobody has read yet; this is where that stops.
+    /// </para>
+    /// <para>
+    /// <b>The printer's words go with it</b>, in <c>FileOnPrinter.StartRefusalReason</c>, and on the
+    /// one history row the hold leaves.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person, like <see cref="TransferRefused"/>.</b> Waiting has already been tried.
+    /// Cancelling the entry moves the queue past it; queueing the file again clears it and starts a
+    /// fresh count, because asking a second time is somebody saying they have looked.
+    /// </para>
+    /// </remarks>
+    PrintRefused = 12,
+
+    /// <summary>
+    /// The file arrived on the printer, and the printer would not say what it calls it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A print is started by the printer's name for a file, not ours.</b> The drive gives every file
+    /// an 8.3 alias whose counter depends on what else is on it, and the queue prints by that alias -
+    /// so a file whose <c>FILE_INFO</c> never came cannot be printed, and a guessed alias could print
+    /// another file. The loop asks the printer by the long name, and holds here when a quarter of an
+    /// hour of asking has brought no name.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person</b>, as for <see cref="PrintStartUnresolved"/>. Cancelling the entry
+    /// moves the queue past it; queueing the file again clears it and the loop asks again.
+    /// </para>
+    /// </remarks>
+    PrinterPathUnknown = 13,
 }

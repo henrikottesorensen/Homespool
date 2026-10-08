@@ -152,6 +152,13 @@ public static class QueueRules
 
                 // Out of the transfer branch: the file is no smaller the next time it is asked about.
                 PrintHoldReason.FileTooLarge => QueueWaitReason.FileTooLarge,
+
+                // Out of it as well: the file is on the drive, and the printer has refused to print it
+                // the same way for every attempt the budget allowed.
+                PrintHoldReason.PrintRefused => QueueWaitReason.PrintRefused,
+
+                // And here: the file is on the drive, and only the printer's name for it is missing.
+                PrintHoldReason.PrinterPathUnknown => QueueWaitReason.PrinterPathUnknown,
                 _ => QueueWaitReason.InsufficientSpace,
             });
         }
@@ -176,7 +183,8 @@ public static class QueueRules
         if (head.PrinterPath is null)
         {
             // Arrived, but the FILE_INFO that names it has not been seen. Printing the path we sent
-            // rather than the one the printer reported is the guess this refuses to make.
+            // rather than the one the printer reported is the guess this refuses to make; the advancer
+            // asks the printer instead, and holds once asking has gone on too long.
             return QueueAction.Wait(QueueWaitReason.AwaitingPrinterPath);
         }
 
@@ -202,6 +210,13 @@ public static class QueueRules
             return QueueAction.Wait(CanBeOfferedWork(situation.Status) ?
                                         QueueWaitReason.PrinterNotAvailable :
                                         QueueWaitReason.PrinterBusy);
+        }
+
+        if (situation.PrintRetryPending)
+        {
+            // Last, so that a printer that has stopped being ready says so rather than this: the wait
+            // only matters once the printer would otherwise be sent the command again.
+            return QueueAction.Wait(QueueWaitReason.PrintRetrying);
         }
 
         return QueueAction.Print(head);

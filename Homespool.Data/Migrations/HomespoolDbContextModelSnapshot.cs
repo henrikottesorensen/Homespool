@@ -149,6 +149,16 @@ namespace Homespool.Data.Migrations
                     b.Property<string>("PrinterPath")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("StartRefusalCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StartRefusalReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("StartRefusedAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("TransferCommandId")
                         .HasColumnType("INTEGER");
 

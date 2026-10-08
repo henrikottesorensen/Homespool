@@ -235,7 +235,14 @@ mkdir -p "$images_dir"
 # symptom would be `docker save` failing on an image nobody can see is missing. The card needs no
 # registry at run time either way: whatever these are called, they are already in its store, and its
 # compose.yaml asks for the same names because it expands the same variable.
-registry="${REGISTRY:-$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" 2>/dev/null | tail -1)}"
+#
+# A checkout with no .env - every fresh clone - is the common case, not an error, and it is tested
+# for rather than read through: sed exits non-zero on a missing file, pipefail carries that out of
+# the substitution, and set -e then ends the script here with nothing printed.
+registry="${REGISTRY:-}"
+if [ -z "$registry" ] && [ -f "$repo_root/.env" ]; then
+    registry="$(sed -n 's/^REGISTRY=//p' "$repo_root/.env" | tail -1)"
+fi
 image_prefix="${registry:+${registry}/}"
 
 docker save "${image_prefix}homespool:latest" "${image_prefix}homespool-proxy:latest" \

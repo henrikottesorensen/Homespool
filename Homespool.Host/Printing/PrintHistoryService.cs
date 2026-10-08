@@ -305,6 +305,8 @@ public class PrintHistoryService
                                        row.TransferRefusalCount,
                                        row.TransferRefusalCode,
                                        row.TransferRefusalReason,
+                                       row.StartRefusalCount,
+                                       row.StartRefusalReason,
                                        FileName = row.File!.Name,
                                        OurBytes = row.File!.Size,
                                    })
@@ -358,6 +360,13 @@ public class PrintHistoryService
 
             PrintHoldReason.TransferAborted => MessageKey.For(
                 "Queue_HoldTransferAborted", hold.FileName, hold.TransferRefusalCount ?? 0),
+
+            // The printer's words as an argument, as for a refused transfer.
+            PrintHoldReason.PrintRefused => MessageKey.For(
+                "Queue_HoldPrintRefused",
+                hold.FileName,
+                hold.StartRefusalCount ?? 0,
+                hold.StartRefusalReason ?? string.Empty),
 
             // Undefined is not a hold, and neither is null. Both answer "nothing is in the way"
             // rather than inventing a sentence for a value nothing writes.

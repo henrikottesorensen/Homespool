@@ -498,7 +498,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
         if (newlyBlocked)
         {
             // English, and staying that way. PrintJob.Reason is a history record whose other writer is
-            // HandleRefusal, passing firmware's own refusal string through verbatim - so the column
+            // HandleRefusalAsync, passing firmware's own refusal string through verbatim - so the column
             // holds what was said at the time rather than something to re-say later. The live hold is
             // what a reader acts on, and that is HoldReason, which is localised: the two are
             // different jobs.

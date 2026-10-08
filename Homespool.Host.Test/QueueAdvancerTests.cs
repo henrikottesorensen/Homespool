@@ -739,8 +739,8 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
-    /// <c>Can't print now</c> is the one transient reason: nothing is dropped and nothing is recorded,
-    /// because the next pass simply asks again.
+    /// <c>Can't print now</c> is the one transient reason: nothing is dropped and history records
+    /// nothing, because a later pass asks again.
     /// </summary>
     [Fact]
     public async Task ATransientRefusalChangesNothing()
@@ -779,6 +779,155 @@ public sealed class QueueAdvancerTests : IDisposable
         context.ChangeTracker.Clear();
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
             "throwing a print away for a string nobody has read yet would be the wrong default");
+    }
+
+    /// <summary>
+    /// After a refused start the next pass waits out the delay rather than sending <c>START_PRINT</c>
+    /// again at once - and says so.
+    /// </summary>
+    /// <remarks>
+    /// <b>The defect</b>: the queue sends only to a printer reporting <c>READY</c>, and one that
+    /// answered <c>Can't print now</c> was sent the same command on every five-second pass for as long
+    /// as it kept answering that way.
+    /// </remarks>
+    [Fact]
+    public async Task ARefusedStartIsNotSentAgainBeforeItsWait()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.Rejected, "Can't print now"));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Act - the next pass, a second short of the first wait
+        _clock.Advance(RefusalRetries.WaitAfter(1) - TimeSpan.FromSeconds(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        StartsSent(actor).Should().Be(1, "the wait has not run out");
+
+        await using TelemetryDbContext telemetry = TestTelemetryContext.For(_databasePath);
+        QueueSnapshot snapshot = await NewSnapshotReader(context, telemetry).ReadAsync(PrinterId, TestContext.Current.CancellationToken);
+        QueueRules.Decide(snapshot).Reason.Should().Be(QueueWaitReason.PrintRetrying,
+                                                       "a page reading the decision must not say the print is next");
+
+        // And once it has, the start goes again.
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        StartsSent(actor).Should().Be(2);
+    }
+
+    /// <summary>
+    /// A start refused the same way every time is retried on the schedule, then held with the
+    /// printer's words - one history row, and no further command however long the hold stands.
+    /// </summary>
+    [Fact]
+    public async Task AStartRefusalThatNeverChangesHoldsTheQueueAfterTheBound()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.Rejected, "Can't print now"));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act - one pass per attempt, each after its wait has run out
+        for (int attempt = 1; attempt <= RefusalRetries.HoldAfter; attempt++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(RefusalRetries.WaitAfter(attempt));
+        }
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        StartsSent(actor).Should().Be(RefusalRetries.HoldAfter, "each pass after its wait is one attempt");
+        row.HoldReason.Should().Be(PrintHoldReason.PrintRefused);
+        row.StartRefusalCount.Should().Be(RefusalRetries.HoldAfter);
+        row.StartRefusalReason.Should().Be("Can't print now");
+
+        PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
+        recorded.State.Should().Be(PrintState.Failed, "history gets one row, on the transition");
+        recorded.Reason.Should().Be("Can't print now", "the printer's words, as a terminal refusal records them");
+        recorded.EndedAt.Should().NotBeNull("the row is closed, or the printer's one open-print slot stays taken");
+        recorded.PrintUuid.Should().Be(QueuedPrintUuid);
+
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "a hold is not a cancellation");
+
+        // And the hold stands: an hour later the start has still not been sent again.
+        _clock.Advance(TimeSpan.FromHours(1));
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        StartsSent(actor).Should().Be(RefusalRetries.HoldAfter, "retrying is what has already failed");
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// A refusal in different words starts the count again, so a printer whose answer is moving is
+    /// not held on the strength of answers it has stopped giving.
+    /// </summary>
+    [Fact]
+    public async Task AChangingStartRefusalDoesNotHold()
+    {
+        // Arrange - every other answer in different words
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        int asked = 0;
+        ConnectAnswering(command => command is Printing.StartPrint && ++asked % 2 == 0 ?
+                             Answered(PrinterEventType.Rejected, "Something firmware has not said before") :
+                             Answered(PrinterEventType.Rejected, "Can't print now"));
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        for (int attempt = 1; attempt <= RefusalRetries.HoldAfter * 2; attempt++)
+        {
+            await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+            _clock.Advance(RefusalRetries.WaitAfter(1));
+        }
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.HoldReason.Should().BeNull("no answer came back twice running");
+        row.StartRefusalCount.Should().Be(1);
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "a retry leaves no trace in history");
+    }
+
+    /// <summary>
+    /// The count of refused starts ends when the printer takes the print, so a later print of the
+    /// same file starts with a full budget.
+    /// </summary>
+    [Fact]
+    public async Task AnAcceptedStartForgetsTheRefusalsBeforeIt()
+    {
+        // Arrange - refused one short of the bound, the last wait run out
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        row.StartRefusalCount = RefusalRetries.HoldAfter - 1;
+        row.StartRefusedAt = _clock.GetUtcNow();
+        row.StartRefusalReason = "Can't print now";
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Connected before the clock moves, so the seeded Ready was said over this connection.
+        ConnectAccepting();
+        _clock.Advance(RefusalRetries.WaitAfter(RefusalRetries.HoldAfter - 1));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter after = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        after.StartRefusalCount.Should().BeNull();
+        after.StartRefusedAt.Should().BeNull();
+        after.StartRefusalReason.Should().BeNull();
+        (await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken)).State.Should().Be(PrintState.Starting);
     }
 
     /// <summary>
@@ -1483,7 +1632,7 @@ public sealed class QueueAdvancerTests : IDisposable
                                                              Answered(PrinterEventType.Rejected, reason) :
                                                              Answered(PrinterEventType.Finished));
         using QueueAdvancer advancer = NewAdvancer();
-        int passes = TransferRetryRules.HoldAfter * 2;
+        int passes = RefusalRetries.HoldAfter * 2;
 
         // Act
         for (int pass = 0; pass < passes; pass++)
@@ -1761,19 +1910,19 @@ public sealed class QueueAdvancerTests : IDisposable
         using QueueAdvancer advancer = NewAdvancer();
 
         // Act - one pass per attempt, each after its wait has run out
-        for (int attempt = 1; attempt <= TransferRetryRules.HoldAfter; attempt++)
+        for (int attempt = 1; attempt <= RefusalRetries.HoldAfter; attempt++)
         {
             await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
-            _clock.Advance(TransferRetryRules.WaitAfter(attempt));
+            _clock.Advance(RefusalRetries.WaitAfter(attempt));
         }
 
         // Assert
         context.ChangeTracker.Clear();
         FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
-        offers.Count.Should().Be(TransferRetryRules.HoldAfter, "each pass after its wait is one attempt");
+        offers.Count.Should().Be(RefusalRetries.HoldAfter, "each pass after its wait is one attempt");
         row.HoldReason.Should().Be(PrintHoldReason.TransferRefused);
-        row.TransferRefusalCount.Should().Be(TransferRetryRules.HoldAfter);
+        row.TransferRefusalCount.Should().Be(RefusalRetries.HoldAfter);
         row.TransferRefusalReason.Should().Be("Failed to create directory", "the printer's words are the useful part");
         row.TransferRefusalCode.Should().Be("STORAGE_FAILURE");
 
@@ -1788,7 +1937,7 @@ public sealed class QueueAdvancerTests : IDisposable
         _clock.Advance(TimeSpan.FromHours(1));
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
-        offers.Count.Should().Be(TransferRetryRules.HoldAfter, "retrying is what has already failed");
+        offers.Count.Should().Be(RefusalRetries.HoldAfter, "retrying is what has already failed");
         (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
     }
 
@@ -1808,7 +1957,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
         offers.Count.Should().Be(1);
 
-        _clock.Advance(TransferRetryRules.WaitAfter(1) - TimeSpan.FromSeconds(1));
+        _clock.Advance(RefusalRetries.WaitAfter(1) - TimeSpan.FromSeconds(1));
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
         offers.Count.Should().Be(1, "the wait has not run out");
 
@@ -1835,7 +1984,7 @@ public sealed class QueueAdvancerTests : IDisposable
         await WriteFileOnDiskAsync("queued.bgcode");
         TransferCounter offers = ConnectRefusingTransfer(_ => (code, reason));
         using QueueAdvancer advancer = NewAdvancer();
-        int passes = TransferRetryRules.HoldAfter * 2;
+        int passes = RefusalRetries.HoldAfter * 2;
 
         // Act
         for (int pass = 0; pass < passes; pass++)
@@ -1866,13 +2015,13 @@ public sealed class QueueAdvancerTests : IDisposable
                                                              ("STORAGE_FAILURE", "Failed to create directory") :
                                                              ("NOT_READY", "Printer not ready"));
         using QueueAdvancer advancer = NewAdvancer();
-        int attempts = TransferRetryRules.HoldAfter * 2;
+        int attempts = RefusalRetries.HoldAfter * 2;
 
         // Act
         for (int attempt = 0; attempt < attempts; attempt++)
         {
             await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
-            _clock.Advance(TransferRetryRules.WaitAfter(1));
+            _clock.Advance(RefusalRetries.WaitAfter(1));
         }
 
         // Assert
@@ -1898,15 +2047,16 @@ public sealed class QueueAdvancerTests : IDisposable
         {
             PrinterId = PrinterId,
             FileId = file.Id,
-            TransferRefusalCount = TransferRetryRules.HoldAfter - 1,
+            TransferRefusalCount = RefusalRetries.HoldAfter - 1,
             TransferRefusedAt = _clock.GetUtcNow(),
             TransferRefusalCode = "STORAGE_FAILURE",
             TransferRefusalReason = "Failed to create directory",
         });
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        _clock.Advance(TransferRetryRules.WaitAfter(TransferRetryRules.HoldAfter - 1));
+        // Connected before the clock moves, so the seeded Ready was said over this connection.
         ConnectAccepting();
+        _clock.Advance(RefusalRetries.WaitAfter(RefusalRetries.HoldAfter - 1));
 
         // Act
         using QueueAdvancer advancer = NewAdvancer();
@@ -4065,7 +4215,7 @@ public sealed class QueueAdvancerTests : IDisposable
         QueueAction waiting = QueueRules.Decide(await NewSnapshotReader(context, telemetry)
                                                     .ReadAsync(PrinterId, TestContext.Current.CancellationToken));
 
-        _clock.Advance(TransferRetryRules.WaitAfter(1));
+        _clock.Advance(RefusalRetries.WaitAfter(1));
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
         // Assert
@@ -4094,13 +4244,13 @@ public sealed class QueueAdvancerTests : IDisposable
         using QueueAdvancer advancer = NewAdvancer();
 
         // Act - offer, abort, wait, as many times as the bound allows, then once more
-        for (uint attempt = 1; attempt <= TransferRetryRules.HoldAfter; attempt++)
+        for (uint attempt = 1; attempt <= RefusalRetries.HoldAfter; attempt++)
         {
             await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
             await EndRecordedTransferAsync(context, PrinterEventType.TransferAborted);
             await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
-            _clock.Advance(TransferRetryRules.WaitAfter((int)attempt));
+            _clock.Advance(RefusalRetries.WaitAfter((int)attempt));
         }
 
         await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
@@ -4110,8 +4260,8 @@ public sealed class QueueAdvancerTests : IDisposable
         FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         row.HoldReason.Should().Be(PrintHoldReason.TransferAborted);
-        row.TransferRefusalCount.Should().Be(TransferRetryRules.HoldAfter);
-        OfferedPaths(actor).Should().HaveCount(TransferRetryRules.HoldAfter, "a held queue sends nothing");
+        row.TransferRefusalCount.Should().Be(RefusalRetries.HoldAfter);
+        OfferedPaths(actor).Should().HaveCount(RefusalRetries.HoldAfter, "a held queue sends nothing");
 
         PrintJob recorded = await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken);
         recorded.State.Should().Be(PrintState.Failed);
@@ -4347,7 +4497,7 @@ public sealed class QueueAdvancerTests : IDisposable
                 await EndRecordedTransferAsync(context, PrinterEventType.TransferAborted);
                 await before.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
 
-                _clock.Advance(TransferRetryRules.WaitAfter(attempt));
+                _clock.Advance(RefusalRetries.WaitAfter(attempt));
             }
         }
 
@@ -5408,6 +5558,12 @@ public sealed class QueueAdvancerTests : IDisposable
         HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
         file.Digest = OverwrittenDigest;
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>How many times the printer was told to start a print.</summary>
+    private static int StartsSent(IPrinterConnectionActor actor)
+    {
+        return CommandsSent(actor).OfType<Printing.StartPrint>().Count();
     }
 
     /// <summary>Every command and intent the printer was sent, in order.</summary>

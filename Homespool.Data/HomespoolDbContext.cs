@@ -668,6 +668,8 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
                   .HasMaxLength(FileOnPrinter.TransferRefusalCodeMaxLength);
             entity.Property(e => e.TransferRefusalReason)
                   .HasMaxLength(FileOnPrinter.TransferRefusalReasonMaxLength);
+            entity.Property(e => e.StartRefusalReason)
+                  .HasMaxLength(FileOnPrinter.TransferRefusalReasonMaxLength);
         });
 
         builder.Entity<PrintJob>(entity =>

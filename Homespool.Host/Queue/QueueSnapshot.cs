@@ -51,6 +51,10 @@ namespace Homespool.Host.Queue;
 /// <param name="FirmwareInstalling">
 /// Whether firmware is being installed on the printer - see <see cref="QueueWaitReason.FirmwareInstalling"/>.
 /// </param>
+/// <param name="PrintRetryPending">
+/// Whether the printer refused the last attempt to start printing the head and the wait before the
+/// next attempt has not run out - see <see cref="PrintStartRetryRules.IsWaiting"/>.
+/// </param>
 public sealed record QueueSnapshot(
     bool Connected,
     PrinterStatus Status,
@@ -61,4 +65,5 @@ public sealed record QueueSnapshot(
     bool TransferRetryPending = false,
     bool HeadAuthorityLapsed = false,
     bool TransferRetryAfterAbort = false,
-    bool FirmwareInstalling = false);
+    bool FirmwareInstalling = false,
+    bool PrintRetryPending = false);

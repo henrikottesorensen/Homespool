@@ -109,7 +109,7 @@ public enum QueueWaitReason
     /// again.
     /// </summary>
     /// <remarks>
-    /// A wait of seconds to a couple of minutes, set by <see cref="TransferRetryRules.WaitAfter"/>. It
+    /// A wait of seconds to a couple of minutes, set by <see cref="RefusalRetries.WaitAfter"/>. It
     /// is its own reason rather than a <see cref="QueueActionKind.Transfer"/> the advancer quietly
     /// skips, so that a page reading the decision does not say "sending" while nothing is being sent.
     /// </remarks>
@@ -200,4 +200,25 @@ public enum QueueWaitReason
     /// image has arrived, so only the queue standing still keeps a print out of that gap.
     /// </remarks>
     FirmwareInstalling = 17,
+
+    /// <summary>
+    /// The printer refused the last attempt to start printing the head, and the loop is waiting before
+    /// it tries again.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TransferRetrying"/>'s wait, for <c>START_PRINT</c>, set by
+    /// <see cref="RefusalRetries.WaitAfter"/>. Reported only of a printer that is otherwise ready, so a
+    /// page reading the decision does not say "printing next" while nothing is being sent.
+    /// </remarks>
+    PrintRetrying = 18,
+
+    /// <summary>
+    /// The printer refused to start printing the head the same way too many times running, and the
+    /// queue holds until a person acts - see <see cref="PrintHoldReason.PrintRefused"/>.
+    /// </summary>
+    /// <remarks>
+    /// Not routed back into the transfer path: the file is on the drive already. The hold banner
+    /// carries the sentence, with the printer's words in it.
+    /// </remarks>
+    PrintRefused = 19,
 }

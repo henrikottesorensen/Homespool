@@ -1133,6 +1133,7 @@ public sealed class QueueAdvancer : BackgroundService
         dbContext.PrintJobs.Add(adopted);
         dbContext.QueuedPrints.Remove(claimed.Entry);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await ForgetStartRefusalsAsync(dbContext, printerId, claimed.Entry.FileId, cancellationToken);
 
         return adopted;
     }
@@ -1302,6 +1303,12 @@ public sealed class QueueAdvancer : BackgroundService
                 }
 
                 await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
+
+                if (entry is not null)
+                {
+                    await ForgetStartRefusalsAsync(dbContext, printerId, entry.FileId, cancellationToken);
+                }
+
                 break;
 
             case PrintStartVerdict.NeverStarted:
@@ -1341,7 +1348,7 @@ public sealed class QueueAdvancer : BackgroundService
     /// uploaded under. Requiring both would refuse a match on a firmware that renders one.
     /// </para>
     /// <para>
-    /// <b>A refusal is classified on the prose</b>, as <see cref="HandleRefusal"/> is and for the
+    /// <b>A refusal is classified on the prose</b>, as <see cref="HandleRefusalAsync"/> is and for the
     /// same reason: these carry no machine-readable code. The wording is firmware's own, from its
     /// render fixtures, and an unrecognised one falls to
     /// <see cref="JobAnswer.Inconclusive"/> - never to a verdict, because a reason nobody has read
@@ -1730,7 +1737,7 @@ public sealed class QueueAdvancer : BackgroundService
 
             if (outcome?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
-                HandleRefusal(printerId, dbContext, head, commanded, outcome.Reason);
+                await HandleRefusalAsync(printerId, dbContext, head, commanded, outcome.Reason, cancellationToken);
                 await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
 
                 return;
@@ -1747,6 +1754,7 @@ public sealed class QueueAdvancer : BackgroundService
             // withdrawn while the printer was answering, the row also carries the request to stop it.
             dbContext.QueuedPrints.Remove(head);
             await SaveLettingWithdrawnEntriesGoAsync(dbContext, cancellationToken);
+            await ForgetStartRefusalsAsync(dbContext, printerId, head.FileId, cancellationToken);
         }
         catch (Exception e) when (e is CommandAlreadyInFlightException or TeamAccessDeniedException or
                                       CredentialScopeDeniedException)
@@ -1807,6 +1815,30 @@ public sealed class QueueAdvancer : BackgroundService
     }
 
     /// <summary>
+    /// Forgets the refused starts counted against a file on this printer, once the printer has taken
+    /// a print of it.
+    /// </summary>
+    /// <remarks>
+    /// <b>A statement of its own, after the save that records the print</b>, rather than a change
+    /// tracked into it: that save is what records a print the printer has taken, and a row gone from
+    /// under this one - its file sent again, or found missing - must not be able to undo it.
+    /// </remarks>
+    private static Task ForgetStartRefusalsAsync(HomespoolDbContext dbContext,
+                                                 int printerId,
+                                                 long fileId,
+                                                 CancellationToken cancellationToken)
+    {
+        return dbContext.FilesOnPrinters
+                        .Where(row => row.PrinterId == printerId &&
+                                      row.FileId == fileId &&
+                                      row.StartRefusalCount != null)
+                        .ExecuteUpdateAsync(set => set.SetProperty(row => row.StartRefusalCount, (int?)null)
+                                                      .SetProperty(row => row.StartRefusedAt, (DateTimeOffset?)null)
+                                                      .SetProperty(row => row.StartRefusalReason, (string?)null),
+                                            cancellationToken);
+    }
+
+    /// <summary>
     /// Applies the retry rules to a refused <c>START_PRINT</c> - firmware's own reason string decides.
     /// </summary>
     /// <remarks>
@@ -1822,19 +1854,29 @@ public sealed class QueueAdvancer : BackgroundService
     /// cleared and the file is offered again rather than the entry being failed.
     /// </para>
     /// <para>
+    /// <b>Waiting is bounded, though.</b> A transient answer, or one nobody has read, is retried on
+    /// <see cref="RefusalRetries"/>' waits, and the same answer
+    /// <see cref="RefusalRetries.HoldAfter"/> times running holds the queue as
+    /// <see cref="PrintHoldReason.PrintRefused"/>. The queue commands only a printer reporting
+    /// <c>READY</c>, so a printer still saying <c>Can't print now</c> after minutes of that disagrees
+    /// with its own report - and one whose <c>print_begin</c> fails on a broken file says it every time.
+    /// </para>
+    /// <para>
     /// <b>Every arm here settles <paramref name="commanded"/> except one, because a refusal is an
     /// answer - except one.</b> The row was opened before the command went out to survive the case
     /// where no answer comes at all; once the printer has said <i>no</i>, nothing is outstanding. A
     /// terminal refusal closes it as the failed print it is, and a transient one removes it - a row
-    /// per retry would turn history into a log of a printer repeating itself. The exception is
-    /// <c>No job in progress</c>, which is not the printer saying no: see that arm.
+    /// per retry would turn history into a log of a printer repeating itself - until the refusal that
+    /// holds the queue, which closes it as failed too. The exception is <c>No job in progress</c>,
+    /// which is not the printer saying no: see that arm.
     /// </para>
     /// </remarks>
-    private void HandleRefusal(int printerId,
-                               HomespoolDbContext dbContext,
-                               QueuedPrint head,
-                               PrintJob commanded,
-                               string? reason)
+    private async Task HandleRefusalAsync(int printerId,
+                                          HomespoolDbContext dbContext,
+                                          QueuedPrint head,
+                                          PrintJob commanded,
+                                          string? reason,
+                                          CancellationToken cancellationToken)
     {
         switch (reason)
         {
@@ -1842,9 +1884,9 @@ public sealed class QueueAdvancer : BackgroundService
                 _logger.LogInformation("[{PrinterId}] the drive no longer has {FileName}; sending it again",
                                        printerId, head.File?.Name);
 
-                dbContext.FilesOnPrinters
-                         .Where(row => row.PrinterId == printerId && row.FileId == head.FileId)
-                         .ExecuteDelete();
+                await dbContext.FilesOnPrinters
+                               .Where(row => row.PrinterId == printerId && row.FileId == head.FileId)
+                               .ExecuteDeleteAsync(cancellationToken);
 
                 dbContext.PrintJobs.Remove(commanded);
                 break;
@@ -1881,10 +1923,32 @@ public sealed class QueueAdvancer : BackgroundService
                 break;
 
             default:
-                // "Can't print now", and anything a future firmware adds. Waiting is free and the next
-                // tick asks again; treating an unrecognised reason as terminal would throw away a
-                // print for a string nobody has read yet.
-                _logger.LogDebug("[{PrinterId}] not printing yet: {Reason}", printerId, ForLog(reason));
+                // "Can't print now", and anything a future firmware adds. Treating an unrecognised
+                // reason as terminal would throw away a print for a string nobody has read yet, so it
+                // is retried - counted, spaced, and held once the same answer has come back too often.
+                FileOnPrinter? onPrinter = await dbContext.FilesOnPrinters
+                                                          .SingleOrDefaultAsync(
+                                                              row => row.PrinterId == printerId &&
+                                                                     row.FileId == head.FileId,
+                                                              cancellationToken);
+
+                if (onPrinter is not null &&
+                    new QueueHolds(_timeProvider, _logger).RecordStartRefusal(printerId, head, onPrinter, reason))
+                {
+                    // The hold's one history row is this print, refused, in the printer's words - and
+                    // the entry stays, held, for a person to cancel or queue again.
+                    commanded.Reason = onPrinter.StartRefusalReason;
+                    Close(commanded, PrintState.Failed, _timeProvider.GetUtcNow());
+                    break;
+                }
+
+                if (onPrinter is null)
+                {
+                    // Gone since the pass read it, so there is nothing to count against; the next
+                    // pass finds the file missing and sends it again.
+                    _logger.LogDebug("[{PrinterId}] not printing yet: {Reason}", printerId, ForLog(reason));
+                }
+
                 dbContext.PrintJobs.Remove(commanded);
                 break;
         }

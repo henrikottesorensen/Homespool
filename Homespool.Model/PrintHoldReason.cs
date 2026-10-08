@@ -212,4 +212,27 @@ public enum PrintHoldReason
     /// </para>
     /// </remarks>
     FileTooLarge = 11,
+
+    /// <summary>
+    /// The printer refused to start printing the file the same way, several times running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><see cref="TransferRefused"/>'s bound, for <c>START_PRINT</c>.</b> The queue sends a print
+    /// only to a printer reporting <c>READY</c>, so a refusal means firmware disagrees with that - its
+    /// own <c>remote_print_ready</c> says no, or <c>print_begin</c> did not take, which a broken
+    /// partial on the drive does every time. Both answer <c>Can't print now</c>, which is retried, as
+    /// is any reason nobody has read yet; this is where that stops.
+    /// </para>
+    /// <para>
+    /// <b>The printer's words go with it</b>, in <c>FileOnPrinter.StartRefusalReason</c>, and on the
+    /// one history row the hold leaves.
+    /// </para>
+    /// <para>
+    /// <b>Its exit is a person, like <see cref="TransferRefused"/>.</b> Waiting has already been tried.
+    /// Cancelling the entry moves the queue past it; queueing the file again clears it and starts a
+    /// fresh count, because asking a second time is somebody saying they have looked.
+    /// </para>
+    /// </remarks>
+    PrintRefused = 12,
 }

@@ -2121,6 +2121,9 @@
   <data name="Queue_HoldTransferAborted" xml:space="preserve">
     <value>Printeren tog imod {0} og opgav overførslen {1} gange i træk. Nye forsøg har ikke hjulpet, så køen er gået i stå. Se efter på printersiden, og annuller så dette print, eller sæt det i kø igen for at prøve igen.</value>
   </data>
+  <data name="Queue_HoldPrintRefused" xml:space="preserve">
+    <value>Printeren afviste at begynde at printe {0} {1} gange i træk, hver gang med beskeden &quot;{2}&quot;. Nye forsøg har ikke ændret svaret, så køen er gået i stå. Se efter på printeren, og annuller så dette print, eller sæt det i kø igen for at prøve igen.</value>
+  </data>
   <data name="Queue_WarnAbrasiveNeedsHardened" xml:space="preserve">
     <value>{0} er slicet til abrasivt filament, og printeren melder ingen hærdet dyse. Den er sat i kø, men den vil ikke starte, før printeren melder, at en hærdet dyse er monteret.</value>
   </data>
@@ -2153,6 +2156,12 @@
   </data>
   <data name="Queue_WaitFirmwareInstalling" xml:space="preserve">
     <value>Afventer at firmwareinstallationen bliver færdig.</value>
+  </data>
+  <data name="Queue_WaitPrintRetrying" xml:space="preserve">
+    <value>Printeren ville ikke begynde at printe {0}. Prøver igen om lidt.</value>
+  </data>
+  <data name="Queue_WaitPrintRetryingUnnamed" xml:space="preserve">
+    <value>Printeren ville ikke begynde at printe den næste fil. Prøver igen om lidt.</value>
   </data>
   <data name="Queue_WaitAwaitingPath" xml:space="preserve">
     <value>Afventer at printeren bekræfter filens navn.</value>

@@ -91,6 +91,27 @@ public class CapabilitySetTests
         capabilities.Unrecognised.Should().BeEquivalentTo(["ViewPrintr", "RunTheWholeFactory"]);
     }
 
+    /// <summary>
+    /// <b>Only a member's name is a grant.</b> The framework's enum parser also reads numerals and
+    /// comma lists, ORing the members of the list together - and four views ORed are
+    /// <see cref="Capability.ManagePrinter"/>, a member like any other, so nothing downstream could
+    /// tell the row had never said it.
+    /// </summary>
+    [Theory]
+    [InlineData("ViewPrinter,ViewQueue,ViewHistory,ViewCamera")]
+    [InlineData("ViewPrinter,ViewQueue")]
+    [InlineData("7")]
+    [InlineData("1")]
+    public void ANumeralOrACommaListGrantsNothingAndIsCarriedOut(string stored)
+    {
+        // Act
+        CapabilitySet capabilities = CapabilitySet.Parse(stored);
+
+        // Assert
+        capabilities.Should().BeEmpty();
+        capabilities.Unrecognised.Should().BeEquivalentTo([stored]);
+    }
+
     /// <summary>Case is not normalised, because this class is the only thing that should be writing.</summary>
     [Fact]
     public void AMisCasedNameIsUnrecognisedRatherThanAccepted()

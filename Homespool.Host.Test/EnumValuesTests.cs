@@ -75,4 +75,34 @@ public class EnumValuesTests
 
         unknown.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void EveryMemberIsReadBackFromItsName()
+    {
+        foreach (Capability capability in Enum.GetValues<Capability>())
+        {
+            EnumValues.TryParseName(capability.ToString(), out Capability parsed).Should().BeTrue();
+            parsed.Should().Be(capability);
+        }
+    }
+
+    /// <summary>
+    /// <b>Everything the framework's parser accepts beyond a name is refused</b>: a numeral, and a comma
+    /// list it would OR into a third member - <c>ViewPrinter,ViewQueue</c> is 1|2, which is
+    /// <c>ViewHistory</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("ViewPrinter,ViewQueue")]
+    [InlineData("ViewPrinter, ViewQueue")]
+    [InlineData("3")]
+    [InlineData("0")]
+    [InlineData("viewprinter")]
+    [InlineData(" ViewPrinter")]
+    [InlineData("")]
+    [InlineData(null)]
+    public void AnythingButAMembersExactNameIsRefused(string? text)
+    {
+        EnumValues.TryParseName(text, out Capability parsed).Should().BeFalse();
+        parsed.Should().Be(Capability.Undefined);
+    }
 }

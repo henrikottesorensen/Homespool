@@ -62,7 +62,7 @@ public static class SignInRefusals
         // An unset or unknown reason reads as a wrong credential - the refusal that sends nobody
         // anywhere special.
         return result.Properties?.Items.TryGetValue(Item, out string? value) == true &&
-               Enum.TryParse(value, out SignInRefusal refusal) &&
+               EnumValues.TryParseName(value, out SignInRefusal refusal) &&
                refusal.IsSet() ?
             refusal :
             SignInRefusal.Invalid;

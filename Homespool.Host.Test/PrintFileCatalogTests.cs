@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -140,6 +141,39 @@ public sealed class PrintFileCatalogTests : IDisposable
 
         row.Id.Should().Be(originalId);
         row.Digest.Should().Be(Base64Url.EncodeToString(SHA384.HashData(replacement)));
+    }
+
+    /// <summary>
+    /// <b>A client that disconnects once its bytes are in still gets them indexed.</b> The overwrite is
+    /// published by then and cannot be taken back, so a row left describing the old bytes would make a
+    /// printer's copy of the old version read as current.
+    /// </summary>
+    [Fact]
+    public async Task AnOverwriteIsIndexedEvenWhenTheClientLeavesAfterSendingIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        PrintFileCatalog catalog = NewCatalog(context);
+        byte[] replacement = Encoding.UTF8.GetBytes("second");
+
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", new MemoryStream(Encoding.UTF8.GetBytes("first")),
+                                overwrite: false, TestContext.Current.CancellationToken);
+
+        using CancellationTokenSource request =
+            CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        await using CancelledAtEndStream body = new(replacement, request);
+
+        // Act
+        await catalog.SaveAsync(Caller.Unscoped(Alice), "benchy.gcode", body, overwrite: true, request.Token);
+
+        // Assert
+        request.IsCancellationRequested.Should().BeTrue("the request has to be gone before the index is written");
+
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+
+        row.Digest.Should().Be(Base64Url.EncodeToString(SHA384.HashData(replacement)));
+        row.Size.Should().Be(replacement.Length);
     }
 
     /// <summary>
@@ -820,12 +854,27 @@ public sealed class PrintFileCatalogTests : IDisposable
                                                         TestContext.Current.CancellationToken);
 
         // Act & Assert
-        await FluentActions.Awaiting(() => catalog.PublishAsync(uploader, staged.Token, overwrite: true,
-                                                                TestContext.Current.CancellationToken))
+        await FluentActions.Awaiting(() => catalog.PublishAsync(uploader, staged.Token, overwrite: true))
                            .Should().ThrowAsync<CredentialScopeDeniedException>();
 
-        (await catalog.PublishAsync(uploader, staged.Token, overwrite: false, TestContext.Current.CancellationToken))
+        (await catalog.PublishAsync(uploader, staged.Token, overwrite: false))
             .Should().NotBeNull("a new name is what UploadOwnFiles is for");
+    }
+
+    /// <summary>Cancels the request on reading the end of the body, as a client hanging up then would.</summary>
+    private sealed class CancelledAtEndStream(byte[] content, CancellationTokenSource request) : MemoryStream(content)
+    {
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            int read = await base.ReadAsync(buffer, cancellationToken);
+
+            if (read == 0)
+            {
+                await request.CancelAsync();
+            }
+
+            return read;
+        }
     }
 
     private static MemoryStream Content()

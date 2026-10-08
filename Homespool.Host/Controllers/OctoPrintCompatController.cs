@@ -238,8 +238,7 @@ public class OctoPrintCompatController : ControllerBase
                     await _access.RequireAsync(printer.Id, caller, Capability.Print, cancellationToken);
                 }
 
-                stored = await _files.PublishAsync(caller, pending.Token, overwrite: false, cancellationToken,
-                                                   owner.UserName);
+                stored = await _files.PublishAsync(caller, pending.Token, overwrite: false, owner.UserName);
             }
         }
         catch (CredentialScopeDeniedException e)

@@ -310,7 +310,7 @@ public sealed class TileDrop
 
         try
         {
-            StoredFile? published = await _files.PublishAsync(caller, staged.Token, overwrite, cancellationToken, userName: userName);
+            StoredFile? published = await _files.PublishAsync(caller, staged.Token, overwrite, userName: userName);
 
             return published?.FileName;
         }

@@ -338,10 +338,10 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
                                     .Select(printer => printer.Id)
                                     .ToListAsync(stoppingToken);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
         {
             // Not fatal: each printer is settled again on its next report, and the queue settles one
-            // before every pass.
+            // before every pass. Nor is a cancellation the stop did not ask for.
             _logger.LogError(e, "could not list the printers to settle their transfers at start");
 
             return;

@@ -1,4 +1,5 @@
 using System;
+using System.Data.Common;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -711,6 +712,39 @@ public sealed class QueueAdvancerTests : IDisposable
         // Assert
         await pass.Should().NotThrowAsync("an exception here would fault ExecuteAsync and stop the host");
         logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Error);
+    }
+
+    /// <summary>
+    /// A cancellation the loop did not ask for, from the query that picks the printers, costs one tick
+    /// and is logged - the loop goes on, and the next tick's pass reaches the printer.
+    /// </summary>
+    /// <remarks>
+    /// Taken for the stop, it would end the loop with nothing logged and the host still up, so no
+    /// queue would move again until a restart.
+    /// </remarks>
+    [Fact]
+    public async Task ACancellationNobodyAskedForInTheLookupCostsOneTick()
+    {
+        // Arrange - a print to start, and the first lookup cancelled by something other than the stop
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        IPrinterConnectionActor actor = ConnectAnswering(_ => Answered(PrinterEventType.Finished));
+        FakeLogger<QueueAdvancer> logger = new();
+        using QueueAdvancer advancer = NewAdvancer(logger, interceptor: new CancellingTheFirstQuery());
+        await advancer.StartAsync(TestContext.Current.CancellationToken);
+
+        // Act - the tick whose lookup is cancelled, then the next
+        _signal.Poke();
+        bool logged = SpinWait.SpinUntil(() => logger.Collector.GetSnapshot().Any(record => record.Level == LogLevel.Error &&
+                                                                                            record.Exception is OperationCanceledException),
+                                         TimeSpan.FromSeconds(10));
+        _signal.Poke();
+
+        // Assert
+        logged.Should().BeTrue("a cancellation nobody asked for is a failure, and said so");
+        SpinWait.SpinUntil(() => actor.ReceivedCalls().Any(call => call.GetMethodInfo().Name == nameof(IPrinterConnectionActor.SendAsync)),
+                           TimeSpan.FromSeconds(10)).Should().BeTrue("the loop is still running, and the next tick's pass asked the printer");
+
+        await advancer.StopAsync(TestContext.Current.CancellationToken);
     }
 
     /// <summary>
@@ -2976,6 +3010,28 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// Cancels the first query the advancer runs, as something other than its stop would - a token
+    /// of the database provider's own, say - and lets every later one through.
+    /// </summary>
+    private sealed class CancellingTheFirstQuery : DbCommandInterceptor
+    {
+        private int _queries;
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+                                                                                        CommandEventData eventData,
+                                                                                        InterceptionResult<DbDataReader> result,
+                                                                                        CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _queries) == 1)
+            {
+                throw new OperationCanceledException("not the queue's stop");
+            }
+
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+    }
+
+    /// <summary>
     /// Deletes every queue entry, from a connection of its own, the moment a save writing a print row
     /// commits - a withdrawal landing in exactly that gap.
     /// </summary>
@@ -5178,7 +5234,8 @@ public sealed class QueueAdvancerTests : IDisposable
         await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
         using QueueWorkBudget budget = new(2);
         SilentFirstPrinter printers = ConnectSilentFirstPrinter();
-        using QueueAdvancer advancer = NewAdvancer(budget: budget);
+        FakeLogger<QueueAdvancer> logger = new();
+        using QueueAdvancer advancer = NewAdvancer(logger, budget: budget);
         await advancer.StartAsync(TestContext.Current.CancellationToken);
         _signal.Poke();
         await printers.FirstAsked.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
@@ -5191,6 +5248,8 @@ public sealed class QueueAdvancerTests : IDisposable
         await stop.Should().NotThrowAsync("the pass waiting on the printer was told to stop");
         printers.FirstUnwound.Task.IsCompleted.Should().BeTrue("the stop waited for the pass to end");
         budget.Available.Should().Be(budget.Permits);
+        logger.Collector.GetSnapshot().Should().NotContain(record => record.Level == LogLevel.Error,
+                                                           "a pass ended by the stop has nothing to report");
     }
 
     /// <summary>
@@ -5671,6 +5730,28 @@ public sealed class QueueAdvancerTests : IDisposable
         OfferedPaths(second).Should().ContainSingle("the second printer's pass ran despite the first");
         logger.Collector.GetSnapshot().Should().Contain(record => record.Level == LogLevel.Error,
                                                         "the failure is still reported");
+    }
+
+    /// <summary>
+    /// A pass ended by a cancellation the loop did not ask for is logged as the failure it is, not
+    /// taken for the stop and dropped.
+    /// </summary>
+    [Fact]
+    public async Task ACancellationNobodyAskedForInAPassIsLoggedAsAFailure()
+    {
+        // Arrange - a cancellation out of the printer's path, with the pass's own token never cancelled
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        ConnectAnswering(_ => throw new OperationCanceledException("not the queue's stop"));
+        FakeLogger<QueueAdvancer> logger = new();
+        using QueueAdvancer advancer = NewAdvancer(logger);
+
+        // Act
+        Func<Task> pass = () => advancer.AdvanceAllAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        await pass.Should().NotThrowAsync("only the queue's own stop ends a pass by cancellation");
+        logger.Collector.GetSnapshot().Should().Contain(record => record.Level == LogLevel.Error &&
+                                                                  record.Exception is OperationCanceledException);
     }
 
     /// <summary>

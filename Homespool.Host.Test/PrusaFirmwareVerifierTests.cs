@@ -262,6 +262,24 @@ public sealed class PrusaFirmwareVerifierTests
     }
 
     /// <summary>
+    /// The review's case: the bootloader tarball twice. Each copy hashes to its digest, and that digest
+    /// is in the signed bytes - but a printer needing new resources finds no file naming them, and waits
+    /// in bootstrap for ever.
+    /// </summary>
+    [Fact]
+    public async Task OneTarballTwiceIsRefused()
+    {
+        // Arrange
+        byte[] twice = TestFirmwareImages.Entries(TestFirmwareImages.BootloaderTarball, TestFirmwareImages.BootloaderTarball);
+
+        // Act
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: twice));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>
     /// The printer looks both tarballs up by value, trying each digest entry for each revision, so the
     /// two in each other's places still install - and are accepted, as the same image.
     /// </summary>

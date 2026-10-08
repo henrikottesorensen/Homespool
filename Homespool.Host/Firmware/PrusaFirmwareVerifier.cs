@@ -33,7 +33,8 @@ namespace Homespool.Host.Firmware;
 /// <c>.resources_tarball_digest</c> and <c>.bootloader_tarball_digest</c> sections). So an image is
 /// whole when it ends in exactly the resources tarball, its digest, the bootloader tarball and its
 /// digest (types 9 to 12, in the order <c>pack_fw.py</c> writes them), each tarball hashes to its
-/// digest entry, and each digest occurs in the signed bytes. Nothing else gets through: the printer
+/// digest entry, each digest occurs in the signed bytes, and the two digests differ - one tarball
+/// twice would leave the printer no file for the other. Nothing else gets through: the printer
 /// picks a <c>.bbf</c> by those unsigned digest entries, unpacks the tarball before it compares the
 /// hash, and on a mismatch retries for ever (<c>src/resources/bootstrap.cpp</c>), so a changed tarball
 /// would stop a printer until somebody removed the file at it. Where in the firmware a digest sits
@@ -319,6 +320,14 @@ public sealed class PrusaFirmwareVerifier
         if (await content.ReadAsync(entryHeader.AsMemory(0, 1), cancellationToken) != 0)
         {
             return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
+        }
+
+        // The firmware names two different digests, the resources' and the bootloader's. A file carrying
+        // one of the two twice passes everything above, and a printer needing the other finds no file
+        // for it and waits in bootstrap for ever.
+        if (digests[0].AsSpan().SequenceEqual(digests[1]))
+        {
+            return new Entries(PrusaFirmwareVerdict.ResourcesChanged, []);
         }
 
         return new Entries(PrusaFirmwareVerdict.Verified, digests);

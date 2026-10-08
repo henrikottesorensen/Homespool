@@ -27,7 +27,7 @@ For the application, the proxy and the camera sidecar, one of:
 | `current` | The running image is the one the registry serves under that tag. |
 | `newer` | The registry serves a different one. The report says what it would bring. |
 | `restamped` | The registry serves a different one, built from the same source, base and everything else, stamped with a later commit. Every publish builds all three images, so this is what an image whose own source did not change looks like. Nothing to take. |
-| `local` | Built from source rather than pulled — where the stack runs, or on the machine that made the card — so nothing is published to compare with. Reported with the date it was built. |
+| `local` | Built from source rather than pulled — where the stack runs, or on the machine that made the card — so nothing is published to compare with. An image named for a registry but built or loaded here, never pulled from it or pushed to it, is `local` too. Reported with the date it was built. |
 | `pinned` | Started from a digest, not a tag, so there is nothing to follow. |
 | `not-running` | No such container in this compose project. |
 

@@ -347,9 +347,9 @@ on one release instead, add `HOMESPOOL_TAG=0.1` (its version) to `.env`; the che
 with that tag alone, which a later release does not move.
 
 A card built from anything but a release carries images built on the machine that made it, under
-the same names, so they were never pulled and the check cannot tell them for any published one: it
-reports them as newer whatever they are, and a pull replaces them with the latest release - which,
-on a card built from a commit after that release, is an older build.
+the same names. They were never pulled, so the check reports them as built from source, with the
+date, and cannot say whether fixes have come out since. A pull would replace them with the latest
+release — which, on a card built from a commit after that release, is an older build.
 
 ## Getting a shell on the board
 

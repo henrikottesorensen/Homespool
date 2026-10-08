@@ -21,7 +21,7 @@
 # PULLED BY THE DAEMON THAT WRITES THE CARD'S STORE, NOT SAVED AND LOADED. A pulled image records
 # the registry's digest for it, and that digest is how the update check knows the running image is
 # the published one; `docker load` brings the image without it, and the card would then report its
-# own release as an update.
+# own release as built from source, with nothing to compare.
 #
 # Under the version rather than the commit, which is the tag a rebuild of the release would move;
 # the revision check is what ties it to the commit. Needs docker with buildx, and jq.

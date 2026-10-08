@@ -66,7 +66,9 @@
 # NEEDS NO CREDENTIALS, and must not. The registry has to allow anonymous reads of these images -
 # GHCR's public packages do. An image with no registry in its name was built from source rather than
 # pulled - where the stack runs, or on the machine that made a card - so it has nothing published to
-# compare with, and is reported as such, with the date it was built, without any request leaving.
+# compare with, and is reported as such, with the date it was built, without any request leaving. So
+# is one named for a registry that never served it: no digest recorded for its repository, because
+# it was built or loaded here.
 #
 # A SOURCE THAT CANNOT BE REACHED FAILS THE RUN, and the previous report stays: a report written from
 # part of the evidence would say "nothing to take" for the part it could not see.
@@ -310,6 +312,18 @@ compare() {
             *) reference="$reference:latest" ;;
         esac
         repository="${reference%:*}"
+
+        # A registry's name is not a registry's image. Docker records a digest under the repository
+        # only when it pulls or pushes the image, so one without was built or loaded here - a card
+        # built from a commit that is not a release carries GHCR's names on images built where the
+        # card was made. Compared with what the registry serves it would always be "newer", and the
+        # pull that asks for could be an older build.
+        if ! jq -e --arg r "$repository@" '(.RepoDigests // []) | any(startswith($r))' "$run" >/dev/null; then
+            jq -n --arg s "$service" --arg r "$reference" --arg b "$built" \
+                '{service: $s, reference: $r, status: "local", built: $b}' > "$entry"
+            echo "$service: built or loaded here rather than pulled ($reference, $built), so it is no image the registry served"
+            continue
+        fi
 
         published_digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$reference")" ||
             die "could not read $reference from its registry"

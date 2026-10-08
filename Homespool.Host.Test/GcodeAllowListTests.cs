@@ -94,20 +94,55 @@ public class GcodeAllowListTests
     }
 
     /// <summary>
-    /// The command this list exists to exclude, named rather than merely absent.
+    /// Every form of the reflash command but the one flash line: bare, another module, another path,
+    /// another spelling, a parameter beside the path.
     /// </summary>
     /// <remarks>
-    /// Absence alone would pass today. This asserts it by name so that widening the list in a hurry
-    /// fails here with a message that says what was broken, instead of going quietly green.
+    /// Asserted by name so that widening the one admitted line in a hurry fails here with a message
+    /// that says what was broken, instead of going quietly green. The letters matter beyond the
+    /// match: firmware reads every capital in the line as a parameter, so <c>S1</c> or <c>O</c>
+    /// anywhere on it changes what <c>M997</c> does.
     /// </remarks>
     [Theory]
     [InlineData("M997")]
     [InlineData("M997 S1")]
     [InlineData("m997")]
-    public void TheReflashCommandIsRefused(string line)
+    [InlineData("M997 O")]
+    [InlineData("M997 /usb/OTHER.BBF")]
+    [InlineData("M997 /usb/firmware.bbf")]
+    [InlineData("m997 /usb/FIRMWARE.BBF")]
+    [InlineData("M997  /usb/FIRMWARE.BBF")]
+    [InlineData("M997 S1 /usb/FIRMWARE.BBF")]
+    [InlineData("M997 /usb/FIRMWARE.BBF S1")]
+    [InlineData("M997 O /usb/FIRMWARE.BBF")]
+    [InlineData("M997 /usb/FIRMWARE.BBF.BBF")]
+    [InlineData("M997 /usb/x/../FIRMWARE.BBF")]
+    public void EveryOtherFormOfTheReflashCommandIsRefused(string line)
     {
         GcodeAllowList.IsAllowed(line).Should().BeFalse(
-            "M997 flashes firmware from a file on the USB stick and validates nothing");
+            "M997 flashes firmware from a file on the drive and validates nothing; only the firmware flow's own file may be named");
+    }
+
+    /// <summary>The one flash line, as a frame of its own.</summary>
+    [Fact]
+    public void TheFlashLineAloneIsPermitted()
+    {
+        GcodeAllowList.IsAllowed(FlashFirmware.FlashLine).Should().BeTrue();
+        FlashFirmware.FlashLine.Should().Be("M997 /usb/FIRMWARE.BBF");
+    }
+
+    /// <summary>
+    /// The flash line never shares a frame: the board resets on it, so nothing after it runs, and a
+    /// line before it would be a way to ride along with the one admitted reflash.
+    /// </summary>
+    [Theory]
+    [InlineData("M104 S215\nM997 /usb/FIRMWARE.BBF")]
+    [InlineData("M997 /usb/FIRMWARE.BBF\nM104 S215")]
+    [InlineData("M997 /usb/FIRMWARE.BBF\nM997 /usb/FIRMWARE.BBF")]
+    [InlineData("M997 /usb/FIRMWARE.BBF ; M997")]
+    public void TheFlashLineBesideAnotherLineIsRefused(string body)
+    {
+        GcodeAllowList.IsAllowed(body).Should().BeFalse();
     }
 
     /// <summary>
@@ -116,8 +151,8 @@ public class GcodeAllowListTests
     /// </summary>
     /// <remarks>
     /// The newline cases are the interesting ones now that a body may legitimately carry several
-    /// lines: what makes these refusals is that <c>M997</c> is not permitted <em>on any line</em>,
-    /// not that a separator is present.
+    /// lines: what makes these refusals is that a bare <c>M997</c> is not permitted <em>on any
+    /// line</em>, not that a separator is present.
     /// </remarks>
     [Theory]
     [InlineData("M104 S215 M997")]
@@ -219,6 +254,7 @@ public class GcodeAllowListTests
         GcodeAllowList.IsAllowed(UnloadFilament.ForTool(1).Line).Should().BeTrue();
         GcodeAllowList.IsAllowed(UnloadFilament.ForTool(UnloadFilament.MaxTools).Line).Should().BeTrue();
         GcodeAllowList.IsAllowed(new SetTemperatures(230, 85).Line).Should().BeTrue();
+        GcodeAllowList.IsAllowed(new FlashFirmware().Line).Should().BeTrue();
     }
 
     /// <summary>

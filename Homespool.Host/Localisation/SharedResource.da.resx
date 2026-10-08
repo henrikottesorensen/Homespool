@@ -3420,4 +3420,85 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Firmware_DeleteGone" xml:space="preserve">
     <value>Den firmwarefil er ikke længere gemt her.</value>
   </data>
+  <data name="Firmware_Actions" xml:space="preserve">
+    <value>Handlinger</value>
+  </data>
+  <data name="Firmware_Install" xml:space="preserve">
+    <value>Installér</value>
+  </data>
+  <data name="Firmware_InstallLabel" xml:space="preserve">
+    <value>Installér firmware {0}</value>
+  </data>
+  <data name="Firmware_ProveToInstall" xml:space="preserve">
+    <value>Bekræft, at det er dig, for at installere</value>
+  </data>
+  <data name="Firmware_Older" xml:space="preserve">
+    <value>Ældre end det, printeren kører nu.</value>
+  </data>
+  <data name="Firmware_Started" xml:space="preserve">
+    <value>Installerer firmware {0} på {1}. Fremdriften vises her; sluk ikke for printeren.</value>
+  </data>
+  <data name="Firmware_StageSending" xml:space="preserve">
+    <value>Sender firmware {0} til {1}…</value>
+  </data>
+  <data name="Firmware_StageArriving" xml:space="preserve">
+    <value>Venter på, at firmware {0} er kommet helt over på {1}…</value>
+  </data>
+  <data name="Firmware_StageRestarting" xml:space="preserve">
+    <value>{1} genstarter for at installere firmware {0}. Det tager et par minutter; sluk ikke for den.</value>
+  </data>
+  <data name="Firmware_StageCleaningUp" xml:space="preserve">
+    <value>{1} kører firmware {0}; fjerner filen fra dens drev…</value>
+  </data>
+  <data name="Firmware_StageDone" xml:space="preserve">
+    <value>{1} kører nu firmware {0}.</value>
+  </data>
+  <data name="Firmware_StageFailed" xml:space="preserve">
+    <value>Firmware {0} blev ikke installeret.</value>
+  </data>
+  <data name="Firmware_FailedOlderCopy" xml:space="preserve">
+    <value>{0} beholdt en ældre fil under firmwarefilens navn og ville ikke erstatte den: {1}</value>
+  </data>
+  <data name="Firmware_FailedRefused" xml:space="preserve">
+    <value>{0} afviste filen: {1}</value>
+  </data>
+  <data name="Firmware_FailedTransferEnded" xml:space="preserve">
+    <value>Overførslen til {0} sluttede, før filen var kommet over. Intet blev installeret.</value>
+  </data>
+  <data name="Firmware_FailedArrivalTimeout" xml:space="preserve">
+    <value>Filen kom ikke helt over til {0} inden for {1} minutter. Intet blev installeret.</value>
+  </data>
+  <data name="Firmware_FailedWrongPath" xml:space="preserve">
+    <value>{0} gemte filen som {1}, ikke hvor installationen leder efter den, så intet blev installeret.</value>
+  </data>
+  <data name="Firmware_FailedNotBack" xml:space="preserve">
+    <value>{0} kom ikke tilbage på firmware {1} inden for {2} minutter; den oplyste senest {3}. Se printerens skærm.</value>
+  </data>
+  <data name="Firmware_FailedStopped" xml:space="preserve">
+    <value>Homespool stoppede, før installationen var færdig. Se, hvad {0} kører, når den har forbundet igen.</value>
+  </data>
+  <data name="Firmware_FailedUnexpectedly" xml:space="preserve">
+    <value>Installationen på {0} stoppede uventet. Loggen har detaljerne.</value>
+  </data>
+  <data name="Error_FirmwareFlashNotConnected" xml:space="preserve">
+    <value>{0} er ikke forbundet, så der kan ikke sendes firmware til den.</value>
+  </data>
+  <data name="Error_FirmwareFlashBusy" xml:space="preserve">
+    <value>{0} er optaget. Firmware kan installeres, når den er ledig.</value>
+  </data>
+  <data name="Error_FirmwareFlashQueued" xml:space="preserve">
+    <value>{0} har print i kø. Tøm køen først, så intet kan starte, mens firmwaren installeres.</value>
+  </data>
+  <data name="Error_FirmwareFlashAlreadyFlashing" xml:space="preserve">
+    <value>Der installeres allerede firmware på {0}.</value>
+  </data>
+  <data name="Error_FirmwareFlashNoSuchImage" xml:space="preserve">
+    <value>Den firmwarefil er ikke længere gemt til {0}.</value>
+  </data>
+  <data name="Firmware_FailedEarlierImageKept" xml:space="preserve">
+    <value>{0} ville ikke slette den tidligere firmwarefil {1} fra sit drev, så intet blev installeret. Prøv igen, når printeren ikke bruger den, eller fjern den ved printeren.</value>
+  </data>
+  <data name="Firmware_FailedUnknownImage" xml:space="preserve">
+    <value>{0} har allerede en {1} på sit drev, som Homespool ikke har lagt der, så intet blev installeret. Fjern den ved printeren, og prøv igen.</value>
+  </data>
 </root>

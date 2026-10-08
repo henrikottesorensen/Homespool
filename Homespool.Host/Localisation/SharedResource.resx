@@ -3542,4 +3542,85 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Firmware_DeleteGone" xml:space="preserve">
     <value>That firmware image is no longer stored here.</value>
   </data>
+  <data name="Firmware_Actions" xml:space="preserve">
+    <value>Actions</value>
+  </data>
+  <data name="Firmware_Install" xml:space="preserve">
+    <value>Install</value>
+  </data>
+  <data name="Firmware_InstallLabel" xml:space="preserve">
+    <value>Install firmware {0}</value>
+  </data>
+  <data name="Firmware_ProveToInstall" xml:space="preserve">
+    <value>Confirm it's you to install</value>
+  </data>
+  <data name="Firmware_Older" xml:space="preserve">
+    <value>Older than what this printer runs.</value>
+  </data>
+  <data name="Firmware_Started" xml:space="preserve">
+    <value>Installing firmware {0} on {1}. Its progress shows here; do not switch the printer off.</value>
+  </data>
+  <data name="Firmware_StageSending" xml:space="preserve">
+    <value>Sending firmware {0} to {1}…</value>
+  </data>
+  <data name="Firmware_StageArriving" xml:space="preserve">
+    <value>Waiting for firmware {0} to finish arriving on {1}…</value>
+  </data>
+  <data name="Firmware_StageRestarting" xml:space="preserve">
+    <value>{1} is restarting to install firmware {0}. This takes a few minutes; do not switch it off.</value>
+  </data>
+  <data name="Firmware_StageCleaningUp" xml:space="preserve">
+    <value>{1} runs firmware {0}; removing the image from its drive…</value>
+  </data>
+  <data name="Firmware_StageDone" xml:space="preserve">
+    <value>{1} now runs firmware {0}.</value>
+  </data>
+  <data name="Firmware_StageFailed" xml:space="preserve">
+    <value>Firmware {0} was not installed.</value>
+  </data>
+  <data name="Firmware_FailedOlderCopy" xml:space="preserve">
+    <value>{0} kept an older file under the image's name and would not replace it: {1}</value>
+  </data>
+  <data name="Firmware_FailedRefused" xml:space="preserve">
+    <value>{0} refused the image: {1}</value>
+  </data>
+  <data name="Firmware_FailedTransferEnded" xml:space="preserve">
+    <value>The transfer to {0} ended before the image arrived. Nothing was installed.</value>
+  </data>
+  <data name="Firmware_FailedArrivalTimeout" xml:space="preserve">
+    <value>The image did not finish arriving on {0} within {1} minutes. Nothing was installed.</value>
+  </data>
+  <data name="Firmware_FailedWrongPath" xml:space="preserve">
+    <value>{0} stored the image as {1}, not where the installation looks for it, so nothing was installed.</value>
+  </data>
+  <data name="Firmware_FailedNotBack" xml:space="preserve">
+    <value>{0} did not come back on firmware {1} within {2} minutes; it last reported {3}. Check the printer's screen.</value>
+  </data>
+  <data name="Firmware_FailedStopped" xml:space="preserve">
+    <value>Homespool stopped before the installation finished. Check what {0} runs once it reconnects.</value>
+  </data>
+  <data name="Firmware_FailedUnexpectedly" xml:space="preserve">
+    <value>The installation on {0} stopped unexpectedly. The log has the details.</value>
+  </data>
+  <data name="Error_FirmwareFlashNotConnected" xml:space="preserve">
+    <value>{0} is not connected, so no firmware can be sent to it.</value>
+  </data>
+  <data name="Error_FirmwareFlashBusy" xml:space="preserve">
+    <value>{0} is busy. Firmware can be installed once it is idle.</value>
+  </data>
+  <data name="Error_FirmwareFlashQueued" xml:space="preserve">
+    <value>{0} has prints queued. Clear its queue first, so none can start while firmware is installed.</value>
+  </data>
+  <data name="Error_FirmwareFlashAlreadyFlashing" xml:space="preserve">
+    <value>Firmware is already being installed on {0}.</value>
+  </data>
+  <data name="Error_FirmwareFlashNoSuchImage" xml:space="preserve">
+    <value>That firmware image is no longer stored for {0}.</value>
+  </data>
+  <data name="Firmware_FailedEarlierImageKept" xml:space="preserve">
+    <value>{0} would not delete the earlier firmware image {1} from its drive, so nothing was installed. Try again once the printer is not using it, or remove it at the printer.</value>
+  </data>
+  <data name="Firmware_FailedUnknownImage" xml:space="preserve">
+    <value>{0} already has a {1} on its drive that Homespool did not put there, so nothing was installed. Remove it at the printer and try again.</value>
+  </data>
 </root>

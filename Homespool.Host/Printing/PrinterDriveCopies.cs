@@ -32,7 +32,7 @@ namespace Homespool.Host.Printing;
 public sealed class PrinterDriveCopies
 {
     /// <summary>Firmware's answer for a path with nothing at it (planner.cpp:887-888).</summary>
-    private const string NotFound = "File not found";
+    internal const string NotFound = "File not found";
 
     private readonly HomespoolDbContext _dbContext;
     private readonly PrinterCommandService _commands;

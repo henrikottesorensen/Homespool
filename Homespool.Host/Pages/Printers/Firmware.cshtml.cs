@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,11 +12,13 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
 
+using Homespool.Host.Authentication;
 using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Firmware;
 using Homespool.Host.Localisation;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -43,6 +46,8 @@ public class FirmwareModel : PageModel
     private readonly PrinterQueryService _printers;
     private readonly PrinterAccessService _access;
     private readonly FirmwareImages _images;
+    private readonly FirmwareFlashes _flashes;
+    private readonly RecentProof _proof;
     private readonly UserManager<HSUser> _userManager;
     private readonly ErrorText _errors;
     private readonly IStringLocalizer<SharedResource> _localiser;
@@ -50,6 +55,8 @@ public class FirmwareModel : PageModel
     public FirmwareModel(PrinterQueryService printers,
                          PrinterAccessService access,
                          FirmwareImages images,
+                         FirmwareFlashes flashes,
+                         RecentProof proof,
                          UserManager<HSUser> userManager,
                          ErrorText errors,
                          IStringLocalizer<SharedResource> localiser)
@@ -57,10 +64,21 @@ public class FirmwareModel : PageModel
         _printers = printers;
         _access = access;
         _images = images;
+        _flashes = flashes;
+        _proof = proof;
         _userManager = userManager;
         _errors = errors;
         _localiser = localiser;
     }
+
+    /// <summary>The printer's latest flash, running or finished, or null when there has been none since start.</summary>
+    public FirmwareFlashStatus? Flash { get; private set; }
+
+    /// <summary>
+    /// Whether the person has proved who they are recently enough to flash - which decides whether
+    /// the page offers the button or the way to prove first.
+    /// </summary>
+    public bool FlashProved { get; private set; }
 
     /// <summary>The printer, once the page has found it for the caller.</summary>
     public Printer Printer { get; private set; } = null!;
@@ -122,6 +140,74 @@ public class FirmwareModel : PageModel
         return RedirectToPage(new { uuid });
     }
 
+    /// <summary>The flash's progress alone, for the page to refresh while one runs.</summary>
+    public async Task<IActionResult> OnGetFlashAsync(Guid uuid, CancellationToken cancellationToken)
+    {
+        if (await LoadAsync(uuid, listImages: false, cancellationToken) is IActionResult refused)
+        {
+            return refused;
+        }
+
+        return Partial("_FirmwareFlash", this);
+    }
+
+    /// <summary>Starts installing a stored image on this printer.</summary>
+    /// <remarks>
+    /// <b>A recent proof, from every account</b>, as removing a printer takes: replacing what a printer
+    /// runs is the kind of act a session somebody else got hold of must not be able to perform.
+    /// </remarks>
+    [RequireRecentProof]
+    public async Task<IActionResult> OnPostFlashAsync(Guid uuid, string? digest, CancellationToken cancellationToken)
+    {
+        if (await LoadAsync(uuid, listImages: false, cancellationToken) is IActionResult refused)
+        {
+            return refused;
+        }
+
+        try
+        {
+            FirmwareFlashStatus started = await _flashes.StartAsync(await CallerAsync(), Printer.Id, digest ?? string.Empty,
+                                                                    cancellationToken);
+
+            (StatusMessage, StatusSuccess) = (_localiser["Firmware_Started", started.Version, PrinterDisplayName.For(Printer)].Value,
+                                              true);
+        }
+        catch (FirmwareFlashRefusedException e)
+        {
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+        }
+
+        return RedirectToPage(new { uuid });
+    }
+
+    /// <summary>
+    /// Whether <paramref name="image"/> is older than what the printer last reported running - which
+    /// the page says before anybody installs it. False when either version cannot be read.
+    /// </summary>
+    public bool IsOlderThanCurrent(FirmwareImage image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        if (!PrinterFirmwareVersion.TryParse(Printer.Firmware, out PrinterFirmwareVersion current))
+        {
+            return false;
+        }
+
+        (int, int, int) imageVersion = (image.Header.Major, image.Header.Minor, image.Header.Patch);
+        (int, int, int) currentVersion = (current.Major, current.Minor, current.Patch);
+
+        if (imageVersion != currentVersion)
+        {
+            return imageVersion.CompareTo(currentVersion) < 0;
+        }
+
+        int plus = Printer.Firmware!.IndexOf('+', StringComparison.Ordinal);
+
+        return plus >= 0 &&
+               int.TryParse(Printer.Firmware.AsSpan(plus + 1), NumberStyles.None, CultureInfo.InvariantCulture, out int build) &&
+               image.Header.Build < build;
+    }
+
     /// <summary>Deletes a stored image this printer is offered, by its digest.</summary>
     public async Task<IActionResult> OnPostDeleteAsync(Guid uuid, string? digest, CancellationToken cancellationToken)
     {
@@ -162,6 +248,8 @@ public class FirmwareModel : PageModel
         }
 
         Printer = printer;
+        Flash = _flashes.For(printer.Id);
+        FlashProved = _proof.IsProved(HttpContext, caller.UserId);
 
         if (listImages)
         {

@@ -23,6 +23,22 @@
     </div>
 }
 
+@* Refreshed while a flash runs, and only then: a finished one has nothing left to say. *@
+@if (Model.Flash?.IsRunning == true)
+{
+    <div class="mt-3" data-live-region
+         data-live-url="@Url.Page("Firmware", "Flash", new { uuid })"
+         data-live-interval="3000">
+        <partial name="_FirmwareFlash" model="Model" />
+    </div>
+}
+else
+{
+    <div class="mt-3">
+        <partial name="_FirmwareFlash" model="Model" />
+    </div>
+}
+
 <p class="mt-3">
     @if (Model.Printer.Firmware is null)
     {
@@ -49,7 +65,7 @@ else
                 <th role="columnheader">@Localiser["Common_File"]</th>
                 <th role="columnheader" class="text-end">@Localiser["Files_Size"]</th>
                 <th role="columnheader">@Localiser["Files_Uploaded"]</th>
-                <th role="columnheader"><span class="visually-hidden">@Localiser["Common_Delete"]</span></th>
+                <th role="columnheader"><span class="visually-hidden">@Localiser["Firmware_Actions"]</span></th>
             </tr>
         </thead>
         <tbody role="rowgroup">
@@ -61,9 +77,34 @@ else
                     <td role="cell" class="text-end font-monospace text-nowrap">@ByteSize.Format(image.Size, Localiser)</td>
                     <td role="cell">@image.UploadedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)</td>
                     <td role="cell" class="text-end">
+                        @if (Model.IsOlderThanCurrent(image))
+                        {
+                            <p class="small text-warning-emphasis mb-1">@Localiser["Firmware_Older"]</p>
+                        }
+
+                        @* Installing replaces what the printer runs, so it takes a recent proof; until
+                           there is one the page offers the way to prove rather than a button the
+                           handler would refuse. Nothing is offered while a flash is under way. *@
+                        @if (Model.Flash?.IsRunning != true)
+                        {
+                            @if (Model.FlashProved)
+                            {
+                                <form method="post" asp-page-handler="Flash" asp-route-uuid="@uuid" class="d-inline">
+                                    <input type="hidden" name="digest" value="@image.Digest" />
+                                    <button type="submit" class="btn btn-primary btn-sm"
+                                            aria-label="@Localiser["Firmware_InstallLabel", image.Header.Version]">@Localiser["Firmware_Install"]</button>
+                                </form>
+                            }
+                            else
+                            {
+                                <a class="btn btn-outline-primary btn-sm" asp-page="/Account/Reauthenticate"
+                                   asp-route-returnUrl="@Url.Page("./Firmware", new { uuid })">@Localiser["Firmware_ProveToInstall"]</a>
+                            }
+                        }
+
                         @* Shared images, so whoever manages a printer one fits may delete it - the page
                            offers only images that fit this printer, and the service checks again. *@
-                        <form method="post" asp-page-handler="Delete" asp-route-uuid="@uuid">
+                        <form method="post" asp-page-handler="Delete" asp-route-uuid="@uuid" class="d-inline">
                             <input type="hidden" name="digest" value="@image.Digest" />
                             <button type="submit" class="btn btn-outline-danger btn-sm"
                                     aria-label="@Localiser["Firmware_DeleteLabel", image.Name]">@Localiser["Common_Delete"]</button>

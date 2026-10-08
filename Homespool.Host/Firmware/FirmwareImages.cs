@@ -14,6 +14,7 @@ using Homespool.Host.Authorisation;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Pages;
 using Homespool.Host.PrintFiles;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Model;
 using Homespool.Model.Entities;
 
@@ -232,6 +233,43 @@ public sealed class FirmwareImages
         }
 
         return images;
+    }
+
+    /// <summary>
+    /// A stored image ready to send to <paramref name="printerId"/>, verified from disk again now - or
+    /// null when no such image is stored, it no longer verifies, or it does not fit the printer.
+    /// </summary>
+    /// <remarks>
+    /// <b>The bytes go under <see cref="FlashFirmware.DriveName"/></b>, whatever the image was uploaded
+    /// as, because that is the one path the flash command names.
+    /// </remarks>
+    /// <exception cref="TeamAccessDeniedException">The caller may not manage this printer.</exception>
+    public async Task<FirmwareToFlash?> FindForFlashingAsync(Caller caller,
+                                                             int printerId,
+                                                             string digest,
+                                                             CancellationToken cancellationToken)
+    {
+        Printer printer = await _access.RequireAsync(printerId, caller, Capability.ManagePrinter, cancellationToken);
+
+        HSFile? row = await _dbContext.Files
+                                      .FirstOrDefaultAsync(candidate => candidate.Type == FileType.PrusaFirmware &&
+                                                                        candidate.Digest == digest,
+                                                           cancellationToken);
+
+        if (row?.Digest is null)
+        {
+            return null;
+        }
+
+        string path = PathFor(row.Digest);
+        PrusaFirmwareCheck check = await CheckAsync(path, cancellationToken);
+
+        if (!check.IsVerified || !PrusaFirmwareCompatibility.Fits(check.Header!, printer.Model))
+        {
+            return null;
+        }
+
+        return new FirmwareToFlash(row, new StoredFile(FlashFirmware.DriveName, path, row.Size, row.UploadedAt), check.Header!);
     }
 
     /// <summary>

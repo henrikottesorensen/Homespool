@@ -34,6 +34,8 @@ public sealed class PrintFileReconcilerTests : IDisposable
 {
     private const long Alice = 1;
 
+    private const string FirmwareImageName = "COREONE_firmware_7.0.0.bbf";
+
     private static readonly byte[] SlicedForMk4S = Encoding.UTF8.GetBytes(
         "G28 ; home\nG1 X10 Y10 F3000\n\n; prusaslicer_config = begin\n" +
         "; printer_model = MK4S\n; nozzle_diameter = 0.4\n; prusaslicer_config = end\n");
@@ -79,7 +81,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Name.Should().Be("handcopied.gcode");
         row.Size.Should().Be(3);
@@ -96,8 +98,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await AddUserAsync(context);
         Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "vanished.gcode",
             Size = 3,
@@ -112,7 +115,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
     /// <summary>
@@ -127,15 +130,16 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await AddUserAsync(context);
         Directory.CreateDirectory(Path.Combine(_root, "1-alice"));
 
-        PrintFile row = new()
+        HSFile row = new()
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "vanished.gcode",
             Size = 3,
             UploadedAt = DateTimeOffset.UnixEpoch,
         };
 
-        context.PrintFiles.Add(row);
+        context.Files.Add(row);
 
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
@@ -148,7 +152,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = printer.Id,
-            PrintFileId = row.Id,
+            FileId = row.Id,
             Position = 0,
             QueuedByUserId = Alice,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
@@ -164,7 +168,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
     }
 
     /// <summary>
@@ -186,15 +190,16 @@ public sealed class PrintFileReconcilerTests : IDisposable
             Directory.CreateDirectory(_root);
         }
 
-        PrintFile row = new()
+        HSFile row = new()
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "unmounted.gcode",
             Size = 3,
             UploadedAt = DateTimeOffset.UnixEpoch,
         };
 
-        context.PrintFiles.Add(row);
+        context.Files.Add(row);
 
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
@@ -207,7 +212,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = printer.Id,
-            PrintFileId = row.Id,
+            FileId = row.Id,
             Position = 0,
             QueuedByUserId = Alice,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
@@ -224,7 +229,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
         (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
         logger.Collector.GetSnapshot()
               .Should().ContainSingle(record => record.Level == LogLevel.Warning)
@@ -246,8 +251,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
         string path = Path.Combine(_root, "1-alice", "edited.gcode");
         await File.WriteAllBytesAsync(path, [1, 2, 3, 4, 5, 6], TestContext.Current.CancellationToken);
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "edited.gcode",
             Size = 3,
@@ -264,7 +270,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Size.Should().Be(6);
         row.Digest.Should().BeNull("a digest for content that is gone would be believed");
@@ -297,8 +303,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         StoredFile stored = NewStore().Find(Alice, "untouched.gcode")!;
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = stored.FileName,
             Size = stored.Length,
@@ -317,7 +324,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().Be("uploaded", "nothing about the file changed");
         logger.Collector.GetSnapshot().Should().NotContain(record => record.Level == LogLevel.Information,
@@ -347,7 +354,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().BeNull("the bytes may have changed, and the old digest would be believed");
         row.MetadataState.Should().Be(PrintFileMetadataState.Unread, "the backfill reads it again");
@@ -384,7 +391,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().Be(uploaded.Digest);
         logger.Collector.GetSnapshot()
@@ -410,7 +417,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Digest.Should().Be("uploaded");
     }
@@ -440,7 +447,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        List<PrintFile> rows = await context.PrintFiles.ToListAsync(TestContext.Current.CancellationToken);
+        List<HSFile> rows = await context.Files.ToListAsync(TestContext.Current.CancellationToken);
 
         rows.Should().AllSatisfy(row =>
         {
@@ -481,9 +488,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        (await context.PrintFiles.SingleAsync(row => row.Name == "locked.gcode", TestContext.Current.CancellationToken))
+        (await context.Files.SingleAsync(row => row.Name == "locked.gcode", TestContext.Current.CancellationToken))
             .Digest.Should().BeNull();
-        (await context.PrintFiles.SingleAsync(row => row.Name == "open.gcode", TestContext.Current.CancellationToken))
+        (await context.Files.SingleAsync(row => row.Name == "open.gcode", TestContext.Current.CancellationToken))
             .Digest.Should().NotBeNull();
         logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Warning);
     }
@@ -513,7 +520,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.MetadataState.Should().Be(PrintFileMetadataState.Read);
         row.PrinterModel.Should().Be("MK4S");
@@ -571,7 +578,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Size.Should().Be(4);
         row.Digest.Should().BeNull("a digest for content that is gone would be believed");
@@ -592,8 +599,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         await WriteFileAsync("unindexed.gcode", [1, 2, 3]);
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = "renaming.gcode",
             Size = 3,
@@ -610,7 +618,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Name.Should().Be("renaming.gcode", "a row whose file is missing may be mid-rename");
         row.Digest.Should().Be("uploaded");
@@ -669,7 +677,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        PrintFile row = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile row = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
         row.Name.Should().Be("Ærø.gcode");
         row.Digest.Should().Be("uploaded", "a rename does not change the bytes");
@@ -693,7 +701,14 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         foreach (string name in new[] { "ærø.gcode", "Ærø.gcode" })
         {
-            context.PrintFiles.Add(new PrintFile { UserId = Alice, Name = name, Size = 3, UploadedAt = DateTimeOffset.UnixEpoch });
+            context.Files.Add(new HSFile
+            {
+                Type = FileType.GCode,
+                UserId = Alice,
+                Name = name,
+                Size = 3,
+                UploadedAt = DateTimeOffset.UnixEpoch,
+            });
         }
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -711,9 +726,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
         // Assert
         context.ChangeTracker.Clear();
 
-        (await context.PrintFiles.CountAsync(row => row.UserId == Alice, TestContext.Current.CancellationToken))
+        (await context.Files.CountAsync(row => row.UserId == Alice, TestContext.Current.CancellationToken))
             .Should().Be(2, "neither row is the reconcile's to remove");
-        (await context.PrintFiles.SingleAsync(row => row.UserId == bob, TestContext.Current.CancellationToken))
+        (await context.Files.SingleAsync(row => row.UserId == bob, TestContext.Current.CancellationToken))
             .Name.Should().Be("handcopied.gcode");
         logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Error);
     }
@@ -737,8 +752,116 @@ public sealed class PrintFileReconcilerTests : IDisposable
         await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
 
         // Assert
-        (await context.PrintFiles.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0);
         File.Exists(path).Should().BeTrue("the reconciler never writes to the disk");
+    }
+
+    /// <summary>
+    /// A firmware image's bytes are in another store, so its row is not a file this walk lost: it
+    /// survives a reconcile of a directory that does not hold it.
+    /// </summary>
+    [Fact]
+    public async Task AFirmwareImageIsNotAFileThePrintStoreLost()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync("present.gcode", [1, 2, 3]);
+        await AddFirmwareRowAsync(context, size: 3, uploadedAt: DateTimeOffset.UnixEpoch);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        (await context.Files.SingleAsync(row => row.Type == FileType.PrusaFirmware, TestContext.Current.CancellationToken))
+            .Digest.Should().Be("firmware");
+    }
+
+    /// <summary>
+    /// A <c>.bbf</c> copied by hand into a print directory is indexed as that user's file, beside the
+    /// firmware image of the same name rather than as a correction to it.
+    /// </summary>
+    [Fact]
+    public async Task AHandCopiedBbfIsIndexedBesideTheFirmwareImageOfTheSameName()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync(FirmwareImageName, [1, 2, 3, 4]);
+        await AddFirmwareRowAsync(context, size: 3, uploadedAt: DateTimeOffset.UnixEpoch);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        List<HSFile> rows = await context.Files.OrderBy(row => row.Id).ToListAsync(TestContext.Current.CancellationToken);
+
+        rows.Should().HaveCount(2);
+        rows[0].Type.Should().Be(FileType.PrusaFirmware);
+        rows[0].Size.Should().Be(3, "the image's row describes the image, not the copy");
+        rows[0].Digest.Should().Be("firmware");
+        rows[1].Type.Should().Be(FileType.GCode);
+        rows[1].Size.Should().Be(4);
+    }
+
+    /// <summary>
+    /// The running recheck corrects G-code rows only: a hand-copied file of a firmware image's name,
+    /// with other bytes, is no statement about the image.
+    /// </summary>
+    [Fact]
+    public async Task TheRecheckLeavesAFirmwareImageAlone()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync(FirmwareImageName, [1, 2, 3, 4]);
+        await AddFirmwareRowAsync(context, size: 3, uploadedAt: DateTimeOffset.UnixEpoch);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.RecheckAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        HSFile image = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+
+        image.Size.Should().Be(3);
+        image.Digest.Should().Be("firmware");
+    }
+
+    /// <summary>
+    /// The backfill reads G-code rows only: it never hashes or describes a firmware image from a file
+    /// in somebody's print directory, even one that matches the image's row exactly.
+    /// </summary>
+    [Fact]
+    public async Task TheBackfillLeavesAFirmwareImageAlone()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context);
+        await WriteFileAsync(FirmwareImageName, [1, 2, 3]);
+
+        StoredFile copy = NewStore().Find(Alice, FirmwareImageName)!;
+        await AddFirmwareRowAsync(context, copy.Length, copy.UploadedAt, digest: null);
+
+        // Act
+        using PrintFileReconciler reconciler = NewReconciler();
+        await reconciler.BackfillAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+
+        HSFile image = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+
+        image.Digest.Should().BeNull();
+        image.MetadataState.Should().Be(PrintFileMetadataState.Undefined);
     }
 
     private static async Task AddUserAsync(HomespoolDbContext context, long id = Alice, string email = "alice@example.com")
@@ -793,8 +916,9 @@ public sealed class PrintFileReconcilerTests : IDisposable
     {
         StoredFile stored = NewStore().Find(Alice, name)!;
 
-        context.PrintFiles.Add(new PrintFile
+        context.Files.Add(new HSFile
         {
+            Type = FileType.GCode,
             UserId = Alice,
             Name = stored.FileName,
             Size = stored.Length + sizeOffset,
@@ -802,6 +926,25 @@ public sealed class PrintFileReconcilerTests : IDisposable
             UploadedAt = stored.UploadedAt,
             MetadataState = metadataState,
             PrinterModel = printerModel,
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>A firmware image owned by Alice, as the firmware store would index it.</summary>
+    private static async Task AddFirmwareRowAsync(HomespoolDbContext context,
+                                                  long size,
+                                                  DateTimeOffset uploadedAt,
+                                                  string? digest = "firmware")
+    {
+        context.Files.Add(new HSFile
+        {
+            Type = FileType.PrusaFirmware,
+            UserId = Alice,
+            Name = FirmwareImageName,
+            Size = size,
+            Digest = digest,
+            UploadedAt = uploadedAt,
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -817,7 +960,7 @@ public sealed class PrintFileReconcilerTests : IDisposable
 
         for (int i = 0; i < 500; i++)
         {
-            digest = await context.PrintFiles
+            digest = await context.Files
                                   .AsNoTracking()
                                   .Select(row => row.Digest)
                                   .SingleOrDefaultAsync(TestContext.Current.CancellationToken);

@@ -136,8 +136,9 @@ public sealed class QueueHoldLanguageTests : IDisposable
     [Fact]
     public void EveryCompatibilityFindingHasWords()
     {
-        PrintFile file = new()
+        HSFile file = new()
         {
+            Type = FileType.GCode,
             Name = "bracket.bgcode",
             PrinterModel = "COREONE",
             NozzleDiameter = 0.6f,
@@ -215,7 +216,7 @@ public sealed class QueueHoldLanguageTests : IDisposable
         await SeedHeldRowAsync(context);
 
         string? stored = await context.Database
-                                      .SqlQuery<string?>($"SELECT HoldReason AS Value FROM PrintFilesOnPrinters")
+                                      .SqlQuery<string?>($"SELECT HoldReason AS Value FROM FilesOnPrinters")
                                       .SingleAsync(TestContext.Current.CancellationToken);
 
         stored.Should().Be("FileExistsDifferentSize", "an integer here would make the enum's order part of the schema");
@@ -239,9 +240,9 @@ public sealed class QueueHoldLanguageTests : IDisposable
         await SeedHeldRowAsync(context);
         context.ChangeTracker.Clear();
 
-        PrintFileOnPrinter row = await InCulture(
+        FileOnPrinter row = await InCulture(
             "da",
-            () => context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken));
+            () => context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken));
 
         row.HoldReason.Should().Be(PrintHoldReason.FileExistsDifferentSize,
                                    "the comparison the advancer makes must not depend on who is reading");
@@ -265,8 +266,9 @@ public sealed class QueueHoldLanguageTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = team.Id };
-        PrintFile file = new()
+        HSFile file = new()
         {
+            Type = FileType.GCode,
             UserId = 1,
             Name = "bracket.gcode",
             Size = 4096,
@@ -274,13 +276,13 @@ public sealed class QueueHoldLanguageTests : IDisposable
         };
 
         context.Printers.Add(printer);
-        context.PrintFiles.Add(file);
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = printer.Id,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             HoldReason = PrintHoldReason.FileExistsDifferentSize,
             HoldPrinterFileBytes = 8192,
             BlockedAt = DateTimeOffset.UtcNow,

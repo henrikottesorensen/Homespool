@@ -23,14 +23,12 @@ namespace Homespool.Model.Entities;
 /// impossibility.
 /// </para>
 /// <para>
-/// <b>The name is deliberately literal.</b> It was <c>PrinterFileCopy</c> and then
-/// <c>PrintFileReplica</c> (Henrik, 2026-08-02); the first does not parse unambiguously - there is no
-/// <c>PrinterFile</c> type - and the second needed a paragraph explaining that nothing replicates.
-/// A name that has to say what it does not mean is worse than a plain one. This says which file and
-/// where it is, and nothing else, which is the whole content of the row.
+/// <b>The name is deliberately literal.</b> It says which file and where it is, and nothing else,
+/// which is the whole content of the row. Nothing here replicates or copies; a name implying either
+/// would need a paragraph explaining that it does not.
 /// </para>
 /// </remarks>
-public class PrintFileOnPrinter
+public class FileOnPrinter
 {
     /// <summary>Longest refusal text kept from the printer; anything past it is cut.</summary>
     /// <remarks>
@@ -53,10 +51,10 @@ public class PrintFileOnPrinter
     /// </remarks>
     public int PrinterId { get; set; }
 
-    public long PrintFileId { get; set; }
+    public long FileId { get; set; }
 
-    [ForeignKey(nameof(PrintFileId))]
-    public virtual PrintFile? PrintFile { get; set; }
+    [ForeignKey(nameof(FileId))]
+    public virtual HSFile? File { get; set; }
 
     /// <summary>
     /// When the transfer was started, or null if none has been. Set back to null when the printer
@@ -143,7 +141,7 @@ public class PrintFileOnPrinter
     /// <see cref="HoldReason"/> is <see cref="PrintHoldReason.FileExistsDifferentSize"/>.
     /// </summary>
     /// <remarks>
-    /// <b>Our own size is not stored beside it</b> - it is on the <see cref="PrintFile"/> this row
+    /// <b>Our own size is not stored beside it</b> - it is on the <see cref="HSFile"/> this row
     /// already points at, and duplicating it would let the two disagree.
     /// </remarks>
     public long? HoldPrinterFileBytes { get; set; }
@@ -237,7 +235,7 @@ public class PrintFileOnPrinter
     /// <para>
     /// <b>Recorded before the transfer</b>, because it is what the printer's own reports carry - an
     /// arriving file's <c>display_name</c>, a job started at the panel - and they have to be matched
-    /// to this row rather than to another user's file of the same name. <see cref="PrintFile"/>'s
+    /// to this row rather than to another user's file of the same name. <see cref="HSFile"/>'s
     /// name will not do: it is unique only per user, and a rename in Homespool changes it while the
     /// copy on the drive keeps the name it was sent under.
     /// </para>
@@ -249,13 +247,13 @@ public class PrintFileOnPrinter
     public string? DriveName { get; set; }
 
     /// <summary>
-    /// The <see cref="PrintFile.Digest"/> of the bytes sent to <see cref="DriveName"/>, or null when
+    /// The <see cref="HSFile.Digest"/> of the bytes sent to <see cref="DriveName"/>, or null when
     /// nothing Homespool can vouch for is there.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>What makes the rest of this row about one version of the file.</b> An overwrite keeps the
-    /// <see cref="PrintFile"/> row and changes its digest, while the drive keeps the old bytes under
+    /// <see cref="HSFile"/> row and changes its digest, while the drive keeps the old bytes under
     /// the same name - so <see cref="Arrived"/> and <see cref="PrinterPath"/> describe the file only
     /// while this equals the file's digest. Where the two differ, the copy is an older version and is
     /// never printed as the file: it is deleted and the file sent again.

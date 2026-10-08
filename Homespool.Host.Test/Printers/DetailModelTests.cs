@@ -780,14 +780,21 @@ public sealed class DetailModelTests : IDisposable
         context.Printers.Add(printer);
         context.TeamMembers.Add(TestMemberships.Operator(team.Id, other.Id));
 
-        PrintFile file = new() { UserId = other.Id, Name = "theirs.bgcode", Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
-        context.PrintFiles.Add(file);
+        HSFile file = new()
+        {
+            Type = FileType.GCode,
+            UserId = other.Id,
+            Name = "theirs.bgcode",
+            Size = 1024,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = printer.Id,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             PrintUuid = Guid.NewGuid(),
             QueuedByUserId = other.Id,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),
@@ -859,14 +866,21 @@ public sealed class DetailModelTests : IDisposable
         context.Printers.Add(printer);
         context.TeamMembers.Add(TestMemberships.Operator(team.Id, other.Id));
 
-        PrintFile file = new() { UserId = other.Id, Name = "theirs.bgcode", Size = 1024, UploadedAt = DateTimeOffset.UtcNow };
-        context.PrintFiles.Add(file);
+        HSFile file = new()
+        {
+            Type = FileType.GCode,
+            UserId = other.Id,
+            Name = "theirs.bgcode",
+            Size = 1024,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = printer.Id,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             PrintUuid = Guid.NewGuid(),
             QueuedByUserId = other.Id,
             QueuedByScope = CapabilitySet.Format(CapabilitySet.Everything),

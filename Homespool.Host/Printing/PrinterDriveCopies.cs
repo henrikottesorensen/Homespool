@@ -25,14 +25,14 @@ namespace Homespool.Host.Printing;
 /// </para>
 /// <para>
 /// <b>Only a copy Homespool can vouch for is deleted</b>: one whose
-/// <see cref="PrintFileOnPrinter.Digest"/> it recorded when the printer took the transfer. A file
+/// <see cref="FileOnPrinter.Digest"/> it recorded when the printer took the transfer. A file
 /// found under the name with no digest beside it may be anybody's, and is left where it is.
 /// </para>
 /// </remarks>
 public sealed class PrinterDriveCopies
 {
     /// <summary>Firmware's answer for a path with nothing at it (planner.cpp:887-888).</summary>
-    private const string NotFound = "File not found";
+    internal const string NotFound = "File not found";
 
     private readonly HomespoolDbContext _dbContext;
     private readonly PrinterCommandService _commands;
@@ -55,7 +55,7 @@ public sealed class PrinterDriveCopies
     /// False whenever either side is unknown: a copy nobody can vouch for is not the file, and a file
     /// with no digest has nothing a copy could match.
     /// </remarks>
-    public static bool IsCurrent(PrintFileOnPrinter? row, string? digest)
+    public static bool IsCurrent(FileOnPrinter? row, string? digest)
     {
         return row?.Digest is not null && digest is not null && string.Equals(row.Digest, digest, StringComparison.Ordinal);
     }
@@ -72,7 +72,7 @@ public sealed class PrinterDriveCopies
     /// <param name="row">The <i>(file, printer)</i> row.</param>
     /// <param name="digest">The digest of the bytes offered.</param>
     /// <param name="commandId">The id the download command went out under, or null when the transport did not say.</param>
-    public static void RecordTaken(PrintFileOnPrinter row, string digest, uint? commandId)
+    public static void RecordTaken(FileOnPrinter row, string digest, uint? commandId)
     {
         ArgumentNullException.ThrowIfNull(row);
 
@@ -109,7 +109,7 @@ public sealed class PrinterDriveCopies
     /// </para>
     /// </remarks>
     public async Task<OutdatedCopyOutcome> RemoveOutdatedAsync(int printerId,
-                                                               PrintFileOnPrinter row,
+                                                               FileOnPrinter row,
                                                                string digest,
                                                                Caller caller,
                                                                CancellationToken cancellationToken)

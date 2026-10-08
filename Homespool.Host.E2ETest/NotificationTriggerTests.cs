@@ -109,8 +109,8 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
                 new TeamMember { TeamId = workshop.Id, UserId = _bystander, Capabilities = string.Empty },
                 new TeamMember { TeamId = workshop.Id, UserId = _printerMuted, Capabilities = everything });
 
-            PrintFile file = new() { UserId = _owner, Name = "benchy.bgcode", Size = 1024 };
-            db.PrintFiles.Add(file);
+            HSFile file = new() { Type = FileType.GCode, UserId = _owner, Name = "benchy.bgcode", Size = 1024 };
+            db.Files.Add(file);
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
             _fileId = file.Id;
 
@@ -217,13 +217,13 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
             {
                 PrintUuid = Guid.NewGuid(),
                 PrinterId = _printer.Id,
-                PrintFileId = _fileId,
+                FileId = _fileId,
                 Position = 1,
                 QueuedByUserId = _owner,
                 QueuedByScope = CapabilitySet.Format([Capability.Print]),
             });
 
-            db.PrintFilesOnPrinters.Add(new PrintFileOnPrinter { PrinterId = _printer.Id, PrintFileId = _fileId });
+            db.FilesOnPrinters.Add(new FileOnPrinter { PrinterId = _printer.Id, FileId = _fileId });
 
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         });
@@ -232,7 +232,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
         {
             PrintHoldReason? reason = turn % 2 == 0 ? PrintHoldReason.FileExistsUnknownSize : null;
 
-            await WithDbAsync(db => db.PrintFilesOnPrinters
+            await WithDbAsync(db => db.FilesOnPrinters
                                       .Where(row => row.PrinterId == _printer.Id)
                                       .ExecuteUpdateAsync(set => set.SetProperty(row => row.HoldReason, reason),
                                                           TestContext.Current.CancellationToken));
@@ -240,7 +240,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
             await watcher.LookAsync(TestContext.Current.CancellationToken);
         }
 
-        await WithDbAsync(db => db.PrintFilesOnPrinters
+        await WithDbAsync(db => db.FilesOnPrinters
                                   .Where(row => row.PrinterId == _printer.Id)
                                   .ExecuteUpdateAsync(set => set.SetProperty(row => row.HoldReason, PrintHoldReason.FileExistsUnknownSize),
                                                       TestContext.Current.CancellationToken));
@@ -333,13 +333,13 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
             {
                 PrintUuid = Guid.NewGuid(),
                 PrinterId = _printer.Id,
-                PrintFileId = _fileId,
+                FileId = _fileId,
                 Position = 1,
                 QueuedByUserId = _owner,
                 QueuedByScope = CapabilitySet.Format([Capability.Print]),
             });
 
-            db.PrintFilesOnPrinters.Add(new PrintFileOnPrinter { PrinterId = _printer.Id, PrintFileId = _fileId });
+            db.FilesOnPrinters.Add(new FileOnPrinter { PrinterId = _printer.Id, FileId = _fileId });
 
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         });
@@ -349,7 +349,7 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
         await Task.Delay(NotificationWatcher.Interval, TestContext.Current.CancellationToken);
         _pushService.Received.Should().BeEmpty("there was nothing to say");
 
-        await WithDbAsync(db => db.PrintFilesOnPrinters
+        await WithDbAsync(db => db.FilesOnPrinters
                                   .Where(row => row.PrinterId == _printer.Id)
                                   .ExecuteUpdateAsync(set => set.SetProperty(row => row.HoldReason, PrintHoldReason.FileExistsUnknownSize),
                                                       TestContext.Current.CancellationToken));
@@ -399,16 +399,16 @@ public sealed class NotificationTriggerTests : IAsyncLifetime
             {
                 PrintUuid = Guid.NewGuid(),
                 PrinterId = _printer.Id,
-                PrintFileId = _fileId,
+                FileId = _fileId,
                 Position = 1,
                 QueuedByUserId = _owner,
                 QueuedByScope = CapabilitySet.Format([Capability.Print]),
             });
 
-            db.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+            db.FilesOnPrinters.Add(new FileOnPrinter
             {
                 PrinterId = _printer.Id,
-                PrintFileId = _fileId,
+                FileId = _fileId,
                 HoldReason = PrintHoldReason.FileExistsUnknownSize,
                 BlockedAt = DateTimeOffset.UtcNow,
             });

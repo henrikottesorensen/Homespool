@@ -12,7 +12,7 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b><c>PrintFileSender</c> sends this</b> to a printer that cannot pull chunks over a Connect
+/// <b><c>FileSender</c> sends this</b> to a printer that cannot pull chunks over a Connect
 /// WebSocket but does understand the command - Buddy on the HTTP transport. It is the second choice
 /// of two: the inline path is ~13% faster at every size measured, so a printer that can stream chunks
 /// gets <see cref="StartConnectDownload"/> instead.

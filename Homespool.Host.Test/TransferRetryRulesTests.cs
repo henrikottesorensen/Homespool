@@ -53,7 +53,7 @@ public class TransferRetryRulesTests
     [InlineData(null, "Failed to create directory", 1)]
     public void AChangingAnswerStartsTheCountOver(string? code, string? reason, int expected)
     {
-        PrintFileOnPrinter row = Refused(3, "STORAGE_FAILURE", "Failed to create directory");
+        FileOnPrinter row = Refused(3, "STORAGE_FAILURE", "Failed to create directory");
 
         TransferRetryRules.CountAfter(row, code, reason).Should().Be(expected);
     }
@@ -62,7 +62,7 @@ public class TransferRetryRulesTests
     [Fact]
     public void TheFirstRefusalCountsAsOne()
     {
-        TransferRetryRules.CountAfter(new PrintFileOnPrinter(), null, null)
+        TransferRetryRules.CountAfter(new FileOnPrinter(), null, null)
                           .Should().Be(1, "an empty row and a refusal with no words must not look alike");
     }
 
@@ -77,9 +77,9 @@ public class TransferRetryRulesTests
     [Fact]
     public void ARefusalLongerThanTheColumnStillCounts()
     {
-        string reason = new('x', PrintFileOnPrinter.TransferRefusalReasonMaxLength + 50);
-        PrintFileOnPrinter row = Refused(2, "STORAGE_FAILURE",
-                                         TransferRetryRules.Bound(reason, PrintFileOnPrinter.TransferRefusalReasonMaxLength));
+        string reason = new('x', FileOnPrinter.TransferRefusalReasonMaxLength + 50);
+        FileOnPrinter row = Refused(2, "STORAGE_FAILURE",
+                                    TransferRetryRules.Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength));
 
         TransferRetryRules.CountAfter(row, "STORAGE_FAILURE", reason).Should().Be(3);
     }
@@ -121,7 +121,7 @@ public class TransferRetryRulesTests
     [Fact]
     public void ARefusedTransferWaitsItsDelay()
     {
-        PrintFileOnPrinter row = Refused(2, "STORAGE_FAILURE", "Failed to create directory");
+        FileOnPrinter row = Refused(2, "STORAGE_FAILURE", "Failed to create directory");
 
         TransferRetryRules.IsWaiting(row, Now).Should().BeTrue();
         TransferRetryRules.IsWaiting(row, Now + TimeSpan.FromSeconds(11)).Should().BeTrue();
@@ -133,7 +133,7 @@ public class TransferRetryRulesTests
     public void ARowWithNoRefusalIsNotWaiting()
     {
         TransferRetryRules.IsWaiting(null, Now).Should().BeFalse();
-        TransferRetryRules.IsWaiting(new PrintFileOnPrinter(), Now).Should().BeFalse();
+        TransferRetryRules.IsWaiting(new FileOnPrinter(), Now).Should().BeFalse();
     }
 
     /// <summary>
@@ -159,7 +159,7 @@ public class TransferRetryRulesTests
     [Fact]
     public void ForgettingClearsEveryRefusalField()
     {
-        PrintFileOnPrinter row = Refused(5, "STORAGE_FAILURE", "Failed to create directory");
+        FileOnPrinter row = Refused(5, "STORAGE_FAILURE", "Failed to create directory");
 
         TransferRetryRules.Forget(row);
 
@@ -169,9 +169,9 @@ public class TransferRetryRulesTests
         row.TransferRefusalReason.Should().BeNull();
     }
 
-    private static PrintFileOnPrinter Refused(int count, string? code, string? reason)
+    private static FileOnPrinter Refused(int count, string? code, string? reason)
     {
-        return new PrintFileOnPrinter
+        return new FileOnPrinter
         {
             TransferRefusalCount = count,
             TransferRefusedAt = Now,

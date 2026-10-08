@@ -1,0 +1,48 @@
+@using Homespool.Host.Firmware
+@model FirmwareModel
+@inject ErrorText Errors
+@{
+    FirmwareFlashStatus? flash = Model.Flash;
+    string printerName = PrinterDisplayName.For(Model.Printer);
+}
+
+@* The latest flash of this printer since Homespool started, if any. Progress lives in memory, so a
+   restart forgets it - the version the printer reports on the page above stays the truth. *@
+@if (flash is not null)
+{
+    string alert = flash.Stage switch
+    {
+        FirmwareFlashStage.Done => "alert-success",
+        FirmwareFlashStage.Failed => "alert-danger",
+        _ => "alert-info",
+    };
+
+    <div class="alert @alert" role="status">
+        @switch (flash.Stage)
+        {
+            case FirmwareFlashStage.Sending:
+                @Localiser["Firmware_StageSending", flash.Version, printerName]
+                break;
+            case FirmwareFlashStage.Arriving:
+                @Localiser["Firmware_StageArriving", flash.Version, printerName]
+                break;
+            case FirmwareFlashStage.Restarting:
+                @Localiser["Firmware_StageRestarting", flash.Version, printerName]
+                break;
+            case FirmwareFlashStage.CleaningUp:
+                @Localiser["Firmware_StageCleaningUp", flash.Version, printerName]
+                break;
+            case FirmwareFlashStage.Done:
+                @Localiser["Firmware_StageDone", flash.Version, printerName]
+                break;
+            default:
+                @Localiser["Firmware_StageFailed", flash.Version]
+                if (flash.Problem is not null)
+                {
+                    <br />
+                    @Errors.For(flash.Problem)
+                }
+                break;
+        }
+    </div>
+}

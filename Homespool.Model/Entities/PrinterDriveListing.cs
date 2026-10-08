@@ -16,15 +16,15 @@ namespace Homespool.Model.Entities;
 /// the drive root, so one listing is the entire drive and only ever grows.
 /// </para>
 /// <para>
-/// <b>Not <see cref="PrintFileOnPrinter"/>, which is the confusable neighbour.</b> That table is
-/// <i>our</i> files as they exist on a drive, keyed to a <c>PrintFile</c> we sent. This is everything
+/// <b>Not <see cref="FileOnPrinter"/>, which is the confusable neighbour.</b> That table is
+/// <i>our</i> files as they exist on a drive, keyed to a <c>HSFile</c> we sent. This is everything
 /// on the drive, including what was put there by hand, by another slicer, or before the printer was
 /// ever enrolled. Same subject, different set; do not merge them.
 /// </para>
 /// <para>
 /// <b>A belief, like its neighbour.</b> The drive is the truth and we only hear about it when the
 /// printer volunteers a listing, so this is as stale as the last <c>FILE_INFO</c> - see
-/// <see cref="PrintFileOnPrinter"/>'s own remarks on the same point.
+/// <see cref="FileOnPrinter"/>'s own remarks on the same point.
 /// </para>
 /// </remarks>
 public class PrinterDriveListing

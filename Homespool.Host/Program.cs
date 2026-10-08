@@ -488,6 +488,15 @@ public static class Program
             // Runs once at startup, after MigrateHomespoolData below has made the tables exist.
             builder.Services.AddHostedService<PrintFiles.PrintFileReconciler>();
 
+            // Firmware images: their own directory, never inside the print-file store, and the
+            // verifier holding Prusa's key. Scoped for the DbContext, as the catalogue is.
+            builder.Services.AddOptions<Firmware.FirmwareStorageOptions>()
+                            .Bind(builder.Configuration.GetSection(Firmware.FirmwareStorageOptions.SectionName));
+            builder.Services.AddSingleton(Firmware.PrusaFirmwareVerifier.Prusa);
+            builder.Services.AddScoped<Firmware.FirmwareImages>();
+            builder.Services.AddSingleton(Firmware.FirmwareFlashTimings.Default);
+            builder.Services.AddSingleton<Firmware.FirmwareFlashes>();
+
             // Cameras: options, the guarded HTTP client, the fetcher and the frame cache. The
             // handler carries the address policy, which reads as networking plumbing here and lives
             // in Cameras/Registration.cs instead.
@@ -500,7 +509,7 @@ public static class Program
 
             // Scoped, following the command service it wraps. Shared by the API endpoint and the
             // Files page so that "a send that did not take leaves no offer" has one implementation.
-            builder.Services.AddScoped<Printing.PrintFileSender>();
+            builder.Services.AddScoped<Printing.FileSender>();
             builder.Services.AddScoped<Printing.PrinterDriveNames>();
             builder.Services.AddScoped<Printing.PrinterDriveCopies>();
 

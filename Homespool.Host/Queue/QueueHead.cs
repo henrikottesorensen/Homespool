@@ -2,7 +2,7 @@ namespace Homespool.Host.Queue;
 
 /// <summary>The entry at the front of a printer's queue, with what is known about its file.</summary>
 /// <param name="QueuedPrintId">The queue entry.</param>
-/// <param name="PrintFileId">The file it wants.</param>
+/// <param name="FileId">The file it wants.</param>
 /// <param name="FileName">Its name, for logs and for matching the printer's <c>FILE_INFO</c>.</param>
 /// <param name="FileHasArrived">
 /// Whether the whole file is believed to be on the drive - its transfer reported finished - <b>in this
@@ -11,7 +11,7 @@ namespace Homespool.Host.Queue;
 /// <param name="PrinterPath">What the printer calls it, once a <c>FILE_INFO</c> has said - for this version only.</param>
 public sealed record QueueHead(
     long QueuedPrintId,
-    long PrintFileId,
+    long FileId,
     string FileName,
     bool FileHasArrived,
     string? PrinterPath);

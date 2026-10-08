@@ -72,7 +72,7 @@ public static class PrintFileCompatibility
     /// The printer's per-tool hardware. Empty when it has never reported a <c>tools</c> block, which
     /// silences the two rules that depend on one.
     /// </param>
-    public static IReadOnlyList<PrintCompatibilityFinding> Evaluate(PrintFile file,
+    public static IReadOnlyList<PrintCompatibilityFinding> Evaluate(HSFile file,
                                                                     Printer printer,
                                                                     IReadOnlyList<PrinterTool> tools)
     {
@@ -121,7 +121,7 @@ public static class PrintFileCompatibility
     /// same silence every rule here keeps when a side did not say.
     /// </para>
     /// </remarks>
-    public static bool IsSlicedForAnotherModel(PrintFile? file, Printer printer)
+    public static bool IsSlicedForAnotherModel(HSFile? file, Printer printer)
     {
         ArgumentNullException.ThrowIfNull(printer);
 

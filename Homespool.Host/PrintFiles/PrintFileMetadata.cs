@@ -20,7 +20,7 @@ namespace Homespool.Host.PrintFiles;
 public static class PrintFileMetadata
 {
     /// <summary>Writes <paramref name="metadata"/> onto <paramref name="row"/>, null meaning unreadable.</summary>
-    public static void Apply(PrintFile row, GCodeMetadata? metadata)
+    public static void Apply(HSFile row, GCodeMetadata? metadata)
     {
         ArgumentNullException.ThrowIfNull(row);
 
@@ -49,7 +49,7 @@ public static class PrintFileMetadata
     /// sliced for. Unread with nothing in the columns makes it say nothing until the file has been read
     /// again.
     /// </remarks>
-    public static void Forget(PrintFile row)
+    public static void Forget(HSFile row)
     {
         ArgumentNullException.ThrowIfNull(row);
 
@@ -66,7 +66,7 @@ public static class PrintFileMetadata
     /// Sets every metadata column to what <paramref name="described"/> carries, for a bulk update
     /// that writes a row without loading it.
     /// </summary>
-    public static void Set(UpdateSettersBuilder<PrintFile> set, PrintFile described)
+    public static void Set(UpdateSettersBuilder<HSFile> set, HSFile described)
     {
         ArgumentNullException.ThrowIfNull(set);
         ArgumentNullException.ThrowIfNull(described);

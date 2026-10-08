@@ -26,7 +26,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// <see cref="PrintFileSender"/> chooses the download by the printer's connection, and cleans up
+/// <see cref="FileSender"/> chooses the download by the printer's connection, and cleans up
 /// every store it touched on every path the printer will never come for the bytes by.
 /// </summary>
 /// <remarks>
@@ -35,7 +35,7 @@ namespace Homespool.Host.Test;
 /// so a wrong answer here is a wedged printer, not a failed test. The cleanup is the rule the class
 /// exists to keep in one place, now with two stores instead of one.
 /// </remarks>
-public sealed class PrintFileSenderTests : IDisposable
+public sealed class FileSenderTests : IDisposable
 {
     private const int PrinterId = 1;
     private const long Owner = 10;
@@ -47,7 +47,7 @@ public sealed class PrintFileSenderTests : IDisposable
     private readonly TransferOfferStore _offers = new(TimeProvider.System, TestOptions.Monitor(new PrusaConnectOptions()), NullLogger<TransferOfferStore>.Instance);
     private readonly EncryptedTransferOffers _encrypted;
 
-    public PrintFileSenderTests()
+    public FileSenderTests()
     {
         _encrypted = new EncryptedTransferOffers(_offers);
     }
@@ -94,7 +94,7 @@ public sealed class PrintFileSenderTests : IDisposable
         content!.Dispose();
 
         // The byte count and the character count are one fact - firmware's hash buffer - and the
-        // arithmetic between them (three bytes per four characters) lives in PrintFileSender as an
+        // arithmetic between them (three bytes per four characters) lives in FileSender as an
         // expression rather than a comment. This is what notices if either end stops agreeing:
         // encoding past the buffer is truncated on the printer, and the only symptom is a first
         // range request quoting a hash that correlates with nothing.
@@ -229,7 +229,7 @@ public sealed class PrintFileSenderTests : IDisposable
         StoredFile file = WriteFile("model.gcode", 4096);
         IPrinterConnectionActor actor = Connect(canStreamChunks: false, PrinterEventType.Finished);
         Printer printer = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
-        PrintFileSender sender = NewSender(context);
+        FileSender sender = NewSender(context);
 
         // Act
         await sender.SendAsync(printer, file, TestCallers.Scoped(Owner, Capability.Print), TestContext.Current.CancellationToken);
@@ -461,16 +461,16 @@ public sealed class PrintFileSenderTests : IDisposable
         return actor;
     }
 
-    private PrintFileSender NewSender(HomespoolDbContext context)
+    private FileSender NewSender(HomespoolDbContext context)
     {
         PrinterCommandService commands = new(
             new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
             _registry);
 
-        return new PrintFileSender(_offers,
-                                   _encrypted,
-                                   commands,
-                                   TestOptions.Monitor(new PrusaConnectOptions { TransferPort = TransferPort }));
+        return new FileSender(_offers,
+                              _encrypted,
+                              commands,
+                              TestOptions.Monitor(new PrusaConnectOptions { TransferPort = TransferPort }));
     }
 
     private StoredFile WriteFile(string name, int length)

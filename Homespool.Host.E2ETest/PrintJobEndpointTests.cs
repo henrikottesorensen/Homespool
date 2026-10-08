@@ -551,8 +551,8 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.UserId == userId && row.Name == name,
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.UserId == userId && row.Name == name,
+                                                      TestContext.Current.CancellationToken);
         file.Digest = null;
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -564,8 +564,8 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.UserId == userId && row.Name == name,
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.UserId == userId && row.Name == name,
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = printerModel;
 
@@ -578,8 +578,8 @@ public sealed class PrintJobEndpointTests : IAsyncLifetime
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.UserId == userId && row.Name == name,
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.UserId == userId && row.Name == name,
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.RequiresHardenedNozzle = true;
 

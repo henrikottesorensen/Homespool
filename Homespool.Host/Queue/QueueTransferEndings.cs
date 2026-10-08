@@ -36,13 +36,13 @@ public sealed class QueueTransferEndings : ITransferEndPolicy
     /// <inheritdoc />
     public async Task EndedAsync(TransferContext context, PrinterEventType ending, CancellationToken cancellationToken)
     {
-        PrintFileOnPrinter row = context.Row!;
-        string fileName = QueueAdvancer.ForLog(row.DriveName ?? context.PrintFile.Name);
+        FileOnPrinter row = context.Row!;
+        string fileName = QueueAdvancer.ForLog(row.DriveName ?? context.File.Name);
 
         QueuedPrint? head = await context.DbContext.QueuedPrints
-                                         .Include(queued => queued.PrintFile)
+                                         .Include(queued => queued.File)
                                          .Where(queued => queued.PrinterId == context.PrinterId &&
-                                                          queued.PrintFileId == row.PrintFileId)
+                                                          queued.FileId == row.FileId)
                                          .OrderBy(queued => queued.Position)
                                          .ThenBy(queued => queued.Id)
                                          .FirstOrDefaultAsync(cancellationToken);

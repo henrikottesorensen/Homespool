@@ -721,6 +721,14 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
             return [RejectWithCode(frame.CommandId, device, "Unsupported file type", "STORAGE_FAILURE")];
         }
 
+        // Transfer::begin takes the slot and then refuses a destination that exists
+        // (transfer.cpp:96-107, answered at planner.cpp:815-816): a printer never overwrites a file by
+        // download. So a busy slot is the answer when both apply, and only a free one gets this.
+        if (device.Transfer is null && device.Storage.Find(arguments.Path) is not null)
+        {
+            return [RejectWithCode(frame.CommandId, device, "File already exists", "FILE_EXISTS")];
+        }
+
         FakeTransfer? transfer = device.TryBeginTransfer(arguments.Hash, arguments.TeamId, arguments.Path,
                                                          arguments.OriginalSize, frame.CommandId, DownloadOrder, FileIdSource);
 

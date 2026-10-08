@@ -11,7 +11,7 @@ namespace Homespool.Host.PrusaConnect.Transfers;
 /// <remarks>
 /// <para>
 /// <b>This is the transfer path for a printer with no Connect WebSocket to pull chunks over.</b>
-/// <c>PrintFileSender</c> chooses it for a printer that cannot stream chunks but does understand the
+/// <c>FileSender</c> chooses it for a printer that cannot stream chunks but does understand the
 /// command - Buddy on the HTTP transport - and <c>EncryptedTransferController</c> encrypts every body
 /// it serves on <c>/f/&lt;iv&gt;/raw</c> with it. <b>Second choice, on measurement</b>: against an
 /// MK3.5 it is ~13% slower than the inline path at every size measured, the ceiling being the

@@ -279,6 +279,10 @@
             @Localiser["Common_Save"]
         </button>
     </form>
+
+    @* Managing firmware is managing the printer, so the way there sits with the other manager's
+       controls rather than among the ones anybody printing uses. *@
+    <p class="mb-4"><a asp-page="Firmware" asp-route-uuid="@uuid">@Localiser["Firmware_Link"]</a></p>
 }
 
 @* The running print's objects, one at a time. Its own region and its own poll, because its rows carry

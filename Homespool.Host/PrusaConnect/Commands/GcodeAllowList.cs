@@ -15,7 +15,14 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// break: firmware's <c>M997</c> reflashes the mainboard from a <c>.bbf</c> under <c>/usb/</c>,
 /// validating nothing, so "upload a file" plus "send arbitrary gcode" is arbitrary firmware on
 /// someone's printer. Its own conclusion was that the safe shape is an allowlist rather than a
-/// passthrough, and that <c>M997</c> is the first entry that must not be on it.
+/// passthrough.
+/// </para>
+/// <para>
+/// <b><c>M997</c> is admitted in exactly one form</b>: <see cref="FlashFirmware.FlashLine"/>, written
+/// out in full, and only as a frame of its own. It flashes the one file the firmware flow writes to a
+/// printer, and that flow sends only an image it has found intact and signed by Prusa. A bare
+/// <c>M997</c> - flash whatever is on the drive at the next restart - and every other path stay
+/// refused.
 /// </para>
 /// <para>
 /// <b>It is a chokepoint, not a gate on user input.</b> Nothing accepts gcode from a caller today -
@@ -40,10 +47,11 @@ namespace Homespool.Host.PrusaConnect.Commands;
 /// it is queued and the second arrives while the first is still running.
 /// </para>
 /// <para>
-/// So the rule is <b>every line must be permitted</b>, not <b>there must be one line</b>. The
-/// guarantee is unchanged - <c>M997</c> is on no line - and this states the actual intent, which was
-/// never that newlines are dangerous but that an unvetted second command is. A separator is only a
-/// smuggling vector when what follows it goes unchecked.
+/// So the rule is <b>every line must be permitted</b>, not <b>there must be one line</b> - which
+/// states the actual intent, never that newlines are dangerous but that an unvetted second command
+/// is. A separator is only a smuggling vector when what follows it goes unchecked. The flash line is
+/// the exception that must be alone: the board resets on it, so nothing after it would run, and
+/// nothing belongs before it.
 /// </para>
 /// </remarks>
 public static class GcodeAllowList
@@ -65,12 +73,11 @@ public static class GcodeAllowList
     public const int MaxLines = 4;
 
     /// <summary>
-    /// <c>M997</c>, named rather than merely absent.
+    /// <c>M997</c>, named because every form of it but <see cref="FlashFirmware.FlashLine"/> is refused.
     /// </summary>
     /// <remarks>
-    /// Absence would be enough today. This is here so that the <em>intent</em> survives someone
-    /// widening the list in a hurry: a test asserts this specific line is refused, so a change that
-    /// would admit it fails with a message that says why rather than going quietly green.
+    /// Tests assert the bare command and its other forms are refused, so a change that would widen
+    /// the one admitted line fails with a message that says why rather than going quietly green.
     /// </remarks>
     public const string ReflashCommand = "M997";
 
@@ -131,6 +138,13 @@ public static class GcodeAllowList
             return false;
         }
 
+        // Ordinal and whole: the one flash line is admitted as a frame of its own and in no other
+        // spelling, before any splitting could let it ride beside another line.
+        if (string.Equals(body.Trim(), FlashFirmware.FlashLine, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
         string[] lines = body.Trim().Split('\n');
 
         if (lines.Length > MaxLines)
@@ -161,6 +175,7 @@ public static class GcodeAllowList
             $"M104 S<0-{MaxNozzleTemperature}> — nozzle target temperature",
             $"M140 S<0-{MaxBedTemperature}> — bed target temperature",
             $"M702 T<0-{UnloadFilament.MaxTools - 1}> W0 — unload one tool, preheating to its own filament type",
+            $"{FlashFirmware.FlashLine} — flash the firmware image the firmware flow sent, alone in its frame",
         ];
     }
 

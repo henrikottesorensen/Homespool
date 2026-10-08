@@ -240,7 +240,7 @@ public sealed class NotificationWatcher : BackgroundService
 
     private async Task LookForHoldsAsync(HomespoolDbContext db, CancellationToken cancellationToken)
     {
-        var rows = await db.PrintFilesOnPrinters
+        var rows = await db.FilesOnPrinters
                            .AsNoTracking()
                            .Where(row => row.HoldReason != null)
                            .Select(row => new { row.Id, row.PrinterId, Reason = row.HoldReason!.Value })

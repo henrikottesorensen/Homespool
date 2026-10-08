@@ -668,7 +668,7 @@ public sealed class UserFileStore
     /// still fail when the finished upload is moved into place.
     /// </para>
     /// </remarks>
-    private static string RequireSafeName(string fileName)
+    internal static string RequireSafeName(string fileName)
     {
         string name = SafeName(fileName) ?? throw new PrintFileNameRejectedException(nameof(fileName));
 
@@ -825,7 +825,7 @@ public sealed class UserFileStore
 /// would make "we have not computed it" and "this file has none" the same value at every call site.
 /// </remarks>
 /// <param name="File">The file as it now exists on disk.</param>
-/// <param name="Digest">Base64url SHA-384 of the content - see <see cref="Model.Entities.PrintFile.Digest"/>.</param>
+/// <param name="Digest">Base64url SHA-384 of the content - see <see cref="Model.Entities.HSFile.Digest"/>.</param>
 public sealed record PublishedFile(StoredFile File, string Digest);
 
 /// <summary>An upload that has arrived but has not been given its name yet.</summary>

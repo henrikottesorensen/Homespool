@@ -39,6 +39,10 @@
            decryption is checked against RFC 8291's example there, and both suites should read a
            notification with the checked copy. -->
       <Compile Include="..\Homespool.Host.Test\FakePushService.cs" Link="FakePushService.cs" />
+
+      <!-- Firmware images signed with a key made for the run, linked so both suites build an image
+           the same way - Prusa's own are never committed. -->
+      <Compile Include="..\Homespool.Host.Test\TestFirmwareImages.cs" Link="TestFirmwareImages.cs" />
     </ItemGroup>
 
     <ItemGroup>

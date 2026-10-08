@@ -180,7 +180,7 @@ public class PrinterController : ControllerBase
             return this.NotFoundProblem($"You have no file named {body.Name}.");
         }
 
-        PrintFile? indexed = await _files.ResolveAsync(user.Id, file.FileName, cancellationToken);
+        HSFile? indexed = await _files.ResolveAsync(user.Id, file.FileName, cancellationToken);
 
         if (indexed is null)
         {

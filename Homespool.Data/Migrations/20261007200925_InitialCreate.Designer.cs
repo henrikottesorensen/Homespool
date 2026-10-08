@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261004101303_InitialCreate")]
+    [Migration("20261007200925_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -114,6 +114,129 @@ namespace Homespool.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("Cameras");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.FileOnPrinter", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("ArrivedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("BlockedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Digest")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DriveName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("FileId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("HoldPrinterFileBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("HoldPrinterFreeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("HoldReason")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PrinterId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PrinterPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("TransferCommandId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TransferRefusalCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TransferRefusalCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TransferRefusalReason")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("TransferRefusedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("TransferStartedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FileId");
+
+                    b.HasIndex("PrinterId", "FileId")
+                        .IsUnique();
+
+                    b.ToTable("FilesOnPrinters");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.HSFile", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Digest")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ExtruderCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FilamentTypes")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetadataState")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<float?>("NozzleDiameter")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("PrinterModel")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("RequiresHardenedNozzle")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("RequiresHighFlowNozzle")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("UploadedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Type", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Files");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.HSUser", b =>
@@ -308,125 +431,6 @@ namespace Homespool.Data.Migrations
                     b.HasDiscriminator<string>("Kind");
 
                     b.UseTphMappingStrategy();
-                });
-
-            modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Digest")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("ExtruderCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("FilamentTypes")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("MetadataState")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .UseCollation("NOCASE");
-
-                    b.Property<float?>("NozzleDiameter")
-                        .HasColumnType("REAL");
-
-                    b.Property<string>("PrinterModel")
-                        .HasColumnType("TEXT");
-
-                    b.Property<bool?>("RequiresHardenedNozzle")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool?>("RequiresHighFlowNozzle")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("Size")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("UploadedAt")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long>("UserId")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId", "Name")
-                        .IsUnique();
-
-                    b.ToTable("PrintFiles");
-                });
-
-            modelBuilder.Entity("Homespool.Model.Entities.PrintFileOnPrinter", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long?>("ArrivedAt")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long?>("BlockedAt")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Digest")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("DriveName")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long?>("HoldPrinterFileBytes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long?>("HoldPrinterFreeBytes")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("HoldReason")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("PrintFileId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("PrinterId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("PrinterPath")
-                        .HasColumnType("TEXT");
-
-                    b.Property<long?>("TransferCommandId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("TransferRefusalCode")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("TransferRefusalCount")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("TransferRefusalReason")
-                        .HasMaxLength(256)
-                        .HasColumnType("TEXT");
-
-                    b.Property<long?>("TransferRefusedAt")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<long?>("TransferStartedAt")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PrintFileId");
-
-                    b.HasIndex("PrinterId", "PrintFileId")
-                        .IsUnique();
-
-                    b.ToTable("PrintFilesOnPrinters");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrintJob", b =>
@@ -934,10 +938,10 @@ namespace Homespool.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("Position")
+                    b.Property<long>("FileId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<long>("PrintFileId")
+                    b.Property<int>("Position")
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid>("PrintUuid")
@@ -959,7 +963,7 @@ namespace Homespool.Data.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PrintFileId");
+                    b.HasIndex("FileId");
 
                     b.HasIndex("PrintUuid")
                         .IsUnique();
@@ -1480,6 +1484,32 @@ namespace Homespool.Data.Migrations
                     b.Navigation("Team");
                 });
 
+            modelBuilder.Entity("Homespool.Model.Entities.FileOnPrinter", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.HSFile", "File")
+                        .WithMany()
+                        .HasForeignKey("FileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Homespool.Model.Entities.Printer", null)
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("File");
+                });
+
+            modelBuilder.Entity("Homespool.Model.Entities.HSFile", b =>
+                {
+                    b.HasOne("Homespool.Model.Entities.HSUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Homespool.Model.Entities.Invitation", b =>
                 {
                     b.HasOne("Homespool.Model.Entities.Team", "Team")
@@ -1497,32 +1527,6 @@ namespace Homespool.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>
-                {
-                    b.HasOne("Homespool.Model.Entities.HSUser", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Homespool.Model.Entities.PrintFileOnPrinter", b =>
-                {
-                    b.HasOne("Homespool.Model.Entities.PrintFile", "PrintFile")
-                        .WithMany()
-                        .HasForeignKey("PrintFileId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Homespool.Model.Entities.Printer", null)
-                        .WithMany()
-                        .HasForeignKey("PrinterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("PrintFile");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.PrintJob", b =>
@@ -1626,9 +1630,9 @@ namespace Homespool.Data.Migrations
 
             modelBuilder.Entity("Homespool.Model.Entities.QueuedPrint", b =>
                 {
-                    b.HasOne("Homespool.Model.Entities.PrintFile", "PrintFile")
+                    b.HasOne("Homespool.Model.Entities.HSFile", "File")
                         .WithMany("QueuedPrints")
-                        .HasForeignKey("PrintFileId")
+                        .HasForeignKey("FileId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -1638,7 +1642,7 @@ namespace Homespool.Data.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("PrintFile");
+                    b.Navigation("File");
                 });
 
             modelBuilder.Entity("Homespool.Model.Entities.TeamMember", b =>
@@ -1792,7 +1796,7 @@ namespace Homespool.Data.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Homespool.Model.Entities.PrintFile", b =>
+            modelBuilder.Entity("Homespool.Model.Entities.HSFile", b =>
                 {
                     b.Navigation("QueuedPrints");
                 });

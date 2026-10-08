@@ -27,7 +27,7 @@ namespace Homespool.Host.Printing;
 /// <para>
 /// <b>A reservation, not a transfer the queue waits on.</b> The row a direct send leaves carries a drive
 /// name and, once the printer takes the file, the command id its ending will name - but no
-/// <see cref="PrintFileOnPrinter.TransferStartedAt"/>, which is the queue's mark on an attempt of its
+/// <see cref="FileOnPrinter.TransferStartedAt"/>, which is the queue's mark on an attempt of its
 /// own: one it waits on before sending again, and whose failure it counts. The name is what the next
 /// transfer needs to see.
 /// </para>
@@ -54,7 +54,7 @@ public sealed class PrinterDriveNames
     /// Its own name when that is free, which is every transfer that shares a printer with nobody.
     /// When every name is taken it is still its own, and the printer's refusal decides from there.
     /// </remarks>
-    public async Task<string> FirstAsync(int printerId, PrintFile file, string fileName, CancellationToken cancellationToken)
+    public async Task<string> FirstAsync(int printerId, HSFile file, string fileName, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(file);
 
@@ -66,7 +66,7 @@ public sealed class PrinterDriveNames
 
     /// <summary>The name after <paramref name="refused"/> for <paramref name="file"/>, or null when none is left.</summary>
     public async Task<string?> AfterAsync(int printerId,
-                                          PrintFile file,
+                                          HSFile file,
                                           string refused,
                                           string fileName,
                                           CancellationToken cancellationToken)
@@ -85,14 +85,14 @@ public sealed class PrinterDriveNames
     /// </summary>
     private Task<List<string>> OthersAsync(int printerId, long printFileId, CancellationToken cancellationToken)
     {
-        return _dbContext.PrintFilesOnPrinters
-                         .Where(row => row.PrinterId == printerId && row.PrintFileId != printFileId)
-                         .Select(row => row.DriveName ?? row.PrintFile!.Name)
+        return _dbContext.FilesOnPrinters
+                         .Where(row => row.PrinterId == printerId && row.FileId != printFileId)
+                         .Select(row => row.DriveName ?? row.File!.Name)
                          .ToListAsync(cancellationToken);
     }
 
     /// <summary>The username of whoever owns <paramref name="file"/>, which is what a second name carries.</summary>
-    private Task<string?> OwnerNameAsync(PrintFile file, CancellationToken cancellationToken)
+    private Task<string?> OwnerNameAsync(HSFile file, CancellationToken cancellationToken)
     {
         return _dbContext.Users
                          .Where(user => user.Id == file.UserId)

@@ -51,8 +51,8 @@ public class QueuedPrintReadDTO
         return new()
         {
             PrintUuid = job.PrintUuid,
-            FileName = job.PrintFile?.Name ?? string.Empty,
-            Size = job.PrintFile?.Size ?? 0,
+            FileName = job.File?.Name ?? string.Empty,
+            Size = job.File?.Size ?? 0,
             Position = job.Position,
             QueuedAt = job.QueuedAt,
         };

@@ -225,8 +225,8 @@ public class GCodeMetadataReaderTests
     }
 
     [Theory]
-    [InlineData(PrintFile.PrinterModelMaxLength, true)]
-    [InlineData(PrintFile.PrinterModelMaxLength + 1, false)]
+    [InlineData(HSFile.PrinterModelMaxLength, true)]
+    [InlineData(HSFile.PrinterModelMaxLength + 1, false)]
     public void APrinterModelIsKeptUpToItsBound(int length, bool kept)
     {
         string model = new('M', length);
@@ -235,8 +235,8 @@ public class GCodeMetadataReaderTests
     }
 
     [Theory]
-    [InlineData(PrintFile.FilamentTypeMaxLength, true)]
-    [InlineData(PrintFile.FilamentTypeMaxLength + 1, false)]
+    [InlineData(HSFile.FilamentTypeMaxLength, true)]
+    [InlineData(HSFile.FilamentTypeMaxLength + 1, false)]
     public void AFilamentNameIsKeptUpToItsBound(int length, bool kept)
     {
         string name = new('F', length);
@@ -246,11 +246,11 @@ public class GCodeMetadataReaderTests
     }
 
     /// <summary>
-    /// Every list, positional or not, is dropped whole past <see cref="PrintFile.MaxFilaments"/>.
+    /// Every list, positional or not, is dropped whole past <see cref="HSFile.MaxFilaments"/>.
     /// </summary>
     [Theory]
-    [InlineData(PrintFile.MaxFilaments, true)]
-    [InlineData(PrintFile.MaxFilaments + 1, false)]
+    [InlineData(HSFile.MaxFilaments, true)]
+    [InlineData(HSFile.MaxFilaments + 1, false)]
     public void ListsAreKeptUpToTheFilamentBound(int count, bool kept)
     {
         GCodeMetadata metadata = Read(Config($"; nozzle_diameter = {Repeat("0.4", ',', count)}",

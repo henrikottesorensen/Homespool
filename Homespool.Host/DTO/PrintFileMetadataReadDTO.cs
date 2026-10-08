@@ -54,7 +54,7 @@ public class PrintFileMetadataReadDTO
 
     /// <summary>What the row records, or an unread description when there is no row.</summary>
     /// <param name="row">The file's row, or null when it has none.</param>
-    public static PrintFileMetadataReadDTO From(PrintFile? row)
+    public static PrintFileMetadataReadDTO From(HSFile? row)
     {
         return new()
         {
@@ -77,7 +77,7 @@ public class PrintFileMetadataReadDTO
     /// once stored those rows with no state at all; they write <c>Unread</c> now, but a database
     /// carries the old rows until each file is next uploaded.
     /// </remarks>
-    private static string StateOf(PrintFile? row)
+    private static string StateOf(HSFile? row)
     {
         return row?.MetadataState switch
         {

@@ -114,7 +114,7 @@ public sealed class FileMetadataEndpointTests : IAsyncLifetime
             // with no row at all, which the disk still says exists.
             await ChangeRowsAsync(user.Id, rows =>
             {
-                PrintFile reconciled = rows.Single(row => row.Name == "reconciled.gcode");
+                HSFile reconciled = rows.Single(row => row.Name == "reconciled.gcode");
                 reconciled.MetadataState = PrintFileMetadataState.Undefined;
                 reconciled.Digest = null;
 
@@ -188,15 +188,15 @@ public sealed class FileMetadataEndpointTests : IAsyncLifetime
     }
 
     /// <summary>Edits the user's rows in place, and removes the one <paramref name="edit"/> returns.</summary>
-    private async Task ChangeRowsAsync(long userId, Func<List<PrintFile>, PrintFile> edit)
+    private async Task ChangeRowsAsync(long userId, Func<List<HSFile>, HSFile> edit)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
-        List<PrintFile> rows =
-            await database.PrintFiles.Where(row => row.UserId == userId).ToListAsync(TestContext.Current.CancellationToken);
+        List<HSFile> rows =
+            await database.Files.Where(row => row.UserId == userId).ToListAsync(TestContext.Current.CancellationToken);
 
-        database.PrintFiles.Remove(edit(rows));
+        database.Files.Remove(edit(rows));
 
         await database.SaveChangesAsync(TestContext.Current.CancellationToken);
     }

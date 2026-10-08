@@ -36,7 +36,7 @@ internal sealed class QueueHolds
     /// One place, because a hold is several fields rather than one and leaving a stale byte count or
     /// refusal behind a cleared reason would put words on a page that describe nothing.
     /// </remarks>
-    public static void ClearHold(PrintFileOnPrinter onPrinter)
+    public static void ClearHold(FileOnPrinter onPrinter)
     {
         onPrinter.HoldReason = null;
         onPrinter.HoldPrinterFreeBytes = null;
@@ -70,7 +70,7 @@ internal sealed class QueueHolds
     public void RecordRefusal(HomespoolDbContext dbContext,
                                int printerId,
                                QueuedPrint head,
-                               PrintFileOnPrinter onPrinter,
+                               FileOnPrinter onPrinter,
                                string? code,
                                string? reason,
                                PrintHoldReason holdAs)
@@ -80,14 +80,14 @@ internal sealed class QueueHolds
 
         onPrinter.TransferRefusalCount = count;
         onPrinter.TransferRefusedAt = now;
-        onPrinter.TransferRefusalCode = TransferRetryRules.Bound(code, PrintFileOnPrinter.TransferRefusalCodeMaxLength);
-        onPrinter.TransferRefusalReason = TransferRetryRules.Bound(reason, PrintFileOnPrinter.TransferRefusalReasonMaxLength);
+        onPrinter.TransferRefusalCode = TransferRetryRules.Bound(code, FileOnPrinter.TransferRefusalCodeMaxLength);
+        onPrinter.TransferRefusalReason = TransferRetryRules.Bound(reason, FileOnPrinter.TransferRefusalReasonMaxLength);
 
         if (count < TransferRetryRules.HoldAfter)
         {
             _logger.LogDebug("[{PrinterId}] {Code} {Count} of {HoldAfter} for {FileName}; trying again in {Wait}",
                              printerId, LogText.Clean(onPrinter.TransferRefusalCode), count, TransferRetryRules.HoldAfter,
-                             head.PrintFile!.Name, TransferRetryRules.WaitAfter(count));
+                             head.File!.Name, TransferRetryRules.WaitAfter(count));
 
             return;
         }
@@ -103,8 +103,8 @@ internal sealed class QueueHolds
         {
             PrinterId = printerId,
             PrintUuid = head.PrintUuid,
-            FileName = head.PrintFile!.Name,
-            Digest = head.PrintFile.Digest,
+            FileName = head.File!.Name,
+            Digest = head.File.Digest,
             QueuedByUserId = head.QueuedByUserId,
             QueuedByScope = head.QueuedByScope,
             StartedAt = now,
@@ -118,7 +118,7 @@ internal sealed class QueueHolds
             _logger.LogWarning(
                 "[{PrinterId}] gave up the transfer of {FileName} {Count} times running; holding the queue " +
                 "until somebody cancels or re-queues it.",
-                printerId, head.PrintFile.Name, count);
+                printerId, head.File.Name, count);
 
             return;
         }
@@ -126,7 +126,7 @@ internal sealed class QueueHolds
         _logger.LogWarning(
             "[{PrinterId}] refused the transfer of {FileName} {Count} times running with the same answer, " +
             "{Reason} [{MachineReason}]; holding the queue until somebody cancels or re-queues it.",
-            printerId, head.PrintFile.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
+            printerId, head.File.Name, count, LogText.Clean(onPrinter.TransferRefusalReason),
             LogText.Clean(onPrinter.TransferRefusalCode));
     }
 
@@ -138,7 +138,7 @@ internal sealed class QueueHolds
     /// <see cref="PrintHoldReason.TransferStopped"/>. History gets one row, as for the other holds,
     /// in English - the column records what happened, the banner says it in the reader's language.
     /// </remarks>
-    public void HoldStopped(HomespoolDbContext dbContext, int printerId, QueuedPrint head, PrintFileOnPrinter onPrinter)
+    public void HoldStopped(HomespoolDbContext dbContext, int printerId, QueuedPrint head, FileOnPrinter onPrinter)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
@@ -148,14 +148,14 @@ internal sealed class QueueHolds
         onPrinter.BlockedAt = now;
         TransferRetryRules.Forget(onPrinter);
 
-        string recorded = $"The transfer of {head.PrintFile!.Name} was stopped at the printer.";
+        string recorded = $"The transfer of {head.File!.Name} was stopped at the printer.";
 
         dbContext.PrintJobs.Add(new PrintJob
         {
             PrinterId = printerId,
             PrintUuid = head.PrintUuid,
-            FileName = head.PrintFile.Name,
-            Digest = head.PrintFile.Digest,
+            FileName = head.File.Name,
+            Digest = head.File.Digest,
             QueuedByUserId = head.QueuedByUserId,
             QueuedByScope = head.QueuedByScope,
             StartedAt = now,
@@ -176,7 +176,7 @@ internal sealed class QueueHolds
     /// <see cref="PrintHoldReason.FileTooLarge"/>. History gets one row, as for the other holds, in
     /// English - the column records what happened, the banner says it in the reader's language.
     /// </remarks>
-    public void HoldTooLarge(HomespoolDbContext dbContext, int printerId, QueuedPrint head, PrintFileOnPrinter onPrinter)
+    public void HoldTooLarge(HomespoolDbContext dbContext, int printerId, QueuedPrint head, FileOnPrinter onPrinter)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
 
@@ -186,14 +186,14 @@ internal sealed class QueueHolds
         onPrinter.BlockedAt = now;
         TransferRetryRules.Forget(onPrinter);
 
-        string recorded = $"{head.PrintFile!.Name} is 4 GiB or more, which is larger than a printer can be sent.";
+        string recorded = $"{head.File!.Name} is 4 GiB or more, which is larger than a printer can be sent.";
 
         dbContext.PrintJobs.Add(new PrintJob
         {
             PrinterId = printerId,
             PrintUuid = head.PrintUuid,
-            FileName = head.PrintFile.Name,
-            Digest = head.PrintFile.Digest,
+            FileName = head.File.Name,
+            Digest = head.File.Digest,
             QueuedByUserId = head.QueuedByUserId,
             QueuedByScope = head.QueuedByScope,
             StartedAt = now,
@@ -219,14 +219,14 @@ internal sealed class QueueHolds
     /// <para>
     /// <b>The hold lifts itself</b> - the rules send it back through the transfer path every
     /// <see cref="QueueAdvancer.BlockRecheckAfter"/>, and the first send that opens the file clears
-    /// it. So a second failure only moves <see cref="PrintFileOnPrinter.BlockedAt"/> on, and history
+    /// it. So a second failure only moves <see cref="FileOnPrinter.BlockedAt"/> on, and history
     /// gets one row, on the transition, as the space hold writes one.
     /// </para>
     /// </remarks>
     public void HoldUnreadable(HomespoolDbContext dbContext,
                                 int printerId,
                                 QueuedPrint head,
-                                PrintFileOnPrinter onPrinter,
+                                FileOnPrinter onPrinter,
                                 PrintFileUnreadableException? unreadable)
     {
         DateTimeOffset now = _timeProvider.GetUtcNow();
@@ -244,14 +244,14 @@ internal sealed class QueueHolds
 
         // English, like the space hold's record, and for the same reason: the column holds what was
         // said at the time, and the live hold is what a reader acts on, in their own language.
-        string recorded = $"{head.PrintFile!.Name} could not be read from this server's storage to send it to the printer.";
+        string recorded = $"{head.File!.Name} could not be read from this server's storage to send it to the printer.";
 
         dbContext.PrintJobs.Add(new PrintJob
         {
             PrinterId = printerId,
             PrintUuid = head.PrintUuid,
-            FileName = head.PrintFile.Name,
-            Digest = head.PrintFile.Digest,
+            FileName = head.File.Name,
+            Digest = head.File.Digest,
             QueuedByUserId = head.QueuedByUserId,
             QueuedByScope = head.QueuedByScope,
             StartedAt = now,

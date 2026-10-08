@@ -88,7 +88,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
-        jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "two.gcode", "three.gcode");
+        jobs.Select(job => job.File!.Name).Should().Equal("one.gcode", "two.gcode", "three.gcode");
     }
 
     /// <summary>
@@ -118,7 +118,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
-        jobs.Select(job => job.PrintFile!.Name).Should().Equal("three.gcode", "one.gcode", "two.gcode");
+        jobs.Select(job => job.File!.Name).Should().Equal("three.gcode", "one.gcode", "two.gcode");
         jobs.Select(job => job.Position).Should().Equal(0, 1, 2);
     }
 
@@ -143,7 +143,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
-        jobs.Select(job => job.PrintFile!.Name).Should().Equal("two.gcode", "one.gcode");
+        jobs.Select(job => job.File!.Name).Should().Equal("two.gcode", "one.gcode");
     }
 
     /// <summary>
@@ -171,7 +171,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         // Assert
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
-        jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "three.gcode");
+        jobs.Select(job => job.File!.Name).Should().Equal("one.gcode", "three.gcode");
         jobs.Select(job => job.Position).Should().OnlyHaveUniqueItems();
     }
 
@@ -195,7 +195,7 @@ public sealed class PrintQueueServiceTests : IDisposable
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
         jobs.Should().HaveCount(2);
-        jobs.Select(job => job.PrintFileId).Distinct().Should().HaveCount(1);
+        jobs.Select(job => job.FileId).Distinct().Should().HaveCount(1);
     }
 
     /// <summary>
@@ -231,12 +231,12 @@ public sealed class PrintQueueServiceTests : IDisposable
         await UploadAsync(context, "one.gcode");
         await queue.EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "one.gcode", TestContext.Current.CancellationToken);
 
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = printer.Id,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             HoldReason = hold,
             BlockedAt = DateTimeOffset.UnixEpoch,
             TransferRefusalCount = TransferRetryRules.HoldAfter,
@@ -252,7 +252,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         // Assert
         context.ChangeTracker.Clear();
-        PrintFileOnPrinter row = await context.PrintFilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
 
         if (lifted)
         {
@@ -548,7 +548,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
-        jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "two.gcode");
+        jobs.Select(job => job.File!.Name).Should().Equal("one.gcode", "two.gcode");
     }
 
     /// <summary>
@@ -607,7 +607,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
-        jobs.Select(job => job.PrintFile!.Name).Should().Equal("one.gcode", "two.gcode");
+        jobs.Select(job => job.File!.Name).Should().Equal("one.gcode", "two.gcode");
     }
 
     /// <summary>The team half of the same rule: a member who may only print is refused by the team.</summary>
@@ -723,7 +723,7 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         IReadOnlyList<QueuedPrint> jobs = await queue.ListAsync(printer.Id, Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
 
-        jobs.Select(job => job.PrintFile!.Name).Should().Equal("benchy.gcode");
+        jobs.Select(job => job.File!.Name).Should().Equal("benchy.gcode");
     }
 
     /// <summary>A handle this printer has no print under answers null, not a refusal.</summary>
@@ -907,8 +907,8 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         // The file's own account of itself, as the reader would have written it at upload. Sliced for
         // the same machine, so what is left is the three findings a person can go and answer.
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "abrasive.gcode",
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.Name == "abrasive.gcode",
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = "MK3.5";
         file.NozzleDiameter = 0.6f;
@@ -957,8 +957,8 @@ public sealed class PrintQueueServiceTests : IDisposable
 
         printer.Model = "1.3.5";
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "corexy.bgcode",
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.Name == "corexy.bgcode",
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = "COREONE";
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -998,8 +998,8 @@ public sealed class PrintQueueServiceTests : IDisposable
             HighFlow = true,
         });
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "fine.gcode",
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.Name == "fine.gcode",
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = "MK4S";
         file.NozzleDiameter = 0.4f;
@@ -1044,8 +1044,8 @@ public sealed class PrintQueueServiceTests : IDisposable
             PrinterId = printer.Id, ToolNumber = 1, NozzleDiameter = 0.4f, Hardened = false, HighFlow = true,
         });
 
-        PrintFile file = await context.PrintFiles.SingleAsync(row => row.Name == "abrasive.gcode",
-                                                              TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(row => row.Name == "abrasive.gcode",
+                                                      TestContext.Current.CancellationToken);
         file.MetadataState = PrintFileMetadataState.Read;
         file.PrinterModel = "MK4S";
         file.NozzleDiameter = 0.4f;
@@ -1083,12 +1083,12 @@ public sealed class PrintQueueServiceTests : IDisposable
         await NewQueue(context).EnqueueAsync(printer.Id, Caller.Unscoped(Alice), "plus+sign.gcode",
                                              TestContext.Current.CancellationToken);
 
-        PrintFile file = await context.PrintFiles.SingleAsync(TestContext.Current.CancellationToken);
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
 
-        context.PrintFilesOnPrinters.Add(new PrintFileOnPrinter
+        context.FilesOnPrinters.Add(new FileOnPrinter
         {
             PrinterId = printer.Id,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             HoldReason = PrintHoldReason.TransferRefused,
             BlockedAt = DateTimeOffset.UnixEpoch,
             TransferRefusalCount = TransferRetryRules.HoldAfter,

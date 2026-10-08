@@ -24,7 +24,7 @@ namespace Homespool.Model.Entities;
 /// <b>It records rather than points.</b> The file's name and digest are copied in, not referenced: a
 /// history row keeps what it records as a <i>record</i>, and a deleted or renamed file dangling
 /// behind history is by design.
-/// So there is deliberately no foreign key to <see cref="PrintFile"/>: renaming a file does not
+/// So there is deliberately no foreign key to <see cref="HSFile"/>: renaming a file does not
 /// rewrite what happened, and deleting one does not erase it.
 /// </para>
 /// </remarks>
@@ -74,7 +74,7 @@ public class PrintJob
     /// were of the same bytes even after the file has been replaced.
     /// </summary>
     /// <remarks>
-    /// Null when the file had no digest yet as the print opened - <see cref="PrintFile.Digest"/> says
+    /// Null when the file had no digest yet as the print opened - <see cref="HSFile.Digest"/> says
     /// when that is. <b>Never filled in afterwards</b>: a digest computed later describes whatever is on
     /// disk by then, not what was printed.
     /// </remarks>

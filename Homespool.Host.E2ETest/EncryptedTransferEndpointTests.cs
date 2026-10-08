@@ -224,7 +224,7 @@ public sealed class EncryptedTransferEndpointTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Does what <see cref="Homespool.Host.Printing.PrintFileSender"/> does for an HTTP printer, minus the command: writes
+    /// Does what <see cref="Homespool.Host.Printing.FileSender"/> does for an HTTP printer, minus the command: writes
     /// the bytes, offers them under the IV's hex, and registers the key beside the offer.
     /// </summary>
     private (string ivHex, byte[] key, byte[] iv) OfferEncrypted(byte[] plaintext)

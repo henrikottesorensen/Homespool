@@ -41,8 +41,8 @@ else
                     @* The row's place in the list, not its stored Position - cancelling leaves gaps in
                        those, deliberately, and a gap shown to a person reads as a bug. *@
                     <td class="queue-position" role="cell">@(index + 1)</td>
-                    <td class="typed-name queue-name" role="cell">@(job.PrintFile?.Name ?? "(missing)")</td>
-                    <td class="text-end queue-meta" role="cell">@($"{(job.PrintFile?.Size ?? 0) / 1024.0:N0} KiB")</td>
+                    <td class="typed-name queue-name" role="cell">@(job.File?.Name ?? "(missing)")</td>
+                    <td class="text-end queue-meta" role="cell">@($"{(job.File?.Size ?? 0) / 1024.0:N0} KiB")</td>
 
                     @* Fixed format rather than a culture-dependent one, matching the Files table -
                        and ToLocalTime, without which this column rendered UTC while the print history
@@ -72,7 +72,7 @@ else
                                     <input type="hidden" name="printUuid" value="@job.PrintUuid" />
                                     <input type="hidden" name="position" value="@(index - 1)" />
                                     <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                            title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.PrintFile?.Name ?? string.Empty]"
+                                            title="@Localiser["Printers_MoveUp"]" aria-label="@Localiser["Printers_MoveJobUp", job.File?.Name ?? string.Empty]"
                                             @(index == 0 ? "disabled" : string.Empty)>&uarr;</button>
                                 </form>
                                 <form method="post" asp-page-handler="Move" asp-route-uuid="@uuid"
@@ -80,7 +80,7 @@ else
                                     <input type="hidden" name="printUuid" value="@job.PrintUuid" />
                                     <input type="hidden" name="position" value="@(index + 1)" />
                                     <button type="submit" class="btn btn-sm btn-outline-secondary"
-                                            title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.PrintFile?.Name ?? string.Empty]"
+                                            title="@Localiser["Printers_MoveDown"]" aria-label="@Localiser["Printers_MoveJobDown", job.File?.Name ?? string.Empty]"
                                             @(index == Model.Queue.Count - 1 ? "disabled" : string.Empty)>&darr;</button>
                                 </form>
                             }
@@ -90,7 +90,7 @@ else
                                       class="d-inline">
                                     <input type="hidden" name="printUuid" value="@job.PrintUuid" />
                                     <button type="submit" class="btn btn-sm btn-outline-danger"
-                                            aria-label="@Localiser["Printers_RemoveJob", job.PrintFile?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
+                                            aria-label="@Localiser["Printers_RemoveJob", job.File?.Name ?? string.Empty]">@Localiser["Cameras_Remove"]</button>
                                 </form>
                             }
                         </td>

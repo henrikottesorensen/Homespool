@@ -43,8 +43,8 @@ public sealed class NotificationWatcherTests : IAsyncLifetime
             Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = team.Id, Name = "Core One" };
             db.Printers.Add(printer);
 
-            PrintFile file = new() { UserId = _userId, Name = "benchy.bgcode", Size = 1024 };
-            db.PrintFiles.Add(file);
+            HSFile file = new() { Type = FileType.GCode, UserId = _userId, Name = "benchy.bgcode", Size = 1024 };
+            db.Files.Add(file);
             await db.SaveChangesAsync(TestContext.Current.CancellationToken);
 
             _printerId = printer.Id;
@@ -88,12 +88,12 @@ public sealed class NotificationWatcherTests : IAsyncLifetime
     {
         return WithDbAsync(async db =>
         {
-            PrintFileOnPrinter? row = await db.PrintFilesOnPrinters.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+            FileOnPrinter? row = await db.FilesOnPrinters.SingleOrDefaultAsync(TestContext.Current.CancellationToken);
 
             if (row is null)
             {
-                row = new PrintFileOnPrinter { PrinterId = _printerId, PrintFileId = _fileId };
-                db.PrintFilesOnPrinters.Add(row);
+                row = new FileOnPrinter { PrinterId = _printerId, FileId = _fileId };
+                db.FilesOnPrinters.Add(row);
             }
 
             row.HoldReason = reason;

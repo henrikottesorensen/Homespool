@@ -43,6 +43,13 @@ namespace Homespool.Host.PrintFiles;
 /// team - it lives at <c>{userId}/{name}</c>, so nobody else can reach it and its owner cannot be
 /// refused it. The only question is which of their own powers this key was given.
 /// </para>
+/// <para>
+/// <b>Only <see cref="FileType.GCode"/> rows are a user's files.</b> The table also holds firmware
+/// images, which belong to another store and must never be listed, resolved, queued or deleted as
+/// somebody's print, so every query here names the type. Nothing reaches a firmware row by name
+/// either way - each path starts from a file the user store found - but a query that counted or
+/// matched one would still be wrong, and the filter is what keeps that true of the next query too.
+/// </para>
 /// </remarks>
 public sealed class PrintFileCatalog
 {
@@ -85,11 +92,11 @@ public sealed class PrintFileCatalog
 
         IReadOnlyList<StoredFile> files = _store.List(caller.UserId);
 
-        List<PrintFile> rows = await _dbContext.PrintFiles
-                                               .AsNoTracking()
-                                               .Where(row => row.UserId == caller.UserId)
-                                               .OrderBy(row => row.Id)
-                                               .ToListAsync(cancellationToken);
+        List<HSFile> rows = await _dbContext.Files
+                                            .AsNoTracking()
+                                            .Where(row => row.UserId == caller.UserId && row.Type == FileType.GCode)
+                                            .OrderBy(row => row.Id)
+                                            .ToListAsync(cancellationToken);
 
         return [.. files.Select(file => new CataloguedFile(file, BestMatch(rows, row => row.Name, file.FileName)))];
     }
@@ -103,7 +110,7 @@ public sealed class PrintFileCatalog
     /// just wrote. Requiring <see cref="Capability.ViewOwnFiles"/> here would refuse a token scoped to
     /// upload the description of the file it has just uploaded.
     /// </remarks>
-    public Task<PrintFile?> RowForAsync(long userId, StoredFile file, CancellationToken cancellationToken)
+    public Task<HSFile?> RowForAsync(long userId, StoredFile file, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(file);
 
@@ -169,11 +176,12 @@ public sealed class PrintFileCatalog
     /// <remarks>
     /// An install with rows is never marked here: rows and a root with no marker are what an
     /// unmounted volume looks like, so its operator creates the marker once they have seen the
-    /// right disk is there.
+    /// right disk is there. Only G-code rows count, since only they describe this store: a firmware
+    /// image uploaded first says nothing about whether the users' volume is mounted.
     /// </remarks>
     private async Task ConfirmFreshStorageAsync(CancellationToken cancellationToken)
     {
-        if (!_store.IsConfirmed && !await _dbContext.PrintFiles.AnyAsync(cancellationToken))
+        if (!_store.IsConfirmed && !await _dbContext.Files.AnyAsync(row => row.Type == FileType.GCode, cancellationToken))
         {
             _store.Confirm();
         }
@@ -212,7 +220,7 @@ public sealed class PrintFileCatalog
     /// already been gated by the capability their own act needs, and a second, browsing-shaped check
     /// here would mean a credential scoped to print could not print.
     /// </remarks>
-    public async Task<PrintFile?> ResolveAsync(long userId, string fileName, CancellationToken cancellationToken)
+    public async Task<HSFile?> ResolveAsync(long userId, string fileName, CancellationToken cancellationToken)
     {
         StoredFile? file = _store.Find(userId, fileName);
 
@@ -221,7 +229,7 @@ public sealed class PrintFileCatalog
             return null;
         }
 
-        PrintFile? row = await FindRowAsync(userId, file.FileName, cancellationToken);
+        HSFile? row = await FindRowAsync(userId, file.FileName, cancellationToken);
 
         if (row is not null)
         {
@@ -269,7 +277,7 @@ public sealed class PrintFileCatalog
     /// Takes no caller because it decides nothing; whoever is sending was gated already.
     /// </para>
     /// </remarks>
-    public async Task<string> DigestForSendingAsync(PrintFile row, StoredFile file, CancellationToken cancellationToken)
+    public async Task<string> DigestForSendingAsync(HSFile row, StoredFile file, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(row);
         ArgumentNullException.ThrowIfNull(file);
@@ -309,7 +317,7 @@ public sealed class PrintFileCatalog
             throw new PrintFileUnreadableException(file.FileName);
         }
 
-        await _dbContext.PrintFiles
+        await _dbContext.Files
                         .Where(candidate => candidate.Id == row.Id &&
                                             candidate.Digest == null &&
                                             candidate.Size == length &&
@@ -407,7 +415,7 @@ public sealed class PrintFileCatalog
 
         // Resolved before the move, because afterwards the old name finds nothing - and a rename of a
         // file that was never indexed still has to end with a row carrying the new name.
-        PrintFile? row = await ResolveAsync(userId, fileName, cancellationToken);
+        HSFile? row = await ResolveAsync(userId, fileName, cancellationToken);
 
         StoredFile? renamed = _store.Rename(userId, fileName, newName);
 
@@ -428,9 +436,9 @@ public sealed class PrintFileCatalog
             catch (DbUpdateException)
             {
                 // A concurrent publish indexed a row under the new name between the move and this
-                // write, and the unique (user, name) index refused ours. The rename itself succeeded
-                // on disk, which is the truth: leave the old row as it was and let the reconcile heal
-                // the pair rather than answering a completed rename with a 500.
+                // write, and the unique (user, type, name) index refused ours. The rename itself
+                // succeeded on disk, which is the truth: leave the old row as it was and let the
+                // reconcile heal the pair rather than answering a completed rename with a 500.
                 _dbContext.Entry(row).State = EntityState.Detached;
 
                 _logger.LogWarning("Renamed {FileName} to {NewName} for user {UserId}, but a row for the new name already existed; leaving the index to the reconcile",
@@ -470,19 +478,19 @@ public sealed class PrintFileCatalog
             return PrintFileDeletion.NotFound;
         }
 
-        PrintFile? row = await FindRowAsync(userId, file.FileName, cancellationToken);
+        HSFile? row = await FindRowAsync(userId, file.FileName, cancellationToken);
 
         if (row is not null)
         {
             int queued = await _dbContext.QueuedPrints
-                                         .CountAsync(job => job.PrintFileId == row.Id, cancellationToken);
+                                         .CountAsync(job => job.FileId == row.Id, cancellationToken);
 
             if (queued > 0)
             {
                 return PrintFileDeletion.Queued;
             }
 
-            _dbContext.PrintFiles.Remove(row);
+            _dbContext.Files.Remove(row);
         }
 
         // Row first, then bytes. Either order can be interrupted, and both leave a discrepancy the
@@ -501,7 +509,7 @@ public sealed class PrintFileCatalog
     /// </remarks>
     private async Task IndexAsync(long userId, PublishedFile published, CancellationToken cancellationToken)
     {
-        PrintFile? row = await FindRowAsync(userId, published.File.FileName, cancellationToken);
+        HSFile? row = await FindRowAsync(userId, published.File.FileName, cancellationToken);
         bool inserted = row is null;
 
         row ??= Insert(userId, published.File, published.Digest);
@@ -515,13 +523,13 @@ public sealed class PrintFileCatalog
         catch (DbUpdateException) when (inserted)
         {
             // A concurrent publish of the same name indexed it between our lookup and our insert, and
-            // the unique (user, name) index refused the second row. Not an error: the file exists once,
-            // so drop our insert and write onto the row that won.
+            // the unique (user, type, name) index refused the second row. Not an error: the file
+            // exists once, so drop our insert and write onto the row that won.
             _dbContext.Entry(row).State = EntityState.Detached;
 
-            PrintFile winner = await FindRowAsync(userId, published.File.FileName, cancellationToken) ??
-                               throw new InvalidOperationException(
-                                   $"Indexing {published.File.FileName} failed on a duplicate row that then could not be found.");
+            HSFile winner = await FindRowAsync(userId, published.File.FileName, cancellationToken) ??
+                            throw new InvalidOperationException(
+                                $"Indexing {published.File.FileName} failed on a duplicate row that then could not be found.");
 
             Apply(winner, published);
 
@@ -529,7 +537,7 @@ public sealed class PrintFileCatalog
         }
     }
 
-    private void Apply(PrintFile row, PublishedFile published)
+    private void Apply(HSFile row, PublishedFile published)
     {
         // An overwrite reaches here with the existing row: same name, same row, different bytes.
         // Keeping the row is what lets a queued print print the replacement, which is the behaviour
@@ -553,7 +561,7 @@ public sealed class PrintFileCatalog
     /// still uploaded a file - they own the bytes, the store holds them, and refusing the upload
     /// over a parse would be this check deciding what may exist rather than what may be printed.
     /// </remarks>
-    private void Describe(PrintFile row, string path)
+    private void Describe(HSFile row, string path)
     {
         GCodeMetadata? metadata = GCodeMetadataReader.ReadFile(path);
 
@@ -565,10 +573,11 @@ public sealed class PrintFileCatalog
         PrintFileMetadata.Apply(row, metadata);
     }
 
-    private PrintFile Insert(long userId, StoredFile file, string? digest)
+    private HSFile Insert(long userId, StoredFile file, string? digest)
     {
-        PrintFile row = new()
+        HSFile row = new()
         {
+            Type = FileType.GCode,
             UserId = userId,
             Name = file.FileName,
             Size = file.Length,
@@ -581,7 +590,7 @@ public sealed class PrintFileCatalog
             MetadataState = PrintFileMetadataState.Unread,
         };
 
-        _dbContext.PrintFiles.Add(row);
+        _dbContext.Files.Add(row);
 
         return row;
     }
@@ -599,10 +608,10 @@ public sealed class PrintFileCatalog
     /// the exact spelling it holds, which every collation agrees on.
     /// </para>
     /// </remarks>
-    private async Task<PrintFile?> FindRowAsync(long userId, string fileName, CancellationToken cancellationToken)
+    private async Task<HSFile?> FindRowAsync(long userId, string fileName, CancellationToken cancellationToken)
     {
-        List<string> names = await _dbContext.PrintFiles
-                                             .Where(row => row.UserId == userId)
+        List<string> names = await _dbContext.Files
+                                             .Where(row => row.UserId == userId && row.Type == FileType.GCode)
                                              .OrderBy(row => row.Id)
                                              .Select(row => row.Name)
                                              .ToListAsync(cancellationToken);
@@ -611,7 +620,8 @@ public sealed class PrintFileCatalog
 
         return name is null ?
             null :
-            await _dbContext.PrintFiles.SingleAsync(row => row.UserId == userId && row.Name == name, cancellationToken);
+            await _dbContext.Files.SingleAsync(row => row.UserId == userId && row.Type == FileType.GCode && row.Name == name,
+                                               cancellationToken);
     }
 
     /// <summary>

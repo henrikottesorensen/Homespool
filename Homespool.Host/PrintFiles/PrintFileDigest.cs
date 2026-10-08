@@ -16,7 +16,7 @@ namespace Homespool.Host.PrintFiles;
 /// way to disk; <see cref="PrintFileReconciler"/> hashes files already there. The reprint check compares
 /// a digest recorded by one with a digest recorded by the other, so they have to be the same string for
 /// the same bytes - by construction, not by two loops that happen to agree. SHA-384 rather than
-/// SHA-256 - see <see cref="Model.Entities.PrintFile.Digest"/>.
+/// SHA-256 - see <see cref="Model.Entities.HSFile.Digest"/>.
 /// </remarks>
 public static class PrintFileDigest
 {

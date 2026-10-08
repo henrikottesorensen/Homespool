@@ -15,7 +15,7 @@ namespace Homespool.Model;
 /// <para>
 /// <b>It also separates both from <see cref="Unread"/></b>: a row indexed without its bytes being
 /// read, or one whose bytes changed after they were. The reconciler's background pass reads those,
-/// as it fills in a missing <c>PrintFile.Digest</c>, and treats <see cref="Undefined"/> - rows written
+/// as it fills in a missing <c>HSFile.Digest</c>, and treats <see cref="Undefined"/> - rows written
 /// before this existed - the same way. Until then an unread row's columns are empty, so a
 /// compatibility check has nothing to say rather than something stale.
 /// </para>

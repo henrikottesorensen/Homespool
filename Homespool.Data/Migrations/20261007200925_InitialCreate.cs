@@ -251,6 +251,37 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "Files",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    UserId = table.Column<long>(type: "INTEGER", nullable: false),
+                    Type = table.Column<string>(type: "TEXT", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
+                    Size = table.Column<long>(type: "INTEGER", nullable: false),
+                    Digest = table.Column<string>(type: "TEXT", nullable: true),
+                    UploadedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    MetadataState = table.Column<string>(type: "TEXT", nullable: false),
+                    PrinterModel = table.Column<string>(type: "TEXT", nullable: true),
+                    NozzleDiameter = table.Column<float>(type: "REAL", nullable: true),
+                    ExtruderCount = table.Column<int>(type: "INTEGER", nullable: true),
+                    FilamentTypes = table.Column<string>(type: "TEXT", nullable: true),
+                    RequiresHardenedNozzle = table.Column<bool>(type: "INTEGER", nullable: true),
+                    RequiresHighFlowNozzle = table.Column<bool>(type: "INTEGER", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Files", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Files_AspNetUsers_UserId",
+                        column: x => x.UserId,
+                        principalTable: "AspNetUsers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "NotificationDestinations",
                 columns: table => new
                 {
@@ -274,36 +305,6 @@ namespace Homespool.Data.Migrations
                     table.PrimaryKey("PK_NotificationDestinations", x => x.Id);
                     table.ForeignKey(
                         name: "FK_NotificationDestinations_AspNetUsers_UserId",
-                        column: x => x.UserId,
-                        principalTable: "AspNetUsers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "PrintFiles",
-                columns: table => new
-                {
-                    Id = table.Column<long>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    UserId = table.Column<long>(type: "INTEGER", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
-                    Size = table.Column<long>(type: "INTEGER", nullable: false),
-                    Digest = table.Column<string>(type: "TEXT", nullable: true),
-                    UploadedAt = table.Column<long>(type: "INTEGER", nullable: false),
-                    MetadataState = table.Column<string>(type: "TEXT", nullable: false),
-                    PrinterModel = table.Column<string>(type: "TEXT", nullable: true),
-                    NozzleDiameter = table.Column<float>(type: "REAL", nullable: true),
-                    ExtruderCount = table.Column<int>(type: "INTEGER", nullable: true),
-                    FilamentTypes = table.Column<string>(type: "TEXT", nullable: true),
-                    RequiresHardenedNozzle = table.Column<bool>(type: "INTEGER", nullable: true),
-                    RequiresHighFlowNozzle = table.Column<bool>(type: "INTEGER", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PrintFiles", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_PrintFiles_AspNetUsers_UserId",
                         column: x => x.UserId,
                         principalTable: "AspNetUsers",
                         principalColumn: "Id",
@@ -474,6 +475,46 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "FilesOnPrinters",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
+                    FileId = table.Column<long>(type: "INTEGER", nullable: false),
+                    TransferStartedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    TransferCommandId = table.Column<long>(type: "INTEGER", nullable: true),
+                    HoldReason = table.Column<string>(type: "TEXT", nullable: true),
+                    HoldPrinterFreeBytes = table.Column<long>(type: "INTEGER", nullable: true),
+                    HoldPrinterFileBytes = table.Column<long>(type: "INTEGER", nullable: true),
+                    BlockedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    TransferRefusalCount = table.Column<int>(type: "INTEGER", nullable: true),
+                    TransferRefusedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    TransferRefusalCode = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
+                    TransferRefusalReason = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
+                    ArrivedAt = table.Column<long>(type: "INTEGER", nullable: true),
+                    PrinterPath = table.Column<string>(type: "TEXT", nullable: true),
+                    DriveName = table.Column<string>(type: "TEXT", nullable: true),
+                    Digest = table.Column<string>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_FilesOnPrinters", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_FilesOnPrinters_Files_FileId",
+                        column: x => x.FileId,
+                        principalTable: "Files",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "FK_FilesOnPrinters_Printers_PrinterId",
+                        column: x => x.PrinterId,
+                        principalTable: "Printers",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "PrinterDriveListings",
                 columns: table => new
                 {
@@ -602,46 +643,6 @@ namespace Homespool.Data.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "PrintFilesOnPrinters",
-                columns: table => new
-                {
-                    Id = table.Column<long>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
-                    PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
-                    TransferStartedAt = table.Column<long>(type: "INTEGER", nullable: true),
-                    TransferCommandId = table.Column<long>(type: "INTEGER", nullable: true),
-                    HoldReason = table.Column<string>(type: "TEXT", nullable: true),
-                    HoldPrinterFreeBytes = table.Column<long>(type: "INTEGER", nullable: true),
-                    HoldPrinterFileBytes = table.Column<long>(type: "INTEGER", nullable: true),
-                    BlockedAt = table.Column<long>(type: "INTEGER", nullable: true),
-                    TransferRefusalCount = table.Column<int>(type: "INTEGER", nullable: true),
-                    TransferRefusedAt = table.Column<long>(type: "INTEGER", nullable: true),
-                    TransferRefusalCode = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    TransferRefusalReason = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
-                    ArrivedAt = table.Column<long>(type: "INTEGER", nullable: true),
-                    PrinterPath = table.Column<string>(type: "TEXT", nullable: true),
-                    DriveName = table.Column<string>(type: "TEXT", nullable: true),
-                    Digest = table.Column<string>(type: "TEXT", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_PrintFilesOnPrinters", x => x.Id);
-                    table.ForeignKey(
-                        name: "FK_PrintFilesOnPrinters_PrintFiles_PrintFileId",
-                        column: x => x.PrintFileId,
-                        principalTable: "PrintFiles",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                    table.ForeignKey(
-                        name: "FK_PrintFilesOnPrinters_Printers_PrinterId",
-                        column: x => x.PrinterId,
-                        principalTable: "Printers",
-                        principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "PrintJobs",
                 columns: table => new
                 {
@@ -756,7 +757,7 @@ namespace Homespool.Data.Migrations
                         .Annotation("Sqlite:Autoincrement", true),
                     PrintUuid = table.Column<Guid>(type: "TEXT", nullable: false),
                     PrinterId = table.Column<int>(type: "INTEGER", nullable: false),
-                    PrintFileId = table.Column<long>(type: "INTEGER", nullable: false),
+                    FileId = table.Column<long>(type: "INTEGER", nullable: false),
                     Position = table.Column<int>(type: "INTEGER", nullable: false),
                     QueuedByUserId = table.Column<long>(type: "INTEGER", nullable: false),
                     QueuedByScope = table.Column<string>(type: "TEXT", maxLength: 512, nullable: false),
@@ -766,9 +767,9 @@ namespace Homespool.Data.Migrations
                 {
                     table.PrimaryKey("PK_QueuedPrints", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_QueuedPrints_PrintFiles_PrintFileId",
-                        column: x => x.PrintFileId,
-                        principalTable: "PrintFiles",
+                        name: "FK_QueuedPrints_Files_FileId",
+                        column: x => x.FileId,
+                        principalTable: "Files",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Restrict);
                     table.ForeignKey(
@@ -962,6 +963,23 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Files_UserId_Type_Name",
+                table: "Files",
+                columns: new[] { "UserId", "Type", "Name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FilesOnPrinters_FileId",
+                table: "FilesOnPrinters",
+                column: "FileId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_FilesOnPrinters_PrinterId_FileId",
+                table: "FilesOnPrinters",
+                columns: new[] { "PrinterId", "FileId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Invitations_HashedToken",
                 table: "Invitations",
                 column: "HashedToken",
@@ -1017,23 +1035,6 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_PrintFiles_UserId_Name",
-                table: "PrintFiles",
-                columns: new[] { "UserId", "Name" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PrintFilesOnPrinters_PrinterId_PrintFileId",
-                table: "PrintFilesOnPrinters",
-                columns: new[] { "PrinterId", "PrintFileId" },
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_PrintFilesOnPrinters_PrintFileId",
-                table: "PrintFilesOnPrinters",
-                column: "PrintFileId");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_PrintJobs_PrinterId",
                 table: "PrintJobs",
                 column: "PrinterId",
@@ -1084,14 +1085,14 @@ namespace Homespool.Data.Migrations
                 column: "TemporaryCode");
 
             migrationBuilder.CreateIndex(
+                name: "IX_QueuedPrints_FileId",
+                table: "QueuedPrints",
+                column: "FileId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_QueuedPrints_PrinterId_Position",
                 table: "QueuedPrints",
                 columns: new[] { "PrinterId", "Position" });
-
-            migrationBuilder.CreateIndex(
-                name: "IX_QueuedPrints_PrintFileId",
-                table: "QueuedPrints",
-                column: "PrintFileId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_QueuedPrints_PrintUuid",
@@ -1178,6 +1179,9 @@ namespace Homespool.Data.Migrations
                 name: "DataProtectionKeys");
 
             migrationBuilder.DropTable(
+                name: "FilesOnPrinters");
+
+            migrationBuilder.DropTable(
                 name: "Invitations");
 
             migrationBuilder.DropTable(
@@ -1194,9 +1198,6 @@ namespace Homespool.Data.Migrations
 
             migrationBuilder.DropTable(
                 name: "PrinterTools");
-
-            migrationBuilder.DropTable(
-                name: "PrintFilesOnPrinters");
 
             migrationBuilder.DropTable(
                 name: "PrintJobs");
@@ -1235,7 +1236,7 @@ namespace Homespool.Data.Migrations
                 name: "PrinterLiveStates");
 
             migrationBuilder.DropTable(
-                name: "PrintFiles");
+                name: "Files");
 
             migrationBuilder.DropTable(
                 name: "TelemetrySamples");

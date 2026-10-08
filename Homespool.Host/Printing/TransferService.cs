@@ -214,7 +214,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// </para>
     /// </remarks>
     public async Task<DirectSendResult> SendDirectAsync(Printer printer,
-                                                        PrintFile indexed,
+                                                        HSFile indexed,
                                                         StoredFile file,
                                                         Caller caller,
                                                         CancellationToken cancellationToken)
@@ -561,7 +561,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// </para>
     /// <para>
     /// <b>A send that fell short clears the stamp</b> - not connected, another command in flight, the
-    /// write stalled, the authority gone. <see cref="PrintFileSender"/> revoked the offer on each, so
+    /// write stalled, the authority gone. <see cref="FileSender"/> revoked the offer on each, so
     /// no transfer of these bytes can be running, and the abort a printer that had taken it reports
     /// names a command nothing recorded.
     /// </para>
@@ -573,11 +573,11 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         TransferPolicy policy = request.Policy;
         int printerId = request.PrinterId;
 
-        PrintFile printFile = await dbContext.PrintFiles.SingleAsync(file => file.Id == request.PrintFileId, cancellationToken);
-        PrintFileOnPrinter? existing = await dbContext.PrintFilesOnPrinters
-                                                      .SingleOrDefaultAsync(row => row.PrinterId == printerId &&
-                                                                                   row.PrintFileId == printFile.Id,
-                                                                            cancellationToken);
+        HSFile printFile = await dbContext.Files.SingleAsync(file => file.Id == request.FileId, cancellationToken);
+        FileOnPrinter? existing = await dbContext.FilesOnPrinters
+                                                 .SingleOrDefaultAsync(row => row.PrinterId == printerId &&
+                                                                              row.FileId == printFile.Id,
+                                                                       cancellationToken);
         TransferContext context = new(scope.ServiceProvider, dbContext, printerId, printFile, existing);
 
         StoredFile? file = await policy.FindFileAsync(context, cancellationToken);
@@ -591,7 +591,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
 
         // Before the drive name is chosen and before an older copy is deleted, so that a file that can
         // never be sent costs the printer nothing - least of all the copy it already has.
-        if (file.Length >= PrintFileSender.SizeLimit)
+        if (file.Length >= FileSender.SizeLimit)
         {
             PrintFileTooLargeException tooLarge = new();
             context.EnsureRow();
@@ -607,7 +607,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         }
 
         Printer printer = await dbContext.Printers.SingleAsync(candidate => candidate.Id == printerId, cancellationToken);
-        PrintFileOnPrinter onPrinter = context.EnsureRow();
+        FileOnPrinter onPrinter = context.EnsureRow();
 
         // Chosen once and kept: the printer's reports about this file will carry it, and a retry must
         // not wander off to another name.
@@ -667,14 +667,14 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
 
         try
         {
-            sent = await scope.ServiceProvider.GetRequiredService<PrintFileSender>()
+            sent = await scope.ServiceProvider.GetRequiredService<FileSender>()
                               .SendAsync(printer, file, PrinterDriveNames.OnDrive(onPrinter.DriveName), request.Caller,
                                          cancellationToken);
         }
         catch (CommandResponseTimedOutException e)
         {
             // Not an answer, and the stamp stays: firmware acknowledges a download late when it is busy
-            // and starts fetching either way, and PrintFileSender leaves the offer standing for exactly
+            // and starts fetching either way, and FileSender leaves the offer standing for exactly
             // that reason. The digest is recorded for the same reason - if these bytes are arriving, an
             // older digest beside them would have them deleted and sent again for nothing - and the
             // command's id, which the transfer's end will name.
@@ -757,7 +757,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// record of a transfer of its own still running, and a person's send of the same file being
     /// refused - most often because that very transfer has the printer's slot - says nothing about it.
     /// </remarks>
-    private static void ClearOwnStamp(TransferPolicy policy, PrintFileOnPrinter onPrinter)
+    private static void ClearOwnStamp(TransferPolicy policy, FileOnPrinter onPrinter)
     {
         if (policy.StampsAttempt)
         {
@@ -773,7 +773,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// is the one running: whatever the queue started is not. The row now awaits the direct send's
     /// command, and that send's end must not be counted or held against the queue's entry.
     /// </remarks>
-    private static void ReplaceQueuedAttempt(TransferPolicy policy, PrintFileOnPrinter onPrinter)
+    private static void ReplaceQueuedAttempt(TransferPolicy policy, FileOnPrinter onPrinter)
     {
         if (!policy.StampsAttempt)
         {
@@ -793,7 +793,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// downloads, which firmware supports and this queue does. It is not arrival: a transfer that
     /// fails after it leaves a partial, and treating that as present is how a queue came to print a
     /// file firmware then called a file error. So the path is taken from the first report, and
-    /// <see cref="PrintFileOnPrinter.ArrivedAt"/> waits for <c>TRANSFER_FINISHED</c>.
+    /// <see cref="FileOnPrinter.ArrivedAt"/> waits for <c>TRANSFER_FINISHED</c>.
     /// </para>
     /// <para>
     /// <b>The path is the <c>FILE_INFO</c>'s, never ours.</b> Connect transfers to the long name and
@@ -893,20 +893,20 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
         // Never a report received before the attempt in flight began. The log is read again from the
         // start after a restart, and the report of an earlier copy under the same name would hand a
         // transfer still arriving that copy's path - which the queue would print while it downloads.
-        List<PrintFileOnPrinter> waiting = await dbContext.PrintFilesOnPrinters
-                                                          .Include(candidate => candidate.PrintFile)
-                                                          .Where(candidate => candidate.PrinterId == printerId &&
-                                                                              (candidate.ArrivedAt == null ||
-                                                                               candidate.PrinterPath == null))
-                                                          .ToListAsync(cancellationToken);
+        List<FileOnPrinter> waiting = await dbContext.FilesOnPrinters
+                                                     .Include(candidate => candidate.File)
+                                                     .Where(candidate => candidate.PrinterId == printerId &&
+                                                                         (candidate.ArrivedAt == null ||
+                                                                          candidate.PrinterPath == null))
+                                                     .ToListAsync(cancellationToken);
 
-        PrintFileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.PrintFile!.Name,
-                                                                             displayName) &&
-                                                             (candidate.TransferStartedAt is not DateTimeOffset startedAt ||
-                                                              printerEvent.Timestamp >= startedAt))
-                                         .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
-                                         .ThenByDescending(candidate => candidate.TransferStartedAt)
-                                         .FirstOrDefault();
+        FileOnPrinter? row = waiting.Where(candidate => DriveNames.Same(candidate.DriveName ?? candidate.File!.Name,
+                                                                        displayName) &&
+                                                        (candidate.TransferStartedAt is not DateTimeOffset startedAt ||
+                                                         printerEvent.Timestamp >= startedAt))
+                                    .OrderByDescending(candidate => candidate.TransferStartedAt is not null)
+                                    .ThenByDescending(candidate => candidate.TransferStartedAt)
+                                    .FirstOrDefault();
 
         if (row is null || row.PrinterPath == path)
         {
@@ -938,7 +938,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
     /// <remarks>
     /// <para>
     /// <b>Only the attempt the row is waiting on.</b> The ending's <c>start_cmd_id</c> must be the row's
-    /// <see cref="PrintFileOnPrinter.TransferCommandId"/>, and settling clears it in the same save. So
+    /// <see cref="FileOnPrinter.TransferCommandId"/>, and settling clears it in the same save. So
     /// an ending read twice - the watermark is memory, and a restart reads the log again - finds
     /// nothing the second time, and the end of an attempt a later one replaced finds nothing at all.
     /// </para>
@@ -968,18 +968,18 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
 
         // First rather than Single: ids restart at random on every connection, so two rows could in
         // principle each hold the same one, and a throw here abandons every pass for the printer.
-        PrintFileOnPrinter? row = await dbContext.PrintFilesOnPrinters
-                                                 .Include(candidate => candidate.PrintFile)
-                                                 .Where(candidate => candidate.PrinterId == printerId &&
-                                                                     candidate.TransferCommandId == startCommandId)
-                                                 .FirstOrDefaultAsync(cancellationToken);
+        FileOnPrinter? row = await dbContext.FilesOnPrinters
+                                            .Include(candidate => candidate.File)
+                                            .Where(candidate => candidate.PrinterId == printerId &&
+                                                                candidate.TransferCommandId == startCommandId)
+                                            .FirstOrDefaultAsync(cancellationToken);
 
         if (row is null)
         {
             return false;
         }
 
-        string driveName = row.DriveName ?? row.PrintFile!.Name;
+        string driveName = row.DriveName ?? row.File!.Name;
         bool queued = row.TransferStartedAt is not null;
 
         row.TransferCommandId = null;
@@ -1005,7 +1005,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
             // The queue decides what an attempt of its own ending means: counted, held, or nothing
             // when the entry behind it has gone.
             await services.GetRequiredService<ITransferEndPolicy>()
-                          .EndedAsync(new TransferContext(services, dbContext, printerId, row.PrintFile!, row),
+                          .EndedAsync(new TransferContext(services, dbContext, printerId, row.File!, row),
                                       printerEvent.EventType, cancellationToken);
         }
         else
@@ -1132,7 +1132,7 @@ public sealed class TransferService : BackgroundService, IPrinterEventObserver
 
 /// <summary>One send for <see cref="TransferService.SendAsync"/>.</summary>
 /// <param name="PrinterId">The printer.</param>
-/// <param name="PrintFileId">The file, as the catalogue indexes it.</param>
+/// <param name="FileId">The file, as the catalogue indexes it.</param>
 /// <param name="Caller">The authority the send - and any delete of an older copy - is made under.</param>
 /// <param name="Policy">What the sender decides around the procedure.</param>
-public sealed record TransferRequest(int PrinterId, long PrintFileId, Caller Caller, TransferPolicy Policy);
+public sealed record TransferRequest(int PrinterId, long FileId, Caller Caller, TransferPolicy Policy);

@@ -534,21 +534,22 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
     private static async Task QueueAPrintAsync(HomespoolDbContext context)
     {
-        PrintFile file = new()
+        HSFile file = new()
         {
+            Type = FileType.GCode,
             UserId = 1,
             Name = "queued.bgcode",
             Size = 1024,
             UploadedAt = DateTimeOffset.UtcNow,
         };
 
-        context.PrintFiles.Add(file);
+        context.Files.Add(file);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         context.QueuedPrints.Add(new QueuedPrint
         {
             PrinterId = PrinterId,
-            PrintFileId = file.Id,
+            FileId = file.Id,
             PrintUuid = Guid.NewGuid(),
             Position = 0,
             QueuedByUserId = 1,

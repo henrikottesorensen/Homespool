@@ -3527,6 +3527,12 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Error_FirmwareNotPrusas" xml:space="preserve">
     <value>‘{0}’ is not signed by Prusa, so it is not accepted.</value>
   </data>
+  <data name="Error_FirmwareResourcesUnreadable" xml:space="preserve">
+    <value>‘{0}’ is Prusa’s firmware, but Homespool cannot check the resources packed after it. Images older than version 6.6 pack them in a way it does not read.</value>
+  </data>
+  <data name="Error_FirmwareResourcesChanged" xml:space="preserve">
+    <value>‘{0}’ is Prusa’s firmware, but the resources packed after it are not the ones it names: the file was changed or damaged after Prusa built it. Download it again from Prusa.</value>
+  </data>
   <data name="Error_FirmwareWrongPrinter" xml:space="preserve">
     <value>‘{0}’ is firmware {1} for another kind of printer than {2}.</value>
   </data>

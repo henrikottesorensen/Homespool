@@ -33,6 +33,18 @@ internal static class TestFirmwareImages
     /// <summary>The firmware length every built image has.</summary>
     public const int FirmwareLength = 1000;
 
+    /// <summary>
+    /// Where the bootloader tarball's digest is written, counted from the start of the signed region:
+    /// inside the firmware, and before the resources one, as some builds lay them out.
+    /// </summary>
+    public const int BootloaderDigestAt = HeaderLength + 200;
+
+    /// <summary>Where the resources tarball's digest is written, by default; apart from the other.</summary>
+    public const int ResourcesDigestAt = HeaderLength + 300;
+
+    /// <summary>The header's length: the signed region's first bytes.</summary>
+    public const int HeaderLength = PrusaFirmwareVerifier.FirmwareOffset - PrusaFirmwareVerifier.SignedFrom;
+
     private static readonly X9ECParameters Curve = CustomNamedCurves.GetByName("secp256k1");
 
     /// <summary>The key images are signed with unless a test says otherwise.</summary>
@@ -44,9 +56,16 @@ internal static class TestFirmwareImages
     /// <summary>The verifier holding <see cref="Key"/>.</summary>
     public static PrusaFirmwareVerifier Verifier { get; } = new(PublicKeyOf(Key));
 
+    /// <summary>The resources tarball every built image carries.</summary>
+    public static byte[] ResourcesTarball { get; } = [.. Enumerable.Range(0, 64).Select(i => (byte)(i + 0x10))];
+
+    /// <summary>The bootloader tarball every built image carries.</summary>
+    public static byte[] BootloaderTarball { get; } = [.. Enumerable.Range(0, 48).Select(i => (byte)(i + 0x80))];
+
     /// <summary>
     /// An image: a Core One 7.0.0 build unless told otherwise, <see cref="FirmwareLength"/> bytes of
-    /// firmware, and one trailing entry.
+    /// firmware naming <see cref="ResourcesTarball"/> and <see cref="BootloaderTarball"/> by their
+    /// digests, and then the entries <c>pack_fw.py</c> writes for them.
     /// </summary>
     /// <param name="prerelease">The prerelease label, or empty for a release.</param>
     /// <param name="bbfVersion">The header version to write.</param>
@@ -57,6 +76,11 @@ internal static class TestFirmwareImages
     /// <param name="printerSubversion">The subversion within the family.</param>
     /// <param name="build">The build number.</param>
     /// <param name="seed">Varies the firmware's bytes, so two images can differ in nothing else.</param>
+    /// <param name="resourcesDigestAt">
+    /// Where in the signed region the resources tarball's digest is written; <see cref="ResourcesDigestAt"/>
+    /// by default.
+    /// </param>
+    /// <param name="entries">What follows the firmware, in place of <see cref="Entries"/>.</param>
     public static byte[] Build(string prerelease = "",
                                byte bbfVersion = PrusaFirmwareVerifier.BbfVersion,
                                bool signed = true,
@@ -65,10 +89,12 @@ internal static class TestFirmwareImages
                                byte printerVersion = 1,
                                byte printerSubversion = 0,
                                ushort build = 16903,
-                               byte seed = 0)
+                               byte seed = 0,
+                               int resourcesDigestAt = ResourcesDigestAt,
+                               byte[]? entries = null)
     {
         AsymmetricCipherKeyPair? key = signed ? signedWith ?? Key : null;
-        const int headerLength = PrusaFirmwareVerifier.FirmwareOffset - PrusaFirmwareVerifier.SignedFrom;
+        const int headerLength = HeaderLength;
 
         byte[] body = new byte[headerLength + FirmwareLength];
         BinaryPrimitives.WriteUInt32LittleEndian(body, FirmwareLength);
@@ -85,11 +111,45 @@ internal static class TestFirmwareImages
             body[i] = (byte)(i + seed);
         }
 
+        // What the build does with objcopy: each tarball's digest compiled into the firmware.
+        SHA256.HashData(BootloaderTarball).CopyTo(body, BootloaderDigestAt);
+        SHA256.HashData(ResourcesTarball).CopyTo(body, resourcesDigestAt);
+
         byte[] digest = SHA256.HashData(body);
         byte[] signature = key is null ? new byte[PrusaFirmwareVerifier.SignatureLength] : Sign(digest, key);
-        byte[] trailer = [9, 16, 0, 0, 0, .. Enumerable.Range(0, 16).Select(i => (byte)i)];
 
-        return [.. signature, .. digest, .. body, .. trailer];
+        return [.. signature, .. digest, .. body, .. entries ?? Entries(ResourcesTarball, BootloaderTarball)];
+    }
+
+    /// <summary>
+    /// The four entries <c>pack_fw.py</c> writes after the firmware: each tarball, then its digest.
+    /// </summary>
+    public static byte[] Entries(byte[] resources, byte[] bootloader)
+    {
+        return [.. Entry(9, resources), .. Entry(10, SHA256.HashData(resources)),
+                .. Entry(11, bootloader), .. Entry(12, SHA256.HashData(bootloader))];
+    }
+
+    /// <summary>One entry: its type, its length as a little-endian 32-bit number, its content.</summary>
+    public static byte[] Entry(byte type, byte[] content)
+    {
+        byte[] length = new byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(length, (uint)content.Length);
+
+        return [type, .. length, .. content];
+    }
+
+    /// <summary>
+    /// <paramref name="image"/> with its signature's <c>s</c> replaced by <c>n - s</c>: a different
+    /// signature over the same digest, which verifies all the same.
+    /// </summary>
+    public static byte[] WithOtherSignature(byte[] image)
+    {
+        byte[] other = (byte[])image.Clone();
+        BigInteger s = new(1, image[32..64]);
+        BigIntegers.AsUnsignedByteArray(32, Curve.N.Subtract(s)).CopyTo(other, 32);
+
+        return other;
     }
 
     /// <summary>A key's public half, x then y, big-endian - the form a verifier takes.</summary>

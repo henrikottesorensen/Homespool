@@ -36,4 +36,17 @@ public enum PrusaFirmwareVerdict
 
     /// <summary>Intact, and signed - but not with the key the verifier holds.</summary>
     SignatureInvalid = 6,
+
+    /// <summary>
+    /// The firmware is signed, but what follows it is not laid out as the verifier reads it: not
+    /// exactly the resources tarball, its digest, the bootloader tarball and its digest, ending where
+    /// the file does. Images from before 6.6, where that layout began, carry it differently.
+    /// </summary>
+    ResourcesUnreadable = 7,
+
+    /// <summary>
+    /// The firmware is signed, but a tarball after it is not the one the signed firmware names: the
+    /// file was changed after it was built.
+    /// </summary>
+    ResourcesChanged = 8,
 }

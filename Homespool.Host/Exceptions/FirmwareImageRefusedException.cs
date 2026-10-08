@@ -69,6 +69,8 @@ public class FirmwareImageRefusedException : Exception, ILocalisableError
             PrusaFirmwareVerdict.Damaged => "Error_FirmwareDamaged",
             PrusaFirmwareVerdict.NoSignature => "Error_FirmwareNoSignature",
             PrusaFirmwareVerdict.SignatureInvalid => "Error_FirmwareNotPrusas",
+            PrusaFirmwareVerdict.ResourcesUnreadable => "Error_FirmwareResourcesUnreadable",
+            PrusaFirmwareVerdict.ResourcesChanged => "Error_FirmwareResourcesChanged",
             _ => "Error_FirmwareNotAnImage",
         },
         _ => "Error_FirmwareNotAnImage",

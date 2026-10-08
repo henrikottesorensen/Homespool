@@ -27,14 +27,17 @@ namespace Homespool.Host.Firmware;
 /// <remarks>
 /// <para>
 /// <b>Shared, and only ever Prusa's.</b> Any printer manager may use any stored image on a printer
-/// they manage, because nothing gets in that the verifier did not find intact and signed by Prusa:
-/// whoever uploaded it, it is the same official bytes. The row's owner is the uploader, which is true
-/// and is all it means.
+/// they manage, because nothing gets in that the verifier did not find signed by Prusa to its last
+/// byte: whoever uploaded it, it is Prusa's firmware and the resources that firmware names. The row's
+/// owner is the uploader, which is true and is all it means.
 /// </para>
 /// <para>
-/// <b>Kept by digest, named by upload.</b> The bytes live at <c>{root}/{digest}.bbf</c>, so the same
-/// image uploaded twice is one file and one row, and no name a person chose ever becomes a path here.
-/// The name they uploaded it under is the row's, and is what the image is called on a printer's drive.
+/// <b>Kept by its signed digest, named by upload.</b> An image is what its signature covers, so the
+/// row's digest is that one, and the bytes live at <c>{root}/{digest}.bbf</c>. Two files that differ
+/// only where nothing is decided - a signature in its other valid form, the two tarballs in each
+/// other's places - are one image, one file and one row, whichever came first. No name a person chose
+/// ever becomes a path here; the name they uploaded it under is the row's, and is what the image is
+/// called on a printer's drive.
 /// </para>
 /// <para>
 /// <b>The disk is checked again on every read.</b> Listing re-runs the verifier over each image, so a
@@ -117,12 +120,10 @@ public sealed class FirmwareImages
 
         try
         {
-            string digest;
-
             await using (FileStream target = new(staged, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 await using LengthLimitingStream limited = new(content, FirmwareStorageOptions.MaxImageBytes);
-                digest = await PrintFileDigest.ComputeAsync(limited, target, cancellationToken);
+                await limited.CopyToAsync(target, cancellationToken);
             }
 
             PrusaFirmwareCheck check = await CheckAsync(staged, cancellationToken);
@@ -131,6 +132,8 @@ public sealed class FirmwareImages
             {
                 throw new FirmwareImageRefusedException(name, FirmwareImageRefusal.NotVerified, check);
             }
+
+            string digest = check.SignedDigest!;
 
             string printerName = PrinterDisplayName.For(printer);
 
@@ -151,7 +154,7 @@ public sealed class FirmwareImages
 
             if (existing is not null)
             {
-                // The same bytes again. Put them back if the file went missing under the row, which
+                // The same image again. Put it back if the file went missing under the row, which
                 // makes uploading again the remedy for an image that stopped being offered.
                 if (!File.Exists(PathFor(digest)))
                 {

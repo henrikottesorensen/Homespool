@@ -295,11 +295,13 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// <b>The card names the firmware beside its age</b>, without the build number, which the tooltip
-    /// keeps.
+    /// <b>The firmware is named beside the team, not on the card</b>: a standing fact about the printer
+    /// rather than what it is doing, so it stays out of the part that refreshes every couple of
+    /// seconds. Without the build number, which the tooltip keeps, and for whoever manages the
+    /// printer it is the way to the firmware page.
     /// </summary>
     [Fact]
-    public async Task TheCardNamesTheFirmwareBesideItsAge()
+    public async Task TheFirmwareIsNamedBesideTheTeamAndNotOnTheCard()
     {
         (Guid uuid, HttpClient client) = await SeedAsync("status-firmware@example.com",
                                                          state: new PrinterLiveState { LastSeenAt = DateTimeOffset.UtcNow },
@@ -307,30 +309,33 @@ public sealed class PrinterStatusPollTests : IAsyncLifetime
 
         using (client)
         {
+            string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
             string fragment = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status");
 
-            fragment.Should().Contain("Firmware 6.8.1", "the release is on the card");
-            fragment.Should().Contain("title=\"6.8.1&#x2B;12345\"", "and the whole version is in its tooltip, its plus encoded");
-            fragment.Should().MatchRegex(@"Firmware 6\.8\.1</span>\s*&middot;\s*Updated", "beside the age, not instead of it");
+            page.Should().MatchRegex($@"&middot;\s*<a[^>]*href=""/Printers/Firmware/{uuid}""[^>]*>Firmware 6\.8\.1</a>",
+                                     "beside the team, and a manager's way to the firmware page");
+            page.Should().Contain("title=\"6.8.1&#x2B;12345\"", "and the whole version is in its tooltip, its plus encoded");
+            fragment.Should().NotContain("Firmware 6.8.1", "the card refreshes, and the version has no need to");
+            fragment.Should().Contain("Updated", "the age stays on the card");
         }
     }
 
     /// <summary>
-    /// A printer that has never reported a version says nothing about one - not an empty label.
+    /// A printer that has never reported a version says nothing about one - no empty label, and no way
+    /// to a firmware page that could not match an image to it yet.
     /// </summary>
     [Fact]
-    public async Task TheCardSaysNothingOfAFirmwareNeverReported()
+    public async Task NothingIsSaidOfAFirmwareNeverReported()
     {
         (Guid uuid, HttpClient client) = await SeedAsync("status-no-firmware@example.com",
                                                          state: new PrinterLiveState { LastSeenAt = DateTimeOffset.UtcNow });
 
         using (client)
         {
-            string fragment = await GetAsync(client, $"/Printers/Detail/{uuid}?handler=Status");
+            string page = await GetAsync(client, $"/Printers/Detail/{uuid}");
 
-            fragment.Should().NotContain("printer-status-firmware");
-            fragment.Should().NotMatchRegex(@"&middot;\s*Updated", "there is nothing for the age to sit beside");
-            fragment.Should().Contain("Updated", "and the age is still there on its own");
+            page.Should().NotContain("/Printers/Firmware/");
+            page.Should().NotMatchRegex(@"&middot;\s*<(a|span)[^>]*>Firmware", "there is no version to sit beside the team");
         }
     }
 

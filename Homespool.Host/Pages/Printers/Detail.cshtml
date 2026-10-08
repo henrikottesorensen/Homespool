@@ -23,10 +23,30 @@
     <a asp-page="Index">@Localiser["Printers_BackToList"]</a>
 </div>
 
+@* The version beside the team, both standing facts about the printer rather than what it is doing,
+   so neither is in the status card that refreshes every couple of seconds. A manager's way to the
+   firmware page is the version itself - CanManagePrinter is only known on a full load, which is why
+   this sits out here. *@
+@{
+    string? firmware = PrinterFirmwareRelease.For(Model.Firmware);
+}
 <p class="text-body-secondary">
     @Localiser["Printers_TeamLabel"]
     <span class="typed-name">@(Model.Statistics.Printer.Team?.Name ??
                                Localiser["Common_TeamNumbered", Model.Statistics.Printer.TeamId].Value)</span>
+    @if (firmware is not null)
+    {
+        <text> &middot; </text>
+        @if (Model.CanManagePrinter)
+        {
+            <a asp-page="Firmware" asp-route-uuid="@uuid" class="typed-name"
+               title="@PrinterFirmwareRelease.Tooltip(Model.Firmware)">@Localiser["Printers_Firmware", firmware]</a>
+        }
+        else
+        {
+            <span class="typed-name" title="@PrinterFirmwareRelease.Tooltip(Model.Firmware)">@Localiser["Printers_Firmware", firmware]</span>
+        }
+    }
 </p>
 
 @* This page is left open for the length of a print, which is what makes an ordinary status alert
@@ -280,9 +300,6 @@
         </button>
     </form>
 
-    @* Managing firmware is managing the printer, so the way there sits with the other manager's
-       controls rather than among the ones anybody printing uses. *@
-    <p class="mb-4"><a asp-page="Firmware" asp-route-uuid="@uuid">@Localiser["Firmware_Link"]</a></p>
 }
 
 @* The running print's objects, one at a time. Its own region and its own poll, because its rows carry

@@ -112,6 +112,7 @@ public sealed class PrinterFirmwarePageTests : IAsyncLifetime
 
             // Assert
             operatorDetail.Should().NotContain("/Printers/Firmware/");
+            operatorDetail.Should().Contain("Firmware 6.8.1", "the version is still there to read, just not a way in");
             operatorPage.StatusCode.Should().Be(HttpStatusCode.Redirect);
             operatorPage.Headers.Location!.ToString().Should().Contain("/Account/AccessDenied");
             strangerPage.StatusCode.Should().Be(HttpStatusCode.NotFound);

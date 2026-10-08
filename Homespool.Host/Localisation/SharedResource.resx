@@ -3476,9 +3476,6 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Firmware_BackToPrinter" xml:space="preserve">
     <value>← Back to {0}</value>
   </data>
-  <data name="Firmware_Link" xml:space="preserve">
-    <value>Firmware updates</value>
-  </data>
   <data name="Firmware_CurrentUnknown" xml:space="preserve">
     <value>This printer has not reported its firmware version yet.</value>
   </data>

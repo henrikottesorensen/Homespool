@@ -3354,9 +3354,6 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Firmware_BackToPrinter" xml:space="preserve">
     <value>← Tilbage til {0}</value>
   </data>
-  <data name="Firmware_Link" xml:space="preserve">
-    <value>Firmwareopdateringer</value>
-  </data>
   <data name="Firmware_CurrentUnknown" xml:space="preserve">
     <value>Printeren har endnu ikke oplyst sin firmwareversion.</value>
   </data>

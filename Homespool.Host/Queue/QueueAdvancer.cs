@@ -289,9 +289,10 @@ public sealed class QueueAdvancer : BackgroundService
                 await StartPassesAsync(stoppingToken);
             }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
-            // Shutting down.
+            // Shutting down. A cancellation nobody asked for is not one: it faults the service rather
+            // than leaving the host up with no queue.
         }
 
         await EndRunningPassesAsync();
@@ -308,9 +309,11 @@ public sealed class QueueAdvancer : BackgroundService
     /// holds up its own queue and no other. This is the same passes, awaited.
     /// </para>
     /// <para>
-    /// <b>Throws only on cancellation.</b> Anything else escaping here ends <see cref="ExecuteAsync"/>,
-    /// and a faulted background service stops the host - so a busy database would restart the whole
-    /// app, and every printer would reconnect, where it should only have cost one tick.
+    /// <b>Throws only when <paramref name="cancellationToken"/> is cancelled.</b> Anything else escaping
+    /// here ends <see cref="ExecuteAsync"/>, and a faulted background service stops the host - so a busy
+    /// database would restart the whole app, and every printer would reconnect, where it should only
+    /// have cost one tick. That includes a cancellation the token did not ask for, which is logged as
+    /// the failure it is.
     /// </para>
     /// </remarks>
     public async Task AdvanceAllAsync(CancellationToken cancellationToken)
@@ -394,7 +397,7 @@ public sealed class QueueAdvancer : BackgroundService
 
             return await PrintersNeedingAPassAsync(dbContext, cancellationToken);
         }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             _logger.LogError(e, "Finding the printers that need a queue pass failed.");
 
@@ -414,11 +417,12 @@ public sealed class QueueAdvancer : BackgroundService
             {
                 await AdvanceAsync(printerId, cancellationToken);
             }
-            catch (Exception e) when (e is not OperationCanceledException)
+            catch (Exception e) when (e is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 // One printer's problem must not stop the others, and must not kill the loop: the
                 // next tick tries again, which is the right response to almost everything that can
-                // go wrong here (a printer dropping mid-command, a transient database error).
+                // go wrong here (a printer dropping mid-command, a transient database error). A
+                // cancellation is the stop only when this token asked for it; any other is a fault.
                 _logger.LogError(e, "Advancing the queue for printer {PrinterId} failed.", printerId);
             }
         }, CancellationToken.None);

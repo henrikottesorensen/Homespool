@@ -83,18 +83,35 @@ mmdebstrap:
     # any hook here runs. At that moment neither repository exists, so dotnet-sdk-10.0 and
     # claude-code are simply not findable. Adding the sources first and installing in a hook is the
     # only sequence that works.
+    #
+    # Both signing keys are committed rather than downloaded, so what the build trusts is decided in
+    # a reviewed commit, and a key replaced at the vendor's URL fails the build instead of being
+    # taken on trust. In pi/files:
+    #
+    #     microsoft.asc    AA86 F75E 427A 19DD 3334  6403 EE4D 7792 F748 182B
+    #                      Microsoft Corporation - General GPG Signer <gpgsign@microsoft.com>
+    #     claude-code.asc  31DD DE24 DDFA B679 F42D  7BD2 BAA9 29FF 1A7E CACE
+    #                      Anthropic Claude Code Release Signing <security@anthropic.com>
+    #
+    # each matched against keyserver.ubuntu.com and keys.openpgp.org and checked with gpgv against
+    # its repository's InRelease; Microsoft's is the one its /keys/README calls microsoft-2025.asc,
+    # and Anthropic's is the fingerprint Claude Code's setup documentation prints. Neither expires.
+    # If either vendor rotates, apt-get update below stops on an unsigned repository: fetch the new
+    # key, check its fingerprint the same way, and replace the file.
     - |-
       #
       # Microsoft's feed, for the .NET SDK. Debian ships no dotnet package at all, so there is no
       # apt-only path to this.
       #
-      # The config .deb rather than hand-written source and key files: it carries both, it is what
-      # Microsoft documents, and it is one artefact to re-point when trixie is no longer current.
+      # A source line of our own rather than Microsoft's packages-microsoft-prod.deb, which carries
+      # the same line and key: installing that runs a downloaded package's maintainer scripts as
+      # root in the chroot, and trusts the key inside it rather than the committed one.
       set -eu
-      curl -fsSL https://packages.microsoft.com/config/debian/13/packages-microsoft-prod.deb \
-           -o $1/tmp/packages-microsoft-prod.deb
-      chroot $1 dpkg -i /tmp/packages-microsoft-prod.deb
-      rm -f $1/tmp/packages-microsoft-prod.deb
+      install -D -m 0644 ${IGconf_homespool_assetdir}/microsoft.asc \
+              $1/etc/apt/keyrings/microsoft.asc
+      printf '%s\n' \
+        'deb [signed-by=/etc/apt/keyrings/microsoft.asc] https://packages.microsoft.com/debian/13/prod trixie main' \
+        > $1/etc/apt/sources.list.d/microsoft-prod.list
 
     - |-
       #
@@ -104,10 +121,8 @@ mmdebstrap:
       # a month apart would carry different versions with no record of which, and an image is
       # exactly the artefact where that matters.
       set -eu
-      install -d -m 0755 $1/etc/apt/keyrings
-      curl -fsSL https://downloads.claude.ai/keys/claude-code.asc \
-           -o $1/etc/apt/keyrings/claude-code.asc
-      chmod 0644 $1/etc/apt/keyrings/claude-code.asc
+      install -D -m 0644 ${IGconf_homespool_assetdir}/claude-code.asc \
+              $1/etc/apt/keyrings/claude-code.asc
       printf '%s\n' \
         'deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/stable stable main' \
         > $1/etc/apt/sources.list.d/claude-code.list

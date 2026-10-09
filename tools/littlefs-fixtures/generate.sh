@@ -50,6 +50,9 @@ python3 -I "$here/tamper.py" older-block "$out/tree.img" "$out/older-block.img" 
 # A block size littlefs takes and the printer's 16-byte cache cannot.
 "$work/lfstool" script "$out/odd-block-size.img" 200 32 w:/a=10:1 w:/b=300:2
 
+# Blocks larger than the printer's bbf cache can hold one of.
+"$work/lfstool" script "$out/large-block.img" 8192 4 w:/a=10:1 w:/b=300:2
+
 # A name littlefs takes and a path cannot carry unchanged.
 "$work/lfstool" script "$out/non-ascii-name.img" 256 32 "w:/caf$(printf '\xc3\xa9')=10:1"
 

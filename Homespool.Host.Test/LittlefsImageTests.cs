@@ -159,6 +159,20 @@ public sealed class LittlefsImageTests
     }
 
     /// <summary>
+    /// The printer's bbf cache is sized for 4096-byte blocks and halts the printer when the first one
+    /// will not fit, so a larger block - which hashes the same files to the same hash - is refused.
+    /// </summary>
+    [Fact]
+    public void ABlockLargerThanThePrintersCacheTakesIsRefused()
+    {
+        // Act
+        byte[]? hash = LittlefsImage.ContentHash(LittlefsFixture.LargeBlock, 8192, 4);
+
+        // Assert
+        hash.Should().BeNull();
+    }
+
+    /// <summary>
     /// littlefs keeps a directory's names in its own order, and the printer hashes its copy in that
     /// order; a directory listing them in any other would hash differently there than here.
     /// </summary>

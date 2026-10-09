@@ -61,6 +61,14 @@ public sealed class LittlefsImage
     /// <summary>Deeper than any resources tree; a directory pointing at an ancestor stops here at the latest.</summary>
     private const int MaxDepth = 16;
 
+    /// <summary>
+    /// The largest block the printer can mount. Its bbf cache (<c>src/buddy/littlefs_bbf.cpp</c>,
+    /// 6.5.3) holds <c>CACHE_SIZE</c> bytes - twelve slots of 4096 bytes plus a header, four on a MINI -
+    /// and halts with <c>ERR_SYSTEM_BBF_ALLOCATION_FAILED</c> when the first slot does not fit, which
+    /// mounting asks for at once. Every image Prusa builds uses 4096-byte blocks.
+    /// </summary>
+    private const uint MaxBlockSize = 4096;
+
     /// <summary>What <see cref="GetSlice"/> answers for nothing found: the invalid tag, never a real one.</summary>
     private const uint NoEntry = 0xffffffff;
 
@@ -91,9 +99,10 @@ public sealed class LittlefsImage
     public static byte[]? ContentHash(ReadOnlyMemory<byte> image, uint blockSize, uint blockCount)
     {
         // The printer's own configuration for the image: reads of one byte, a 16-byte cache, which
-        // littlefs requires the block size to be a multiple of. And the image must be exactly its blocks,
-        // because the printer reads a block from the file wherever block times size lands.
-        if (blockSize < 128 || blockSize > 1024 * 1024 || blockSize % 16 != 0 || blockCount < 2 ||
+        // littlefs requires the block size to be a multiple of, and a block cache sized for 4096-byte
+        // blocks (see MaxBlockSize). And the image must be exactly its blocks, because the printer reads
+        // a block from the file wherever block times size lands.
+        if (blockSize < 128 || blockSize > MaxBlockSize || blockSize % 16 != 0 || blockCount < 2 ||
             (ulong)blockSize * blockCount != (ulong)image.Length)
         {
             return null;

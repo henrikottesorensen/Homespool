@@ -1,0 +1,65 @@
+# METABEGIN
+# X-Env-Layer-Name: homespool-docker
+# X-Env-Layer-Category: container
+# X-Env-Layer-Desc: Docker engine from Docker's own trixie repository, trusting a signing key
+#  committed to this repository rather than one downloaded at build time.
+#  .
+#  rpi-image-gen's docker-debian-trixie installs the same packages, but its setup-hook curls the key
+#  from download.docker.com and trusts whatever arrives, so a key replaced at that URL would sign
+#  every card's container engine. Nothing in its metadata lets a layer substitute the key, so this is
+#  that layer with the fetch replaced by the committed file, and everything else kept the same.
+#  .
+#  It provides "docker" as that layer does, and rpi-image-gen refuses a build in which two layers
+#  provide one token - so the upstream layer cannot rejoin the chain unnoticed alongside this one.
+# X-Env-Layer-Version: 1.0.0
+# X-Env-Layer-Provides: docker
+# X-Env-Layer-Requires: device-user-admin,sys-build-base
+#
+# X-Env-VarRequires: IGconf_sys_apt_keydir,IGconf_homespool_assetdir
+# X-Env-VarRequires-Valid: string,string
+#
+# X-Env-VarPrefix: docker
+#
+# X-Env-Var-trust_user1: n
+# X-Env-Var-trust_user1-Desc: Make $IGconf_device_user1 a member of the docker group and therefore
+#  able to run containers without root. The docker group is root-equivalent; see
+#  https://docs.docker.com/engine/security/#docker-daemon-attack-surface
+# X-Env-Var-trust_user1-Required: n
+# X-Env-Var-trust_user1-Valid: bool
+# X-Env-Var-trust_user1-Set: y
+# METAEND
+---
+mmdebstrap:
+  architectures:
+    - arm64
+  # rpi-image-gen's own template, which names /usr/share/keyrings/docker.asc as the repository's
+  # Signed-By - the path the hook below fills.
+  mirrors:
+    - ${IGTOP}/templates/debian/apt/docker-trixie.sources
+  setup-hooks:
+    # pi/files/docker.asc is
+    #
+    #     9DC8 5822 9FC7 DD38 854A  E2D8 8D81 803C 0EBF CD88   Docker Release (CE deb) <docker@docker.com>
+    #
+    # matched against keyserver.ubuntu.com and keys.openpgp.org, and checked with gpgv against the
+    # trixie InRelease, which its signing subkey 7EA0 A9C3 F273 FCD8 signs. No expiry. If Docker
+    # rotates it, the bootstrap stops on an unsigned repository: fetch the new key, check its
+    # fingerprint the same way, and replace the file.
+    #
+    # Twice, because the two copies have different readers. The keyring directory is what
+    # mmdebstrap trusts while it bootstraps on the build host; the one in the root filesystem is what
+    # the card's own apt trusts from then on.
+    - install -D -m 0644 ${IGconf_homespool_assetdir}/docker.asc $1/usr/share/keyrings/docker.asc
+    - install -m 0644 ${IGconf_homespool_assetdir}/docker.asc $IGconf_sys_apt_keydir/docker.asc
+  packages:
+    - docker-ce
+    - docker-ce-cli
+    - containerd.io
+    - docker-buildx-plugin
+    - docker-compose-plugin
+  customize-hooks:
+    - chroot $1 sh -c "groupadd -f -r docker"
+    - |-
+      if igconf isy docker_trust_user1 ; then
+         chroot $1 sh -c "adduser $IGconf_device_user1 docker"
+      fi

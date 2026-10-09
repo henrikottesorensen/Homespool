@@ -4,12 +4,13 @@
 # X-Env-Layer-Desc: The Homespool compose stack, with its container images baked in and loaded on
 #  first boot.
 #  .
-#  Note on the requires below: docker-debian-trixie is named directly rather than its "docker"
-#  provides token, because the bookworm layer provides that same token and which one you get should
-#  not depend on resolution order when the suite here is trixie. trixie-minbase brings apt, systemd
-#  networking and sshd - without it there is no way onto the box to see what went wrong.
+#  Note on the requires below: homespool-docker is named directly rather than its "docker" provides
+#  token, because rpi-image-gen's own trixie and bookworm layers provide that same token and which
+#  one you get should not depend on resolution order. Ours rather than theirs because theirs trusts a
+#  signing key downloaded at build time. trixie-minbase brings apt, systemd networking and sshd -
+#  without it there is no way onto the box to see what went wrong.
 # X-Env-Layer-Version: 1.0.0
-# X-Env-Layer-Requires: trixie-minbase,docker-debian-trixie,device-user-admin
+# X-Env-Layer-Requires: trixie-minbase,homespool-docker,device-user-admin
 #
 # X-Env-VarPrefix: homespool
 #
@@ -336,7 +337,7 @@ mmdebstrap:
       # they run as root, and their CVEs are the container-escape kind. Excluded, they would be
       # frozen at whatever the card shipped with for the life of the board - the same trap as the
       # Raspberry Pi archive, on a component where it matters more. Debian's docker.io is not an
-      # option here either: rpi-image-gen's docker layer installs from download.docker.com, so this
+      # option here either: homespool-docker installs from download.docker.com, so this
       # origin is the only source of a fix that exists.
       #
       # Not paired with live-restore in /etc/docker/daemon.json, which is the documented way to keep

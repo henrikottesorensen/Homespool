@@ -267,7 +267,7 @@ take:
 
 Docker is included because `docker-ce` and `containerd.io` are the most privileged userspace on the
 card, run as root, and their CVEs are the container-escape kind — and Debian's `docker.io` is not an
-alternative, because `rpi-image-gen` installs from `download.docker.com`, so that repo is the only
+alternative, because the card's Docker layer installs from `download.docker.com`, so that repo is the only
 place a fix exists. The cost is that a daemon upgrade restarts containers. That is a few seconds and
 an interrupted file transfer, not a lost print: a Prusa printer prints from its own storage, and this
 board only ever transfers the file to it.

@@ -513,6 +513,7 @@ public static class Program
                             .Bind(builder.Configuration.GetSection(Firmware.FirmwareStorageOptions.SectionName));
             builder.Services.AddSingleton(Firmware.PrusaFirmwareVerifier.Prusa);
             builder.Services.AddScoped<Firmware.FirmwareImages>();
+            builder.Services.AddSingleton<Firmware.FirmwareCheckCache>();
             builder.Services.AddSingleton(Firmware.FirmwareFlashTimings.Default);
             builder.Services.AddSingleton<Firmware.FirmwareFlashes>();
             builder.Services.AddSingleton<Firmware.IFirmwareInstallations>(sp => sp.GetRequiredService<Firmware.FirmwareFlashes>());

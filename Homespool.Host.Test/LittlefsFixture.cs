@@ -35,6 +35,9 @@ internal sealed record LittlefsFixture(string Name, byte[] Image, uint BlockSize
     /// <summary>An image littlefs wrote with 8192-byte blocks, 4 of them, larger than the printer's cache slots.</summary>
     public static byte[] LargeBlock => File.ReadAllBytes(PathOf("large-block.img"));
 
+    /// <summary>Two 4096-byte blocks packed with 250 one-byte files: more to walk than its size allows.</summary>
+    public static byte[] Dense => File.ReadAllBytes(PathOf("dense.img"));
+
     private static List<LittlefsFixture> Load()
     {
         using JsonDocument document = JsonDocument.Parse(File.ReadAllText(PathOf("fixtures.json")));

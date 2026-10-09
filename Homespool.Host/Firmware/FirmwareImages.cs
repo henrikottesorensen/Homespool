@@ -40,10 +40,11 @@ namespace Homespool.Host.Firmware;
 /// called on a printer's drive.
 /// </para>
 /// <para>
-/// <b>The disk is checked again on every read.</b> Listing re-runs the verifier over each image, so a
-/// file changed underneath this - by hand, or by a disk going bad - stops being offered rather than
-/// being believed because a row once said it was good. Prusa's images are a few megabytes and a
-/// deployment holds a handful.
+/// <b>The disk is checked again on every read.</b> Listing verifies each image again whenever its file
+/// has been written since it was last verified (<see cref="FirmwareCheckCache"/>), so a file changed
+/// underneath this - by hand, or by a disk going bad - stops being offered rather than being believed
+/// because a row once said it was good. Finding an image to flash, and deleting one, verify the file
+/// as it is, every time.
 /// </para>
 /// <para>
 /// <b>The permission is <see cref="Capability.ManagePrinter"/> on the printer in hand</b>, checked
@@ -60,6 +61,7 @@ public sealed class FirmwareImages
     private readonly HomespoolDbContext _dbContext;
     private readonly PrusaFirmwareVerifier _verifier;
     private readonly IFirmwareInstallations _installations;
+    private readonly FirmwareCheckCache _checks;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<FirmwareImages> _logger;
     private readonly string _root;
@@ -68,6 +70,7 @@ public sealed class FirmwareImages
                           HomespoolDbContext dbContext,
                           PrusaFirmwareVerifier verifier,
                           IFirmwareInstallations installations,
+                          FirmwareCheckCache checks,
                           IOptionsMonitor<FirmwareStorageOptions> options,
                           IHostEnvironmentAccessor environment,
                           TimeProvider timeProvider,
@@ -80,6 +83,7 @@ public sealed class FirmwareImages
         _dbContext = dbContext;
         _verifier = verifier;
         _installations = installations;
+        _checks = checks;
         _timeProvider = timeProvider;
         _logger = logger;
         _root = Path.IsPathRooted(options.CurrentValue.Directory) ?
@@ -222,7 +226,7 @@ public sealed class FirmwareImages
 
         foreach (HSFile row in rows.OrderByDescending(row => row.UploadedAt))
         {
-            PrusaFirmwareCheck? check = row.Digest is null ? null : await CheckAsync(PathFor(row.Digest), cancellationToken);
+            PrusaFirmwareCheck? check = row.Digest is null ? null : await RememberedCheckAsync(PathFor(row.Digest), cancellationToken);
 
             if (check?.IsVerified != true)
             {
@@ -350,6 +354,30 @@ public sealed class FirmwareImages
     private string PathFor(string digest)
     {
         return Path.Combine(_root, digest + Extension);
+    }
+
+    /// <summary>
+    /// <see cref="CheckAsync"/>, unless the file is the one last checked - same length, same last write -
+    /// when the verdict then is the answer.
+    /// </summary>
+    private async Task<PrusaFirmwareCheck> RememberedCheckAsync(string path, CancellationToken cancellationToken)
+    {
+        FileInfo file = new(path);
+
+        if (!file.Exists)
+        {
+            return new PrusaFirmwareCheck(PrusaFirmwareVerdict.NotAnImage, Header: null);
+        }
+
+        if (_checks.For(file) is PrusaFirmwareCheck remembered)
+        {
+            return remembered;
+        }
+
+        PrusaFirmwareCheck check = await CheckAsync(path, cancellationToken);
+        _checks.Remember(file, check);
+
+        return check;
     }
 
     /// <summary>Checks the file at <paramref name="path"/>, or reports a missing one as no image at all.</summary>

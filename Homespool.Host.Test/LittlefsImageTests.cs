@@ -173,6 +173,39 @@ public sealed class LittlefsImageTests
     }
 
     /// <summary>
+    /// Walking a block's log backwards for each of its entries is quadratic in its tags; an image
+    /// whose walk would cost more steps per byte than the reader allows is refused, however valid -
+    /// Prusa's own spend a fraction of a step per thousand bytes.
+    /// </summary>
+    [Fact]
+    public void AnImageCostingMoreToWalkThanItsSizeAllowsIsRefused()
+    {
+        // Act
+        byte[]? hash = LittlefsImage.ContentHash(LittlefsFixture.Dense, 4096, 2);
+
+        // Assert
+        hash.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Every id of a directory names something but the superblock's. littlefs never writes an id with
+    /// no name - a delete splices it out - and walking a block for each of hundreds of them is how an
+    /// image would make reading it quadratic.
+    /// </summary>
+    [Fact]
+    public void AnIdWithNoNameIsRefused()
+    {
+        // Arrange - /readme's name tag given the superblock's type, which no directory read matches
+        byte[] image = LittlefsEdits.Retype(LittlefsFixture.Tree, "readme"u8, 0x0ff);
+
+        // Act
+        byte[]? hash = LittlefsImage.ContentHash(image, LittlefsFixture.Tree.BlockSize, LittlefsFixture.Tree.BlockCount);
+
+        // Assert
+        hash.Should().BeNull();
+    }
+
+    /// <summary>
     /// littlefs keeps a directory's names in its own order, and the printer hashes its copy in that
     /// order; a directory listing them in any other would hash differently there than here.
     /// </summary>

@@ -33,8 +33,13 @@ namespace Homespool.Host.Firmware;
 /// </para>
 /// <para>
 /// <b>Bounded</b>: every read is checked against the image, metadata fetches and directory depth are
-/// capped, and no file may claim more bytes than the image has, so a hostile image costs at most a few
-/// passes over itself.
+/// capped, no file may claim more bytes than the image has, and the steps spent walking metadata -
+/// each tag a fetch or a lookup passes - are capped at <see cref="WorkPerByte"/> per byte of image.
+/// Walking backwards from a commit's end for every id is quadratic in a block's tags, so the cap is
+/// what makes a hostile image cost at most a few passes over itself; Prusa's own images spend about
+/// one step per two thousand bytes. And every id of a directory must name something, but the
+/// superblock's: an id with no name is never written by littlefs (a delete splices it out), and
+/// walking a block for each of hundreds of empty ids is exactly the quadratic case.
 /// </para>
 /// </remarks>
 public sealed class LittlefsImage
@@ -69,6 +74,9 @@ public sealed class LittlefsImage
     /// </summary>
     private const uint MaxBlockSize = 4096;
 
+    /// <summary>Metadata steps allowed per byte of image: a hundred times what Prusa's busiest image takes.</summary>
+    private const long WorkPerByte = 8;
+
     /// <summary>What <see cref="GetSlice"/> answers for nothing found: the invalid tag, never a real one.</summary>
     private const uint NoEntry = 0xffffffff;
 
@@ -79,6 +87,7 @@ public sealed class LittlefsImage
     private readonly HashSet<BlockPair> _directoriesSeen = [];
     private uint _nameMax = NameMax;
     private long _fetchesLeft;
+    private long _workLeft;
     private long _fileBytesLeft;
     private uint _counter;
 
@@ -88,6 +97,7 @@ public sealed class LittlefsImage
         _blockSize = blockSize;
         _blockCount = blockCount;
         _fetchesLeft = 4L * blockCount;
+        _workLeft = WorkPerByte * image.Length;
         _fileBytesLeft = image.Length;
     }
 
@@ -216,7 +226,7 @@ public sealed class LittlefsImage
         sha.AppendData(Encoding.ASCII.GetBytes(path));
         Mark(sha);
 
-        foreach (Entry entry in ReadDirectory(pair))
+        foreach (Entry entry in ReadDirectory(pair, root: depth == 0))
         {
             string child = path == "/" ? "/" + entry.Name : path + "/" + entry.Name;
 
@@ -283,11 +293,12 @@ public sealed class LittlefsImage
     /// <c>lfs_dir_rawread</c> without its <c>.</c> and <c>..</c>: each id of each metadata pair the
     /// directory spans, skipping the ones with no name - and refusing any that are out of order.
     /// </summary>
-    private List<Entry> ReadDirectory(BlockPair pair)
+    private List<Entry> ReadDirectory(BlockPair pair, bool root)
     {
         List<Entry> entries = [];
         MetadataDir dir = Fetch(pair);
         uint id = 0;
+        bool firstPair = true;
 
         while (true)
         {
@@ -300,6 +311,7 @@ public sealed class LittlefsImage
 
                 dir = Fetch(dir.Tail);
                 id = 0;
+                firstPair = false;
 
                 continue;
             }
@@ -312,6 +324,11 @@ public sealed class LittlefsImage
                 }
 
                 entries.Add(entry);
+            }
+            else if (!(root && firstPair && id == 0))
+            {
+                // Only the superblock, the root's first entry, has no name a directory reads.
+                throw new InvalidDataException();
             }
 
             id += 1;
@@ -474,6 +491,7 @@ public sealed class LittlefsImage
 
         while (true)
         {
+            Spend();
             off += DSize(ptag);
 
             if ((ulong)off + 4 > _blockSize)
@@ -554,6 +572,7 @@ public sealed class LittlefsImage
 
         while (off >= 4 + DSize(ntag))
         {
+            Spend();
             off -= DSize(ntag);
             uint tag = ntag;
             ntag = (BinaryPrimitives.ReadUInt32BigEndian(Read(dir.Pair.First, off, 4)) ^ tag) & 0x7fffffff;
@@ -597,6 +616,7 @@ public sealed class LittlefsImage
 
         while (current > target)
         {
+            Spend();
             int skip = Math.Min(Npw2(current - target + 1) - 1, BitOperations.TrailingZeroCount(current));
             head = Le32(Read(head, (uint)(4 * skip), 4), 0);
             current -= 1U << skip;
@@ -627,6 +647,15 @@ public sealed class LittlefsImage
     private static int Npw2(uint a)
     {
         return 32 - BitOperations.LeadingZeroCount(a - 1);
+    }
+
+    /// <summary>One step of walking metadata, against the image's budget.</summary>
+    private void Spend()
+    {
+        if (--_workLeft < 0)
+        {
+            throw new InvalidDataException();
+        }
     }
 
     /// <summary><c>lfs_bd_read</c>'s bounds: a block that exists, and bytes inside it.</summary>

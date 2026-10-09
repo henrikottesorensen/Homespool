@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 
 namespace Homespool.Host.Test;
 
@@ -57,6 +58,90 @@ internal static class LittlefsEdits
         }
 
         return image;
+    }
+
+    /// <summary>
+    /// The image of <paramref name="fixture"/> with the name tag of every entry named
+    /// <paramref name="name"/> given the type <paramref name="type"/> - its id and size kept - and the
+    /// blocks holding one re-encoded and sealed again.
+    /// </summary>
+    public static byte[] Retype(LittlefsFixture fixture, ReadOnlySpan<byte> name, uint type)
+    {
+        byte[] image = (byte[])fixture.Image.Clone();
+        int blockSize = (int)fixture.BlockSize;
+        bool retypedAny = false;
+
+        for (int block = 0; block < fixture.BlockCount; block++)
+        {
+            Span<byte> bytes = image.AsSpan(block * blockSize, blockSize);
+
+            if (IsMetadata(bytes) && RetypeIn(bytes, name, type))
+            {
+                Seal(bytes);
+                retypedAny = true;
+            }
+        }
+
+        if (!retypedAny)
+        {
+            throw new InvalidOperationException("No name tag to retype.");
+        }
+
+        return image;
+    }
+
+    /// <summary>
+    /// Decodes a block's tags, retypes the matching name tags, and writes the chain back XORed as
+    /// littlefs writes it; true when any was retyped.
+    /// </summary>
+    private static bool RetypeIn(Span<byte> block, ReadOnlySpan<byte> name, uint type)
+    {
+        List<(int off, uint tag)> tags = [];
+        uint ptag = 0xffffffff;
+        int off = 4;
+
+        while (off + 4 <= block.Length)
+        {
+            uint tag = BinaryPrimitives.ReadUInt32BigEndian(block[off..]) ^ ptag;
+
+            if ((tag & 0x80000000) != 0 || off + DSize(tag) > block.Length)
+            {
+                break;
+            }
+
+            tags.Add((off, tag));
+            ptag = IsCrc(tag) ? tag ^ ((((tag & 0x0ff00000) >> 20) & 1U) << 31) : tag;
+            off += DSize(tag);
+        }
+
+        bool retyped = false;
+
+        for (int i = 0; i < tags.Count; i++)
+        {
+            (int at, uint tag) = tags[i];
+            uint size = tag & 0x3ff;
+
+            if ((tag & 0x70000000) == 0 && size == name.Length && block.Slice(at + 4, (int)size).SequenceEqual(name))
+            {
+                tags[i] = (at, (tag & ~0x7ff00000u) | (type << 20));
+                retyped = true;
+            }
+        }
+
+        uint basis = 0xffffffff;
+
+        foreach ((int at, uint tag) in tags)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(block[at..], tag ^ basis);
+            basis = IsCrc(tag) ? tag ^ ((((tag & 0x0ff00000) >> 20) & 1U) << 31) : tag;
+        }
+
+        return retyped;
+    }
+
+    private static bool IsCrc(uint tag)
+    {
+        return (tag & 0x78000000) >> 20 == 0x500;
     }
 
     /// <summary>A block whose first tag, after its revision count, is a valid one: a metadata block.</summary>

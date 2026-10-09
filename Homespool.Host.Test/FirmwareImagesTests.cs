@@ -40,6 +40,9 @@ public sealed class FirmwareImagesTests : IDisposable
     private readonly string _root = Path.Combine(Path.GetTempPath(), "homespool-firmware-" + Guid.NewGuid().ToString("N"));
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"hs-firmware-{Guid.NewGuid():N}.db");
 
+    // One per test, as the host keeps one: what listing remembers, shared by every FirmwareImages built here.
+    private readonly FirmwareCheckCache _checks = new();
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -297,16 +300,19 @@ public sealed class FirmwareImagesTests : IDisposable
     }
 
     /// <summary>
-    /// The disk is checked again on every listing, so an image whose bytes changed underneath the row
-    /// stops being offered rather than being believed because it was once good.
+    /// The disk is checked again on every listing once the file has been written since, so an image
+    /// whose bytes changed underneath the row stops being offered rather than being believed because it
+    /// was once good.
     /// </summary>
     [Fact]
     public async Task AnImageChangedOnDiskIsNoLongerOffered()
     {
-        // Arrange
+        // Arrange - listed once, so its verdict is remembered
         await using HomespoolDbContext context = await MigratedContextAsync();
         Printer printer = await AddPrinterAsync(context, "7.1.0");
         FirmwareImage stored = await StoreAsync(context, printer, TestFirmwareImages.Build());
+        (await NewImages(context).ListForAsync(Caller.Unscoped(Manager), printer.Id, TestContext.Current.CancellationToken))
+            .Should().ContainSingle();
 
         string path = Path.Combine(_root, stored.Digest + ".bbf");
         byte[] bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
@@ -319,6 +325,44 @@ public sealed class FirmwareImagesTests : IDisposable
 
         // Assert
         offered.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Listing remembers a verdict while the file keeps its length and last write, so a page visit does
+    /// not read every image again - but flashing reads the file as it is, so even a change that kept both
+    /// is never sent.
+    /// </summary>
+    [Fact]
+    public async Task ListingRemembersAVerdictAndFlashingDoesNot()
+    {
+        // Arrange - listed once, then changed underneath with its length and write time put back
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(context, "7.1.0");
+        FirmwareImage stored = await StoreAsync(context, printer, TestFirmwareImages.Build());
+        (await NewImages(context).ListForAsync(Caller.Unscoped(Manager), printer.Id, TestContext.Current.CancellationToken))
+            .Should().ContainSingle();
+
+        string path = Path.Combine(_root, stored.Digest + ".bbf");
+        DateTime writtenAt = File.GetLastWriteTimeUtc(path);
+        byte[] bytes = await File.ReadAllBytesAsync(path, TestContext.Current.CancellationToken);
+        bytes[PrusaFirmwareVerifier.FirmwareOffset + 1] ^= 1;
+        await File.WriteAllBytesAsync(path, bytes, TestContext.Current.CancellationToken);
+        File.SetLastWriteTimeUtc(path, writtenAt);
+
+        // Act
+        IReadOnlyList<FirmwareImage> listed = await NewImages(context).ListForAsync(Caller.Unscoped(Manager), printer.Id,
+                                                                                 TestContext.Current.CancellationToken);
+        FirmwareToFlash? toFlash = await NewImages(context).FindForFlashingAsync(Caller.Unscoped(Manager), printer.Id, stored.Digest,
+                                                                               TestContext.Current.CancellationToken);
+
+        File.SetLastWriteTimeUtc(path, writtenAt.AddSeconds(1));
+        IReadOnlyList<FirmwareImage> listedAfterAWrite = await NewImages(context).ListForAsync(Caller.Unscoped(Manager), printer.Id,
+                                                                                            TestContext.Current.CancellationToken);
+
+        // Assert
+        listed.Should().ContainSingle("the file still looks like the one verified");
+        toFlash.Should().BeNull("flashing verifies the file as it is");
+        listedAfterAWrite.Should().BeEmpty("a write since is verified again");
     }
 
     /// <summary>Uploading an image again is the remedy for its file having gone missing.</summary>
@@ -574,6 +618,7 @@ public sealed class FirmwareImagesTests : IDisposable
                                   context,
                                   TestFirmwareImages.Verifier,
                                   installations ?? Substitute.For<IFirmwareInstallations>(),
+                                  _checks,
                                   TestOptions.Monitor(new FirmwareStorageOptions { Directory = _root }),
                                   new HostEnvironmentAccessor(_root),
                                   TimeProvider.System,

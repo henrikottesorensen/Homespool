@@ -299,7 +299,9 @@ internal sealed class QueueTransferPolicy : TransferPolicy
     /// <para>
     /// <b>The path recorded is the one <c>FILE_INFO</c> answers with</b>, not the one we asked about:
     /// that is the 8.3 alias, which is what <c>START_PRINT</c> then uses, and it is unguessable from
-    /// here because the counter depends on what else is on that drive.
+    /// here because the counter depends on what else is on that drive. An answer without one records
+    /// none, and the advancer asks again by the drive name, as for any arrival the printer has not
+    /// named: the file's own name may be another member's file under the name ours was moved off.
     /// </para>
     /// </remarks>
     private async Task ReconcileExistingFileAsync(IServiceProvider services,
@@ -353,7 +355,7 @@ internal sealed class QueueTransferPolicy : TransferPolicy
                 printerId, file.FileName, QueueAdvancer.ForLog(existing.Path));
 
             onPrinter.ArrivedAt = _timeProvider.GetUtcNow();
-            onPrinter.PrinterPath = existing.Path ?? file.PrinterPath;
+            onPrinter.PrinterPath = existing.Path;
             QueueHolds.ClearHold(onPrinter);
 
             return;

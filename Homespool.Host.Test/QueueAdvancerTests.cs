@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data.Common;
 using System.IO;
 using System.Linq;
@@ -1628,10 +1629,10 @@ public sealed class QueueAdvancerTests : IDisposable
     /// <c>SEND_FILE_INFO</c> about whatever is already sitting there.
     /// </summary>
     /// <param name="existingSize">What the drive says the existing file's size is, or null to answer without one.</param>
-    /// <param name="existingPath">The 8.3 alias the printer reports, which is what a print must use.</param>
+    /// <param name="existingPath">The 8.3 alias the printer reports, which is what a print must use, or null to answer without one.</param>
     /// <param name="readOnly">Whether the drive reports the file in use - printing, or a transfer still arriving.</param>
     private IPrinterConnectionActor ConnectRefusingTransferAsExisting(long? existingSize,
-                                                                      string existingPath = "/usb/SHAPE-~1.BGC",
+                                                                      string? existingPath = "/usb/SHAPE-~1.BGC",
                                                                       bool readOnly = false)
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
@@ -1647,10 +1648,24 @@ public sealed class QueueAdvancerTests : IDisposable
              {
                  if (call.Arg<ISendableCommand>() is SendFileInfo)
                  {
-                     string readOnlyField = readOnly ? ",\"read_only\":true" : string.Empty;
-                     string json = existingSize is long size ?
-                         $"{{\"path\":\"{existingPath}\",\"size\":{size}{readOnlyField}}}" :
-                         $"{{\"path\":\"{existingPath}\"{readOnlyField}}}";
+                     List<string> fields = [];
+
+                     if (existingPath is not null)
+                     {
+                         fields.Add($"\"path\":\"{existingPath}\"");
+                     }
+
+                     if (existingSize is long size)
+                     {
+                         fields.Add($"\"size\":{size}");
+                     }
+
+                     if (readOnly)
+                     {
+                         fields.Add("\"read_only\":true");
+                     }
+
+                     string json = $"{{{string.Join(',', fields)}}}";
 
                      return Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                                   new CommandOutcome(PrinterEventType.FileInfo, null),
@@ -1706,6 +1721,37 @@ public sealed class QueueAdvancerTests : IDisposable
         row.PrinterPath.Should().Be("/usb/SHAPE-~1.BGC",
                                     "the alias the printer answered with is what START_PRINT has to use, and it is unguessable from here");
         row.HoldReason.Should().BeNull("nothing is in the way");
+    }
+
+    /// <summary>
+    /// Our own copy, sent under its owner's name because another file holds the plain one, is adopted
+    /// without a path when the printer's answer names none - never printed by the file's own name,
+    /// which is the other file.
+    /// </summary>
+    [Fact]
+    public async Task OurOwnCopyUnderItsOwnersNameIsNotPrintedByItsPlainName()
+    {
+        // Arrange - these bytes went out under the owner's name; the answer about them carries no path.
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        FileOnPrinter taken = await AddTakenCopyAsync(context);
+        taken.DriveName = OwnersName;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        IPrinterConnectionActor actor = ConnectRefusingTransferAsExisting(existingSize: OnDiskLength, existingPath: null);
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        FileOnPrinter row = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+
+        CommandsSent(actor).OfType<SendFileInfo>().Select(asked => asked.Path)
+                           .Should().Equal(["/usb/" + OwnersName], "the question is about the name ours went out under");
+        row.ArrivedAt.Should().NotBeNull("these bytes are on the drive, and the digest says so");
+        row.PrinterPath.Should().BeNull("the printer did not name the file, and /usb/queued.bgcode is somebody else's");
+        CommandsSent(actor).OfType<Printing.StartPrint>().Should().BeEmpty();
     }
 
     /// <summary>

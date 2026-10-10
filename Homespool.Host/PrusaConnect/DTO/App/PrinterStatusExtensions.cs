@@ -56,4 +56,15 @@ public static class PrinterStatusExtensions
                                                        "Not one of the 9 printer states firmware sends."),
         };
     }
+
+    /// <summary>
+    /// <see cref="ParseWireState"/>, or null for a word that is not one of the nine - for a reader that
+    /// must not fail on one, such as an answer whose state is a detail beside its verdict.
+    /// </summary>
+    public static PrinterStatus? TryParseWireState(string? wireValue)
+    {
+        return wireValue is "IDLE" or "BUSY" or "PRINTING" or "PAUSED" or "FINISHED" or "STOPPED" or "ERROR" or "ATTENTION" or "READY" ?
+            ParseWireState(wireValue) :
+            null;
+    }
 }

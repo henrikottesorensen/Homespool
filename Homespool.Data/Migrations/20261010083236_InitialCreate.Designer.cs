@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Homespool.Data.Migrations
 {
     [DbContext(typeof(HomespoolDbContext))]
-    [Migration("20261008190701_InitialCreate")]
+    [Migration("20261010083236_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -251,6 +251,10 @@ namespace Homespool.Data.Migrations
 
                     b.HasIndex("UserId", "Type", "Name")
                         .IsUnique();
+
+                    b.HasIndex(new[] { "Digest" }, "IX_Files_FirmwareDigest")
+                        .IsUnique()
+                        .HasFilter("\"Type\" = 'PrusaFirmware'");
 
                     b.ToTable("Files");
                 });

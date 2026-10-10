@@ -457,6 +457,76 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The printer is asked its state just before the flash, because telemetry can be seconds old: a
+    /// print started at the panel since the last report - here a report a minute away - is caught by
+    /// the printer's own answer, and the printer is not flashed.
+    /// </summary>
+    [Fact]
+    public async Task APrinterBusySinceItsLastReportIsNotFlashed()
+    {
+        // Arrange - the printer starts printing during the install, and reports it only a minute later
+        (PrinterIdentity identity, string token, int printerId, long ownerId) = await EnrolCoreOneAsync();
+        await using FakePrinterClient fake = await ConnectAsync(identity, token,
+                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO",
+                                                                                    device => device.ForceState(DeviceState.Printing)),
+                                                                telemetryEvery: TimeSpan.FromMinutes(1));
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+        await WaitForModelAsync(printerId);
+
+        FirmwareImage image = await StoreAsync(ownerId, printerId);
+        Guid uuid = await UuidOfAsync(printerId);
+
+        using HttpClient owner = await EnrolmentFlowHelper.SignInAsAsync(_factory, await EnrolmentFlowHelper.FindUserAsync(_factory, ownerId));
+        await EnrolmentFlowHelper.ReauthenticateAsync(owner);
+
+        // Act
+        await PostFlashAsync(owner, uuid, image.Digest);
+
+        // Assert
+        FirmwareFlashStatus finished = await FinishedAsync(printerId);
+
+        finished.Stage.Should().Be(FirmwareFlashStage.Failed);
+        finished.Problem!.Key.Should().Be("Error_FirmwareFlashBusy");
+        fake.ReceivedCommands.Should().Contain(frame => frame.TryGetJsonCommandName() == "SEND_STATE_INFO");
+        fake.ReceivedCommands.Should().NotContain(frame => IsFlashLine(frame));
+
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A printer whose answer names a state this does not know is not taken to be idle: not flashed.
+    /// </summary>
+    [Fact]
+    public async Task APrinterThatWillNotSayItsStateIsNotFlashed()
+    {
+        // Arrange
+        (PrinterIdentity identity, string token, int printerId, long ownerId) = await EnrolCoreOneAsync();
+        await using FakePrinterClient fake = await ConnectAsync(identity, token, new UnknownStatePolicy(identity));
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+        await WaitForModelAsync(printerId);
+
+        FirmwareImage image = await StoreAsync(ownerId, printerId);
+        Guid uuid = await UuidOfAsync(printerId);
+
+        using HttpClient owner = await EnrolmentFlowHelper.SignInAsAsync(_factory, await EnrolmentFlowHelper.FindUserAsync(_factory, ownerId));
+        await EnrolmentFlowHelper.ReauthenticateAsync(owner);
+
+        // Act
+        await PostFlashAsync(owner, uuid, image.Digest);
+
+        // Assert
+        FirmwareFlashStatus finished = await FinishedAsync(printerId);
+
+        finished.Stage.Should().Be(FirmwareFlashStage.Failed);
+        finished.Problem!.Key.Should().Be("Error_FirmwareFlashBusy");
+        fake.ReceivedCommands.Should().NotContain(frame => IsFlashLine(frame));
+
+        await fake.CloseAsync(TestContext.Current.CancellationToken);
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
     /// A print queued while the flash runs waits for it - the queue stands still rather than start a
     /// print the flash would reset - and the flash goes on.
     /// </summary>
@@ -627,11 +697,14 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
         });
     }
 
-    private async Task<FakePrinterClient> ConnectAsync(PrinterIdentity identity, string token, CommandAnswerPolicy? policy = null)
+    private async Task<FakePrinterClient> ConnectAsync(PrinterIdentity identity,
+                                                       string token,
+                                                       CommandAnswerPolicy? policy = null,
+                                                       TimeSpan? telemetryEvery = null)
     {
         // Telemetry, so the printer reports a status: without one it reads as unknown, which is not
-        // idle. Often, so a state a test forces is reported within moments.
-        SyntheticTelemetrySource telemetry = new() { IdleInterval = TimeSpan.FromMilliseconds(200) };
+        // idle. Often, unless a test says otherwise, so a state a test forces is reported within moments.
+        SyntheticTelemetrySource telemetry = new() { IdleInterval = telemetryEvery ?? TimeSpan.FromMilliseconds(200) };
         FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = telemetry, Policy = policy })
         {
             Token = token,
@@ -815,6 +888,19 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
 
     /// <summary>What <see cref="FlashedCoreOneAsync"/> leaves: the printer, its owner, and the image it was flashed with.</summary>
     private sealed record Flashed(int PrinterId, long OwnerId, Guid Uuid, FirmwareImage Image, PrinterIdentity Identity, string Token);
+
+    /// <summary>Answers as firmware does, but <c>SEND_STATE_INFO</c> with a state word that is not one of the nine.</summary>
+    private sealed class UnknownStatePolicy(PrinterIdentity identity) : CommandAnswerPolicy
+    {
+        private readonly FirmwareFaithfulPolicy _firmware = new(identity, TimeProvider.System);
+
+        public override IReadOnlyList<PlannedReply> Answer(ServerCommandFrame frame, FakeDevice device)
+        {
+            return frame.TryGetJsonCommandName() == "SEND_STATE_INFO" ?
+                [new PlannedReply(EventMessageBuilder.Build("STATE_CHANGED", "UNKNOWN", frame.CommandId))] :
+                _firmware.Answer(frame, device);
+        }
+    }
 
     /// <summary>Answers as firmware does, having first done something when one command arrives.</summary>
     private sealed class OnCommandPolicy(PrinterIdentity identity, string command, Action<FakeDevice> onCommand) : CommandAnswerPolicy

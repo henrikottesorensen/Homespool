@@ -357,6 +357,10 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
                                                         device.FreeSpace))
                 ];
 
+            case "SEND_STATE_INFO":
+                // planner.cpp:967-969 - a STATE_CHANGED naming the state, carrying the command id.
+                return [Reply(EventMessageBuilder.Build("STATE_CHANGED", device.WireState, frame.CommandId, jobId: device.JobId))];
+
             case "START_PRINT":
                 return StartPrint(frame, device);
 

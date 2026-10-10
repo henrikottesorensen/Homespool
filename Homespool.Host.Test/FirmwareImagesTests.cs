@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 
 using NSubstitute;
@@ -257,6 +258,55 @@ public sealed class FirmwareImagesTests : IDisposable
         // Assert
         (await store.Should().ThrowAsync<FirmwareImageRefusedException>())
             .Which.ResourceKey.Should().Be("Error_FirmwareResourcesUnreadable");
+    }
+
+    /// <summary>
+    /// Two first uploads of one image racing: the one that saves second finds the image's row there -
+    /// the digest is unique among firmware rows - and is answered with it, as if it had come second.
+    /// </summary>
+    [Fact]
+    public async Task TwoFirstUploadsOfOneImageRacingAreOneImage()
+    {
+        // Arrange - the same image saved through another context just before this upload's own save
+        await using HomespoolDbContext other = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(other, "7.1.0");
+        byte[] image = TestFirmwareImages.Build();
+        FirmwareImage? first = null;
+
+        await using HomespoolDbContext context = await MigratedContextAsync(
+            new BeforeFirstSave(async () => first = await StoreAsync(other, printer, image, "first.bbf")));
+
+        // Act
+        FirmwareImage second = await StoreAsync(context, printer, image);
+
+        // Assert
+        second.Digest.Should().Be(first!.Digest);
+        second.Name.Should().Be("first.bbf", "the row that saved first is the image");
+        (await context.Files.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
+        File.Exists(Path.Combine(_root, first.Digest + ".bbf")).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The same person uploading another image under a name in the same moment: the second save is
+    /// refused as the name taken, not a 500, and its bytes are not left behind with no row.
+    /// </summary>
+    [Fact]
+    public async Task AnotherImageSavedUnderTheNameFirstIsTheNameTaken()
+    {
+        // Arrange
+        await using HomespoolDbContext other = await MigratedContextAsync();
+        Printer printer = await AddPrinterAsync(other, "7.1.0");
+        FirmwareImage? first = null;
+
+        await using HomespoolDbContext context = await MigratedContextAsync(
+            new BeforeFirstSave(async () => first = await StoreAsync(other, printer, TestFirmwareImages.Build(seed: 1))));
+
+        // Act
+        Func<Task> store = () => StoreAsync(context, printer, TestFirmwareImages.Build());
+
+        // Assert
+        (await store.Should().ThrowAsync<FirmwareImageRefusedException>()).Which.Refusal.Should().Be(FirmwareImageRefusal.NameTaken);
+        Directory.EnumerateFiles(_root).Select(Path.GetFileName).Should().Equal(first!.Digest + ".bbf");
     }
 
     [Fact]
@@ -625,16 +675,41 @@ public sealed class FirmwareImagesTests : IDisposable
                                   NullLogger<FirmwareImages>.Instance);
     }
 
-    private async Task<HomespoolDbContext> MigratedContextAsync()
+    private async Task<HomespoolDbContext> MigratedContextAsync(SaveChangesInterceptor? interceptor = null)
     {
-        DbContextOptions<HomespoolDbContext> options = new DbContextOptionsBuilder<HomespoolDbContext>()
-                                                       .UseSqlite($"Data Source={_databasePath}")
-                                                       .Options;
+        DbContextOptionsBuilder<HomespoolDbContext> builder = new DbContextOptionsBuilder<HomespoolDbContext>()
+                                                              .UseSqlite($"Data Source={_databasePath}");
+
+        if (interceptor is not null)
+        {
+            builder.AddInterceptors(interceptor);
+        }
+
+        DbContextOptions<HomespoolDbContext> options = builder.Options;
 
         HomespoolDbContext context = new(options);
         await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
 
         return context;
+    }
+
+    /// <summary>Runs something once, just before the context's first save - another upload saving in between.</summary>
+    private sealed class BeforeFirstSave(Func<Task> meanwhile) : SaveChangesInterceptor
+    {
+        private bool _ran;
+
+        public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData,
+                                                                                    InterceptionResult<int> result,
+                                                                                    CancellationToken cancellationToken = default)
+        {
+            if (!_ran)
+            {
+                _ran = true;
+                await meanwhile();
+            }
+
+            return result;
+        }
     }
 
     /// <summary>A body that never ends, so only a limit can stop reading it.</summary>

@@ -584,6 +584,14 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             entity.Property(e => e.Type)
                   .HasConversion<string>();
 
+            // A firmware image is its signed digest, whoever uploaded it - one row per image, shared by
+            // every printer it fits. Unique here so two first uploads racing cannot both insert; the
+            // store answers the one that lost with the row that won. Firmware rows only: two people may
+            // each have the same print file, under one digest and two rows.
+            entity.HasIndex(e => e.Digest, "IX_Files_FirmwareDigest")
+                  .IsUnique()
+                  .HasFilter("\"Type\" = 'PrusaFirmware'");
+
             // A deleted account takes its file index with it. The bytes on disk are a separate
             // question and nothing here deletes them - which is why the startup reconcile skips a
             // directory whose user no longer exists rather than re-inserting rows that cannot satisfy

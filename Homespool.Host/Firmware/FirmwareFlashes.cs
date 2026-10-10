@@ -40,7 +40,10 @@ namespace Homespool.Host.Firmware;
 /// <b>Refused up front, and checked again before the flash.</b> The printer must be connected, idle
 /// or finished by the rule a heater or an unload uses, and have nothing queued. The printer's state is
 /// checked again immediately before <see cref="FlashFirmware"/> is sent, because the image takes
-/// minutes to arrive and somebody at the printer may have started a print meanwhile.
+/// minutes to arrive and somebody at the printer may have started a print meanwhile - from telemetry,
+/// and then from the printer itself (<see cref="SendStateInfo"/>), since telemetry can be seconds old
+/// and firmware flashes whatever it is doing. A print started in the round trip before the flash is
+/// still reset; that window is the printer's to close, not Homespool's.
 /// </para>
 /// <para>
 /// <b>Nothing in Homespool gives the printer work while it runs</b>
@@ -297,10 +300,22 @@ public sealed class FirmwareFlashes : IFirmwareInstallations
                 // Not the queue: it has waited since the start, and anything queued since waits too.
                 await RequireReadyAsync(scope.ServiceProvider, printerId, printerName, queueMatters: false, cancellationToken);
 
+                PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
+
+                // And the printer itself, last. The check above reads telemetry, which may be seconds
+                // old, and firmware runs the flash whatever it is doing - so a print started at the
+                // panel in those seconds would be reset under it. Its own answer is a round trip old:
+                // that narrows the window, and nothing on this side can close it.
+                CommandOutcome? state = await commands.SendCommandAsync(printerId, new SendStateInfo(), caller, cancellationToken);
+
+                if (state?.PrinterStatus is not PrinterStatus status || !PhysicalChangeRules.IsAllowed(status))
+                {
+                    throw new FirmwareFlashRefusedException(printerName, FirmwareFlashRefusal.Busy);
+                }
+
                 flashedAt = _timeProvider.GetUtcNow();
 
-                await scope.ServiceProvider.GetRequiredService<PrinterCommandService>()
-                           .SendCommandAsync(printerId, new FlashFirmware(), caller, cancellationToken);
+                await commands.SendCommandAsync(printerId, new FlashFirmware(), caller, cancellationToken);
             }
 
             Advance(printerId, FirmwareFlashStage.Restarting);

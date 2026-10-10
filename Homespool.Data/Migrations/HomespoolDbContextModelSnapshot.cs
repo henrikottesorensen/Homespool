@@ -249,6 +249,10 @@ namespace Homespool.Data.Migrations
                     b.HasIndex("UserId", "Type", "Name")
                         .IsUnique();
 
+                    b.HasIndex(new[] { "Digest" }, "IX_Files_FirmwareDigest")
+                        .IsUnique()
+                        .HasFilter("\"Type\" = 'PrusaFirmware'");
+
                     b.ToTable("Files");
                 });
 

@@ -132,6 +132,21 @@ public class FirmwareFaithfulPolicyTests
         reply.RootElement.GetProperty("data").GetProperty("fingerprint").GetString().Should().Be(_identity.Fingerprint);
     }
 
+    /// <summary>SEND_STATE_INFO answers a STATE_CHANGED naming the state, with the command id (planner.cpp:967-969).</summary>
+    [Fact]
+    public void SendStateInfoAnswersTheStateWithTheCommandId()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        _device.StartPrint(jobId: 1);
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(JsonCommand(321, "SEND_STATE_INFO"), _device);
+
+        using JsonDocument reply = Parse(replies[0]);
+        reply.RootElement.GetProperty("event").GetString().Should().Be("STATE_CHANGED");
+        reply.RootElement.GetProperty("command_id").GetUInt32().Should().Be(321);
+        reply.RootElement.GetProperty("state").GetString().Should().Be("PRINTING");
+    }
+
     /// <summary>The same command id is never executed twice (planner.cpp:1103-1110).</summary>
     [Fact]
     public void ARepeatedCommandIdIsRefused()

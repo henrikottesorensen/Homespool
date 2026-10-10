@@ -6,7 +6,7 @@ public enum WebPushSubscribeResult
     /// <summary>Never set. The zero value every enum here reserves for "nobody wrote this".</summary>
     Undefined = 0,
 
-    /// <summary>Stored, or moved to this account from the one that had it.</summary>
+    /// <summary>Stored, or its keys refreshed.</summary>
     Subscribed = 1,
 
     /// <summary>The endpoint is not one of the push services Homespool sends to.</summary>
@@ -17,4 +17,10 @@ public enum WebPushSubscribeResult
 
     /// <summary>The account already has as many destinations as one may.</summary>
     TooMany = 4,
+
+    /// <summary>
+    /// Another account has this endpoint. A browser changing accounts subscribes afresh, so this is a
+    /// browser that did not, or somebody posting an endpoint that is not theirs.
+    /// </summary>
+    EndpointTaken = 5,
 }

@@ -759,10 +759,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
 
         builder.Entity<WebPushDestination>(entity =>
         {
-            // One row per subscription, because a subscription is one browser profile. A browser that
-            // subscribes again under another account moves the row rather than gaining a second, so
-            // one screen never shows two accounts' notifications. SQLite counts NULLs as distinct, so
-            // the other kinds' rows, which have no endpoint, do not collide here.
+            // One row per subscription, because a subscription is one browser profile, and it stays with
+            // the account that stored it: another posting the same endpoint is refused rather than
+            // given it or a second row, since either would make us send to a browser that is not
+            // theirs. SQLite counts NULLs as distinct, so the other kinds' rows, which have no
+            // endpoint, do not collide here.
             entity.HasIndex(e => e.Endpoint)
                   .IsUnique();
 

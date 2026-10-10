@@ -81,9 +81,17 @@ public sealed class NotificationDestinationService
     }
 
     /// <summary>
-    /// Stores a browser's push subscription for <paramref name="userId"/>, or moves it to them if the
-    /// same browser subscribed under another account before.
+    /// Stores a browser's push subscription for <paramref name="userId"/>, or refreshes its keys if they
+    /// have it already. One another account has is refused.
     /// </summary>
+    /// <remarks>
+    /// <b>A subscription never changes accounts here.</b> An endpoint can be learned without the browser
+    /// it reaches, so posting one proves nothing, and anything sent on the poster's behalf lands on the
+    /// owner's push service - where a message the browser cannot decrypt still spends the subscription's
+    /// quota, and Firefox unsubscribes it after sixteen between visits to the site. A browser changing
+    /// hands subscribes afresh instead, which gives it a new endpoint and leaves the previous account's
+    /// gone at its service.
+    /// </remarks>
     /// <param name="userId">The account subscribing.</param>
     /// <param name="endpoint">The push service's address for the browser.</param>
     /// <param name="p256dh">The browser's public key, base64url.</param>
@@ -116,6 +124,14 @@ public sealed class NotificationDestinationService
         WebPushDestination? existing = await _db.WebPushDestinations
                                                 .SingleOrDefaultAsync(row => row.Endpoint == endpoint, cancellationToken);
 
+        if (existing is not null && existing.UserId != userId)
+        {
+            _logger.LogWarning("User {UserId} posted the endpoint of browser {DestinationId}, which belongs to user {OwnerId}; refused.",
+                               userId, existing.Uuid, existing.UserId);
+
+            return WebPushSubscribeResult.EndpointTaken;
+        }
+
         if (existing is null &&
             await _db.NotificationDestinations.CountAsync(row => row.UserId == userId, cancellationToken) >= MaxPerAccount)
         {
@@ -138,15 +154,8 @@ public sealed class NotificationDestinationService
         }
         else
         {
-            // The same browser again - after its keys were refreshed, or under whoever is signed in on
-            // it now. Either way it starts over: its history belonged to the subscription it replaces.
-            if (existing.UserId != userId)
-            {
-                _logger.LogInformation("Browser subscription {DestinationId} moved from user {PreviousUserId} to user {UserId}.",
-                                       existing.Uuid, existing.UserId, userId);
-            }
-
-            existing.UserId = userId;
+            // The same browser again, after its keys were refreshed. It starts over: its history
+            // belonged to the subscription it replaces.
             existing.P256dh = p256dh!;
             existing.Auth = auth!;
             existing.Name = trimmedName;

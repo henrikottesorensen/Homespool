@@ -2,9 +2,10 @@
 // subscription, and hand what it returns to the page's own form. The server stores it; nothing here
 // talks to it except by submitting that form.
 //
-// A subscription is made with the deployment's key, and one made with any other key can never be
-// delivered to - so a subscription this browser already holds is reused only if its key matches, and
-// replaced otherwise.
+// A subscription this browser already holds is reused only if it was made with the deployment's key
+// and is on this account's list, and replaced otherwise: one made with another key can never be
+// delivered to, and the server refuses an endpoint another account has rather than move it, so a
+// browser changing hands needs an endpoint of its own.
 (function () {
     "use strict";
 
@@ -133,6 +134,16 @@
         }
     }
 
+    function reusable(subscription) {
+        if (!madeWithServerKey(subscription)) {
+            return Promise.resolve(false);
+        }
+
+        return endpointHash(subscription.endpoint).then(function (hash) {
+            return rowFor(hash) !== null;
+        });
+    }
+
     function submitSubscription(subscription) {
         const json = subscription.toJSON();
 
@@ -196,7 +207,8 @@
                     }
                 } else {
                     // Subscribed here, but not known to the server under this account - removed from
-                    // another browser, or subscribed while somebody else was signed in.
+                    // another browser, or subscribed while somebody else was signed in. Enabling
+                    // replaces it.
                     offerButton();
                 }
 
@@ -225,13 +237,19 @@
             })
             .then(function (registration) {
                 return registration.pushManager.getSubscription().then(function (existing) {
-                    if (existing && !madeWithServerKey(existing)) {
+                    if (!existing) {
+                        return null;
+                    }
+
+                    return reusable(existing).then(function (reuse) {
+                        if (reuse) {
+                            return existing;
+                        }
+
                         return existing.unsubscribe().then(function () {
                             return null;
                         });
-                    }
-
-                    return existing;
+                    });
                 }).then(function (existing) {
                     return existing || registration.pushManager.subscribe({
                         userVisibleOnly: true,

@@ -618,11 +618,14 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
 
         using PeriodicTimer flushTimer = new(TimeSpan.FromSeconds(Math.Max(_options.WriteFlushIntervalSeconds, 0.05)));
 
-        // Kept alive across loop iterations and only replaced once it actually fires - recreating it
-        // on every pass through the outer loop would mean a busy printer's steady stream of channel
-        // reads starves the timer branch forever, and low-traffic printers would never flush on
-        // schedule.
+        // Both waits are kept alive across loop iterations and each is replaced only once its own
+        // branch has run. Recreating the timer's on every pass would mean a busy printer's steady
+        // stream of channel reads starves the timer branch forever, and low-traffic printers would
+        // never flush on schedule. Recreating the channel's would leak: a wait that loses the race
+        // stays queued in the channel until the next write, so an idle deployment would pile up one
+        // per flush interval, and the first printer back would wake them all under the channel's lock.
         Task<bool> timerTick = flushTimer.WaitForNextTickAsync().AsTask();
+        Task<bool> channelReadable = _channel.Reader.WaitToReadAsync().AsTask();
 
         // Neither branch is cancellation-driven, and stoppingToken is deliberately never passed into
         // the work below - see StopAsync and the class remarks. The two bool-returning tasks simply
@@ -636,7 +639,6 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
         // other thing that would ever have woken this loop.
         while (true)
         {
-            Task<bool> channelReadable = _channel.Reader.WaitToReadAsync().AsTask();
             Task removalSignalled = _removalSignal.Task;
 
             Task completed = await Task.WhenAny(channelReadable, timerTick, removalSignalled);
@@ -710,6 +712,8 @@ public sealed class TelemetryWriter : BackgroundService, ITelemetrySink, ITeleme
                                              CancellationToken.None);
                     }
                 }
+
+                channelReadable = _channel.Reader.WaitToReadAsync().AsTask();
             }
             else if (completed == timerTick)
             {

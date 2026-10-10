@@ -325,5 +325,15 @@ public sealed class TileDrop
 
             return staged.FileName;
         }
+        catch (PrintFileStorageUnconfirmedException e)
+        {
+            // The storage went away after the bytes were staged: refused the way staging refuses,
+            // and the staged bytes go now, since nothing is left to publish them into.
+            _files.Discard(caller, staged.Token);
+
+            report.Add(_localiser["Home_DropRejected", file.FileName, _errors.For(e)].Value);
+
+            return null;
+        }
     }
 }

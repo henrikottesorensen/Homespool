@@ -375,6 +375,7 @@ public sealed class PrintFileCatalog
     /// this user - the Files page's two-step path.
     /// </summary>
     /// <exception cref="PrintFileNameConflictException">The name is taken and <paramref name="overwrite"/> is false.</exception>
+    /// <exception cref="PrintFileStorageUnconfirmedException">The storage lost its marker after the upload was staged; the staged upload is kept.</exception>
     public async Task<StoredFile?> PublishAsync(Caller caller,
                                                 string token,
                                                 bool overwrite,

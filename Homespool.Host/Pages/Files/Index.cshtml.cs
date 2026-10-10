@@ -359,11 +359,24 @@ public class IndexModel : PageModel
             PendingToken = staged.Token;
             PendingName = staged.FileName;
         }
+        catch (PrintFileStorageUnconfirmedException e)
+        {
+            // The storage went away after the bytes were staged. Nothing was published, and the
+            // sentence says nothing was uploaded, so the staged bytes go now rather than at the sweep.
+            _files.Discard(CallerResolver.For(userId.Value, User), staged.Token);
+
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+        }
 
         return RedirectToSelf(sort, desc, printerUuid, compatible);
     }
 
     /// <summary>Answers the replace question with yes, using bytes already on disk.</summary>
+    /// <remarks>
+    /// <b>The storage can have gone while the question was open</b>, for as long as somebody took
+    /// to answer it, and the publish refuses then. That refusal discards the staged bytes, as an
+    /// upload refused at the same step does: the answer says nothing was uploaded.
+    /// </remarks>
     public async Task<IActionResult> OnPostReplaceAsync(string token,
                                                         string? sort,
                                                         bool? desc,
@@ -377,7 +390,21 @@ public class IndexModel : PageModel
             return Forbid();
         }
 
-        StoredFile? stored = await _files.PublishAsync(CallerResolver.For(userId.Value, User), token, overwrite: true, UserName());
+        Caller caller = CallerResolver.For(userId.Value, User);
+        StoredFile? stored;
+
+        try
+        {
+            stored = await _files.PublishAsync(caller, token, overwrite: true, UserName());
+        }
+        catch (PrintFileStorageUnconfirmedException e)
+        {
+            _files.Discard(caller, token);
+
+            (StatusMessage, StatusSuccess) = (_errors.For(e), false);
+
+            return RedirectToSelf(sort, desc, printerUuid, compatible);
+        }
 
         (StatusMessage, StatusSuccess) = stored is null ?
             (_localiser["Files_UploadGone"], false) :

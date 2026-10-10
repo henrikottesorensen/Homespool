@@ -180,6 +180,30 @@ public sealed class NotificationDestinationService
     }
 
     /// <summary>
+    /// Removes every destination <paramref name="userId"/> has, and says how many there were.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>For the moments an account is taken back</b>: a password reset by emailed link, a redeemed
+    /// recovery invite, and an administrator's closure. A browser subscription outlives the session
+    /// that made it - signing out leaves it in place - so one added by a stolen session would otherwise
+    /// go on hearing about the account's printers, and about the owner's own clean-up, after the
+    /// account was recovered. The owner's browsers go too, and their pages offer to subscribe again.
+    /// </para>
+    /// <para>
+    /// <b>Bulk and untracked, like <see cref="ApiTokenService.RevokeAllForUserAsync"/></b>,
+    /// so it joins whatever transaction its caller holds and lands or rolls back with the rest of the
+    /// recovery. Logging is the caller's, beside the other counts it reports.
+    /// </para>
+    /// </remarks>
+    public Task<int> RemoveAllAsync(long userId, CancellationToken cancellationToken)
+    {
+        return _db.NotificationDestinations
+                  .Where(destination => destination.UserId == userId)
+                  .ExecuteDeleteAsync(cancellationToken);
+    }
+
+    /// <summary>
     /// Sends a test notification to one of the owner's destinations, in the owner's language, and
     /// records how it went.
     /// </summary>

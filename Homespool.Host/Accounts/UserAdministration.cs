@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Data;
 using Homespool.Host.Authentication;
+using Homespool.Host.Notifications;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
 
@@ -65,6 +66,7 @@ public sealed class UserAdministration
     private readonly HomespoolDbContext _dbContext;
     private readonly ApiTokenService _tokens;
     private readonly UserSessionService _sessions;
+    private readonly NotificationDestinationService _destinations;
     private readonly AttemptLimiter _limiter;
     private readonly UnitOfWork _unitOfWork;
     private readonly TimeProvider _time;
@@ -74,6 +76,7 @@ public sealed class UserAdministration
     public UserAdministration(HomespoolDbContext dbContext,
                               ApiTokenService tokens,
                               UserSessionService sessions,
+                              NotificationDestinationService destinations,
                               AttemptLimiter limiter,
                               UnitOfWork unitOfWork,
                               TimeProvider time,
@@ -83,6 +86,7 @@ public sealed class UserAdministration
         _dbContext = dbContext;
         _tokens = tokens;
         _sessions = sessions;
+        _destinations = destinations;
         _limiter = limiter;
         _unitOfWork = unitOfWork;
         _time = time;
@@ -192,9 +196,7 @@ public sealed class UserAdministration
             revoked = await _tokens.RevokeAllForUserAsync(userId, cancellationToken);
             await _sessions.RevokeAllAsync(userId, cancellationToken);
 
-            silenced = await _dbContext.NotificationDestinations
-                                       .Where(destination => destination.UserId == userId)
-                                       .ExecuteDeleteAsync(cancellationToken);
+            silenced = await _destinations.RemoveAllAsync(userId, cancellationToken);
 
             // Only the outstanding ones: a used invite has done its work, and one already expired
             // keeps the expiry it had.

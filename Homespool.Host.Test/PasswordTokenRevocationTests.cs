@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -26,16 +27,16 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// Which password path takes an account's personal access tokens with it: the emailed reset link
-/// does, and the signed-in change page deliberately does not.
+/// Which password path takes an account's personal access tokens and notification destinations with
+/// it: the emailed reset link does, and the signed-in change page deliberately does not.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>The asymmetry is the subject of this file.</b> Reaching the change page takes the current
 /// password inside a live session, so it is somebody rotating a credential they hold, and breaking
 /// every script they run is a poor answer to routine hygiene. The reset link is where somebody
-/// locked out of a compromised account arrives, and there a token the attacker minted is exactly
-/// what has to go.
+/// locked out of a compromised account arrives, and there a token the attacker minted, or a browser
+/// they subscribed, is exactly what has to go.
 /// </para>
 /// <para>
 /// <b>The failure cases carry the weight on the reset path.</b> An implementation that revoked
@@ -96,11 +97,12 @@ public sealed class PasswordTokenRevocationTests : IDisposable
     // ---------- the signed-in change page ----------
 
     /// <summary>
-    /// A rotation from inside a session leaves the account's tokens working, and says nothing about
-    /// them - there is nothing to report, and a message about tokens would suggest otherwise.
+    /// A rotation from inside a session leaves the account's tokens working and its browsers
+    /// subscribed, and says nothing about either - there is nothing to report, and a message about
+    /// tokens would suggest otherwise.
     /// </summary>
     [Fact]
-    public async Task ChangingAPasswordLeavesTheAccountsTokensAlone()
+    public async Task ChangingAPasswordLeavesTheAccountsTokensAndBrowsersAlone()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -113,6 +115,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string first) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
         await tokens.CreateAsync(user.Id, "ci", CapabilitySet.Everything, CancellationToken.None);
+        await TestNotificationDestinations.AddBrowserAsync(context, user.Id, "phone");
 
         ChangePasswordModel model = new(users, signIn,
                                         httpContext.RequestServices.GetRequiredService<StepUpGate>(),
@@ -139,6 +142,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         (await context.ApiTokens.CountAsync(TestContext.Current.CancellationToken)).Should().Be(2);
         (await tokens.FindByCredentialAsync(first, CancellationToken.None)).Should().NotBeNull(
             "a token that no longer authenticates has been revoked, whatever the row count says");
+        (await context.NotificationDestinations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
 
         model.StatusMessage.Should().Be("Your password has been changed.");
     }
@@ -190,10 +194,11 @@ public sealed class PasswordTokenRevocationTests : IDisposable
 
     /// <summary>
     /// The path that matters most: recovering a compromised account by email link revokes whatever
-    /// the attacker minted while they held it.
+    /// the attacker minted while they held it, and unsubscribes whatever browser they added - and
+    /// nobody else's.
     /// </summary>
     [Fact]
-    public async Task ResettingAPasswordRevokesTheAccountsTokens()
+    public async Task ResettingAPasswordRevokesTheAccountsTokensAndBrowsers()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -204,8 +209,12 @@ public sealed class PasswordTokenRevocationTests : IDisposable
 
         ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "attacker's", CapabilitySet.Everything, CancellationToken.None);
+        await TestNotificationDestinations.AddBrowserAsync(context, user.Id, "attacker's");
 
-        ResetPasswordModel model = new(users, tokens, new UnitOfWork(context),
+        HSUser bystander = await AddUserWithPasswordAsync(users, "bystander@example.com");
+        Guid bystanders = await TestNotificationDestinations.AddBrowserAsync(context, bystander.Id, "phone");
+
+        ResetPasswordModel model = new(users, tokens, TestNotificationDestinations.Over(context), new UnitOfWork(context),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)
         {
@@ -226,6 +235,9 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         result.Should().BeOfType<RedirectToPageResult>();
         (await tokens.FindByCredentialAsync(plaintext, CancellationToken.None)).Should().BeNull();
         (await users.CheckPasswordAsync(user, NewPassword)).Should().BeTrue();
+
+        (await context.NotificationDestinations.Select(destination => destination.Uuid).ToListAsync(TestContext.Current.CancellationToken))
+            .Should().Equal([bystanders], "only the reset account's browsers go");
     }
 
     /// <summary>
@@ -234,7 +246,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
     /// any account's tokens by guessing at an email address.
     /// </summary>
     [Fact]
-    public async Task AFailedResetLeavesTheTokensAlone()
+    public async Task AFailedResetLeavesTheTokensAndBrowsersAlone()
     {
         // Arrange
         await using HomespoolDbContext context = await MigratedContextAsync();
@@ -245,8 +257,9 @@ public sealed class PasswordTokenRevocationTests : IDisposable
 
         ApiTokenService tokens = new(context, TimeProvider.System);
         (_, string plaintext) = await tokens.CreateAsync(user.Id, "laptop", CapabilitySet.Everything, CancellationToken.None);
+        await TestNotificationDestinations.AddBrowserAsync(context, user.Id, "phone");
 
-        ResetPasswordModel model = new(users, tokens, new UnitOfWork(context),
+        ResetPasswordModel model = new(users, tokens, TestNotificationDestinations.Over(context), new UnitOfWork(context),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)
         {
@@ -266,6 +279,7 @@ public sealed class PasswordTokenRevocationTests : IDisposable
         // Assert
         result.Should().BeOfType<PageResult>("the reset was rejected");
         (await tokens.FindByCredentialAsync(plaintext, CancellationToken.None)).Should().NotBeNull();
+        (await context.NotificationDestinations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1);
         (await users.CheckPasswordAsync(user, OldPassword)).Should().BeTrue();
     }
 }

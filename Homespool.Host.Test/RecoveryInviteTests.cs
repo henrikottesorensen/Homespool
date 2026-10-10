@@ -122,6 +122,38 @@ public sealed class RecoveryInviteTests : IDisposable
     }
 
     /// <summary>
+    /// The same reading for a browser subscription, which outlives the session that added it: one
+    /// subscribed while the account was not its owner's alone would otherwise go on hearing about it.
+    /// Only the recovered account's browsers go.
+    /// </summary>
+    [Fact]
+    public async Task RedeemingUnsubscribesTheAccountsBrowsers()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
+        HSUser subject = await AddUserAsync(users, "subject@example.com");
+        await TestNotificationDestinations.AddBrowserAsync(context, subject.Id, "attacker's");
+
+        HSUser bystander = await AddUserAsync(users, "bystander@example.com");
+        Guid bystanders = await TestNotificationDestinations.AddBrowserAsync(context, bystander.Id, "phone");
+
+        InvitationService invitations = NewInvitationService(context);
+        (Invitation invite, string token) = await invitations.CreateRecoveryAsync(
+            subject.Id, subject.Email!, clearsTwoFactor: false, invitedBy: 1, expiresAt: null, CancellationToken.None);
+
+        (RegisterModel model, _) = NewModel(context, users, provider, invitations, invite, token);
+
+        // Act
+        IActionResult result = await model.OnPostAsync(returnUrl: null, CancellationToken.None);
+
+        // Assert
+        result.Should().NotBeOfType<PageResult>("the redemption went through");
+        (await context.NotificationDestinations.Select(destination => destination.Uuid).ToListAsync(TestContext.Current.CancellationToken))
+            .Should().Equal([bystanders], "only the recovered account's browsers go");
+    }
+
+    /// <summary>
     /// The authenticator is cleared only when the administrator said the person had lost it. This is
     /// the half that hands the whole account to whoever holds the link, so it is not a default.
     /// </summary>
@@ -187,6 +219,7 @@ public sealed class RecoveryInviteTests : IDisposable
         await new UserAdministration(context,
                                      new ApiTokenService(context, TimeProvider.System),
                                      provider.GetRequiredService<UserSessionService>(),
+                                     TestNotificationDestinations.Over(context),
                                      provider.GetRequiredService<AttemptLimiter>(),
                                      new UnitOfWork(context),
                                      TimeProvider.System,
@@ -371,6 +404,7 @@ public sealed class RecoveryInviteTests : IDisposable
         await using HomespoolDbContext context = await MigratedContextAsync();
         (UserManager<HSUser> users, _, _, IServiceProvider provider) = IdentityTestHarness.BuildIdentityServices(context);
         HSUser subject = await AddUserAsync(users, "subject@example.com");
+        await TestNotificationDestinations.AddBrowserAsync(context, subject.Id, "phone");
         InvitationService invitations = NewInvitationService(context);
 
         (Invitation invite, string token) = await invitations.CreateRecoveryAsync(
@@ -388,6 +422,7 @@ public sealed class RecoveryInviteTests : IDisposable
         model.ModelState[string.Empty]!.Errors.Should().NotBeEmpty("Identity's refusal is what the form shows");
 
         (await users.CheckPasswordAsync(subject, OldPassword)).Should().BeTrue("nothing was changed");
+        (await context.NotificationDestinations.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1, "nor were the browsers");
         mail.SentEmails.Should().BeEmpty();
 
         Invitation unspent = await context.Invitations.SingleAsync(i => i.Id == invite.Id, TestContext.Current.CancellationToken);
@@ -577,6 +612,7 @@ public sealed class RecoveryInviteTests : IDisposable
             new TeamService(context),
             new UnitOfWork(context),
             new ApiTokenService(context, TimeProvider.System),
+            TestNotificationDestinations.Over(context),
             TimeProvider.System,
             TestLocaliser.Shared())
         {

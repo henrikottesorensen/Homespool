@@ -2790,6 +2790,15 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Refuse_SealedSecretExpired" xml:space="preserve">
     <value>Skriv adgangskoden igen. Spørgsmålet stod ubesvaret for længe til, at den tidligere indtastede kode kan genbruges.</value>
   </data>
+  <data name="Settings_Refuse_NotAWholeNumber" xml:space="preserve">
+    <value>Angiv et helt tal fra {0} til {1}.</value>
+  </data>
+  <data name="Settings_Refuse_NotANumber" xml:space="preserve">
+    <value>Angiv et tal fra {0} til {1}.</value>
+  </data>
+  <data name="Settings_Refuse_UnreadableValue" xml:space="preserve">
+    <value>Indstillingen kan ikke have den værdi.</value>
+  </data>
   <data name="Settings_Confirm_Smtp_Host" xml:space="preserve">
     <value>Intet ændrer sig, før denne installation genstartes. Derefter skal en ny konto bekræfte sin adresse, før den kan logge ind, hvor den i dag oprettes som allerede bekræftet - så en mailserver, der ikke virker, efterlader nye brugere uden adgang. Test den med knappen nedenfor først. Nulstilling af adgangskode begynder at virke, og administratorer begynder at modtage helbredsvarsler pr. mail. Konti, der allerede findes, påvirkes ikke.</value>
   </data>

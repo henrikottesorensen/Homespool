@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 using AwesomeAssertions;
@@ -71,6 +72,91 @@ public class SettingsStoreTests : IDisposable
 
         configuration["Smtp:Host"].Should().BeNull("a refused save writes none of its values, not just the bad one");
         _file.Exists.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The binder throws on a value it cannot convert, before any range check runs, so a box typed
+    /// into wrongly has to be caught there and reported against its field like any other mistake -
+    /// and say what the field takes, in the spelling the binder reads.
+    /// </summary>
+    [Theory]
+    [InlineData("Storage:TelemetryRetentionDays", "70000", "Settings_Refuse_NotAWholeNumber", "0", "65535")]
+    [InlineData("Storage:TelemetryRetentionDays", "-1", "Settings_Refuse_NotAWholeNumber", "0", "65535")]
+    [InlineData("Smtp:Port", "abc", "Settings_Refuse_NotAWholeNumber", "1", "65535")]
+    [InlineData("Smtp:Port", "", "Settings_Refuse_NotAWholeNumber", "1", "65535")]
+    [InlineData("Cameras:MaxFrameBytes", "1_000_000", "Settings_Refuse_NotAWholeNumber", "1024", "1073741824")]
+    [InlineData("PrusaConnect:CommandResponseTimeoutSeconds", "0,5", "Settings_Refuse_NotANumber", "0.1", "600")]
+    [InlineData("Smtp:ProbeOnStartup", "yes", "Settings_Refuse_UnreadableValue", null, null)]
+    public void AValueThatWillNotConvertIsRefusedAgainstItsField(string path,
+                                                                 string value,
+                                                                 string key,
+                                                                 string? minimum,
+                                                                 string? maximum)
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?>
+        {
+            ["Smtp:FromName"] = "Workshop",
+            [path] = value,
+        });
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Should().ContainSingle()
+              .Which.Should().Be(new KeyValuePair<string, string>(
+                  path,
+                  string.Format(CultureInfo.CurrentCulture, TestLocaliser.Shared()[key], minimum, maximum)));
+
+        configuration["Smtp:FromName"].Should().BeNull("a refused save writes none of its values");
+        _file.Exists.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// One value that will not convert must not hide the next: each field is told what is wrong
+    /// with it in the same answer, wherever it is on the page.
+    /// </summary>
+    [Fact]
+    public void EveryValueThatWillNotConvertIsReported()
+    {
+        (SettingsStore store, _) = Store();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?>
+        {
+            ["Storage:TelemetryRetentionDays"] = "abc",
+            ["Storage:EventRetentionDays"] = "70000",
+            ["Storage:WriteBatchSize"] = "0",
+            ["Smtp:Port"] = "abc",
+        });
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Keys.Should().BeEquivalentTo(
+            "Storage:TelemetryRetentionDays",
+            "Storage:EventRetentionDays",
+            "Storage:WriteBatchSize",
+            "Smtp:Port");
+    }
+
+    /// <summary>
+    /// A port that will not convert is not a new server, but the host beside it is, and the
+    /// password is still refused for that.
+    /// </summary>
+    [Fact]
+    public void AValueThatWillNotConvertDoesNotHideTheSecretRule()
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:Host"] = "attacker.example.net";
+        form["Smtp:Port"] = "abc";
+
+        SettingsSaveResult result = store.Save(form);
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Keys.Should().BeEquivalentTo("Smtp:Port", "Smtp:Password");
+        configuration["Smtp:Host"].Should().Be("mail.example.com");
     }
 
     [Fact]
@@ -279,6 +365,55 @@ public class SettingsStoreTests : IDisposable
 
         candidate.Value.Should().BeNull();
         candidate.Errors.Should().ContainKey("Smtp:Password");
+    }
+
+    /// <summary>
+    /// The test button runs on nothing a save would refuse: a value that will not convert, or one
+    /// outside its range. A refused port names no server, so the password behind the mask is not
+    /// asked for again on its account.
+    /// </summary>
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("70000")]
+    [InlineData("0")]
+    public void TheCandidateRefusesAValueASaveWouldRefuse(string port)
+    {
+        (SettingsStore store, _) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:Port"] = port;
+
+        SettingsCandidate<SmtpOptions> candidate = store.CandidateFor<SmtpOptions>(form);
+
+        candidate.Value.Should().BeNull();
+        candidate.Errors.Keys.Should().BeEquivalentTo("Smtp:Port");
+    }
+
+    /// <summary>
+    /// A port that is refused on its own is not somewhere the password could go, so the save is
+    /// refused for the port alone rather than also asking for a password nothing would have sent.
+    /// </summary>
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("70000")]
+    [InlineData("0")]
+    public void ARefusedPortDoesNotAlsoAskForThePassword(string port)
+    {
+        (SettingsStore store, _) = Store();
+
+        SaveMailServer(store);
+
+        Dictionary<string, string?> form = Form(store);
+
+        form["Smtp:Port"] = port;
+
+        SettingsSaveResult result = store.Save(form);
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Keys.Should().BeEquivalentTo("Smtp:Port");
     }
 
     /// <summary>

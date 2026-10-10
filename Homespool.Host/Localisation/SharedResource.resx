@@ -2916,6 +2916,15 @@ A stick that already works with your printer is the right stick. If you are form
   <data name="Settings_Refuse_SealedSecretExpired" xml:space="preserve">
     <value>Type the password again. The question went unanswered too long to reuse the password typed earlier.</value>
   </data>
+  <data name="Settings_Refuse_NotAWholeNumber" xml:space="preserve">
+    <value>Enter a whole number from {0} to {1}.</value>
+  </data>
+  <data name="Settings_Refuse_NotANumber" xml:space="preserve">
+    <value>Enter a number from {0} to {1}.</value>
+  </data>
+  <data name="Settings_Refuse_UnreadableValue" xml:space="preserve">
+    <value>This setting cannot hold that value.</value>
+  </data>
   <data name="Settings_Confirm_Smtp_Host" xml:space="preserve">
     <value>Nothing changes until this deployment restarts. After it does, a new account must confirm its address before it can sign in, where today one is created already confirmed - so a mail server that does not actually work leaves new people unable to get in. Test it with the button below first. Password reset starts working, and administrators begin receiving health alerts by mail. Accounts that already exist are not affected.</value>
   </data>

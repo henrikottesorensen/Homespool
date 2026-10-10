@@ -104,6 +104,7 @@ public sealed class RegisterModelTests : IDisposable
             new TeamService(context),
             new UnitOfWork(context),
             new ApiTokenService(context, TimeProvider.System),
+            TestNotificationDestinations.Over(context),
             TimeProvider.System,
             TestLocaliser.Shared())
         {

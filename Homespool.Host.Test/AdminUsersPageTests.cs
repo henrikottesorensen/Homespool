@@ -418,6 +418,7 @@ public sealed class AdminUsersPageTests : IDisposable
         return new UserAdministration(context,
                                       new ApiTokenService(context, TimeProvider.System),
                                       provider.GetRequiredService<UserSessionService>(),
+                                      TestNotificationDestinations.Over(context),
                                       provider.GetRequiredService<AttemptLimiter>(),
                                       new UnitOfWork(context),
                                       TimeProvider.System,

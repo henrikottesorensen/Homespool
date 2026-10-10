@@ -25,6 +25,7 @@ using Homespool.Host.Accounts;
 using Homespool.Host.Authentication;
 using Homespool.Host.Localisation;
 using Homespool.Host.Mail;
+using Homespool.Host.Notifications;
 using Homespool.Host.Services;
 using Homespool.Model;
 using Homespool.Model.Entities;
@@ -55,6 +56,7 @@ public class RegisterModel : PageModel
     private readonly TeamService _teamService;
     private readonly UnitOfWork _unitOfWork;
     private readonly ApiTokenService _apiTokens;
+    private readonly NotificationDestinationService _destinations;
     private readonly TimeProvider _time;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
@@ -70,6 +72,7 @@ public class RegisterModel : PageModel
                          TeamService teamService,
                          UnitOfWork unitOfWork,
                          ApiTokenService apiTokens,
+                         NotificationDestinationService destinations,
                          TimeProvider time,
                          IStringLocalizer<SharedResource> localiser)
     {
@@ -88,6 +91,7 @@ public class RegisterModel : PageModel
         _teamService = teamService;
         _unitOfWork = unitOfWork;
         _apiTokens = apiTokens;
+        _destinations = destinations;
     }
 
     /// <summary>Invite uuid, carried in the accept link and echoed back on post via a hidden field.</summary>
@@ -369,8 +373,9 @@ public class RegisterModel : PageModel
     }
 
     /// <summary>
-    /// Gives an account back to its owner: a new password, optionally a cleared authenticator, and
-    /// its API tokens revoked - on an invite an administrator issued naming that account.
+    /// Gives an account back to its owner: a new password, optionally a cleared authenticator, its API
+    /// tokens revoked and its browsers unsubscribed - on an invite an administrator issued naming that
+    /// account.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -386,9 +391,10 @@ public class RegisterModel : PageModel
     /// An account that already had a password keeps whatever it holds; the recovery is not a tidy-up.
     /// </para>
     /// <para>
-    /// <b>The tokens go.</b> A recovery is somebody locked out of an account they may no longer have
-    /// been alone in - the same reasoning that makes <c>Account/ResetPassword</c> revoke, and the
-    /// opposite of a password change made from inside a live session.
+    /// <b>The tokens go, and so do the notification destinations.</b> A recovery is somebody locked out
+    /// of an account they may no longer have been alone in - the same reasoning that makes
+    /// <c>Account/ResetPassword</c> revoke, and the opposite of a password change made from inside a
+    /// live session.
     /// </para>
     /// <para>
     /// <b>The second factor is cleared only when the invite says so</b> - the authenticator and the
@@ -416,6 +422,7 @@ public class RegisterModel : PageModel
 
         bool hadPassword = await _userManager.HasPasswordAsync(subject);
         int revoked;
+        int silenced;
 
         await using IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken);
 
@@ -466,6 +473,7 @@ public class RegisterModel : PageModel
             }
 
             revoked = await _apiTokens.RevokeAllForUserAsync(subject.Id, cancellationToken);
+            silenced = await _destinations.RemoveAllAsync(subject.Id, cancellationToken);
 
             await _invitationService.MarkUsedAsync(invitation, cancellationToken);
 
@@ -480,11 +488,12 @@ public class RegisterModel : PageModel
         }
 
         _logger.LogWarning(
-            "Recovery invitation {InviteUuid} redeemed for user {UserId}; two-factor cleared: {ClearedTwoFactor}; {RevokedTokenCount} API tokens revoked.",
+            "Recovery invitation {InviteUuid} redeemed for user {UserId}; two-factor cleared: {ClearedTwoFactor}; {RevokedTokenCount} API tokens revoked; {RemovedDestinationCount} notification destinations removed.",
             InviteUuid,
             subject.Id,
             invitation.ClearsTwoFactor,
-            revoked);
+            revoked,
+            silenced);
 
         // The owner's only signal, if this recovery was not theirs. Sent to the account's own address
         // rather than the invite's, which is the same string today and need not stay so, and written in

@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Localisation;
+using Homespool.Host.Notifications;
 using Homespool.Host.RateLimiting;
 using Homespool.Host.Services;
 using Homespool.Model.Entities;
@@ -28,18 +29,21 @@ public class ResetPasswordModel : PageModel
 {
     private readonly UserManager<HSUser> _userManager;
     private readonly ApiTokenService _apiTokens;
+    private readonly NotificationDestinationService _destinations;
     private readonly UnitOfWork _unitOfWork;
     private readonly IStringLocalizer<SharedResource> _localiser;
     private readonly ILogger<ResetPasswordModel> _logger;
 
     public ResetPasswordModel(UserManager<HSUser> userManager,
                               ApiTokenService apiTokens,
+                              NotificationDestinationService destinations,
                               UnitOfWork unitOfWork,
                               IStringLocalizer<SharedResource> localiser,
                               ILogger<ResetPasswordModel> logger)
     {
         _userManager = userManager;
         _apiTokens = apiTokens;
+        _destinations = destinations;
         _unitOfWork = unitOfWork;
         _localiser = localiser;
         _logger = logger;
@@ -107,11 +111,12 @@ public class ResetPasswordModel : PageModel
             return Page();
         }
 
-        // Revoked here and deliberately nowhere else on the two password paths: recovering by email
-        // link is what someone locked out of a compromised account actually does, while a change from
-        // a live session already took the current password and is overwhelmingly rotation. Atomic for
-        // the same reason - a reset that left the attacker's tokens live would hand back an account
-        // that only looks recovered.
+        // Tokens revoked and browsers unsubscribed here, and deliberately nowhere else on the two
+        // password paths: recovering by email link is what someone locked out of a compromised account
+        // actually does, while a change from a live session already took the current password and is
+        // overwhelmingly rotation. Atomic for the same reason - a reset that left the attacker's tokens
+        // live, or their browser still hearing about the account, would hand back an account that only
+        // looks recovered.
         await using (IDbContextTransaction transaction = await _unitOfWork.BeginTransactionAsync(cancellationToken))
         {
             IdentityResult result = await _userManager.ResetPasswordAsync(user, Input.Code, Input.Password);
@@ -127,13 +132,17 @@ public class ResetPasswordModel : PageModel
             }
 
             int revoked = await _apiTokens.RevokeAllForUserAsync(user.Id, cancellationToken);
+            int silenced = await _destinations.RemoveAllAsync(user.Id, cancellationToken);
 
             await transaction.CommitAsync(cancellationToken);
 
-            // Logged rather than shown: a count of revoked tokens is operator detail, and the person
-            // who has just recovered an account cannot act on it. The confirmation page is reached
-            // only by a reset that succeeded, so what it says is a choice rather than a constraint.
-            _logger.LogInformation("Password reset completed. {RevokedTokenCount} API tokens revoked.", revoked);
+            // Logged rather than shown: the counts are operator detail, and the person who has just
+            // recovered an account cannot act on them. The confirmation page is reached only by a
+            // reset that succeeded, so what it says is a choice rather than a constraint.
+            _logger.LogInformation(
+                "Password reset completed. {RevokedTokenCount} API tokens revoked, {RemovedDestinationCount} notification destinations removed.",
+                revoked,
+                silenced);
         }
 
         return RedirectToPage("./ResetPasswordConfirmation");

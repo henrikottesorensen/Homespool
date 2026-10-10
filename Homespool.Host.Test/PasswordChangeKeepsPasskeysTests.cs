@@ -134,7 +134,8 @@ public sealed class PasswordChangeKeepsPasskeysTests : IDisposable
         HSUser user = await AddUserAsync(users, "resetter@example.com");
         await SeedPasskeyAsync(users, user, "phone");
 
-        ResetPasswordModel model = new(users, new ApiTokenService(context, TimeProvider.System), new UnitOfWork(context),
+        ResetPasswordModel model = new(users, new ApiTokenService(context, TimeProvider.System),
+                                       TestNotificationDestinations.Over(context), new UnitOfWork(context),
                                        TestLocaliser.Shared(),
                                        NullLogger<ResetPasswordModel>.Instance)
         {

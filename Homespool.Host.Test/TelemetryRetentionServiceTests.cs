@@ -93,7 +93,15 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         }
     }
 
-    private async Task<TelemetryRetentionService> StartServiceAsync(StorageOptions options, TimeProvider? timeProvider = null)
+    /// <param name="options">The options as the monitor reports them, which a settings save changes.</param>
+    /// <param name="timeProvider">The clock; the system one when omitted.</param>
+    /// <param name="mode">
+    /// The store in force, as startup chose it. Follows <paramref name="options"/> when omitted;
+    /// passed only to model a save the restart has not yet applied.
+    /// </param>
+    private async Task<TelemetryRetentionService> StartServiceAsync(StorageOptions options,
+                                                                    TimeProvider? timeProvider = null,
+                                                                    TelemetryStorageMode? mode = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite(_connectionString));
@@ -111,6 +119,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         _service = new TelemetryRetentionService(_provider.GetRequiredService<IServiceScopeFactory>(),
                                                  TestOptions.Monitor(options),
+                                                 mode ?? new TelemetryStorageMode(options.TelemetryInMemory),
                                                  timeProvider ?? TimeProvider.System,
                                                  NullLogger<TelemetryRetentionService>.Instance);
 
@@ -595,5 +604,77 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         await using HomespoolDbContext verify = NewVerificationContext();
         (await verify.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken))
             .Should().Be(10, "an upgrade must not discard history because a feature nobody enabled has a default");
+    }
+
+    /// <summary>
+    /// <b>A setting saved for the next restart does not move the cap onto the durable table.</b> The
+    /// save reloads the options at once while the file stays the store until the restart, so the cap
+    /// follows the store in force.
+    /// </summary>
+    [Fact]
+    public async Task TheSampleCountCapDoesNothingWhenInMemoryIsSavedButTheFileIsStillInForce()
+    {
+        // Arrange - more rows than the cap, all recent, so only the cap could remove any
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedSampleAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        // Act - the options already say in memory; the process opened the file
+        await StartServiceAsync(new StorageOptions
+                                {
+                                    TelemetryInMemory = true,
+                                    TelemetryRetentionDays = 0,
+                                    EventRetentionDays = 0,
+                                    MaxEventsPerPrinter = 0,
+                                    MaxSamplesPerPrinter = 4,
+                                },
+                                mode: new TelemetryStorageMode(InMemory: false));
+
+        // Assert - a beat for a sweep that should decline, then confirm it declined
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(10, "the file is still the store until the restart the setting asks for");
+    }
+
+    /// <summary>
+    /// <b>The reverse: an in-memory store keeps its only bound until the restart</b>, though the
+    /// setting has been saved off.
+    /// </summary>
+    [Fact]
+    public async Task TheSampleCountCapStillBoundsMemoryWhenTheFileIsSavedButMemoryIsStillInForce()
+    {
+        // Arrange
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedSampleAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        // Act - the options already say the file; the process holds telemetry in memory
+        await StartServiceAsync(new StorageOptions
+                                {
+                                    TelemetryInMemory = false,
+                                    TelemetryRetentionDays = 0,
+                                    EventRetentionDays = 0,
+                                    MaxEventsPerPrinter = 0,
+                                    MaxSamplesPerPrinter = 4,
+                                },
+                                mode: new TelemetryStorageMode(InMemory: true));
+
+        // Assert
+        bool trimmed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken) == 4;
+        }, TimeSpan.FromSeconds(10));
+
+        trimmed.Should().BeTrue("memory is still the store, and the cap is its only bound");
     }
 }

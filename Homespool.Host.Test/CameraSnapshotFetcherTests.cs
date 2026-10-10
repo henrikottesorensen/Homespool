@@ -144,12 +144,42 @@ public class CameraSnapshotFetcherTests
         (await fetcher.FetchAsync(Frame, CancellationToken.None)).Should().BeNull();
     }
 
-    private static CameraSnapshotFetcher Build(HttpMessageHandler handler, long maxFrameBytes = 4L * 1024 * 1024)
+    /// <summary>
+    /// <b>The configured wait is the one that applies</b>, however it compares with the client's own
+    /// timeout - which by default is 100 s, inside the 300 the setting allows. Scaled down here: a
+    /// client that would give up after 50 ms, a camera that answers after 300, and a setting of five
+    /// seconds.
+    /// </summary>
+    [Fact]
+    public async Task TheConfiguredTimeoutGovernsRatherThanTheClientsOwn()
+    {
+        using DelayedHandler handler = new(TimeSpan.FromMilliseconds(300));
+        CameraSnapshotFetcher fetcher = Build(handler, clientTimeout: TimeSpan.FromMilliseconds(50), timeoutSeconds: 5);
+
+        CameraFrame? frame = await fetcher.FetchAsync(Frame, TestContext.Current.CancellationToken);
+
+        frame.Should().NotBeNull("the camera answered well inside the five seconds configured");
+    }
+
+    private static CameraSnapshotFetcher Build(HttpMessageHandler handler,
+                                               long maxFrameBytes = 4L * 1024 * 1024,
+                                               TimeSpan? clientTimeout = null,
+                                               int timeoutSeconds = 15)
     {
         IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
-        factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler, disposeHandler: false));
+        factory.CreateClient(Arg.Any<string>()).Returns(_ =>
+        {
+            HttpClient client = new(handler, disposeHandler: false);
 
-        CameraOptions options = new() { MaxFrameBytes = maxFrameBytes };
+            if (clientTimeout is TimeSpan timeout)
+            {
+                client.Timeout = timeout;
+            }
+
+            return client;
+        });
+
+        CameraOptions options = new() { MaxFrameBytes = maxFrameBytes, TimeoutSeconds = timeoutSeconds };
 
         return new CameraSnapshotFetcher(
             factory,
@@ -204,6 +234,22 @@ public class CameraSnapshotFetcherTests
         {
             Calls++;
             return Task.FromResult(_factory());
+        }
+    }
+
+    /// <summary>
+    /// Answers with a small JPEG after a delay, as a camera mid-keyframe does.
+    /// </summary>
+    private sealed class DelayedHandler(TimeSpan delay) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(delay, cancellationToken);
+
+            HttpResponseMessage response = new(HttpStatusCode.OK) { Content = new ByteArrayContent([0xFF, 0xD8, 0xFF, 0xD9]) };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(MediaTypeNames.Image.Jpeg);
+
+            return response;
         }
     }
 

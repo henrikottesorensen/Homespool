@@ -56,6 +56,11 @@ public sealed class CameraSnapshotFetcher : ICameraSnapshotFetcher
         {
             HttpClient client = _httpClientFactory.CreateClient(HttpClientName);
 
+            // The deadline is the one above, from TimeoutSeconds. The client's own default of 100 s
+            // would otherwise cut short any setting longer than that, and go2rtc spends its whole wait
+            // for a frame before it sends a header.
+            client.Timeout = Timeout.InfiniteTimeSpan;
+
             using HttpResponseMessage response = await client
                                                        .GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, timeout.Token)
                                                        .ConfigureAwait(false);

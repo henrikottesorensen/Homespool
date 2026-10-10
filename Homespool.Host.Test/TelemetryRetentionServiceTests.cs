@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
@@ -10,6 +12,7 @@ using AwesomeAssertions;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
@@ -34,6 +37,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 {
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"ps-retention-{Guid.NewGuid():N}.db");
     private readonly string _connectionString;
+    private readonly DeleteRecorder _deletes = new();
     private ServiceProvider? _provider;
     private TelemetryRetentionService? _service;
 
@@ -108,7 +112,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
 
         // Same connection string, so foreign keys stay enabled - this suite's cascade test depends
         // on it, and the sweep now runs against this context rather than the one above.
-        services.AddDbContext<TelemetryDbContext>(o => o.UseSqlite(_connectionString));
+        services.AddDbContext<TelemetryDbContext>(o => o.UseSqlite(_connectionString).AddInterceptors(_deletes));
         _provider = services.BuildServiceProvider();
 
         await using (AsyncServiceScope migrationScope = _provider.CreateAsyncScope())
@@ -173,6 +177,62 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         });
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> events in one save, oldest first, so their ids rise with their age.
+    /// </summary>
+    private async Task SeedEventsAsync(int printerId, int count, DateTimeOffset newest)
+    {
+        await using HomespoolDbContext context = NewVerificationContext();
+
+        context.PrinterEvents.AddRange(Enumerable.Range(0, count).Select(i => new PrinterEvent
+        {
+            PrinterId = printerId,
+            Timestamp = newest.AddSeconds(i - count + 1),
+            EventType = PrinterEventType.StateChanged,
+            WireType = "STATE_CHANGED",
+            Status = PrinterStatus.Idle,
+        }));
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> samples in one save, oldest first, each with <paramref name="slots"/>
+    /// slot rows.
+    /// </summary>
+    private async Task SeedSamplesAsync(int printerId, int count, DateTimeOffset newest, int slots = 0)
+    {
+        await using HomespoolDbContext context = NewVerificationContext();
+
+        context.TelemetrySamples.AddRange(Enumerable.Range(0, count).Select(i => new TelemetrySample
+        {
+            PrinterId = printerId,
+            Timestamp = newest.AddSeconds(i - count + 1),
+            Status = PrinterStatus.Idle,
+            Slots = [.. Enumerable.Range(1, slots).Select(n => new TelemetrySlotSample { SlotNumber = n })],
+        }));
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// Waits for <paramref name="predicate"/>, then stops the service so that every statement the
+    /// sweep issued has been recorded before the test reads them.
+    /// </summary>
+    private async Task SweepUntilAsync(Func<HomespoolDbContext, Task<bool>> predicate, string because)
+    {
+        bool done = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await predicate(context);
+        }, TimeSpan.FromSeconds(30));
+
+        done.Should().BeTrue(because);
+
+        await _service!.StopAsync(TestContext.Current.CancellationToken);
     }
 
     private async Task SeedSampleAsync(int printerId, DateTimeOffset timestamp)
@@ -676,5 +736,157 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         }, TimeSpan.FromSeconds(10));
 
         trimmed.Should().BeTrue("memory is still the store, and the cap is its only bound");
+    }
+
+    /// <summary>
+    /// <b>A backlog is deleted a printer and a batch at a time, never in one statement.</b> One delete
+    /// holds the only write lock until it commits, so lowering retention on a populated store would
+    /// lock every other writer out for as long as the whole backlog takes. The exact sequence matters:
+    /// one statement gives a single count, and batches across printers give full batches that
+    /// straddle the two.
+    /// </summary>
+    [Fact]
+    public async Task ABacklogOfOldSamplesIsSweptAPrinterAndABatchAtATime()
+    {
+        // Arrange - printer ids with a gap, so finding the printers cannot be counting up from one
+        DateTimeOffset old = DateTimeOffset.UtcNow.AddDays(-100);
+        await SeedPrinterAsync(1);
+        await SeedPrinterAsync(7);
+        await SeedSamplesAsync(1, (2 * TelemetryRetentionService.DeleteBatchSize) + 1, old);
+        await SeedSamplesAsync(7, TelemetryRetentionService.DeleteBatchSize + 500, old, slots: 2);
+        await SeedSampleAsync(7, DateTimeOffset.UtcNow.AddHours(-1));
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 14,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+        });
+
+        // Assert
+        await SweepUntilAsync(async context => await context.TelemetrySamples.CountAsync() == 1,
+                              "every old sample of both printers goes and the recent one stays");
+
+        _deletes.RowsDeleted.Should().Equal([TelemetryRetentionService.DeleteBatchSize, TelemetryRetentionService.DeleteBatchSize, 1, TelemetryRetentionService.DeleteBatchSize, 500],
+                                            "printer 1's backlog in two full batches and a remainder, then printer 7's");
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        (await verify.TelemetrySlotSamples.CountAsync(TestContext.Current.CancellationToken))
+            .Should().Be(0, "each batch's slot rows cascade with it");
+    }
+
+    /// <summary>
+    /// The age sweep for events, which is the same unbounded delete with the same cure.
+    /// </summary>
+    [Fact]
+    public async Task ABacklogOfOldEventsIsSweptAPrinterAndABatchAtATime()
+    {
+        // Arrange
+        DateTimeOffset old = DateTimeOffset.UtcNow.AddDays(-100);
+        await SeedPrinterAsync(1);
+        await SeedPrinterAsync(7);
+        await SeedEventsAsync(1, (2 * TelemetryRetentionService.DeleteBatchSize) + 1, old);
+        await SeedEventsAsync(7, 3, old);
+        await SeedEventAsync(1, DateTimeOffset.UtcNow.AddHours(-1));
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 30,
+            MaxEventsPerPrinter = 0,
+        });
+
+        // Assert
+        await SweepUntilAsync(async context => await context.PrinterEvents.CountAsync() == 1,
+                              "every old event of both printers goes and the recent one stays");
+
+        _deletes.RowsDeleted.Should().Equal([TelemetryRetentionService.DeleteBatchSize, TelemetryRetentionService.DeleteBatchSize, 1, 3]);
+    }
+
+    /// <summary>
+    /// <b>Lowering the event cap is a backlog too</b>, and is trimmed in batches, keeping exactly the
+    /// newest rows.
+    /// </summary>
+    [Fact]
+    public async Task TheEventCountCapTrimsABacklogInBatches()
+    {
+        // Arrange - all recent, so only the cap can remove any
+        await SeedPrinterAsync();
+        await SeedEventsAsync(1, (2 * TelemetryRetentionService.DeleteBatchSize) + 504, DateTimeOffset.UtcNow);
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 4,
+        });
+
+        // Assert
+        await SweepUntilAsync(async context => await context.PrinterEvents.CountAsync() == 4,
+                              "the backlog is trimmed to the cap");
+
+        _deletes.RowsDeleted.Should().Equal([TelemetryRetentionService.DeleteBatchSize, TelemetryRetentionService.DeleteBatchSize, 500]);
+
+        await using HomespoolDbContext verify = NewVerificationContext();
+        long newest = await verify.PrinterEvents.MaxAsync(e => e.Id, TestContext.Current.CancellationToken);
+        List<long> kept = await verify.PrinterEvents.Select(e => e.Id)
+                                      .OrderBy(id => id)
+                                      .ToListAsync(TestContext.Current.CancellationToken);
+
+        kept.Should().Equal([newest - 3, newest - 2, newest - 1, newest], "the newest four by id");
+    }
+
+    /// <summary>
+    /// The sample cap's trim, which bounds an in-memory store, through the same batches.
+    /// </summary>
+    [Fact]
+    public async Task TheSampleCountCapTrimsABacklogInBatches()
+    {
+        // Arrange - all recent, so only the cap can remove any
+        await SeedPrinterAsync();
+        await SeedSamplesAsync(1, TelemetryRetentionService.DeleteBatchSize + 504, DateTimeOffset.UtcNow);
+
+        // Act
+        await StartServiceAsync(new StorageOptions
+        {
+            TelemetryInMemory = true,
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+            MaxSamplesPerPrinter = 4,
+        });
+
+        // Assert
+        await SweepUntilAsync(async context => await context.TelemetrySamples.CountAsync() == 4,
+                              "the backlog is trimmed to the cap");
+
+        _deletes.RowsDeleted.Should().Equal([TelemetryRetentionService.DeleteBatchSize, 500]);
+    }
+
+    /// <summary>
+    /// The rows each <c>DELETE</c> removed, in the order they ran. A cascade's rows are not counted,
+    /// which is SQLite's own changes() count.
+    /// </summary>
+    private sealed class DeleteRecorder : DbCommandInterceptor
+    {
+        private readonly ConcurrentQueue<int> _rows = new();
+
+        public IReadOnlyList<int> RowsDeleted => [.. _rows];
+
+        public override ValueTask<int> NonQueryExecutedAsync(DbCommand command,
+                                                             CommandExecutedEventData eventData,
+                                                             int result,
+                                                             CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.StartsWith("DELETE", StringComparison.Ordinal))
+            {
+                _rows.Enqueue(result);
+            }
+
+            return base.NonQueryExecutedAsync(command, eventData, result, cancellationToken);
+        }
     }
 }

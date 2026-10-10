@@ -366,6 +366,12 @@ jobs:
       - name: Test the build context trees and their wiring
         run: ./tests/context-tree.test.sh
 
+      # The base digest every image build records, read the way every buildx answers it. This runner's
+      # buildx is recent, so the build above cannot show that an older one - Debian's and Ubuntu's -
+      # still gets a digest rather than its human-readable summary. docker is a stub.
+      - name: Test the base digest lookup
+        run: ./tests/base-digest.test.sh
+
       # Which names the renewal will act on, and which it refuses before they reach a shell. It
       # talks to the world only through `docker`, and a stub of that is the whole harness, so this
       # needs neither a daemon nor a certificate authority.

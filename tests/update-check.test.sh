@@ -177,7 +177,10 @@ case "$1" in
         # buildx imagetools inspect --format <format> <reference>
         [ -n "${STUB_REGISTRY_FAILS:-}" ] && exit 1
         service="$(service_of "$6")"
+        # As buildx before 0.33.0 does, which prints its summary for any format starting {{.Manifest
+        # rather than executing it.
         case "$5" in
+            '{{.Manifest'*) printf 'Name:      %s\nMediaType: application/vnd.oci.image.index.v1+json\nDigest:    sha256:%s\n' "$6" "$service" ;;
             *Manifest.Digest*) eval "printf '%s\n' \"\${STUB_DIGEST_$service:-sha256:published-$service}\"" ;;
             *) cat "$STUB_FIXTURES/published-$service.json" ;;
         esac
@@ -542,7 +545,7 @@ if test_case "a card built from a release is compared with GHCR, and current"; t
     done
     check
     assert_status "$status" 0 "checks cleanly"
-    assert_contains "$log" "imagetools inspect --format {{.Manifest.Digest}} $ghcr/homespool-go2rtc:latest" \
+    assert_contains "$log" "imagetools inspect --format {{print .Manifest.Digest}} $ghcr/homespool-go2rtc:latest" \
         "GHCR is asked for the tag the card follows"
     assert_equals "$(field '[.services[].status] | join(",")')" "current,current,current" \
         "all three are the published images, not local"

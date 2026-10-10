@@ -90,7 +90,9 @@ for image in $images; do
     repository="${image%:*}"
     name="${repository##*/}"
 
-    digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$image")"
+    # `print`, not a bare {{.Manifest.Digest}}: buildx before 0.33.0 answers any format starting
+    # {{.Manifest with its human-readable summary instead, and Debian and Ubuntu still ship one.
+    digest="$(docker buildx imagetools inspect --format '{{print .Manifest.Digest}}' "$image")"
     pinned="$repository@$digest"
     say "$image is $digest"
 
@@ -118,7 +120,7 @@ for image in $images; do
     # --- whether the base has been republished since ---
     base_current=""
     if [ -n "$base_name" ]; then
-        base_current="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$base_name")"
+        base_current="$(docker buildx imagetools inspect --format '{{print .Manifest.Digest}}' "$base_name")"
     fi
 
     # --- the .NET runtime, in the application image only ---

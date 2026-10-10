@@ -128,7 +128,9 @@ read_back_index() {
             die "$reference holds no $arch image of $commit; it holds: $(printf '%s' "$platforms" | tr '\n' ',')"
     done
 
-    digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$reference")"
+    # `print`, not a bare {{.Manifest.Digest}}: buildx before 0.33.0 answers any format starting
+    # {{.Manifest with its human-readable summary instead, and Debian and Ubuntu still ship one.
+    digest="$(docker buildx imagetools inspect --format '{{print .Manifest.Digest}}' "$reference")"
     echo "==> $reference (${architectures[*]})  $digest"
 }
 

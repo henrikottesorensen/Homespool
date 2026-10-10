@@ -45,7 +45,8 @@ public static class EditableSettings
     public static readonly ImmutableArray<EditableSetting> All =
     [
 
-        // Security - read per request at TwoFactorEnrolmentMiddleware:79.
+        // Security - read per request in TwoFactorEnrolmentMiddleware.InvokeAsync, and per
+        // authentication in ApiTokenAuthenticationHandlerBase.
         // Asked about before it is turned on: what it does is invisible from the outcome, since the
         // integrations it breaks belong to other people and fail as a 401 that explains nothing.
         new(typeof(SecurityOptions),
@@ -69,7 +70,7 @@ public static class EditableSettings
             nameof(SecurityOptions.RememberedSessionDays),
             SettingGrade.Live),
 
-        // Attempt limits - read per check at AttemptLimiter:121,130.
+        // Attempt limits - read per check in AttemptLimiter, from a snapshot taken per request.
         // Only the count. The two timing knobs are deliberately absent - see AttemptLimitOptions.
         // Shown under the account heading rather than its own: it is bound from a different class,
         // which is not a reason to give a reader a second heading for the same subject.
@@ -79,13 +80,14 @@ public static class EditableSettings
             SettingGrade.Live,
             DisplayGroup: SecurityOptions.SectionName),
 
-        // Invitations - read when an invite is created, at InvitationService:73.
+        // Invitations - read when an invite is created, in InvitationService.CreateAsync and
+        // CreateRecoveryAsync.
         new(typeof(InvitationOptions), InvitationOptions.SectionName, nameof(InvitationOptions.LifetimeHours), SettingGrade.Live),
 
         // Printer protocol.
         new(typeof(PrusaConnectOptions), PrusaConnectOptions.SectionName, nameof(PrusaConnectOptions.RegistrationCodeLifetimeMinutes), SettingGrade.Live),
 
-        // Read once per connection actor at PrinterConnectionActorFactory:41, so a printer already
+        // Read once per connection actor in PrinterConnectionActorFactory.Create, so a printer already
         // connected keeps the timeout it was built with until it reconnects.
         new(typeof(PrusaConnectOptions),
             PrusaConnectOptions.SectionName,
@@ -114,7 +116,7 @@ public static class EditableSettings
             DisplayGroup: StorageOptions.SectionName,
             DisplaySubgroup: "PrintFiles"),
 
-        // Telemetry ingest - read per sample at TelemetryWriter:733.
+        // Telemetry ingest - read per sample in TelemetryWriter.ProcessTelemetryAsync.
         new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.MinimumSampleIntervalSeconds), SettingGrade.Live, DisplaySubgroup: "Telemetry"),
 
         // Retention - TelemetryRetentionService reads these inside each sweep, and SweepInterval is
@@ -154,10 +156,11 @@ public static class EditableSettings
         // process rather than merely cached like the two below.
         new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.TelemetryInMemory), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
-        // Sizes the writer's bounded channel at TelemetryWriter:234 and is read per batch at :547.
+        // Sizes the writer's bounded channel in TelemetryWriter's constructor and is read per batch
+        // in its ExecuteAsync loop.
         new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteBatchSize), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
-        // Builds a PeriodicTimer once when the writer's loop starts, at TelemetryWriter:462.
+        // Builds a PeriodicTimer once when the writer's loop starts, in TelemetryWriter.ExecuteAsync.
         new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteFlushIntervalSeconds), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
         // Cameras - all read at the point of use, in CameraFrameCache, CameraSnapshotFetcher,

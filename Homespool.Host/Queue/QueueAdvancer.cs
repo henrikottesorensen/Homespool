@@ -1451,20 +1451,22 @@ public sealed class QueueAdvancer : BackgroundService
         }
 
         // The name the printer knows the file by is the one it was sent under, which may carry its
-        // owner's name; the record keeps the file's own, which is what history shows. Only the entry
-        // says which file that was, so a withdrawn one is matched on the path and the file's own name
-        // alone - and the path is what START_PRINT was given, which the printer echoes.
+        // owner's name; the record keeps the file's own, which is what history shows. The file's own
+        // name is never matched where it differs: a file goes under its owner's name only because
+        // another file on the drive already holds its own, so that name describes somebody else's
+        // print. A row with no drive name was sent under the file's own. Only the entry says which
+        // file that was, so a withdrawn one is matched on the path alone - which is what START_PRINT
+        // was given, and the printer echoes it.
         string? driveName = printFileId is long fileId ?
             await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
                        .FilesOnPrinters
                        .Where(row => row.PrinterId == printerId && row.FileId == fileId)
-                       .Select(row => row.DriveName)
+                       .Select(row => row.DriveName ?? row.File!.Name)
                        .FirstOrDefaultAsync(cancellationToken) :
             null;
 
         bool ours = (job.Path is not null && job.Path == commanded.PrinterPath) ||
-                    (job.DisplayName is not null &&
-                     (job.DisplayName == commanded.FileName || job.DisplayName == driveName));
+                    (job.DisplayName is not null && job.DisplayName == driveName);
 
         if (!ours)
         {

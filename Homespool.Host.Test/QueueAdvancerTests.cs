@@ -2648,6 +2648,74 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A file sent under its owner's name is not recognised by its own: a print of that name started
+    /// at the panel in the window is somebody else's, and is not recorded as ours.
+    /// </summary>
+    /// <remarks>
+    /// <b>The owner's name is only chosen because another file on the drive holds the plain one.</b> So
+    /// the plain name in a job answer names that other file - and taking it for ours would consume our
+    /// entry and record the queuer as the owner of another member's print, which they could then stop
+    /// with <c>Print</c> alone.
+    /// </remarks>
+    [Fact]
+    public async Task AnotherFileOfTheFilesOwnNameIsNotTakenForAnUnansweredStart()
+    {
+        // Arrange - ours went under its owner's name; the printer is running another file, by the
+        // plain name, from another path
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        FileOnPrinter staged = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        staged.DriveName = OwnersName;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 727);
+        ConnectAnsweringJobInfo("/usb/QUEUED~2.BGC", "queued.bgcode");
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "the print running is the other file's, so there is no print of ours to record");
+        (await context.QueuedPrints.CountAsync(TestContext.Current.CancellationToken)).Should().Be(1,
+            "the entry waits for the printer like any other");
+    }
+
+    /// <summary>
+    /// A copy recorded with no drive name was sent under the file's own name, and is recognised by it.
+    /// </summary>
+    [Fact]
+    public async Task AnUnansweredStartOfACopyWithNoDriveNameIsRecognisedByTheFilesOwnName()
+    {
+        // Arrange - no drive name on the row; the job answer names the file's own, by another path
+        await using HomespoolDbContext context = await SeedAsync(arrived: true, status: PrinterStatus.Ready);
+        FileOnPrinter staged = await context.FilesOnPrinters.SingleAsync(TestContext.Current.CancellationToken);
+        staged.DriveName = null;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        ConnectTimingOutOnPrint();
+
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        await ReportAsync(context, PrinterStatus.Printing, jobId: 728);
+        ConnectAnsweringJobInfo("/usb/OTHER~9.BGC", "queued.bgcode");
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        context.ChangeTracker.Clear();
+        (await context.PrintJobs.SingleAsync(TestContext.Current.CancellationToken)).FirmwareJobId.Should().Be(728,
+            "a copy with no drive name went to the printer under the file's own");
+    }
+
+    /// <summary>
     /// An unanswered start whose entry is gone is still asked about, on the authority the row carries,
     /// and adopted when the printer names our file.
     /// </summary>

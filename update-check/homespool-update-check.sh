@@ -340,7 +340,9 @@ compare() {
             continue
         fi
 
-        published_digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$reference")" ||
+        # `print`, not a bare {{.Manifest.Digest}}: buildx before 0.33.0 answers any format starting
+        # {{.Manifest with its human-readable summary instead, and Debian and Ubuntu still ship one.
+        published_digest="$(docker buildx imagetools inspect --format '{{print .Manifest.Digest}}' "$reference")" ||
             die "could not read $reference from its registry"
         docker buildx imagetools inspect --format '{{json .Image}}' "$reference" > "$work/$service.published.json" ||
             die "could not read $reference's configuration from its registry"

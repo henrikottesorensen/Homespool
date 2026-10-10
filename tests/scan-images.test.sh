@@ -123,7 +123,14 @@ case "$1" in
         done
         ;;
     buildx)
-        # buildx imagetools inspect --format <format> <reference>
+        # buildx imagetools inspect --format <format> <reference>. A format starting {{.Manifest is
+        # answered as buildx before 0.33.0 answers it: with its summary, not the template's value.
+        case "$5" in
+            '{{.Manifest'*)
+                printf 'Name:      %s\nMediaType: application/vnd.oci.image.index.v1+json\nDigest:    sha256:summary\n' "$6"
+                exit 0
+                ;;
+        esac
         case "$6" in
             mcr.microsoft.com/*) echo "sha256:${STUB_ASPNET_NOW:-aspnet-built}" ;;
             nginxinc/*) echo "sha256:nginx-built" ;;
@@ -230,6 +237,8 @@ if test_case "nothing to take: not relevant, and the verdict is pushed"; then
         "beside the images, under latest"
     assert_contains "$log" "save registry.example.net/homespool@sha256:image-app -o" \
         "the scanner is handed a saved image, by digest"
+    assert_equals "$(field '[.images[].base | .current_digest == .digest and .republished == false] | all')" \
+        "true" "each base is read as the digest it was built on, so none is republished"
 fi
 
 if test_case "a fixable high vulnerability is relevant"; then

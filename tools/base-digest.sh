@@ -35,7 +35,9 @@ if [ -z "$image" ]; then
     exit 1
 fi
 
-digest="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' "$image")"
+# `print`, not a bare {{.Manifest.Digest}}: buildx before 0.33.0 answers any format starting
+# {{.Manifest with its human-readable summary instead, and Debian and Ubuntu still ship one.
+digest="$(docker buildx imagetools inspect --format '{{print .Manifest.Digest}}' "$image")"
 
 case "$digest" in
     sha256:*) printf '%s\n' "$digest" ;;

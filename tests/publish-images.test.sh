@@ -130,7 +130,10 @@ case "$1" in
             create) [ -n "${STUB_PUSH_FAILS:-}" ] && exit 1 ;;
             # imagetools inspect --format <format> <reference>: an index of the platforms named
             inspect)
+                # As buildx before 0.33.0 does, which prints its summary for any format starting
+                # {{.Manifest rather than executing it.
                 case "$5" in
+                    '{{.Manifest'*) printf 'Name:      %s\nMediaType: application/vnd.oci.image.index.v1+json\nDigest:    sha256:beadfeed\n' "$6" ;;
                     *Manifest.Digest*) printf 'sha256:beadfeed\n' ;;
                     # The configuration of what latest holds: STUB_LATEST_<repository>, else
                     # STUB_LATEST, is its version, empty for an image with none; neither set and there

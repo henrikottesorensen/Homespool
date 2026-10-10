@@ -684,8 +684,7 @@ public class PrinterConnectionActorTests
         List<byte[]> sentFrames = [];
         bool failSends = true;
 
-        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
-        connection.IsOpen.Returns(true);
+        IPrinterConnection connection = OpenConnection();
         OnSend(connection, call =>
         {
             if (failSends)
@@ -1128,9 +1127,7 @@ public class PrinterConnectionActorTests
         send.IsCompleted.Should().BeFalse("nothing has been delivered, so nothing can be late");
 
         // The printer polls: the loop hands over the command and starts its clock.
-        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
-        PendingCommand collected = (await Eventually(take.Task))!;
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
 
         collected.Command.Should().BeOfType<PrusaConnect.Commands.PausePrint>();
 
@@ -1257,13 +1254,84 @@ public class PrinterConnectionActorTests
 
         // Act
         Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
-        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
-        PendingCommand collected = (await Eventually(take.Task))!;
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
 
         await actor.PostAsync(EventAnswering(collected.CommandId), CancellationToken.None);
 
         // Assert
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// An event naming a command still parked is not its answer: the printer has not been given it.
+    /// The command keeps the slot, the next poll delivers it, and the printer's own answer settles it.
+    /// </summary>
+    /// <remarks>
+    /// The id is the one a printer that collected the first command can work out. Taken as the
+    /// answer, the send would be settled with the command still parked, and the next send would find
+    /// the connection's slot full and throw.
+    /// </remarks>
+    [Fact]
+    public async Task AnEventNamingAParkedCommandIsNotItsAnswer()
+    {
+        // Arrange
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+
+        Task<CommandSendResult> first = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        PendingCommand delivered = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+        await actor.PostAsync(EventAnswering(delivered.CommandId), CancellationToken.None);
+        (await Eventually(first)).Outcome.Should().Be(CommandSendOutcome.Completed);
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
+
+        // Act
+        await actor.PostAsync(EventAnswering(unchecked(delivered.CommandId + 1)), CancellationToken.None);
+        await WaitUntilAsync(() => sink.EventCalls.Count == 2);
+
+        // Assert
+        send.IsCompleted.Should().BeFalse("the printer has not been given the command it named");
+
+        (await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None)))
+            .Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight, "the parked command still holds the slot");
+
+        PendingCommand collected = (await Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None)))!;
+        collected.CommandId.Should().Be(unchecked(delivered.CommandId + 1));
+        collected.Command.Should().BeOfType<PrusaConnect.Commands.ResumePrint>();
+
+        await actor.PostAsync(EventAnswering(collected.CommandId), CancellationToken.None);
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// Nor is an event that arrives after a poll has taken the command but before its delivery: until
+    /// the loop agrees the response will carry it, the printer does not have it.
+    /// </summary>
+    [Fact]
+    public async Task AnEventBetweenAPollsTakeAndItsDeliveryIsNotAnAnswer()
+    {
+        // Arrange
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        PendingCommand taken = await TakeAsync(actor);
+
+        // Act
+        await actor.PostAsync(EventAnswering(taken.CommandId), CancellationToken.None);
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
+        // Assert
+        send.IsCompleted.Should().BeFalse("the poll has not yet been agreed to carry the command");
+
+        (await DeliverAsync(actor, taken)).Should().BeTrue();
+        await actor.PostAsync(EventAnswering(taken.CommandId), CancellationToken.None);
         (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.Completed);
 
         actor.Complete();

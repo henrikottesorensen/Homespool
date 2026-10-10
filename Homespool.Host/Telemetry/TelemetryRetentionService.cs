@@ -108,10 +108,18 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// One pass: samples by age, events by age, then events by per-printer count.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <b>Each sweep decides for itself whether it is enabled</b>, rather than one guard at the top.
     /// The three knobs are independent and zero means off for each - a deployment keeping samples for
     /// a fortnight and events for a year is the ordinary case, and an early return on the first would
     /// silently disable the others.
+    /// </para>
+    /// <para>
+    /// <b>The options are read once per pass</b>, and every sweep is handed that one copy. A save can
+    /// land while a pass runs, and a sweep that checked a value and then read it again could act on
+    /// one it never checked: a cap saved as zero, meaning off, read back as an offset of minus one -
+    /// every row but the newest - or a retention of zero days read back as a cutoff of now.
+    /// </para>
     /// </remarks>
     internal async Task SweepAsync(CancellationToken cancellationToken)
     {
@@ -120,10 +128,12 @@ public sealed class TelemetryRetentionService : BackgroundService
             using IServiceScope scope = _scopeFactory.CreateScope();
             TelemetryDbContext context = scope.ServiceProvider.GetRequiredService<TelemetryDbContext>();
 
-            await SweepSamplesAsync(context, cancellationToken);
-            await SweepSamplesByCountAsync(context, cancellationToken);
-            await SweepEventsByAgeAsync(context, cancellationToken);
-            await SweepEventsByCountAsync(context, cancellationToken);
+            StorageOptions options = _options.CurrentValue;
+
+            await SweepSamplesAsync(context, options, cancellationToken);
+            await SweepSamplesByCountAsync(context, options, cancellationToken);
+            await SweepEventsByAgeAsync(context, options, cancellationToken);
+            await SweepEventsByCountAsync(context, options, cancellationToken);
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -131,16 +141,18 @@ public sealed class TelemetryRetentionService : BackgroundService
         }
     }
 
-    private async Task SweepSamplesAsync(TelemetryDbContext context, CancellationToken cancellationToken)
+    private async Task SweepSamplesAsync(TelemetryDbContext context,
+                                         StorageOptions options,
+                                         CancellationToken cancellationToken)
     {
-        if (_options.CurrentValue.TelemetryRetentionDays == 0)
+        if (options.TelemetryRetentionDays == 0)
         {
             _logger.LogDebug("Telemetry retention is disabled (TelemetryRetentionDays = 0); skipping sweep.");
 
             return;
         }
 
-        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - TimeSpan.FromDays(_options.CurrentValue.TelemetryRetentionDays);
+        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - TimeSpan.FromDays(options.TelemetryRetentionDays);
 
         int deleted = 0;
 
@@ -194,7 +206,9 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// been made for samples, and inheriting it here by analogy is what produced the defect above.
     /// </para>
     /// </remarks>
-    private async Task SweepSamplesByCountAsync(TelemetryDbContext context, CancellationToken cancellationToken)
+    private async Task SweepSamplesByCountAsync(TelemetryDbContext context,
+                                                StorageOptions options,
+                                                CancellationToken cancellationToken)
     {
         if (!_mode.InMemory)
         {
@@ -203,10 +217,10 @@ public sealed class TelemetryRetentionService : BackgroundService
             return;
         }
 
-        if (_options.CurrentValue.MaxSamplesPerPrinter <= 0)
+        if (options.MaxSamplesPerPrinter <= 0)
         {
             _logger.LogDebug("Sample count cap is disabled (MaxSamplesPerPrinter = {Cap}); skipping sweep.",
-                             _options.CurrentValue.MaxSamplesPerPrinter);
+                             options.MaxSamplesPerPrinter);
 
             return;
         }
@@ -220,7 +234,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             long threshold = await context.TelemetrySamples
                                           .Where(s => s.PrinterId == printerId)
                                           .OrderByDescending(s => s.Id)
-                                          .Skip(_options.CurrentValue.MaxSamplesPerPrinter - 1)
+                                          .Skip(options.MaxSamplesPerPrinter - 1)
                                           .Select(s => s.Id)
                                           .FirstOrDefaultAsync(cancellationToken);
 
@@ -238,21 +252,23 @@ public sealed class TelemetryRetentionService : BackgroundService
             {
                 _logger.LogInformation(
                     "Sample cap sweep deleted {Count} sample(s) for printer {PrinterId}, keeping the newest {Cap}.",
-                    deleted, printerId, _options.CurrentValue.MaxSamplesPerPrinter);
+                    deleted, printerId, options.MaxSamplesPerPrinter);
             }
         }
     }
 
-    private async Task SweepEventsByAgeAsync(TelemetryDbContext context, CancellationToken cancellationToken)
+    private async Task SweepEventsByAgeAsync(TelemetryDbContext context,
+                                             StorageOptions options,
+                                             CancellationToken cancellationToken)
     {
-        if (_options.CurrentValue.EventRetentionDays == 0)
+        if (options.EventRetentionDays == 0)
         {
             _logger.LogDebug("Event age retention is disabled (EventRetentionDays = 0); skipping sweep.");
 
             return;
         }
 
-        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - TimeSpan.FromDays(_options.CurrentValue.EventRetentionDays);
+        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - TimeSpan.FromDays(options.EventRetentionDays);
 
         int deleted = 0;
 
@@ -289,12 +305,14 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// trim removes an arbitrary subset and leaves the count wrong.
     /// </para>
     /// </remarks>
-    private async Task SweepEventsByCountAsync(TelemetryDbContext context, CancellationToken cancellationToken)
+    private async Task SweepEventsByCountAsync(TelemetryDbContext context,
+                                               StorageOptions options,
+                                               CancellationToken cancellationToken)
     {
-        if (_options.CurrentValue.MaxEventsPerPrinter <= 0)
+        if (options.MaxEventsPerPrinter <= 0)
         {
             _logger.LogDebug("Event count cap is disabled (MaxEventsPerPrinter = {Cap}); skipping sweep.",
-                             _options.CurrentValue.MaxEventsPerPrinter);
+                             options.MaxEventsPerPrinter);
 
             return;
         }
@@ -307,7 +325,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             long threshold = await context.PrinterEvents
                                           .Where(e => e.PrinterId == printerId)
                                           .OrderByDescending(e => e.Id)
-                                          .Skip(_options.CurrentValue.MaxEventsPerPrinter - 1)
+                                          .Skip(options.MaxEventsPerPrinter - 1)
                                           .Select(e => e.Id)
                                           .FirstOrDefaultAsync(cancellationToken);
 
@@ -325,7 +343,7 @@ public sealed class TelemetryRetentionService : BackgroundService
             {
                 _logger.LogInformation(
                     "Event cap sweep deleted {Count} event(s) for printer {PrinterId}, keeping the newest {Cap}.",
-                    deleted, printerId, _options.CurrentValue.MaxEventsPerPrinter);
+                    deleted, printerId, options.MaxEventsPerPrinter);
             }
         }
     }

@@ -15,7 +15,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
+
+using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Telemetry;
@@ -103,9 +106,14 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
     /// The store in force, as startup chose it. Follows <paramref name="options"/> when omitted;
     /// passed only to model a save the restart has not yet applied.
     /// </param>
+    /// <param name="monitor">
+    /// The monitor the service reads, when a test needs one that answers differently over time;
+    /// otherwise one that always answers <paramref name="options"/>.
+    /// </param>
     private async Task<TelemetryRetentionService> StartServiceAsync(StorageOptions options,
                                                                     TimeProvider? timeProvider = null,
-                                                                    TelemetryStorageMode? mode = null)
+                                                                    TelemetryStorageMode? mode = null,
+                                                                    IOptionsMonitor<StorageOptions>? monitor = null)
     {
         ServiceCollection services = new();
         services.AddDbContext<HomespoolDbContext>(o => o.UseSqlite(_connectionString));
@@ -122,7 +130,7 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
         }
 
         _service = new TelemetryRetentionService(_provider.GetRequiredService<IServiceScopeFactory>(),
-                                                 TestOptions.Monitor(options),
+                                                 monitor ?? TestOptions.Monitor(options),
                                                  mode ?? new TelemetryStorageMode(options.TelemetryInMemory),
                                                  timeProvider ?? TimeProvider.System,
                                                  NullLogger<TelemetryRetentionService>.Instance);
@@ -864,6 +872,55 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
                               "the backlog is trimmed to the cap");
 
         _deletes.RowsDeleted.Should().Equal([TelemetryRetentionService.DeleteBatchSize, 500]);
+    }
+
+    /// <summary>
+    /// <b>One pass, one set of options.</b> A save landing mid-pass must not let a sweep act on a value
+    /// it never checked - here the cap saved as zero, meaning off, which read back after the check
+    /// would be an offset of minus one.
+    /// </summary>
+    [Fact]
+    public async Task APassActsOnTheOptionsItStartedWithThoughASaveLandsDuringIt()
+    {
+        // Arrange - a monitor whose first answer caps at four and whose every later one turns the cap off
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedSampleAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        StorageOptions capped = new()
+        {
+            TelemetryInMemory = true,
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+            MaxSamplesPerPrinter = 4,
+        };
+
+        IOptionsMonitor<StorageOptions> monitor = Substitute.For<IOptionsMonitor<StorageOptions>>();
+        monitor.CurrentValue.Returns(capped, new StorageOptions
+        {
+            TelemetryInMemory = true,
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+            MaxSamplesPerPrinter = 0,
+        });
+
+        // Act
+        await StartServiceAsync(capped, monitor: monitor);
+
+        // Assert
+        bool trimmed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.TelemetrySamples.CountAsync(TestContext.Current.CancellationToken) == 4;
+        }, TimeSpan.FromSeconds(10));
+
+        trimmed.Should().BeTrue("the pass read a cap of four, and acts on that throughout");
     }
 
     /// <summary>

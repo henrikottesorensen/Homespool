@@ -288,7 +288,7 @@ public class SettingsModelTests : IDisposable
 
         page.Errors.Should().BeEmpty();
         page.StatusSuccess.Should().BeTrue();
-        _protector.Reveal(_configuration["Smtp:ProtectedPassword"], "Smtp:ProtectedPassword")
+        _protector.Reveal(SavedProtectedPassword(), "Smtp:ProtectedPassword")
                   .Should()
                   .Be("hunter2", "the answer saved the password typed before the question");
     }
@@ -337,7 +337,7 @@ public class SettingsModelTests : IDisposable
         };
         page.Confirmed = ["Cameras:WebRtcStunEnabled"];
 
-        string? before = _configuration["Smtp:ProtectedPassword"];
+        string? before = SavedProtectedPassword();
 
         await page.OnPost();
 
@@ -345,7 +345,7 @@ public class SettingsModelTests : IDisposable
         page.Errors.Should().ContainKey("Smtp:Password")
             .WhoseValue.Should().Be(TestLocaliser.Shared()["Settings_Refuse_SealedSecretExpired"].Value);
         page.Values.Should().NotContainKey("Smtp:Password");
-        _configuration["Smtp:ProtectedPassword"].Should().Be(before);
+        SavedProtectedPassword().Should().Be(before);
         _store.Current()["Cameras:WebRtcStunEnabled"].Should().NotBe("true", "nothing was saved");
     }
 
@@ -500,6 +500,17 @@ public class SettingsModelTests : IDisposable
         {
             // A leftover temp directory is not worth failing a test over.
         }
+    }
+
+    /// <summary>
+    /// The stored password as the store saved it - the running configuration holds it at its startup
+    /// value, mail being a restart-grade section.
+    /// </summary>
+    private string? SavedProtectedPassword()
+    {
+        using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
+
+        return saved["Smtp:ProtectedPassword"];
     }
 
     private void SaveMailServer()

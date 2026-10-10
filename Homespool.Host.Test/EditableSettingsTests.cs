@@ -28,7 +28,8 @@ namespace Homespool.Host.Test;
 /// consumer reads its options, and no reflection over this list can see it. The check that bites is
 /// the one added alongside the monitor transition - that no consumer of a live-graded class captures
 /// <c>IOptions.Value</c> - and, for each live setting, a test that writes the file and watches the
-/// behaviour change without a restart.
+/// behaviour change without a restart. End to end, <c>SettingGradeTests</c> saves every setting at
+/// once and checks that each reaches the options exactly when its grade says.
 /// </para>
 /// </remarks>
 public class EditableSettingsTests

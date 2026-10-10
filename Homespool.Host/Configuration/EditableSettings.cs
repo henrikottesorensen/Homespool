@@ -25,9 +25,9 @@ namespace Homespool.Host.Configuration;
 /// <para>
 /// <b>A setting only half-obeyed is graded <see cref="SettingGrade.Restart"/>.</b>
 /// <c>Storage.WriteBatchSize</c> sizes the writer's bounded channel at construction and is also read
-/// per batch, so a change would move the batching threshold while the channel kept its old capacity.
-/// Applying half of a number is harder to reason about than applying none of it, so the honest grade
-/// is the lower one.
+/// per batch. Graded live, a change would move the batching threshold while the channel kept its old
+/// capacity; graded restart, the settings layer holds the value for both reads until the restart.
+/// Applying half of a number is harder to reason about than applying none of it.
 /// </para>
 /// <para>
 /// <b>What is deliberately absent is the larger half.</b> Listener ports must agree with what Docker
@@ -103,12 +103,10 @@ public static class EditableSettings
         // What this deployment stores, of both kinds. Uploads sit here rather than under a heading of
         // their own because "how much disk does this take" is one question, and a reader should not
         // have to know that files and telemetry are bound from different classes to find it.
-        // The half-obeyed case the remarks above describe, and graded accordingly: a save reloads
-        // configuration, so PrintFileController, OctoPrintCompatController, Files/Index and TileDrop
-        // read the new value on the next upload. BoundedUploadFilter does not - it is built at an
-        // endpoint's first request and keeps the value it was built with, so a save reaches the
-        // ceiling on the body only where that endpoint has yet to run, and a restart is what makes
-        // every endpoint agree with the file again. Graded for the worst of that, not the best.
+        // The half-obeyed case the remarks above describe, and graded accordingly: PrintFileController,
+        // OctoPrintCompatController, Files/Index and TileDrop read it per upload, but
+        // BoundedUploadFilter is built at an endpoint's first request and keeps the value it was
+        // built with. Held at its startup value until the restart, every one of them agrees.
         new(typeof(PrintFileStorageOptions),
             PrintFileStorageOptions.SectionName,
             nameof(PrintFileStorageOptions.MaxUploadBytes),

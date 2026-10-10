@@ -24,10 +24,17 @@ namespace Homespool.Host.E2ETest;
 /// consumer reads, and that the secret survives an unrelated edit.
 /// </summary>
 /// <remarks>
+/// <para>
 /// <b>The point of doing this end to end</b> is the chain no unit test spans: a form post reaches the
 /// store, the store writes a file and reloads configuration, and an <c>IOptionsMonitor</c> resolved
 /// afterwards sees the new value. Every link of that is somebody else's code, and the whole grading
 /// scheme rests on it holding.
+/// </para>
+/// <para>
+/// <b>Mail settings are read back as saved, not from the options</b>: every one is restart-grade, so
+/// the running process keeps what it started with. Which setting reaches the options when is
+/// <c>SettingGradeTests</c>' subject.
+/// </para>
 /// </remarks>
 public sealed class SettingsPageTests : IAsyncLifetime
 {
@@ -212,7 +219,7 @@ public sealed class SettingsPageTests : IAsyncLifetime
 
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        SmtpOptions smtp = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue;
+        SmtpOptions smtp = SavedSmtp(scope);
 
         smtp.FromName.Should().Be("Workshop", "the edited field changed");
         smtp.Password.Should().Be("hunter2", "and the password nobody was shown survived it");
@@ -251,7 +258,7 @@ public sealed class SettingsPageTests : IAsyncLifetime
 
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        SmtpOptions smtp = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue;
+        SmtpOptions smtp = SavedSmtp(scope);
 
         smtp.Host.Should().Be("mail.example.com", "nothing was saved");
 
@@ -295,7 +302,7 @@ public sealed class SettingsPageTests : IAsyncLifetime
 
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        SmtpOptions smtp = scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue;
+        SmtpOptions smtp = SavedSmtp(scope);
 
         smtp.Host.Should().Be("mail.example.com");
         smtp.Password.Should().Be("correct-horse-battery", "the answer saved what was typed before the question");
@@ -450,10 +457,22 @@ public sealed class SettingsPageTests : IAsyncLifetime
         return await client.PostAsync("/Admin/Settings", content, TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// The mail settings as saved, with the stored password revealed. The running options keep the
+    /// values the process started with until it restarts, every mail setting being restart-grade.
+    /// </summary>
+    private static SmtpOptions SavedSmtp(IServiceScope scope)
+    {
+        return scope.ServiceProvider
+                    .GetRequiredService<SettingsStore>()
+                    .CandidateFor<SmtpOptions>(new Dictionary<string, string?> { ["Smtp:Password"] = SettingsStore.SecretPlaceholder })
+                    .Value!;
+    }
+
     private bool ProbeOnStartup()
     {
         using IServiceScope scope = _factory.Services.CreateScope();
 
-        return scope.ServiceProvider.GetRequiredService<IOptionsMonitor<SmtpOptions>>().CurrentValue.ProbeOnStartup;
+        return SavedSmtp(scope).ProbeOnStartup;
     }
 }

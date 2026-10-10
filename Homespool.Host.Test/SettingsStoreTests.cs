@@ -48,12 +48,32 @@ public class SettingsStoreTests : IDisposable
     {
         (SettingsStore store, IConfigurationRoot configuration) = Store();
 
+        store.Save(new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "12" })
+             .Saved
+             .Should()
+             .BeTrue();
+
+        configuration["Invitations:LifetimeHours"].Should().Be("12", "the store reloads what it wrote");
+    }
+
+    /// <summary>
+    /// <b>A restart-grade setting is saved and shown, but not put in force.</b> The page and the
+    /// store's own checks read what was saved; the rest of the process keeps the value it started
+    /// with until the restart.
+    /// </summary>
+    [Fact]
+    public void ARestartGradeValueIsSavedAndShownButNotPutInForce()
+    {
+        (SettingsStore store, IConfigurationRoot configuration) = Store();
+
         store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" })
              .Saved
              .Should()
              .BeTrue();
 
-        configuration["Smtp:Host"].Should().Be("mail.example.com", "the store reloads what it wrote");
+        store.Current()["Smtp:Host"].Should().Be("mail.example.com", "the page shows what was saved");
+        Saved(configuration, "Smtp:Host").Should().Be("mail.example.com");
+        configuration["Smtp:Host"].Should().BeNull("the process keeps the value it started with");
     }
 
     [Fact]
@@ -70,7 +90,7 @@ public class SettingsStoreTests : IDisposable
         result.Saved.Should().BeFalse();
         result.Errors.Should().ContainKey("Smtp:Port");
 
-        configuration["Smtp:Host"].Should().BeNull("a refused save writes none of its values, not just the bad one");
+        Saved(configuration, "Smtp:Host").Should().BeNull("a refused save writes none of its values, not just the bad one");
         _file.Exists.Should().BeFalse();
     }
 
@@ -107,7 +127,7 @@ public class SettingsStoreTests : IDisposable
                   path,
                   string.Format(CultureInfo.CurrentCulture, TestLocaliser.Shared()[key], minimum, maximum)));
 
-        configuration["Smtp:FromName"].Should().BeNull("a refused save writes none of its values");
+        Saved(configuration, "Smtp:FromName").Should().BeNull("a refused save writes none of its values");
         _file.Exists.Should().BeFalse();
     }
 
@@ -156,7 +176,7 @@ public class SettingsStoreTests : IDisposable
 
         result.Saved.Should().BeFalse();
         result.Errors.Keys.Should().BeEquivalentTo("Smtp:Port", "Smtp:Password");
-        configuration["Smtp:Host"].Should().Be("mail.example.com");
+        Saved(configuration, "Smtp:Host").Should().Be("mail.example.com");
     }
 
     [Fact]
@@ -166,7 +186,7 @@ public class SettingsStoreTests : IDisposable
 
         store.Save(new Dictionary<string, string?> { ["Listeners:UserPort"] = "9999" });
 
-        configuration["Listeners:UserPort"].Should().BeNull();
+        Saved(configuration, "Listeners:UserPort").Should().BeNull();
     }
 
     [Fact]
@@ -176,8 +196,8 @@ public class SettingsStoreTests : IDisposable
 
         store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "hunter2" });
 
-        configuration["Smtp:ProtectedPassword"].Should().NotBeNullOrEmpty().And.NotBe("hunter2");
-        configuration["Smtp:Password"].Should().BeNull("the plain property is never written");
+        Saved(configuration, "Smtp:ProtectedPassword").Should().NotBeNullOrEmpty().And.NotBe("hunter2");
+        Saved(configuration, "Smtp:Password").Should().BeNull("the plain property is never written");
 
         store.Current()["Smtp:Password"]
              .Should()
@@ -196,7 +216,7 @@ public class SettingsStoreTests : IDisposable
 
         SaveMailServer(store);
 
-        string? stored = configuration["Smtp:ProtectedPassword"];
+        string? stored = Saved(configuration, "Smtp:ProtectedPassword");
 
         Dictionary<string, string?> form = Form(store);
 
@@ -204,8 +224,8 @@ public class SettingsStoreTests : IDisposable
 
         store.Save(form).Saved.Should().BeTrue();
 
-        configuration["Smtp:ProtectedPassword"].Should().Be(stored, "the mask is not an answer");
-        configuration["Smtp:FromName"].Should().Be("Workshop", "the field that was edited still changed");
+        Saved(configuration, "Smtp:ProtectedPassword").Should().Be(stored, "the mask is not an answer");
+        Saved(configuration, "Smtp:FromName").Should().Be("Workshop", "the field that was edited still changed");
     }
 
     /// <summary>
@@ -230,7 +250,7 @@ public class SettingsStoreTests : IDisposable
         saving.Should().Throw<SettingsFileUnreadableException>();
 
         File.ReadAllText(_file.Path).Should().Be("{ \"Smtp\": { ", "the file is left for someone to correct");
-        configuration["Smtp:ProtectedPassword"].Should().NotBeNullOrEmpty("nothing reloaded over it");
+        Saved(configuration, "Smtp:ProtectedPassword").Should().NotBeNullOrEmpty("nothing reloaded over it");
     }
 
     /// <summary>
@@ -250,7 +270,7 @@ public class SettingsStoreTests : IDisposable
 
         SaveMailServer(store);
 
-        string? before = configuration[path];
+        string? before = Saved(configuration, path);
 
         Dictionary<string, string?> form = Form(store);
 
@@ -261,8 +281,8 @@ public class SettingsStoreTests : IDisposable
 
         result.Saved.Should().BeFalse();
         result.Errors.Should().ContainKey("Smtp:Password").And.HaveCount(1);
-        configuration[path].Should().Be(before, "a refused save writes nothing");
-        configuration["Smtp:FromName"].Should().BeNull("not even the fields that were fine");
+        Saved(configuration, path).Should().Be(before, "a refused save writes nothing");
+        Saved(configuration, "Smtp:FromName").Should().BeNull("not even the fields that were fine");
     }
 
     [Theory]
@@ -284,7 +304,7 @@ public class SettingsStoreTests : IDisposable
 
         store.Save(form).Saved.Should().BeTrue();
 
-        configuration[path].Should().Be(value);
+        Saved(configuration, path).Should().Be(value);
     }
 
     /// <summary>
@@ -326,7 +346,7 @@ public class SettingsStoreTests : IDisposable
         form["Smtp:Host"] = "attacker.example.net";
 
         store.Save(form).Saved.Should().BeFalse();
-        configuration["Smtp:Host"].Should().Be("mail.example.com");
+        Saved(configuration, "Smtp:Host").Should().Be("mail.example.com");
     }
 
     [Fact]
@@ -428,7 +448,7 @@ public class SettingsStoreTests : IDisposable
 
         SaveMailServer(store);
 
-        string? stored = configuration["Smtp:ProtectedPassword"];
+        string? stored = Saved(configuration, "Smtp:ProtectedPassword");
 
         Dictionary<string, string?> form = Form(store);
 
@@ -439,8 +459,8 @@ public class SettingsStoreTests : IDisposable
 
         result.Saved.Should().BeFalse();
         result.Errors.Should().ContainKey("Smtp:Password");
-        configuration["Smtp:Host"].Should().Be("mail.example.com", "a refused save writes nothing");
-        configuration["Smtp:ProtectedPassword"].Should().Be(stored);
+        Saved(configuration, "Smtp:Host").Should().Be("mail.example.com", "a refused save writes nothing");
+        Saved(configuration, "Smtp:ProtectedPassword").Should().Be(stored);
     }
 
     /// <summary>The test button reaches the same server a save would, so it refuses the omission too.</summary>
@@ -479,7 +499,7 @@ public class SettingsStoreTests : IDisposable
         });
 
         result.Saved.Should().BeTrue();
-        configuration["Smtp:Host"].Should().Be("mail.example.com");
+        Saved(configuration, "Smtp:Host").Should().Be("mail.example.com");
     }
 
     /// <summary>
@@ -493,7 +513,7 @@ public class SettingsStoreTests : IDisposable
 
         SaveMailServer(store);
 
-        string? stored = configuration["Smtp:ProtectedPassword"];
+        string? stored = Saved(configuration, "Smtp:ProtectedPassword");
 
         Dictionary<string, string?> form = Form(store);
 
@@ -502,8 +522,8 @@ public class SettingsStoreTests : IDisposable
 
         store.Save(form).Saved.Should().BeTrue();
 
-        configuration["Smtp:ProtectedPassword"].Should().Be(stored);
-        configuration["Smtp:FromName"].Should().Be("Workshop");
+        Saved(configuration, "Smtp:ProtectedPassword").Should().Be(stored);
+        Saved(configuration, "Smtp:FromName").Should().Be("Workshop");
     }
 
     /// <summary>
@@ -516,12 +536,12 @@ public class SettingsStoreTests : IDisposable
 
         store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "hunter2" });
 
-        string? first = configuration["Smtp:ProtectedPassword"];
+        string? first = Saved(configuration, "Smtp:ProtectedPassword");
 
         store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "something-else" });
 
-        configuration["Smtp:ProtectedPassword"].Should().NotBe(first);
-        _protector.Reveal(configuration["Smtp:ProtectedPassword"], "Smtp:ProtectedPassword")
+        Saved(configuration, "Smtp:ProtectedPassword").Should().NotBe(first);
+        _protector.Reveal(Saved(configuration, "Smtp:ProtectedPassword"), "Smtp:ProtectedPassword")
                   .Should()
                   .Be("something-else");
     }
@@ -534,7 +554,7 @@ public class SettingsStoreTests : IDisposable
         store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "hunter2" });
         store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = string.Empty });
 
-        configuration["Smtp:ProtectedPassword"].Should().BeNullOrEmpty();
+        Saved(configuration, "Smtp:ProtectedPassword").Should().BeNullOrEmpty();
         store.Current()["Smtp:Password"].Should().BeEmpty();
     }
 
@@ -580,6 +600,17 @@ public class SettingsStoreTests : IDisposable
         }
 
         return form;
+    }
+
+    /// <summary>
+    /// What the store saved, as it reads it - the running configuration holds restart-grade settings
+    /// at their startup values, and nearly everything here is one.
+    /// </summary>
+    private static string? Saved(IConfigurationRoot configuration, string key)
+    {
+        using ConfigurationRoot saved = SettingsFileProvider.Saved(configuration);
+
+        return saved[key];
     }
 
     private (SettingsStore store, IConfigurationRoot configuration) Store(IDictionary<string, string?>? beneath = null)

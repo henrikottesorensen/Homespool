@@ -55,5 +55,11 @@ public enum SettingGrade
     /// Written now, obeyed at the next service restart, because something is decided during startup
     /// from this value - which service is registered, or a value captured once when a loop begins.
     /// </summary>
+    /// <remarks>
+    /// <b>Held, not merely documented.</b> The settings layer keeps a restart-grade key at its startup
+    /// value until the process ends, so every read in the process agrees with what startup decided -
+    /// <c>IOptionsMonitor</c> and a late <c>IOptions</c> included. See
+    /// <see cref="SettingsFileProvider"/>.
+    /// </remarks>
     Restart = 3,
 }

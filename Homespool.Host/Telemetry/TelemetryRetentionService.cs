@@ -180,10 +180,12 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// shutdown, and rows are what bound the memory it occupies while it runs.
     /// </para>
     /// <para>
-    /// <b>The store is asked of <see cref="TelemetryStorageMode"/>, not of the options.</b> A settings
-    /// save reloads the options at once, while the database stays the one opened at startup until a
-    /// restart. Read from the options, switching the setting on would cap the durable table within
-    /// the hour, and switching it off would leave the in-memory store unbounded until the restart.
+    /// <b>The store is asked of <see cref="TelemetryStorageMode"/>, not of the options.</b> The question
+    /// is which database this process opened, and that is what the mode records. The options answer
+    /// the same only because the settings layer holds a restart-grade setting at its startup value;
+    /// were they ever to answer with a saved value instead, switching the setting on would cap the
+    /// durable table before the restart, and switching it off would leave the in-memory store
+    /// unbounded until it.
     /// </para>
     /// <para>
     /// <b>A row cap for the durable table is a separate question, and an open one.</b> The argument

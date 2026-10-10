@@ -32,6 +32,11 @@ namespace Homespool.Host.Configuration;
 /// application owns and the page maintains.
 /// </para>
 /// <para>
+/// <b>A reload changes only the settings that apply without a restart.</b> The layer is a
+/// <see cref="SettingsFileProvider"/>, which holds every restart-grade setting at its value from
+/// startup, so a save cannot reach a consumer the restart was meant to reach.
+/// </para>
+/// <para>
 /// <b>Written by rename, never in place.</b> A reload reads whatever is on disk at that moment, and
 /// a half-written file binds as readily as a whole one. Writing a temporary file in the same
 /// directory and moving it over the target makes the swap atomic, because a rename within one
@@ -122,7 +127,15 @@ public sealed class SettingsFile
 
         try
         {
-            configuration.AddJsonFile(_path, optional: true, reloadOnChange: false);
+            SettingsFileSource source = new()
+            {
+                Path = _path,
+                Optional = true,
+                ReloadOnChange = false,
+            };
+
+            source.ResolveFileProvider();
+            configuration.Add(source);
         }
         catch (InvalidDataException exception)
         {

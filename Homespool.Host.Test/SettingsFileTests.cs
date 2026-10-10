@@ -227,6 +227,7 @@ public class SettingsFileTests : IDisposable
 
     /// <summary>
     /// A saved value is visible after an explicit reload, which is what replaces the file watcher.
+    /// Which values a reload is allowed to change is <c>SettingsFileProviderTests</c>' subject.
     /// </summary>
     [Fact]
     public void AReloadPicksUpWhatWasWritten()
@@ -237,13 +238,13 @@ public class SettingsFileTests : IDisposable
 
         file.AddTo(configuration);
 
-        configuration["Smtp:Host"].Should().BeNull();
+        configuration["Invitations:LifetimeHours"].Should().BeNull();
 
-        file.Write(new JsonObject { ["Smtp"] = new JsonObject { ["Host"] = "mail.example.com" } });
+        file.Write(new JsonObject { ["Invitations"] = new JsonObject { ["LifetimeHours"] = "12" } });
 
         ((IConfigurationRoot)configuration).Reload();
 
-        configuration["Smtp:Host"].Should().Be("mail.example.com");
+        configuration["Invitations:LifetimeHours"].Should().Be("12");
     }
 
     [Fact]

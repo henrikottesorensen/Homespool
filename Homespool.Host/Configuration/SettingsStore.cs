@@ -25,6 +25,13 @@ namespace Homespool.Host.Configuration;
 /// still looking at the field they typed it into.
 /// </para>
 /// <para>
+/// <b>Everything here reads the configuration as saved</b>, through
+/// <see cref="SettingsFileProvider.Saved"/>, and nothing else in the application should. The
+/// configuration the application runs on holds restart-grade settings at their startup values; read
+/// from that, the page would show a saved value reverting the moment it was saved, and the checks
+/// below would judge a save against settings that are about to stop applying.
+/// </para>
+/// <para>
 /// <b>A secret is never read back out to a browser.</b> The page renders
 /// <see cref="SecretPlaceholder"/> when one is stored, and a post carrying that placeholder means
 /// "leave it alone". That lets somebody change the sender name without re-typing a password they
@@ -49,13 +56,15 @@ public sealed class SettingsStore
     /// </summary>
     public const string SecretPlaceholder = "****";
 
-    private readonly IConfiguration _configuration;
+    private readonly IConfigurationRoot _configuration;
     private readonly SettingsFile _file;
     private readonly SettingsSecretProtector _protector;
     private readonly IStringLocalizer<SharedResource> _localiser;
 
     /// <summary>Creates the store.</summary>
-    /// <param name="configuration">The application's configuration, reloaded after a write.</param>
+    /// <param name="configuration">
+    /// The application's configuration, reloaded after a write and read through its saved view.
+    /// </param>
     /// <param name="file">The file the values are stored in.</param>
     /// <param name="protector">Encrypts and decrypts the secrets among them.</param>
     /// <param name="localiser">The refusal a secret that cannot be carried over is reported with.</param>
@@ -69,14 +78,17 @@ public sealed class SettingsStore
         ArgumentNullException.ThrowIfNull(protector);
         ArgumentNullException.ThrowIfNull(localiser);
 
-        _configuration = configuration;
+        _configuration = configuration as IConfigurationRoot ??
+                         throw new ArgumentException("The store reloads the configuration it reads, so it needs the root.",
+                                                     nameof(configuration));
         _file = file;
         _protector = protector;
         _localiser = localiser;
     }
 
     /// <summary>
-    /// The value each editable setting currently has, as the application sees it.
+    /// The value each editable setting has as saved: in force for a setting that applies without a
+    /// restart, and what the next start will use for one that does not.
     /// </summary>
     /// <remarks>
     /// A secret answers <see cref="SecretPlaceholder"/> when one is stored and empty when none is, so
@@ -89,11 +101,13 @@ public sealed class SettingsStore
 
         Dictionary<Type, object> bound = [];
 
+        using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
+
         foreach (EditableSetting setting in EditableSettings.All)
         {
             if (setting.IsSecret)
             {
-                values[setting.Path] = HasStoredSecret(setting) ? SecretPlaceholder : string.Empty;
+                values[setting.Path] = HasStoredSecret(saved, setting) ? SecretPlaceholder : string.Empty;
 
                 continue;
             }
@@ -101,10 +115,10 @@ public sealed class SettingsStore
             // Bound, not read raw. Most of these have no entry in appsettings.json at all - their
             // value is the property initialiser - so asking configuration directly answers null and
             // the page shows an empty box for a setting that is very much in force. Binding gives
-            // the value the application is actually using, which is the only one worth showing.
+            // the value the setting resolves to, which is the only one worth showing.
             if (!bound.TryGetValue(setting.OptionsType, out object? instance))
             {
-                instance = Candidate(setting.OptionsType, setting.Section, new Dictionary<string, string?>());
+                instance = Candidate(saved, setting.OptionsType, setting.Section, new Dictionary<string, string?>());
                 bound[setting.OptionsType] = instance;
             }
 
@@ -134,6 +148,8 @@ public sealed class SettingsStore
         JsonObject stored = _file.Read();
         Dictionary<string, string?> pending = [];
 
+        using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
+
         foreach (EditableSetting setting in EditableSettings.All)
         {
             if (!submitted.TryGetValue(setting.Path, out string? value))
@@ -159,9 +175,9 @@ public sealed class SettingsStore
             pending[setting.Path] = value;
         }
 
-        Dictionary<string, string> errors = new(Validate(pending), StringComparer.Ordinal);
+        Dictionary<string, string> errors = new(Validate(saved, pending), StringComparer.Ordinal);
 
-        foreach (string path in SecretsThatCannotCarryOver(submitted))
+        foreach (string path in SecretsThatCannotCarryOver(saved, submitted))
         {
             errors[path] = _localiser["Settings_Refuse_SecretNotCarriedOver"];
         }
@@ -178,9 +194,10 @@ public sealed class SettingsStore
 
         _file.Write(stored);
 
-        // The layer is registered without a watcher, so this is what makes the write visible. It
-        // also fires the change token every IOptionsMonitor is listening on.
-        (_configuration as IConfigurationRoot)?.Reload();
+        // The layer is registered without a watcher, so this is what makes the write visible - to the
+        // settings that apply without a restart, the layer holding the rest. It also fires the change
+        // token every IOptionsMonitor is listening on.
+        _configuration.Reload();
 
         return new SettingsSaveResult(true, errors);
     }
@@ -216,7 +233,9 @@ public sealed class SettingsStore
 
         string section = settings[0].Section;
 
-        HashSet<string> refused = [.. SecretsThatCannotCarryOver(submitted)];
+        using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
+
+        HashSet<string> refused = [.. SecretsThatCannotCarryOver(saved, submitted)];
 
         Dictionary<string, string?> overlay = [];
 
@@ -231,11 +250,11 @@ public sealed class SettingsStore
             // "the stored one" - so the stored one is what gets tested, the check above having
             // established it is being tested against what it was stored for.
             overlay[setting.Key] = setting.IsSecret && value == SecretPlaceholder ?
-                _protector.Reveal(_configuration[setting.StoredPath], setting.StoredPath) :
+                _protector.Reveal(saved[setting.StoredPath], setting.StoredPath) :
                 value;
         }
 
-        object candidate = Checked(typeof(T), section, overlay, out Dictionary<string, string> errors);
+        object candidate = Checked(saved, typeof(T), section, overlay, out Dictionary<string, string> errors);
 
         foreach (EditableSetting setting in settings.Where(setting => refused.Contains(setting.Path)))
         {
@@ -252,9 +271,10 @@ public sealed class SettingsStore
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Compared as bound values, against what is in force</b> - the settings file over everything
+    /// <b>Compared as bound values, against what is saved</b> - the settings file over everything
     /// beneath it, so a password supplied by the environment is held to the same rule as a stored
-    /// one. Binding is what makes <c>587</c> and <c>0587</c>, or <c>True</c> and <c>true</c>, the
+    /// one. Saved rather than in force, because the stored secret is what the placeholder carries and
+    /// the saved destination is the one it was typed for. Binding is what makes <c>587</c> and <c>0587</c>, or <c>True</c> and <c>true</c>, the
     /// same answer. Text is compared without regard to case: a host name has none, and an account name
     /// differing only in case still goes to the same server. A value refused on its own - one that
     /// will not convert, or fails its checks - names no server the secret could reach, so it changes
@@ -276,7 +296,8 @@ public sealed class SettingsStore
     /// it was not built by the page.
     /// </para>
     /// </remarks>
-    private List<string> SecretsThatCannotCarryOver(IReadOnlyDictionary<string, string?> submitted)
+    private List<string> SecretsThatCannotCarryOver(IConfiguration saved,
+                                                    IReadOnlyDictionary<string, string?> submitted)
     {
         List<string> refused = [];
 
@@ -298,8 +319,9 @@ public sealed class SettingsStore
 
             string section = group.First().Section;
 
-            object current = Candidate(group.Key, section, new Dictionary<string, string?>());
+            object current = Candidate(saved, group.Key, section, new Dictionary<string, string?>());
             object proposed = Checked(
+                saved,
                 group.Key,
                 section,
                 binding.ToDictionary(setting => setting.Key, setting => submitted[setting.Path]),
@@ -311,7 +333,7 @@ public sealed class SettingsStore
                 continue;
             }
 
-            refused.AddRange(secrets.Where(setting => CarriesOver(setting, submitted, current))
+            refused.AddRange(secrets.Where(setting => CarriesOver(saved, setting, submitted, current))
                                     .Select(setting => setting.Path));
         }
 
@@ -327,14 +349,17 @@ public sealed class SettingsStore
     /// nothing to carry anywhere, and refusing there would block a save that changes a host before
     /// mail is configured at all.
     /// </remarks>
-    private bool CarriesOver(EditableSetting setting, IReadOnlyDictionary<string, string?> submitted, object current)
+    private static bool CarriesOver(IConfiguration saved,
+                                    EditableSetting setting,
+                                    IReadOnlyDictionary<string, string?> submitted,
+                                    object current)
     {
         if (submitted.TryGetValue(setting.Path, out string? value))
         {
             return value == SecretPlaceholder;
         }
 
-        return !string.IsNullOrEmpty(_configuration[setting.StoredPath]) ||
+        return !string.IsNullOrEmpty(saved[setting.StoredPath]) ||
                !string.IsNullOrEmpty(setting.OptionsType.GetProperty(setting.Key)!.GetValue(current) as string);
     }
 
@@ -350,13 +375,16 @@ public sealed class SettingsStore
             Equals(before, after);
     }
 
-    private object Candidate(Type type, string section, IReadOnlyDictionary<string, string?> overlay)
+    private static object Candidate(IConfiguration saved,
+                                    Type type,
+                                    string section,
+                                    IReadOnlyDictionary<string, string?> overlay)
     {
-        return Candidate(type, section, overlay, out _);
+        return Candidate(saved, type, section, overlay, out _);
     }
 
     /// <summary>
-    /// The section as it is in force, with the submitted values bound over it.
+    /// The section as saved, with the submitted values bound over it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -364,21 +392,22 @@ public sealed class SettingsStore
     /// the next load: anything accepted here is accepted there. It throws on the first value it cannot
     /// convert - <c>abc</c> for a number, <c>70000</c> for a <c>ushort</c>, <c>0,5</c> for a
     /// <c>double</c> - so each value is bound on its own. One that will not convert is reported in
-    /// <paramref name="unreadable"/> and leaves its property at the value in force, which keeps it out
+    /// <paramref name="unreadable"/> and leaves its property at the saved value, which keeps it out
     /// of every other check: it is not also out of range, and it is not a different mail server.
     /// </para>
     /// <para>
     /// Each binding names one scalar property, so a conversion is the only thing it can fail on.
     /// </para>
     /// </remarks>
-    private object Candidate(Type type,
-                             string section,
-                             IReadOnlyDictionary<string, string?> overlay,
-                             out List<string> unreadable)
+    private static object Candidate(IConfiguration saved,
+                                    Type type,
+                                    string section,
+                                    IReadOnlyDictionary<string, string?> overlay,
+                                    out List<string> unreadable)
     {
         object instance = Activator.CreateInstance(type)!;
 
-        _configuration.GetSection(section).Bind(instance);
+        saved.GetSection(section).Bind(instance);
 
         unreadable = [];
 
@@ -401,17 +430,19 @@ public sealed class SettingsStore
     /// Binds the submitted values over a section and checks the result, reporting each failure
     /// against the path it belongs to.
     /// </summary>
+    /// <param name="saved">The configuration as saved.</param>
     /// <param name="type">The options type.</param>
     /// <param name="section">Its configuration section.</param>
     /// <param name="overlay">Submitted values, keyed by property name.</param>
     /// <param name="errors">Every failure, a value that would not convert or one that fails its checks.</param>
     /// <returns>The candidate instance.</returns>
-    private object Checked(Type type,
+    private object Checked(IConfiguration saved,
+                           Type type,
                            string section,
                            IReadOnlyDictionary<string, string?> overlay,
                            out Dictionary<string, string> errors)
     {
-        object instance = Candidate(type, section, overlay, out List<string> unreadable);
+        object instance = Candidate(saved, type, section, overlay, out List<string> unreadable);
 
         errors = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -497,17 +528,18 @@ public sealed class SettingsStore
         section[parts[1]] = JsonValue.Create(value);
     }
 
-    private bool HasStoredSecret(EditableSetting setting)
+    private static bool HasStoredSecret(IConfiguration saved, EditableSetting setting)
     {
-        return !string.IsNullOrEmpty(_configuration[setting.StoredPath]) ||
-               !string.IsNullOrEmpty(_configuration[setting.Path]);
+        return !string.IsNullOrEmpty(saved[setting.StoredPath]) ||
+               !string.IsNullOrEmpty(saved[setting.Path]);
     }
 
     /// <summary>
     /// Binds what the deployment would have after this save and checks it, so a bad value is refused
     /// while somebody can still see the field it came from.
     /// </summary>
-    private IReadOnlyDictionary<string, string> Validate(IReadOnlyDictionary<string, string?> pending)
+    private IReadOnlyDictionary<string, string> Validate(IConfiguration saved,
+                                                         IReadOnlyDictionary<string, string?> pending)
     {
         Dictionary<string, string> errors = [];
 
@@ -526,7 +558,7 @@ public sealed class SettingsStore
                 continue;
             }
 
-            Checked(group.Key, section, overlay, out Dictionary<string, string> found);
+            Checked(saved, group.Key, section, overlay, out Dictionary<string, string> found);
 
             foreach (EditableSetting setting in group.Where(setting => overlay.ContainsKey(setting.Key)))
             {

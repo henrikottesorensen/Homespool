@@ -1583,9 +1583,11 @@ public class PrinterConnectionActorTests
 
         // Act
         await cts.CancelAsync();
-        await actor.PostAsync(new CommandDeliveredMessage(taken), CancellationToken.None);
+        bool released = await DeliverAsync(actor, taken);
 
         // Assert
+        released.Should().BeTrue("the connection is not being torn down, so the poll may carry it");
+
         CommandCancelledAfterDeliveryException thrown =
             await Assert.ThrowsAsync<CommandCancelledAfterDeliveryException>(() => Eventually(send));
         thrown.CommandId.Should().Be(taken.CommandId);
@@ -1609,7 +1611,7 @@ public class PrinterConnectionActorTests
 
         // Act
         await cts.CancelAsync();
-        await actor.PostAsync(new CommandDeliveredMessage(taken), CancellationToken.None);
+        await DeliverAsync(actor, taken);
 
         // Assert
         (await Assert.ThrowsAsync<CommandCancelledAfterDeliveryException>(() => Eventually(reset)))
@@ -1646,6 +1648,106 @@ public class PrinterConnectionActorTests
             .CommandId.Should().Be(collected.CommandId);
 
         await AssertTheSlotIsHeldUntilAnsweredAsync(actor, collected.CommandId);
+    }
+
+    /// <summary>
+    /// A take queued before a teardown began is answered with nothing: the teardown reports the
+    /// command <see cref="CommandSendOutcome.NotConnected"/>, which is true only if no response carries it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The loop is held so the take queues behind the hold, then the actor is completed - the order a
+    /// displacement or a printer's removal produces when it lands while a printer is polling.
+    /// </para>
+    /// <para>
+    /// The take is posted bare rather than through <see cref="HttpCommandCollection"/>, whose delivery
+    /// would meet the closed mailbox and keep the command back on its own. This is the loop's answer,
+    /// which has to be right without that second step.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ATakeQueuedAheadOfATeardownIsAnsweredWithNothing()
+    {
+        // Arrange
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.StartPrint { Path = "/usb/BENCHY.BGC" },
+                                                              CancellationToken.None);
+
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" }),
+                              CancellationToken.None);
+        await WaitUntilAsync(() => sink.IsHeld);
+
+        TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
+
+        // Act
+        actor.Complete();
+        sink.Release();
+
+        // Assert
+        (await Eventually(take.Task)).Should().BeNull("the connection was being torn down when the take reached the loop");
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A command a poll took before a teardown began, and whose delivery the loop reaches only during
+    /// it, is kept out of the response for the same reason.
+    /// </summary>
+    [Fact]
+    public async Task ADeliveryReachedDuringATeardownKeepsTheCommandBack()
+    {
+        // Arrange
+        using GatedTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(new HttpPrinterConnection(TimeProvider.System), sink);
+
+        Task<CommandSendResult> send = actor.SendCommandAsync(new PrusaConnect.Commands.StartPrint { Path = "/usb/BENCHY.BGC" },
+                                                              CancellationToken.None);
+        PendingCommand taken = await TakeAsync(actor);
+
+        await actor.PostAsync(new InboundTelemetryMessage(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" }),
+                              CancellationToken.None);
+        await WaitUntilAsync(() => sink.IsHeld);
+
+        TaskCompletionSource<bool> delivery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new CommandDeliveredMessage(taken, delivery), CancellationToken.None);
+
+        // Act
+        actor.Complete();
+        sink.Release();
+
+        // Assert
+        (await Eventually(delivery.Task)).Should().BeFalse("the loop was draining when it reached the delivery");
+        (await Eventually(send)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A poll whose take fails in the loop is answered with the failure rather than left waiting: it
+    /// waits without a token of its own, so nothing else would end it.
+    /// </summary>
+    [Fact]
+    public async Task APollWhoseTakeFaultsIsAnswered()
+    {
+        // Arrange
+        IPrinterConnection connection = Substitute.For<IPrinterConnection>();
+        connection.IsOpen.Returns(true);
+        connection.TakeParkedCommand().Returns(_ => throw new InvalidOperationException("the slot could not be read"));
+
+        PrinterConnectionActor actor = NewActor(connection);
+
+        // Act
+        Func<Task> poll = () => Eventually(HttpCommandCollection.CollectAsync(actor, CancellationToken.None));
+
+        // Assert
+        await poll.Should().ThrowAsync<InvalidOperationException>();
+
+        actor.Complete();
+        await Eventually(actor.Completion);
     }
 
     /// <summary>
@@ -1686,6 +1788,18 @@ public class PrinterConnectionActorTests
         await actor.PostAsync(new TakePendingCommandMessage(take), CancellationToken.None);
 
         return (await Eventually(take.Task))!;
+    }
+
+    /// <summary>
+    /// A poll's confirmation that its response will carry <paramref name="taken"/>, and the loop's
+    /// answer to it.
+    /// </summary>
+    private static async Task<bool> DeliverAsync(PrinterConnectionActor actor, PendingCommand taken)
+    {
+        TaskCompletionSource<bool> delivery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await actor.PostAsync(new CommandDeliveredMessage(taken, delivery), CancellationToken.None);
+
+        return await Eventually(delivery.Task);
     }
 
     /// <summary>

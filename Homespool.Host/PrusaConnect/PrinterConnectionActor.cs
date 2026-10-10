@@ -159,7 +159,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// Reading <c>Exception</c> is what marks it observed; a caller still waiting receives it
     /// unchanged.
     /// </remarks>
-    private static void Fail(TaskCompletionSource<CommandSendResult> completion, Exception error)
+    /// <typeparam name="T">What the completion answers with: a send's result, or an answer to a poll.</typeparam>
+    private static void Fail<T>(TaskCompletionSource<T> completion, Exception error)
     {
         if (completion.TrySetException(error))
         {
@@ -454,6 +455,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                     {
                         Fail(send.Completion, e);
                     }
+                    else if (message is TakePendingCommandMessage take)
+                    {
+                        // A poll waits on this without a token of its own, so it is answered too:
+                        // unanswered, the printer's request would hang until it gave up.
+                        Fail(take.Completion, e);
+                    }
                     else if (_faultWarnings.Record() is LogThrottleWindow window)
                     {
                         if (window.IsFirstOccurrence)
@@ -537,6 +544,15 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </remarks>
     private void HandleTakePending(TakePendingCommandMessage take)
     {
+        if (_draining)
+        {
+            // Queued before the teardown began. The loop's finally reports the command as never having
+            // left, so it is kept here rather than handed to a poll that would have to know to drop it.
+            take.Completion.TrySetResult(null);
+
+            return;
+        }
+
         // Polling at all, even with nothing to collect, is a printer collecting again.
         _uncollected = false;
 
@@ -621,9 +637,24 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// A command that expects no reply is settled here, as <see cref="CommandSendOutcome.Dispatched"/>,
     /// and gives up the slot: delivery is the whole of its outcome. One that expects a reply keeps the
     /// slot and its response clock, which has been running since the take.
+    /// <para>
+    /// <b>Refused once the teardown has begun</b>, for the reason the take is: the loop's finally
+    /// reports the command <see cref="CommandSendOutcome.NotConnected"/>, so the poll must not carry
+    /// it. A delivery that no longer matches the slot is still let go: its caller has already been
+    /// answered, by the response timeout, which allows for the printer having it, or by the printer.
+    /// </para>
     /// </remarks>
     private void HandleDelivered(CommandDeliveredMessage delivered)
     {
+        if (_draining)
+        {
+            delivered.Completion.TrySetResult(false);
+
+            return;
+        }
+
+        delivered.Completion.TrySetResult(true);
+
         if (_pending is not { SentAt: not null, Delivered: false } pending ||
             pending.CommandId != delivered.Command.CommandId)
         {

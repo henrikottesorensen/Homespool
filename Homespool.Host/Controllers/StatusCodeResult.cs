@@ -104,4 +104,11 @@ public static class Status
         /// <inheritdoc />
         public static int Code => StatusCodes.Status416RangeNotSatisfiable;
     }
+
+    /// <summary>503, for a printer's message that reached a connection as it was being torn down.</summary>
+    public readonly struct ServiceUnavailable : IStatusCode
+    {
+        /// <inheritdoc />
+        public static int Code => StatusCodes.Status503ServiceUnavailable;
+    }
 }

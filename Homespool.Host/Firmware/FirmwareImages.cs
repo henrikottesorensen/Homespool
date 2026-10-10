@@ -196,7 +196,42 @@ public sealed class FirmwareImages
             };
 
             _dbContext.Files.Add(row);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // Another upload saved between the checks above and this save: the same image, which
+                // the digest's unique index refused a second row for, or another image under this
+                // name. Answered as the checks would have answered had it been there first.
+                _dbContext.Entry(row).State = EntityState.Detached;
+
+                HSFile? first = await _dbContext.Files
+                                                .AsNoTracking()
+                                                .FirstOrDefaultAsync(candidate => candidate.Type == FileType.PrusaFirmware &&
+                                                                                  candidate.Digest == digest,
+                                                                     cancellationToken);
+
+                if (first is not null)
+                {
+                    return Describe(first, check.Header!);
+                }
+
+                // No row holds these bytes, so the file moved into place above is nobody's.
+                File.Delete(PathFor(digest));
+
+                if (await _dbContext.Files.AnyAsync(candidate => candidate.Type == FileType.PrusaFirmware &&
+                                                                 candidate.UserId == caller.UserId &&
+                                                                 candidate.Name == name,
+                                                    cancellationToken))
+                {
+                    throw new FirmwareImageRefusedException(name, FirmwareImageRefusal.NameTaken, check);
+                }
+
+                throw;
+            }
 
             _logger.LogInformation("Stored firmware {Version} for printer type {Build} as {FileName}, uploaded by user {UserId}",
                                    check.Header!.Version, PrusaFirmwareCompatibility.BuildOf(check.Header), name, caller.UserId);

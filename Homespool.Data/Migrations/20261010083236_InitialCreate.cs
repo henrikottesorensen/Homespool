@@ -969,6 +969,13 @@ namespace Homespool.Data.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "IX_Files_FirmwareDigest",
+                table: "Files",
+                column: "Digest",
+                unique: true,
+                filter: "\"Type\" = 'PrusaFirmware'");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Files_UserId_Type_Name",
                 table: "Files",
                 columns: new[] { "UserId", "Type", "Name" },

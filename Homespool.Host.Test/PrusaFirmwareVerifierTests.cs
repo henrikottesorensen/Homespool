@@ -249,7 +249,7 @@ public sealed class PrusaFirmwareVerifierTests
     public async Task AnotherTarballWithAMatchingDigestEntryIsRefused(TarballChange change)
     {
         // Arrange
-        byte[] other = [.. TestFirmwareImages.ResourcesTarball.Reverse()];
+        byte[] other = TestFirmwareImages.Tarball("/other.bin", [.. Enumerable.Range(0, 64).Select(i => (byte)(255 - i))]);
         byte[] entries = change == TarballChange.Resources ?
             TestFirmwareImages.Entries(other, TestFirmwareImages.BootloaderTarball) :
             TestFirmwareImages.Entries(TestFirmwareImages.ResourcesTarball, other);
@@ -277,6 +277,35 @@ public sealed class PrusaFirmwareVerifierTests
 
         // Assert
         check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesChanged);
+    }
+
+    /// <summary>
+    /// The 10-09 review's case: a pre-6.6 firmware names its littlefs images' content hashes, each a
+    /// SHA-256 over a stream anyone can rebuild - marks, paths and file bytes - so those streams would
+    /// pass as tarballs whose digests the firmware names. They are not tarballs, and are refused.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AContentHashStreamPassedAsATarballIsRefused(bool padded)
+    {
+        // Arrange - streams shaped as mklittlefs.py hashes: a counter, a path, a counter, file bytes...
+        byte[] Stream(string path, int length)
+        {
+            byte[] stream = [0, 0, 0, 0, .. System.Text.Encoding.ASCII.GetBytes(path), 1, 0, 0, 0, .. Enumerable.Range(0, length).Select(i => (byte)i)];
+
+            return padded ? [.. stream, .. new byte[(512 - (stream.Length % 512)) % 512]] : stream;
+        }
+
+        byte[] resources = Stream("/", 300);
+        byte[] bootloader = Stream("/bootloader.bin", 200);
+
+        // Act - a firmware naming the streams' digests, as a pre-6.6 one names its content hashes
+        PrusaFirmwareCheck check = await CheckAsync(TestFirmwareImages.Build(entries: TestFirmwareImages.Entries(resources, bootloader),
+                                                                             named: (SHA256.HashData(resources), SHA256.HashData(bootloader))));
+
+        // Assert
+        check.Verdict.Should().Be(PrusaFirmwareVerdict.ResourcesUnreadable);
     }
 
     /// <summary>
@@ -548,12 +577,18 @@ public sealed class PrusaFirmwareVerifierTests
     }
 
     [Theory]
-    [InlineData(3)]
-    [InlineData(EntryHeader + 10)]
-    [InlineData(EntryHeader + 64 + EntryHeader + 10)]
-    public async Task AnImageThatEndsInsideItsEntriesIsTruncated(int keep)
+    [InlineData("an entry's type and length")]
+    [InlineData("a tarball")]
+    [InlineData("a digest")]
+    public async Task AnImageThatEndsInsideItsEntriesIsTruncated(string inside)
     {
         // Arrange
+        int keep = inside switch
+        {
+            "an entry's type and length" => 3,
+            "a tarball" => EntryHeader + 10,
+            _ => EntryHeader + TestFirmwareImages.ResourcesTarball.Length + EntryHeader + 10,
+        };
         byte[] image = TestFirmwareImages.Build()[..(EntriesFrom + keep)];
 
         // Act

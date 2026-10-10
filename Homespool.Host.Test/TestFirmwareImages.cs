@@ -56,11 +56,11 @@ internal static class TestFirmwareImages
     /// <summary>The verifier holding <see cref="Key"/>.</summary>
     public static PrusaFirmwareVerifier Verifier { get; } = new(PublicKeyOf(Key));
 
-    /// <summary>The resources tarball every built image carries.</summary>
-    public static byte[] ResourcesTarball { get; } = [.. Enumerable.Range(0, 64).Select(i => (byte)(i + 0x10))];
+    /// <summary>The resources tarball every built image carries: one file, as a printer unpacks it.</summary>
+    public static byte[] ResourcesTarball { get; } = Tarball("/resources.bin", [.. Enumerable.Range(0, 64).Select(i => (byte)(i + 0x10))]);
 
     /// <summary>The bootloader tarball every built image carries.</summary>
-    public static byte[] BootloaderTarball { get; } = [.. Enumerable.Range(0, 48).Select(i => (byte)(i + 0x80))];
+    public static byte[] BootloaderTarball { get; } = Tarball("/bootloader.bin", [.. Enumerable.Range(0, 48).Select(i => (byte)(i + 0x80))]);
 
     /// <summary>
     /// An image: a Core One 7.0.0 build unless told otherwise, <see cref="FirmwareLength"/> bytes of
@@ -148,6 +148,44 @@ internal static class TestFirmwareImages
 
         return [.. Entry(firstType, image), .. Entry((byte)(firstType + 1), size),
                 .. Entry((byte)(firstType + 2), count), .. Entry((byte)(firstType + 3), contentHash)];
+    }
+
+    /// <summary>
+    /// A ustar tarball of one file: its header, its content padded to a block, and two zero blocks to
+    /// close - the shape Python's tarfile writes for Prusa's build.
+    /// </summary>
+    public static byte[] Tarball(string name, byte[] content)
+    {
+        byte[] header = new byte[512];
+        Encoding.ASCII.GetBytes(name).CopyTo(header, 0);
+        Encoding.ASCII.GetBytes("0000644\0").CopyTo(header, 100);
+        Encoding.ASCII.GetBytes("0000000\0").CopyTo(header, 108);
+        Encoding.ASCII.GetBytes("0000000\0").CopyTo(header, 116);
+        Encoding.ASCII.GetBytes(Convert.ToString(content.Length, 8).PadLeft(11, '0') + "\0").CopyTo(header, 124);
+        Encoding.ASCII.GetBytes("00000000000\0").CopyTo(header, 136);
+        header[156] = (byte)'0';
+        Encoding.ASCII.GetBytes("ustar\0").CopyTo(header, 257);
+        Encoding.ASCII.GetBytes("00").CopyTo(header, 263);
+        SealTarballHeader(header);
+
+        int padded = (content.Length + 511) / 512 * 512;
+
+        return [.. header, .. content, .. new byte[padded - content.Length], .. new byte[1024]];
+    }
+
+    /// <summary>Writes a ustar header's checksum: its bytes summed with the checksum field as spaces.</summary>
+    public static void SealTarballHeader(Span<byte> header)
+    {
+        header.Slice(148, 8).Fill((byte)' ');
+
+        int sum = 0;
+
+        foreach (byte b in header[..512])
+        {
+            sum += b;
+        }
+
+        Encoding.ASCII.GetBytes(Convert.ToString(sum, 8).PadLeft(6, '0') + "\0 ").CopyTo(header[148..]);
     }
 
     /// <summary>One entry: its type, its length as a little-endian 32-bit number, its content.</summary>

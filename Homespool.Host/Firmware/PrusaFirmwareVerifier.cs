@@ -42,6 +42,11 @@ namespace Homespool.Host.Firmware;
 /// the two tarballs swapped with their digests still install.
 /// </para>
 /// <para>
+/// <b>Each tarball must be a tarball</b> (<see cref="PrusaTarball"/>), as well as hash to its digest:
+/// the layout is chosen by the first entry, which nothing signs, and a pre-6.6 firmware's content
+/// hashes are SHA-256 over streams anyone can rebuild - which would otherwise pass as tarballs.
+/// </para>
+/// <para>
 /// <b>Releases before 6.6 pack their resources as littlefs images</b>, types 1 to 8: the resources
 /// image, its block size, its block count and its content hash, then the same four for the bootloader.
 /// Here the firmware has the content hash compiled in - a hash over the files inside, not the image's
@@ -314,6 +319,7 @@ public sealed class PrusaFirmwareVerifier
         byte[]? expected = [];
         byte[] image = [];
         uint blockSize = 0;
+        bool tarballWellFormed = false;
 
         for (int i = 0; layout is null || i < layout.Length; i++)
         {
@@ -354,27 +360,18 @@ public sealed class PrusaFirmwareVerifier
                 return new Entries(PrusaFirmwareVerdict.Truncated, []);
             }
 
-            if (kind == EntryKind.Tarball)
-            {
-                using IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-
-                if (!await ReadThroughAsync(content, length, hash, search: null, cancellationToken))
-                {
-                    return new Entries(PrusaFirmwareVerdict.Truncated, []);
-                }
-
-                expected = hash.GetHashAndReset();
-
-                continue;
-            }
-
-            // Everything else is read whole: the digests and numbers are a few bytes, and an image is
-            // walked as a filesystem, which a stream cannot be.
+            // Read whole: the digests and numbers are a few bytes, and a tarball or an image is walked
+            // for its shape, which a stream cannot be.
             byte[] value = new byte[length];
             await content.ReadExactlyAsync(value, cancellationToken);
 
             switch (kind)
             {
+                case EntryKind.Tarball:
+                    expected = SHA256.HashData(value);
+                    tarballWellFormed = PrusaTarball.IsWellFormed(value);
+                    break;
+
                 case EntryKind.Image:
                     image = value;
                     break;
@@ -391,6 +388,13 @@ public sealed class PrusaFirmwareVerifier
                     if (expected is null || !value.AsSpan().SequenceEqual(expected))
                     {
                         return new Entries(PrusaFirmwareVerdict.ResourcesChanged, []);
+                    }
+
+                    // The bytes are the ones the digest names; the tarball layout also needs them to be
+                    // a tarball, or a pre-6.6 firmware's content-hash streams would pass as one.
+                    if (kind == EntryKind.TarballDigest && !tarballWellFormed)
+                    {
+                        return new Entries(PrusaFirmwareVerdict.ResourcesUnreadable, []);
                     }
 
                     digests.Add(value);

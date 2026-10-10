@@ -43,8 +43,8 @@
 #     history of the PUBLISHED revision - which every deployment following that tag asks for - and
 #     finds its own revision in the answer, so the one thing that would identify this deployment's
 #     build, and with it its known defects, never leaves the machine. A page at a time, up to
-#     history_pages of them; a running revision further back than that is said to be, and the count
-#     becomes a floor.
+#     history_pages of them; a running revision not among them is said to be, and the count is of
+#     what was read - it may be further back, or not in that history at all.
 #   - The .NET runtime, when the published image carries a newer one: every release in between, from
 #     Microsoft's release metadata, and whether it was a security release.
 #   - The Go modules compiled into the camera sidecar, when the published image took newer ones.
@@ -58,6 +58,12 @@
 # all of them equal, and the published image is this one stamped with another commit - restamped,
 # not newer. The same tree with another input - packages refreshed on another day, another
 # toolchain - is newer, and says so only for what the list above counts.
+#
+# AN OLDER RELEASE IS NOT AN UPDATE. A tag can come to hold an older release than the one running - a
+# registry is anybody's to re-point - and the history cannot tell: it finds the running revision
+# missing from the published one's past, which is also what being far behind looks like. When both
+# images carry a release version, numbers separated by dots, the published one being lower is
+# reported as older, with nothing to take. Without one on either side the history is all there is.
 #
 # A running revision only counts when the running image's source label names the same repository as
 # the published one. An image built before Homespool labelled itself inherits its base's labels, and
@@ -176,6 +182,15 @@ inputs() {
         | ["\($ns).context.tree", "org.opencontainers.image.base.digest", "\($ns).builder.digest",
            "\($ns).go.modules", "\($ns).packages.refreshed"]
         | map($l[.] // "") | join(" ")' "$1"
+}
+
+# Succeeds when $1 and $2 are both release versions - numbers separated by dots - and $1 is the lower,
+# compared number by number: 0.10 is above 0.9, and 0.1 is the same release as 0.1.0.
+older_release() {
+    jq -n -e --arg a "$1" --arg b "$2" '
+        def release: test("^[0-9]+(\\.[0-9]+)*$");
+        def numbers: split(".") | map(tonumber) | until(length == 1 or .[-1] != 0; .[:-1]);
+        ($a | release) and ($b | release) and (($a | numbers) < ($b | numbers))' >/dev/null
 }
 
 # The next page of a history, added to the file of pages so far. The page count and the last page's
@@ -373,6 +388,23 @@ compare() {
             continue
         fi
 
+        # --- an older release, which the history below would count as fixes ---
+        published_version="$(label org.opencontainers.image.version "$pub")"
+        running_version="$(label org.opencontainers.image.version "$run")"
+        [ "$running_source" = "$published_source" ] || running_version=""
+        if older_release "$published_version" "$running_version"; then
+            jq -n --arg s "$service" --arg r "$reference" --arg d "$published_digest" \
+                --arg pr "$published_revision" --arg rr "$running_revision" \
+                --arg pb "$published_base" --arg rb "$running_base" \
+                --arg pv "$published_version" --arg rv "$running_version" '{
+                    service: $s, reference: $r, status: "older", digest: $d,
+                    running: {revision: $rr, base: $rb, version: $rv},
+                    published: {revision: $pr, base: $pb, version: $pv}
+                }' > "$entry"
+            echo "$service: the published image is release $published_version, older than the running $running_version ($reference is $published_digest)"
+            continue
+        fi
+
         # --- Homespool, from the published revision's history ---
         printf 'null\n' > "$work/$service.homespool.json"
         printf 'null\n' > "$work/$service.compose.json"
@@ -446,8 +478,8 @@ compare() {
                     (if $h == null then empty
                      else ($h.by_type.fix // 0) as $f
                      | if $h.found then (if $f > 0 then fixes($f) else empty end)
-                       elif $f > 0 then "at least \(fixes($f)) (the running revision is older than the \($h.read) commits read)"
-                       else "a running revision older than the \($h.read) commits read, so what changed since is not known" end
+                       elif $f > 0 then "\(fixes($f)) in the \($h.read) commits read, which do not reach the running revision"
+                       else "the \($h.read) commits read do not reach the running revision, so what changed since is not known" end
                      end),
                     (if $rt != null then ($rt.releases[] | select(.security) | ".NET \(.version), a security release") else empty end),
                     (if $pm != "" and $rm != "" and $pm != $rm

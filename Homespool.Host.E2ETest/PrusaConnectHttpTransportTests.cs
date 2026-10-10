@@ -341,6 +341,41 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// An event word this build does not know is accepted and dropped, with the production dispatcher
+    /// behind it, and said once however often it is posted. It is a word firmware added rather than a
+    /// malformed body, and a 400 would only have the printer post it again.
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownEventWordIsAcceptedAndSaidOnce()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        // Act
+        for (int i = 0; i < 2; i++)
+        {
+            using HttpRequestMessage request = Post("/p/events", identity, token, """{"event":"SPOOL_JOINED","state":"IDLE"}""");
+
+            using HttpResponseMessage response =
+                await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+            response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        // Assert
+        _logs.CountEventsWith(("Complaint", "sent an event this build does not know, which was dropped"),
+                              ("Detail", "\"SPOOL_JOINED\""))
+             .Should().Be(1, "two posts inside one window are one line");
+        _logs.Failures.Should().BeEmpty("a dropped event must not leave anything failing behind the response");
+        _logs.WithException.Should().BeEmpty();
+    }
+
+    /// <summary>
     /// Mending non-finite numbers has not made the transport forgiving of anything else.
     /// </summary>
     [Theory]

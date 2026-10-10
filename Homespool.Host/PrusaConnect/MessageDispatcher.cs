@@ -34,6 +34,9 @@ public class MessageDispatcher
     /// <summary>The longest wire status is <c>ATTENTION</c>; anything past this is not a status.</summary>
     private const int MaxLoggedStatusLength = 32;
 
+    /// <summary>The longest wire event word is <c>CANCELABLE_CHANGED</c>; an unknown one is cut past this.</summary>
+    private const int MaxLoggedEventLength = 32;
+
     private readonly ILogger<MessageDispatcher> _logger;
     private readonly UnknownFieldTracker _unknownFields;
     private readonly TimeProvider _timeProvider;
@@ -57,8 +60,9 @@ public class MessageDispatcher
     /// Sorts one parsed message off the wire into its typed form: an <c>event</c> property means the
     /// event path, anything else is telemetry. This is the only place that decision is made.
     /// </summary>
-    /// <returns>The typed message to post to the printer's actor. Null means "post nothing" - no
-    /// production shape maps to it, but test spies use it to observe the stream without an actor.</returns>
+    /// <returns>The typed message to post to the printer's actor. Null means "post nothing": an event
+    /// whose word this build does not know, already complained about, and test spies observing the
+    /// stream without an actor.</returns>
     /// <exception cref="JsonException">The document is not a printer message: a root that is not an
     /// object, or an object that does not deserialize as the shape it claims to be.</exception>
     public ConnectionMessage? Classify(int printerId, JsonElement root)
@@ -96,8 +100,23 @@ public class MessageDispatcher
             throw new JsonException($"A printer message must be a JSON object, not {root.ValueKind}.");
         }
 
-        if (root.TryGetProperty("event", out _))
+        if (root.TryGetProperty("event", out JsonElement eventWord))
         {
+            // Before deserialising, because the converter would refuse the word as malformed JSON, and
+            // that costs the connection. A word firmware added is not malformed: it costs this one
+            // message, and the warning names it. Anything but a string still falls through to the
+            // converter's refusal, which is right for it.
+            if (eventWord.ValueKind == JsonValueKind.String &&
+                eventWord.GetString() is string word &&
+                !PrusaEventWireMapping.TryParse(word, out _))
+            {
+                _complaints.Refused(printerId,
+                                    WireComplaint.UnknownEventWord,
+                                    $"\"{LogText.Clean(word, MaxLoggedEventLength)}\"");
+
+                return null;
+            }
+
             EventDTO eventDto = root.Deserialize<EventDTO>(InboundWireJson.Options)!;
 
             _logger.LogDebug("event {EventType}", eventDto.EventType);

@@ -181,6 +181,80 @@ public class MessageDispatcherTests
     }
 
     /// <summary>
+    /// An event word this build has no mapping for posts nothing and says which word it was, once per
+    /// window however often it repeats. It must not throw: on the socket a <see cref="JsonException"/>
+    /// closes the connection, so a firmware release adding one word would cost every printer on it
+    /// its connection, every time the word is sent.
+    /// </summary>
+    [Fact]
+    public void AnUnknownEventWordPostsNothingAndIsReportedByName()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse("""{"event":"SPOOL_JOINED","state":"IDLE","command_id":42}""");
+        FakeLogger<PrinterWireComplaints> complaintLog = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System,
+                                           PrinterTrafficLogTests.Off,
+                                           new PrinterWireComplaints(complaintLog) { Interval = TimeSpan.FromMinutes(10) });
+
+        // Act
+        for (int i = 0; i < 50; i++)
+        {
+            dispatcher.Classify(printerId: 7, document.RootElement).Should().BeNull();
+        }
+
+        // Assert
+        FakeLogRecord warning = complaintLog.Collector.GetSnapshot().Should().ContainSingle("fifty of them are one line").Subject;
+
+        warning.Level.Should().Be(LogLevel.Warning);
+        warning.StructuredState.Should().Contain(pair => pair.Key == "PrinterId" && pair.Value == "7");
+        warning.StructuredState.Should().Contain(pair => pair.Key == "Detail" && pair.Value == "\"SPOOL_JOINED\"");
+    }
+
+    /// <summary>
+    /// The word is the sender's to choose, so the line carries it cleaned and cut rather than as sent.
+    /// </summary>
+    [Fact]
+    public void AnUnknownEventWordIsLoggedCleanedAndCut()
+    {
+        // Arrange - an escape sequence, then far more than any word: 504 characters once decoded
+        string padding = new('X', 500);
+        using JsonDocument document = JsonDocument.Parse($$"""{"event":"\u001b[2J{{padding}}","state":"IDLE"}""");
+        FakeLogger<PrinterWireComplaints> complaintLog = new();
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance, NewTracker(), TimeProvider.System,
+                                           PrinterTrafficLogTests.Off, new PrinterWireComplaints(complaintLog));
+
+        // Act
+        ConnectionMessage? message = dispatcher.Classify(printerId: 7, document.RootElement);
+
+        // Assert
+        message.Should().BeNull();
+        complaintLog.Collector.GetSnapshot().Should().ContainSingle()
+                    .Which.StructuredState.Should().Contain(
+                        pair => pair.Key == "Detail" &&
+                                pair.Value!.StartsWith("\"\uFFFD[2JX", StringComparison.Ordinal) &&
+                                pair.Value.EndsWith("<504 characters in all>\"", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// An <c>event</c> that is not a string is not a word firmware added but a message that is not
+    /// the shape it claims, and is refused as one.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"event":5,"state":"IDLE"}""")]
+    [InlineData("""{"event":null,"state":"IDLE"}""")]
+    public void AnEventThatIsNotAStringIsStillRefused(string json)
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(json);
+
+        // Act
+        Action classify = () => NewDispatcher().Classify(printerId: 1, document.RootElement);
+
+        // Assert
+        classify.Should().Throw<JsonException>();
+    }
+
+    /// <summary>
     /// A mended message is classified like any other, and is reported as mended: what is stored
     /// will show no reading where the printer sent one of these, and that line is what explains why.
     /// </summary>

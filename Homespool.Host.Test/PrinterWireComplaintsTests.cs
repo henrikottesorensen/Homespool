@@ -157,6 +157,7 @@ public class PrinterWireComplaintsTests
     [Theory]
     [InlineData(WireComplaint.BodyTooLarge, "posted a body over the size ceiling")]
     [InlineData(WireComplaint.InlineTransferOverHttp, "requested an inline transfer chunk over HTTP, which cannot be served")]
+    [InlineData(WireComplaint.UnknownEventWord, "sent an event this build does not know, which was dropped")]
     public void ARefusalInOurOwnWordsIsThrottledToo(WireComplaint complaint, string said)
     {
         // Arrange

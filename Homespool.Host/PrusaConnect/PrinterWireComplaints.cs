@@ -132,6 +132,7 @@ public sealed class PrinterWireComplaints
             WireComplaint.BodyTooLarge => "posted a body over the size ceiling",
             WireComplaint.InlineTransferOverHttp => "requested an inline transfer chunk over HTTP, which cannot be served",
             WireComplaint.OverMessageBudget => "sent messages faster than its budget, and is being read more slowly",
+            WireComplaint.UnknownEventWord => "sent an event this build does not know, which was dropped",
             _ => throw new ArgumentOutOfRangeException(nameof(complaint), complaint, null),
         };
 

@@ -75,8 +75,9 @@ public class EventDTO
             }
             catch (ArgumentOutOfRangeException e)
             {
-                // The read loop treats JsonException as a protocol violation; an unknown event
-                // word is exactly that, not an argument error in our own code.
+                // Off the wire, so the sender's fault rather than an argument error in our own code.
+                // MessageDispatcher drops an unknown word before deserialising, because a
+                // JsonException on the read loop closes the connection; this is for any other reader.
                 throw new JsonException(e.Message, e);
             }
         }

@@ -2,14 +2,16 @@
 # stack pulls a release instead of being rebuilt from the repository.
 #
 # Through tools/publish-images.sh, which carries the rules - a clean tree, the full commit's tag
-# first, the version, latest last, each read back - and has its own suite in build-and-test.yml. Each
-# architecture is built natively on a runner of its own kind, for the reason pi/build.sh refuses an
-# x86 host: the other one would build under emulation. The last job combines them into one tag per
-# version, so an amd64 server and a Pi pull the same name.
+# first, the version, latest last and only forward, each read back - and has its own suite in
+# build-and-test.yml. Each architecture is built natively on a runner of its own kind, for the reason
+# pi/build.sh refuses an x86 host: the other one would build under emulation. The last job combines
+# them into one tag per version, so an amd64 server and a Pi pull the same name.
 #
-# On `released` only: a pre-release fires `published` but not this, so it never moves latest. A
-# pre-release made a full release later fires it then. A failed run is retried with "Re-run failed
-# jobs"; there is no manual trigger, because one started from an older tag would move latest back.
+# On `released` only: a pre-release fires `published` but not this. A pre-release made a full release
+# later fires it then. A failed run is retried with "Re-run failed jobs". latest moves only to a
+# release no older than the one it holds, whatever order the runs come in, so an older line's patch, an
+# older release run again or an old pre-release made a full release publishes its own tags and leaves
+# latest where it is.
 #
 # A package GHCR creates on the first push is private whatever the repository is, and an anonymous
 # pull - every card's - is refused until its visibility is changed in the package's settings, once

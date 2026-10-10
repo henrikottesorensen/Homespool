@@ -345,15 +345,15 @@ if test_case "an image from before the labels names nginx's commit, which is not
     assert_equals "$(app .base_changed)" "false" "an unknown base is not a changed one"
 fi
 
-if test_case "a running revision the fetched history does not reach is said to be beyond it"; then
+if test_case "a running revision the fetched history does not reach is said to be beyond it, not older"; then
     newer_app
     published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
     history "$published_rev p1 fix(A): one" "p1 p2 fix(B): two"
     check
     assert_equals "$(app .homespool.found)" "false" "not found in the window"
     assert_equals "$(app '.reasons | join(";")')" \
-        "at least 2 Homespool fixes (the running revision is older than the 2 commits read)" \
-        "and the count is said to be a floor, in one reason"
+        "2 Homespool fixes in the 2 commits read, which do not reach the running revision" \
+        "and the count is said to be of what was read, in one reason"
 fi
 
 if test_case "a running revision beyond the history with no fix in it is said to be unknown, not fine"; then
@@ -362,8 +362,64 @@ if test_case "a running revision beyond the history with no fix in it is said to
     history "$published_rev p1 feat(A): one"
     check
     assert_equals "$(app '.reasons | join(";")')" \
-        "a running revision older than the 1 commits read, so what changed since is not known" \
+        "the 1 commits read do not reach the running revision, so what changed since is not known" \
         "nothing counted is not nothing changed"
+fi
+
+if test_case "an older release published under the tag is older, not an update, and GitHub is not asked"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    labels published homespool '{"org.opencontainers.image.version": "0.1.1"}'
+    labels running homespool '{"org.opencontainers.image.version": "0.2"}'
+    history "$published_rev p1 fix(A): one" "p1 p2 fix(B): two"
+    check
+    assert_status "$status" 0 "checks cleanly"
+    assert_equals "$(field .update_available)" "false" "nothing to take"
+    assert_equals "$(app .status)" "older" "the published image is older"
+    assert_equals "$(app '[.running.version, .published.version] | join(",")')" "0.2,0.1.1" "both releases are recorded"
+    assert_equals "$(app '.reasons // "none"')" "none" "and no reason to pull is given"
+    assert_not_contains "$log" "api.github.com" "no history is read for it"
+    assert_contains "$output" "homespool: the published image is release 0.1.1, older than the running 0.2" "the journal says so"
+fi
+
+if test_case "releases are ordered as numbers, and the same release is not older"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    labels published homespool '{"org.opencontainers.image.version": "0.10"}'
+    labels running homespool '{"org.opencontainers.image.version": "0.9"}'
+    history "$published_rev $running_rev fix(A): one" "$running_rev old feat(B): two"
+    check
+    assert_equals "$(app .status)" "newer" "0.10 is newer than 0.9"
+    assert_equals "$(app '.reasons | join(";")')" "1 Homespool fix" "and counted as usual"
+    labels published homespool '{"org.opencontainers.image.version": "0.2"}'
+    labels running homespool '{"org.opencontainers.image.version": "0.2.0"}'
+    check
+    assert_equals "$(app .status)" "newer" "0.2 is not older than 0.2.0"
+fi
+
+if test_case "a release compared with an image that is no release falls back to the history"; then
+    newer_app
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    labels published homespool '{"org.opencontainers.image.version": "0.1"}'
+    labels running homespool '{"org.opencontainers.image.version": ""}'
+    history "$published_rev $running_rev fix(A): one" "$running_rev old feat(B): two"
+    check
+    assert_equals "$(app .status)" "newer" "an unversioned running image is not judged by version"
+    labels running homespool '{"org.opencontainers.image.version": "0.2-rc1"}'
+    check
+    assert_equals "$(app .status)" "newer" "nor is one whose version has no order"
+fi
+
+if test_case "a version label inherited from another project is not taken for a release of ours"; then
+    newer_app
+    running homespool "bf9eed6de9a7ff412f1e37d604ee491f2cf78528" \
+        "https://github.com/nginx/docker-nginx-unprivileged" "" 10.0.12 \
+        "registry.example.net/homespool@sha256:older-homespool"
+    labels running homespool '{"org.opencontainers.image.version": "1.30.5"}'
+    published homespool "$published_rev" "$source_url" sha256:base-a 10.0.12
+    labels published homespool '{"org.opencontainers.image.version": "0.1"}'
+    check
+    assert_equals "$(app .status)" "newer" "nginx's 1.30.5 is not a Homespool release above 0.1"
 fi
 
 if test_case "one fix is one fix"; then

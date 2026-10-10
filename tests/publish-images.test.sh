@@ -12,8 +12,8 @@
 # tools/release-version.sh, so a modified tree, a v-tag and a commit after one are real git states
 # rather than stubbed answers. build.sh and docker are stubs: build.sh records the tag it was asked to
 # build, and docker records every call and answers the reads the script makes - the image names, the
-# daemon's architecture, each image's revision label and digest, and each index's platforms - from
-# the environment.
+# daemon's architecture, each image's revision label and digest, each index's platforms, and the
+# release each repository's latest holds - from the environment. jq is the real one.
 # Nothing reaches a daemon or a registry.
 set -uo pipefail
 
@@ -132,6 +132,27 @@ case "$1" in
             inspect)
                 case "$5" in
                     *Manifest.Digest*) printf 'sha256:beadfeed\n' ;;
+                    # The configuration of what latest holds: STUB_LATEST_<repository>, else
+                    # STUB_LATEST, is its version, empty for an image with none; neither set and there
+                    # is no latest. An index by platform, or a single manifest with STUB_LATEST_SINGLE.
+                    *json*)
+                        [ -n "${STUB_LATEST_FAILS:-}" ] && { echo "ERROR: failed to do request: connection refused" >&2; exit 1; }
+                        name="$(printf '%s' "${6##*/}" | sed 's/:.*//; s/-/_/g')"
+                        if eval "[ -n \"\${STUB_LATEST_$name+set}\" ]"; then
+                            eval "held=\"\$STUB_LATEST_$name\""
+                        elif [ -n "${STUB_LATEST+set}" ]; then
+                            held="$STUB_LATEST"
+                        else
+                            echo "ERROR: $6: not found" >&2
+                            exit 1
+                        fi
+                        config="{\"architecture\":\"amd64\",\"config\":{\"Labels\":{\"org.opencontainers.image.version\":\"$held\"}}}"
+                        if [ -n "${STUB_LATEST_SINGLE:-}" ]; then
+                            printf '%s\n' "$config"
+                        else
+                            printf '{"linux/amd64":%s,"linux/arm64":%s}\n' "$config" "$config"
+                        fi
+                        ;;
                     *)
                         for arch in ${STUB_INDEX_ARCHS-amd64 arm64}; do
                             printf '%s %s\n' "$arch" "${STUB_REVISION:-$STUB_COMMIT}"
@@ -162,7 +183,8 @@ STUB
     export STUB_REGISTRY="registry.example.net"
     export STUB_COMMIT
     STUB_COMMIT="$(git -C "$scratch/repo" rev-parse HEAD)"
-    unset STUB_REVISION STUB_PUSH_FAILS STUB_ARCH STUB_INDEX_ARCHS
+    unset STUB_REVISION STUB_PUSH_FAILS STUB_ARCH STUB_INDEX_ARCHS STUB_LATEST STUB_LATEST_SINGLE STUB_LATEST_FAILS \
+        STUB_LATEST_homespool STUB_LATEST_homespool_proxy STUB_LATEST_homespool_go2rtc
     : > "$STUB_LOG"
     return 0
 }
@@ -238,12 +260,21 @@ if test_case "refuses without a registry, before building anything"; then
     assert_not_contains "$log" "push" "nothing is pushed"
 fi
 
-if test_case "refuses a v-tag that is not a valid image tag, before building anything"; then
-    git_in tag "v0.1+build.7"
-    publish
-    assert_status "$status" 1 "a + in the version is refused"
-    assert_contains "$output" "not a valid image tag" "and says why"
+if test_case "refuses a v-tag that is not numbers separated by dots, before building anything"; then
+    previous=""
+    for tag in "v0.1+build.7" "v0.2-rc1" "v1.2a" "v0.1_2"; do
+        [ -z "$previous" ] || git_in tag -d "$previous"
+        git_in tag "$tag"
+        previous="$tag"
+        publish
+        assert_status "$status" 1 "$tag is refused"
+        assert_contains "$output" "is not numbers separated by dots" "and says why, for $tag"
+    done
+    publish --merge amd64 arm64
+    assert_status "$status" 1 "--merge refuses it too"
     assert_not_contains "$log" "build.sh" "nothing is built"
+    assert_not_contains "$log" "push" "nothing is pushed"
+    assert_not_contains "$log" "imagetools" "nothing is combined"
 fi
 
 if test_case "a failed push never moves latest"; then
@@ -342,6 +373,108 @@ if test_case "refuses a modified tree with --platform and --merge too"; then
     assert_not_contains "$log" "build.sh" "nothing is built"
     assert_not_contains "$log" "push" "nothing is pushed"
     assert_not_contains "$log" "imagetools" "nothing is combined"
+fi
+
+if test_case "latest stays at a newer release, and is not read back"; then
+    git_in tag v0.1.1
+    export STUB_LATEST=0.2
+    publish --merge amd64 arm64
+    reg="registry.example.net"
+    assert_status "$status" 0 "an older release still publishes"
+    assert_contains "$log" "buildx imagetools create --tag $reg/homespool:0.1.1 $reg/homespool:$STUB_COMMIT" \
+        "under its own version"
+    assert_not_contains "$log" "create --tag $reg/homespool:latest" "latest does not move"
+    assert_not_contains "$log" "create --tag $reg/homespool-go2rtc:latest" "in any repository"
+    assert_contains "$output" "==> $reg/homespool-proxy:latest stays at release 0.2, newer than 0.1.1" "and it says so"
+    assert_contains "$output" "==> $reg/homespool:0.1.1 (amd64 arm64)" "the version is read back"
+    assert_not_contains "$output" "==> $reg/homespool:latest (" "latest is not"
+fi
+
+if test_case "latest stays at a newer release without --merge too"; then
+    git_in tag v0.9
+    export STUB_LATEST=0.10 STUB_LATEST_SINGLE=1
+    publish
+    reg="registry.example.net"
+    assert_status "$status" 0 "an older release publishes"
+    assert_contains "$output" "stays at release 0.10, newer than 0.9" "0.10 is above 0.9, as numbers"
+    assert_contains "$log" "push $reg/homespool:0.9" "the version is pushed"
+    assert_not_contains "$log" "push $reg/homespool:latest" "latest is not pushed"
+    assert_not_contains "$log" "pull --quiet $reg/homespool:latest" "nor read back"
+fi
+
+if test_case "latest moves to a newer release, and to the same one again"; then
+    for held in 0.1 0.1.1 0.2.0; do
+        git_in tag -d v0.2 2>/dev/null
+        git_in tag v0.2
+        export STUB_LATEST="$held"
+        : > "$STUB_LOG"
+        publish --merge amd64 arm64
+        assert_status "$status" 0 "0.2 over $held publishes"
+        assert_contains "$log" "buildx imagetools create --tag registry.example.net/homespool:latest registry.example.net/homespool:$STUB_COMMIT" \
+            "latest moves from $held to 0.2"
+        assert_contains "$output" "==> registry.example.net/homespool:latest (amd64 arm64)" "and is read back, over $held"
+    done
+fi
+
+if test_case "latest moves over an image with no version, and where there is no latest yet"; then
+    git_in tag v0.1
+    export STUB_LATEST=""
+    publish --merge amd64 arm64
+    assert_status "$status" 0 "publishes over an image from a commit"
+    assert_contains "$log" "create --tag registry.example.net/homespool:latest" "latest moves to the release"
+    unset STUB_LATEST
+    : > "$STUB_LOG"
+    publish --merge amd64 arm64
+    assert_status "$status" 0 "publishes into a repository with no latest"
+    assert_contains "$log" "create --tag registry.example.net/homespool-go2rtc:latest" "latest is created"
+fi
+
+if test_case "a commit that is no release does not move latest off a release"; then
+    export STUB_LATEST=0.1 STUB_LATEST_SINGLE=1
+    publish
+    reg="registry.example.net"
+    assert_status "$status" 0 "the commit publishes"
+    assert_contains "$log" "pull --quiet $reg/homespool:$STUB_COMMIT" "under its own tag"
+    assert_not_contains "$log" "push $reg/homespool:latest" "latest stays at the release"
+    assert_contains "$output" "stays at release 0.1: $STUB_COMMIT is no release" "and it says so"
+    export STUB_LATEST=""
+    : > "$STUB_LOG"
+    publish
+    assert_contains "$log" "push $reg/homespool:latest" "but moves over an image that is no release either"
+fi
+
+if test_case "each repository's latest is decided on its own"; then
+    git_in tag v0.2
+    export STUB_LATEST=0.2 STUB_LATEST_homespool_proxy=0.1
+    publish --merge amd64 arm64
+    reg="registry.example.net"
+    assert_status "$status" 0 "publishes"
+    assert_contains "$log" "create --tag $reg/homespool-proxy:latest" "the repository left behind catches up"
+    assert_contains "$log" "create --tag $reg/homespool:latest" "the others move to the same release again"
+    export STUB_LATEST=0.3
+    : > "$STUB_LOG"
+    publish --merge amd64 arm64
+    assert_contains "$log" "create --tag $reg/homespool-proxy:latest" "an older latest in one repository moves"
+    assert_not_contains "$log" "create --tag $reg/homespool:latest" "while a newer one in another stays"
+fi
+
+if test_case "a registry that cannot say what latest holds stops the run before latest moves"; then
+    git_in tag v0.2
+    export STUB_LATEST_FAILS=1
+    publish --merge amd64 arm64
+    assert_status "$status" 1 "the run fails"
+    assert_contains "$output" "could not read which release registry.example.net/homespool:latest holds" "and says why"
+    assert_not_contains "$log" "create --tag registry.example.net/homespool:0.2" "no tag moves"
+    assert_not_contains "$log" "create --tag registry.example.net/homespool:latest" "latest least of all"
+fi
+
+if test_case "a latest holding a version with no order stops the run"; then
+    git_in tag v0.2
+    export STUB_LATEST=0.3-rc1
+    publish --merge amd64 arm64
+    assert_status "$status" 1 "the run fails"
+    assert_contains "$output" "holds release '0.3-rc1', which cannot be put in order" "and says why"
+    assert_not_contains "$log" "create --tag registry.example.net/homespool:latest" "latest does not move"
 fi
 
 if test_case "refuses an argument it does not know"; then

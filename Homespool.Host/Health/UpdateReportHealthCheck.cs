@@ -219,8 +219,8 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
             return string.Empty;
         }
 
-        string count = $"{(compose.Found ? string.Empty : "at least ")}{compose.Commits} " +
-                       $"{(compose.Commits == 1 ? "commit" : "commits")}";
+        string count = $"{compose.Commits} {(compose.Commits == 1 ? "commit" : "commits")}" +
+                       (compose.Found ? string.Empty : " of those read, which do not reach the running revision");
         string? published = application.Published?.Revision;
         string at = string.IsNullOrEmpty(published) ? string.Empty : $" at {Short(published)}";
 
@@ -263,9 +263,25 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
             "local" => $"{service.Service} was built from source rather than pulled{Built(service)}, so nothing is " +
                        "published to compare it with, and no check can say whether fixes have come out since",
             "pinned" => $"{service.Service} is pinned to a digest{Built(service)}, so there is no tag to follow",
+            "older" => Older(service),
             "not-running" => $"{service.Service} was not running",
             _ => $"{service.Service} is '{service.Status}', which this version does not know",
         };
+    }
+
+    /// <summary>
+    /// A container running a newer release than the one its tag now holds, naming both when the report
+    /// does. Not an update: pulling would take the deployment back.
+    /// </summary>
+    private static string Older(ReportService service)
+    {
+        string? running = service.Running?.Version;
+        string? published = service.Published?.Version;
+
+        return string.IsNullOrEmpty(running) || string.IsNullOrEmpty(published) ?
+            $"{service.Service} runs a newer release than its registry publishes under its tag, so there is nothing to take" :
+            $"{service.Service} runs release {running}, and its registry publishes the older {published} under its tag, " +
+            "so there is nothing to take";
     }
 
     /// <summary>
@@ -365,7 +381,8 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
 
     /// <summary>
     /// The commits that changed <c>compose.yaml</c> between the application's running and published
-    /// revisions, and whether the host's walk reached the running one - a floor when it did not.
+    /// revisions, and whether the host's walk reached the running one - when it did not, the count is of
+    /// the commits it read, and the running revision may be further back or not in that history at all.
     /// </summary>
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
                      Justification = "Only ever constructed by System.Text.Json when reading the report.")]
@@ -373,10 +390,14 @@ public sealed class UpdateReportHealthCheck : IHealthCheck
         [property: JsonPropertyName("commits")] int Commits,
         [property: JsonPropertyName("found")] bool Found);
 
-    /// <summary>The image a container was running, as its labels described it to the host check.</summary>
+    /// <summary>
+    /// An image, running or published, as its labels described it to the host check. The release
+    /// version is reported only for an older published release.
+    /// </summary>
     [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
                      Justification = "Only ever constructed by System.Text.Json when reading the report.")]
     private sealed record ReportImage(
         [property: JsonPropertyName("revision")] string? Revision,
-        [property: JsonPropertyName("base")] string? Base);
+        [property: JsonPropertyName("base")] string? Base,
+        [property: JsonPropertyName("version")] string? Version);
 }

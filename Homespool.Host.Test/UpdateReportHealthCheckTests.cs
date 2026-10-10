@@ -384,7 +384,7 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
     [Theory]
     [InlineData("true", 1, "compose.yaml changed too, in 1 commit,")]
     [InlineData("true", 3, "compose.yaml changed too, in 3 commits,")]
-    [InlineData("false", 3, "compose.yaml changed too, in at least 3 commits,")]
+    [InlineData("false", 3, "compose.yaml changed too, in 3 commits of those read, which do not reach the running revision,")]
     public async Task A_changed_compose_file_is_said_after_the_pull_command(string found, int commits, string expected)
     {
         await WriteAsync($$"""
@@ -496,6 +496,9 @@ public sealed class UpdateReportHealthCheckTests : IDisposable
     [InlineData("not-running", "\"built\": null", "homespool was not running")]
     [InlineData("restamped", "\"built\": null", "homespool differs from the image its registry publishes only in the commit it is stamped with")]
     [InlineData("local", "\"built\": \"\"", "homespool was built from source rather than pulled, so nothing is published")]
+    [InlineData("older", "\"running\": { \"version\": \"0.2\" }, \"published\": { \"version\": \"0.1.1\" }",
+                "homespool runs release 0.2, and its registry publishes the older 0.1.1 under its tag, so there is nothing to take")]
+    [InlineData("older", "\"built\": null", "homespool runs a newer release than its registry publishes under its tag, so there is nothing to take")]
     [InlineData("from-the-future", "\"built\": null", "homespool is 'from-the-future', which this version does not know")]
     public async Task Every_other_status_says_what_it_means(string status, string built, string expected)
     {

@@ -46,16 +46,19 @@ public sealed class TelemetryRetentionService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptionsMonitor<StorageOptions> _options;
+    private readonly TelemetryStorageMode _mode;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<TelemetryRetentionService> _logger;
 
     public TelemetryRetentionService(IServiceScopeFactory scopeFactory,
                                      IOptionsMonitor<StorageOptions> options,
+                                     TelemetryStorageMode mode,
                                      TimeProvider timeProvider,
                                      ILogger<TelemetryRetentionService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;
+        _mode = mode;
         _timeProvider = timeProvider;
         _logger = logger;
     }
@@ -147,6 +150,12 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// shutdown, and rows are what bound the memory it occupies while it runs.
     /// </para>
     /// <para>
+    /// <b>The store is asked of <see cref="TelemetryStorageMode"/>, not of the options.</b> A settings
+    /// save reloads the options at once, while the database stays the one opened at startup until a
+    /// restart. Read from the options, switching the setting on would cap the durable table within
+    /// the hour, and switching it off would leave the in-memory store unbounded until the restart.
+    /// </para>
+    /// <para>
     /// <b>A row cap for the durable table is a separate question, and an open one.</b> The argument
     /// that age alone does not bound a table - made for events, where a printer emitting at the
     /// transport's ceiling fills a disk well inside any window an operator would pick - has never
@@ -155,7 +164,7 @@ public sealed class TelemetryRetentionService : BackgroundService
     /// </remarks>
     private async Task SweepSamplesByCountAsync(TelemetryDbContext context, CancellationToken cancellationToken)
     {
-        if (!_options.CurrentValue.TelemetryInMemory)
+        if (!_mode.InMemory)
         {
             _logger.LogDebug("Telemetry is stored durably, where age bounds it; skipping the sample count cap.");
 

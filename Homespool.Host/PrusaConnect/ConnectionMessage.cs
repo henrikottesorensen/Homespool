@@ -129,8 +129,14 @@ public sealed record ReturnCollectedCommandMessage(PendingCommand Command) : Con
 /// <see cref="ReturnCollectedCommandMessage"/>, so between the two the loop knows the command is with
 /// a poll but not yet whether it will leave. A command that expects no reply is reported sent only on
 /// this, and a caller that gave up meanwhile is told the printer has it.
+/// <para>
+/// <b>Answered, because the loop has the last word.</b> <paramref name="Completion"/> is true when the
+/// response may carry the command, and false when the connection is being torn down: the teardown
+/// reports the command <see cref="CommandSendOutcome.NotConnected"/>, which is only true if
+/// the response then leaves it out.
+/// </para>
 /// </remarks>
-public sealed record CommandDeliveredMessage(PendingCommand Command) : ConnectionMessage;
+public sealed record CommandDeliveredMessage(PendingCommand Command, TaskCompletionSource<bool> Completion) : ConnectionMessage;
 
 /// <summary>
 /// A caller of <see cref="IPrinterConnectionActor.SendCommandAsync"/> whose token was cancelled,

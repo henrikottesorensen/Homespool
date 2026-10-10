@@ -13,9 +13,9 @@ namespace Homespool.Host.PrusaConnect;
 public static class HttpCommandCollection
 {
     /// <summary>
-    /// Takes the command parked for this printer, or null for nothing pending. Throws
-    /// <see cref="System.OperationCanceledException"/> if the request ended, after giving back
-    /// whatever it took.
+    /// Takes the command parked for this printer, or null for nothing to send - nothing pending, or a
+    /// connection being torn down. Throws <see cref="System.OperationCanceledException"/> if the
+    /// request ended, after giving back whatever it took.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -23,6 +23,7 @@ public static class HttpCommandCollection
     /// message it empties the slot and stamps the response clock whether or not anyone is still
     /// listening, so abandoning the wait would lose the command. The wait is short and always ends:
     /// the loop drains every queued message, teardown included, and does no I/O on this transport.
+    /// The delivery's answer is awaited the same way, for the same reason.
     /// </para>
     /// <para>
     /// <b>Only an end before the response is caught.</b> The check runs before anything is written.
@@ -35,38 +36,72 @@ public static class HttpCommandCollection
     /// confirmed as going out. Read twice, a request ending between the reads would be confirmed and
     /// then thrown away, and the actor would count as delivered a command no response carried.
     /// </para>
+    /// <para>
+    /// <b>A command goes out only once the loop has agreed.</b> A teardown reports whatever is in
+    /// flight as never having left, so a command taken just before one began - its delivery refused
+    /// by the draining loop, or posted to a mailbox already closed - stays out of the response, and
+    /// the printer is not handed something its caller has been told it never got.
+    /// </para>
     /// </remarks>
     public static async Task<PendingCommand?> CollectAsync(IPrinterConnectionActor actor, CancellationToken requestAborted)
     {
         TaskCompletionSource<PendingCommand?> take = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        await actor.PostAsync(new TakePendingCommandMessage(take), requestAborted);
+        try
+        {
+            await actor.PostAsync(new TakePendingCommandMessage(take), requestAborted);
+        }
+        catch (ChannelClosedException)
+        {
+            // Torn down before the poll reached the loop: nothing was taken, and the teardown
+            // settles whatever is parked.
+            return null;
+        }
 
         PendingCommand? pending = await take.Task;
         bool aborted = requestAborted.IsCancellationRequested;
 
-        if (pending is not null)
-        {
-            ConnectionMessage settled = aborted ?
-                new ReturnCollectedCommandMessage(pending) :
-                new CommandDeliveredMessage(pending);
-
-            try
-            {
-                await actor.PostAsync(settled, CancellationToken.None);
-            }
-            catch (ChannelClosedException)
-            {
-                // The connection is being torn down, and the teardown fails the command as
-                // NotConnected - which is what giving it back would have led to anyway.
-            }
-        }
-
         if (aborted)
         {
+            if (pending is not null)
+            {
+                await TellAsync(actor, new ReturnCollectedCommandMessage(pending));
+            }
+
             throw new OperationCanceledException(requestAborted);
         }
 
-        return pending;
+        if (pending is null)
+        {
+            return null;
+        }
+
+        TaskCompletionSource<bool> delivery = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        if (!await TellAsync(actor, new CommandDeliveredMessage(pending, delivery)))
+        {
+            return null;
+        }
+
+        return await delivery.Task ? pending : null;
+    }
+
+    /// <summary>
+    /// Posts how a taken command was settled. False if the connection is being torn down, which
+    /// fails the command as <see cref="Printing.CommandSendOutcome.NotConnected"/> - what giving it
+    /// back would have led to anyway, and what keeping it out of the response makes true.
+    /// </summary>
+    private static async Task<bool> TellAsync(IPrinterConnectionActor actor, ConnectionMessage settled)
+    {
+        try
+        {
+            await actor.PostAsync(settled, CancellationToken.None);
+
+            return true;
+        }
+        catch (ChannelClosedException)
+        {
+            return false;
+        }
     }
 }

@@ -7,6 +7,7 @@ using System.Net.WebSockets;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Authorization;
@@ -35,7 +36,8 @@ using IngestResult =
     Microsoft.AspNetCore.Http.HttpResults.Results<
         Microsoft.AspNetCore.Http.HttpResults.FileContentHttpResult,
         Microsoft.AspNetCore.Http.HttpResults.NoContent,
-        Microsoft.AspNetCore.Http.HttpResults.BadRequest>;
+        Microsoft.AspNetCore.Http.HttpResults.BadRequest,
+        Homespool.Host.Controllers.StatusCodeResult<Homespool.Host.Controllers.Status.ServiceUnavailable>>;
 
 namespace Homespool.Host.Controllers;
 
@@ -539,7 +541,18 @@ public class PrusaConnectPrinterController : ControllerBase
 
             if (message is not null)
             {
-                await actor.PostAsync(message, cancellationToken);
+                try
+                {
+                    await actor.PostAsync(message, cancellationToken);
+                }
+                catch (ChannelClosedException)
+                {
+                    // The connection was displaced or removed after it was looked up, so nothing read
+                    // this. A 503 rather than any other refusal because firmware keeps the message and
+                    // sends it again (planner.cpp's action_done): every other status, a 500 included,
+                    // throws it away. The retry's lookup finds a fresh session, or no printer at all.
+                    return new StatusCodeResult<Status.ServiceUnavailable>();
+                }
             }
         }
 

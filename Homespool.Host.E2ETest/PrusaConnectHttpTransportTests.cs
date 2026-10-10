@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -11,14 +12,21 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
+using Homespool.Host.Controllers;
 using Homespool.Host.Exceptions;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
+using Homespool.Host.Telemetry;
 using Homespool.Model;
 
 namespace Homespool.Host.E2ETest;
@@ -742,6 +750,58 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         other.Completed.Should().BeTrue();
     }
 
+    /// <summary>
+    /// A message that reaches a connection as it is displaced is answered 503, which firmware keeps
+    /// and sends again, rather than a 500, which it throws away - and the resend is accepted.
+    /// </summary>
+    /// <remarks>
+    /// The displacement has to land between the post's lookup of its session and its post to the
+    /// actor, a window no request can be timed into. So this host's actors register a stand-in under
+    /// the printer the first time anything is posted to one, which is that window exactly.
+    /// </remarks>
+    [Fact]
+    public async Task AMessageThatMeetsADisplacementIsRefusedForTheFirmwareToSendAgain()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int _, long _) = await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using WebApplicationFactory<PrinterAppController> displacing =
+            _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(
+                                            services => services.AddSingleton<PrinterConnectionActorFactory, DisplacedOnFirstPostActorFactory>()));
+
+        // A derived factory is a second host with its own in-memory SetupState.
+        using (IServiceScope scope = displacing.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
+        }
+
+        using HttpClient printer = PrinterListener.CreateClient(displacing);
+
+        // Act
+        HttpStatusCode first;
+        HttpStatusCode resent;
+
+        using (HttpRequestMessage request = Post("/p/telemetry", identity, token, TelemetryBody))
+        {
+            using HttpResponseMessage response = await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+            first = response.StatusCode;
+        }
+
+        using (HttpRequestMessage request = Post("/p/telemetry", identity, token, TelemetryBody))
+        {
+            using HttpResponseMessage response = await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+            resent = response.StatusCode;
+        }
+
+        // Assert
+        first.Should().Be(HttpStatusCode.ServiceUnavailable, "the actor it was posted to had been displaced");
+        resent.Should().Be(HttpStatusCode.NoContent, "the resend's lookup finds a fresh session");
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
@@ -918,6 +978,85 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         public void Complete()
         {
             Completed = true;
+        }
+    }
+
+    /// <summary>
+    /// Creates actors that are displaced by a stand-in the first time anything is posted to one of
+    /// them, after the session has handed the actor out and before the post reaches its mailbox.
+    /// </summary>
+    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes",
+                     Justification = "Constructed by the container, in place of the factory it derives from.")]
+    private sealed class DisplacedOnFirstPostActorFactory : PrinterConnectionActorFactory
+    {
+        private readonly PrinterConnectionRegistry _registry;
+        private int _armed = 1;
+
+        public DisplacedOnFirstPostActorFactory(ITelemetrySink sink,
+                                                ILogger<PrinterConnectionActor> logger,
+                                                IOptionsMonitor<PrusaConnectOptions> options,
+                                                ITransferContentStore contentStore,
+                                                PrinterTrafficLog trafficLog,
+                                                PrinterConnectionRegistry registry)
+            : base(sink, logger, options, contentStore, trafficLog)
+        {
+            _registry = registry;
+        }
+
+        public override IPrinterConnectionActor Create(int printerId, IPrinterConnection connection)
+        {
+            return new DisplacedOnPostActor(base.Create(printerId, connection), () =>
+            {
+                if (Interlocked.Exchange(ref _armed, 0) == 1)
+                {
+                    _registry.Register(printerId, new StandInLink(), overPlaintext: false);
+                }
+            });
+        }
+    }
+
+    /// <summary>A real actor that runs <c>beforePost</c> ahead of every post.</summary>
+    private sealed class DisplacedOnPostActor : IPrinterConnectionActor
+    {
+        private readonly IPrinterConnectionActor _inner;
+        private readonly Action _beforePost;
+
+        public DisplacedOnPostActor(IPrinterConnectionActor inner, Action beforePost)
+        {
+            _inner = inner;
+            _beforePost = beforePost;
+        }
+
+        public Task Completion => _inner.Completion;
+
+        public bool CanStreamChunks => _inner.CanStreamChunks;
+
+        public PrinterClient Client => _inner.Client;
+
+        public PrinterDialect Dialect => _inner.Dialect;
+
+        public bool IsOpen => _inner.IsOpen;
+
+        public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken)
+        {
+            _beforePost();
+
+            return _inner.PostAsync(message, cancellationToken);
+        }
+
+        public Task<CommandSendResult> SendCommandAsync(ISendableCommand command, CancellationToken cancellationToken)
+        {
+            return _inner.SendCommandAsync(command, cancellationToken);
+        }
+
+        public Task<CommandSendResult> SendAsync(IPrinterIntent intent, CancellationToken cancellationToken)
+        {
+            return _inner.SendAsync(intent, cancellationToken);
+        }
+
+        public void Complete()
+        {
+            _inner.Complete();
         }
     }
 

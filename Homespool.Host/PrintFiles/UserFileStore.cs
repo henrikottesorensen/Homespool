@@ -442,6 +442,7 @@ public sealed class UserFileStore
     /// Gives a staged upload its name, or null if there is no such staged upload for this user.
     /// </summary>
     /// <exception cref="PrintFileNameConflictException">The name is taken and <paramref name="overwrite"/> is false.</exception>
+    /// <exception cref="PrintFileStorageUnconfirmedException">The root has lost its marker since the upload was staged; the staged upload is kept.</exception>
     /// <remarks>
     /// The rename is what publishes: until it runs the bytes are not listable, not printable and not
     /// reachable by name. It is also atomic, so a reader sees the old file or the new one and never a

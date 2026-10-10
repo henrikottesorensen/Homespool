@@ -105,21 +105,52 @@ public sealed class NotificationDestinationServiceTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// One browser, two accounts: whoever subscribed it last has it, and the other stops hearing
-    /// through it - rather than one screen showing both accounts' notifications.
+    /// An endpoint can be learned without the browser, so another account posting it - with keys of its
+    /// own choosing, or even the owner's - takes nothing, and the owner goes on hearing through it.
     /// </summary>
     [Fact]
-    public async Task TheSameBrowserSubscribingForAnotherAccountMovesToIt()
+    public async Task AnotherAccountsEndpointIsRefusedAndTheOwnerKeepsIt()
     {
-        HSUser first = await _rig.AddUserAsync("first@example.com");
-        HSUser second = await _rig.AddUserAsync("second@example.com");
+        HSUser owner = await _rig.AddUserAsync("owner@example.com");
+        HSUser stranger = await _rig.AddUserAsync("stranger@example.com");
         using FakePushBrowser browser = FakePushService.NewBrowser();
+        using FakePushBrowser impostor = new(browser.Endpoint);
 
-        await SubscribeAsync(first.Id, browser.Endpoint, browser.P256dh, browser.Auth);
-        await SubscribeAsync(second.Id, browser.Endpoint, browser.P256dh, browser.Auth);
+        await SubscribeAsync(owner.Id, browser.Endpoint, browser.P256dh, browser.Auth);
+
+        (await SubscribeAsync(stranger.Id, impostor.Endpoint, impostor.P256dh, impostor.Auth)).Should().Be(WebPushSubscribeResult.EndpointTaken);
+        (await SubscribeAsync(stranger.Id, browser.Endpoint, browser.P256dh, browser.Auth)).Should().Be(WebPushSubscribeResult.EndpointTaken);
 
         WebPushDestination stored = (await StoredAsync()).Should().ContainSingle().Subject;
-        stored.UserId.Should().Be(second.Id);
+        stored.UserId.Should().Be(owner.Id);
+        stored.P256dh.Should().Be(browser.P256dh);
+        stored.Auth.Should().Be(browser.Auth);
+
+        TestSendResult outcome = await WithServiceAsync(service => service.SendTestAsync(owner.Id, stored.Uuid, TestContext.Current.CancellationToken));
+
+        outcome.Should().Be(TestSendResult.Delivered);
+        browser.DecryptJson(_rig.PushService.Received.Should().ContainSingle().Subject.Body)
+               .GetProperty("url").GetString().Should().Be(NotificationDestinationService.SettingsPath);
+    }
+
+    /// <summary>
+    /// The owner's own browser posting again with new keys is the one case an existing endpoint is
+    /// updated.
+    /// </summary>
+    [Fact]
+    public async Task TheOwnersBrowserRefreshingItsKeysReplacesThem()
+    {
+        HSUser owner = await _rig.AddUserAsync("owner@example.com");
+        using FakePushBrowser before = FakePushService.NewBrowser();
+        using FakePushBrowser after = new(before.Endpoint);
+
+        await SubscribeAsync(owner.Id, before.Endpoint, before.P256dh, before.Auth);
+        (await SubscribeAsync(owner.Id, after.Endpoint, after.P256dh, after.Auth)).Should().Be(WebPushSubscribeResult.Subscribed);
+
+        WebPushDestination stored = (await StoredAsync()).Should().ContainSingle().Subject;
+        stored.UserId.Should().Be(owner.Id);
+        stored.P256dh.Should().Be(after.P256dh);
+        stored.Auth.Should().Be(after.Auth);
     }
 
     [Fact]

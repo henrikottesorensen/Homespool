@@ -210,6 +210,38 @@ public sealed partial class NotificationsPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Another account's endpoint, posted with keys of the poster's choosing, is refused and the owner's
+    /// row is left as it was - said in the words that send a real browser off to subscribe afresh.
+    /// </summary>
+    [Fact]
+    public async Task AnotherAccountsEndpointIsRefusedWithASentence()
+    {
+        (HSUser owner, HttpClient ownerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "owner3@example.com");
+        (HSUser _, HttpClient stranger) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(_factory, "taker@example.com");
+        using FakePushBrowser browser = FakePushService.NewBrowser();
+        using FakePushBrowser impostor = new(browser.Endpoint);
+
+        using (ownerClient)
+        using (stranger)
+        {
+            await EnrolmentFlowHelper.ReauthenticateAsync(ownerClient);
+            await EnrolmentFlowHelper.ReauthenticateAsync(stranger);
+
+            using (await SubscribeAsync(ownerClient, browser.Endpoint, browser.P256dh, browser.Auth))
+            using (await SubscribeAsync(stranger, impostor.Endpoint, impostor.P256dh, impostor.Auth))
+            {
+            }
+
+            string page = await stranger.GetStringAsync("/Account/Manage/Notifications", TestContext.Current.CancellationToken);
+            page.Should().Contain("The browser’s subscription could not be used. Try enabling notifications again.");
+        }
+
+        WebPushDestination stored = (await StoredAsync()).Should().ContainSingle().Subject;
+        stored.UserId.Should().Be(owner.Id);
+        stored.Auth.Should().Be(browser.Auth);
+    }
+
+    /// <summary>
     /// Each way a test can fail is said on the page in its own words, because each asks something
     /// different of the reader: nothing, try again, or look at the browser.
     /// </summary>

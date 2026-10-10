@@ -231,7 +231,10 @@ public class NotificationsModel : StatusMessagePageModel
                 ProblemMessage = _localiser["Notifications_EndpointRefused"];
                 break;
 
+            // Taken is what a browser still holding another account's subscription would see, and enabling
+            // again makes the page replace that subscription with a new one.
             case WebPushSubscribeResult.KeysInvalid:
+            case WebPushSubscribeResult.EndpointTaken:
                 ProblemMessage = _localiser["Notifications_SubscriptionInvalid"];
                 break;
 

@@ -12,9 +12,10 @@ namespace Homespool.Model.Entities;
 /// named by <see cref="NotificationDestination.Uuid"/> everywhere outside this table.
 /// </para>
 /// <para>
-/// <b>Unique, because a subscription belongs to one browser profile and so to one account.</b> A
-/// browser that subscribes again - after somebody else signs in on it, say - moves the row to whoever
-/// subscribed last rather than delivering both accounts' notifications to one screen.
+/// <b>Unique, because a subscription belongs to one browser profile and so to one account.</b> It never
+/// moves to another: the endpoint can be learned without the browser, so posting it proves nothing. A
+/// browser somebody else signs in on subscribes afresh for them, under a new endpoint, and the previous
+/// account's row goes when its push service answers that the old one is gone.
 /// </para>
 /// <para>
 /// <b>The address is the browser's choice, not ours</b>, which makes it the one address a person

@@ -354,6 +354,50 @@ public class WebSocketHandlerParsingTests
     }
 
     /// <summary>
+    /// An event word this build does not know costs that one message and nothing else: the loop
+    /// neither throws nor stops, and the message after it reaches the actor.
+    /// </summary>
+    /// <remarks>
+    /// Through the real <see cref="MessageDispatcher"/>, because the refusal that used to close the
+    /// socket came out of deserialisation, which <see cref="RecordingMessageDispatcher"/> skips.
+    /// </remarks>
+    [Fact]
+    public async Task AnUnknownEventWordIsDroppedAndTheNextMessageArrives()
+    {
+        // Arrange
+        Pipe wire = new();
+
+        FakeLogger<PrinterWireComplaints> complaintLog = new();
+        PrinterWireComplaints complaints = new(complaintLog);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
+                                           new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                                           TimeProvider.System,
+                                           PrinterTrafficLogTests.Off,
+                                           complaints);
+        WebSocketHandler handler = new(NullLogger<WebSocketHandler>.Instance, dispatcher, DefaultOptions, complaints,
+                                       TimeProvider.System);
+        IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+
+        // Act
+        Task run = handler.HandlePrusaWebsocket(wire.Reader, printerId: 42, actor, CancellationToken.None);
+
+        await WriteInChunksAsync(wire.Writer,
+                                 Encoding.UTF8.GetBytes("""{"event":"SPOOL_JOINED","state":"IDLE"}""" + "\n" + SlimTelemetry),
+                                 chunkSize: 4096);
+        await wire.Writer.CompleteAsync();
+
+        await run.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        await actor.Received(1).PostAsync(Arg.Any<ConnectionMessage>(), Arg.Any<CancellationToken>());
+        await actor.Received(1).PostAsync(Arg.Is<ConnectionMessage>(message => message is InboundTelemetryMessage),
+                                          Arg.Any<CancellationToken>());
+
+        complaintLog.Collector.GetSnapshot().Should().ContainSingle()
+                    .Which.StructuredState.Should().Contain(pair => pair.Key == "PrinterId" && pair.Value == "42");
+    }
+
+    /// <summary>
     /// A brace inside a string or a comment does not end a message, however the bytes are split.
     /// </summary>
     /// <remarks>

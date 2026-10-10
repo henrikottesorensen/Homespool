@@ -210,8 +210,8 @@ public static class PrusaTelemetryMapping
         {
             EventType = eventDto.EventType,
 
-            // Byte-identical to what arrived, because the table is bijective and an unknown word
-            // already threw during parsing - see PrusaEventWireMapping's remarks.
+            // Byte-identical to what arrived, because the table is bijective and an event with an
+            // unknown word was dropped before it was parsed - see PrusaEventWireMapping's remarks.
             WireType = PrusaEventWireMapping.Format(eventDto.EventType),
             Status = PrinterStatusExtensions.ParseWireState(eventDto.Status),
             JobId = eventDto.JobId,

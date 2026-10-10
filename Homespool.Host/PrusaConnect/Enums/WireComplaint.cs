@@ -22,4 +22,7 @@ public enum WireComplaint
 
     /// <summary>A socket carried more messages than its budget allows, and was read more slowly.</summary>
     OverMessageBudget = 6,
+
+    /// <summary>An event carried a word this build has no mapping for, and was dropped.</summary>
+    UnknownEventWord = 7,
 }

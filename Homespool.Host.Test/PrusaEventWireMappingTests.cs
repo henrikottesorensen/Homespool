@@ -101,4 +101,26 @@ public sealed class PrusaEventWireMappingTests
 
         parse.Should().ThrowExactly<ArgumentOutOfRangeException>();
     }
+
+    [Theory]
+    [MemberData(nameof(Vocabulary))]
+    public void EveryWireWordTryParsesToItsValue(string word, PrinterEventType value)
+    {
+        PrusaEventWireMapping.TryParse(word, out PrinterEventType parsed).Should().BeTrue();
+        parsed.Should().Be(value);
+    }
+
+    /// <summary>The same near misses, for the caller that drops a message rather than failing on it.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("StorageInserted")]
+    [InlineData("STORAGE_INSERTED")]
+    [InlineData("medium_inserted")]
+    [InlineData("CANCELLABLE_CHANGED")]
+    [InlineData("UNDEFINED")]
+    public void AWordOutsideTheVocabularyDoesNotTryParse(string word)
+    {
+        PrusaEventWireMapping.TryParse(word, out PrinterEventType parsed).Should().BeFalse();
+        parsed.Should().Be(PrinterEventType.Undefined);
+    }
 }

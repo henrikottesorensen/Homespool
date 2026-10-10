@@ -213,11 +213,12 @@ public class PrinterConnectionActorTests
                                                       PrinterEventType eventType = PrinterEventType.Finished,
                                                       string? reason = null,
                                                       string? dataJson = null,
-                                                      string? machineReason = null)
+                                                      string? machineReason = null,
+                                                      string state = "IDLE")
     {
         return new(DateTimeOffset.UtcNow, new EventDTO
         {
-            Status = "IDLE",
+            Status = state,
             EventType = eventType,
             CommandId = commandId,
             Reason = reason,
@@ -419,6 +420,59 @@ public class PrinterConnectionActorTests
                                                    "the code is the part a classifier can rely on across firmware releases");
         result.Response.Reason.Should().Be("Another transfer in progress",
                                            "the prose stays, because it is what a person reads");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// The state the printer reported in its answer comes back beside the verdict: what a
+    /// <c>SEND_STATE_INFO</c> is asked for, the printer's word as of its answer.
+    /// </summary>
+    [Fact]
+    public async Task TheStateTheAnswerReportsComesBackWithIt()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.SendStateInfo(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.StateChanged, state: "PRINTING"),
+                              CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
+
+        // Assert
+        result.Response!.PrinterStatus.Should().Be(PrinterStatus.Printing);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A state word this does not know leaves the answer's state null - the answer still arrives, and
+    /// a caller asking for the state treats null as not knowing.
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownStateWordAnswersWithNoState()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames));
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.SendStateInfo(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.StateChanged, state: "UNKNOWN"),
+                              CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
+
+        // Assert
+        result.Outcome.Should().Be(CommandSendOutcome.Completed);
+        result.Response!.PrinterStatus.Should().BeNull();
 
         actor.Complete();
         await Eventually(actor.Completion);

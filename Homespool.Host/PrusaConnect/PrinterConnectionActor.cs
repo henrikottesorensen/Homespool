@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect.Commands;
+using Homespool.Host.PrusaConnect.DTO.App;
 using Homespool.Host.PrusaConnect.DTO.Transfers;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Services;
@@ -914,6 +915,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                                                    new CommandOutcome(eventDto.EventType, eventDto.Reason)
                                                                    {
                                                                        MachineReason = eventDto.MachineReason,
+                                                                       PrinterStatus = PrinterStatusExtensions.TryParseWireState(eventDto.Status),
                                                                    },
                                                                    eventDto.Data)
             {

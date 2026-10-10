@@ -21,6 +21,16 @@ namespace Homespool.Host.Printing;
 public sealed record CommandOutcome(Model.PrinterEventType EventType, string? Reason)
 {
     /// <summary>
+    /// The state the printer reported in its answer - every event it sends carries one - or null when
+    /// it named a state this does not know.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="PrusaConnect.Commands.SendStateInfo"/> is asked for: the printer's own word on
+    /// what it is doing, as of its answer rather than its last telemetry.
+    /// </remarks>
+    public Model.PrinterStatus? PrinterStatus { get; init; }
+
+    /// <summary>
     /// Firmware's machine-readable companion to <see cref="Reason"/> - <c>TRANSFER_IN_PROGRESS</c>,
     /// <c>STORAGE_FAILURE</c> and the rest of <c>to_str(MachineReason)</c> - or null where the event
     /// carried none, which is most of them.

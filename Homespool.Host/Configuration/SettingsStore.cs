@@ -192,7 +192,9 @@ public sealed class SettingsStore
     /// <b>Answers "would this work?" for the mail test.</b> Mail settings only take effect at the next
     /// restart, so testing the running configuration would answer a question nobody asked - what the
     /// deployment is doing, rather than what was just typed. It refuses exactly where
-    /// <see cref="Save"/> would, so the test cannot reach a server a save could not.
+    /// <see cref="Save"/> would - a value that will not convert or fails its checks, and a secret that
+    /// cannot carry over - so a test never runs on values a save would refuse, nor reaches a server a
+    /// save could not. A refused secret is not revealed at all.
     /// </remarks>
     /// <typeparam name="T">The options type.</typeparam>
     /// <param name="submitted">Values keyed by <see cref="EditableSetting.Path"/>.</param>
@@ -207,27 +209,20 @@ public sealed class SettingsStore
 
         List<EditableSetting> settings = [.. EditableSettings.All.Where(setting => setting.OptionsType == typeof(T))];
 
-        Dictionary<string, string> errors = SecretsThatCannotCarryOver(submitted)
-            .Where(path => settings.Any(setting => setting.Path == path))
-            .ToDictionary(path => path, path => (string)_localiser["Settings_Refuse_SecretNotCarriedOver"], StringComparer.Ordinal);
-
-        if (errors.Count > 0)
-        {
-            return new SettingsCandidate<T>(null, errors);
-        }
-
         if (settings.Count == 0)
         {
-            return new SettingsCandidate<T>(new T(), errors);
+            return new SettingsCandidate<T>(new T(), new Dictionary<string, string>());
         }
 
         string section = settings[0].Section;
+
+        HashSet<string> refused = [.. SecretsThatCannotCarryOver(submitted)];
 
         Dictionary<string, string?> overlay = [];
 
         foreach (EditableSetting setting in settings)
         {
-            if (!submitted.TryGetValue(setting.Path, out string? value))
+            if (!submitted.TryGetValue(setting.Path, out string? value) || refused.Contains(setting.Path))
             {
                 continue;
             }
@@ -240,7 +235,16 @@ public sealed class SettingsStore
                 value;
         }
 
-        return new SettingsCandidate<T>((T)Candidate(typeof(T), section, overlay), errors);
+        object candidate = Checked(typeof(T), section, overlay, out Dictionary<string, string> errors);
+
+        foreach (EditableSetting setting in settings.Where(setting => refused.Contains(setting.Path)))
+        {
+            errors[setting.Path] = _localiser["Settings_Refuse_SecretNotCarriedOver"];
+        }
+
+        return errors.Count > 0 ?
+            new SettingsCandidate<T>(null, errors) :
+            new SettingsCandidate<T>((T)candidate, errors);
     }
 
     /// <summary>
@@ -252,7 +256,9 @@ public sealed class SettingsStore
     /// beneath it, so a password supplied by the environment is held to the same rule as a stored
     /// one. Binding is what makes <c>587</c> and <c>0587</c>, or <c>True</c> and <c>true</c>, the
     /// same answer. Text is compared without regard to case: a host name has none, and an account name
-    /// differing only in case still goes to the same server.
+    /// differing only in case still goes to the same server. A value refused on its own - one that
+    /// will not convert, or fails its checks - names no server the secret could reach, so it changes
+    /// nothing here and is reported against its own field alone.
     /// </para>
     /// <para>
     /// <b>No further normalisation, deliberately.</b> Two spellings that name the same server - a
@@ -293,12 +299,14 @@ public sealed class SettingsStore
             string section = group.First().Section;
 
             object current = Candidate(group.Key, section, new Dictionary<string, string?>());
-            object proposed = Candidate(
+            object proposed = Checked(
                 group.Key,
                 section,
-                binding.ToDictionary(setting => setting.Key, setting => submitted[setting.Path]));
+                binding.ToDictionary(setting => setting.Key, setting => submitted[setting.Path]),
+                out Dictionary<string, string> invalid);
 
-            if (binding.All(setting => SameDestination(group.Key, setting.Key, current, proposed)))
+            if (binding.All(setting => invalid.ContainsKey(setting.Path) ||
+                                       SameDestination(group.Key, setting.Key, current, proposed)))
             {
                 continue;
             }
@@ -344,13 +352,129 @@ public sealed class SettingsStore
 
     private object Candidate(Type type, string section, IReadOnlyDictionary<string, string?> overlay)
     {
+        return Candidate(type, section, overlay, out _);
+    }
+
+    /// <summary>
+    /// The section as it is in force, with the submitted values bound over it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The binder decides what a value can be</b>, because it is what reads the settings file at
+    /// the next load: anything accepted here is accepted there. It throws on the first value it cannot
+    /// convert - <c>abc</c> for a number, <c>70000</c> for a <c>ushort</c>, <c>0,5</c> for a
+    /// <c>double</c> - so each value is bound on its own. One that will not convert is reported in
+    /// <paramref name="unreadable"/> and leaves its property at the value in force, which keeps it out
+    /// of every other check: it is not also out of range, and it is not a different mail server.
+    /// </para>
+    /// <para>
+    /// Each binding names one scalar property, so a conversion is the only thing it can fail on.
+    /// </para>
+    /// </remarks>
+    private object Candidate(Type type,
+                             string section,
+                             IReadOnlyDictionary<string, string?> overlay,
+                             out List<string> unreadable)
+    {
         object instance = Activator.CreateInstance(type)!;
 
         _configuration.GetSection(section).Bind(instance);
 
-        new ConfigurationBuilder().AddInMemoryCollection(overlay).Build().Bind(instance);
+        unreadable = [];
+
+        foreach ((string key, string? value) in overlay)
+        {
+            try
+            {
+                new ConfigurationBuilder().AddInMemoryCollection([new(key, value)]).Build().Bind(instance);
+            }
+            catch (InvalidOperationException)
+            {
+                unreadable.Add(key);
+            }
+        }
 
         return instance;
+    }
+
+    /// <summary>
+    /// Binds the submitted values over a section and checks the result, reporting each failure
+    /// against the path it belongs to.
+    /// </summary>
+    /// <param name="type">The options type.</param>
+    /// <param name="section">Its configuration section.</param>
+    /// <param name="overlay">Submitted values, keyed by property name.</param>
+    /// <param name="errors">Every failure, a value that would not convert or one that fails its checks.</param>
+    /// <returns>The candidate instance.</returns>
+    private object Checked(Type type,
+                           string section,
+                           IReadOnlyDictionary<string, string?> overlay,
+                           out Dictionary<string, string> errors)
+    {
+        object instance = Candidate(type, section, overlay, out List<string> unreadable);
+
+        errors = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (string key in unreadable)
+        {
+            errors[PathOf(section, key)] = Unreadable(type.GetProperty(key)!);
+        }
+
+        List<ValidationResult> results = [];
+
+        Validator.TryValidateObject(instance, new ValidationContext(instance), results, validateAllProperties: true);
+
+        foreach (ValidationResult result in results)
+        {
+            foreach (string member in result.MemberNames)
+            {
+                errors.TryAdd(PathOf(section, member), result.ErrorMessage ?? "Invalid.");
+            }
+        }
+
+        return instance;
+    }
+
+    /// <summary>
+    /// What a value the binder would not convert is reported as: what the field takes.
+    /// </summary>
+    /// <remarks>
+    /// The bounds are the property's <see cref="RangeAttribute"/> where it has one and the type's
+    /// own otherwise, and are written in the invariant culture because that is what the binder
+    /// reads - somebody who typed <c>0,5</c> is shown <c>0.1</c>, not another comma.
+    /// </remarks>
+    private string Unreadable(PropertyInfo property)
+    {
+        Type type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+        string? key = Type.GetTypeCode(type) switch
+        {
+            TypeCode.Byte or TypeCode.SByte or TypeCode.Int16 or TypeCode.UInt16 or TypeCode.Int32 or
+                TypeCode.UInt32 or TypeCode.Int64 or TypeCode.UInt64 => "Settings_Refuse_NotAWholeNumber",
+            TypeCode.Single or TypeCode.Double or TypeCode.Decimal => "Settings_Refuse_NotANumber",
+            _ => null,
+        };
+
+        if (key is null)
+        {
+            return _localiser["Settings_Refuse_UnreadableValue"];
+        }
+
+        RangeAttribute? range = property.GetCustomAttribute<RangeAttribute>();
+
+        object minimum = range?.Minimum ?? type.GetField("MinValue")!.GetValue(null)!;
+        object maximum = range?.Maximum ?? type.GetField("MaxValue")!.GetValue(null)!;
+
+        return string.Format(
+            CultureInfo.CurrentCulture,
+            _localiser[key],
+            Convert.ToString(minimum, CultureInfo.InvariantCulture),
+            Convert.ToString(maximum, CultureInfo.InvariantCulture));
+    }
+
+    private static string PathOf(string section, string key)
+    {
+        return string.Create(CultureInfo.InvariantCulture, $"{section}:{key}");
     }
 
     private static void Write(JsonObject stored, string path, string? value)
@@ -402,25 +526,13 @@ public sealed class SettingsStore
                 continue;
             }
 
-            object instance = Candidate(group.Key, section, overlay);
+            Checked(group.Key, section, overlay, out Dictionary<string, string> found);
 
-            List<ValidationResult> results = [];
-
-            if (Validator.TryValidateObject(instance, new ValidationContext(instance), results, validateAllProperties: true))
+            foreach (EditableSetting setting in group.Where(setting => overlay.ContainsKey(setting.Key)))
             {
-                continue;
-            }
-
-            foreach (ValidationResult result in results)
-            {
-                foreach (string member in result.MemberNames)
+                if (found.TryGetValue(setting.Path, out string? error))
                 {
-                    string path = string.Create(CultureInfo.InvariantCulture, $"{section}:{member}");
-
-                    if (overlay.ContainsKey(member))
-                    {
-                        errors[path] = result.ErrorMessage ?? "Invalid.";
-                    }
+                    errors[setting.Path] = error;
                 }
             }
         }

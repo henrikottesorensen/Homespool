@@ -10,6 +10,7 @@ using AwesomeAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
+using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Configuration;
 using Homespool.Host.Mail;
@@ -139,6 +140,37 @@ public sealed class SettingsPageTests : IAsyncLifetime
              .Port
              .Should()
              .Be(587, "a refused save changes nothing");
+
+        admin.Dispose();
+    }
+
+    /// <summary>
+    /// A value the binder cannot convert is a field error on the page, not an unhandled exception.
+    /// </summary>
+    [Fact]
+    public async Task AValueThatWillNotConvertIsRefusedAndSaysSo()
+    {
+        HttpClient admin = await AdminAsync("settings-unreadable@example.com");
+
+        using HttpResponseMessage response = await PostAsync(admin, new Dictionary<string, string>
+        {
+            ["Values[Storage:TelemetryRetentionDays]"] = "70000",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        string body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        body.Should().Contain("Nothing was saved").And.Contain("Enter a whole number from 0 to 65535.");
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        scope.ServiceProvider
+             .GetRequiredService<IOptionsMonitor<StorageOptions>>()
+             .CurrentValue
+             .TelemetryRetentionDays
+             .Should()
+             .Be(14, "a refused save changes nothing");
 
         admin.Dispose();
     }

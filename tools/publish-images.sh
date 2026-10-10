@@ -217,8 +217,10 @@ read_back_index() {
         '{{range .Image}}{{.Architecture}} {{index .Config.Labels "org.opencontainers.image.revision"}}{{println}}{{end}}' \
         "$reference")"
 
+    # Not piped: grep -q stops at the first match, and the printf it leaves writing dies of SIGPIPE,
+    # which pipefail reports as no match.
     for arch in "${architectures[@]}"; do
-        printf '%s\n' "$platforms" | grep -q -x -F "$arch $commit" ||
+        grep -q -x -F "$arch $commit" <<< "$platforms" ||
             die "$reference holds no $arch image of $commit; it holds: $(printf '%s' "$platforms" | tr '\n' ',')"
     done
 

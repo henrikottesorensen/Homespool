@@ -99,11 +99,18 @@ public sealed class QueueAdvancer : BackgroundService
     /// again.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Generous, because a full-size model over TLS is minutes - 279.8 KB/s measured through nginx, so
     /// 100 MB is close to six. This exists for the case with no other bound: a transfer the printer
     /// has reported whose terminal event never arrives - a printer that goes away mid-transfer and
     /// does not come back to fetch again - leaves <see cref="FileOnPrinter.TransferStartedAt"/>
     /// set with nothing running, which without this would wedge that printer's queue permanently.
+    /// </para>
+    /// <para>
+    /// <b>Not a limit on how long a transfer may take.</b> It is not applied while the printer
+    /// reports its slot taken (<see cref="QueueSnapshotReader.IsTransferInFlight"/>), since the
+    /// largest upload accepted runs past it at that rate.
+    /// </para>
     /// </remarks>
     public static readonly TimeSpan TransferStaleAfter = TimeSpan.FromMinutes(30);
 
@@ -700,7 +707,8 @@ public sealed class QueueAdvancer : BackgroundService
                 await PrintAsync(scope, dbContext, printerId, head, action.Head!.PrinterPath!, cancellationToken);
                 break;
 
-            case QueueActionKind.Wait when action.Reason is QueueWaitReason.InsufficientSpace or QueueWaitReason.FileUnreadable:
+            case QueueActionKind.Wait when action.Reason is QueueWaitReason.InsufficientSpace or QueueWaitReason.FileUnreadable &&
+                                           snapshot.TransferSlot == TransferSlot.Free:
                 // Routed into the transfer path rather than merely logged, because that path is what
                 // *re-checks* the drive and clears the block - it begins by asking, and only then
                 // sends. Teaching the rules about the block (so a page could not report a transfer
@@ -708,7 +716,8 @@ public sealed class QueueAdvancer : BackgroundService
                 // the rules refusing to transfer and nothing left able to discover there is room now.
                 // Caught by the end-to-end test that frees space and expects the queue to resume.
                 // An unreadable file comes the same way, for the same reason: only trying to send it
-                // finds out that it can be read now.
+                // finds out that it can be read now. Neither while the printer's transfer slot is not
+                // free, since a check that passes ends in an offer the printer would refuse.
                 await TransferAsync(work, printerId, head, cancellationToken);
                 break;
 

@@ -231,6 +231,67 @@ public class PrinterConnectionActorTests
         });
     }
 
+    /// <summary>
+    /// The transfer slot is the printer's word from its latest telemetry: unreported until the first,
+    /// taken while a <c>transfer_id</c> rides on it, free once one comes without.
+    /// </summary>
+    [Fact]
+    public async Task TheTransferSlotIsWhatTheLatestTelemetrySaid()
+    {
+        // Arrange
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(), sink);
+
+        actor.TransferSlot.Should().Be(TransferSlot.Unreported, "nothing has been said on this connection yet");
+
+        // Act and assert - set before the sink hears of the message, so waiting on the sink is enough
+        await actor.PostAsync(TelemetryReporting(transferId: 691988053), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
+        actor.TransferSlot.Should().Be(TransferSlot.Taken);
+
+        await actor.PostAsync(TelemetryReporting(transferId: null), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 2);
+        actor.TransferSlot.Should().Be(TransferSlot.Free);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// An event's <c>transfer_id</c> does not take the slot: a transfer's terminal event names the
+    /// transfer that has just ended, and arrives as the slot frees.
+    /// </summary>
+    [Fact]
+    public async Task ATerminalEventNamingATransferLeavesTheSlotFree()
+    {
+        // Arrange
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(), sink);
+
+        await actor.PostAsync(TelemetryReporting(transferId: null), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
+
+        // Act
+        await actor.PostAsync(new InboundEventMessage(DateTimeOffset.UtcNow, new EventDTO
+        {
+            Status = "PRINTING",
+            EventType = PrinterEventType.TransferFinished,
+            TransferId = 691988053,
+        }), CancellationToken.None);
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
+        // Assert
+        actor.TransferSlot.Should().Be(TransferSlot.Free);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    private static InboundTelemetryMessage TelemetryReporting(int? transferId)
+    {
+        return new(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", TransferId = transferId });
+    }
+
     [Fact]
     public async Task SendCommandAsyncReturnsNotConnectedWhenTheSocketIsClosed()
     {

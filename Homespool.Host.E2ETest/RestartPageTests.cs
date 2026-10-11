@@ -330,6 +330,8 @@ public sealed class RestartPageTests : IAsyncLifetime
     {
         public bool IsOpen => true;
 
+        public TransferSlot TransferSlot => TransferSlot.Free;
+
         public Task<CommandSendResult> SendAsync(IPrinterIntent intent, CancellationToken cancellationToken)
         {
             throw new NotSupportedException("these tests render a page and send the printer nothing");

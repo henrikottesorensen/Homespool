@@ -2157,6 +2157,9 @@
   <data name="Queue_WaitTransferAbortRetryingUnnamed" xml:space="preserve">
     <value>Printeren opgav at overføre den næste fil. Prøver igen om lidt.</value>
   </data>
+  <data name="Queue_WaitTransferSlotTaken" xml:space="preserve">
+    <value>Afventer at en anden overførsel til printeren bliver færdig.</value>
+  </data>
   <data name="Queue_WaitFirmwareInstalling" xml:space="preserve">
     <value>Afventer at firmwareinstallationen bliver færdig.</value>
   </data>

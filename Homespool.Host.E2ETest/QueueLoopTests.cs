@@ -280,6 +280,64 @@ public sealed class QueueLoopTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// A queued file waits while somebody else's upload fills the printer's one transfer slot - not
+    /// offered into it, nor even asked about the drive's room - and is sent once the printer reports
+    /// the slot free.
+    /// </summary>
+    /// <remarks>
+    /// The upload is begun on the device rather than through the server, as PrusaLink's would be: the
+    /// server learns of it only from the printer's telemetry, which is the point.
+    /// </remarks>
+    [Fact]
+    public async Task AQueuedFileWaitsForAnotherUploadToFinishBeforeItIsOffered()
+    {
+        // Arrange - a connected printer already taking a file nobody here sent
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        await using FakePrinterClient fake = new(identity, TimeProvider.System, FastTelemetry()) { Token = token };
+        fake.Device.TryBeginTransfer("prusalink-upload", teamId: 0, "/usb/other.bgcode", totalSize: 1_000_000,
+                                     startCommandId: 0).Should().NotBeNull();
+
+        await fake.ConnectAsync(ConnectAsync, TestContext.Current.CancellationToken);
+        Task run = fake.RunAsync(TestContext.Current.CancellationToken);
+
+        (await WaitUntilAsync(() => Task.FromResult(Registry.IsConnected(printerId)), TimeSpan.FromSeconds(10))).Should().BeTrue();
+
+        await UploadAsync(userId, "queued.bgcode");
+        await EnqueueAsync(printerId, userId, "queued.bgcode", PrintOnly);
+
+        (await WaitUntilAsync(async () => (await DecideAsync(printerId)).Reason == QueueWaitReason.TransferSlotTaken,
+                              TimeSpan.FromSeconds(10))).Should().BeTrue("the printer reports the slot in its telemetry");
+
+        // Act 1
+        await AdvanceAsync(printerId);
+        await AdvanceAsync(printerId);
+        await AdvanceAsync(printerId);
+
+        // Assert 1
+        CommandsReceived(fake, "_DOWNLOAD\"").Should().Be(0, "the printer would refuse the offer, and hold a command slot doing it");
+        CommandsReceived(fake, "\"SEND_INFO\"").Should().Be(0, "the room on the drive only matters to an offer");
+
+        // Act 2 - the upload ends, and the next report says so
+        fake.Device.EndTransfer();
+
+        bool sent = await WaitUntilAsync(async () =>
+                                         {
+                                             await AdvanceAsync(printerId);
+
+                                             return fake.Device.Storage.Find("/usb/queued.bgcode") is not null;
+                                         },
+                                         TimeSpan.FromSeconds(30));
+
+        // Assert 2
+        sent.Should().BeTrue("the slot is free");
+        CommandsReceived(fake, "_DOWNLOAD\"").Should().Be(1, "offered once, when it could be taken");
+
+        await EndRunAsync(fake, run);
+    }
+
+    /// <summary>
     /// The history row: opened when the printer takes the print, promoted to <c>Printing</c> once
     /// telemetry says so, and closed <c>Finished</c> when the print ends.
     /// </summary>
@@ -1243,6 +1301,13 @@ public sealed class QueueLoopTests : IAsyncLifetime
     }
 
     /// <summary>How many <c>START_PRINT</c> commands have reached the fake.</summary>
+    /// <summary>How many JSON commands the printer received whose text contains <paramref name="marker"/>.</summary>
+    private static int CommandsReceived(FakePrinterClient fake, string marker)
+    {
+        return fake.ReceivedCommands.Count(frame => frame.Kind == ServerCommandKind.Json &&
+                                                    Encoding.UTF8.GetString(frame.Payload.Span).Contains(marker, StringComparison.Ordinal));
+    }
+
     private static int StartPrintsReceived(FakePrinterClient fake)
     {
         return fake.ReceivedCommands.Count(frame => frame.Kind == ServerCommandKind.Json &&

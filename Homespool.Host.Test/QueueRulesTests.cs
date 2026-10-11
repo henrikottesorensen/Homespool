@@ -3,6 +3,7 @@ using System;
 using AwesomeAssertions;
 
 using Homespool.Host.Localisation;
+using Homespool.Host.Printing;
 using Homespool.Host.Queue;
 using Homespool.Model;
 
@@ -179,6 +180,72 @@ public class QueueRulesTests
 
         action.Kind.Should().Be(QueueActionKind.Wait);
         action.Reason.Should().Be(QueueWaitReason.Transferring);
+    }
+
+    /// <summary>
+    /// The printer's one slot taken by a file that is not the head's - a direct send, a PrusaLink
+    /// upload, the previous print's file still arriving - is waited out rather than offered into: the
+    /// offer would be refused, and would hold the connection's command slot while it was.
+    /// </summary>
+    [Fact]
+    public void NothingIsOfferedWhileThePrinterReportsAnotherTransfer()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Printing, arrived: false, path: null) with { TransferSlot = TransferSlot.Taken });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.TransferSlotTaken);
+    }
+
+    /// <summary>
+    /// Nor before the printer has said, over the connection it holds now, whether the slot is free -
+    /// and a value nothing set says no more than that.
+    /// </summary>
+    [Theory]
+    [InlineData(TransferSlot.Unreported)]
+    [InlineData(TransferSlot.Undefined)]
+    public void NothingIsOfferedBeforeThePrinterHasReportedItsSlot(TransferSlot slot)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived: false, path: null) with { TransferSlot = slot });
+
+        action.Kind.Should().Be(QueueActionKind.Wait);
+        action.Reason.Should().Be(QueueWaitReason.TransferSlotUnreported);
+    }
+
+    /// <summary>
+    /// The head's own transfer filling the slot is still said as sending it, not as somebody else's.
+    /// </summary>
+    [Fact]
+    public void TheHeadsOwnTransferInTheSlotIsReportedAsSendingIt()
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Printing, arrived: false, path: null) with
+            {
+                TransferInFlight = true,
+                TransferSlot = TransferSlot.Taken,
+            });
+
+        action.Reason.Should().Be(QueueWaitReason.Transferring);
+    }
+
+    /// <summary>
+    /// A print needs no transfer slot: a file on the drive, or arriving and named, is printed while
+    /// another file downloads.
+    /// </summary>
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void AFileOnTheDriveIsPrintedWhileAnotherDownloads(bool arrived, bool arriving)
+    {
+        QueueAction action = QueueRules.Decide(
+            Situation(PrinterStatus.Ready, arrived, path: "/usb/BENCHY~1.BGC") with
+            {
+                TransferInFlight = arriving,
+                TransferSlot = TransferSlot.Taken,
+            });
+
+        action.Kind.Should().Be(QueueActionKind.Print);
     }
 
     /// <summary>
@@ -631,7 +698,8 @@ public class QueueRulesTests
                                   QueueWaitReason.AwaitingPrinterPath or
                                   QueueWaitReason.PrinterNotAvailable or
                                   QueueWaitReason.QueuerLostAccess or
-                                  QueueWaitReason.FirmwareInstalling;
+                                  QueueWaitReason.FirmwareInstalling or
+                                  QueueWaitReason.TransferSlotTaken;
 
         MessageKey? sentence = QueueWaitDescription.For(QueueAction.Wait(reason), "benchy.bgcode");
 

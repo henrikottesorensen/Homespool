@@ -77,6 +77,7 @@ public class QueueSnapshotReader
     /// </summary>
     /// <param name="onPrinter">The <i>(file, printer)</i> row, or null when nothing has been sent.</param>
     /// <param name="fileName">The stored file's name, as its offer records it.</param>
+    /// <param name="slot">What the printer last said about its transfer slot.</param>
     /// <remarks>
     /// <para>
     /// <b>The stamp says a transfer was started; it takes an observation to say one is running.</b>
@@ -97,11 +98,19 @@ public class QueueSnapshotReader
     /// A stale stamp still reads as "no transfer" rather than "a transfer": the bound for a report
     /// that never comes. See <see cref="QueueAdvancer.TransferStaleAfter"/>.
     /// </para>
+    /// <para>
+    /// <b>Never stale while the printer says its slot is taken.</b> The bound is for an ending that
+    /// went unseen, and a slot still taken is a transfer that has not ended - a large file at the rate
+    /// firmware pulls one outlasts the bound. Re-offering it would be refused as a busy slot and would
+    /// clear the path and the command the running transfer is recognised by, so its arrival would
+    /// never be recorded and the print could not start while it downloads.
+    /// </para>
     /// </remarks>
-    public bool IsTransferInFlight(FileOnPrinter? onPrinter, string fileName)
+    public bool IsTransferInFlight(FileOnPrinter? onPrinter, string fileName, TransferSlot slot)
     {
         if (onPrinter?.TransferStartedAt is not DateTimeOffset startedAt ||
-            _timeProvider.GetUtcNow() - startedAt >= QueueAdvancer.TransferStaleAfter)
+            (slot != TransferSlot.Taken &&
+             _timeProvider.GetUtcNow() - startedAt >= QueueAdvancer.TransferStaleAfter))
         {
             return false;
         }
@@ -169,6 +178,7 @@ public class QueueSnapshotReader
         DateTimeOffset? connectedSince = _registry.ConnectedSince(printerId);
         bool connected = connectedSince is not null;
         PrinterStatus status = StatedSinceConnecting(live, connectedSince);
+        TransferSlot slot = _registry.TransferSlotOf(printerId);
 
         bool printInFlight = await _dbContext.PrintJobs
                                              .AsNoTracking()
@@ -178,7 +188,8 @@ public class QueueSnapshotReader
         if (head?.File is null)
         {
             return new QueueSnapshot(connected, status, Head: null, TransferInFlight: false, printInFlight,
-                                     FirmwareInstalling: _installations.IsInstalling(printerId));
+                                     FirmwareInstalling: _installations.IsInstalling(printerId),
+                                     TransferSlot: slot);
         }
 
         FileOnPrinter? onPrinter = await _dbContext.FilesOnPrinters
@@ -215,14 +226,15 @@ public class QueueSnapshotReader
             status,
             new QueueHead(head.Id, head.FileId, head.File.Name, current && onPrinter!.Arrived,
                           current ? onPrinter!.PrinterPath : null),
-            IsTransferInFlight(onPrinter, head.File.Name),
+            IsTransferInFlight(onPrinter, head.File.Name, slot),
             printInFlight,
             CompatibilityHold(head.File, printer, tools) ?? onPrinter?.HoldReason,
             TransferRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()),
             authorityLapsed,
             TransferRetryRules.IsCountingAborts(onPrinter),
             _installations.IsInstalling(printerId),
-            current && PrintStartRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()));
+            current && PrintStartRetryRules.IsWaiting(onPrinter, _timeProvider.GetUtcNow()),
+            slot);
     }
 
     /// <summary>

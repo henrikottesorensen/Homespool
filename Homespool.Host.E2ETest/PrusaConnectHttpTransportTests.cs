@@ -1005,6 +1005,8 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
         public bool IsOpen => !Completed;
 
+        public TransferSlot TransferSlot => TransferSlot.Free;
+
         public Task<CommandSendResult> SendAsync(IPrinterIntent intent, CancellationToken cancellationToken)
         {
             throw new NotSupportedException("Nothing sends to the stand-in in this test.");
@@ -1071,6 +1073,8 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         public PrinterDialect Dialect => _inner.Dialect;
 
         public bool IsOpen => _inner.IsOpen;
+
+        public TransferSlot TransferSlot => _inner.TransferSlot;
 
         public ValueTask PostAsync(ConnectionMessage message, CancellationToken cancellationToken)
         {

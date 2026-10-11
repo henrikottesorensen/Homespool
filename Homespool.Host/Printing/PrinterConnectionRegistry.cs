@@ -238,6 +238,21 @@ public sealed class PrinterConnectionRegistry
     }
 
     /// <summary>
+    /// What the printer has reported about its transfer slot over the connection it holds right now -
+    /// <see cref="TransferSlot.Unreported"/> when it is not connected.
+    /// </summary>
+    /// <remarks>
+    /// Read from the live link rather than kept here, so a report dies with the connection that
+    /// carried it: a displaced or dropped connection's last word is not the printer's word now.
+    /// </remarks>
+    public TransferSlot TransferSlotOf(int printerId)
+    {
+        return _actors.TryGetValue(printerId, out LiveConnection connection) && connection.Link.IsOpen ?
+                   connection.Link.TransferSlot :
+                   TransferSlot.Unreported;
+    }
+
+    /// <summary>
     /// A live connection and what about it is not the link's business: which listener it came in on,
     /// and when it registered.
     /// </summary>

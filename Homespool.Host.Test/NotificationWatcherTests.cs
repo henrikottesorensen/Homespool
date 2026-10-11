@@ -369,6 +369,8 @@ public sealed class NotificationWatcherTests : IAsyncLifetime
     {
         public bool IsOpen => true;
 
+        public Printing.TransferSlot TransferSlot => Printing.TransferSlot.Free;
+
         public System.Threading.Tasks.Task<Printing.CommandSendResult> SendAsync(Printing.IPrinterIntent intent,
                                                                               System.Threading.CancellationToken cancellationToken)
         {

@@ -40,7 +40,10 @@ namespace Homespool.Host.Configuration;
 /// <b>Written by rename, never in place.</b> A reload reads whatever is on disk at that moment, and
 /// a half-written file binds as readily as a whole one. Writing a temporary file in the same
 /// directory and moving it over the target makes the swap atomic, because a rename within one
-/// filesystem is.
+/// filesystem is. That holds for one write at a time only: the temporary file has a fixed name, so
+/// an interrupted write leaves one file for the next to replace rather than a trail of them, and
+/// two writes at once would share it. <see cref="SettingsStore"/> is the one writer and serialises
+/// its saves.
 /// </para>
 /// <para>
 /// <b>Mode 0600, and the file holds a credential.</b> The SMTP password lives here as ciphertext

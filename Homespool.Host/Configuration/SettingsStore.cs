@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json.Nodes;
+using System.Threading;
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Localization;
@@ -48,6 +49,14 @@ namespace Homespool.Host.Configuration;
 /// <see cref="Save"/> and <see cref="CandidateFor"/> enforce it: a save is what the next restart
 /// and every mail after it use, and a candidate is what the test button connects to now.
 /// </para>
+/// <para>
+/// <b>One save at a time, from the read to the reload</b>, which is why this is a singleton. The
+/// file is staged under a fixed name, so two writes at once fill one temporary file: one rename
+/// finds it gone, and the other moves a file that is still being written into place, where a reload
+/// can read it half-written. Holding the read keeps a save from writing back a stored secret
+/// another has just replaced, and holding the reload keeps an earlier file's values from landing
+/// after a later one's.
+/// </para>
 /// </remarks>
 public sealed class SettingsStore
 {
@@ -60,6 +69,7 @@ public sealed class SettingsStore
     private readonly SettingsFile _file;
     private readonly SettingsSecretProtector _protector;
     private readonly IStringLocalizer<SharedResource> _localiser;
+    private readonly Lock _saving = new();
 
     /// <summary>Creates the store.</summary>
     /// <param name="configuration">
@@ -145,6 +155,14 @@ public sealed class SettingsStore
     {
         ArgumentNullException.ThrowIfNull(submitted);
 
+        lock (_saving)
+        {
+            return SaveUnderLock(submitted);
+        }
+    }
+
+    private SettingsSaveResult SaveUnderLock(IReadOnlyDictionary<string, string?> submitted)
+    {
         JsonObject stored = _file.Read();
         Dictionary<string, string?> pending = [];
 

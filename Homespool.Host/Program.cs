@@ -372,7 +372,9 @@ public static class Program
             // decrypts it into SmtpOptions.Password after binding, so every consumer keeps reading
             // the plain property and none of them knows protection exists.
             builder.Services.AddSingleton<SettingsSecretProtector>();
-            builder.Services.AddScoped<SettingsStore>();
+
+            // One instance, because its lock is what keeps two saves from overlapping.
+            builder.Services.AddSingleton<SettingsStore>();
             builder.Services.AddSingleton<Services.ApplicationRestarter>();
             builder.Services.AddSingleton<IPostConfigureOptions<Mail.SmtpOptions>, Mail.SmtpPasswordUnprotector>();
 

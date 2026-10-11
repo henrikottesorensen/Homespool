@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
@@ -54,6 +56,55 @@ public class SettingsStoreTests : IDisposable
              .BeTrue();
 
         configuration["Invitations:LifetimeHours"].Should().Be("12", "the store reloads what it wrote");
+    }
+
+    /// <summary>
+    /// <b>A second save waits until the first has reloaded.</b> The first is held inside its reload;
+    /// a second that went ahead would write the file under it and reach the reload too.
+    /// </summary>
+    [Fact]
+    public async Task ASecondSaveWaitsForTheFirstToFinish()
+    {
+        using GatedLayer gate = new();
+
+        using ConfigurationManager configuration = new();
+
+        _file.AddTo(configuration);
+        ((IConfigurationBuilder)configuration).Add(gate);
+
+        SettingsStore store = new(configuration, _file, _protector, TestLocaliser.Shared());
+
+        gate.Close();
+
+        try
+        {
+            Task<SettingsSaveResult> first = Task.Run(
+                () => store.Save(new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "12" }),
+                TestContext.Current.CancellationToken);
+
+            gate.WaitForReload(TimeSpan.FromSeconds(10)).Should().BeTrue("the first save reaches its reload");
+
+            Task<SettingsSaveResult> second = Task.Run(
+                () => store.Save(new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "24" }),
+                TestContext.Current.CancellationToken);
+
+            gate.WaitForReload(TimeSpan.FromSeconds(1)).Should().BeFalse("the second save waits for the first");
+            StoredLifetime().Should().Be("12", "nothing writes the file while a save is reloading it");
+
+            gate.Open();
+
+            SettingsSaveResult[] results = await Task.WhenAll(first, second)
+                                                     .WaitAsync(TimeSpan.FromSeconds(10),
+                                                                TestContext.Current.CancellationToken);
+
+            results.Should().AllSatisfy(result => result.Saved.Should().BeTrue());
+            StoredLifetime().Should().Be("24");
+            configuration["Invitations:LifetimeHours"].Should().Be("24", "the later save's reload is the last");
+        }
+        finally
+        {
+            gate.Open();
+        }
     }
 
     /// <summary>
@@ -613,6 +664,11 @@ public class SettingsStoreTests : IDisposable
         return saved[key];
     }
 
+    private string? StoredLifetime()
+    {
+        return _file.Read()["Invitations"]?["LifetimeHours"]?.GetValue<string>();
+    }
+
     private (SettingsStore store, IConfigurationRoot configuration) Store(IDictionary<string, string?>? beneath = null)
     {
         ConfigurationManager configuration = new();
@@ -625,5 +681,53 @@ public class SettingsStoreTests : IDisposable
         _file.AddTo(configuration);
 
         return (new SettingsStore(configuration, _file, _protector, TestLocaliser.Shared()), configuration);
+    }
+
+    /// <summary>
+    /// A configuration layer whose reload can be held. A save reloads every layer while it still
+    /// holds the file, which makes this the one place a test can stop a save part-way without
+    /// guessing at timing.
+    /// </summary>
+    private sealed class GatedLayer : ConfigurationProvider, IConfigurationSource, IDisposable
+    {
+        private readonly ManualResetEventSlim _open = new(true);
+        private readonly SemaphoreSlim _entered = new(0);
+
+        public void Close()
+        {
+            _open.Reset();
+        }
+
+        public void Open()
+        {
+            _open.Set();
+        }
+
+        /// <summary>Whether a reload reached this layer while it was closed, within the timeout.</summary>
+        public bool WaitForReload(TimeSpan timeout)
+        {
+            return _entered.Wait(timeout);
+        }
+
+        public override void Load()
+        {
+            if (!_open.IsSet)
+            {
+                _entered.Release();
+            }
+
+            _open.Wait();
+        }
+
+        public IConfigurationProvider Build(IConfigurationBuilder builder)
+        {
+            return this;
+        }
+
+        public void Dispose()
+        {
+            _open.Dispose();
+            _entered.Dispose();
+        }
     }
 }

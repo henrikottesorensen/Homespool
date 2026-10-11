@@ -186,9 +186,17 @@ public sealed class WebRtcSidecarWriter
     /// memory: this is on the startup path, and a data volume that refuses a write must not stop the
     /// server from starting.
     /// </summary>
+    /// <remarks>
+    /// <b>The choice in force becomes unknown with it.</b> From the write until a restart is confirmed,
+    /// the running sidecar holds either the old choice or the new one - an unconfirmed restart may well
+    /// have happened, since go2rtc can drop the connection while restarting. Left at the old choice, it
+    /// would let a change back to that choice pass as already applied, with nothing written and the
+    /// sidecar perhaps running the other one.
+    /// </remarks>
     private void MarkRestartOwed()
     {
         _restartOwed = true;
+        _availability.StunInForce = null;
 
         try
         {

@@ -137,7 +137,7 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
         Save(factory, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
 
         (await EventuallyAsync(() => _sidecar.RefusedRestarts >= 1)).Should().BeTrue();
-        availability.StunInForce.Should().Be(new WebRtcStunChoice(false, string.Empty), "the sidecar never restarted");
+        availability.StunInForce.Should().BeNull("with a restart owed, what the running sidecar holds is not known");
         File.Exists(_marker).Should().BeTrue("the owed restart has to outlive Homespool restarting");
 
         _sidecar.RefuseRestarts(false);
@@ -149,6 +149,29 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
         _sidecar.ConfigWrites.Should().HaveCount(2, "nothing needed writing again");
         availability.StunInForce.Should().Be(new WebRtcStunChoice(true, "stun:stun.l.google.com:19302"));
         File.Exists(_marker).Should().BeFalse("the restart it recorded has been made");
+    }
+
+    /// <summary>
+    /// <b>Switching back while a restart is owed is written, not taken as already done.</b> The
+    /// unconfirmed restart may have happened - go2rtc can drop the connection while restarting - so the
+    /// sidecar may already run the choice just written; the choice it ran before is no longer known to
+    /// be in force, and switching back to it must still reach the file.
+    /// </summary>
+    [Fact]
+    public async Task SwitchingBackWhileARestartIsOwedIsStillWritten()
+    {
+        HomespoolFactory factory = Start();
+
+        _sidecar.RefuseRestarts(true);
+
+        Save(factory, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+        (await EventuallyAsync(() => _sidecar.RefusedRestarts >= 1)).Should().BeTrue();
+
+        Save(factory, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "false" });
+
+        (await EventuallyAsync(() => _sidecar.ConfigWrites.Count == 3)).Should().BeTrue(
+            "the file says STUN is on, and the sidecar may be running it");
+        _sidecar.ConfigWrites[^1].Should().Contain("\"ice_servers\":[]");
     }
 
     /// <summary>

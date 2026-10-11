@@ -87,12 +87,14 @@ public sealed class CameraLiveAvailability
     public bool ConfiguredHostResolvesOnlyToLoopback { get; set; }
 
     /// <summary>
-    /// The STUN choice the stream server has confirmed it holds, or <see langword="null"/> before it
-    /// has confirmed one.
+    /// The STUN choice the stream server has confirmed it holds, or <see langword="null"/> when that
+    /// is not known: before any is confirmed, and while a restart is owed.
     /// </summary>
     /// <remarks>
     /// <b>Written by <see cref="WebRtcSidecarWriter"/>, and only once the sidecar agrees</b> - its
-    /// configuration already matched, or was written and the server restarted. What was saved is the
+    /// configuration already matched with no restart owed, or was written and the server restarted.
+    /// Cleared when a write makes a restart owed, because the running sidecar may then hold either
+    /// choice. What was saved is the
     /// options' business; this is what the sidecar is doing, which is what the live-view page reports
     /// and what <see cref="WebRtcStunApplier"/> compares a saved choice against.
     /// </remarks>

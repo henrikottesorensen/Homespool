@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -886,6 +887,73 @@ public sealed class TelemetryWriterTests : IDisposable
         }, TimeSpan.FromSeconds(5));
 
         flushed.Should().BeTrue("the periodic timer must flush a low-traffic printer even though its batch never fills");
+    }
+
+    /// <summary>
+    /// Every flush tick on an idle deployment wins the drain loop's wait against the channel. A
+    /// channel wait created afresh each pass would stay queued in the channel after losing, one per
+    /// tick until a printer next reports - several megabytes a day at the default interval.
+    /// </summary>
+    /// <remarks>
+    /// The channel offers no public count of its waiting readers, so this reads it from the
+    /// runtime's own fields. A runtime that renames them fails the test rather than passing it.
+    /// </remarks>
+    [Fact]
+    public async Task IdleFlushTicksLeaveOneWaitOnTheChannel()
+    {
+        // Arrange - the shortest interval the writer allows, so a second covers about twenty ticks.
+        TelemetryWriter writer = await StartWriterAsync(DefaultOptions(flushIntervalSeconds: 0.05));
+        await SeedPrinterAsync();
+
+        // Act
+        await Task.Delay(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+
+        // Assert
+        WaitingReaderCount(writer).Should().Be(1, "a wait that loses to the timer must be the one the next pass waits on");
+
+        writer.Enqueue(printerId: 1, DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE" });
+
+        bool flushed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+            return await SampleCountAsync(context) == 1;
+        }, TimeSpan.FromSeconds(5));
+
+        flushed.Should().BeTrue("the wait kept across idle ticks must still wake the loop when a printer reports");
+    }
+
+    /// <summary>
+    /// How many reads are queued on <paramref name="writer"/>'s channel, waiting for an item.
+    /// </summary>
+    private static int WaitingReaderCount(TelemetryWriter writer)
+    {
+        const BindingFlags Instance = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+        object channel = typeof(TelemetryWriter).GetField("_channel", Instance)?.GetValue(writer) ??
+                         throw new InvalidOperationException("TelemetryWriter has no _channel field.");
+
+        FieldInfo headField = channel.GetType().GetField("_waitingReadersHead", Instance) ??
+                              throw new InvalidOperationException($"{channel.GetType()} has no _waitingReadersHead field.");
+
+        object? head = headField.GetValue(channel);
+
+        if (head is null)
+        {
+            return 0;
+        }
+
+        PropertyInfo next = head.GetType().GetProperty("Next", Instance) ??
+                            throw new InvalidOperationException($"{head.GetType()} has no Next property.");
+
+        // A circular list: the last waiter's Next is the head again.
+        int count = 1;
+
+        for (object? waiter = next.GetValue(head); waiter is not null && !ReferenceEquals(waiter, head); waiter = next.GetValue(waiter))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     /// <summary>

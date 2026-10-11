@@ -104,9 +104,25 @@ public sealed class CameraStreamReconciler : BackgroundService
         _logger = logger;
     }
 
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    /// <summary>
+    /// The startup pass, with any failure but shutdown logged rather than thrown.
+    /// </summary>
+    /// <remarks>
+    /// Nothing restarts a <see cref="BackgroundService"/>, and an exception leaving one stops the whole
+    /// host by default. A camera this pass did not reach is written again when it is next saved, and
+    /// every camera at the next start.
+    /// </remarks>
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        return ReconcileAsync(stoppingToken);
+        try
+        {
+            await ReconcileAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogError(exception,
+                             "Reconciling the cameras with the stream server failed; each is written again when next saved.");
+        }
     }
 
     /// <summary>

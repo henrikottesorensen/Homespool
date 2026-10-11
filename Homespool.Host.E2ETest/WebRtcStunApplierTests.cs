@@ -8,7 +8,10 @@ using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 using Homespool.Host.Accounts;
 using Homespool.Host.Cameras;
@@ -146,6 +149,33 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
         _sidecar.ConfigWrites.Should().HaveCount(2, "nothing needed writing again");
         availability.StunInForce.Should().Be(new WebRtcStunChoice(true, "stun:stun.l.google.com:19302"));
         File.Exists(_marker).Should().BeFalse("the restart it recorded has been made");
+    }
+
+    /// <summary>
+    /// <b>A failure during a pass costs a retry, never the server.</b> An exception leaving a
+    /// background service stops the whole host by default; here every reconcile fails, at startup and
+    /// after each change, and Homespool both keeps running and goes on applying the next change.
+    /// </summary>
+    [Fact]
+    public async Task AFailingReconcileNeitherStopsHomespoolNorTheNextChange()
+    {
+        HomespoolFactory root = Configure();
+
+        await using WebApplicationFactory<Controllers.PrinterAppController> factory = root.WithWebHostBuilder(
+            builder => builder.ConfigureTestServices(services =>
+                services.AddScoped<CameraStreamSweeper>(_ => throw new InvalidOperationException("The database is unavailable."))));
+
+        _ = factory.Server;
+
+        IHostApplicationLifetime lifetime = factory.Services.GetRequiredService<IHostApplicationLifetime>();
+
+        Save(factory.Services, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+        (await EventuallyAsync(() => _sidecar.Restarts == 2)).Should().BeTrue();
+
+        Save(factory.Services, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "false" });
+        (await EventuallyAsync(() => _sidecar.Restarts == 3)).Should().BeTrue("the applier survived the failure after the first change");
+
+        lifetime.ApplicationStopping.IsCancellationRequested.Should().BeFalse("no failed reconcile may stop the host");
     }
 
     /// <summary>

@@ -42,6 +42,11 @@ namespace Homespool.Host.Cameras;
 /// <b>Nothing to do without a candidate address.</b> Live view is off then, and the stream server is
 /// never told anything about WebRTC.
 /// </para>
+/// <para>
+/// <b>A pass that fails is logged and owed, never thrown.</b> Nothing restarts a
+/// <see cref="BackgroundService"/>, and an exception leaving one stops the whole host by default - so
+/// a database that is busy during the reconcile must cost a retry, not the server.
+/// </para>
 /// </remarks>
 public sealed class WebRtcStunApplier : BackgroundService
 {
@@ -109,18 +114,37 @@ public sealed class WebRtcStunApplier : BackgroundService
 
         try
         {
-            bool settled = await ApplyAsync(stoppingToken).ConfigureAwait(false);
+            bool settled = await TryApplyAsync(stoppingToken).ConfigureAwait(false);
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 await WaitAsync(settled, stoppingToken).ConfigureAwait(false);
 
-                settled = await ApplyAsync(stoppingToken).ConfigureAwait(false);
+                settled = await TryApplyAsync(stoppingToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // Shutting down. A choice not yet delivered is delivered by the next start's configurer.
+        }
+    }
+
+    /// <summary>
+    /// One pass, with any failure but shutdown logged and the choice left owed.
+    /// </summary>
+    private async Task<bool> TryApplyAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            return await ApplyAsync(stoppingToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
+        {
+            _logger.LogError(exception,
+                             "Applying the STUN choice failed; asking again in {Seconds}s.",
+                             RetryInterval.TotalSeconds);
+
+            return false;
         }
     }
 

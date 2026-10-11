@@ -88,7 +88,8 @@ public sealed class FakeDevice
     }
 
     /// <summary>
-    /// Completes the next time something telemetry reports changes - today, a tool's material.
+    /// Completes the next time something telemetry reports changes - a tool's material, or the
+    /// transfer slot being taken or released.
     /// </summary>
     /// <remarks>
     /// <b>Firmware sends telemetry when its content changes</b>, not only on its timer: the planner
@@ -118,6 +119,20 @@ public sealed class FakeDevice
         {
             _materials[tool] = material;
 
+            changed = _telemetryChanged;
+            _telemetryChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        changed.TrySetResult();
+    }
+
+    /// <summary>Completes <see cref="NextTelemetryChange"/> for a change that is not a material.</summary>
+    private void SignalTelemetryChange()
+    {
+        TaskCompletionSource changed;
+
+        lock (_gate)
+        {
             changed = _telemetryChanged;
             _telemetryChanged = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
@@ -242,6 +257,7 @@ public sealed class FakeDevice
 
         Transfer = new FakeTransfer(hash, teamId, path, totalSize, _nextTransferId++, startCommandId,
                                     order, fileIdSource);
+        SignalTelemetryChange();
 
         return Transfer;
     }
@@ -253,10 +269,17 @@ public sealed class FakeDevice
     public FakeTransfer? LastTransfer { get; private set; }
 
     /// <summary>Releases the transfer slot once the transfer has ended, either way.</summary>
+    /// <remarks>
+    /// Taking the slot and releasing it each send telemetry soon after, as firmware's do: both come
+    /// with an event - the accepting <c>TRANSFER_INFO</c>, the terminal one - and firmware's planner
+    /// sends telemetry straight after any event (planner.cpp, "Enforce telemetry now"). Telemetry is
+    /// where the server reads the slot from.
+    /// </remarks>
     public void EndTransfer()
     {
         LastTransfer = Transfer;
         Transfer = null;
+        SignalTelemetryChange();
     }
 
     /// <summary>The wire spelling of <see cref="State"/> - <c>IDLE</c>, <c>PRINTING</c>, etc.</summary>

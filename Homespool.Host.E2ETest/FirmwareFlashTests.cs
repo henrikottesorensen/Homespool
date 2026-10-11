@@ -704,7 +704,11 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
     {
         // Telemetry, so the printer reports a status: without one it reads as unknown, which is not
         // idle. Often, unless a test says otherwise, so a state a test forces is reported within moments.
-        SyntheticTelemetrySource telemetry = new() { IdleInterval = telemetryEvery ?? TimeSpan.FromMilliseconds(200) };
+        // A test that says otherwise gets nothing sooner - not the shorter interval a transfer brings,
+        // nor the report a change brings forward - or a state it forces is reported early after all.
+        SyntheticTelemetrySource telemetry = telemetryEvery is TimeSpan every ?
+            new() { IdleInterval = every, PrintingInterval = every, ChangeInterval = null } :
+            new() { IdleInterval = TimeSpan.FromMilliseconds(200), PrintingInterval = TimeSpan.FromMilliseconds(200) };
         FakePrinterClient fake = new(identity, TimeProvider.System, new FakePrinterOptions { TelemetrySource = telemetry, Policy = policy })
         {
             Token = token,

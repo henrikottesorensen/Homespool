@@ -288,6 +288,49 @@ public class PrinterConnectionRegistryTests
         registry.IsConnected(1).Should().BeFalse();
     }
 
+    /// <summary>
+    /// The transfer slot is what the connection the printer holds now has been told - never a report
+    /// to one it has left.
+    /// </summary>
+    [Fact]
+    public void TheTransferSlotIsTheLiveConnectionsReport()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterConnectionActor earlier = OpenActor();
+        earlier.TransferSlot.Returns(TransferSlot.Taken);
+        registry.Register(1, earlier, overPlaintext: false);
+
+        IPrinterConnectionActor current = OpenActor();
+        current.TransferSlot.Returns(TransferSlot.Unreported);
+
+        // Act + Assert
+        registry.TransferSlotOf(1).Should().Be(TransferSlot.Taken);
+
+        registry.Register(1, current, overPlaintext: false);
+        registry.TransferSlotOf(1).Should().Be(TransferSlot.Unreported, "the displaced connection's report goes with it");
+    }
+
+    /// <summary>
+    /// Unreported for a printer that is not connected, whatever a closed link last heard.
+    /// </summary>
+    [Fact]
+    public void TheTransferSlotIsUnreportedWhileThePrinterIsNotConnected()
+    {
+        // Arrange
+        PrinterConnectionRegistry registry = NewRegistry();
+        IPrinterConnectionActor actor = OpenActor();
+        actor.TransferSlot.Returns(TransferSlot.Free);
+
+        // Act + Assert
+        registry.TransferSlotOf(1).Should().Be(TransferSlot.Unreported, "nothing has registered");
+
+        registry.Register(1, actor, overPlaintext: false);
+        actor.IsOpen.Returns(false);
+
+        registry.TransferSlotOf(1).Should().Be(TransferSlot.Unreported, "a closed link is not a connection");
+    }
+
     private PrinterConnectionRegistry NewRegistry()
     {
         return new(_clock, _logger);

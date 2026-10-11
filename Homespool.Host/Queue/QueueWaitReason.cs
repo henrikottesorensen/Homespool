@@ -231,4 +231,28 @@ public enum QueueWaitReason
     /// transfer path: the file is on the drive. The hold banner carries the sentence.
     /// </remarks>
     PrinterPathUnknown = 20,
+
+    /// <summary>
+    /// The head is due to be sent and the printer reports its one transfer slot taken by another
+    /// file - somebody's direct send, a PrusaLink upload, or the queue's previous file still arriving
+    /// while it prints.
+    /// </summary>
+    /// <remarks>
+    /// <b>A wait rather than an offer the printer refuses.</b> A refusal costs nothing in the count,
+    /// but each offer holds the connection's one command slot while the printer answers, and a
+    /// download can run for half an hour - long enough for somebody's stop or pause to meet a command
+    /// already in flight.
+    /// </remarks>
+    TransferSlotTaken = 21,
+
+    /// <summary>
+    /// The head is due to be sent and the printer has not yet said, over the connection it holds
+    /// now, whether its transfer slot is free.
+    /// </summary>
+    /// <remarks>
+    /// Seconds at most: a connection resets firmware's planner, which sends telemetry as soon as the
+    /// <c>INFO</c> opening it is out. No sentence, for that reason - it would flash on the page and say
+    /// nothing a person could act on.
+    /// </remarks>
+    TransferSlotUnreported = 22,
 }

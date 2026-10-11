@@ -31,6 +31,7 @@ public static class TelemetryMessageBuilder
         using (Utf8JsonWriter writer = new(buffer))
         {
             writer.WriteStartObject();
+            WriteTransferBlock(writer, device);
             WriteJobBlock(writer, device, readings);
             writer.WriteString("state", device.WireState);
             writer.WriteEndObject();
@@ -50,6 +51,7 @@ public static class TelemetryMessageBuilder
         using (Utf8JsonWriter writer = new(buffer))
         {
             writer.WriteStartObject();
+            WriteTransferBlock(writer, device);
             WriteJobBlock(writer, device, readings);
             writer.WriteNumber("temp_nozzle", readings.NozzleTemperature);
             writer.WriteNumber("temp_bed", readings.BedTemperature);
@@ -85,6 +87,39 @@ public static class TelemetryMessageBuilder
         }
 
         return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// The transfer block, first in both shapes, while the device's transfer slot is held.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Firmware writes it ahead of everything else whenever its slot is taken, in either mode
+    /// (render.cpp, the <c>SendTelemetry</c> renderer), so its presence is the printer saying the slot
+    /// is taken and its absence saying it is free - which is what the server reads it for.
+    /// </para>
+    /// <para>
+    /// <c>transfer_time_remaining</c> is always 0, firmware's own "no estimate yet": its estimate
+    /// divides the time since the transfer began by the progress, and the fake keeps no clock for a
+    /// transfer.
+    /// </para>
+    /// </remarks>
+    private static void WriteTransferBlock(Utf8JsonWriter writer, FakeDevice device)
+    {
+        if (device.Transfer is not FakeTransfer transfer)
+        {
+            return;
+        }
+
+        long transferred = transfer.ValidSize;
+
+        writer.WriteNumber("transfer_id", transfer.TransferId);
+        writer.WriteNumber("transfer_transferred", transferred);
+        writer.WriteNumber("transfer_time_remaining", 0);
+
+        // One decimal, a percentage, as firmware renders it.
+        writer.WriteNumber("transfer_progress",
+                           transfer.TotalSize > 0 ? Math.Round(transferred * 100.0 / transfer.TotalSize, 1) : 0.0);
     }
 
     /// <summary>

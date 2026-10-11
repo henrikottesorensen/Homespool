@@ -70,6 +70,10 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     // race - it only ever goes false to true.
     private volatile bool _draining;
 
+    // Written by the loop alone, read by the queue's passes - see TransferSlot. Volatile for those
+    // readers; each telemetry message replaces it whole, so a reader sees one report or the next.
+    private volatile TransferSlot _transferSlot = TransferSlot.Unreported;
+
     /// <summary>
     /// The one command in flight.
     /// </summary>
@@ -255,6 +259,23 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     }
 
     public bool IsOpen => _connection.IsOpen;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// <b>From telemetry alone.</b> Firmware puts <c>transfer_id</c> at the root of every telemetry
+    /// message exactly while its slot is held (<c>render.cpp</c>, the <c>SendTelemetry</c> renderer, at
+    /// <c>v6.10.2</c>) - the same flag that makes it refuse an offer with <c>TRANSFER_IN_PROGRESS</c> -
+    /// and sends telemetry at least every five seconds while a transfer runs. An event carries the
+    /// field too, but a transfer's terminal events name the transfer that has just ended, so an event
+    /// would report a slot taken at the moment it frees.
+    /// </para>
+    /// <para>
+    /// <b>Unreported until the first telemetry</b>, so a reconnect does not inherit a free slot from
+    /// nowhere: a PrusaLink upload carries on across our connection dropping.
+    /// </para>
+    /// </remarks>
+    public TransferSlot TransferSlot => _transferSlot;
 
     /// <inheritdoc/>
     public bool CanStreamChunks => _connection is IChunkStreamingConnection;
@@ -988,6 +1009,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </summary>
     private void EnqueueTelemetry(InboundTelemetryMessage telemetry)
     {
+        _transferSlot = telemetry.Telemetry.TransferId is null ? TransferSlot.Free : TransferSlot.Taken;
         _sink.Enqueue(_printerId, telemetry.ReceivedAt, PrusaTelemetryMapping.ToUpdate(telemetry.Telemetry));
     }
 

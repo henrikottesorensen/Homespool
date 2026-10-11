@@ -296,6 +296,66 @@ public class TelemetryMessageBuilderTests
         device.NextTelemetryChange.IsCompleted.Should().BeFalse("each change hands out a fresh signal");
     }
 
+    /// <summary>
+    /// While the transfer slot is held, both shapes open with the transfer block, as firmware's do -
+    /// its presence is how a printer says the slot is taken - and neither carries it once released.
+    /// </summary>
+    [Fact]
+    public void BothShapesCarryTheTransferBlockExactlyWhileTheSlotIsHeld()
+    {
+        FakeDevice device = new();
+        FakeTransfer transfer = device.TryBeginTransfer("hash", teamId: 1, "/usb/BENCHY.BGC", totalSize: 1000,
+                                                        startCommandId: 9)!;
+
+        foreach (byte[] message in BothShapes(device))
+        {
+            using JsonDocument document = JsonDocument.Parse(message);
+
+            document.RootElement.EnumerateObject().First().Name.Should().Be("transfer_id");
+            document.RootElement.GetProperty("transfer_id").GetInt32().Should().Be(transfer.TransferId);
+            document.RootElement.GetProperty("transfer_transferred").GetInt64().Should().Be(0);
+            document.RootElement.GetProperty("transfer_progress").GetDouble().Should().Be(0.0);
+        }
+
+        device.EndTransfer();
+
+        foreach (byte[] message in BothShapes(device))
+        {
+            using JsonDocument document = JsonDocument.Parse(message);
+
+            document.RootElement.TryGetProperty("transfer_id", out _).Should().BeFalse();
+        }
+    }
+
+    /// <summary>
+    /// Taking the slot and releasing it each complete the change signal, as the events that come with
+    /// them bring firmware's telemetry forward; and telemetry runs at the short interval meanwhile.
+    /// </summary>
+    [Fact]
+    public void TheTransferSlotChangingBringsTelemetryForward()
+    {
+        FakeDevice device = new();
+        SyntheticTelemetrySource source = new();
+        Task taken = device.NextTelemetryChange;
+
+        device.TryBeginTransfer("hash", teamId: 1, "/usb/BENCHY.BGC", totalSize: 1000, startCommandId: 9);
+
+        taken.IsCompleted.Should().BeTrue();
+        source.DelayBeforeNext(device).Should().Be(source.PrintingInterval, "firmware's want_short takes a transfer as it takes a print");
+
+        Task released = device.NextTelemetryChange;
+        device.EndTransfer();
+
+        released.IsCompleted.Should().BeTrue();
+        source.DelayBeforeNext(device).Should().Be(source.IdleInterval);
+    }
+
+    private static byte[][] BothShapes(FakeDevice device)
+    {
+        return [TelemetryMessageBuilder.BuildSlim(device, new TelemetryReadings()),
+                TelemetryMessageBuilder.BuildFull(device, new TelemetryReadings())];
+    }
+
     private static bool HasMaterial(byte[] message)
     {
         using JsonDocument document = JsonDocument.Parse(message);

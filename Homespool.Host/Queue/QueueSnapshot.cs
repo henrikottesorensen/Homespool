@@ -1,3 +1,4 @@
+using Homespool.Host.Printing;
 using Homespool.Model;
 
 namespace Homespool.Host.Queue;
@@ -16,7 +17,10 @@ namespace Homespool.Host.Queue;
 /// See <see cref="QueueSnapshotReader.StatedSinceConnecting"/>.
 /// </param>
 /// <param name="Head">The queue's first entry, or null when the queue is empty.</param>
-/// <param name="TransferInFlight">Whether this printer is already pulling a file from us.</param>
+/// <param name="TransferInFlight">
+/// Whether this printer is already pulling the head's file from us. Another transfer filling the slot
+/// is <paramref name="TransferSlot"/>'s to say.
+/// </param>
 /// <param name="PrintInFlight">
 /// Whether a print of ours is open on this printer - commanded and not yet ended.
 /// <para>
@@ -55,6 +59,10 @@ namespace Homespool.Host.Queue;
 /// Whether the printer refused the last attempt to start printing the head and the wait before the
 /// next attempt has not run out - see <see cref="PrintStartRetryRules.IsWaiting"/>.
 /// </param>
+/// <param name="TransferSlot">
+/// What the printer last said about its one transfer slot over the connection it holds now - see
+/// <see cref="Printing.TransferSlot"/>. Whoever filled it, nothing can be sent until it is free.
+/// </param>
 public sealed record QueueSnapshot(
     bool Connected,
     PrinterStatus Status,
@@ -66,4 +74,5 @@ public sealed record QueueSnapshot(
     bool HeadAuthorityLapsed = false,
     bool TransferRetryAfterAbort = false,
     bool FirmwareInstalling = false,
-    bool PrintRetryPending = false);
+    bool PrintRetryPending = false,
+    TransferSlot TransferSlot = TransferSlot.Free);

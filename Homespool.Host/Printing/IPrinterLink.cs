@@ -15,8 +15,8 @@ namespace Homespool.Host.Printing;
 /// <c>IPrinterConnectionActor</c> owns a socket, a mailbox, transfer state and command-id
 /// allocation - all legitimately wire-shaped. None of that
 /// is a consumer's business, and a survey of every caller outside the Prusa edge found they ask
-/// exactly two things of a connection: whether it is up, and to send an intent. That is this
-/// interface, and it is why a second protocol's link is one class implementing two members.
+/// three things of a connection: whether it is up, whether the printer is taking a file, and to send
+/// an intent. That is this interface, and it is why a second protocol's link is one small class.
 /// </para>
 /// <para>
 /// Queries whose answers are wire payloads (a storage listing, an identity report) are outside
@@ -30,6 +30,17 @@ public interface IPrinterLink
 {
     /// <summary>Whether the connection is up. Liveness for the UI, not a send guarantee.</summary>
     bool IsOpen { get; }
+
+    /// <summary>
+    /// What the printer last reported about its one transfer slot on this connection - see
+    /// <see cref="Printing.TransferSlot"/>.
+    /// </summary>
+    /// <remarks>
+    /// Asked by the queue, which must not offer a file into a slot that is taken: the printer refuses
+    /// it, and the offer holds the connection's one command slot while it does, so a person's stop
+    /// or pause meets a command already in flight.
+    /// </remarks>
+    TransferSlot TransferSlot { get; }
 
     /// <summary>
     /// Sends an intent in this link's own protocol and awaits the printer's correlated answer.

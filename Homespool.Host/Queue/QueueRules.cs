@@ -1,5 +1,6 @@
 using System;
 
+using Homespool.Host.Printing;
 using Homespool.Model;
 
 namespace Homespool.Host.Queue;
@@ -174,6 +175,16 @@ public static class QueueRules
 
         if (!head.FileHasArrived && !situation.TransferInFlight)
         {
+            // Not while the printer's one slot is anyone else's, or before it has said whether it is:
+            // the offer would be refused, and it would hold the connection's command slot while it
+            // was - a pass every five seconds for as long as another file downloads.
+            if (situation.TransferSlot != TransferSlot.Free)
+            {
+                return QueueAction.Wait(situation.TransferSlot == TransferSlot.Taken ?
+                                            QueueWaitReason.TransferSlotTaken :
+                                            QueueWaitReason.TransferSlotUnreported);
+            }
+
             // Deliberately not gated on the printer being available: a transfer runs alongside a
             // print, which is proven on hardware and is the point of pipelining - the next job's
             // bytes move while the current one prints, so the gap between prints disappears.

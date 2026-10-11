@@ -34,7 +34,7 @@ public sealed class SyntheticTelemetrySource : ITelemetrySource
     /// <summary>Delay while not printing. Firmware: 15 s.</summary>
     public TimeSpan IdleInterval { get; init; } = TimeSpan.FromSeconds(15);
 
-    /// <summary>Delay while printing. Firmware: 5 s (change-triggered sends floor at 2 s).</summary>
+    /// <summary>Delay while printing or transferring. Firmware: 5 s (change-triggered sends floor at 2 s).</summary>
     public TimeSpan PrintingInterval { get; init; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Every N-th message is the full shape; the rest are slim. The first is always full.</summary>
@@ -140,8 +140,12 @@ public sealed class SyntheticTelemetrySource : ITelemetrySource
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The shorter interval while a transfer holds the slot as well as while printing - firmware's
+    /// <c>want_short</c> takes an observed transfer as it takes a print (planner.cpp).
+    /// </remarks>
     public TimeSpan DelayBeforeNext(FakeDevice device)
     {
-        return device.State == DeviceState.Printing ? PrintingInterval : IdleInterval;
+        return device.State == DeviceState.Printing || device.Transfer is not null ? PrintingInterval : IdleInterval;
     }
 }

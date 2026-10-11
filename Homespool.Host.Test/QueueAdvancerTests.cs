@@ -1402,6 +1402,117 @@ public sealed class QueueAdvancerTests : IDisposable
     }
 
     /// <summary>
+    /// A transfer the printer still reports is not stale however long it has run: a large file at the
+    /// rate firmware pulls one outlasts the bound, and it is still the head's own transfer - printed
+    /// while it downloads, and never offered again over what its end is recognised by.
+    /// </summary>
+    [Fact]
+    public async Task ATransferPastTheBoundIsStillInFlightWhileThePrinterReportsItsSlotTaken()
+    {
+        // Arrange - our transfer, named by the printer and stamped long ago, still filling the slot
+        await using HomespoolDbContext context = await SeedAsync(status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+
+        HSFile file = await context.Files.SingleAsync(TestContext.Current.CancellationToken);
+        DateTimeOffset started = _clock.GetUtcNow();
+
+        context.FilesOnPrinters.Add(new FileOnPrinter
+        {
+            PrinterId = PrinterId,
+            FileId = file.Id,
+            DriveName = file.Name,
+            Digest = SeededDigest,
+            TransferStartedAt = started,
+            TransferCommandId = StartCommandId,
+            PrinterPath = "/usb/QUEUED~1.BGC",
+        });
+
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        IPrinterConnectionActor actor = ConnectAccepting();
+        actor.TransferSlot.Returns(TransferSlot.Taken);
+
+        _clock.Advance(QueueAdvancer.TransferStaleAfter + TimeSpan.FromMinutes(1));
+
+        // Act
+        using QueueAdvancer advancer = NewAdvancer();
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        OfferedPaths(actor).Should().BeEmpty("the printer is still pulling this file");
+        await actor.Received(1).SendAsync(new Printing.StartPrint("/usb/QUEUED~1.BGC"), Arg.Any<CancellationToken>());
+
+        context.ChangeTracker.Clear();
+
+        FileOnPrinter row = await context.FilesOnPrinters
+                                         .SingleAsync(TestContext.Current.CancellationToken);
+
+        row.TransferStartedAt.Should().Be(started);
+        row.TransferCommandId.Should().Be(StartCommandId, "the transfer's end is recognised by the command that began it");
+    }
+
+    /// <summary>
+    /// The head is not offered while the printer reports its one slot taken by another file - each
+    /// refused offer would hold the connection's command slot, every pass for as long as that file
+    /// downloads - and is offered on the first pass after the printer reports it free.
+    /// </summary>
+    [Fact]
+    public async Task NothingIsOfferedWhileAnotherFileDownloads()
+    {
+        // Arrange - the previous file still arriving while it prints, and nothing of ours in flight
+        await using HomespoolDbContext context = await SeedAsync(status: PrinterStatus.Printing);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAccepting();
+        actor.TransferSlot.Returns(TransferSlot.Taken);
+
+        using QueueAdvancer advancer = NewAdvancer();
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        actor.ReceivedCalls().Should().NotContain(call => call.GetMethodInfo().Name == nameof(IPrinterConnectionActor.SendCommandAsync),
+                                                  "not the free-space question either, which only leads to the offer");
+
+        actor.TransferSlot.Returns(TransferSlot.Free);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        OfferedPaths(actor).Should().ContainSingle("the slot is free");
+    }
+
+    /// <summary>
+    /// A hold the transfer path re-checks is not re-checked while the printer's slot is taken: a check
+    /// that passes ends in the offer the slot would refuse.
+    /// </summary>
+    [Fact]
+    public async Task AHoldIsNotRecheckedWhileAnotherFileDownloads()
+    {
+        // Arrange - held as unreadable, then readable again, while another file fills the slot
+        await using HomespoolDbContext context = await SeedAsync(arrived: false, status: PrinterStatus.Ready);
+        await WriteFileOnDiskAsync("queued.bgcode");
+        IPrinterConnectionActor actor = ConnectAccepting();
+        ITransferOffers offers = Substitute.For<ITransferOffers>();
+        offers.Offer(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>()).Returns(null, OnDiskLength);
+
+        using QueueAdvancer advancer = NewAdvancer(offers: offers);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        actor.TransferSlot.Returns(TransferSlot.Taken);
+        _clock.Advance(QueueAdvancer.BlockRecheckAfter + TimeSpan.FromSeconds(1));
+
+        // Act
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        // Assert
+        offers.ReceivedCalls().Should().HaveCount(1, "the hold waits for the slot before it is tried again");
+
+        actor.TransferSlot.Returns(TransferSlot.Free);
+        await advancer.AdvanceAsync(PrinterId, TestContext.Current.CancellationToken);
+
+        OfferedPaths(actor).Should().ContainSingle("the recheck runs once the slot is free, and the file opens");
+    }
+
+    /// <summary>
     /// <b>The loop acts within the authority the work was accepted under, not merely as its owner.</b>
     /// An entry whose recorded scope cannot print is left alone, though the person who queued it can
     /// print perfectly well.
@@ -1586,6 +1697,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                             new CommandOutcome(PrinterEventType.Rejected, reason))));
@@ -1606,6 +1718,7 @@ public sealed class QueueAdvancerTests : IDisposable
         uint nextCommandId = StartCommandId;
 
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(_ => Task.FromResult(new CommandSendResult(CommandSendOutcome.Completed,
                                                                  new CommandOutcome(PrinterEventType.Finished, null))
@@ -1637,6 +1750,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
 
         // The print start travels as an intent; the transfer offer and the file-info query stay
         // wire-typed, so this printer answers on both faces of the actor.
@@ -2512,6 +2626,7 @@ public sealed class QueueAdvancerTests : IDisposable
         TransferCounter counter = new();
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
 
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(call =>
@@ -2779,6 +2894,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         IPrinterConnectionActor printer = Substitute.For<IPrinterConnectionActor>();
         printer.IsOpen.Returns(true);
+        printer.TransferSlot.Returns(TransferSlot.Free);
         printer.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
                .Returns(async call =>
                {
@@ -4257,6 +4373,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
@@ -4273,6 +4390,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
@@ -5186,6 +5304,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(call =>
              {
@@ -5444,6 +5563,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
              .Returns(call => answer(call.Arg<CancellationToken>()));
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
@@ -6085,6 +6205,7 @@ public sealed class QueueAdvancerTests : IDisposable
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(call => Task.FromResult(answer(call.Arg<IPrinterIntent>())));
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())
@@ -6457,6 +6578,7 @@ public sealed class QueueAdvancerTests : IDisposable
 
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.TransferSlot.Returns(TransferSlot.Free);
         actor.SendAsync(Arg.Any<IPrinterIntent>(), Arg.Any<CancellationToken>())
              .Returns(Task.FromResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)));
         actor.SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>())

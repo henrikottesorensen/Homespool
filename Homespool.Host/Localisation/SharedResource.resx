@@ -2265,6 +2265,10 @@
     <value>The printer gave up transferring the next file. Trying again shortly.</value>
     <comment>A separate key rather than a placeholder filled with a stand-in phrase, so a translator sees the whole sentence.</comment>
   </data>
+  <data name="Queue_WaitTransferSlotTaken" xml:space="preserve">
+    <value>Waiting for another transfer to the printer to finish.</value>
+    <comment>The printer takes one file at a time, and another one - not this queue's next - is on its way to it.</comment>
+  </data>
   <data name="Queue_WaitFirmwareInstalling" xml:space="preserve">
     <value>Waiting for the firmware install to finish.</value>
   </data>

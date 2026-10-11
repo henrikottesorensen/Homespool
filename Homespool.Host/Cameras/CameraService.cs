@@ -354,10 +354,9 @@ public class CameraService
         await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         // Whatever is cached came from the old source. Keeping it would show the previous camera
-        // under the new one's name for up to the maximum age - and the probed codec belongs to the
-        // hardware at the old address, so it goes the same way.
+        // under the new one's name for up to the maximum age. The probed codec is forgotten by the
+        // sync, once the stream server holds the new source.
         _frames.Forget(camera.Id);
-        _liveView.Forget(camera.Uuid);
 
         return await RegisterAndProveAsync(camera, cancellationToken).ConfigureAwait(false);
     }
@@ -388,7 +387,6 @@ public class CameraService
         await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _frames.Forget(camera.Id);
-        _liveView.Forget(camera.Uuid);
 
         // After the row, so the sync finds no row and removes the stream. A sidecar that cannot be told
         // leaves a stream no camera owns, which the sweep before the next save, or at the next start,

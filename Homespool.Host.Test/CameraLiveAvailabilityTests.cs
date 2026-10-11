@@ -198,6 +198,106 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
     }
 
     /// <summary>
+    /// A probe sent before the source changed answers for the old camera. The ask waiting on it gets
+    /// that answer - it asked before the change - but nothing remembers it as the new camera's.
+    /// </summary>
+    [Fact]
+    public async Task AProbeAnsweringAfterAForgetIsNotRemembered()
+    {
+        TaskCompletionSource<IReadOnlySet<string>?> oldCamera = new();
+        ICameraCodecProbe probe = Substitute.For<ICameraCodecProbe>();
+        Guid camera = Guid.NewGuid();
+
+        probe.ProbeCodecsAsync(camera, Arg.Any<CancellationToken>())
+             .Returns(oldCamera.Task, Task.FromResult<IReadOnlySet<string>?>(new HashSet<string> { "JPEG" }));
+
+        CameraLiveAvailability availability = new(probe) { Candidate = "192.0.2.1" };
+
+        Task<LiveTransport> before = availability.HowToWatchAsync(camera, CancellationToken.None);
+        availability.Forget(camera);
+        oldCamera.SetResult(new HashSet<string> { "H264" });
+
+        (await before).Should().Be(LiveTransport.Webrtc);
+        availability.Remembered(camera).Should().BeNull();
+        (await availability.HowToWatchAsync(camera, CancellationToken.None)).Should().Be(LiveTransport.Mjpeg);
+    }
+
+    /// <summary>
+    /// Asks that arrive while a probe runs wait for it rather than sending their own - a camera that
+    /// is off would otherwise be opened once per page asking, each attempt waiting out the deadline.
+    /// </summary>
+    [Fact]
+    public async Task AsksWhileAProbeRunsShareIt()
+    {
+        TaskCompletionSource<IReadOnlySet<string>?> answer = new();
+        ICameraCodecProbe probe = Substitute.For<ICameraCodecProbe>();
+        Guid camera = Guid.NewGuid();
+
+        probe.ProbeCodecsAsync(camera, Arg.Any<CancellationToken>()).Returns(answer.Task);
+
+        CameraLiveAvailability availability = new(probe);
+
+        Task<LiveTransport> first = availability.HowToWatchAsync(camera, CancellationToken.None);
+        Task<LiveTransport> second = availability.HowToWatchAsync(camera, CancellationToken.None);
+        answer.SetResult(new HashSet<string> { "JPEG" });
+
+        (await first).Should().Be(LiveTransport.Mjpeg);
+        (await second).Should().Be(LiveTransport.Mjpeg);
+        await probe.Received(1).ProbeCodecsAsync(camera, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The probe is shared, so the viewer who started it leaving ends only that viewer's wait.
+    /// </summary>
+    [Fact]
+    public async Task AnAskGivingUpLeavesTheProbeToTheOthers()
+    {
+        TaskCompletionSource<IReadOnlySet<string>?> answer = new();
+        ICameraCodecProbe probe = Substitute.For<ICameraCodecProbe>();
+        Guid camera = Guid.NewGuid();
+        CancellationToken probedWith = default;
+
+        probe.ProbeCodecsAsync(camera, Arg.Do<CancellationToken>(token => probedWith = token)).Returns(answer.Task);
+
+        CameraLiveAvailability availability = new(probe);
+        using CancellationTokenSource leaving = new();
+
+        Task<LiveTransport> left = availability.HowToWatchAsync(camera, leaving.Token);
+        Task<LiveTransport> stayed = availability.HowToWatchAsync(camera, CancellationToken.None);
+        await leaving.CancelAsync();
+
+        await left.Invoking(ask => ask).Should().ThrowAsync<OperationCanceledException>();
+        probedWith.IsCancellationRequested.Should().BeFalse();
+
+        answer.SetResult(new HashSet<string> { "JPEG" });
+
+        (await stayed).Should().Be(LiveTransport.Mjpeg);
+    }
+
+    /// <summary>
+    /// A probe that throws reaches every ask waiting on it, and is not left behind for the next ask to
+    /// find - that one probes again.
+    /// </summary>
+    [Fact]
+    public async Task AProbeThatThrowsIsNotWaitedOnAgain()
+    {
+        ICameraCodecProbe probe = Substitute.For<ICameraCodecProbe>();
+        Guid camera = Guid.NewGuid();
+
+        probe.ProbeCodecsAsync(camera, Arg.Any<CancellationToken>())
+             .Returns(
+                 Task.FromException<IReadOnlySet<string>?>(new InvalidOperationException("probe")),
+                 Task.FromResult<IReadOnlySet<string>?>(new HashSet<string> { "JPEG" }));
+
+        CameraLiveAvailability availability = new(probe);
+
+        await availability.Invoking(live => live.HowToWatchAsync(camera, CancellationToken.None))
+                          .Should().ThrowAsync<InvalidOperationException>();
+
+        (await availability.HowToWatchAsync(camera, CancellationToken.None)).Should().Be(LiveTransport.Mjpeg);
+    }
+
+    /// <summary>
     /// The SDP grammar the probe relies on, against the answers the real sidecar gave on
     /// 2026-08-20 - and the audio section must not leak codecs into a video decision.
     /// </summary>

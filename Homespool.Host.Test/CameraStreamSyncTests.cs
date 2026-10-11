@@ -2,11 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
 
 using Microsoft.EntityFrameworkCore;
+
+using NSubstitute;
 
 using Homespool.Data;
 using Homespool.Host.Cameras;
@@ -40,6 +43,60 @@ public sealed class CameraStreamSyncTests : IDisposable
 
         sync.Outcome.Should().Be(StreamSyncOutcome.Registered);
         handler.Streams[Name(camera)].Should().Be(Source);
+    }
+
+    /// <summary>
+    /// The codecs remembered for a camera go once the sidecar holds a different source, or none: they
+    /// were the old source's.
+    /// </summary>
+    [Fact]
+    public async Task ARegistrationForgetsTheRememberedCodecs()
+    {
+        Guid camera = await AddCameraAsync(Source);
+
+        using SidecarHandler handler = new();
+        using StreamSyncRig rig = new(_databasePath, handler);
+        await RememberCodecsAsync(rig, camera);
+
+        StreamSync sync = await rig.Sync.SyncAsync(camera, TestContext.Current.CancellationToken);
+
+        sync.Outcome.Should().Be(StreamSyncOutcome.Registered);
+        rig.LiveView.Remembered(camera).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ARemovalForgetsTheRememberedCodecs()
+    {
+        Guid gone = Guid.NewGuid();
+
+        using SidecarHandler handler = new(Held(gone, Source));
+        using StreamSyncRig rig = new(_databasePath, handler);
+        await MigrateAsync();
+        await RememberCodecsAsync(rig, gone);
+
+        StreamSync sync = await rig.Sync.SyncAsync(gone, TestContext.Current.CancellationToken);
+
+        sync.Outcome.Should().Be(StreamSyncOutcome.Removed);
+        rig.LiveView.Remembered(gone).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A source the sidecar already holds is the same hardware, so its codecs stay remembered - the
+    /// startup sync would otherwise throw away what the last probe learned for every camera.
+    /// </summary>
+    [Fact]
+    public async Task ASourceLeftAloneKeepsTheRememberedCodecs()
+    {
+        Guid camera = await AddCameraAsync(Source);
+
+        using SidecarHandler handler = new(Held(camera, Source));
+        using StreamSyncRig rig = new(_databasePath, handler);
+        await RememberCodecsAsync(rig, camera);
+
+        StreamSync sync = await rig.Sync.SyncAsync(camera, TestContext.Current.CancellationToken);
+
+        sync.Outcome.Should().Be(StreamSyncOutcome.Unchanged);
+        rig.LiveView.Remembered(camera).Should().NotBeNull();
     }
 
     [Fact]
@@ -239,6 +296,15 @@ public sealed class CameraStreamSyncTests : IDisposable
     private static string Name(Guid camera)
     {
         return camera.ToString("D");
+    }
+
+    private static async Task RememberCodecsAsync(StreamSyncRig rig, Guid camera)
+    {
+        rig.Probe.ProbeCodecsAsync(camera, Arg.Any<CancellationToken>())
+           .Returns(new HashSet<string> { "JPEG" });
+
+        _ = await rig.LiveView.HowToWatchAsync(camera, TestContext.Current.CancellationToken);
+        rig.LiveView.Remembered(camera).Should().NotBeNull();
     }
 
     private static Dictionary<string, string> Held(Guid stream, string source)

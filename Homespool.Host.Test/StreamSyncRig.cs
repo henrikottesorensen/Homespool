@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
+using System.Threading;
 
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +35,8 @@ internal sealed class StreamSyncRig : IDisposable
         IHttpClientFactory factory = Substitute.For<IHttpClientFactory>();
         factory.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(sidecar, disposeHandler: false));
 
+        Probe.ProbeCodecsAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns((IReadOnlySet<string>?)null);
+
         Client = new Go2RtcClient(factory,
                                   TestOptions.Monitor(new CameraOptions
                                   {
@@ -55,6 +59,8 @@ internal sealed class StreamSyncRig : IDisposable
                                                      new UsbDeviceNames(NullLogger<UsbDeviceNames>.Instance),
                                                      TestOptions.Monitor(new CameraOptions())));
         services.AddSingleton(policy ?? CameraSourcePolicyTests.Build());
+        services.AddSingleton(Probe);
+        services.AddSingleton<CameraLiveAvailability>();
         services.AddSingleton<CameraStreamSync>();
         services.AddScoped<CameraStreamSweeper>();
 
@@ -62,6 +68,12 @@ internal sealed class StreamSyncRig : IDisposable
     }
 
     public Go2RtcClient Client { get; }
+
+    /// <summary>The codec probe behind <see cref="LiveView"/>: a substitute, no answer unless told otherwise.</summary>
+    public ICameraCodecProbe Probe { get; } = Substitute.For<ICameraCodecProbe>();
+
+    /// <summary>The codec memo the sync forgets - the same one a service built on this rig should be given.</summary>
+    public CameraLiveAvailability LiveView => _services.GetRequiredService<CameraLiveAvailability>();
 
     public CameraStreamSync Sync => _services.GetRequiredService<CameraStreamSync>();
 

@@ -313,7 +313,7 @@ public sealed class CameraServiceTests : IDisposable
                                  rig.Sync,
                                  fetcher,
                                  new CameraFrameCache(fetcher, Options, TimeProvider.System, NullLogger<CameraFrameCache>.Instance),
-                                 new CameraLiveAvailability(Substitute.For<ICameraCodecProbe>()),
+                                 rig.LiveView,
                                  services.GetRequiredService<LocalCameraDevices>(),
                                  services.GetRequiredService<CameraCredentialProtector>(),
                                  TimeProvider.System,

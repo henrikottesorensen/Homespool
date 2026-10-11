@@ -10,8 +10,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
-using NSubstitute;
-
 using Homespool.Data;
 using Homespool.Host.Cameras;
 using Homespool.Model.Entities;
@@ -380,7 +378,7 @@ public sealed class CameraStreamReconcilerTests : IDisposable
             rig.Scopes,
             rig.Client,
             rig.Sync,
-            new CameraLiveAvailability(Substitute.For<ICameraCodecProbe>()),
+            rig.LiveView,
             time,
             NullLogger<CameraStreamReconciler>.Instance);
 

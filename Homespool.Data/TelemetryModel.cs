@@ -2,6 +2,7 @@ using System;
 
 using Microsoft.EntityFrameworkCore;
 
+using Homespool.Model;
 using Homespool.Model.Entities;
 
 namespace Homespool.Data;
@@ -60,7 +61,7 @@ public static class TelemetryModel
             // Text, as everywhere else. This table is upserted rather than appended to and never
             // grows, so the wider column is paid once per printer instead of once per message.
             entity.Property(e => e.Status)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrinterStatus>>();
         });
 
         builder.Entity<TelemetrySample>(entity =>
@@ -90,7 +91,7 @@ public static class TelemetryModel
             // decision rather than this. Halving the rate or shortening retention saves ten times
             // what an integer here would.
             entity.Property(e => e.Status)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrinterStatus>>();
         });
 
         builder.Entity<PrinterLiveSlotState>(entity =>
@@ -139,13 +140,13 @@ public static class TelemetryModel
             // Stored as text: readable in a raw SQLite session, and immune to reordering of
             // the enum. The volume does not justify the two bytes saved.
             entity.Property(e => e.EventType)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrinterEventType>>();
 
             // The same, and this row is the clearest argument for the rule: an event reading
             // EventType "StateChanged" beside Status 9 is half-decoded, and the half needing a
             // lookup is the half it was opened for.
             entity.Property(e => e.Status)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrinterStatus>>();
         });
     }
 }

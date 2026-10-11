@@ -243,10 +243,10 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // declaration order stops being part of the schema. One row per printer, so nothing is
             // being traded away for it.
             entity.Property(e => e.Type)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrinterType>>();
 
             entity.Property(e => e.Status)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrinterStatus>>();
 
             // The two user-chosen strings on this table. SQLite ignores a length on TEXT, so these
             // buy nothing at runtime today and the four writers' [StringLength] attributes are what
@@ -463,7 +463,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // write it in place of Undefined, making an unset type a signup. Rows in a table that
             // predates the column have no honest value either: a recovery among them is not one.
             entity.Property(e => e.Type)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<InvitationType>>();
 
             // A nullable team target: null invites mint a new account with its own default team,
             // non-null ones join an existing team. Restrict so an invite cannot outlive its target
@@ -542,7 +542,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Text, like every other enum column here: legible in a raw SQLite session, and the
             // enum's declaration order stops being part of the schema.
             entity.Property(e => e.Action)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<LimitedAction>>();
 
             // Cascade: a counter that outlived its account guards nothing and would keep a name
             // attached to a row nobody can reach.
@@ -577,12 +577,12 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Text, like every other small vocabulary here: a row of this column is only ever read
             // by somebody working out why a file was or was not checked.
             entity.Property(e => e.MetadataState)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrintFileMetadataState>>();
 
             // Text for the same reason, and because every query over a user's files filters on it:
             // somebody reading those queries' rows by hand should see the word they filter for.
             entity.Property(e => e.Type)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<FileType>>();
 
             // A firmware image is its signed digest, whoever uploaded it - one row per image, shared by
             // every printer it fits. Unique here so two first uploads racing cannot both insert; the
@@ -668,7 +668,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // worth least. Also immune to the enum being reordered, which matters more here than for
             // Events or PrinterStatus: nothing outside this repository pins the order.
             entity.Property(e => e.HoldReason)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrintHoldReason>>();
 
             // SQLite does not enforce either length; the writer truncates to them, and these record
             // the bound where the schema is read.
@@ -711,11 +711,11 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Stored as text, like PrinterEvent.EventType: readable in a raw SQLite session and immune
             // to the enum being reordered. History is low-volume, so the bytes saved do not matter.
             entity.Property(e => e.State)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrintState>>();
 
             // By name, as FileOnPrinter.HoldReason is, and for the same reasons.
             entity.Property(e => e.HoldReason)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<PrintHoldReason>>();
 
             // No foreign key to HSFile, deliberately: this records a name and a digest rather than
             // pointing at a row, so a renamed or deleted file leaves history intact. See PrintJob.
@@ -737,7 +737,7 @@ public class HomespoolDbContext : IdentityDbContext<HSUser, IdentityRole<long>, 
             // Table-per-hierarchy on Kind, stored as text like every enum column here. A new kind of
             // destination is a subclass and a HasValue line; the rows already here are untouched.
             entity.Property(e => e.Kind)
-                  .HasConversion<string>();
+                  .HasConversion<EnumNameConverter<NotificationChannelKind>>();
 
             entity.HasDiscriminator(e => e.Kind)
                   .HasValue<WebPushDestination>(NotificationChannelKind.WebPush);

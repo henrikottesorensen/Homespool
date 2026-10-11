@@ -1,3 +1,4 @@
+using System.IO;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -86,6 +87,26 @@ public sealed class WebRtcConfigurerStartupTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>A restart owed by an earlier process is made, though the file already agrees.</b> The file
+    /// says what was written; the running sidecar holds it only once restarted, and the record of a
+    /// restart not yet confirmed is what tells the two apart across Homespool restarting.
+    /// </summary>
+    [Fact]
+    public void ARestartOwedFromAnEarlierRunIsMadeThoughTheFileAlreadyAgrees()
+    {
+        _sidecar.Config = $"webrtc:\n  candidates:\n    - {Candidate}\n  ice_servers: []\n";
+
+        string marker = Path.Combine(_scratch.Path, "stream-server-restart-owed");
+        File.WriteAllText(marker, string.Empty);
+
+        Start(stunEnabled: false, marker);
+
+        _sidecar.ConfigWrites.Should().BeEmpty("the file already says it");
+        _sidecar.Restarts.Should().Be(1, "the running sidecar may still hold what it held before the write");
+        File.Exists(marker).Should().BeFalse("the restart it recorded has been made");
+    }
+
+    /// <summary>
     /// A camera source carrying the address does not make the sidecar advertise it: the source is in
     /// the streams, the address belongs in the <c>webrtc</c> section, and only that section counts.
     /// </summary>
@@ -106,11 +127,17 @@ public sealed class WebRtcConfigurerStartupTests : IAsyncLifetime
     /// Starts a host against the sidecar. The configurer is a hosted service, so it has finished by
     /// the time the server exists.
     /// </summary>
-    private void Start(bool stunEnabled)
+    private void Start(bool stunEnabled, string? restartOwedMarker = null)
     {
         _factory = new HomespoolFactory(_scratch);
         _sidecar.ApplyTo(_factory);
         _factory.ConfigurationOverrides["Cameras:WebRtcCandidate"] = Candidate;
+
+        if (restartOwedMarker is not null)
+        {
+            _factory.ConfigurationOverrides["Cameras:RestartOwedMarker"] = restartOwedMarker;
+        }
+
         _factory.ConfigurationOverrides["Cameras:WebRtcStunEnabled"] = stunEnabled ? "true" : "false";
 
         _ = _factory.Server;

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
@@ -30,6 +31,15 @@ namespace Homespool.Host.Cameras;
 /// changed nothing must not cost somebody their picture.
 /// </para>
 /// <para>
+/// <b>A file that agrees is not a sidecar that agrees, while a restart is owed.</b> A write lands in
+/// the sidecar's file at once and in the running sidecar only at the restart, and the API shows the
+/// file either way. So from just before a write until a restart is confirmed, a restart is owed - kept
+/// in <see cref="CameraOptions.RestartOwedMarker"/> so that it outlives this process - and while one
+/// is owed, a matching file is restarted rather than believed. Otherwise a restart that failed would
+/// be retried against a file that already matched, and reported as applied with the old choice still
+/// running: STUN switched off in the settings, and still contacted.
+/// </para>
+/// <para>
 /// <b>The comparison reads the <c>webrtc</c> section, not the document.</b> The same file holds every
 /// camera's source, and a source is a string somebody typed: one containing the candidate or the STUN
 /// address must not be able to answer for a section it is not in. A YAML reader covers JSON too, so
@@ -41,14 +51,29 @@ public sealed class WebRtcSidecarWriter
     private readonly Go2RtcClient _streamServer;
     private readonly CameraLiveAvailability _availability;
     private readonly ILogger<WebRtcSidecarWriter> _logger;
+    private readonly string _owedMarker;
+
+    /// <summary>
+    /// Whether a restart is owed, as far as this process knows - which covers a marker that could not
+    /// be written, for as long as the process lasts.
+    /// </summary>
+    private bool _restartOwed;
 
     public WebRtcSidecarWriter(Go2RtcClient streamServer,
                                CameraLiveAvailability availability,
+                               IOptionsMonitor<CameraOptions> options,
+                               IHostEnvironmentAccessor environment,
                                ILogger<WebRtcSidecarWriter> logger)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(environment);
+
         _streamServer = streamServer;
         _availability = availability;
         _logger = logger;
+
+        string marker = options.CurrentValue.RestartOwedMarker;
+        _owedMarker = Path.IsPathRooted(marker) ? marker : Path.Combine(environment.ContentRootPath, marker);
     }
 
     /// <summary>
@@ -77,14 +102,57 @@ public sealed class WebRtcSidecarWriter
         string stunServer = stun.Server;
 
         string? existing = await _streamServer.ReadConfigAsync(cancellationToken).ConfigureAwait(false);
+        bool matches = existing is not null && Matches(existing, candidate, stunEnabled, stunServer);
+        bool owed = RestartOwed();
 
-        if (existing is not null && Matches(existing, candidate, stunEnabled, stunServer))
+        if (matches && !owed)
         {
             _logger.LogDebug("The stream server already advertises {Candidate}.", candidate);
             _availability.StunInForce = stun;
 
             return true;
         }
+
+        if (!matches && !await WriteAsync(candidate, stunEnabled, stunServer, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        // Streams apply the moment they are written; a candidate does not, and reads back from the
+        // configuration looking applied while being absent from every offer. So the restart is not
+        // tidiness - it is what makes the write mean anything.
+        if (!await _streamServer.RestartAsync(cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogInformation("The stream server's restart was not confirmed, so a restart is still owed.");
+
+            return false;
+        }
+
+        ClearRestartOwed();
+        _availability.StunInForce = stun;
+
+        _logger.LogInformation(
+            "The stream server now advertises {Candidate} for live camera view, with STUN {StunState}.",
+            candidate,
+            stunEnabled ? "enabled" : "disabled");
+
+        return true;
+    }
+
+    /// <summary>
+    /// Writes the <c>webrtc</c> section, recording first that a restart is owed.
+    /// </summary>
+    /// <remarks>
+    /// <b>Recorded before the write, not after it</b>, so that no moment exists in which the file has
+    /// changed and nothing says so. A write that then fails leaves a restart owed that was not needed,
+    /// which costs at most one restart.
+    /// </remarks>
+    private async Task<bool> WriteAsync(string candidate,
+                                        bool stunEnabled,
+                                        string stunServer,
+                                        CancellationToken cancellationToken)
+    {
+        MarkRestartOwed();
 
         // Key spellings as data rather than an anonymous type: they are go2rtc's, and ice_servers is
         // not a name C# would have chosen.
@@ -105,27 +173,56 @@ public sealed class WebRtcSidecarWriter
                 },
             });
 
-        if (!await _streamServer.WriteConfigAsync(document, cancellationToken).ConfigureAwait(false))
+        return await _streamServer.WriteConfigAsync(document, cancellationToken).ConfigureAwait(false);
+    }
+
+    private bool RestartOwed()
+    {
+        return _restartOwed || File.Exists(_owedMarker);
+    }
+
+    /// <summary>
+    /// Records that a restart is owed. A marker that cannot be written is logged and the record kept in
+    /// memory: this is on the startup path, and a data volume that refuses a write must not stop the
+    /// server from starting.
+    /// </summary>
+    private void MarkRestartOwed()
+    {
+        _restartOwed = true;
+
+        try
         {
-            return false;
-        }
+            string? directory = Path.GetDirectoryName(_owedMarker);
 
-        // Streams apply the moment they are written; a candidate does not, and reads back from the
-        // configuration looking applied while being absent from every offer. So the restart is not
-        // tidiness - it is what makes the write mean anything.
-        if (!await _streamServer.RestartAsync(cancellationToken).ConfigureAwait(false))
+            if (!string.IsNullOrEmpty(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            File.WriteAllText(_owedMarker, string.Empty);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            return false;
+            _logger.LogWarning(exception,
+                               "Could not record at {Path} that the stream server owes a restart; it is remembered until Homespool stops.",
+                               _owedMarker);
         }
+    }
 
-        _availability.StunInForce = stun;
+    private void ClearRestartOwed()
+    {
+        _restartOwed = false;
 
-        _logger.LogInformation(
-            "The stream server now advertises {Candidate} for live camera view, with STUN {StunState}.",
-            candidate,
-            stunEnabled ? "enabled" : "disabled");
-
-        return true;
+        try
+        {
+            File.Delete(_owedMarker);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(exception,
+                               "Could not remove {Path}; the stream server will be restarted once more than it needs.",
+                               _owedMarker);
+        }
     }
 
     /// <summary>

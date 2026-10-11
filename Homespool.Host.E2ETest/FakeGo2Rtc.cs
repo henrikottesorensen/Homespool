@@ -95,6 +95,8 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     private int _describes;
     private int _openMjpegStreams;
     private bool _configurationUnwritable;
+    private bool _restartsRefused;
+    private int _refusedRestarts;
     private CancellationTokenSource _cut = new();
 
     private FakeGo2Rtc(IReadOnlySet<string> allowedPaths)
@@ -280,6 +282,19 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         {
             _refusedSources.Add(source);
         }
+    }
+
+    /// <summary>How many restarts were asked for and refused while <see cref="RefuseRestarts"/> was on.</summary>
+    public int RefusedRestarts => Volatile.Read(ref _refusedRestarts);
+
+    /// <summary>
+    /// Makes <c>POST /api/restart</c> answer 500 without restarting, or stops doing so. The configuration
+    /// file keeps whatever was written to it, which is the case that matters: a file that already says
+    /// the new thing, in front of a sidecar still running the old one.
+    /// </summary>
+    public void RefuseRestarts(bool refuse)
+    {
+        Volatile.Write(ref _restartsRefused, refuse);
     }
 
     /// <summary>
@@ -706,6 +721,13 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         if (!HttpMethods.IsPost(context.Request.Method))
         {
             await AnswerAsync(context, StatusCodes.Status400BadRequest, "bad request");
+            return;
+        }
+
+        if (Volatile.Read(ref _restartsRefused))
+        {
+            Interlocked.Increment(ref _refusedRestarts);
+            await AnswerAsync(context, StatusCodes.Status500InternalServerError, "restart refused");
             return;
         }
 

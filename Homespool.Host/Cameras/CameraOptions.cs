@@ -74,6 +74,26 @@ public class CameraOptions
     public string LocalDeviceDirectory { get; set; } = "/hostdev/v4l/by-id";
 
     /// <summary>
+    /// Where the record of a stream-server restart still owed is kept: relative to the content root
+    /// unless rooted. Default <c>data/stream-server-restart-owed</c>, on the data volume.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A file, so that it outlives this process.</b> It exists while a WebRTC configuration has been
+    /// written to the sidecar and no restart since has been confirmed. The sidecar's file then matches
+    /// what was written while the running sidecar still holds what it held before, and nothing the
+    /// API offers tells the two apart - so without this record, a Homespool restart in between would
+    /// find the file agreeing and never restart the sidecar. See <see cref="WebRtcSidecarWriter"/>.
+    /// </para>
+    /// <para>
+    /// <b>Not in <c>.env</c> or <c>compose.yaml</c>, and nothing in a deployment should set it</b>: it
+    /// is bindable so that a test host can put it in a scratch directory.
+    /// </para>
+    /// </remarks>
+    [Required]
+    public string RestartOwedMarker { get; set; } = "data/stream-server-restart-owed";
+
+    /// <summary>
     /// Username for the stream server's API, or empty for none. Default empty.
     /// </summary>
     /// <remarks>

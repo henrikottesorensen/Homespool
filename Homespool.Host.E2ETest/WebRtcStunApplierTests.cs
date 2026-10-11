@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -36,9 +37,12 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
     private FakeGo2Rtc _sidecar = null!;
     private HomespoolFactory? _factory;
 
+    private string _marker = null!;
+
     public async ValueTask InitializeAsync()
     {
         _sidecar = await FakeGo2Rtc.StartAsync();
+        _marker = Path.Combine(_scratch.Path, "stream-server-restart-owed");
     }
 
     public async ValueTask DisposeAsync()
@@ -114,6 +118,37 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>A restart that fails leaves a restart owed, and a matching file does not settle it.</b> The
+    /// write lands in the sidecar's file at once and in the running sidecar only at a restart, so a
+    /// retry finding the file in agreement must restart rather than believe it - or STUN switched off
+    /// would be reported off while the sidecar goes on contacting the STUN server.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedRestartIsOwedRatherThanReportedAsApplied()
+    {
+        HomespoolFactory factory = Start();
+        CameraLiveAvailability availability = factory.Services.GetRequiredService<CameraLiveAvailability>();
+
+        _sidecar.RefuseRestarts(true);
+
+        Save(factory, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+
+        (await EventuallyAsync(() => _sidecar.RefusedRestarts >= 1)).Should().BeTrue();
+        availability.StunInForce.Should().Be(new WebRtcStunChoice(false, string.Empty), "the sidecar never restarted");
+        File.Exists(_marker).Should().BeTrue("the owed restart has to outlive Homespool restarting");
+
+        _sidecar.RefuseRestarts(false);
+
+        // Any save wakes the applier at once, rather than at the end of its retry interval.
+        Save(factory, new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "12" });
+
+        (await EventuallyAsync(() => _sidecar.Restarts == 2)).Should().BeTrue("the file already agreed, and is restarted rather than believed");
+        _sidecar.ConfigWrites.Should().HaveCount(2, "nothing needed writing again");
+        availability.StunInForce.Should().Be(new WebRtcStunChoice(true, "stun:stun.l.google.com:19302"));
+        File.Exists(_marker).Should().BeFalse("the restart it recorded has been made");
+    }
+
+    /// <summary>
     /// A stream server that never confirmed the choice is not reported as holding it - turning STUN
     /// off is a privacy choice, and the page saying so before it has happened would be the lie.
     /// </summary>
@@ -147,17 +182,9 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
 
     private HomespoolFactory Start(bool reachable = true)
     {
-        _factory = new HomespoolFactory(_scratch);
-        _sidecar.ApplyTo(_factory);
-        _factory.ConfigurationOverrides["Cameras:WebRtcCandidate"] = Candidate;
+        Configure(reachable);
 
-        if (!reachable)
-        {
-            // Refused at once, so the startup configurer gives up immediately rather than at its deadline.
-            _factory.ConfigurationOverrides["Cameras:StreamServerBaseUrl"] = "http://127.0.0.1:1";
-        }
-
-        _ = _factory.Server;
+        _ = _factory!.Server;
 
         using IServiceScope scope = _factory.Services.CreateScope();
         scope.ServiceProvider.GetRequiredService<SetupState>().MarkComplete();
@@ -167,9 +194,31 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
         return _factory;
     }
 
+    /// <summary>A host against the sidecar, not yet started.</summary>
+    private HomespoolFactory Configure(bool reachable = true)
+    {
+        _factory = new HomespoolFactory(_scratch);
+        _sidecar.ApplyTo(_factory);
+        _factory.ConfigurationOverrides["Cameras:WebRtcCandidate"] = Candidate;
+        _factory.ConfigurationOverrides["Cameras:RestartOwedMarker"] = _marker;
+
+        if (!reachable)
+        {
+            // Refused at once, so the startup configurer gives up immediately rather than at its deadline.
+            _factory.ConfigurationOverrides["Cameras:StreamServerBaseUrl"] = "http://127.0.0.1:1";
+        }
+
+        return _factory;
+    }
+
     private static void Save(HomespoolFactory factory, Dictionary<string, string?> values)
     {
-        using IServiceScope scope = factory.Services.CreateScope();
+        Save(factory.Services, values);
+    }
+
+    private static void Save(IServiceProvider services, Dictionary<string, string?> values)
+    {
+        using IServiceScope scope = services.CreateScope();
 
         scope.ServiceProvider.GetRequiredService<SettingsStore>().Save(values).Saved.Should().BeTrue();
     }

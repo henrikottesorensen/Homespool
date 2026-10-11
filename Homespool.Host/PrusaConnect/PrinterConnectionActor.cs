@@ -57,9 +57,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     // and the queue, which awaits printers one after another, would pay it for every printer.
     private bool _uncollected;
 
-    // Set when a command that declares what follows it has ended, and sent before the loop takes its next
-    // message - so the follow-up has the slot before anything a caller queued meanwhile.
-    private ISendableCommand? _followUp;
+    // The printer's heater targets as this connection knows them: its latest telemetry report, overtaken
+    // by any heater command of ours it has since finished. Null until known. See AsSentWith.
+    private int? _nozzleTarget;
+    private int? _bedTarget;
+
+    // What the printer reported for each heater when one of our commands changed it - which its next
+    // reports can still carry, since the MK3 reports temperatures every two seconds (PrusaLink's M155 S2)
+    // and the SDK sends what it last heard. A report of that value is the printer not having caught up.
+    private int? _staleNozzleReport;
+    private int? _staleBedReport;
+    private int? _reportedNozzle;
+    private int? _reportedBed;
 
     /// <summary>
     /// The one transfer this printer may have in progress. One, because firmware allocates a single
@@ -113,14 +122,15 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// <param name="AcceptedIsAnswer">The command's <see cref="ISendableCommand.AcceptedIsAnswer"/>.</param>
     /// <param name="Acceptance">
     /// The printer's <c>ACCEPTED</c> for this command, once it has sent one: the command is then
-    /// running, and neither clock applies. It runs for as long as the printer's telemetry names it,
-    /// and the acceptance is what the caller is told if it ends without an answer.
+    /// running. Once telemetry has named it, no clock applies and it runs for as long as the printer's
+    /// telemetry names it; the acceptance is what the caller is told if it ends without an answer.
     /// </param>
-    /// <param name="FollowedBy">The command's <see cref="ISendableCommand.FollowedBy"/>, sent once it ends.</param>
-    /// <param name="Unattended">
-    /// Whether this is a command's <see cref="ISendableCommand.FollowedBy"/>, which no caller is waiting on -
-    /// so a refusal is logged rather than reported.
+    /// <param name="Named">
+    /// Whether the printer's telemetry has named this command as the one it is running. Until it has, a
+    /// telemetry message that does not name it says nothing: the SDK builds telemetry on a thread of its
+    /// own, so one built just before it accepted the command can arrive just after.
     /// </param>
+    /// <param name="Leaves">The command's <see cref="ISendableCommand.LeavesHeaters"/>, applied when it finishes.</param>
     /// <param name="CallerToken">
     /// The caller's own token, read by the loop at each point where the command could still be kept
     /// from the printer.
@@ -135,8 +145,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                   bool Delivered,
                                   bool AcceptedIsAnswer,
                                   CommandOutcome? Acceptance,
-                                  ISendableCommand? FollowedBy,
-                                  bool Unattended,
+                                  bool Named,
+                                  HeaterChange? Leaves,
                                   CancellationToken CallerToken);
 
     /// <summary>
@@ -438,11 +448,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 // messages that genuinely arrived first can come between.
                 if (!_mailbox.Reader.TryRead(out ConnectionMessage? message))
                 {
-                    if (_pending is null || _pending.Acceptance is not null)
+                    if (_pending is null || _pending is { Acceptance: not null, Named: true })
                     {
-                        // Nothing pending, or a command the printer has accepted and is running: that
-                        // one ends with its answer, with telemetry that stops naming it, or with the
-                        // connection, so nothing here has a deadline to keep.
+                        // Nothing pending, or a command the printer has accepted and its telemetry names
+                        // as running: that one ends with its answer, with telemetry that stops naming
+                        // it, or with the connection, so nothing here has a deadline to keep.
                         if (!await _mailbox.Reader.WaitToReadAsync())
                         {
                             break;
@@ -588,25 +598,6 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 HandleCancelSend(cancel);
                 break;
         }
-
-        if (_followUp is ISendableCommand followUp)
-        {
-            _followUp = null;
-            await SendFollowUpAsync(followUp);
-        }
-    }
-
-    /// <summary>
-    /// Sends what a command that has just ended declared should follow it. Nobody awaits the answer;
-    /// the loop logs it.
-    /// </summary>
-    private async Task SendFollowUpAsync(ISendableCommand followUp)
-    {
-        _logger.LogInformation("sending {Command}, which the command that just ended declared should follow it", followUp.WireName);
-
-        TaskCompletionSource<CommandSendResult> unawaited = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        await HandleSendAsync(new SendCommandMessage(followUp, unawaited, CancellationToken.None), unattended: true);
     }
 
     /// <summary>
@@ -818,7 +809,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         return true;
     }
 
-    private async Task HandleSendAsync(SendCommandMessage send, bool unattended = false)
+    private async Task HandleSendAsync(SendCommandMessage send)
     {
         // Checked before anything else, because everything else has a cost the caller is no longer
         // there to receive: writing to the printer, and taking the one in-flight slot until the
@@ -886,6 +877,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
+        // Completed here, as it takes the slot: the heaters as of the printer's last word and every
+        // heater command of ours since - see ISendableCommand.AsSentWith.
+        ISendableCommand command = send.Command.AsSentWith(new HeaterTargets(_nozzleTarget ?? 0, _bedTarget ?? 0));
         uint commandId = unchecked(++_lastCommandId);
         CommandHandover handover;
 
@@ -895,7 +889,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // comment above); giving up on the wait leaves the send running, which is safe precisely
             // because the teardown this triggers disposes the socket and faults it. Encoding is the
             // connection's, since the two transports frame the same body differently.
-            handover = await _connection.SendCommandAsync(commandId, send.Command, CancellationToken.None, Dialect)
+            handover = await _connection.SendCommandAsync(commandId, command, CancellationToken.None, Dialect)
                                         .AsTask()
                                         .WaitAsync(SendTimeout);
         }
@@ -912,7 +906,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // teardown, which disposes the socket, which faults the abandoned write.
             _logger.LogError(
                 "writing {Command} did not complete within {SendTimeout}; abandoning the connection.",
-                send.Command.WireName, SendTimeout);
+                command.WireName, SendTimeout);
 
             Fail(send.Completion, new Exceptions.CommandSendTimedOutException(_printerId));
 
@@ -934,17 +928,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         // command class already, and SET_TOKEN is the answer to a compromised printer
         // credential - so a payload-logging habit here would turn that fix into a
         // credential written to disk. Same rule as UnknownFieldTracker's.
-        _logger.LogDebug("sent {Command} as command {CommandId}", send.Command.WireName, commandId);
+        _logger.LogDebug("sent {Command} as command {CommandId}", command.WireName, commandId);
 
         // The exception to the rule above, and the only one: the traffic log is off by default,
         // writes to a file of its own rather than the operator's console, and redacts the argument
         // names that carry secrets - token, hash, key and iv among them. Placed after the handover
         // because a send that never reached the printer is not traffic.
-        TrafficLog?.RecordOutbound(_printerId, commandId, send.Command);
+        TrafficLog?.RecordOutbound(_printerId, commandId, command);
 
         bool written = handover == CommandHandover.Written;
 
-        if (!send.Command.ExpectsReply && written)
+        if (!command.ExpectsReply && written)
         {
             // Written and done: the printer cannot answer this command (RESET_PRINTER reboots instead
             // of replying), so holding the slot would block every later command until the response
@@ -967,17 +961,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         long now = Stopwatch.GetTimestamp();
 
         _pending = new Pending(commandId,
-                               send.Command.WireName,
+                               command.WireName,
                                send.Completion,
                                written ? now : null,
                                written ? null : now,
-                               send.Command is SetLedIntensity light ? PrinterLighting.ReadBack(light.Intensity) : null,
-                               send.Command.ExpectsReply,
+                               command is SetLedIntensity light ? PrinterLighting.ReadBack(light.Intensity) : null,
+                               command.ExpectsReply,
                                Delivered: written,
-                               send.Command.AcceptedIsAnswer,
+                               command.AcceptedIsAnswer,
                                Acceptance: null,
-                               send.Command.FollowedBy,
-                               unattended,
+                               Named: false,
+                               command.LeavesHeaters,
                                send.CallerToken);
 
         if (written)
@@ -1039,15 +1033,6 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             Pending answered = _pending;
 
             _pending = null;
-            _followUp = answered.FollowedBy;
-
-            if (answered.Unattended && eventDto.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
-            {
-                // Nobody is waiting to hear it, so a refusal would otherwise go unseen.
-                _logger.LogWarning("command {CommandId} ({Command}), sent after the command before it ended, was answered {EventType}: {Reason}",
-                                   answered.CommandId, answered.WireName, eventDto.EventType,
-                                   LogText.Clean(eventDto.Reason, MaxLoggedReasonLength));
-            }
 
             // Only an answer correlated to the command says the setting took. A FINISHED arriving
             // after the response timeout has nothing to correlate with, and records nothing - the
@@ -1055,6 +1040,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             if (eventDto.EventType == PrinterEventType.Finished)
             {
                 lightingIntensity = answered.LightingIntensity;
+                ApplyHeaterChange(answered.Leaves);
             }
 
             // The other half of the pair above, and the reason SentAt is on Pending at all: elapsed
@@ -1106,12 +1092,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     {
         _transferSlot = telemetry.Telemetry.TransferId is null ? TransferSlot.Free : TransferSlot.Taken;
 
-        if (_pending is { Acceptance: not null } running && telemetry.Telemetry.CommandId != running.CommandId)
+        RecordHeaterReport(telemetry.Telemetry);
+
+        if (_pending is { Delivered: true, Named: false } unnamed && telemetry.Telemetry.CommandId == unnamed.CommandId)
+        {
+            _pending = unnamed with { Named = true };
+        }
+        else if (_pending is { Acceptance: not null, Named: true } running && telemetry.Telemetry.CommandId != running.CommandId)
         {
             // The printer no longer names the command it accepted, so it has ended, and the event
             // saying how did not reach us. The acceptance is all that is known.
             _pending = null;
-            _followUp = running.FollowedBy;
             _logger.LogInformation("command {CommandId} ({Command}) ended after {ElapsedMs:F0}ms without an answer reaching us; answered as accepted",
                                    running.CommandId, running.WireName, ElapsedMilliseconds(running));
             SettleAsAccepted(running);
@@ -1372,6 +1363,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         Pending expired = _pending!;
 
         _pending = null;
+
+        if (expired.Acceptance is not null)
+        {
+            // Accepted, and neither answered nor named by telemetry in the time - a short command whose
+            // answer went missing before any report named it. The printer did take it.
+            _logger.LogInformation("command {CommandId} ({Command}) was accepted and neither answered nor reported running within {ResponseTimeout}; answered as accepted",
+                                   expired.CommandId, expired.WireName, _responseTimeout);
+            SettleAsAccepted(expired);
+
+            return;
+        }
+
         _logger.LogWarning("command {CommandId} ({Command}) timed out waiting for a reply",
                            expired.CommandId, expired.WireName);
         expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)
@@ -1393,6 +1396,63 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         {
             CommandId = accepted.CommandId,
         });
+    }
+
+    /// <summary>
+    /// Takes the heater targets a report carries, unless it is the value a heater had before a change of
+    /// ours the printer has not yet reported.
+    /// </summary>
+    /// <remarks>
+    /// Any other value is the printer's word, ours confirmed or a change at the panel, and ends the wait
+    /// for it to catch up. A report without the field - Buddy's reduced telemetry - leaves both alone.
+    /// </remarks>
+    private void RecordHeaterReport(DTO.Telemetry.TelemetryDTO telemetry)
+    {
+        if (WholeDegrees(telemetry.TargetNozzleTemperature) is int nozzle)
+        {
+            _reportedNozzle = nozzle;
+
+            if (nozzle != _staleNozzleReport)
+            {
+                _nozzleTarget = nozzle;
+                _staleNozzleReport = null;
+            }
+        }
+
+        if (WholeDegrees(telemetry.TargetBedTemperature) is int bed)
+        {
+            _reportedBed = bed;
+
+            if (bed != _staleBedReport)
+            {
+                _bedTarget = bed;
+                _staleBedReport = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies what a finished command left the heaters at, and marks what the printer last reported for
+    /// each as the report it may still repeat before it catches up.
+    /// </summary>
+    private void ApplyHeaterChange(HeaterChange? change)
+    {
+        if (change?.Nozzle is int nozzle)
+        {
+            _staleNozzleReport = _reportedNozzle != nozzle ? _reportedNozzle : null;
+            _nozzleTarget = nozzle;
+        }
+
+        if (change?.Bed is int bed)
+        {
+            _staleBedReport = _reportedBed != bed ? _reportedBed : null;
+            _bedTarget = bed;
+        }
+    }
+
+    private static int? WholeDegrees(float? target)
+    {
+        return target is float value && float.IsFinite(value) ? (int)MathF.Round(value) : null;
     }
 
     /// <summary>

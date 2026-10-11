@@ -276,19 +276,12 @@ public sealed class FakePrinterClient : IAsyncDisposable
                 // wakes the wait below rather than being lost between the two.
                 Task changed = Device.NextTelemetryChange;
 
-                // A device event the printer decided to send - an attention it just raised -
-                // goes ahead of the timed telemetry, which is the order a real one produces: the
-                // state change is reported when it happens, not at the next tick.
-                byte[]? next = Device.PendingEvents.Count > 0 ?
-                    Device.PendingEvents.Dequeue() :
-                    _options.TelemetrySource.NextMessage(Device);
+                (bool sent, ServerCommandFrame? command) = await PostBuiltAsync(httpClient, NextOwnMessage, cancellationToken);
 
-                if (next is null)
+                if (!sent)
                 {
                     break;
                 }
-
-                ServerCommandFrame? command = await PostMessageAsync(httpClient, next, cancellationToken);
 
                 if (command is not null)
                 {
@@ -359,7 +352,65 @@ public sealed class FakePrinterClient : IAsyncDisposable
     /// connection - so it is thrown here rather than tolerated.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// The next message the device sends of its own accord, or null when its telemetry source has ended.
+    /// </summary>
+    /// <remarks>
+    /// A device event the printer decided to send - an attention it just raised - goes ahead of the
+    /// timed telemetry, which is the order a real one produces: the state change is reported when it
+    /// happens, not at the next tick.
+    /// </remarks>
+    private byte[]? NextOwnMessage()
+    {
+        return Device.PendingEvents.Count > 0 ?
+            Device.PendingEvents.Dequeue() :
+            _options.TelemetrySource!.NextMessage(Device);
+    }
+
+    /// <summary>
+    /// Builds a message and posts it, holding the send lock across both.
+    /// </summary>
+    /// <remarks>
+    /// <b>Built inside the lock, because firmware is one thread.</b> It renders a telemetry message as it
+    /// sends it, so nothing it answers can come between - built outside, a message rendered just before
+    /// a command arrived could go out just after the command's <c>ACCEPTED</c>, without the
+    /// <c>command_id</c> firmware would have put in it. And one POST at a time, as firmware makes them.
+    /// </remarks>
+    /// <returns>Whether anything was built, and the command the server answered with, if any.</returns>
+    private async Task<(bool sent, ServerCommandFrame? command)> PostBuiltAsync(HttpClient httpClient,
+                                                                                Func<byte[]?> build,
+                                                                                CancellationToken cancellationToken)
+    {
+        await _sendLock.WaitAsync(cancellationToken);
+
+        try
+        {
+            return build() is byte[] payload ?
+                (true, await PostUnlockedAsync(httpClient, payload, cancellationToken)) :
+                (false, null);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    /// <summary>Posts a reply, one POST at a time with everything else the device sends.</summary>
     private async Task<ServerCommandFrame?> PostMessageAsync(HttpClient httpClient, byte[] payload, CancellationToken cancellationToken)
+    {
+        await _sendLock.WaitAsync(cancellationToken);
+
+        try
+        {
+            return await PostUnlockedAsync(httpClient, payload, cancellationToken);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    private async Task<ServerCommandFrame?> PostUnlockedAsync(HttpClient httpClient, byte[] payload, CancellationToken cancellationToken)
     {
         string route = IsEventMessage(payload) ? "/p/events" : "/p/telemetry";
 
@@ -628,20 +679,13 @@ public sealed class FakePrinterClient : IAsyncDisposable
         {
             while (socket.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
-                // See the HTTP loop: a raised attention is sent when it is raised, and the change
-                // is taken before the message is built.
+                // See the HTTP loop: the change is taken before the message is built.
                 Task changed = Device.NextTelemetryChange;
 
-                byte[]? next = Device.PendingEvents.Count > 0 ?
-                    Device.PendingEvents.Dequeue() :
-                    _options.TelemetrySource.NextMessage(Device);
-
-                if (next is null)
+                if (!await SendBuiltAsync(NextOwnMessage, cancellationToken))
                 {
                     break;
                 }
-
-                await SendMessageAsync(next, cancellationToken);
 
                 await WaitBeforeNextSendAsync(_options.TelemetrySource, changed, Stopwatch.GetTimestamp(), cancellationToken);
             }
@@ -708,36 +752,66 @@ public sealed class FakePrinterClient : IAsyncDisposable
         }
     }
 
-    private async Task SendMessageAsync(byte[] payload, CancellationToken cancellationToken)
+    /// <summary>
+    /// Builds a message and sends it, holding the send lock across both - see <see cref="PostBuiltAsync"/>.
+    /// </summary>
+    /// <returns>Whether anything was built.</returns>
+    private async Task<bool> SendBuiltAsync(Func<byte[]?> build, CancellationToken cancellationToken)
     {
-        WebSocket socket = _socket ?? throw new InvalidOperationException("Not connected.");
-
         await _sendLock.WaitAsync(cancellationToken);
 
         try
         {
-            // One JSON document per WebSocket message, fragmented at the firmware's buffer size:
-            // Text first, continuations after, fin on the last (connect.cpp:646-673). The managed
-            // WebSocket emits continuation opcodes for the non-first sends on its own.
-            int offset = 0;
-
-            while (offset < payload.Length)
+            if (build() is not byte[] payload)
             {
-                int count = Math.Min(_options.SendFragmentSize, payload.Length - offset);
-                bool last = offset + count >= payload.Length;
-
-                await socket.SendAsync(
-                    new ArraySegment<byte>(payload, offset, count),
-                    WebSocketMessageType.Text,
-                    last,
-                    cancellationToken);
-
-                offset += count;
+                return false;
             }
+
+            await SendUnlockedAsync(payload, cancellationToken);
+
+            return true;
         }
         finally
         {
             _sendLock.Release();
+        }
+    }
+
+    private async Task SendMessageAsync(byte[] payload, CancellationToken cancellationToken)
+    {
+        await _sendLock.WaitAsync(cancellationToken);
+
+        try
+        {
+            await SendUnlockedAsync(payload, cancellationToken);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
+    }
+
+    private async Task SendUnlockedAsync(byte[] payload, CancellationToken cancellationToken)
+    {
+        WebSocket socket = _socket ?? throw new InvalidOperationException("Not connected.");
+
+        // One JSON document per WebSocket message, fragmented at the firmware's buffer size:
+        // Text first, continuations after, fin on the last (connect.cpp:646-673). The managed
+        // WebSocket emits continuation opcodes for the non-first sends on its own.
+        int offset = 0;
+
+        while (offset < payload.Length)
+        {
+            int count = Math.Min(_options.SendFragmentSize, payload.Length - offset);
+            bool last = offset + count >= payload.Length;
+
+            await socket.SendAsync(
+                new ArraySegment<byte>(payload, offset, count),
+                WebSocketMessageType.Text,
+                last,
+                cancellationToken);
+
+            offset += count;
         }
     }
 }

@@ -1050,18 +1050,19 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// An unload on a Python-SDK printer goes out as the SDK's own <c>UNLOAD_FILAMENT</c>, at the chosen
-    /// filament's printing temperature and the bed's own target, is answered when the printer takes
-    /// it, and is followed once it ends by the nozzle put back to the target it had.
+    /// An unload on a Python-SDK printer goes out as one gcode body - heat to the named filament's
+    /// temperature, wait for it, unload, and set the nozzle back to the target it had - and is answered
+    /// when the printer takes it.
     /// </summary>
     /// <remarks>
-    /// PrusaLink reads both kwargs by key (<c>FilamentCommand</c>, command_handlers.py:420-421) and
-    /// answers only once <c>M702</c> is done, minutes later - so the caller has its answer at the
-    /// <c>ACCEPTED</c>. The MK3's <c>M702</c> leaves the nozzle hot, which is what the follow-up is for.
-    /// Played by hand like <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/>.
+    /// PrusaLink runs a body line by line and answers once the last is done (<c>ExecuteGcode</c>,
+    /// command_handlers.py:331-397), minutes later for an unload - so the caller has its answer at the
+    /// <c>ACCEPTED</c>, and putting the nozzle back is the printer's to finish whatever happens here.
+    /// The target comes from the printer's own report; the bed is on no line. Played by hand like
+    /// <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/>.
     /// </remarks>
     [Fact]
-    public async Task AnSdkUnloadIsSentAsItsOwnCommandAndPutsTheNozzleBackWhenItEnds()
+    public async Task AnSdkUnloadIsOneGcodeBodyEndingWithTheNozzleSetBack()
     {
         // Arrange
         StartWithRealDispatcher();
@@ -1071,8 +1072,8 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
         using HttpClient printer = PrinterListener.CreateClient(_factory);
 
-        // A warm bed and a cold nozzle - the bed is left as it is, and the nozzle cooled down again.
-        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"target_nozzle":0.0,"target_bed":60.0,"state":"IDLE"}""");
+        // A preheated nozzle, which is left preheated.
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"target_nozzle":200.0,"target_bed":60.0,"state":"IDLE"}""");
         await WaitForStatusAsync(printerId, PrinterStatus.Idle);
 
         FilamentPreset pla = FilamentPreset.Find(model: null, "PLA")!;
@@ -1082,7 +1083,7 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
                                              .UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, pla,
                                                           TestContext.Current.CancellationToken);
 
-        (uint commandId, JsonElement command) = await CollectCommandAsync(printer, identity, token);
+        (uint commandId, string contentType, string body) = await CollectRawCommandAsync(printer, identity, token);
 
         // Act
         await PostAsSdkAsync(printer, "/p/events", identity, token,
@@ -1090,18 +1091,10 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
         UnloadOutcome outcome = await unloading.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
-        await PostAsSdkAsync(printer, "/p/events", identity, token,
-                             $$"""{"event":"FINISHED","source":"CONNECT","data":{},"command_id":{{commandId}},"state":"IDLE"}""");
-
-        (uint _, string followUpType, string followUp) = await CollectRawCommandAsync(printer, identity, token);
-
         // Assert
-        command.GetProperty("command").GetString().Should().Be("UNLOAD_FILAMENT");
-        command.GetProperty("kwargs").GetProperty("nozzle_temperature").GetInt32().Should().Be(pla.NozzleTemperature);
-        command.GetProperty("kwargs").GetProperty("bed_temperature").GetInt32().Should().Be(60, "the bed keeps the target it had");
-
-        followUpType.Should().Be("text/x.gcode", "how the SDK tells gcode from a JSON command (__init__.py:683)");
-        followUp.Should().Be("M104 S0", "the nozzle was cold before the unload heated it");
+        contentType.Should().Be("text/x.gcode", "how the SDK tells gcode from a JSON command (__init__.py:683)");
+        body.Should().Be($"M104 S{pla.NozzleTemperature}\nM109 S{pla.NozzleTemperature}\nM702\nM104 S200",
+                         "heat, wait, unload, and the nozzle back to the target the printer reported");
 
         outcome.Answer!.EventType.Should().Be(PrinterEventType.Accepted);
         outcome.NozzleTemperature.Should().Be(pla.NozzleTemperature);

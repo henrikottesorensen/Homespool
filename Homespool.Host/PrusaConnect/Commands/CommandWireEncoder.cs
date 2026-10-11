@@ -112,7 +112,7 @@ public static class CommandWireEncoder
         // A gcode command is a different body entirely: the line itself rather than a JSON document.
         if (commandData is ISendableGcodeCommand gcodeCommand)
         {
-            return new Body(EncodeGcodeLine(gcodeCommand), GcodeContentType);
+            return new Body(EncodeGcodeLine(gcodeCommand, dialect), GcodeContentType);
         }
 
         // Defaulting to the unescaped form rather than to the stock encoder is the conservative
@@ -171,9 +171,9 @@ public static class CommandWireEncoder
     /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException">The line is not on <see cref="GcodeAllowList"/>.</exception>
-    private static byte[] EncodeGcodeLine(ISendableGcodeCommand commandData)
+    private static byte[] EncodeGcodeLine(ISendableGcodeCommand commandData, PrinterDialect? dialect)
     {
-        if (!GcodeAllowList.IsAllowed(commandData.Line))
+        if (!GcodeAllowList.IsAllowed(commandData.Line, dialect))
         {
             throw new ArgumentException(
                 $"'{commandData.Line}' is not a gcode line this application may send.",

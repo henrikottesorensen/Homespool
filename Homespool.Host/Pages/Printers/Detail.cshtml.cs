@@ -679,10 +679,12 @@ public class DetailModel : PageModel
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Absent rather than disabled, and absent rather than refusing.</b> A printer that has not
-    /// named its filament almost always has nothing in it, so there is nothing to unload and no
-    /// refusal worth reading. The one case this hides that is not that - a printer whose filament
-    /// type was never set - is one where the command would block on a dialog at the panel anyway.
+    /// <b>Absent rather than disabled, and absent rather than refusing.</b> A printer that reports its
+    /// filament and has not named one almost always has nothing in it, so there is nothing to unload
+    /// and no refusal worth reading. The one case this hides that is not that - a printer whose
+    /// filament type was never set - is one where the command would block on a dialog at the panel
+    /// anyway. A printer that never reports one at all is offered the unload whenever it is
+    /// connected - see <see cref="UnloadAsksForFilament"/>.
     /// </para>
     /// <para>
     /// <b>Keyed on there being something to unload, not on which tool is picked.</b> <c>M702</c>
@@ -701,8 +703,8 @@ public class DetailModel : PageModel
     /// Whether unloading asks which filament is loaded, because the printer cannot say.
     /// </summary>
     /// <remarks>
-    /// The Python SDK's printers: PrusaLink never reports a material, and unloads with a command that
-    /// takes the temperature to unload at - see <see cref="PrusaConnect.Commands.UnloadFilamentAt"/>.
+    /// The Python SDK's printers: PrusaLink never reports a material, so the unload is sent at the
+    /// temperature of a filament somebody names - see <see cref="PrusaConnect.Commands.UnloadFilamentAt"/>.
     /// So the unload is offered whenever such a printer is connected, with the filament presets to
     /// choose from, rather than hidden for want of a material it will never report.
     /// </remarks>
@@ -1099,7 +1101,7 @@ public class DetailModel : PageModel
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
         UnloadAsksForFilament = Connected &&
                                 _connectionRegistry.TryGet(statistics.Printer.Id, out IPrinterLink? link) &&
-                                link is IPrinterConnectionActor { Dialect.HasUnloadFilamentCommand: true };
+                                link is IPrinterConnectionActor { Dialect.KnowsItsFilament: false };
 
         // Advisory only: the version is a header the printer writes about itself, so this decides
         // what a page says and never what a connection is allowed to do.
@@ -1622,27 +1624,27 @@ public class DetailModel : PageModel
     }
 
     /// <summary>
-    /// Unloads the filament the printer says is loaded.
+    /// Unloads the filament the printer says is loaded - or, on a printer that cannot say, the one the
+    /// post names.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The post carries nothing.</b> There is no filament to name and no temperature to choose -
-    /// the printer heats to its own stored filament type, which is the whole reason this is one
-    /// command rather than a heat-and-wait composed here. So there is no parameter to tamper with.
+    /// <b>On a printer that names its filament the post carries no filament and no temperature</b>:
+    /// it heats to its own stored filament type, which is the whole reason that unload is one command
+    /// rather than a heat-and-wait composed here. The service re-reads the material rather than being
+    /// told it, and the confirmation names what the service found. The button is hidden when the
+    /// printer has not said what is loaded, and hiding it is not the check - see
+    /// <see cref="UnloadShown"/>.
     /// </para>
     /// <para>
-    /// <b>The service re-reads the material rather than being told it</b>, and the confirmation
-    /// names what the service found. The button is hidden when the printer has not said what is
-    /// loaded, and hiding it is not the check - see <see cref="UnloadShown"/>.
+    /// <b>On one that cannot</b> - see <see cref="UnloadAsksForFilament"/> - the post names the
+    /// filament, and the name selects a row of this application's own preset table, exactly as
+    /// preheating's does: a name, never a temperature, and an unknown one is refused. A posted name is
+    /// ignored for a printer that names its own.
     /// </para>
     /// <para>
     /// <b>It reports the unload as begun, not done.</b> The printer answers when it takes the
-    /// command, so the several minutes of heating, ejecting and cooling happen after this returns.
-    /// </para>
-    /// <para>
-    /// <b>Except on a printer that cannot say what is loaded</b> - see
-    /// <see cref="UnloadAsksForFilament"/> - where the post carries the filament's name, which selects
-    /// a preset exactly as preheating's does: a name, never a temperature.
+    /// command, so the minutes of heating and unloading happen after this returns.
     /// </para>
     /// </remarks>
     public Task<IActionResult> OnPostUnloadAsync(Guid uuid, int? tool, string? filament, CancellationToken cancellationToken)

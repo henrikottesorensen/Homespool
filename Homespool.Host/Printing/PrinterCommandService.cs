@@ -267,23 +267,22 @@ public class PrinterCommandService
     }
 
     /// <summary>
-    /// Whether this printer unloads filament with <c>UNLOAD_FILAMENT</c> at a temperature it is sent,
-    /// which only a client that announced itself as the Python Connect SDK does.
+    /// Whether this printer says what filament it has loaded, which every client but one that announced
+    /// itself as the Python Connect SDK does.
     /// </summary>
     /// <remarks>
-    /// Anything unidentified answers like firmware, as <see cref="CanDecryptDownloadsAsync"/> does:
-    /// firmware would refuse the command as unknown.
+    /// Anything unidentified answers like firmware, as <see cref="CanDecryptDownloadsAsync"/> does.
     /// </remarks>
     /// <exception cref="PrinterNotConnectedException">No live connection for the printer.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks the capability on the printer's team.</exception>
-    public async Task<bool> HasUnloadFilamentCommandAsync(int printerId,
-                                                          Caller caller,
-                                                          Capability capability,
-                                                          CancellationToken cancellationToken)
+    public async Task<bool> KnowsItsFilamentAsync(int printerId,
+                                                  Caller caller,
+                                                  Capability capability,
+                                                  CancellationToken cancellationToken)
     {
         IPrinterLink link = await RequireLinkAsync(printerId, caller, capability, cancellationToken);
 
-        return link is IPrinterConnectionActor { Dialect.HasUnloadFilamentCommand: true };
+        return link is not IPrinterConnectionActor { Dialect.KnowsItsFilament: false };
     }
 
     /// <summary>The permission check and the registry lookup every entry point shares.</summary>

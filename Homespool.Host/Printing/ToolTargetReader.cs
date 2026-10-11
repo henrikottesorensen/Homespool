@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -110,24 +109,6 @@ public class ToolTargetReader
     private static bool IsHardened(Dictionary<int, PrinterTool> described, int toolNumber)
     {
         return described.TryGetValue(toolNumber, out PrinterTool? tool) && tool.Hardened;
-    }
-
-    /// <summary>
-    /// The heater targets the printer last reported, in whole degrees.
-    /// </summary>
-    /// <remarks>
-    /// <b>A target never reported reads as off.</b> This is what something that heats a printer for a
-    /// while puts back afterwards, and guessing "off" leaves a cold heater where a guess the other way
-    /// could leave a hot one with nobody there.
-    /// </remarks>
-    public async Task<HeaterTargets> ReadHeaterTargetsAsync(int printerId, CancellationToken cancellationToken)
-    {
-        PrinterLiveState? live = await _telemetry.PrinterLiveStates
-                                                 .AsNoTracking()
-                                                 .SingleOrDefaultAsync(state => state.PrinterId == printerId, cancellationToken);
-
-        return new HeaterTargets((int)Math.Round(live?.TargetNozzleTemperature ?? 0f),
-                                 (int)Math.Round(live?.TargetBedTemperature ?? 0f));
     }
 
     /// <summary>Reads the situation for one printer.</summary>

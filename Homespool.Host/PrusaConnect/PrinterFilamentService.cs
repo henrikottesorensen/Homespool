@@ -18,10 +18,12 @@ namespace Homespool.Host.PrusaConnect;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>The printer owns the temperature, and this composes nothing.</b> <c>M702 W0</c> heats to the
-/// filament the printer itself has stored and cools everything down afterwards, so there is no
-/// preset to look up here and no heat-and-wait to sequence - see <see cref="UnloadFilament"/> for
-/// the firmware reading behind that. It also means the command comes back in milliseconds: firmware
+/// <b>On a printer that names its filament, the printer owns the temperature and this composes
+/// nothing.</b> <c>M702 W0</c> heats to the filament the printer itself has stored and cools
+/// everything down afterwards, so there is no preset to look up here and no heat-and-wait to sequence
+/// - see <see cref="UnloadFilament"/> for the firmware reading behind that. A Python-SDK printer names
+/// none, so the caller does and the unload is composed from that filament's preset - see
+/// <see cref="UnloadFilamentAt"/>. It also means the command comes back in milliseconds: firmware
 /// answers gcode <c>Accepted</c> when it is <em>queued</em>, and <see cref="UnloadFilament"/> takes
 /// that as its answer, so the minutes the unload then takes are firmware's business and never a
 /// response timeout here.
@@ -114,7 +116,7 @@ public class PrinterFilamentService
             throw new PrinterHasQueuedWorkException(printerId);
         }
 
-        if (await _commands.HasUnloadFilamentCommandAsync(printerId, caller, Capability.ControlPrinter, cancellationToken))
+        if (!await _commands.KnowsItsFilamentAsync(printerId, caller, Capability.ControlPrinter, cancellationToken))
         {
             return await UnloadChosenAsync(printerId, caller, filament, cancellationToken);
         }
@@ -145,7 +147,7 @@ public class PrinterFilamentService
 
     /// <summary>
     /// Unloads the filament the caller names, on a printer that cannot name it - the Python SDK's,
-    /// which has one tool and its own unload command.
+    /// which has one tool - at that filament's temperature, leaving the nozzle at the target it had.
     /// </summary>
     private async Task<UnloadOutcome> UnloadChosenAsync(int printerId,
                                                         Caller caller,
@@ -157,11 +159,10 @@ public class PrinterFilamentService
             throw new FilamentTypeUnknownException(printerId);
         }
 
-        // The heaters as they are now, which the unload leaves them as - see UnloadFilamentAt.
-        HeaterTargets before = await _tools.ReadHeaterTargetsAsync(printerId, cancellationToken);
-
+        // The nozzle's target to put back is filled in by the connection as the command takes the slot,
+        // not read here - see UnloadFilamentAt.
         CommandOutcome? answer = await _commands.SendCommandAsync(
-            printerId, new UnloadFilamentAt(filament.NozzleTemperature, before.Bed, before.Nozzle), caller, cancellationToken);
+            printerId, new UnloadFilamentAt(filament.NozzleTemperature), caller, cancellationToken);
 
         if (answer is not null && answer.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {

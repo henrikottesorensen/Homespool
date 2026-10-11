@@ -98,7 +98,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// <param name="Delivered">
     /// Whether the printer has it: written, or taken by a poll that went on to send it. False between
     /// a poll's take and its <see cref="CommandDeliveredMessage"/> or give-back, the one stretch in
-    /// which a caller who stops waiting cannot yet be told which.
+    /// which a caller who stops waiting cannot yet be told which. Also what an answer is matched
+    /// against: an event naming a command the printer does not have is not its answer.
     /// </param>
     /// <param name="CallerToken">
     /// The caller's own token, read by the loop at each point where the command could still be kept
@@ -911,7 +912,16 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         int? lightingIntensity = null;
 
-        if (_pending is not null && eventDto.CommandId == _pending.CommandId)
+        if (_pending is { Delivered: false } undelivered && eventDto.CommandId == undelivered.CommandId)
+        {
+            // The printer cannot answer what it has not been given, and a parked command's id is the
+            // last one collected plus one. Matched, this would settle the caller and free the slot
+            // while the command stayed parked for the next poll to run. Kept, the poll delivers it
+            // and the printer's real answer settles it.
+            _logger.LogDebug("event for command {CommandId} ({Command}), which the printer has not been given; not an answer",
+                             undelivered.CommandId, undelivered.WireName);
+        }
+        else if (_pending is not null && eventDto.CommandId == _pending.CommandId)
         {
             Pending answered = _pending;
 
@@ -1186,16 +1196,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     }
 
     /// <summary>
-    /// How long a command took to be answered, for the log; -1 if it was never handed over.
+    /// How long a command took to be answered, for the log. Only a delivered command is answered, and
+    /// a delivered command's response clock is always running.
     /// </summary>
-    /// <remarks>
-    /// An answer to a command that was never delivered cannot happen honestly - the printer would be
-    /// acking something it never received - but if it does, a visible -1 is preferable to a throw
-    /// that costs the loop a message.
-    /// </remarks>
     private static double ElapsedMilliseconds(Pending answered)
     {
-        return answered.SentAt is long sentAt ? Stopwatch.GetElapsedTime(sentAt).TotalMilliseconds : -1;
+        return Stopwatch.GetElapsedTime(answered.SentAt!.Value).TotalMilliseconds;
     }
 
     private void ExpirePending()

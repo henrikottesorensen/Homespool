@@ -87,11 +87,14 @@ public sealed class DetailModelTests : IDisposable
     /// Connects the printer before the test writes what it reports, so that report counts as said to
     /// this connection - a status from before the connection is not one the page may act on.
     /// </summary>
-    private static void ConnectOpen(PrinterConnectionRegistry registry, int printerId)
+    private static IPrinterConnectionActor ConnectOpen(PrinterConnectionRegistry registry, int printerId, PrinterDialect? dialect = null)
     {
         IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
         actor.IsOpen.Returns(true);
+        actor.Dialect.Returns(dialect);
         registry.Register(printerId, actor, overPlaintext: false);
+
+        return actor;
     }
 
     /// <summary>
@@ -366,7 +369,7 @@ public sealed class DetailModelTests : IDisposable
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
 
         // Act
-        await model.OnPostUnloadAsync(printer.Uuid, tool: null, CancellationToken.None);
+        await model.OnPostUnloadAsync(printer.Uuid, tool: null, filament: null, CancellationToken.None);
 
         // Assert
         model.StatusSuccess.Should().BeFalse("retracting filament mid-print ruins the print");
@@ -408,7 +411,7 @@ public sealed class DetailModelTests : IDisposable
         {
             "preheat" => await model.OnPostPreheatAsync(printer.Uuid, "PETG", CancellationToken.None),
             "cooldown" => await model.OnPostCooldownAsync(printer.Uuid, CancellationToken.None),
-            _ => await model.OnPostUnloadAsync(printer.Uuid, tool: null, CancellationToken.None),
+            _ => await model.OnPostUnloadAsync(printer.Uuid, tool: null, filament: null, CancellationToken.None),
         };
 
         // Assert
@@ -540,6 +543,78 @@ public sealed class DetailModelTests : IDisposable
         // Assert. The printer is not connected in this fixture, so UnloadShown is false throughout -
         // LoadedMaterial is the half this decides, and the half the label reads from.
         model.LoadedMaterial.Should().Be(offered ? material : null);
+    }
+
+    /// <summary>
+    /// A printer that cannot name its filament is offered the unload anyway, with the filament to
+    /// choose; one that can, and has not, is not.
+    /// </summary>
+    /// <remarks>
+    /// PrusaLink never reports a material, so hiding the unload until one arrives would hide it for
+    /// ever on every SDK printer.
+    /// </remarks>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task AnSdkPrinterIsOfferedTheUnloadWithTheFilamentToChoose(bool sdk, bool offered)
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        ConnectOpen(registry, printer.Id, sdk ? PrinterDialect.ConnectSdk : PrinterDialect.BuddyHttp);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            Material = null,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnGetAsync(printer.Uuid, CancellationToken.None);
+
+        // Assert
+        model.UnloadShown.Should().Be(offered);
+        model.UnloadAsksForFilament.Should().Be(sdk);
+        model.UnloadNeedsPicker.Should().BeFalse("the filament list is the choice, and an SDK printer has one tool");
+    }
+
+    /// <summary>
+    /// A filament the printer's model has no preset for is refused by name, and nothing is sent.
+    /// </summary>
+    [Fact]
+    public async Task AnUnloadNamingAnUnknownFilamentIsRefused()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        (DetailModel model, _, Team team, PrinterConnectionRegistry registry) = await NewModelAsync(context);
+
+        Printer printer = NewPrinter(team.Id);
+        context.Printers.Add(printer);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        IPrinterConnectionActor actor = ConnectOpen(registry, printer.Id, PrinterDialect.ConnectSdk);
+
+        context.PrinterLiveStates.Add(new PrinterLiveState
+        {
+            PrinterId = printer.Id,
+            Status = PrinterStatus.Idle,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Act
+        await model.OnPostUnloadAsync(printer.Uuid, tool: null, filament: "Unobtainium", CancellationToken.None);
+
+        // Assert
+        model.StatusSuccess.Should().BeFalse();
+        model.StatusMessage.Should().Contain("Unobtainium");
+        await actor.DidNotReceiveWithAnyArgs().SendCommandAsync(default!, TestContext.Current.CancellationToken);
     }
 
     /// <summary>

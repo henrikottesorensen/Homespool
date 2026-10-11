@@ -517,6 +517,22 @@
   <data name="Printers_UnloadNote" xml:space="preserve">
     <value>Unloading heats the nozzle to the loaded filament’s printing temperature, ejects it, then turns the heaters off - so the printer is cold and empty when you reach it. It takes a few minutes, and the printer will decline other commands while it runs.</value>
   </data>
+  <data name="Printers_UnloadWhichFilament" xml:space="preserve">
+    <value>Filament loaded</value>
+    <comment>Label for the filament list beside Unload, on a printer that cannot say what is loaded. Read by screen readers only.</comment>
+  </data>
+  <data name="Printers_UnloadChosen" xml:space="preserve">
+    <value>Unload</value>
+    <comment>The button that unloads the filament chosen beside it.</comment>
+  </data>
+  <data name="Printers_UnloadStartedAt" xml:space="preserve">
+    <value>Unloading {0}. The printer heats the nozzle to {1} °C, then ejects the filament.</value>
+    <comment>{0} is the filament chosen, e.g. PLA; {1} its printing temperature. Says started, not done: the unload itself takes minutes.</comment>
+  </data>
+  <data name="Printers_UnloadChosenNote" xml:space="preserve">
+    <value>This printer does not say which filament is loaded, so choose it: the nozzle is heated to that filament’s printing temperature before it is ejected, and the bed is switched off rather than heated. It takes a few minutes, and the printer will decline other commands while it runs.</value>
+    <comment>Beside the unload on a printer that cannot report its filament - in practice an MK3S behind PrusaLink.</comment>
+  </data>
   <data name="Printers_Lighting" xml:space="preserve">
     <value>Light</value>
   </data>

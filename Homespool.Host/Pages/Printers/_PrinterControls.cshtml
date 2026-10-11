@@ -75,7 +75,26 @@
             @* One tool means no choice to make, so it stays a plain button; several means a real
                one, so it opens a picker. Same rule either way - ask only when something is being
                decided - rather than two philosophies by printer type. *@
-            @if (Model.UnloadNeedsPicker)
+            @if (Model.UnloadAsksForFilament)
+            {
+                @* The printer cannot say what is loaded, so the person says, and the preset gives the
+                   temperature - a name posted, never a number, as preheating does. Only the nozzle is
+                   shown, because only the nozzle is heated. *@
+                <form method="post" asp-page-handler="Unload" asp-route-uuid="@uuid"
+                      class="d-flex align-items-center gap-2">
+                    <label class="visually-hidden" for="unload-filament">@Localiser["Printers_UnloadWhichFilament"]</label>
+
+                    <select class="form-select w-auto" id="unload-filament" name="filament">
+                        @foreach (FilamentPreset preset in Model.Presets)
+                        {
+                            <option value="@preset.Name">@preset.Name &mdash; @preset.NozzleTemperature&deg;C</option>
+                        }
+                    </select>
+
+                    <button type="submit" class="btn btn-outline-secondary">@Localiser["Printers_UnloadChosen"]</button>
+                </form>
+            }
+            else if (Model.UnloadNeedsPicker)
             {
                 <button type="button" class="btn btn-outline-secondary"
                         data-bs-toggle="modal" data-bs-target="#unload-tool">
@@ -172,7 +191,14 @@
        meets a refusal should already know why. *@
     @if (Model.CanControlPrinter && Model.UnloadShown)
     {
-        <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
+        @if (Model.UnloadAsksForFilament)
+        {
+            <p class="text-body-secondary small">@Localiser["Printers_UnloadChosenNote"]</p>
+        }
+        else
+        {
+            <p class="text-body-secondary small">@Localiser["Printers_UnloadNote"]</p>
+        }
     }
 
 }

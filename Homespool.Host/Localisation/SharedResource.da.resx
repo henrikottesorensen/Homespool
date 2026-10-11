@@ -493,6 +493,18 @@
   <data name="Printers_UnloadNote" xml:space="preserve">
     <value>Udtagning varmer dysen op til det isatte filaments printtemperatur, skubber det ud og slukker så for varmelegemerne - så printeren er kold og tom, når du når frem til den. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
   </data>
+  <data name="Printers_UnloadWhichFilament" xml:space="preserve">
+    <value>Isat filament</value>
+  </data>
+  <data name="Printers_UnloadChosen" xml:space="preserve">
+    <value>Tag ud</value>
+  </data>
+  <data name="Printers_UnloadStartedAt" xml:space="preserve">
+    <value>Tager {0} ud. Printeren varmer dysen op til {1} °C og skubber så filamentet ud.</value>
+  </data>
+  <data name="Printers_UnloadChosenNote" xml:space="preserve">
+    <value>Denne printer oplyser ikke, hvilket filament der er sat i, så vælg det: dysen varmes op til filamentets printtemperatur, før det skubbes ud, og byggepladen slukkes i stedet for at blive varmet op. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
+  </data>
   <data name="Printers_Lighting" xml:space="preserve">
     <value>Lys</value>
   </data>

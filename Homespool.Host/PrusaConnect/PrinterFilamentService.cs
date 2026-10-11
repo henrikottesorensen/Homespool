@@ -73,6 +73,10 @@ public class PrinterFilamentService
     /// printer; a toolchanger without one is <see cref="ToolNotSpecifiedException"/>, because there is
     /// no default that is not a guess at somebody's spool.
     /// </param>
+    /// <param name="filament">
+    /// What the person unloading says is loaded, for a printer that cannot say so itself - see
+    /// <see cref="UnloadFilamentAt"/>. Ignored for one that can, whose own word is the one acted on.
+    /// </param>
     /// <param name="cancellationToken">The caller's own cancellation.</param>
     /// <returns>
     /// The material that was unloaded and the printer's own answer to the command. The material is
@@ -80,13 +84,16 @@ public class PrinterFilamentService
     /// confirmation is what the guard actually allowed.
     /// </returns>
     /// <exception cref="PrinterBusyException">The printer is mid-something.</exception>
-    /// <exception cref="FilamentTypeUnknownException">The printer has not said what is loaded.</exception>
+    /// <exception cref="FilamentTypeUnknownException">
+    /// The printer has not said what is loaded - or, for one that cannot, nobody has.
+    /// </exception>
     /// <exception cref="PrinterHasQueuedWorkException">Ready, with work the loop could start.</exception>
     /// <exception cref="PrinterRefusedException">The printer declined the command.</exception>
     /// <exception cref="TeamAccessDeniedException">Caller lacks <see cref="Capability.ControlPrinter"/>.</exception>
     public async Task<UnloadOutcome> UnloadAsync(int printerId,
                                                  Caller caller,
                                                  int? toolNumber,
+                                                 FilamentPreset? filament,
                                                  CancellationToken cancellationToken)
     {
         // The capability UnloadFilament declares, by inheriting the command default.
@@ -105,6 +112,11 @@ public class PrinterFilamentService
         if (snapshot.Status == PrinterStatus.Ready && snapshot.Head is not null)
         {
             throw new PrinterHasQueuedWorkException(printerId);
+        }
+
+        if (await _commands.HasUnloadFilamentCommandAsync(printerId, caller, Capability.ControlPrinter, cancellationToken))
+        {
+            return await UnloadChosenAsync(printerId, caller, filament, cancellationToken);
         }
 
         IReadOnlyList<PrinterToolState> tools = await _tools.ReadToolsAsync(printerId, cancellationToken);
@@ -129,6 +141,34 @@ public class PrinterFilamentService
         }
 
         return new UnloadOutcome(material, tool.ToolNumber, tools.Count > 1, answer);
+    }
+
+    /// <summary>
+    /// Unloads the filament the caller names, on a printer that cannot name it - the Python SDK's,
+    /// which has one tool and its own unload command.
+    /// </summary>
+    private async Task<UnloadOutcome> UnloadChosenAsync(int printerId,
+                                                        Caller caller,
+                                                        FilamentPreset? filament,
+                                                        CancellationToken cancellationToken)
+    {
+        if (filament is null)
+        {
+            throw new FilamentTypeUnknownException(printerId);
+        }
+
+        CommandOutcome? answer = await _commands.SendCommandAsync(
+            printerId, new UnloadFilamentAt(filament.NozzleTemperature), caller, cancellationToken);
+
+        if (answer is not null && answer.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+        {
+            throw new PrinterRefusedException(answer.EventType, answer.Reason);
+        }
+
+        return new UnloadOutcome(filament.Name, Tool: 1, NamedByTool: false, answer)
+        {
+            NozzleTemperature = filament.NozzleTemperature,
+        };
     }
 
     /// <summary>
@@ -169,8 +209,9 @@ public class PrinterFilamentService
 
 /// <summary>What was unloaded, and what the printer said about it.</summary>
 /// <param name="Material">
-/// The filament the printer named, e.g. <c>PLA</c>. Never the <c>"---"</c> sentinel - a printer
-/// reporting that is refused before anything is sent.
+/// The filament the printer named, e.g. <c>PLA</c> - or, on a printer that cannot name it, the one
+/// the caller did. Never the <c>"---"</c> sentinel - a printer reporting that is refused before
+/// anything is sent.
 /// </param>
 /// <param name="Tool">
 /// The tool it acted on, <b>1-based as the wire numbers it</b>. Always set - every unload now names
@@ -184,4 +225,11 @@ public class PrinterFilamentService
 /// The printer's own answer, or null for a command expecting no reply. An <c>Accepted</c> here means
 /// the unload has <em>started</em>, not that it has finished.
 /// </param>
-public sealed record UnloadOutcome(string Material, int Tool, bool NamedByTool, CommandOutcome? Answer);
+public sealed record UnloadOutcome(string Material, int Tool, bool NamedByTool, CommandOutcome? Answer)
+{
+    /// <summary>
+    /// The nozzle temperature the unload was sent, when this application chose it from the filament
+    /// the caller named; null when the printer heats to the filament it knows it has.
+    /// </summary>
+    public int? NozzleTemperature { get; init; }
+}

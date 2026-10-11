@@ -252,7 +252,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
 
-            UnloadOutcome outcome = await filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, CancellationToken.None);
+            UnloadOutcome outcome = await filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, filament: null, CancellationToken.None);
 
             fake.ReceivedCommands.Should().ContainSingle()
                 .Which.Kind.Should().Be(ServerCommandKind.Gcode, "gcode is not a JSON command");
@@ -308,7 +308,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
 
-            await filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: 8, CancellationToken.None);
+            await filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: 8, filament: null, CancellationToken.None);
 
             Encoding.ASCII.GetString(fake.ReceivedCommands.Single().Payload.Span)
                     .Should().Be("M702 T7 W0", "tool 8 is the top bit of the mask, and T7 in gcode");
@@ -508,7 +508,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
             using IServiceScope scope = _factory.Services.CreateScope();
             PrinterFilamentService filament = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>();
 
-            Func<Task> unload = () => filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, CancellationToken.None);
+            Func<Task> unload = () => filament.UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, filament: null, CancellationToken.None);
 
             await unload.Should().ThrowAsync<FilamentTypeUnknownException>();
 
@@ -569,7 +569,7 @@ public sealed class FakePrinterIntegrationTests : IAsyncLifetime
             // changes to that tool itself. Tool 5 is the last of the five and the one furthest from
             // whatever the machine was last holding.
             UnloadOutcome outcome = await filament.UnloadAsync(printerId, Caller.Unscoped(userId),
-                                                              toolNumber: 5, CancellationToken.None);
+                                                              toolNumber: 5, filament: null, CancellationToken.None);
 
             Encoding.ASCII.GetString(fake.ReceivedCommands.Single().Payload.Span)
                     .Should().Be("M702 T4 W0",

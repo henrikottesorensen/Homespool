@@ -695,10 +695,21 @@ public class DetailModel : PageModel
     /// that a button which is not rendered is not a check.
     /// </para>
     /// </remarks>
-    public bool UnloadShown => Connected && UnloadableTools.Count > 0;
+    public bool UnloadShown => Connected && (UnloadAsksForFilament || UnloadableTools.Count > 0);
+
+    /// <summary>
+    /// Whether unloading asks which filament is loaded, because the printer cannot say.
+    /// </summary>
+    /// <remarks>
+    /// The Python SDK's printers: PrusaLink never reports a material, and unloads with a command that
+    /// takes the temperature to unload at - see <see cref="PrusaConnect.Commands.UnloadFilamentAt"/>.
+    /// So the unload is offered whenever such a printer is connected, with the filament presets to
+    /// choose from, rather than hidden for want of a material it will never report.
+    /// </remarks>
+    public bool UnloadAsksForFilament { get; private set; }
 
     /// <summary>Whether the choice is real, and therefore whether the picker is worth opening.</summary>
-    public bool UnloadNeedsPicker => ToolStates.Count > 1;
+    public bool UnloadNeedsPicker => !UnloadAsksForFilament && ToolStates.Count > 1;
 
     /// <summary>
     /// Whether the lighting control is offered: the printer is connected and has lighting that can be
@@ -1086,6 +1097,9 @@ public class DetailModel : PageModel
 
         Statistics = statistics;
         Connected = _connectionRegistry.IsConnected(statistics.Printer.Id);
+        UnloadAsksForFilament = Connected &&
+                                _connectionRegistry.TryGet(statistics.Printer.Id, out IPrinterLink? link) &&
+                                link is IPrinterConnectionActor { Dialect.HasUnloadFilamentCommand: true };
 
         // Advisory only: the version is a header the printer writes about itself, so this decides
         // what a page says and never what a connection is allowed to do.
@@ -1622,15 +1636,32 @@ public class DetailModel : PageModel
     /// loaded, and hiding it is not the check - see <see cref="UnloadShown"/>.
     /// </para>
     /// <para>
-    /// <b>It reports the unload as begun, not done.</b> Firmware answers a gcode command when it
-    /// queues it, so the several minutes of heating, ejecting and cooling happen after this returns.
+    /// <b>It reports the unload as begun, not done.</b> The printer answers when it takes the
+    /// command, so the several minutes of heating, ejecting and cooling happen after this returns.
+    /// </para>
+    /// <para>
+    /// <b>Except on a printer that cannot say what is loaded</b> - see
+    /// <see cref="UnloadAsksForFilament"/> - where the post carries the filament's name, which selects
+    /// a preset exactly as preheating's does: a name, never a temperature.
     /// </para>
     /// </remarks>
-    public Task<IActionResult> OnPostUnloadAsync(Guid uuid, int? tool, CancellationToken cancellationToken)
+    public Task<IActionResult> OnPostUnloadAsync(Guid uuid, int? tool, string? filament, CancellationToken cancellationToken)
     {
         return ActAsync(uuid, async (caller, printer) =>
         {
-            UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, tool, cancellationToken);
+            FilamentPreset? preset = filament is null ? null : FilamentPreset.Find(printer.Model, filament);
+
+            if (filament is not null && preset is null)
+            {
+                return (_localiser["Printers_NoSuchFilament", filament].Value, false);
+            }
+
+            UnloadOutcome outcome = await _filament.UnloadAsync(printer.Id, caller, tool, preset, cancellationToken);
+
+            if (outcome.NozzleTemperature is int nozzle)
+            {
+                return (_localiser["Printers_UnloadStartedAt", outcome.Material, nozzle].Value, true);
+            }
 
             // Names the tool when there is one to name. The service reports which head it acted on
             // rather than the page inferring it, so the confirmation cannot disagree with the guard.

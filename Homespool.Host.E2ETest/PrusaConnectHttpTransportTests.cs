@@ -1049,6 +1049,78 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         _logs.Failures.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// An unload on a Python-SDK printer goes out as the SDK's own <c>UNLOAD_FILAMENT</c>, at the chosen
+    /// filament's printing temperature and with the bed off, and is answered when the printer takes it.
+    /// </summary>
+    /// <remarks>
+    /// PrusaLink reads both kwargs by key (<c>FilamentCommand</c>, command_handlers.py:420-421) and
+    /// answers only once <c>M702</c> is done, minutes later - so the caller has its answer at the
+    /// <c>ACCEPTED</c>. Played by hand like <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/>.
+    /// </remarks>
+    [Fact]
+    public async Task AnSdkUnloadIsSentAsItsOwnCommandAndAnsweredWhenTaken()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"state":"IDLE"}""");
+        await WaitForStatusAsync(printerId, PrinterStatus.Idle);
+
+        FilamentPreset pla = FilamentPreset.Find(model: null, "PLA")!;
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        Task<UnloadOutcome> unloading = scope.ServiceProvider.GetRequiredService<PrinterFilamentService>()
+                                             .UnloadAsync(printerId, Caller.Unscoped(userId), toolNumber: null, pla,
+                                                          TestContext.Current.CancellationToken);
+
+        (uint commandId, JsonElement command) = await CollectCommandAsync(printer, identity, token);
+
+        // Act
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"ACCEPTED","source":"CONNECT","data":{},"command_id":{{commandId}},"state":"IDLE"}""");
+
+        UnloadOutcome outcome = await unloading.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        command.GetProperty("command").GetString().Should().Be("UNLOAD_FILAMENT");
+        command.GetProperty("kwargs").GetProperty("nozzle_temperature").GetInt32().Should().Be(pla.NozzleTemperature);
+        command.GetProperty("kwargs").GetProperty("bed_temperature").GetInt32().Should().Be(0, "an unload has no use for a hot bed");
+
+        outcome.Answer!.EventType.Should().Be(PrinterEventType.Accepted);
+        outcome.NozzleTemperature.Should().Be(pla.NozzleTemperature);
+        _logs.Failures.Should().BeEmpty();
+    }
+
+    /// <summary>Waits until the printer's stored live state reads <paramref name="status"/>.</summary>
+    private async Task WaitForStatusAsync(int printerId, PrinterStatus status)
+    {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+
+        while (true)
+        {
+            using IServiceScope scope = _factory.Services.CreateScope();
+
+            PrinterStatus? stored = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                               .PrinterLiveStates
+                                               .Where(row => row.PrinterId == printerId)
+                                               .Select(row => (PrinterStatus?)row.Status)
+                                               .SingleOrDefaultAsync(timeout.Token);
+
+            if (stored == status)
+            {
+                return;
+            }
+
+            await Task.Delay(50, timeout.Token);
+        }
+    }
+
     /// <summary>Posts as the Python SDK does, and expects the message accepted.</summary>
     private static async Task PostAsSdkAsync(HttpClient printer, string route, PrinterIdentity identity, string token, string body)
     {

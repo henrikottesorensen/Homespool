@@ -56,10 +56,16 @@ namespace Homespool.Host.PrusaConnect;
 /// Whether this client turns a <c>\uXXXX</c> escape back into the character it stands for. False
 /// everywhere today, and see <see cref="For"/> for what is meant to flip it.
 /// </param>
+/// <param name="HasUnloadFilamentCommand">
+/// Whether this client unloads filament with <c>UNLOAD_FILAMENT</c>, at a temperature it is sent,
+/// rather than with firmware's <c>M702</c> at the temperature of the filament it knows it has. True
+/// for the Python SDK alone - see <see cref="Commands.UnloadFilamentAt"/>.
+/// </param>
 public sealed record PrinterDialect(string Name,
                                     bool SupportsInlineTransfer,
                                     bool UnderstandsEncryptedDownload,
-                                    bool DecodesJsonUnicodeEscapes = false)
+                                    bool DecodesJsonUnicodeEscapes = false,
+                                    bool HasUnloadFilamentCommand = false)
 {
     /// <summary>
     /// Buddy on the Connect WebSocket: the inline transfer, with no HTTP fetch involved. Named for
@@ -78,7 +84,7 @@ public sealed record PrinterDialect(string Name,
     /// The Python Connect SDK, which is what an MK3S+ behind a Raspberry Pi runs. Same transport as
     /// <see cref="BuddyHttp"/>, and a different answer about transfers.
     /// </summary>
-    public static readonly PrinterDialect ConnectSdk = new("Connect SDK over http", false, false);
+    public static readonly PrinterDialect ConnectSdk = new("Connect SDK over http", false, false, HasUnloadFilamentCommand: true);
 
     /// <summary>
     /// Works out the dialect from what the connection is and what the client said it was.

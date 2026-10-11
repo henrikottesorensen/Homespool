@@ -19,6 +19,7 @@ using Homespool.Host.Exceptions;
 using Homespool.Host.Firmware;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
+using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Queue;
 using Homespool.Model;
@@ -94,7 +95,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(status);
@@ -121,7 +122,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Unknown);
@@ -152,7 +153,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterBusyException>(
@@ -179,7 +180,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
@@ -230,7 +231,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterHasQueuedWorkException>();
@@ -248,7 +249,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
@@ -268,7 +269,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
@@ -297,7 +298,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
@@ -313,7 +314,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<PrinterBusyException>();
@@ -339,7 +340,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 2,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 2, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<NullReferenceException>(
@@ -361,7 +362,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 4,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 4, filament: null,
                                                       CancellationToken.None);
 
         (await unload.Should().ThrowAsync<NoSuchToolException>()).Which.ToolNumber.Should().Be(4);
@@ -377,7 +378,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 2,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: 2, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
@@ -399,7 +400,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<FilamentTypeUnknownException>(
@@ -424,7 +425,7 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
         PrinterFilamentService service = NewService(context);
 
-        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null, filament: null,
                                                       CancellationToken.None);
 
         await unload.Should().ThrowAsync<ToolNotSpecifiedException>();
@@ -444,11 +445,116 @@ public sealed class PrinterFilamentServiceTests : IDisposable
                .Select(attribute => (PrinterStatus)attribute.Data[0]!);
     }
 
+    /// <summary>
+    /// A Python-SDK printer unloads the filament the caller names, with its own command, at that
+    /// filament's printing temperature and with the bed off.
+    /// </summary>
+    /// <remarks>
+    /// PrusaLink never reports what is loaded, so the material is null here, as it always is for these
+    /// printers - which on Buddy would be refused as unknown.
+    /// </remarks>
+    [Fact]
+    public async Task AnSdkPrinterUnloadsTheChosenFilamentAtItsTemperature()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Idle, material: null, dialect: PrinterDialect.ConnectSdk))!;
+        AnswerAccepted(actor);
+        FilamentPreset petg = FilamentPreset.Find(model: null, "PETG")!;
+
+        PrinterFilamentService service = NewService(context);
+
+        UnloadOutcome outcome = await service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                          petg, CancellationToken.None);
+
+        UnloadFilamentAt sent = (UnloadFilamentAt)SentCommand(actor);
+
+        sent.Arguments.Should().BeEquivalentTo(new Dictionary<string, object?>
+        {
+            ["nozzle_temperature"] = petg.NozzleTemperature,
+            ["bed_temperature"] = 0,
+        });
+        outcome.Material.Should().Be("PETG");
+        outcome.NozzleTemperature.Should().Be(petg.NozzleTemperature);
+        outcome.Answer!.EventType.Should().Be(PrinterEventType.Accepted);
+    }
+
+    /// <summary>
+    /// A Python-SDK printer with no filament named is refused as unknown, and nothing is sent: there
+    /// is no temperature to unload at.
+    /// </summary>
+    [Fact]
+    public async Task AnSdkPrinterWithNoFilamentNamedRefusesAsUnknown()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Idle, material: null, dialect: PrinterDialect.ConnectSdk))!;
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      filament: null, CancellationToken.None);
+
+        await unload.Should().ThrowAsync<FilamentTypeUnknownException>();
+        await actor.DidNotReceiveWithAnyArgs().SendCommandAsync(default!, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A Python-SDK printer meets the same state guard as any other, before anything is sent.
+    /// </summary>
+    [Fact]
+    public async Task AnSdkPrinterMidPrintRefusesToUnload()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Printing, material: null, dialect: PrinterDialect.ConnectSdk))!;
+
+        PrinterFilamentService service = NewService(context);
+
+        Func<Task> unload = () => service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                      FilamentPreset.Find(model: null, "PLA"), CancellationToken.None);
+
+        (await unload.Should().ThrowAsync<PrinterBusyException>()).Which.Status.Should().Be(PrinterStatus.Printing);
+        await actor.DidNotReceiveWithAnyArgs().SendCommandAsync(default!, TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// A printer that names its own filament unloads that one with firmware's <c>M702</c>, whatever
+    /// the caller named: the printer's word is the one acted on.
+    /// </summary>
+    [Fact]
+    public async Task AFilamentNamedForAPrinterThatKnowsItsOwnIsIgnored()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Idle, material: "PETG", dialect: PrinterDialect.BuddyHttp))!;
+        AnswerAccepted(actor);
+
+        PrinterFilamentService service = NewService(context);
+
+        UnloadOutcome outcome = await service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
+                                                          FilamentPreset.Find(model: null, "PLA"), CancellationToken.None);
+
+        SentCommand(actor).Should().BeOfType<UnloadFilament>();
+        outcome.Material.Should().Be("PETG");
+        outcome.NozzleTemperature.Should().BeNull();
+    }
+
+    /// <summary>The one command sent to <paramref name="actor"/>.</summary>
+    private static ISendableCommand SentCommand(IPrinterConnectionActor actor)
+    {
+        return (ISendableCommand)actor.ReceivedCalls()
+                                      .Single(call => call.GetMethodInfo().Name == nameof(IPrinterConnectionActor.SendCommandAsync))
+                                      .GetArguments()[0]!;
+    }
+
+    private static void AnswerAccepted(IPrinterConnectionActor actor)
+    {
+        actor.SendCommandAsync(default!, default)
+             .ReturnsForAnyArgs(new CommandSendResult(CommandSendOutcome.Completed, new CommandOutcome(PrinterEventType.Accepted, null), null));
+    }
+
     private PrinterFilamentService NewService(HomespoolDbContext context)
     {
         PrinterAccessService access = new(context, NullLogger<PrinterAccessService>.Instance);
 
-        return new PrinterFilamentService(commands: null!,
+        return new PrinterFilamentService(new PrinterCommandService(access, _registry),
                                           access,
                                           new QueueSnapshotReader(context, TestTelemetryContext.For(context), _registry, TimeProvider.System, access, Substitute.For<ITransferOffers>(), Substitute.For<IFirmwareInstallations>()),
                                           new ToolTargetReader(context, TestTelemetryContext.For(context)));
@@ -471,13 +577,16 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         return context;
     }
 
-    private async Task SeedAsync(HomespoolDbContext context,
-                                        PrinterStatus? status,
-                                        string? material,
-                                        int? activeSlot = null,
-                                        int toolCount = 1,
-                                        (int number, string? material)[]? slots = null)
+    private async Task<IPrinterConnectionActor?> SeedAsync(HomespoolDbContext context,
+                                                           PrinterStatus? status,
+                                                           string? material,
+                                                           int? activeSlot = null,
+                                                           int toolCount = 1,
+                                                           (int number, string? material)[]? slots = null,
+                                                           PrinterDialect? dialect = null)
     {
+        IPrinterConnectionActor? actor = null;
+
         Team team = new() { Name = "team" };
         context.Teams.Add(team);
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
@@ -501,8 +610,9 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         {
             // Connected first, so what it reports below is said to this connection - a status from
             // before the connection is refused as unknown, which is not the guard these tests are about.
-            IPrinterConnectionActor actor = Substitute.For<IPrinterConnectionActor>();
+            actor = Substitute.For<IPrinterConnectionActor>();
             actor.IsOpen.Returns(true);
+            actor.Dialect.Returns(dialect);
             _registry.Register(PrinterId, actor, overPlaintext: false);
 
             context.PrinterLiveStates.Add(new PrinterLiveState
@@ -531,6 +641,8 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         }
 
         await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return actor;
     }
 
     private static async Task QueueAPrintAsync(HomespoolDbContext context)

@@ -953,6 +953,60 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         _logs.Failures.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// A download a Python-SDK printer accepts and then refuses is a refusal, and the file is not
+    /// recorded as taken. The SDK accepts every command before running it (<c>Command.accept</c>,
+    /// command.py:87-105); <c>DownloadMgr.start</c> then finds another transfer running and the
+    /// command finishes <c>REJECTED</c> (download.py:292-297, command.py:176-177).
+    /// </summary>
+    /// <remarks>
+    /// Played by hand like <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/>.
+    /// Both events carry the running transfer's id, as <c>event_cb</c> adds it to every event while
+    /// one runs (__init__.py:320-321).
+    /// </remarks>
+    [Fact]
+    public async Task AnSdkDownloadRefusedAfterItsAcceptanceIsNotRecordedAsTaken()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+        const uint runningTransferId = 3_000_000_000;
+
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"state":"IDLE"}""");
+
+        (HSFile file, StoredFile stored) = await StoreFileAsync(userId, "sdk-busy.gcode");
+        Task<DirectSendResult> sending = SendDirectAsync(printerId, file, stored, userId);
+
+        (uint commandId, JsonElement _) = await CollectCommandAsync(printer, identity, token);
+
+        // Act
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"ACCEPTED","source":"CONNECT","data":{},"command_id":{{commandId}},"transfer_id":{{runningTransferId}},"state":"IDLE"}""");
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"REJECTED","source":"CONNECT","data":{},"command_id":{{commandId}},"transfer_id":{{runningTransferId}},"reason":"Another transfer in progress","state":"IDLE"}""");
+
+        DirectSendResult result = await sending.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        result.Sent!.Outcome!.EventType.Should().Be(PrinterEventType.Rejected, "ACCEPTED said only that the printer had started on it");
+        result.Sent.Outcome.Reason.Should().Be("Another transfer in progress");
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        long? transferCommandId = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                             .FilesOnPrinters
+                                             .Where(row => row.PrinterId == printerId && row.FileId == file.Id)
+                                             .Select(row => row.TransferCommandId)
+                                             .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+        transferCommandId.Should().BeNull("a refused download is no transfer for a terminal event to name");
+        _logs.Failures.Should().BeEmpty();
+    }
+
     /// <summary>Posts as the Python SDK does, and expects the message accepted.</summary>
     private static async Task PostAsSdkAsync(HttpClient printer, string route, PrinterIdentity identity, string token, string body)
     {

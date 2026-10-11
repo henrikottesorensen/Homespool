@@ -67,6 +67,12 @@ public class UnloadFilament : ISendableGcodeCommand
     public string Line => "M702 T" + ToolIndex.ToString(CultureInfo.InvariantCulture) + " W0";
 
     /// <summary>
+    /// An unload runs for minutes, so its caller is answered when the printer takes it, and says the
+    /// unload has started.
+    /// </summary>
+    public bool AcceptedIsAnswer => true;
+
+    /// <summary>
     /// The command for the tool a printer calls <paramref name="wireToolNumber"/>.
     /// </summary>
     /// <param name="wireToolNumber">

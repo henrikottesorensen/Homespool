@@ -50,6 +50,25 @@ public interface ISendableCommand : ICommand
     bool ExpectsReply => true;
 
     /// <summary>
+    /// Whether the printer taking this command - its <c>ACCEPTED</c> - answers it, rather than the
+    /// event that later says how it ended. False for all but a handful, hence the default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ACCEPTED</c> means the printer has started on the command. The Python SDK sends it for every
+    /// command before running it, and firmware for gcode, which it runs in the background; either then
+    /// sends the real answer, which can still be a refusal. So by default it only tells the caller's
+    /// wait that the printer has the command, and the wait goes on.
+    /// </para>
+    /// <para>
+    /// <b>True only where the caller's question is whether the printer started</b>, because the
+    /// command runs for longer than any response timeout and its caller says so. Nothing later is
+    /// correlated to it, and an outcome that follows the <c>ACCEPTED</c> is stored as an ordinary event.
+    /// </para>
+    /// </remarks>
+    bool AcceptedIsAnswer => false;
+
+    /// <summary>
     /// What an account must hold to send this command. <b>Declared by the command rather than passed
     /// in by the caller</b>, so a new call site cannot pick a weaker one by accident.
     /// </summary>

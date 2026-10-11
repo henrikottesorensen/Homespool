@@ -105,6 +105,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// which a caller who stops waiting cannot yet be told which. Also what an answer is matched
     /// against: an event naming a command the printer does not have is not its answer.
     /// </param>
+    /// <param name="AcceptedIsAnswer">The command's <see cref="ISendableCommand.AcceptedIsAnswer"/>.</param>
+    /// <param name="Acceptance">
+    /// The printer's <c>ACCEPTED</c> for this command, once it has sent one and is still to say how
+    /// the command ended. What the caller is told if that never comes.
+    /// </param>
     /// <param name="CallerToken">
     /// The caller's own token, read by the loop at each point where the command could still be kept
     /// from the printer.
@@ -117,6 +122,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                   int? LightingIntensity,
                                   bool ExpectsReply,
                                   bool Delivered,
+                                  bool AcceptedIsAnswer,
+                                  CommandOutcome? Acceptance,
                                   CancellationToken CallerToken);
 
     /// <summary>
@@ -506,7 +513,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // reply will never get one - fail it now rather than making the caller wait out the
             // response timeout. This line is what replaced the controller-finally-plus-exception-
             // filter dance.
-            _pending?.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
+            //
+            // A command the printer has accepted is the exception: the printer has it and may still be
+            // carrying it out, so its caller is told that instead.
+            if (_pending?.Acceptance is not null)
+            {
+                SettleAsAccepted(_pending);
+            }
+            else
+            {
+                _pending?.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.NotConnected, null));
+            }
+
             _pending = null;
 
             // A transfer in progress dies with the connection - there is no way to serve the rest,
@@ -909,6 +927,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                send.Command is SetLedIntensity light ? PrinterLighting.ReadBack(light.Intensity) : null,
                                send.Command.ExpectsReply,
                                Delivered: written,
+                               send.Command.AcceptedIsAnswer,
+                               Acceptance: null,
                                send.CallerToken);
 
         if (written)
@@ -942,6 +962,19 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             _logger.LogDebug("event for command {CommandId} ({Command}), which the printer has not been given; not an answer",
                              undelivered.CommandId, undelivered.WireName);
         }
+        else if (_pending is { AcceptedIsAnswer: false } accepting &&
+                 eventDto.CommandId == accepting.CommandId &&
+                 eventDto.EventType == PrinterEventType.Accepted)
+        {
+            // The printer has started on it, and will say how it ended in an event of its own - which
+            // can still be a refusal: the Python SDK accepts every command before running it, and
+            // firmware accepts gcode before running it in the background. So the wait goes on, under
+            // the clock it already had; this is what the caller is told if that clock runs out.
+            _pending = accepting with { Acceptance = OutcomeOf(eventDto) };
+
+            _logger.LogDebug("command {CommandId} ({Command}) accepted after {ElapsedMs:F0}ms; waiting for how it ends",
+                             accepting.CommandId, accepting.WireName, ElapsedMilliseconds(accepting));
+        }
         else if (_pending is not null && eventDto.CommandId == _pending.CommandId)
         {
             Pending answered = _pending;
@@ -973,13 +1006,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // Data rides on the result rather than the outcome, and never reaches the log line above:
             // a payload is the one part of an answer that can carry anything, and FILE_INFO's runs to
             // ~90 KB with a preview in it. PrinterCommandService is the only thing that reads it.
-            answered.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed,
-                                                                   new CommandOutcome(eventDto.EventType, eventDto.Reason)
-                                                                   {
-                                                                       MachineReason = eventDto.MachineReason,
-                                                                       PrinterStatus = PrinterStatusExtensions.TryParseWireState(eventDto.Status),
-                                                                   },
-                                                                   eventDto.Data)
+            answered.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed, OutcomeOf(eventDto), eventDto.Data)
             {
                 CommandId = answered.CommandId,
             });
@@ -1265,11 +1292,47 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         Pending expired = _pending!;
 
         _pending = null;
+
+        if (expired.Acceptance is not null)
+        {
+            // Not a silence: the printer took the command and is still on it, so the caller hears that
+            // rather than a timeout, and how it ends is stored as an ordinary event when it comes.
+            _logger.LogInformation("command {CommandId} ({Command}) was accepted and had not ended within {ResponseTimeout}; answered as accepted",
+                                   expired.CommandId, expired.WireName, _responseTimeout);
+            SettleAsAccepted(expired);
+
+            return;
+        }
+
         _logger.LogWarning("command {CommandId} ({Command}) timed out waiting for a reply",
                            expired.CommandId, expired.WireName);
         expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)
         {
             CommandId = expired.CommandId,
         });
+    }
+
+    /// <summary>
+    /// Tells the caller of a command the printer accepted, and has not yet said how it ended, that it
+    /// was accepted.
+    /// </summary>
+    private static void SettleAsAccepted(Pending accepted)
+    {
+        accepted.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed, accepted.Acceptance, null)
+        {
+            CommandId = accepted.CommandId,
+        });
+    }
+
+    /// <summary>
+    /// The outcome an event carrying a command's id reports for it.
+    /// </summary>
+    private static CommandOutcome OutcomeOf(DTO.EventMessages.EventDTO eventDto)
+    {
+        return new CommandOutcome(eventDto.EventType, eventDto.Reason)
+        {
+            MachineReason = eventDto.MachineReason,
+            PrinterStatus = PrinterStatusExtensions.TryParseWireState(eventDto.Status),
+        };
     }
 }

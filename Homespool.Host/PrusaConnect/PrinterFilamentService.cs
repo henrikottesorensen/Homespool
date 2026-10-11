@@ -21,15 +21,16 @@ namespace Homespool.Host.PrusaConnect;
 /// <b>The printer owns the temperature, and this composes nothing.</b> <c>M702 W0</c> heats to the
 /// filament the printer itself has stored and cools everything down afterwards, so there is no
 /// preset to look up here and no heat-and-wait to sequence - see <see cref="UnloadFilament"/> for
-/// the firmware reading behind that. It also means the command comes back in milliseconds: gcode is
-/// answered <c>Accepted</c> when it is <em>queued</em>, so the minutes the unload then takes are
-/// firmware's business and never a response timeout here.
+/// the firmware reading behind that. It also means the command comes back in milliseconds: firmware
+/// answers gcode <c>Accepted</c> when it is <em>queued</em>, and <see cref="UnloadFilament"/> takes
+/// that as its answer, so the minutes the unload then takes are firmware's business and never a
+/// response timeout here.
 /// </para>
 /// <para>
 /// <b>Which is also why the answer says "started".</b> That same <c>Accepted</c> is the whole of
-/// what is known when this returns - <c>Accepted</c> is treated as a command completing, and for
-/// gcode it means queued. Claiming the filament is out would be claiming
-/// something no event has yet said. A caller reporting this should say the unload has begun.
+/// what is known when this returns, and for gcode it means queued. Claiming the filament is out
+/// would be claiming something no event has yet said. A caller reporting this should say the unload
+/// has begun.
 /// </para>
 /// <para>
 /// <b>Reachable from the web UI only</b>, on the same reasoning

@@ -12,7 +12,10 @@ namespace Homespool.Host.Printing;
 /// <c>TransferInfo</c> is how a transfer-starting command succeeds: firmware answers
 /// <c>START_CONNECT_DOWNLOAD</c> with a <c>TRANSFER_INFO</c> carrying the command's own id, never
 /// with <c>Finished</c> (planner.cpp:801-824). Nothing here has to enumerate them - correlation is
-/// on <c>command_id</c> alone - but callers judging success by event type do.
+/// on <c>command_id</c> alone - but callers judging success by event type do. <c>Accepted</c> says
+/// only that the printer took the command: it is the outcome when the printer had not said how the
+/// command ended within the response timeout, or for a command whose
+/// <see cref="PrusaConnect.Commands.ISendableCommand.AcceptedIsAnswer"/> is true.
 /// </param>
 /// <param name="Reason">
 /// The printer's own words when it rejected the command, e.g. "No print to pause". Null for the

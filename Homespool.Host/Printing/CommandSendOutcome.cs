@@ -78,7 +78,8 @@ public enum CommandSendOutcome
     /// Says nothing about whether the command was acted on - the bytes demonstrably left, so the
     /// printer most likely has it and is simply slow. The firmware defers acks while warming up or
     /// homing. The connection is unaffected: the next command can go immediately, and a late answer
-    /// still arrives and is persisted as an ordinary event.
+    /// still arrives and is persisted as an ordinary event. Not for a command the printer accepted in
+    /// that time, which is <see cref="Completed"/> with <c>Accepted</c> as its answer.
     /// </remarks>
     ResponseTimedOut = 5,
 

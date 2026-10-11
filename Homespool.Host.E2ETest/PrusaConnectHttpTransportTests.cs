@@ -1051,15 +1051,17 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
     /// <summary>
     /// An unload on a Python-SDK printer goes out as the SDK's own <c>UNLOAD_FILAMENT</c>, at the chosen
-    /// filament's printing temperature and with the bed off, and is answered when the printer takes it.
+    /// filament's printing temperature and the bed's own target, is answered when the printer takes
+    /// it, and is followed once it ends by the nozzle put back to the target it had.
     /// </summary>
     /// <remarks>
     /// PrusaLink reads both kwargs by key (<c>FilamentCommand</c>, command_handlers.py:420-421) and
     /// answers only once <c>M702</c> is done, minutes later - so the caller has its answer at the
-    /// <c>ACCEPTED</c>. Played by hand like <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/>.
+    /// <c>ACCEPTED</c>. The MK3's <c>M702</c> leaves the nozzle hot, which is what the follow-up is for.
+    /// Played by hand like <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/>.
     /// </remarks>
     [Fact]
-    public async Task AnSdkUnloadIsSentAsItsOwnCommandAndAnsweredWhenTaken()
+    public async Task AnSdkUnloadIsSentAsItsOwnCommandAndPutsTheNozzleBackWhenItEnds()
     {
         // Arrange
         StartWithRealDispatcher();
@@ -1069,7 +1071,8 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
         using HttpClient printer = PrinterListener.CreateClient(_factory);
 
-        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"state":"IDLE"}""");
+        // A warm bed and a cold nozzle - the bed is left as it is, and the nozzle cooled down again.
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"target_nozzle":0.0,"target_bed":60.0,"state":"IDLE"}""");
         await WaitForStatusAsync(printerId, PrinterStatus.Idle);
 
         FilamentPreset pla = FilamentPreset.Find(model: null, "PLA")!;
@@ -1087,10 +1090,18 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
         UnloadOutcome outcome = await unloading.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"FINISHED","source":"CONNECT","data":{},"command_id":{{commandId}},"state":"IDLE"}""");
+
+        (uint _, string followUpType, string followUp) = await CollectRawCommandAsync(printer, identity, token);
+
         // Assert
         command.GetProperty("command").GetString().Should().Be("UNLOAD_FILAMENT");
         command.GetProperty("kwargs").GetProperty("nozzle_temperature").GetInt32().Should().Be(pla.NozzleTemperature);
-        command.GetProperty("kwargs").GetProperty("bed_temperature").GetInt32().Should().Be(0, "an unload has no use for a hot bed");
+        command.GetProperty("kwargs").GetProperty("bed_temperature").GetInt32().Should().Be(60, "the bed keeps the target it had");
+
+        followUpType.Should().Be("text/x.gcode", "how the SDK tells gcode from a JSON command (__init__.py:683)");
+        followUp.Should().Be("M104 S0", "the nozzle was cold before the unload heated it");
 
         outcome.Answer!.EventType.Should().Be(PrinterEventType.Accepted);
         outcome.NozzleTemperature.Should().Be(pla.NozzleTemperature);
@@ -1136,6 +1147,19 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
     /// </summary>
     private static async Task<(uint commandId, JsonElement command)> CollectCommandAsync(HttpClient printer, PrinterIdentity identity, string token)
     {
+        (uint commandId, string _, string body) = await CollectRawCommandAsync(printer, identity, token);
+
+        using JsonDocument document = JsonDocument.Parse(body);
+
+        return (commandId, document.RootElement.Clone());
+    }
+
+    /// <summary>
+    /// As <see cref="CollectCommandAsync"/>, for a command whose body may be gcode rather than JSON:
+    /// its id, its content type and its body as sent.
+    /// </summary>
+    private static async Task<(uint commandId, string contentType, string body)> CollectRawCommandAsync(HttpClient printer, PrinterIdentity identity, string token)
+    {
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
 
         while (true)
@@ -1145,10 +1169,11 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
             if (response.StatusCode == HttpStatusCode.OK)
             {
-                using JsonDocument document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
                 uint commandId = uint.Parse(response.Headers.GetValues(Headers.CommandId).Single(), CultureInfo.InvariantCulture);
 
-                return (commandId, document.RootElement.Clone());
+                return (commandId,
+                        response.Content.Headers.ContentType?.MediaType ?? string.Empty,
+                        await response.Content.ReadAsStringAsync(timeout.Token));
             }
 
             await Task.Delay(20, timeout.Token);

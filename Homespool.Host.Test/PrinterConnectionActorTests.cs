@@ -1107,6 +1107,135 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
+    /// A command that declares what follows it has that sent the moment it ends, ahead of anything a
+    /// caller sends meanwhile - here the nozzle put back after an unload.
+    /// </summary>
+    [Fact]
+    public async Task ACommandsFollowUpIsSentWhenItsAnswerArrives()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), responseTimeout: TimeSpan.FromSeconds(30));
+
+        Task<CommandSendResult> unload = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 60), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+        uint commandId = CommandIdOf(sentFrames[0]);
+
+        await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Accepted), CancellationToken.None);
+        await Eventually(unload);
+
+        // Act
+        await actor.PostAsync(EventAnswering(commandId), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 2);
+
+        CommandSendResult meanwhile = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
+
+        // Assert
+        sent[1].Should().BeOfType<SetNozzleTemperature>().Which.Temperature.Should().Be(60, "the nozzle goes back to the target it had");
+        meanwhile.Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight, "the follow-up holds the slot until the printer answers it");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A follow-up is sent when the command ends without its answer reaching us, too: the printer has
+    /// still finished with it.
+    /// </summary>
+    [Fact]
+    public async Task ACommandsFollowUpIsSentWhenTheTelemetryStopsNamingIt()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), responseTimeout: TimeSpan.FromSeconds(30));
+
+        _ = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 0), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Accepted), CancellationToken.None);
+
+        // Act
+        await actor.PostAsync(TelemetryNaming(commandId: null), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 2);
+
+        // Assert
+        sent[1].Should().BeOfType<SetNozzleTemperature>().Which.Temperature.Should().Be(0, "a cold nozzle is cooled down again");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// No follow-up when the connection ends while the command runs: there is nothing to send it to.
+    /// </summary>
+    [Fact]
+    public async Task NoFollowUpIsSentWhenTheConnectionEnds()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink, responseTimeout: TimeSpan.FromSeconds(30));
+
+        _ = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 0), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Accepted), CancellationToken.None);
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
+        // Act
+        actor.Complete();
+        await Eventually(actor.Completion);
+
+        // Assert
+        sent.Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// A follow-up the printer refuses is logged as a warning, since no caller is there to hear it.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedFollowUpIsLoggedAsAWarning()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        FakeLogger<PrinterConnectionActor> logger = new();
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), responseTimeout: TimeSpan.FromSeconds(30), logger: logger);
+
+        _ = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 0), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+        uint unloadId = CommandIdOf(sentFrames[0]);
+        await actor.PostAsync(EventAnswering(unloadId, PrinterEventType.Accepted), CancellationToken.None);
+        await actor.PostAsync(EventAnswering(unloadId), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 2);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[1]), PrinterEventType.Rejected, reason: "Command error"), CancellationToken.None);
+        await WaitForLogAsync(logger, "sent after the command before it ended");
+
+        // Assert
+        logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Warning);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>As <see cref="OpenConnection(List{byte[]})"/>, also keeping each command it was handed.</summary>
+    private static IPrinterConnection RecordingConnection(List<byte[]> sentFrames, List<ISendableCommand> sent)
+    {
+        IPrinterConnection connection = OpenConnection();
+
+        OnSend(connection, call =>
+        {
+            sentFrames.Add(FrameOf(call));
+            sent.Add((ISendableCommand)call[1]!);
+        });
+
+        return connection;
+    }
+
+    /// <summary>
     /// A reset does not preempt a command the printer has not yet accepted: that one has its own
     /// clock, and nothing yet says the printer is running it.
     /// </summary>

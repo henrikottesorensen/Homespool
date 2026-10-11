@@ -57,6 +57,10 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     // and the queue, which awaits printers one after another, would pay it for every printer.
     private bool _uncollected;
 
+    // Set when a command that declares what follows it has ended, and sent before the loop takes its next
+    // message - so the follow-up has the slot before anything a caller queued meanwhile.
+    private ISendableCommand? _followUp;
+
     /// <summary>
     /// The one transfer this printer may have in progress. One, because firmware allocates a single
     /// system-wide transfer slot (<c>Monitor</c>, monitor.hpp:85-98) and requests are strictly
@@ -112,6 +116,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// running, and neither clock applies. It runs for as long as the printer's telemetry names it,
     /// and the acceptance is what the caller is told if it ends without an answer.
     /// </param>
+    /// <param name="FollowedBy">The command's <see cref="ISendableCommand.FollowedBy"/>, sent once it ends.</param>
+    /// <param name="Unattended">
+    /// Whether this is a command's <see cref="ISendableCommand.FollowedBy"/>, which no caller is waiting on -
+    /// so a refusal is logged rather than reported.
+    /// </param>
     /// <param name="CallerToken">
     /// The caller's own token, read by the loop at each point where the command could still be kept
     /// from the printer.
@@ -126,6 +135,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                   bool Delivered,
                                   bool AcceptedIsAnswer,
                                   CommandOutcome? Acceptance,
+                                  ISendableCommand? FollowedBy,
+                                  bool Unattended,
                                   CancellationToken CallerToken);
 
     /// <summary>
@@ -577,6 +588,25 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 HandleCancelSend(cancel);
                 break;
         }
+
+        if (_followUp is ISendableCommand followUp)
+        {
+            _followUp = null;
+            await SendFollowUpAsync(followUp);
+        }
+    }
+
+    /// <summary>
+    /// Sends what a command that has just ended declared should follow it. Nobody awaits the answer;
+    /// the loop logs it.
+    /// </summary>
+    private async Task SendFollowUpAsync(ISendableCommand followUp)
+    {
+        _logger.LogInformation("sending {Command}, which the command that just ended declared should follow it", followUp.WireName);
+
+        TaskCompletionSource<CommandSendResult> unawaited = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await HandleSendAsync(new SendCommandMessage(followUp, unawaited, CancellationToken.None), unattended: true);
     }
 
     /// <summary>
@@ -788,7 +818,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         return true;
     }
 
-    private async Task HandleSendAsync(SendCommandMessage send)
+    private async Task HandleSendAsync(SendCommandMessage send, bool unattended = false)
     {
         // Checked before anything else, because everything else has a cost the caller is no longer
         // there to receive: writing to the printer, and taking the one in-flight slot until the
@@ -946,6 +976,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                                Delivered: written,
                                send.Command.AcceptedIsAnswer,
                                Acceptance: null,
+                               send.Command.FollowedBy,
+                               unattended,
                                send.CallerToken);
 
         if (written)
@@ -1007,6 +1039,15 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             Pending answered = _pending;
 
             _pending = null;
+            _followUp = answered.FollowedBy;
+
+            if (answered.Unattended && eventDto.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
+            {
+                // Nobody is waiting to hear it, so a refusal would otherwise go unseen.
+                _logger.LogWarning("command {CommandId} ({Command}), sent after the command before it ended, was answered {EventType}: {Reason}",
+                                   answered.CommandId, answered.WireName, eventDto.EventType,
+                                   LogText.Clean(eventDto.Reason, MaxLoggedReasonLength));
+            }
 
             // Only an answer correlated to the command says the setting took. A FINISHED arriving
             // after the response timeout has nothing to correlate with, and records nothing - the
@@ -1070,6 +1111,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             // The printer no longer names the command it accepted, so it has ended, and the event
             // saying how did not reach us. The acceptance is all that is known.
             _pending = null;
+            _followUp = running.FollowedBy;
             _logger.LogInformation("command {CommandId} ({Command}) ended after {ElapsedMs:F0}ms without an answer reaching us; answered as accepted",
                                    running.CommandId, running.WireName, ElapsedMilliseconds(running));
             SettleAsAccepted(running);

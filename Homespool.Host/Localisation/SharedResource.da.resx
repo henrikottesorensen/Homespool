@@ -500,10 +500,10 @@
     <value>Tag ud</value>
   </data>
   <data name="Printers_UnloadStartedAt" xml:space="preserve">
-    <value>Tager {0} ud. Printeren varmer dysen op til {1} °C og skubber så filamentet ud.</value>
+    <value>Tager {0} ud. Printeren varmer dysen op til {1} °C og trækker filamentet tilbage, så det kan tages ud, og sætter derefter dysen tilbage til den temperatur, den havde.</value>
   </data>
   <data name="Printers_UnloadChosenNote" xml:space="preserve">
-    <value>Denne printer oplyser ikke, hvilket filament der er sat i, så vælg det: dysen varmes op til filamentets printtemperatur, før det skubbes ud, og byggepladen slukkes i stedet for at blive varmet op. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
+    <value>Denne printer oplyser ikke, hvilket filament der er sat i, så vælg det: dysen varmes op til filamentets printtemperatur, og filamentet trækkes tilbage, så det kan tages ud. Bagefter får dysen den temperatur, den havde, og byggepladen røres ikke. Det tager et par minutter, og printeren afviser andre kommandoer imens.</value>
   </data>
   <data name="Printers_Lighting" xml:space="preserve">
     <value>Lys</value>

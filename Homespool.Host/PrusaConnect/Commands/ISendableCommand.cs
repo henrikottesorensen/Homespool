@@ -81,6 +81,25 @@ public interface ISendableCommand : ICommand
     bool Preempts => false;
 
     /// <summary>
+    /// A command to send once this one has ended, on the printer's behalf rather than a caller's;
+    /// null for all but a handful.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For what a printer leaves undone after a command that outlives its caller's wait - an
+    /// unload that heats the nozzle and leaves it hot. It is sent as soon as the command ends, by the
+    /// printer's answer or by its telemetry no longer naming it, ahead of anything a caller sent
+    /// meanwhile; not when the connection ends or a reset preempts the command, as there is then
+    /// nothing to send it to.
+    /// </para>
+    /// <para>
+    /// Nobody awaits its answer, so a refusal is logged as a warning. It needs no capability of its
+    /// own: it carries out the end of a command a caller was allowed to send.
+    /// </para>
+    /// </remarks>
+    ISendableCommand? FollowedBy => null;
+
+    /// <summary>
     /// What an account must hold to send this command. <b>Declared by the command rather than passed
     /// in by the caller</b>, so a new call site cannot pick a weaker one by accident.
     /// </summary>

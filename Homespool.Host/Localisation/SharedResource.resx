@@ -526,11 +526,11 @@
     <comment>The button that unloads the filament chosen beside it.</comment>
   </data>
   <data name="Printers_UnloadStartedAt" xml:space="preserve">
-    <value>Unloading {0}. The printer heats the nozzle to {1} °C, then ejects the filament.</value>
+    <value>Unloading {0}. The printer heats the nozzle to {1} °C and retracts the filament so it can be pulled out, then puts the nozzle back to the temperature it had.</value>
     <comment>{0} is the filament chosen, e.g. PLA; {1} its printing temperature. Says started, not done: the unload itself takes minutes.</comment>
   </data>
   <data name="Printers_UnloadChosenNote" xml:space="preserve">
-    <value>This printer does not say which filament is loaded, so choose it: the nozzle is heated to that filament’s printing temperature before it is ejected, and the bed is switched off rather than heated. It takes a few minutes, and the printer will decline other commands while it runs.</value>
+    <value>This printer does not say which filament is loaded, so choose it: the nozzle is heated to that filament’s printing temperature and the filament retracted so it can be pulled out. Afterwards the nozzle goes back to the temperature it had, and the bed is left as it is. It takes a few minutes, and the printer will decline other commands while it runs.</value>
     <comment>Beside the unload on a printer that cannot report its filament - in practice an MK3S behind PrusaLink.</comment>
   </data>
   <data name="Printers_Lighting" xml:space="preserve">

@@ -2058,6 +2058,9 @@
   <data name="Cameras_PrinterNotOnTeam" xml:space="preserve">
     <value>Denne printer findes ikke, eller den hører ikke til kameraets team.</value>
   </data>
+  <data name="Cameras_PrinterHidden" xml:space="preserve">
+    <value>ikke synlig for dig</value>
+  </data>
   <data name="Cameras_SourceFragmentAddress" xml:space="preserve">
     <value>Den del af adressen, der står efter #, indeholder en anden adresse, som dette kamera ikke kan bruge. Fjern den.</value>
   </data>

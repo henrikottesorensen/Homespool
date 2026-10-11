@@ -44,23 +44,46 @@ public class CameraAccessService
     }
 
     /// <summary>
-    /// Every camera this account may see, newest last.
+    /// Every camera this account may see, by name, each with its printer if they may see that.
     /// </summary>
-    public async Task<IReadOnlyList<Camera>> ListAsync(Caller caller, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <b>A bound printer is named only to a caller who may see it.</b> <c>ViewCamera</c> and
+    /// <c>ViewPrinter</c> are granted separately, and a camera that named its printer to somebody
+    /// holding only the first would disclose a printer the second was withheld to hide. The answer is
+    /// given here, once, rather than by each page and endpoint that shows a camera, and
+    /// <see cref="Camera.Printer"/> is left unloaded so there is nothing else to show.
+    /// </remarks>
+    public async Task<IReadOnlyList<ListedCamera>> ListAsync(Caller caller, CancellationToken cancellationToken)
     {
         IReadOnlyCollection<int> teams = await _teams
                                                .TeamsAllowingAsync(caller, Capability.ViewCamera, cancellationToken)
                                                .ConfigureAwait(false);
 
-        return await _dbContext.Cameras
-                               .Where(camera => teams.Contains(camera.TeamId))
-                               .Include(camera => camera.Printer)
-                               .Include(camera => camera.Team)
-                               .OrderBy(camera => camera.Name ?? string.Empty)
-                               .ThenBy(camera => camera.Id)
-                               .AsNoTracking()
-                               .ToListAsync(cancellationToken)
-                               .ConfigureAwait(false);
+        IReadOnlyCollection<int> printerTeams = await _teams
+                                                      .TeamsAllowingAsync(caller, Capability.ViewPrinter, cancellationToken)
+                                                      .ConfigureAwait(false);
+
+        List<Camera> cameras = await _dbContext.Cameras
+                                               .Where(camera => teams.Contains(camera.TeamId))
+                                               .Include(camera => camera.Team)
+                                               .OrderBy(camera => camera.Name ?? string.Empty)
+                                               .ThenBy(camera => camera.Id)
+                                               .AsNoTracking()
+                                               .ToListAsync(cancellationToken)
+                                               .ConfigureAwait(false);
+
+        List<int> bound = [.. cameras.Select(camera => camera.PrinterId).OfType<int>().Distinct()];
+
+        Dictionary<int, Printer> visible = await _dbContext.Printers
+                                                           .Where(printer => bound.Contains(printer.Id))
+                                                           .Where(printer => printerTeams.Contains(printer.TeamId))
+                                                           .AsNoTracking()
+                                                           .ToDictionaryAsync(printer => printer.Id, cancellationToken)
+                                                           .ConfigureAwait(false);
+
+        return [.. cameras.Select(camera => new ListedCamera(
+                                      camera,
+                                      camera.PrinterId is int printerId ? visible.GetValueOrDefault(printerId) : null))];
     }
 
     /// <summary>
@@ -101,7 +124,6 @@ public class CameraAccessService
         CredentialScope.Require(caller, capability);
 
         Camera? camera = await _dbContext.Cameras
-                                         .Include(entity => entity.Printer)
                                          .FirstOrDefaultAsync(entity => entity.Uuid == uuid, cancellationToken)
                                          .ConfigureAwait(false);
 

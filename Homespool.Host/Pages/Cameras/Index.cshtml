@@ -38,8 +38,9 @@ else
                 </tr>
             </thead>
             <tbody>
-                @foreach (var camera in Model.Cameras)
+                @foreach (var listed in Model.Cameras)
                 {
+                    var camera = listed.Camera;
                     var age = Model.FrameAge(camera);
                     <tr>
                         <td class="typed-name">
@@ -53,7 +54,17 @@ else
                             }
                         </td>
                         <td><code class="small">@CameraSourceDisplay.AddressOnly(camera.Source)</code></td>
-                        <td class="typed-name">@(camera.Printer is null ? "—" : PrinterDisplayName.For(camera.Printer))</td>
+                        @* Bound to a printer this account may not see: the binding is said, the
+                           printer is not named - and the edit form keeps it rather than reading
+                           its absence from the select as "none". *@
+                        @if (listed.PrinterHidden)
+                        {
+                            <td class="text-body-secondary">@Localiser["Cameras_PrinterHidden"]</td>
+                        }
+                        else
+                        {
+                            <td class="typed-name">@(listed.Printer is null ? "—" : PrinterDisplayName.For(listed.Printer))</td>
+                        }
                         <td>
                             @if (age is null)
                             {
@@ -128,15 +139,24 @@ else
 
         <div class="col-md-2">
             <label class="form-label" for="edit-printer">@Localiser["Common_Printer"]</label>
-            <select class="form-select" id="edit-printer" name="printerUuid">
-                <option value="">@Localiser["Common_None"]</option>
-                @foreach (var printer in Model.Printers)
-                {
-                    <option value="@printer.Uuid" selected="@(printer.Id == Model.Editing.PrinterId)">
-                        @PrinterDisplayName.For(printer)
-                    </option>
-                }
-            </select>
+            @* No name, so nothing is posted and the save keeps the binding. A select could offer
+               only "None" here, which would unbind a printer this account was never shown. *@
+            @if (Model.EditingPrinterHidden)
+            {
+                <input class="form-control" id="edit-printer" value="@Localiser["Cameras_PrinterHidden"]" readonly />
+            }
+            else
+            {
+                <select class="form-select" id="edit-printer" name="printerUuid">
+                    <option value="">@Localiser["Common_None"]</option>
+                    @foreach (var printer in Model.EditingPrinters)
+                    {
+                        <option value="@printer.Uuid" selected="@(printer.Id == Model.Editing.PrinterId)">
+                            @PrinterDisplayName.For(printer)
+                        </option>
+                    }
+                </select>
+            }
         </div>
 
         <div class="col-md-2">

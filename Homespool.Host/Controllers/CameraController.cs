@@ -49,7 +49,6 @@ namespace Homespool.Host.Controllers;
 public class CameraController : ControllerBase
 {
     private readonly CameraAccessService _access;
-    private readonly PrinterAccessService _printerAccess;
     private readonly CameraFrameCache _frames;
     private readonly Go2RtcClient _streamServer;
     private readonly CameraStreamRelay _relay;
@@ -58,7 +57,6 @@ public class CameraController : ControllerBase
     private readonly UserManager<HSUser> _userManager;
 
     public CameraController(CameraAccessService access,
-                            PrinterAccessService printerAccess,
                             CameraFrameCache frames,
                             Go2RtcClient streamServer,
                             CameraStreamRelay relay,
@@ -67,7 +65,6 @@ public class CameraController : ControllerBase
                             UserManager<HSUser> userManager)
     {
         _access = access;
-        _printerAccess = printerAccess;
         _frames = frames;
         _streamServer = streamServer;
         _relay = relay;
@@ -86,9 +83,8 @@ public class CameraController : ControllerBase
     /// probe deadline of each one that is off, on every call.
     /// </para>
     /// <para>
-    /// <b>A bound printer is named only to a caller who may see it.</b> <c>ViewCamera</c> and
-    /// <c>ViewPrinter</c> are granted separately, and a camera that named its printer to somebody
-    /// holding only the first would disclose a printer the second was withheld to hide.
+    /// <b>A bound printer is named only to a caller who may see it</b> - the listing decides that, see
+    /// <see cref="CameraAccessService.ListAsync"/>.
     /// </para>
     /// </remarks>
     [HttpGet]
@@ -102,16 +98,12 @@ public class CameraController : ControllerBase
 
         Caller caller = CallerResolver.For(userId.Value, User);
 
-        IReadOnlyList<Camera> cameras = await _access.ListAsync(caller, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<ListedCamera> cameras = await _access.ListAsync(caller, cancellationToken).ConfigureAwait(false);
 
         List<CameraReadDTO> listed = new(cameras.Count);
 
-        foreach (Camera camera in cameras)
+        foreach ((Camera camera, Printer? printer) in cameras)
         {
-            bool printerVisible = camera.PrinterId is int printerId &&
-                                  await _printerAccess.AllowsAsync(printerId, caller, Capability.ViewPrinter, cancellationToken)
-                                                      .ConfigureAwait(false);
-
             KnownCodecs? known = _liveView.Remembered(camera.Uuid);
 
             listed.Add(new CameraReadDTO
@@ -119,7 +111,7 @@ public class CameraController : ControllerBase
                 Uuid = camera.Uuid,
                 Name = camera.Name,
                 TeamUuid = camera.Team!.Uuid,
-                PrinterUuid = printerVisible ? camera.Printer?.Uuid : null,
+                PrinterUuid = printer?.Uuid,
                 Codecs = known is null ? null : [.. known.Codecs.Order(StringComparer.Ordinal)],
                 Transport = known?.Transport,
             });

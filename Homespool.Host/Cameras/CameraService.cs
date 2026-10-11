@@ -207,7 +207,7 @@ public class CameraService
         }
 
         (int? printerId, CameraSaveOutcome? printerRefusal) =
-            await ResolvePrinterAsync(caller, printerUuid, teamId, cancellationToken).ConfigureAwait(false);
+            await ResolvePrinterAsync(caller, printerUuid, teamId, boundPrinterId: null, cancellationToken).ConfigureAwait(false);
 
         if (printerRefusal is not null)
         {
@@ -313,7 +313,7 @@ public class CameraService
         }
 
         (int? printerId, CameraSaveOutcome? printerRefusal) =
-            await ResolvePrinterAsync(caller, printerUuid, camera.TeamId, cancellationToken).ConfigureAwait(false);
+            await ResolvePrinterAsync(caller, printerUuid, camera.TeamId, camera.PrinterId, cancellationToken).ConfigureAwait(false);
 
         if (printerRefusal is not null)
         {
@@ -453,11 +453,17 @@ public class CameraService
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Only a printer of the camera's own team, and one the person saving may see.</b> Everybody who
-    /// can see the camera is shown the printer's name beside it, and those are the camera team's
-    /// members - so a printer from any other team, even one the person saving can see, would be named
-    /// to people who cannot. The second half stops a camera being used to read the name of a printer
-    /// the saver's own membership does not show them.
+    /// <b>Only a printer of the camera's own team, and one the person saving may see.</b> A printer
+    /// is named beside the camera to the members of the camera's team who may see printers there, so
+    /// a printer from any other team, even one the person saving can see, would be named to people
+    /// who cannot. The second half stops a camera being used to read the name of a printer the
+    /// saver's own membership does not show them.
+    /// </para>
+    /// <para>
+    /// <b>A binding the person saving cannot see is not theirs to clear.</b> The form cannot offer
+    /// them that printer, so it posts none, and reading that as "unbind" would undo a binding they
+    /// were never shown. <paramref name="boundPrinterId"/> is what the camera holds today, taken from
+    /// the stored row rather than the form; naming a printer still goes through the check above.
     /// </para>
     /// <para>
     /// <b>A printer that does not exist gets the same answer as another team's</b>, so the form cannot
@@ -468,11 +474,16 @@ public class CameraService
     private async Task<(int? printerId, CameraSaveOutcome? refusal)> ResolvePrinterAsync(Caller caller,
                                                                                         Guid? printerUuid,
                                                                                         int teamId,
+                                                                                        int? boundPrinterId,
                                                                                         CancellationToken cancellationToken)
     {
         if (printerUuid is not Guid uuid)
         {
-            return (null, null);
+            bool hidden = boundPrinterId is int bound &&
+                          !await _printerAccess.AllowsAsync(bound, caller, Capability.ViewPrinter, cancellationToken)
+                                               .ConfigureAwait(false);
+
+            return (hidden ? boundPrinterId : null, null);
         }
 
         Printer? printer = await _printerAccess.FindAsync(uuid, caller, Capability.ViewPrinter, cancellationToken)

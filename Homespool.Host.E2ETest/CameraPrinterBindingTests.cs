@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text.RegularExpressions;
@@ -21,9 +22,10 @@ namespace Homespool.Host.E2ETest;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Asserted on the database rather than on the page.</b> The printer's name is rendered beside the
-/// camera for everyone on the camera's team, so what matters is whether the binding was stored, not
-/// what the page said about it.
+/// <b>Asserted on the database rather than on the page</b>, apart from the tests about what the page
+/// names. The printer's name is rendered beside the camera for every member of the camera's team who
+/// may see printers, so what matters is whether the binding was stored, not what the page said about
+/// it.
 /// </para>
 /// <para>
 /// <b>The sidecar credential is configured and its address points at nothing.</b> Without the
@@ -241,6 +243,117 @@ public sealed class CameraPrinterBindingTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// A member who may see the camera but not printers is not told the bound printer's name - where a
+    /// member who may see printers is.
+    /// </summary>
+    [Fact]
+    public async Task TheListDoesNotNameABoundPrinterTheReaderMayNotSee()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-list-reader@example.com");
+
+        using (client)
+        {
+            (int teamId, Printer printer) = await SeedPrinterAsync(user, "Named only to some");
+            _ = await SeedCameraAsync(teamId, printer.Id);
+
+            (await GetPageAsync(client)).Should().Contain(">Named only to some</td>", "the control: a member who may see printers is told, in the table");
+
+            await RestrictToCamerasAsync(user, teamId);
+
+            (await GetPageAsync(client)).Should().NotContain("Named only to some", "seeing the camera does not grant seeing its printer");
+        }
+    }
+
+    /// <summary>
+    /// An edit by a member who cannot see the bound printer is offered no select and keeps the
+    /// binding, while the rest of the edit is saved.
+    /// </summary>
+    /// <remarks>
+    /// Posted as the page's own form posts it, with no <c>printerUuid</c> at all - the post a save
+    /// must not read as "none".
+    /// </remarks>
+    [Fact]
+    public async Task AnEditByAMemberWhoCannotSeeTheBoundPrinterKeepsTheBinding()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-blind-editor@example.com");
+
+        using (client)
+        {
+            (int teamId, Printer printer) = await SeedPrinterAsync(user, "Bound out of sight");
+            Guid camera = await SeedCameraAsync(teamId, printer.Id);
+
+            await RestrictToCamerasAsync(user, teamId);
+
+            string page = await GetEditPageAsync(client, camera);
+            string field = EditPrinterField(page);
+
+            field.Should().NotContain("name=", "the field must post nothing, so the save keeps the binding");
+            field.Should().NotContain(printer.Uuid.ToString());
+
+            using HttpResponseMessage response = await PostEditAsync(client, page, camera, name: "renamed", printerUuid: null);
+
+            (await StoredPrinterIdsAsync()).Should().Equal([printer.Id], "a binding the saver cannot see is not theirs to clear");
+            (await StoredNamesAsync()).Should().Equal(["renamed"], "the rest of the edit is saved");
+        }
+    }
+
+    /// <summary>
+    /// A member who can see the bound printer still unbinds the camera by choosing none.
+    /// </summary>
+    [Fact]
+    public async Task AMemberWhoCanSeeTheBoundPrinterMayUnbindIt()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-unbinder@example.com");
+
+        using (client)
+        {
+            (int teamId, Printer printer) = await SeedPrinterAsync(user, "Unbound on purpose");
+            Guid camera = await SeedCameraAsync(teamId, printer.Id);
+
+            string page = await GetEditPageAsync(client, camera);
+
+            using HttpResponseMessage response = await PostEditAsync(client, page, camera, name: "unbound", printerUuid: string.Empty);
+
+            (await StoredPrinterIdsAsync()).Should().Equal([(int?)null], "choosing none is how a camera is unbound");
+        }
+    }
+
+    /// <summary>
+    /// The edit form offers only printers of the camera's own team, even to somebody who can see
+    /// printers on another.
+    /// </summary>
+    /// <remarks>
+    /// The save refuses another team's printer, so offering it would only offer a refusal.
+    /// </remarks>
+    [Fact]
+    public async Task TheEditFormOffersOnlyTheCamerasTeamsPrinters()
+    {
+        (HSUser user, HttpClient client) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-two-team-editor@example.com");
+        (HSUser owner, HttpClient ownerClient) = await EnrolmentFlowHelper.CreateAuthenticatedUserAsync(
+            _factory, "camera-two-team-owner@example.com");
+
+        using (client)
+        using (ownerClient)
+        {
+            (int teamId, Printer mine) = await SeedPrinterAsync(user, "On the camera's team");
+            (int otherTeamId, Printer elsewhere) = await SeedPrinterAsync(owner, "On another team");
+
+            await JoinAsync(user, otherTeamId);
+
+            Guid camera = await SeedCameraAsync(teamId, mine.Id);
+
+            string field = EditPrinterField(await GetEditPageAsync(client, camera));
+
+            field.Should().Contain(mine.Uuid.ToString());
+            field.Should().NotContain(elsewhere.Uuid.ToString(), "a printer the save would refuse is not offered");
+        }
+    }
+
     private async Task<int> TeamIdAsync(HSUser user)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
@@ -328,6 +441,55 @@ public sealed class CameraPrinterBindingTests : IAsyncLifetime
         HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
 
         return await context.Cameras.Select(camera => camera.PrinterId).ToArrayAsync(TestContext.Current.CancellationToken);
+    }
+
+    private async Task<string[]> StoredNamesAsync()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        return await context.Cameras.Select(camera => camera.Name ?? string.Empty).ToArrayAsync(TestContext.Current.CancellationToken);
+    }
+
+    private static async Task<string> GetEditPageAsync(HttpClient client, Guid camera)
+    {
+        return await (await client.GetAsync($"/Cameras?edit={camera}", TestContext.Current.CancellationToken))
+                     .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>The edit form's printer field, from its opening tag to its end.</summary>
+    private static string EditPrinterField(string page)
+    {
+        Match match = Regex.Match(page, """<(select|input)[^>]*id="edit-printer"[\s\S]*?(</select>|/>)""");
+
+        match.Success.Should().BeTrue("the edit form always has a printer field");
+
+        return match.Value;
+    }
+
+    /// <summary>The edit as the page's form posts it; a null <paramref name="printerUuid"/> is not posted at all.</summary>
+    private static async Task<HttpResponseMessage> PostEditAsync(HttpClient client,
+                                                                 string page,
+                                                                 Guid camera,
+                                                                 string name,
+                                                                 string? printerUuid)
+    {
+        List<KeyValuePair<string, string>> fields =
+        [
+            new("__RequestVerificationToken", AntiforgeryTestHelper.ExtractToken(page)),
+            new("uuid", camera.ToString()),
+            new("name", name),
+            new("source", Source),
+        ];
+
+        if (printerUuid is not null)
+        {
+            fields.Add(new("printerUuid", printerUuid));
+        }
+
+        using FormUrlEncodedContent form = new(fields);
+
+        return await client.PostAsync("/Cameras?handler=Edit", form, TestContext.Current.CancellationToken);
     }
 
     private static async Task<string> GetPageAsync(HttpClient client)

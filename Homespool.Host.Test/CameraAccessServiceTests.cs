@@ -168,6 +168,50 @@ public sealed class CameraAccessServiceTests : IDisposable
         closed.Should().BeFalse("the role row outlives the closure, and holding it is not administering");
     }
 
+    /// <summary>
+    /// <b>The listing names a bound printer only to a member who may see printers.</b> Seeing a camera
+    /// and seeing a printer are granted separately, so the same camera is listed to both members and
+    /// its printer to one of them.
+    /// </summary>
+    [Fact]
+    public async Task TheListNamesABoundPrinterOnlyToAMemberWhoMaySeeIt()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+        await AddUserAsync(context, Alice, "alice@example.com");
+        await AddUserAsync(context, Mallory, "mallory@example.com");
+        Camera camera = await AddTeamWithCameraAsync(context, Alice, CapabilityPresets.Viewer);
+
+        Printer printer = new() { Uuid = Guid.NewGuid(), TeamId = camera.TeamId, Name = "Core One" };
+        context.Printers.Add(printer);
+        context.TeamMembers.Add(new TeamMember
+        {
+            TeamId = camera.TeamId,
+            UserId = Mallory,
+            Capabilities = CapabilitySet.Format([Capability.ViewCamera]),
+        });
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        camera.PrinterId = printer.Id;
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+        context.ChangeTracker.Clear();
+
+        // Act
+        IReadOnlyList<ListedCamera> seen = await NewService(context).ListAsync(Caller.Unscoped(Alice), TestContext.Current.CancellationToken);
+        IReadOnlyList<ListedCamera> hidden = await NewService(context).ListAsync(Caller.Unscoped(Mallory), TestContext.Current.CancellationToken);
+
+        // Assert
+        seen.Should().ContainSingle();
+        seen[0].Printer!.Id.Should().Be(printer.Id);
+        seen[0].PrinterHidden.Should().BeFalse();
+
+        hidden.Should().ContainSingle("seeing the camera is what lists it");
+        hidden[0].Printer.Should().BeNull("seeing the camera does not grant seeing its printer");
+        hidden[0].PrinterHidden.Should().BeTrue();
+
+        seen[0].Camera.Printer.Should().BeNull("the listing is the one way a printer is named");
+        hidden[0].Camera.Printer.Should().BeNull("the listing is the one way a printer is named");
+    }
+
     public void Dispose()
     {
         foreach (string path in new[] { _databasePath, _databasePath + "-wal", _databasePath + "-shm" })

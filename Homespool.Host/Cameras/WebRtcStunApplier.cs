@@ -32,11 +32,13 @@ namespace Homespool.Host.Cameras;
 /// is down still arrives, and so does a choice the startup configurer could not deliver.
 /// </para>
 /// <para>
-/// <b>Every camera is reconciled after a write.</b> The write is a read-modify-write of the sidecar's
+/// <b>Every camera is reconciled after a write, and the reconcile is owed until it completes.</b> The write is a read-modify-write of the sidecar's
 /// file that does not take the lock registering a stream takes, so a camera saved in the same moment
 /// can be dropped from the file and lost at the restart. The cameras' rows are the truth, and
 /// <see cref="CameraStreamReconciler.ReconcileAsync"/> writes each one back from its row - the same
-/// pass that runs at startup, which already waits out a restarting sidecar.
+/// pass that runs at startup, which already waits out a restarting sidecar. A reconcile that fails is
+/// run again on the next pass, though the choice is by then in force; held in memory only, because
+/// every start runs one anyway.
 /// </para>
 /// <para>
 /// <b>Nothing to do without a candidate address.</b> Live view is off then, and the stream server is
@@ -65,6 +67,9 @@ public sealed class WebRtcStunApplier : BackgroundService
     private readonly TimeProvider _time;
     private readonly ILogger<WebRtcStunApplier> _logger;
 
+    /// <summary>Whether a write has been made whose reconcile has not yet completed.</summary>
+    private bool _reconcileOwed;
+
     public WebRtcStunApplier(WebRtcSidecarWriter writer,
                              CameraStreamReconciler reconciler,
                              CameraLiveAvailability availability,
@@ -81,7 +86,8 @@ public sealed class WebRtcStunApplier : BackgroundService
     }
 
     /// <summary>
-    /// Brings the stream server's STUN choice to the saved one, if they differ.
+    /// Brings the stream server's STUN choice to the saved one, if they differ, and finishes any
+    /// reconcile still owed from an earlier write.
     /// </summary>
     /// <returns>Whether the stream server now holds the saved choice, or has no candidate to hold it with.</returns>
     internal async Task<bool> ApplyAsync(CancellationToken cancellationToken)
@@ -89,21 +95,31 @@ public sealed class WebRtcStunApplier : BackgroundService
         string candidate = _availability.Candidate;
         WebRtcStunChoice wanted = WebRtcStunChoice.From(_cameras.CurrentValue);
 
-        if (candidate.Length == 0 || wanted == _availability.StunInForce)
+        if (candidate.Length == 0)
         {
             return true;
         }
 
-        if (!await _writer.EnsureAsync(candidate, wanted, cancellationToken).ConfigureAwait(false))
+        if (wanted != _availability.StunInForce)
         {
-            _logger.LogInformation(
-                "The stream server could not be given the new STUN choice; asking again in {Seconds}s.",
-                RetryInterval.TotalSeconds);
+            if (!await _writer.EnsureAsync(candidate, wanted, cancellationToken).ConfigureAwait(false))
+            {
+                _logger.LogInformation(
+                    "The stream server could not be given the new STUN choice; asking again in {Seconds}s.",
+                    RetryInterval.TotalSeconds);
 
-            return false;
+                return false;
+            }
+
+            _reconcileOwed = true;
         }
 
-        await _reconciler.ReconcileAsync(cancellationToken).ConfigureAwait(false);
+        if (_reconcileOwed)
+        {
+            await _reconciler.ReconcileAsync(cancellationToken).ConfigureAwait(false);
+
+            _reconcileOwed = false;
+        }
 
         return true;
     }

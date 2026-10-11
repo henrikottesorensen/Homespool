@@ -175,6 +175,40 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>A reconcile that fails is run again</b>, though the choice it followed is by then in force -
+    /// a stream the configuration write dropped would otherwise stay missing until its camera is next
+    /// saved.
+    /// </summary>
+    [Fact]
+    public async Task AReconcileThatFailedIsRunAgainOnTheNextPass()
+    {
+        HomespoolFactory root = Configure();
+        bool failing = true;
+
+        await using WebApplicationFactory<Controllers.PrinterAppController> factory = root.WithWebHostBuilder(
+            builder => builder.ConfigureTestServices(services =>
+                services.AddScoped(provider => failing ?
+                    throw new InvalidOperationException("The database is unavailable.") :
+                    ActivatorUtilities.CreateInstance<CameraStreamSweeper>(provider))));
+
+        _ = factory.Server;
+
+        Save(factory.Services, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+        (await EventuallyAsync(() => _sidecar.Restarts == 2)).Should().BeTrue();
+
+        // The reconcile after the write lists the streams before it fails, so the listing counts it.
+        int listingsAfterTheFailure = await SettledListingsAsync();
+
+        failing = false;
+
+        // Any save wakes the applier at once, rather than at the end of its retry interval.
+        Save(factory.Services, new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "12" });
+
+        (await EventuallyAsync(() => Listings() > listingsAfterTheFailure)).Should().BeTrue(
+            "the reconcile is owed until one completes");
+    }
+
+    /// <summary>
     /// <b>A failure during a pass costs a retry, never the server.</b> An exception leaving a
     /// background service stops the whole host by default; here every reconcile fails, at startup and
     /// after each change, and Homespool both keeps running and goes on applying the next change.
@@ -274,6 +308,26 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
         using IServiceScope scope = services.CreateScope();
 
         scope.ServiceProvider.GetRequiredService<SettingsStore>().Save(values).Saved.Should().BeTrue();
+    }
+
+    /// <summary>The listing count once it has stopped moving for half a second.</summary>
+    private async Task<int> SettledListingsAsync()
+    {
+        int seen = Listings();
+
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(500), TestContext.Current.CancellationToken);
+
+            int now = Listings();
+
+            if (now == seen)
+            {
+                return now;
+            }
+
+            seen = now;
+        }
     }
 
     private int Listings()

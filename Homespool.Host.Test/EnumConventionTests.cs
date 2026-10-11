@@ -154,7 +154,7 @@ public class EnumConventionTests
         Microsoft.AspNetCore.Authentication.AuthenticateResult.Fail("no reason").Refusal().Should().Be(SignInRefusal.Invalid);
     }
 
-    private static List<Type> LoadedEnums()
+    internal static List<Type> LoadedEnums()
     {
         Assembly[] assemblies =
         [

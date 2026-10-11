@@ -447,18 +447,29 @@ public sealed class PrinterFilamentServiceTests : IDisposable
 
     /// <summary>
     /// A Python-SDK printer unloads the filament the caller names, with its own command, at that
-    /// filament's printing temperature and with the bed off.
+    /// filament's printing temperature - and leaves the heaters as it found them: the bed keeps its
+    /// target throughout, and the nozzle goes back to its own once the unload ends.
     /// </summary>
     /// <remarks>
     /// PrusaLink never reports what is loaded, so the material is null here, as it always is for these
-    /// printers - which on Buddy would be refused as unknown.
+    /// printers - which on Buddy would be refused as unknown. A target never reported is taken as off.
     /// </remarks>
-    [Fact]
-    public async Task AnSdkPrinterUnloadsTheChosenFilamentAtItsTemperature()
+    [Theory]
+    [InlineData(0f, 0f, 0, 0)]
+    [InlineData(230f, 85f, 230, 85)]
+    [InlineData(null, null, 0, 0)]
+    public async Task AnSdkPrinterUnloadsTheChosenFilamentAndLeavesTheHeatersAsTheyWere(float? nozzleTarget,
+                                                                                         float? bedTarget,
+                                                                                         int nozzleAfter,
+                                                                                         int bedThroughout)
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
         IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Idle, material: null, dialect: PrinterDialect.ConnectSdk))!;
         AnswerAccepted(actor);
+        await context.PrinterLiveStates
+                     .ExecuteUpdateAsync(setters => setters.SetProperty(state => state.TargetNozzleTemperature, nozzleTarget)
+                                                           .SetProperty(state => state.TargetBedTemperature, bedTarget),
+                                         TestContext.Current.CancellationToken);
         FilamentPreset petg = FilamentPreset.Find(model: null, "PETG")!;
 
         PrinterFilamentService service = NewService(context);
@@ -471,8 +482,9 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         sent.Arguments.Should().BeEquivalentTo(new Dictionary<string, object?>
         {
             ["nozzle_temperature"] = petg.NozzleTemperature,
-            ["bed_temperature"] = 0,
+            ["bed_temperature"] = bedThroughout,
         });
+        sent.FollowedBy.Should().BeOfType<SetNozzleTemperature>().Which.Temperature.Should().Be(nozzleAfter);
         outcome.Material.Should().Be("PETG");
         outcome.NozzleTemperature.Should().Be(petg.NozzleTemperature);
         outcome.Answer!.EventType.Should().Be(PrinterEventType.Accepted);

@@ -157,8 +157,11 @@ public class PrinterFilamentService
             throw new FilamentTypeUnknownException(printerId);
         }
 
+        // The heaters as they are now, which the unload leaves them as - see UnloadFilamentAt.
+        HeaterTargets before = await _tools.ReadHeaterTargetsAsync(printerId, cancellationToken);
+
         CommandOutcome? answer = await _commands.SendCommandAsync(
-            printerId, new UnloadFilamentAt(filament.NozzleTemperature), caller, cancellationToken);
+            printerId, new UnloadFilamentAt(filament.NozzleTemperature, before.Bed, before.Nozzle), caller, cancellationToken);
 
         if (answer is not null && answer.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
         {

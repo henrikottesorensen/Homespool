@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -266,7 +267,38 @@ public class TransferRequestHandlingTests
         hash.Should().BeNull("the actor has no token to name, so the store decides by printer");
     }
 
-    private static async Task PostTerminal(PrinterConnectionActor actor, PrinterEventType eventType, int transferId)
+    /// <summary>
+    /// The Python SDK's <c>TRANSFER_FINISHED</c>, as <c>Event.to_payload</c> renders it, with the
+    /// largest <c>transfer_id</c> it draws (download.py:81-83, 363-367). Read as a signed int it was
+    /// refused before the actor saw it, so the end of every SDK download with an id past
+    /// <see cref="int.MaxValue"/> released nothing and settled nothing.
+    /// </summary>
+    [Fact]
+    public async Task AnSdkTerminalEventWithATransferIdAboveIntMaxValueReachesTheActor()
+    {
+        // Arrange
+        RecordingConnection connection = new();
+        (ITransferContentStore store, TaskCompletionSource<(int printerId, string? hash)> released) = ReleasingStore(content: null);
+        PrinterConnectionActor actor = NewActor(connection, store);
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
+                                           new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                                           TimeProvider.System, PrinterTrafficLogTests.Off,
+                                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+        using JsonDocument document = JsonDocument.Parse(
+            """{"event":"TRANSFER_FINISHED","source":"CONNECT","data":{"start_cmd_id":11,"path":"/local/part.gcode"},"transfer_id":4294967295,"state":"IDLE"}""");
+
+        // Act
+        ConnectionMessage? message = dispatcher.Classify(printerId: 1, document.RootElement);
+        await actor.PostAsync(message!, CancellationToken.None);
+
+        // Assert
+        message.Should().BeOfType<InboundEventMessage>();
+        (int printerId, string? hash) = await released.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        printerId.Should().Be(1);
+        hash.Should().BeNull("the SDK's download is a raw fetch the actor never saw a token for");
+    }
+
+    private static async Task PostTerminal(PrinterConnectionActor actor, PrinterEventType eventType, uint transferId)
     {
         await actor.PostAsync(
             new InboundEventMessage(DateTimeOffset.UtcNow, new EventDTO

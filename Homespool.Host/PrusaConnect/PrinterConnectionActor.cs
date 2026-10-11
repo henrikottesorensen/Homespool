@@ -148,7 +148,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// resends the stored id rather than allocating one (<c>restart_download</c>,
     /// transfer.cpp:161-223). Null only if a printer omitted it, which firmware never does.
     /// </param>
-    private sealed record ActiveTransfer(string Hash, ITransferContent Content, uint FileId, int? TransferId);
+    private sealed record ActiveTransfer(string Hash, ITransferContent Content, uint FileId, uint? TransferId);
 
     /// <summary>
     /// Faults a caller's completion, and marks the fault observed.

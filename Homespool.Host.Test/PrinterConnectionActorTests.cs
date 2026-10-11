@@ -287,7 +287,7 @@ public class PrinterConnectionActorTests
         await Eventually(actor.Completion);
     }
 
-    private static InboundTelemetryMessage TelemetryReporting(int? transferId)
+    private static InboundTelemetryMessage TelemetryReporting(uint? transferId)
     {
         return new(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "PRINTING", TransferId = transferId });
     }
@@ -885,6 +885,38 @@ public class PrinterConnectionActorTests
         sink.TelemetryCalls[0].printerId.Should().Be(7);
         sink.TelemetryCalls[0].receivedAt.Should().Be(receivedAt);
         sink.TelemetryCalls[0].telemetry.Status.Should().Be(PrinterStatus.Printing);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// The Python SDK's telemetry while it downloads, with the largest id it draws - <c>transfer_id</c>
+    /// is <c>randint(0, 2**32 - 1)</c> (download.py:81-83) at the root of every telemetry message
+    /// (__init__.py:344-349). Read as a signed int it was refused, and on the HTTP transport a refused
+    /// message is a 400 the SDK drops, so the printer went unheard for as long as it downloaded.
+    /// </summary>
+    [Fact]
+    public async Task TelemetryWithAnSdkTransferIdAboveIntMaxValueReachesTheSink()
+    {
+        // Arrange
+        using JsonDocument document = JsonDocument.Parse(
+            """{"transfer_id":4294967295,"transfer_progress":12.5,"transfer_transferred":4096,"time_transferring":3,"state":"IDLE"}""");
+        MessageDispatcher dispatcher = new(NullLogger<MessageDispatcher>.Instance,
+                                           new UnknownFieldTracker(NullLogger<UnknownFieldTracker>.Instance),
+                                           TimeProvider.System, PrinterTrafficLogTests.Off,
+                                           new PrinterWireComplaints(NullLogger<PrinterWireComplaints>.Instance));
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(), sink, printerId: 7);
+
+        // Act
+        ConnectionMessage? message = dispatcher.Classify(printerId: 7, document.RootElement);
+        await actor.PostAsync(message!, CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
+
+        // Assert
+        message.Should().BeOfType<InboundTelemetryMessage>();
+        sink.TelemetryCalls[0].telemetry.Status.Should().Be(PrinterStatus.Idle);
 
         actor.Complete();
         await Eventually(actor.Completion);

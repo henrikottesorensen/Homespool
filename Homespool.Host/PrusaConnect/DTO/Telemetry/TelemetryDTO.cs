@@ -13,8 +13,14 @@ namespace Homespool.Host.PrusaConnect.DTO.Telemetry;
 public class TelemetryDTO
 {
     // --- Transfer block: flat at root, only present mid-transfer ---
+
+    /// <summary>
+    /// The transfer holding the printer's slot. Unsigned 32-bit because that is the widest a client
+    /// sends: firmware's is 31-bit (<c>Custom_uint31_t</c>, monitor.hpp:18), the Python SDK's is
+    /// <c>randint(0, 2**32 - 1)</c> (download.py:81-83) - half of which a signed int cannot read.
+    /// </summary>
     [JsonPropertyName("transfer_id")]
-    public int? TransferId { get; set; }
+    public uint? TransferId { get; set; }
 
     [JsonPropertyName("transfer_transferred")]
     public uint? TransferTransferred { get; set; }

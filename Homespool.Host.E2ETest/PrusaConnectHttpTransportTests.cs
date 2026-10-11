@@ -1,12 +1,15 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,20 +17,24 @@ using AwesomeAssertions;
 
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
+using Homespool.Data;
 using Homespool.FakePrinter;
 using Homespool.Host.Accounts;
 using Homespool.Host.Controllers;
 using Homespool.Host.Exceptions;
+using Homespool.Host.PrintFiles;
 using Homespool.Host.Printing;
 using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.Transfers;
 using Homespool.Host.Telemetry;
 using Homespool.Model;
+using Homespool.Model.Entities;
 
 namespace Homespool.Host.E2ETest;
 
@@ -41,7 +48,9 @@ namespace Homespool.Host.E2ETest;
 /// The peer these serve is firmware built with <c>WEBSOCKET</c> off - a 6.2.6 MK3.5 speaks it, and so
 /// does <c>connect_rig</c> configured the same way. It is <b>Buddy's</b> HTTP dialect rather than the
 /// Python SDK's, which differs in fingerprint length and telemetry fields; nothing here is evidence
-/// about an SDK-driven printer.
+/// about an SDK-driven printer, beyond the messages
+/// <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/> renders by hand from
+/// the SDK's source.
 /// </para>
 /// <para>
 /// Split by what each test can prove: the capturing dispatcher answers "did auth resolve the right
@@ -890,6 +899,176 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
 
         ownResponse.StatusCode.Should().Be(HttpStatusCode.OK, "the refusal must not have consumed the offer");
         (await ownResponse.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).Should().Equal(bytes);
+    }
+
+    /// <summary>
+    /// A file sent to a Python-SDK printer whose download draws an id past <see cref="int.MaxValue"/>
+    /// arrives. The SDK's <c>transfer_id</c> is <c>randint(0, 2**32 - 1)</c> (download.py:81-83) and
+    /// rides at the root of the answer to the download command, of every telemetry message while it
+    /// runs and of its terminal event. Read as a signed int, each was a 400 the SDK logs at debug and
+    /// drops (__init__.py:834-837), so for half of all transfers nothing recorded the file arriving.
+    /// </summary>
+    /// <remarks>
+    /// The printer is played by hand, message for message as <c>Command.accept</c>,
+    /// <c>DownloadMgr.start</c> and the download loop render them, because the fake printer speaks
+    /// Buddy's dialect and Buddy's id is 31-bit. The raw fetch itself is left out: it does not carry
+    /// the id, and <see cref="ARawFetchServesAnOfferOnlyToThePrinterItWasMadeFor"/> covers it.
+    /// </remarks>
+    [Fact]
+    public async Task AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+        const uint transferId = uint.MaxValue;
+
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"state":"IDLE"}""");
+
+        (HSFile file, StoredFile stored) = await StoreFileAsync(userId, "sdk-cube.gcode");
+        Task<DirectSendResult> sending = SendDirectAsync(printerId, file, stored, userId);
+
+        (uint commandId, JsonElement command) = await CollectCommandAsync(printer, identity, token);
+
+        // Act
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"ACCEPTED","source":"CONNECT","data":{},"command_id":{{commandId}},"state":"IDLE"}""");
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"TRANSFER_INFO","source":"CONNECT","data":{"start_cmd_id":{{commandId}},"type":"FROM_CONNECT","path":"/local/sdk-cube.gcode","url":"http://homespool.lan/p/teams/1/files/hash/raw","progress":0.0,"transferred":0,"time_transferring":0,"to_print":false},"command_id":{{commandId}},"transfer_id":{{transferId}},"state":"IDLE"}""");
+        await sending.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token,
+                             $$"""{"transfer_id":{{transferId}},"transfer_progress":50.0,"transfer_transferred":512,"time_transferring":1,"state":"IDLE"}""");
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"TRANSFER_FINISHED","source":"CONNECT","data":{"start_cmd_id":{{commandId}},"path":"/local/sdk-cube.gcode"},"transfer_id":{{transferId}},"state":"IDLE"}""");
+
+        // Assert
+        DateTimeOffset? arrivedAt = await ArrivedAtAsync(printerId, file.Id);
+
+        arrivedAt.Should().NotBeNull("TRANSFER_FINISHED named the attempt the send recorded");
+        command.GetProperty("command").GetString().Should().Be("START_CONNECT_DOWNLOAD", "an SDK client fetches the plain download");
+        _logs.Failures.Should().BeEmpty();
+    }
+
+    /// <summary>Posts as the Python SDK does, and expects the message accepted.</summary>
+    private static async Task PostAsSdkAsync(HttpClient printer, string route, PrinterIdentity identity, string token, string body)
+    {
+        using HttpRequestMessage request = PostAsSdk(route, identity, token, body);
+        using HttpResponseMessage response = await printer.SendAsync(request, TestContext.Current.CancellationToken);
+
+        response.IsSuccessStatusCode.Should().BeTrue($"the SDK drops a message it is refused, and this one was answered {response.StatusCode}: {body}");
+    }
+
+    /// <summary>
+    /// Polls with telemetry, as the SDK does, until a response carries a command, and returns it with
+    /// the id its <c>Command-Id</c> header gives it (__init__.py:654-660).
+    /// </summary>
+    private static async Task<(uint commandId, JsonElement command)> CollectCommandAsync(HttpClient printer, PrinterIdentity identity, string token)
+    {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+
+        while (true)
+        {
+            using HttpRequestMessage request = PostAsSdk("/p/telemetry", identity, token, """{"state":"IDLE"}""");
+            using HttpResponseMessage response = await printer.SendAsync(request, timeout.Token);
+
+            if (response.StatusCode == HttpStatusCode.OK)
+            {
+                using JsonDocument document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(timeout.Token));
+                uint commandId = uint.Parse(response.Headers.GetValues(Headers.CommandId).Single(), CultureInfo.InvariantCulture);
+
+                return (commandId, document.RootElement.Clone());
+            }
+
+            await Task.Delay(20, timeout.Token);
+        }
+    }
+
+    /// <summary>A POST with the Python SDK's four headers (<c>make_headers</c>, __init__.py:269-288).</summary>
+    private static HttpRequestMessage PostAsSdk(string route, PrinterIdentity identity, string token, string body)
+    {
+        HttpRequestMessage request = new(HttpMethod.Post, route)
+        {
+            Content = JsonBody(body),
+        };
+
+        request.Headers.Add(Headers.Fingerprint, identity.HeaderFingerprint);
+        request.Headers.Add(Headers.Token, token);
+        request.Headers.TryAddWithoutValidation("User-Agent", "Prusa-Connect-SDK-Printer/0.8.1");
+        request.Headers.Add(Headers.UserAgentPrinter, "1.3.1");
+        request.Headers.Add(Headers.UserAgentVersion, "0.8.1");
+
+        return request;
+    }
+
+    private async Task<(HSFile file, StoredFile stored)> StoreFileAsync(long userId, string name)
+    {
+        string path = Path.Combine(_scratch.Path, name);
+
+        await File.WriteAllTextAsync(path, "G28 ; home\n", TestContext.Current.CancellationToken);
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        HSFile file = new()
+        {
+            Type = FileType.GCode,
+            UserId = userId,
+            Name = name,
+            Size = new FileInfo(path).Length,
+            UploadedAt = DateTimeOffset.UtcNow,
+        };
+
+        context.Files.Add(file);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return (file, new StoredFile(name, path, file.Size, file.UploadedAt));
+    }
+
+    private async Task<DirectSendResult> SendDirectAsync(int printerId, HSFile file, StoredFile stored, long userId)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+
+        Printer printer = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                     .Printers.SingleAsync(candidate => candidate.Id == printerId, TestContext.Current.CancellationToken);
+
+        return await scope.ServiceProvider.GetRequiredService<TransferService>()
+                          .SendDirectAsync(printer, file, stored, Caller.Unscoped(userId), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// When the row says <paramref name="fileId"/> arrived, settling until it does or ten seconds
+    /// pass - the event reaches the log through the telemetry writer's batches, not at once.
+    /// </summary>
+    private async Task<DateTimeOffset?> ArrivedAtAsync(int printerId, long fileId)
+    {
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
+        TransferService transfers = _factory.Services.GetRequiredService<TransferService>();
+
+        while (!timeout.IsCancellationRequested)
+        {
+            await transfers.SettleAsync(printerId, TestContext.Current.CancellationToken);
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+
+            DateTimeOffset? arrivedAt = await scope.ServiceProvider.GetRequiredService<HomespoolDbContext>()
+                                                   .FilesOnPrinters
+                                                   .Where(row => row.PrinterId == printerId && row.FileId == fileId)
+                                                   .Select(row => row.ArrivedAt)
+                                                   .SingleOrDefaultAsync(TestContext.Current.CancellationToken);
+
+            if (arrivedAt is not null)
+            {
+                return arrivedAt;
+            }
+
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        return null;
     }
 
     private static HttpRequestMessage Get(string route, PrinterIdentity identity, string token)

@@ -38,8 +38,9 @@ public class EventDTO
     [JsonPropertyName("command_id")]
     public uint? CommandId { get; set; }
 
+    /// <summary>Unsigned 32-bit, for the reason on <see cref="Telemetry.TelemetryDTO.TransferId"/>.</summary>
     [JsonPropertyName("transfer_id")]
-    public int? TransferId { get; set; }
+    public uint? TransferId { get; set; }
 
     [JsonPropertyName("event")]
     [JsonConverter(typeof(EventTypeJsonConverter))]

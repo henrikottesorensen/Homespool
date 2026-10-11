@@ -66,8 +66,9 @@ public class InlineRequestDTO
 
     /// <summary>
     /// First request only. The printer's own transfer id - the same value its <c>TRANSFER_INFO</c>
-    /// and terminal transfer events carry at the root, and a 31-bit unsigned on the wire.
+    /// and terminal transfer events carry at the root, and a 31-bit unsigned on the wire. Typed as
+    /// <see cref="EventMessages.EventDTO.TransferId"/> is, which those events are matched against.
     /// </summary>
     [JsonPropertyName("transfer_id")]
-    public int? TransferId { get; set; }
+    public uint? TransferId { get; set; }
 }

@@ -38,6 +38,15 @@ else
     }
 </p>
 
+@* Saved and in force can differ for a moment after a save, or for longer when the stream server
+   cannot be reached - and turning STUN off is a privacy choice, so the page must not claim it has
+   taken effect before the stream server says so. Meaningless without an address: nothing is told
+   to the stream server at all then, and the warning above already says why. *@
+@if (Model.LiveViewAvailable && !Model.StunApplied)
+{
+    <div class="alert alert-warning" role="status">@Localiser["LiveView_StunNotYetApplied"]</div>
+}
+
 <p>@Localiser["LiveView_StunExplained"]</p>
 
 <p class="text-body-secondary">@Localiser["LiveView_StunElsewhere"]</p>

@@ -87,6 +87,18 @@ public sealed class CameraLiveAvailability
     public bool ConfiguredHostResolvesOnlyToLoopback { get; set; }
 
     /// <summary>
+    /// The STUN choice the stream server has confirmed it holds, or <see langword="null"/> before it
+    /// has confirmed one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Written by <see cref="WebRtcSidecarWriter"/>, and only once the sidecar agrees</b> - its
+    /// configuration already matched, or was written and the server restarted. What was saved is the
+    /// options' business; this is what the sidecar is doing, which is what the live-view page reports
+    /// and what <see cref="WebRtcStunApplier"/> compares a saved choice against.
+    /// </remarks>
+    public WebRtcStunChoice? StunInForce { get; set; }
+
+    /// <summary>
     /// Whether WebRTC live view may be offered at all.
     /// </summary>
     /// <remarks>

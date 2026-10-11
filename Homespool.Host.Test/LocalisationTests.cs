@@ -644,6 +644,7 @@ public sealed class LocalisationTests
                 "Settings_Label_" + setting.Path.Replace(':', '_'),
                 .. setting.AppliesWhenKey is null ? Array.Empty<string>() : [setting.AppliesWhenKey],
                 .. setting.ConfirmOnEnableKey is null ? Array.Empty<string>() : [setting.ConfirmOnEnableKey],
+                .. setting.WarningKey is null ? Array.Empty<string>() : [setting.WarningKey],
             ];
 
             foreach (string key in keys)

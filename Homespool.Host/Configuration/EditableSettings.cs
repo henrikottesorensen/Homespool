@@ -163,14 +163,22 @@ public static class EditableSettings
         // Builds a PeriodicTimer once when the writer's loop starts, in TelemetryWriter.ExecuteAsync.
         new(typeof(StorageOptions), StorageOptions.SectionName, nameof(StorageOptions.WriteFlushIntervalSeconds), SettingGrade.Restart, DisplaySubgroup: "Telemetry"),
 
-        // Cameras - all read at the point of use, in CameraFrameCache, CameraSnapshotFetcher,
-        // CameraSourcePolicy and MjpegStreamLimiter.TryAcquire.
+        // Cameras - read at the point of use, in CameraFrameCache, CameraSnapshotFetcher and
+        // MjpegStreamLimiter.TryAcquire.
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.RefreshFloorSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxAgeSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.TimeoutSeconds), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxFrameBytes), SettingGrade.Live),
         new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.MaxMjpegStreamsPerUser), SettingGrade.Live),
-        new(typeof(CameraOptions), CameraOptions.SectionName, nameof(CameraOptions.WebRtcStunServer), SettingGrade.Live),
+
+        // STUN lives in the stream server's own configuration rather than being read per use:
+        // WebRtcStunApplier writes a change there and restarts the server, which drops whoever is
+        // watching live - hence the warning on both.
+        new(typeof(CameraOptions),
+            CameraOptions.SectionName,
+            nameof(CameraOptions.WebRtcStunServer),
+            SettingGrade.Live,
+            WarningKey: "Settings_Warn_RestartsStreamServer"),
 
         // Asked about before it is turned on: it is the one setting here that makes this deployment
         // contact somebody else, and neither consequence is visible from the outcome.
@@ -178,7 +186,8 @@ public static class EditableSettings
             CameraOptions.SectionName,
             nameof(CameraOptions.WebRtcStunEnabled),
             SettingGrade.Live,
-            ConfirmOnEnableKey: "Settings_Confirm_Cameras_WebRtcStunEnabled"),
+            ConfirmOnEnableKey: "Settings_Confirm_Cameras_WebRtcStunEnabled",
+            WarningKey: "Settings_Warn_RestartsStreamServer"),
 
         // Mail. Every one of these is Restart, and the reason is three startup decisions rather than
         // any one property: Program picks SmtpEmailSender or LoggingEmailSender from

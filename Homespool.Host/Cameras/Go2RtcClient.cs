@@ -804,7 +804,8 @@ public sealed class Go2RtcClient : ICameraCodecProbe
     /// <b>It is a read-modify-write of the sidecar's file that does not take the lock registering a
     /// stream takes.</b> A stream registered while it runs can be dropped from the file, and is then
     /// gone at the restart that follows the write - which is why <see cref="WebRtcConfigurer"/>
-    /// runs before <see cref="CameraStreamReconciler"/>.
+    /// runs before <see cref="CameraStreamReconciler"/>, and why <see cref="WebRtcStunApplier"/>
+    /// reconciles every camera after it writes.
     /// </para>
     /// <para>
     /// The credential and the path allowlist are not in this document at all: both are passed on the

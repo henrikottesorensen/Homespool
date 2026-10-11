@@ -234,9 +234,6 @@ public sealed class WebRtcConfigurer : IHostedService
             return;
         }
 
-        // A scope, because the setting lives in the database and this is a singleton. Read here
-        // rather than inside the writer so that the writer stays something the settings page can
-        // call with a value it already has.
-        await _writer.EnsureAsync(candidate, _cameras.CurrentValue.WebRtcStunEnabled, cancellationToken).ConfigureAwait(false);
+        await _writer.EnsureAsync(candidate, WebRtcStunChoice.From(cameras), cancellationToken).ConfigureAwait(false);
     }
 }

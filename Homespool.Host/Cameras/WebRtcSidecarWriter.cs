@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
@@ -19,11 +18,11 @@ namespace Homespool.Host.Cameras;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Two callers, one writer.</b> <see cref="WebRtcConfigurer"/> calls this at startup and the
-/// live-view settings page calls it when somebody changes the STUN choice. Both halves are written
-/// every time, whichever one changed: the sidecar merges a written document key by key but replaces a
-/// list outright, so <c>candidates</c> and <c>ice_servers</c> each have to arrive whole - and an
-/// empty <c>ice_servers</c> is what switches go2rtc's own public STUN default off.
+/// <b>Two callers, one writer.</b> <see cref="WebRtcConfigurer"/> calls this at startup and
+/// <see cref="WebRtcStunApplier"/> calls it when somebody changes the STUN choice. Both halves are
+/// written every time, whichever one changed: the sidecar merges a written document key by key but
+/// replaces a list outright, so <c>candidates</c> and <c>ice_servers</c> each have to arrive whole -
+/// and an empty <c>ice_servers</c> is what switches go2rtc's own public STUN default off.
 /// </para>
 /// <para>
 /// <b>It writes only when the sidecar does not already agree</b>, and that is not an optimisation:
@@ -40,15 +39,15 @@ namespace Homespool.Host.Cameras;
 public sealed class WebRtcSidecarWriter
 {
     private readonly Go2RtcClient _streamServer;
-    private readonly IOptionsMonitor<CameraOptions> _options;
+    private readonly CameraLiveAvailability _availability;
     private readonly ILogger<WebRtcSidecarWriter> _logger;
 
     public WebRtcSidecarWriter(Go2RtcClient streamServer,
-                               IOptionsMonitor<CameraOptions> options,
+                               CameraLiveAvailability availability,
                                ILogger<WebRtcSidecarWriter> logger)
     {
         _streamServer = streamServer;
-        _options = options;
+        _availability = availability;
         _logger = logger;
     }
 
@@ -61,23 +60,29 @@ public sealed class WebRtcSidecarWriter
     /// configuration file and the restart after it reloads the streams from that same file, measured
     /// 2026-09-27. What the write can lose is a stream being registered at the same moment - see
     /// <see cref="Go2RtcClient.WriteConfigAsync"/> - which the startup caller avoids by running before
-    /// <see cref="CameraStreamReconciler"/>. The settings page's call has no such ordering: a camera
-    /// saved in the same moment can be dropped from the file and lost at the restart.
+    /// <see cref="CameraStreamReconciler"/>. <see cref="WebRtcStunApplier"/>'s call has no such
+    /// ordering, so it reconciles every camera afterwards instead: a camera saved in the same moment
+    /// can be dropped from the file, and is written back from its row.
     /// </remarks>
-    public async Task<bool> EnsureAsync(string candidate, bool stunEnabled, CancellationToken cancellationToken)
+    public async Task<bool> EnsureAsync(string candidate, WebRtcStunChoice stun, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(stun);
+
         if (string.IsNullOrEmpty(candidate))
         {
             return false;
         }
 
-        string stunServer = _options.CurrentValue.WebRtcStunServer.Trim();
+        bool stunEnabled = stun.Enabled;
+        string stunServer = stun.Server;
 
         string? existing = await _streamServer.ReadConfigAsync(cancellationToken).ConfigureAwait(false);
 
         if (existing is not null && Matches(existing, candidate, stunEnabled, stunServer))
         {
             _logger.LogDebug("The stream server already advertises {Candidate}.", candidate);
+            _availability.StunInForce = stun;
+
             return true;
         }
 
@@ -112,6 +117,8 @@ public sealed class WebRtcSidecarWriter
         {
             return false;
         }
+
+        _availability.StunInForce = stun;
 
         _logger.LogInformation(
             "The stream server now advertises {Candidate} for live camera view, with STUN {StunState}.",

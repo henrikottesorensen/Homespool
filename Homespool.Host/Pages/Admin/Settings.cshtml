@@ -154,6 +154,13 @@
                                     <span class="badge text-bg-warning">@Model.AppliesWhen(setting)</span>
                                 </div>
                             }
+
+                            @if (setting.WarningKey is not null)
+                            {
+                                <div class="form-text">
+                                    <span class="badge text-bg-warning">@Localiser[setting.WarningKey]</span>
+                                </div>
+                            }
                         </div>
                     }
                 }

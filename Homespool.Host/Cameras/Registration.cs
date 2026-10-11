@@ -86,7 +86,7 @@ public static class Registration
         services.AddSingleton<CameraStreamSync>();
 
         // Writes the sidecar's WebRTC configuration. Singleton because it holds nothing per request
-        // and both its callers - startup, and the settings page - want the same one.
+        // and both its callers - startup, and WebRtcStunApplier - want the same one.
         services.AddSingleton<WebRtcSidecarWriter>();
 
         // Scoped: holds a DbContext.
@@ -106,8 +106,15 @@ public static class Registration
         // one; two BackgroundServices would start together on .NET 10 and race.
         services.AddHostedService<WebRtcConfigurer>();
 
-        // Runs once at startup, after MigrateHomespoolData has made the tables exist.
-        services.AddHostedService<CameraStreamReconciler>();
+        // Runs once at startup, after MigrateHomespoolData has made the tables exist. A singleton as
+        // well as a hosted service, because WebRtcStunApplier runs the same pass after it restarts
+        // the sidecar.
+        services.AddSingleton<CameraStreamReconciler>();
+        services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<CameraStreamReconciler>());
+
+        // Puts a changed STUN choice into the sidecar while the application runs. Last, so that at
+        // startup it finds whatever the configurer managed and only acts on what is still owed.
+        services.AddHostedService<WebRtcStunApplier>();
 
         return services;
     }

@@ -36,6 +36,10 @@ namespace Homespool.Host.Configuration;
 /// Whether a stored secret in the same section belongs to this value, so that changing it needs the
 /// secret typed again rather than carried over behind the mask.
 /// </param>
+/// <param name="WarningKey">
+/// A localisation key naming a side effect of saving a change, shown beside the field whatever its
+/// grade - for a change that interrupts something somebody may be using. Null for almost everything.
+/// </param>
 /// <remarks>
 /// <para>
 /// <b>An allowlist entry, not a description of configuration.</b> The 65 options properties are not
@@ -60,7 +64,8 @@ public sealed record EditableSetting(
     string? DisplayGroup = null,
     string? DisplaySubgroup = null,
     string? ConfirmOnEnableKey = null,
-    bool BindsSecret = false)
+    bool BindsSecret = false,
+    string? WarningKey = null)
 {
     /// <summary>
     /// The configuration path this setting is read and written at, in <c>Section:Key</c> form.

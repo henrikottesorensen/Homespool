@@ -46,7 +46,9 @@ namespace Homespool.Host.Cameras;
 /// </para>
 /// <para>
 /// Follows <c>PrintFileReconciler</c>: a one-shot at startup rather than a loop, because the thing
-/// it heals only changes when something outside the application does.
+/// it heals only changes when something outside the application does - or when
+/// <see cref="WebRtcStunApplier"/> restarts the sidecar, which runs the same pass through
+/// <see cref="ReconcileAsync"/>.
 /// </para>
 /// <para>
 /// <b>It can start while the sidecar is restarting</b>, because <see cref="WebRtcConfigurer"/> runs
@@ -102,13 +104,26 @@ public sealed class CameraStreamReconciler : BackgroundService
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        return ReconcileAsync(stoppingToken);
+    }
+
+    /// <summary>
+    /// One pass over every camera: sweep what no camera owns, write each camera's stream from its row,
+    /// and probe each camera's codecs.
+    /// </summary>
+    /// <remarks>
+    /// Run at startup, and again by <see cref="WebRtcStunApplier"/> after it has restarted the
+    /// sidecar - whose configuration write can drop a stream registered at the same moment.
+    /// </remarks>
+    public async Task ReconcileAsync(CancellationToken cancellationToken)
     {
         try
         {
             // Asked for even with no cameras, because the sweep below needs it: the removal of the
             // last camera is the one it would otherwise never see.
-            IReadOnlySet<string>? known = await ListStreamNamesAsync(stoppingToken).ConfigureAwait(false);
+            IReadOnlySet<string>? known = await ListStreamNamesAsync(cancellationToken).ConfigureAwait(false);
 
             using IServiceScope scope = _scopeFactory.CreateScope();
             HomespoolDbContext database = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
@@ -117,7 +132,7 @@ public sealed class CameraStreamReconciler : BackgroundService
             // sync, at the moment its stream is written, so what a camera is comes from then.
             List<Guid> cameras = await database.Cameras
                                                .Select(camera => camera.Uuid)
-                                               .ToListAsync(stoppingToken)
+                                               .ToListAsync(cancellationToken)
                                                .ConfigureAwait(false);
 
             // Null means the sidecar could not be asked, which is not the same as it knowing
@@ -142,7 +157,7 @@ public sealed class CameraStreamReconciler : BackgroundService
             // device an orphan still holds is free when its camera's own stream arrives. The rows
             // the sweep reads are its own, taken after this listing.
             int swept = await scope.ServiceProvider.GetRequiredService<CameraStreamSweeper>()
-                                   .SweepAsync(known, stoppingToken)
+                                   .SweepAsync(known, cancellationToken)
                                    .ConfigureAwait(false);
 
             if (swept > 0)
@@ -163,7 +178,7 @@ public sealed class CameraStreamReconciler : BackgroundService
 
             foreach (Guid camera in cameras)
             {
-                switch ((await _sync.SyncAsync(camera, stoppingToken).ConfigureAwait(false)).Outcome)
+                switch ((await _sync.SyncAsync(camera, cancellationToken).ConfigureAwait(false)).Outcome)
                 {
                     case StreamSyncOutcome.Registered:
                         restored++;
@@ -181,11 +196,11 @@ public sealed class CameraStreamReconciler : BackgroundService
 
             if (retry.Count > 0)
             {
-                await Task.Delay(ProbeRetryDelay, _time, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(ProbeRetryDelay, _time, cancellationToken).ConfigureAwait(false);
 
                 foreach (Guid camera in retry)
                 {
-                    if ((await _sync.SyncAsync(camera, stoppingToken).ConfigureAwait(false)).Outcome ==
+                    if ((await _sync.SyncAsync(camera, cancellationToken).ConfigureAwait(false)).Outcome ==
                         StreamSyncOutcome.Registered)
                     {
                         restored++;
@@ -204,7 +219,7 @@ public sealed class CameraStreamReconciler : BackgroundService
             // and nobody is waiting on this path.
             foreach (Guid camera in cameras)
             {
-                if (await _liveView.HowToWatchAsync(camera, stoppingToken).ConfigureAwait(false) !=
+                if (await _liveView.HowToWatchAsync(camera, cancellationToken).ConfigureAwait(false) !=
                     LiveTransport.None)
                 {
                     continue;
@@ -213,11 +228,11 @@ public sealed class CameraStreamReconciler : BackgroundService
                 // One retry. A None here is either a definite "no transport" - in which case the
                 // memo answers and the second ask costs nothing - or a camera that did not answer,
                 // most likely because it is still waking up alongside everything else.
-                await Task.Delay(ProbeRetryDelay, _time, stoppingToken).ConfigureAwait(false);
-                _ = await _liveView.HowToWatchAsync(camera, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(ProbeRetryDelay, _time, cancellationToken).ConfigureAwait(false);
+                _ = await _liveView.HowToWatchAsync(camera, cancellationToken).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Shutting down before the sweep finished. Nothing is half-done: each registration is
             // its own request, and the next start does this again.

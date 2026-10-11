@@ -2811,6 +2811,12 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
   <data name="Settings_Label_Cameras_WebRtcStunEnabled" xml:space="preserve">
     <value>Tillad at der kontaktes en STUN-server</value>
   </data>
+  <data name="Settings_Warn_RestartsStreamServer" xml:space="preserve">
+    <value>Når en ændring gemmes, genstartes kamerastrømserveren, og alle der ser med live, bliver afbrudt et øjeblik</value>
+  </data>
+  <data name="LiveView_StunNotYetApplied" xml:space="preserve">
+    <value>Kamerastrømserveren har ikke taget dette valg i brug endnu. Den bliver spurgt igen, indtil den gør det.</value>
+  </data>
   <data name="Settings_Confirm_Cameras_WebRtcStunEnabled" xml:space="preserve">
     <value>Denne installation holder op med at være selvstændig. Din offentlige adresse findes ved at spørge den STUN-server, der er nævnt ovenfor - en tredjepart - og placeres derefter i hvert eneste tilbud, streamserveren laver, til alle der har lov til at se med. Intet om hvad du printer sendes nogen steder hen i nogen af tilfældene, og for at se med fra dit eget netværk kræves intet af dette.</value>
   </data>

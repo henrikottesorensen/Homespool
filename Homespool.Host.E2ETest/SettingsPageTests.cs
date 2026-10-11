@@ -99,6 +99,24 @@ public sealed class SettingsPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The STUN settings apply at once, and applying them restarts the camera stream server - which
+    /// somebody watching live would notice, so it is said before the save rather than discovered.
+    /// </summary>
+    [Fact]
+    public async Task BothStunSettingsWarnThatSavingRestartsTheStreamServer()
+    {
+        HttpClient admin = await AdminAsync("settings-stun-warning@example.com");
+
+        string page = await admin.GetStringAsync("/Admin/Settings", TestContext.Current.CancellationToken);
+
+        Regex.Matches(page, Regex.Escape("Saving a change restarts the camera stream server"))
+             .Should()
+             .HaveCount(2, "one beside each STUN field");
+
+        admin.Dispose();
+    }
+
+    /// <summary>
     /// The whole chain: a post becomes a file, a reload, and a value a consumer resolves afterwards.
     /// </summary>
     [Fact]

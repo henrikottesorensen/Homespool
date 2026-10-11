@@ -38,8 +38,14 @@ public class LiveViewModel : PageModel
         _localiser = localiser;
     }
 
-    /// <summary>Whether STUN is currently allowed.</summary>
+    /// <summary>Whether STUN is allowed, as saved.</summary>
     public bool StunEnabled => _cameras.Value.WebRtcStunEnabled;
+
+    /// <summary>
+    /// Whether the stream server has confirmed the saved STUN choice. False while a change is still
+    /// on its way to it, or when it could not be reached.
+    /// </summary>
+    public bool StunApplied => _availability.StunInForce == WebRtcStunChoice.From(_cameras.Value);
 
     /// <summary>The STUN server that would be contacted, so the prompt can name it.</summary>
     public string StunServer => _cameras.Value.WebRtcStunServer;

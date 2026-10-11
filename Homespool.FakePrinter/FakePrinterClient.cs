@@ -579,6 +579,7 @@ public sealed class FakePrinterClient : IAsyncDisposable
                 if ((reply.Complete?.Invoke() ?? reply.Payload) is byte[] payload)
                 {
                     await send(payload, cancellationToken);
+                    reply.Sent?.Invoke();
                 }
 
                 if (reply.DisconnectAfter)

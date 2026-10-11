@@ -33,6 +33,7 @@ public static class TelemetryMessageBuilder
             writer.WriteStartObject();
             WriteTransferBlock(writer, device);
             WriteJobBlock(writer, device, readings);
+            WriteRunningCommand(writer, device);
             writer.WriteString("state", device.WireState);
             writer.WriteEndObject();
         }
@@ -81,12 +82,25 @@ public static class TelemetryMessageBuilder
             }
 
             WriteSlotBlock(writer, device, readings);
+            WriteRunningCommand(writer, device);
 
             writer.WriteString("state", device.WireState);
             writer.WriteEndObject();
         }
 
         return buffer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>
+    /// The background command the device is running, in both shapes, just before <c>state</c>
+    /// (render.cpp:253-255).
+    /// </summary>
+    private static void WriteRunningCommand(Utf8JsonWriter writer, FakeDevice device)
+    {
+        if (device.RunningCommandId is uint commandId)
+        {
+            writer.WriteNumber("command_id", commandId);
+        }
     }
 
     /// <summary>

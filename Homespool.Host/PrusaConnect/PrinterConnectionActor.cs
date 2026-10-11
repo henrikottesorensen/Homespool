@@ -89,7 +89,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// <param name="ParkedAt">
     /// When a parked command was parked, as a <see cref="Stopwatch"/> timestamp - the moment the
     /// collect clock starts, bounded by <see cref="CollectTimeout"/>. Null exactly when
-    /// <paramref name="SentAt"/> was set at the send, so one of the two clocks is always running.
+    /// <paramref name="SentAt"/> was set at the send, so one of the two clocks is always running
+    /// until the printer accepts the command.
     /// </param>
     /// <param name="LightingIntensity">
     /// The brightness the printer will report once it has finished this command, when it is a
@@ -107,8 +108,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </param>
     /// <param name="AcceptedIsAnswer">The command's <see cref="ISendableCommand.AcceptedIsAnswer"/>.</param>
     /// <param name="Acceptance">
-    /// The printer's <c>ACCEPTED</c> for this command, once it has sent one and is still to say how
-    /// the command ended. What the caller is told if that never comes.
+    /// The printer's <c>ACCEPTED</c> for this command, once it has sent one: the command is then
+    /// running, and neither clock applies. It runs for as long as the printer's telemetry names it,
+    /// and the acceptance is what the caller is told if it ends without an answer.
     /// </param>
     /// <param name="CallerToken">
     /// The caller's own token, read by the loop at each point where the command could still be kept
@@ -425,8 +427,11 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
                 // messages that genuinely arrived first can come between.
                 if (!_mailbox.Reader.TryRead(out ConnectionMessage? message))
                 {
-                    if (_pending is null)
+                    if (_pending is null || _pending.Acceptance is not null)
                     {
+                        // Nothing pending, or a command the printer has accepted and is running: that
+                        // one ends with its answer, with telemetry that stops naming it, or with the
+                        // connection, so nothing here has a deadline to keep.
                         if (!await _mailbox.Reader.WaitToReadAsync())
                         {
                             break;
@@ -814,6 +819,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             return;
         }
 
+        if (_pending is { Acceptance: not null } running && send.Command.Preempts)
+        {
+            // The printer is running a command and this one stops it - the Python SDK runs a
+            // priority command at once (command.py:53-61) - so the running one's caller is told what
+            // is known, and the slot is this command's.
+            _pending = null;
+            _logger.LogInformation("command {CommandId} ({Command}) gave way to {Preempting} while running",
+                                   running.CommandId, running.WireName, send.Command.WireName);
+            SettleAsAccepted(running);
+        }
+
         if (_pending is not null)
         {
             // One in-flight command per printer, matching the firmware's own limit
@@ -916,7 +932,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         // Written: the response clock starts now. Otherwise the collect clock starts now, and the
         // response clock when the printer collects, in HandleTakePending, on this same loop. Every
-        // pending command has exactly one clock running, so none is ever waited on without a bound.
+        // pending command has exactly one clock running until the printer accepts it, so none is
+        // waited on without a bound: from then on the printer's telemetry bounds it.
         long now = Stopwatch.GetTimestamp();
 
         _pending = new Pending(commandId,
@@ -962,18 +979,28 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
             _logger.LogDebug("event for command {CommandId} ({Command}), which the printer has not been given; not an answer",
                              undelivered.CommandId, undelivered.WireName);
         }
-        else if (_pending is { AcceptedIsAnswer: false } accepting &&
-                 eventDto.CommandId == accepting.CommandId &&
+        else if (_pending is not null &&
+                 eventDto.CommandId == _pending.CommandId &&
                  eventDto.EventType == PrinterEventType.Accepted)
         {
             // The printer has started on it, and will say how it ended in an event of its own - which
             // can still be a refusal: the Python SDK accepts every command before running it, and
-            // firmware accepts gcode before running it in the background. So the wait goes on, under
-            // the clock it already had; this is what the caller is told if that clock runs out.
-            _pending = accepting with { Acceptance = OutcomeOf(eventDto) };
+            // firmware accepts gcode before running it in the background. Both name the command in
+            // every telemetry message until it ends (__init__.py:340-341, render.cpp:253-255), and
+            // send its last event before a telemetry message that no longer does.
+            Pending accepted = _pending with { Acceptance = OutcomeOf(eventDto) };
 
-            _logger.LogDebug("command {CommandId} ({Command}) accepted after {ElapsedMs:F0}ms; waiting for how it ends",
-                             accepting.CommandId, accepting.WireName, ElapsedMilliseconds(accepting));
+            _pending = accepted;
+
+            _logger.LogDebug("command {CommandId} ({Command}) accepted after {ElapsedMs:F0}ms; running until the printer says how it ended",
+                             accepted.CommandId, accepted.WireName, ElapsedMilliseconds(accepted));
+
+            if (accepted.AcceptedIsAnswer)
+            {
+                // Its caller wants to know it started. The command keeps the slot, since the printer
+                // will take nothing else until it ends, and its end is still logged against it.
+                SettleAsAccepted(accepted);
+            }
         }
         else if (_pending is not null && eventDto.CommandId == _pending.CommandId)
         {
@@ -1037,6 +1064,17 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private void EnqueueTelemetry(InboundTelemetryMessage telemetry)
     {
         _transferSlot = telemetry.Telemetry.TransferId is null ? TransferSlot.Free : TransferSlot.Taken;
+
+        if (_pending is { Acceptance: not null } running && telemetry.Telemetry.CommandId != running.CommandId)
+        {
+            // The printer no longer names the command it accepted, so it has ended, and the event
+            // saying how did not reach us. The acceptance is all that is known.
+            _pending = null;
+            _logger.LogInformation("command {CommandId} ({Command}) ended after {ElapsedMs:F0}ms without an answer reaching us; answered as accepted",
+                                   running.CommandId, running.WireName, ElapsedMilliseconds(running));
+            SettleAsAccepted(running);
+        }
+
         _sink.Enqueue(_printerId, telemetry.ReceivedAt, PrusaTelemetryMapping.ToUpdate(telemetry.Telemetry));
     }
 
@@ -1292,18 +1330,6 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         Pending expired = _pending!;
 
         _pending = null;
-
-        if (expired.Acceptance is not null)
-        {
-            // Not a silence: the printer took the command and is still on it, so the caller hears that
-            // rather than a timeout, and how it ends is stored as an ordinary event when it comes.
-            _logger.LogInformation("command {CommandId} ({Command}) was accepted and had not ended within {ResponseTimeout}; answered as accepted",
-                                   expired.CommandId, expired.WireName, _responseTimeout);
-            SettleAsAccepted(expired);
-
-            return;
-        }
-
         _logger.LogWarning("command {CommandId} ({Command}) timed out waiting for a reply",
                            expired.CommandId, expired.WireName);
         expired.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.ResponseTimedOut, null)
@@ -1313,9 +1339,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     }
 
     /// <summary>
-    /// Tells the caller of a command the printer accepted, and has not yet said how it ended, that it
-    /// was accepted.
+    /// Tells the caller of a command the printer accepted that it was accepted, which is all that is
+    /// known until the printer says how it ended.
     /// </summary>
+    /// <remarks>
+    /// Nothing for a caller already told, which a command whose acceptance is its answer has been.
+    /// </remarks>
     private static void SettleAsAccepted(Pending accepted)
     {
         accepted.Completion.TrySetResult(new CommandSendResult(CommandSendOutcome.Completed, accepted.Acceptance, null)

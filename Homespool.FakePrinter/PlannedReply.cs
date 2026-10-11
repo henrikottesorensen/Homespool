@@ -22,4 +22,10 @@ public sealed record PlannedReply(byte[]? Payload, TimeSpan Delay = default, boo
     /// when the <c>ACCEPTED</c> goes out.
     /// </remarks>
     public Func<byte[]>? Complete { get; init; }
+
+    /// <summary>
+    /// Runs once the payload has been sent, for what the device must keep reporting until the
+    /// printer has said so - a background command stays named in telemetry until its answer is out.
+    /// </summary>
+    public Action? Sent { get; init; }
 }

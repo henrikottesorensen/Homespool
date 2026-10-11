@@ -130,6 +130,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
             _backgroundCommandId = frame.CommandId;
             _backgroundDoneAt = _time.GetTimestamp() +
                                 (long)(GcodeExecutionTime.TotalSeconds * _time.TimestampFrequency);
+            device.BeginCommand(frame.CommandId);
 
             PlannedReply accepted = Reply(EventMessageBuilder.Build("ACCEPTED", device.WireState, frame.CommandId));
 
@@ -148,6 +149,7 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
 
                             return EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId);
                         },
+                        Sent = () => device.EndCommand(frame.CommandId),
                     },
                 ];
             }
@@ -157,7 +159,10 @@ public sealed partial class FirmwareFaithfulPolicy : CommandAnswerPolicy
                 accepted,
                 new PlannedReply(
                     EventMessageBuilder.Build("FINISHED", device.WireState, frame.CommandId),
-                    GcodeExecutionTime),
+                    GcodeExecutionTime)
+                {
+                    Sent = () => device.EndCommand(frame.CommandId),
+                },
             ];
         }
 

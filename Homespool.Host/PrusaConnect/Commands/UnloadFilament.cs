@@ -68,7 +68,7 @@ public class UnloadFilament : ISendableGcodeCommand
 
     /// <summary>
     /// An unload runs for minutes, so its caller is answered when the printer takes it, and says the
-    /// unload has started.
+    /// unload has started. The command holds the printer's slot until the unload ends.
     /// </summary>
     public bool AcceptedIsAnswer => true;
 

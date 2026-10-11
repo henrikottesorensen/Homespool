@@ -33,8 +33,9 @@ public sealed class FakeDevice
     /// <summary>The material every tool starts with, until a test loads or unloads one.</summary>
     public const string DefaultMaterial = "PLA";
 
-    /// <summary>Guards <see cref="_materials"/> and <see cref="_telemetryChanged"/>, which the
-    /// telemetry loop reads while a command's reply task writes them.</summary>
+    /// <summary>Guards <see cref="_materials"/>, <see cref="_telemetryChanged"/> and
+    /// <see cref="_runningCommandId"/>, which the telemetry loop reads while a command's reply task
+    /// writes them.</summary>
     private readonly Lock _gate = new();
 
     /// <summary>
@@ -44,8 +45,32 @@ public sealed class FakeDevice
     /// </summary>
     private readonly Dictionary<int, string?> _materials = [];
 
+    /// <summary>The background command being run - see <see cref="RunningCommandId"/>.</summary>
+    private uint? _runningCommandId;
+
     /// <summary>Completed, and replaced, whenever something telemetry reports changes.</summary>
     private TaskCompletionSource _telemetryChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// The background command the device is running, which telemetry names in <c>command_id</c>;
+    /// null when it runs none.
+    /// </summary>
+    /// <remarks>
+    /// Firmware names it in every telemetry message, either shape (render.cpp:253-255), from the
+    /// moment it accepts the command until the command's answer has gone out: <c>background_done</c>
+    /// plans the answer as it drops the command (planner.cpp:1128-1141), and a planned event is sent
+    /// before anything else (planner.cpp:401-410).
+    /// </remarks>
+    public uint? RunningCommandId
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _runningCommandId;
+            }
+        }
+    }
 
     /// <summary>Current device state; starts <see cref="DeviceState.Idle"/> like a booted printer.</summary>
     public DeviceState State { get; private set; } = DeviceState.Idle;
@@ -124,6 +149,27 @@ public sealed class FakeDevice
         }
 
         changed.TrySetResult();
+    }
+
+    /// <summary>Starts running background command <paramref name="commandId"/>.</summary>
+    public void BeginCommand(uint commandId)
+    {
+        lock (_gate)
+        {
+            _runningCommandId = commandId;
+        }
+    }
+
+    /// <summary>Stops running <paramref name="commandId"/>, once its answer has gone out.</summary>
+    public void EndCommand(uint commandId)
+    {
+        lock (_gate)
+        {
+            if (_runningCommandId == commandId)
+            {
+                _runningCommandId = null;
+            }
+        }
     }
 
     /// <summary>Completes <see cref="NextTelemetryChange"/> for a change that is not a material.</summary>

@@ -917,32 +917,97 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// A command the printer accepted and has not finished when the response timeout runs out is
-    /// answered as accepted, not as timed out: the printer did answer, and may still be at it.
+    /// A command the printer has accepted is not timed out: it runs for as long as it takes, and is
+    /// answered by the event that ends it.
     /// </summary>
+    /// <remarks>
+    /// The real case is a gcode that runs for minutes - an unload, or PrusaLink waiting for each line
+    /// of a <c>GCODE</c> to be confirmed (<c>ExecuteGcode</c>, command_handlers.py:331-397). The
+    /// response timeout is for a printer that has said nothing at all.
+    /// </remarks>
     [Fact]
-    public async Task AnAcceptedCommandThatHasNotEndedByTheTimeoutIsAnsweredAsAccepted()
+    public async Task AnAcceptedCommandOutlivesTheResponseTimeout()
     {
         // Arrange
         List<byte[]> sentFrames = [];
-        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromMilliseconds(500));
+        RecordingTelemetrySink sink = new();
+        TimeSpan responseTimeout = TimeSpan.FromMilliseconds(200);
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink, responseTimeout: responseTimeout);
 
         Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
         uint commandId = CommandIdOf(sentFrames[0]);
 
-        // Act
-        await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Accepted, state: "BUSY"), CancellationToken.None);
+        await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Accepted), CancellationToken.None);
+        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+
+        // Act - a fixed wait, because what is asserted is that nothing happens in it
+        await Task.Delay(responseTimeout * 3, TestContext.Current.CancellationToken);
+        bool endedMeanwhile = sendTask.IsCompleted;
+
+        await actor.PostAsync(EventAnswering(commandId), CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
 
         // Assert
+        endedMeanwhile.Should().BeFalse("the printer accepted the command, and has not said it ended");
+        result.Outcome.Should().Be(CommandSendOutcome.Completed);
+        result.Response!.EventType.Should().Be(PrinterEventType.Finished);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A running command lasts while the printer's telemetry names it, and ends, answered as accepted,
+    /// with the first telemetry that does not: its answer never reached us.
+    /// </summary>
+    /// <remarks>
+    /// Both printers name the command they are running in every telemetry message - firmware for a
+    /// background gcode (render.cpp:253-255), the Python SDK from acceptance until its handler returns
+    /// (__init__.py:340-341) - and send the command's last event before a telemetry message without it.
+    /// The SDK drops an event it is refused rather than sending it again, which is how an answer goes
+    /// missing.
+    /// </remarks>
+    [Fact]
+    public async Task ARunningCommandEndsAsAcceptedWhenTheTelemetryStopsNamingIt()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink, responseTimeout: TimeSpan.FromSeconds(30));
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+        uint commandId = CommandIdOf(sentFrames[0]);
+
+        await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Accepted, state: "BUSY"), CancellationToken.None);
+
+        // Act
+        await actor.PostAsync(TelemetryNaming(commandId), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
+        bool endedWhileNamed = sendTask.IsCompleted;
+
+        await actor.PostAsync(TelemetryNaming(commandId: null), CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
+
+        // Assert
+        endedWhileNamed.Should().BeFalse("the printer still named the command it was running");
         result.Outcome.Should().Be(CommandSendOutcome.Completed);
         result.Response!.EventType.Should().Be(PrinterEventType.Accepted);
         result.Response.PrinterStatus.Should().Be(PrinterStatus.Busy, "the outcome is the printer's own ACCEPTED");
         result.CommandId.Should().Be(commandId);
 
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.ResumePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 2);
+
         actor.Complete();
+        (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
         await Eventually(actor.Completion);
+    }
+
+    private static InboundTelemetryMessage TelemetryNaming(uint? commandId)
+    {
+        return new(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "BUSY", CommandId = commandId });
     }
 
     /// <summary>
@@ -975,10 +1040,11 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// A command whose acceptance is its answer is answered by <c>ACCEPTED</c>, and frees the slot.
+    /// A command whose acceptance is its answer has its caller answered by <c>ACCEPTED</c>, and keeps
+    /// the slot until the printer says it ended: the printer takes nothing else meanwhile.
     /// </summary>
     [Fact]
-    public async Task ACommandWhoseAcceptanceIsItsAnswerCompletesOnAccepted()
+    public async Task ACommandWhoseAcceptanceIsItsAnswerHoldsTheSlotUntilItEnds()
     {
         // Arrange
         List<byte[]> sentFrames = [];
@@ -986,20 +1052,83 @@ public class PrinterConnectionActorTests
 
         Task<CommandSendResult> sendTask = actor.SendCommandAsync(UnloadFilament.ForTool(1), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
+        uint commandId = CommandIdOf(sentFrames[0]);
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Accepted), CancellationToken.None);
+        await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Accepted), CancellationToken.None);
         CommandSendResult result = await Eventually(sendTask);
+
+        CommandSendResult meanwhile = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
+
+        await actor.PostAsync(EventAnswering(commandId), CancellationToken.None);
+        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 2);
 
         // Assert
         result.Outcome.Should().Be(CommandSendOutcome.Completed);
         result.Response!.EventType.Should().Be(PrinterEventType.Accepted);
-
-        Task<CommandSendResult> next = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
-        await WaitUntilAsync(() => sentFrames.Count == 2);
+        meanwhile.Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight, "the unload is still running");
 
         actor.Complete();
         (await Eventually(next)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A reset is sent while the printer runs a command, which gives way and is answered as accepted.
+    /// </summary>
+    /// <remarks>
+    /// The Python SDK stops the running command for its one priority command and runs that at once
+    /// (command.py:53-61).
+    /// </remarks>
+    [Fact]
+    public async Task AResetPreemptsARunningCommand()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromSeconds(30));
+
+        Task<CommandSendResult> running = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Accepted), CancellationToken.None);
+
+        // Act
+        CommandSendResult reset = await Eventually(actor.SendCommandAsync(new ResetPrinter(), CancellationToken.None));
+        CommandSendResult preempted = await Eventually(running);
+
+        // Assert
+        reset.Outcome.Should().Be(CommandSendOutcome.Dispatched);
+        sentFrames.Should().HaveCount(2, "the reset went out");
+        preempted.Outcome.Should().Be(CommandSendOutcome.Completed);
+        preempted.Response!.EventType.Should().Be(PrinterEventType.Accepted);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A reset does not preempt a command the printer has not yet accepted: that one has its own
+    /// clock, and nothing yet says the printer is running it.
+    /// </summary>
+    [Fact]
+    public async Task AResetWaitsBehindACommandNotYetAccepted()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromSeconds(30));
+
+        Task<CommandSendResult> first = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        CommandSendResult reset = await Eventually(actor.SendCommandAsync(new ResetPrinter(), CancellationToken.None));
+
+        // Assert
+        reset.Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight);
+        sentFrames.Should().ContainSingle();
+
+        actor.Complete();
+        (await Eventually(first)).Outcome.Should().Be(CommandSendOutcome.NotConnected);
         await Eventually(actor.Completion);
     }
 

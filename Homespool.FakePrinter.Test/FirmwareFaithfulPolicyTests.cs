@@ -209,6 +209,31 @@ public class FirmwareFaithfulPolicyTests
     }
 
     /// <summary>
+    /// Running gcode is named in both telemetry shapes until its <c>FINISHED</c> has been sent, and
+    /// not after (render.cpp:253-255; planner.cpp:401-410 and 1128-1141).
+    /// </summary>
+    [Fact]
+    public void RunningGcodeIsNamedInTelemetryUntilItsAnswerIsSent()
+    {
+        FirmwareFaithfulPolicy policy = new(_identity, TimeProvider.System);
+        TelemetryReadings readings = new();
+
+        IReadOnlyList<PlannedReply> replies = policy.Answer(new ServerCommandFrame(ServerCommandKind.Gcode, 20, Encoding.UTF8.GetBytes("G28")), _device);
+
+        using (JsonDocument slim = JsonDocument.Parse(TelemetryMessageBuilder.BuildSlim(_device, readings)))
+        using (JsonDocument full = JsonDocument.Parse(TelemetryMessageBuilder.BuildFull(_device, readings)))
+        {
+            slim.RootElement.GetProperty("command_id").GetUInt32().Should().Be(20);
+            full.RootElement.GetProperty("command_id").GetUInt32().Should().Be(20);
+        }
+
+        replies[1].Sent!.Invoke();
+
+        using JsonDocument after = JsonDocument.Parse(TelemetryMessageBuilder.BuildSlim(_device, readings));
+        after.RootElement.TryGetProperty("command_id", out _).Should().BeFalse("the answer has gone out");
+    }
+
+    /// <summary>
     /// <c>M702</c> unloads the tool its <c>T</c> names - 0-based, so <c>T1</c> is the wire's tool 2 -
     /// reporting <c>BUSY</c> while it runs and returning to <c>IDLE</c> with the tool empty, as the
     /// MK3.5 did. The other tool keeps its filament.

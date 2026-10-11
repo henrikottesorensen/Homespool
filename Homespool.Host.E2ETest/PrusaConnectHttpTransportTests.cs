@@ -1007,6 +1007,48 @@ public sealed class PrusaConnectHttpTransportTests : IAsyncLifetime
         _logs.Failures.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// A command a Python-SDK printer accepts, runs, and then fails is answered with the failure. In
+    /// between, its telemetry names the command (__init__.py:340-341), which is what keeps it running
+    /// here. PrusaLink's pause is the real case: it waits up to fifteen seconds for the printer to
+    /// pause, and fails the command if it does not (<c>TryUntilState</c>, command_handlers.py:115-185).
+    /// </summary>
+    /// <remarks>Played by hand like <see cref="AnSdkTransferWithAnIdAboveIntMaxValueRecordsTheFileArriving"/>.</remarks>
+    [Fact]
+    public async Task AnSdkCommandThatFailsAfterRunningIsAnsweredWithTheFailure()
+    {
+        // Arrange
+        StartWithRealDispatcher();
+
+        (PrinterIdentity identity, string token, int printerId, long userId) =
+            await EnrolmentFlowHelper.EnrolAndClaimFakePrinterAsync(_factory);
+
+        using HttpClient printer = PrinterListener.CreateClient(_factory);
+
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token, """{"state":"PRINTING"}""");
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        Task<CommandOutcome?> pausing = scope.ServiceProvider.GetRequiredService<PrinterCommandService>()
+                                             .SendCommandAsync(printerId, new PrusaConnect.Commands.PausePrint(), Caller.Unscoped(userId), TestContext.Current.CancellationToken);
+
+        (uint commandId, JsonElement _) = await CollectCommandAsync(printer, identity, token);
+
+        // Act
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"ACCEPTED","source":"CONNECT","data":{},"command_id":{{commandId}},"state":"PRINTING"}""");
+        await PostAsSdkAsync(printer, "/p/telemetry", identity, token,
+                             $$"""{"command_id":{{commandId}},"state":"PRINTING"}""");
+        await PostAsSdkAsync(printer, "/p/events", identity, token,
+                             $$"""{"event":"FAILED","source":"WUI","data":{"error":"CommandFailed(\"Couldn't get to any of PAUSED states.\")"},"command_id":{{commandId}},"reason":"Command error","state":"PRINTING"}""");
+
+        CommandOutcome? outcome = await pausing.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        // Assert
+        outcome!.EventType.Should().Be(PrinterEventType.Failed, "the telemetry still named the command, so it was still running");
+        outcome.Reason.Should().Be("Command error");
+        _logs.Failures.Should().BeEmpty();
+    }
+
     /// <summary>Posts as the Python SDK does, and expects the message accepted.</summary>
     private static async Task PostAsSdkAsync(HttpClient printer, string route, PrinterIdentity identity, string token, string body)
     {

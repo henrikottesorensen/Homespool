@@ -29,4 +29,7 @@ public class ResetPrinter : ISendableCommand
 
     /// <inheritdoc/>
     public bool ExpectsReply => false;
+
+    /// <summary>The one command the Python SDK lets stop a running one.</summary>
+    public bool Preempts => true;
 }

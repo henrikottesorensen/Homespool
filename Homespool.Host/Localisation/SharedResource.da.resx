@@ -1459,7 +1459,7 @@
     <value>STUN slået fra</value>
   </data>
   <data name="LiveView_StunExplained" xml:space="preserve">
-    <value>At se med fra dit eget netværk kræver intet her. For at se med udefra kan strømserveren spørge en offentlig STUN-server om denne installations offentlige adresse — det er slået fra, indtil du slår det til, fordi det betyder at kontakte en andens server.</value>
+    <value>At se med fra dit eget netværk kræver intet her. For at se med udefra kan kamerastrømserveren spørge en offentlig STUN-server om denne installations offentlige adresse — det er slået fra, indtil du slår det til, fordi det betyder at kontakte en andens server.</value>
   </data>
   <data name="Account_AccessDeniedTitle" xml:space="preserve">
     <value>Adgang nægtet</value>
@@ -2818,7 +2818,7 @@ En nøgle, der allerede virker i din printer, er den rigtige nøgle. Formaterer 
     <value>Kamerastrømserveren har ikke taget dette valg i brug endnu. Den bliver spurgt igen, indtil den gør det.</value>
   </data>
   <data name="Settings_Confirm_Cameras_WebRtcStunEnabled" xml:space="preserve">
-    <value>Denne installation holder op med at være selvstændig. Din offentlige adresse findes ved at spørge den STUN-server, der er nævnt ovenfor - en tredjepart - og placeres derefter i hvert eneste tilbud, streamserveren laver, til alle der har lov til at se med. Intet om hvad du printer sendes nogen steder hen i nogen af tilfældene, og for at se med fra dit eget netværk kræves intet af dette.</value>
+    <value>Denne installation holder op med at være selvstændig. Din offentlige adresse findes ved at spørge den STUN-server, der er nævnt ovenfor - en tredjepart - og placeres derefter i hvert eneste tilbud, kamerastrømserveren laver, til alle der har lov til at se med. Intet om hvad du printer sendes nogen steder hen i nogen af tilfældene, og for at se med fra dit eget netværk kræves intet af dette.</value>
   </data>
   <data name="Settings_AppliesNote" xml:space="preserve">
     <value>Ændringer træder i kraft med det samme, medmindre et felt siger noget andet.</value>

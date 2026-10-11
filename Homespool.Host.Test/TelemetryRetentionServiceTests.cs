@@ -924,6 +924,52 @@ public sealed class TelemetryRetentionServiceTests : IDisposable
     }
 
     /// <summary>
+    /// <b>The same for the event cap</b>, which is checked and then used by a sweep of its own: saved
+    /// as zero mid-pass, it must not turn off a trim the pass already decided on.
+    /// </summary>
+    [Fact]
+    public async Task AnEventPassActsOnTheOptionsItStartedWithThoughASaveLandsDuringIt()
+    {
+        // Arrange - a monitor whose first answer caps events at four and whose every later one turns the cap off
+        await SeedPrinterAsync();
+
+        for (int i = 0; i < 10; i++)
+        {
+            await SeedEventAsync(1, DateTimeOffset.UtcNow.AddMinutes(-i));
+        }
+
+        StorageOptions capped = new()
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 4,
+            MaxSamplesPerPrinter = 0,
+        };
+
+        IOptionsMonitor<StorageOptions> monitor = Substitute.For<IOptionsMonitor<StorageOptions>>();
+        monitor.CurrentValue.Returns(capped, new StorageOptions
+        {
+            TelemetryRetentionDays = 0,
+            EventRetentionDays = 0,
+            MaxEventsPerPrinter = 0,
+            MaxSamplesPerPrinter = 0,
+        });
+
+        // Act
+        await StartServiceAsync(capped, monitor: monitor);
+
+        // Assert
+        bool trimmed = await WaitUntilAsync(async () =>
+        {
+            await using HomespoolDbContext context = NewVerificationContext();
+
+            return await context.PrinterEvents.CountAsync(TestContext.Current.CancellationToken) == 4;
+        }, TimeSpan.FromSeconds(10));
+
+        trimmed.Should().BeTrue("the pass read an event cap of four, and acts on that throughout");
+    }
+
+    /// <summary>
     /// The rows each <c>DELETE</c> removed, in the order they ran. A cascade's rows are not counted,
     /// which is SQLite's own changes() count.
     /// </summary>

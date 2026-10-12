@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -73,8 +74,8 @@ public class IndexModel : PageModel
         _errors = errors;
     }
 
-    /// <summary>The cameras this account may see.</summary>
-    public IReadOnlyList<Camera> Cameras { get; private set; } = [];
+    /// <summary>The cameras this account may see, each with its printer if they may see that.</summary>
+    public IReadOnlyList<ListedCamera> Cameras { get; private set; } = [];
 
     /// <summary>Devices plugged into this machine that nobody has claimed.</summary>
     /// <remarks>Always empty for a non-administrator, since they could not claim one anyway.</remarks>
@@ -101,6 +102,22 @@ public class IndexModel : PageModel
 
     /// <summary>The camera being edited, if the query string names one.</summary>
     public Camera? Editing { get; private set; }
+
+    /// <summary>The printers the camera being edited may be pointed at: those of its own team.</summary>
+    /// <remarks>
+    /// The save refuses a printer of any other team, so offering one would only offer a refusal.
+    /// </remarks>
+    public IEnumerable<Printer> EditingPrinters =>
+        Editing is null ? [] : Printers.Where(printer => printer.TeamId == Editing.TeamId);
+
+    /// <summary>Whether the camera being edited is bound to a printer this account may not see.</summary>
+    /// <remarks>
+    /// The form shows that in place of the select, which posts nothing, and <see cref="CameraService"/>
+    /// keeps a binding the person saving cannot see - so an edit to the name or the source does not
+    /// quietly unbind it. Answered by the same listing the table is drawn from.
+    /// </remarks>
+    public bool EditingPrinterHidden =>
+        Editing is not null && Cameras.Any(listed => listed.Camera.Id == Editing.Id && listed.PrinterHidden);
 
     /// <summary>
     /// What the edit form puts in its source box: the address, and the password as a placeholder.

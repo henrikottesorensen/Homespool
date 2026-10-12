@@ -2141,6 +2141,10 @@
   <data name="Cameras_PrinterNotOnTeam" xml:space="preserve">
     <value>That printer does not exist, or is not on the camera&apos;s team.</value>
   </data>
+  <data name="Cameras_PrinterHidden" xml:space="preserve">
+    <value>not visible to you</value>
+    <comment>Where a camera's printer is shown, for a camera bound to a printer the reader may not see. Lower case, as the other cells of the camera table are.</comment>
+  </data>
   <data name="Cameras_SourceFragmentAddress" xml:space="preserve">
     <value>The part of the address after # names another address, which this camera cannot use. Remove it.</value>
   </data>

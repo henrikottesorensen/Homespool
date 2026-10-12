@@ -57,18 +57,18 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     // and the queue, which awaits printers one after another, would pay it for every printer.
     private bool _uncollected;
 
-    // The printer's heater targets as this connection knows them: its latest telemetry report, overtaken
-    // by any heater command of ours it has since finished. Null until known. See AsSentWith.
+    // The printer's heater targets as this connection knows them: its latest telemetry report, or a
+    // heater command of ours it has finished since, until a report confirms or replaces it or
+    // UnconfirmedHeaterWindow passes without one. Null until known. See KnownHeaterTargets.
     private int? _nozzleTarget;
     private int? _bedTarget;
-
-    // What the printer reported for each heater when one of our commands changed it - which its next
-    // reports can still carry, since the MK3 reports temperatures every two seconds (PrusaLink's M155 S2)
-    // and the SDK sends what it last heard. A report of that value is the printer not having caught up.
-    private int? _staleNozzleReport;
-    private int? _staleBedReport;
     private int? _reportedNozzle;
     private int? _reportedBed;
+
+    // When a heater command of ours set each target, as a Stopwatch timestamp, while no report has yet
+    // confirmed or replaced it; null otherwise.
+    private long? _nozzleSetAt;
+    private long? _bedSetAt;
 
     /// <summary>
     /// The one transfer this printer may have in progress. One, because firmware allocates a single
@@ -251,6 +251,27 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// </para>
     /// </remarks>
     public TimeSpan CollectTimeout { get; init; } = HttpPrinterConnection.IdleWindow;
+
+    /// <summary>
+    /// How long a heater target of ours, finished but not yet reported back, outranks the printer's last
+    /// report.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>PrusaLink reports a target only when it changes</b> (<c>TelemetryPasser.set_telemetry</c>
+    /// filters unchanged values; everything is re-sent only every five minutes,
+    /// <c>TELEMETRY_REFRESH_INTERVAL</c>). So a change of ours that took shows up as a report of it - the
+    /// MK3 reports temperatures every two seconds (<c>M155 S2</c>) and PrusaLink forwards a change within
+    /// a quarter of a second, or four when idle - and one that did not, because somebody set the heater
+    /// back at the panel first, shows up as nothing at all.
+    /// </para>
+    /// <para>
+    /// So silence for twice that long means the printer's last report stands: held for ever, a change
+    /// undone at the panel would leave every later unload putting the nozzle back to a temperature it
+    /// never had. Within it, a second unload straight after a first sees the first one's "before".
+    /// </para>
+    /// </remarks>
+    public TimeSpan UnconfirmedHeaterWindow { get; init; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// The optional traffic log, which records each command's arguments where the log line below
@@ -879,7 +900,7 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
         // Completed here, as it takes the slot: the heaters as of the printer's last word and every
         // heater command of ours since - see ISendableCommand.AsSentWith.
-        ISendableCommand command = send.Command.AsSentWith(new HeaterTargets(_nozzleTarget ?? 0, _bedTarget ?? 0));
+        ISendableCommand command = send.Command.AsSentWith(KnownHeaterTargets());
         uint commandId = unchecked(++_lastCommandId);
         CommandHandover handover;
 
@@ -1399,55 +1420,63 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     }
 
     /// <summary>
-    /// Takes the heater targets a report carries, unless it is the value a heater had before a change of
-    /// ours the printer has not yet reported.
+    /// Takes the heater targets a report carries: the printer's word, which confirms a change of ours or
+    /// replaces it.
     /// </summary>
     /// <remarks>
-    /// Any other value is the printer's word, ours confirmed or a change at the panel, and ends the wait
-    /// for it to catch up. A report without the field - Buddy's reduced telemetry - leaves both alone.
+    /// A report without the field - Buddy's reduced telemetry, or PrusaLink with nothing changed - leaves
+    /// both alone.
     /// </remarks>
     private void RecordHeaterReport(DTO.Telemetry.TelemetryDTO telemetry)
     {
         if (WholeDegrees(telemetry.TargetNozzleTemperature) is int nozzle)
         {
             _reportedNozzle = nozzle;
-
-            if (nozzle != _staleNozzleReport)
-            {
-                _nozzleTarget = nozzle;
-                _staleNozzleReport = null;
-            }
+            _nozzleTarget = nozzle;
+            _nozzleSetAt = null;
         }
 
         if (WholeDegrees(telemetry.TargetBedTemperature) is int bed)
         {
             _reportedBed = bed;
-
-            if (bed != _staleBedReport)
-            {
-                _bedTarget = bed;
-                _staleBedReport = null;
-            }
+            _bedTarget = bed;
+            _bedSetAt = null;
         }
     }
 
     /// <summary>
-    /// Applies what a finished command left the heaters at, and marks what the printer last reported for
-    /// each as the report it may still repeat before it catches up.
+    /// Applies what a finished command left the heaters at, to stand until a report confirms or replaces
+    /// it - or <see cref="UnconfirmedHeaterWindow"/> passes without one.
     /// </summary>
     private void ApplyHeaterChange(HeaterChange? change)
     {
+        long now = Stopwatch.GetTimestamp();
+
         if (change?.Nozzle is int nozzle)
         {
-            _staleNozzleReport = _reportedNozzle != nozzle ? _reportedNozzle : null;
             _nozzleTarget = nozzle;
+            _nozzleSetAt = nozzle == _reportedNozzle ? null : now;
         }
 
         if (change?.Bed is int bed)
         {
-            _staleBedReport = _reportedBed != bed ? _reportedBed : null;
             _bedTarget = bed;
+            _bedSetAt = bed == _reportedBed ? null : now;
         }
+    }
+
+    /// <summary>
+    /// The heater targets as this connection knows them now, 0 for one never reported.
+    /// </summary>
+    private HeaterTargets KnownHeaterTargets()
+    {
+        return new HeaterTargets(Known(_nozzleTarget, _reportedNozzle, _nozzleSetAt) ?? 0,
+                                 Known(_bedTarget, _reportedBed, _bedSetAt) ?? 0);
+    }
+
+    private int? Known(int? target, int? reported, long? setAt)
+    {
+        return setAt is long at && Stopwatch.GetElapsedTime(at) > UnconfirmedHeaterWindow ? reported : target;
     }
 
     private static int? WholeDegrees(float? target)

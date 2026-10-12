@@ -223,6 +223,39 @@ public sealed class CameraLiveAvailabilityTests : IDisposable
     }
 
     /// <summary>
+    /// A forgotten probe that answers while the new source's probe is still running is not taken for
+    /// it: the old answer is not remembered, and the new probe stays the one later asks wait on.
+    /// </summary>
+    [Fact]
+    public async Task AForgottenProbeAnsweringDuringItsReplacementLeavesTheReplacementAlone()
+    {
+        TaskCompletionSource<IReadOnlySet<string>?> oldCamera = new();
+        TaskCompletionSource<IReadOnlySet<string>?> newCamera = new();
+        ICameraCodecProbe probe = Substitute.For<ICameraCodecProbe>();
+        Guid camera = Guid.NewGuid();
+
+        probe.ProbeCodecsAsync(camera, Arg.Any<CancellationToken>()).Returns(oldCamera.Task, newCamera.Task);
+
+        CameraLiveAvailability availability = new(probe) { Candidate = "192.0.2.1" };
+
+        Task<LiveTransport> before = availability.HowToWatchAsync(camera, CancellationToken.None);
+        availability.Forget(camera);
+        Task<LiveTransport> after = availability.HowToWatchAsync(camera, CancellationToken.None);
+
+        oldCamera.SetResult(new HashSet<string> { "H264" });
+        (await before).Should().Be(LiveTransport.Webrtc);
+        availability.Remembered(camera).Should().BeNull("the answer was the previous source's");
+
+        Task<LiveTransport> later = availability.HowToWatchAsync(camera, CancellationToken.None);
+        newCamera.SetResult(new HashSet<string> { "JPEG" });
+
+        (await after).Should().Be(LiveTransport.Mjpeg);
+        (await later).Should().Be(LiveTransport.Mjpeg);
+        availability.Remembered(camera)!.Transport.Should().Be(LiveTransport.Mjpeg);
+        await probe.Received(2).ProbeCodecsAsync(camera, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// Asks that arrive while a probe runs wait for it rather than sending their own - a camera that
     /// is off would otherwise be opened once per page asking, each attempt waiting out the deadline.
     /// </summary>

@@ -395,6 +395,46 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// One flash per printer: a second asked for while the first waits for the printer to restart is
+    /// refused as that, not as the printer being busy, and the first goes on to finish undisturbed.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the service rather than posted through the page, because the first flash gives the
+    /// printer only seconds to come back, and a sign-in on a loaded machine can outlast them.
+    /// </remarks>
+    [Fact]
+    public async Task ASecondFlashWhileOneRunsIsRefused()
+    {
+        // Arrange - flashed, the printer restarting
+        Flashed first = await FlashedCoreOneAsync();
+        FirmwareFlashes flashes = _factory.Services.GetRequiredService<FirmwareFlashes>();
+
+        // The printer sees the flash line a moment before the flash says it is restarting.
+        (await FakePrinterConnections.WaitUntilAsync(() => flashes.For(first.PrinterId)!.Stage == FirmwareFlashStage.Restarting,
+                                                     TimeSpan.FromSeconds(10)))
+            .Should().BeTrue();
+        FirmwareFlashStatus running = flashes.For(first.PrinterId)!;
+
+        // Act
+        Func<Task> second = () => flashes.StartAsync(Caller.Unscoped(first.OwnerId), first.PrinterId, first.Image.Digest,
+                                                     TestContext.Current.CancellationToken);
+
+        // Assert
+        (await second.Should().ThrowAsync<FirmwareFlashRefusedException>())
+            .Which.Refusal.Should().Be(FirmwareFlashRefusal.AlreadyFlashing);
+        flashes.For(first.PrinterId).Should().BeSameAs(running, "the refused flash leaves the running one's progress alone");
+
+        await using FakePrinterClient back = await ConnectAsync(Restarted(first.Identity, first.Image.Header.Version), first.Token);
+        Task backRun = back.RunAsync(TestContext.Current.CancellationToken);
+
+        FirmwareFlashStatus finished = await FinishedAsync(first.PrinterId);
+        finished.Stage.Should().Be(FirmwareFlashStage.Done, finished.Problem?.Key);
+
+        await back.CloseAsync(TestContext.Current.CancellationToken);
+        await backRun.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
     /// <see cref="Capability.Print"/> is asked when the flash starts, not left to the send - which an
     /// image already on the drive skips. A key holding <see cref="Capability.ManagePrinter"/> alone is
     /// refused before anything is asked of the printer.

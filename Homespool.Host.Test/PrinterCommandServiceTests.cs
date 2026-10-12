@@ -424,6 +424,42 @@ public sealed class PrinterCommandServiceTests : IDisposable
     }
 
     /// <summary>
+    /// <b>Installing firmware is <see cref="Capability.ManagePrinter"/>, asked again when the flash line
+    /// is sent.</b> A flash waits minutes for its image to arrive, so this is what stops one whose
+    /// person lost the printer's management meanwhile: an operator, who holds every other capability
+    /// a printer has, is refused it and nothing reaches the printer.
+    /// </summary>
+    [Fact]
+    public async Task FlashingFirmwareNeedsManagePrinter()
+    {
+        // Arrange
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        TeamMember operatorMembership = await AddTeamAsync(context, userId: 1, CapabilityPresets.Operator);
+        TestAccounts.Add(context, 2);
+        context.TeamMembers.Add(TestMemberships.With(operatorMembership.TeamId, 2, [.. CapabilityPresets.Manager]));
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Printer printer = await AddPrinterAsync(context, operatorMembership.TeamId);
+
+        // Dispatched, as the flash line always is: nothing answers it.
+        (PrinterConnectionRegistry registry, IPrinterConnectionActor actor) = RegistryWithActor(printer.Id, CommandSendOutcome.Dispatched);
+        PrinterCommandService service = new(new PrinterAccessService(context, NullLogger<PrinterAccessService>.Instance),
+                                            registry);
+
+        // Act
+        Func<Task> byOperator = () => service.SendCommandAsync(printer.Id, new FlashFirmware(), Caller.Unscoped(1), CancellationToken.None);
+
+        // Assert
+        await byOperator.Should().ThrowAsync<TeamAccessDeniedException>();
+        await actor.DidNotReceive().SendCommandAsync(Arg.Any<ISendableCommand>(), Arg.Any<CancellationToken>());
+
+        (await service.SendCommandAsync(printer.Id, new FlashFirmware(), Caller.Unscoped(2), CancellationToken.None))
+            .Should().BeNull("a manager's flash line is sent, and nothing answers it");
+        await actor.Received(1).SendCommandAsync(Arg.Any<FlashFirmware>(), Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
     /// <b>The printer's own toggle refuses readying on every route, not only the two page handlers
     /// that used to check it.</b> This is the gate that <c>PUT /api/v1/…/command/ready</c> did not
     /// have, asserted at the service every route funnels through rather than at any one of them.

@@ -47,6 +47,11 @@ namespace Homespool.Host.Cameras;
 /// anything about the source and both are ordinary at start-up: a name that does not resolve, and an
 /// attached device that is not plugged in.
 /// </para>
+/// <para>
+/// <b>The codecs remembered for a camera are forgotten here, after the write</b>, because this is
+/// where the stream server's source changes. Forgotten any earlier - when the row is saved - a probe in
+/// the gap before the write would ask the old source and be remembered as the new one's.
+/// </para>
 /// </remarks>
 public sealed class CameraStreamSync
 {
@@ -54,6 +59,7 @@ public sealed class CameraStreamSync
     private readonly Go2RtcClient _streamServer;
     private readonly CameraCredentialProtector _credentials;
     private readonly CameraSourcePolicy _policy;
+    private readonly CameraLiveAvailability _liveView;
     private readonly ILogger<CameraStreamSync> _logger;
 
     private readonly Lock _gatesLock = new();
@@ -63,12 +69,14 @@ public sealed class CameraStreamSync
                             Go2RtcClient streamServer,
                             CameraCredentialProtector credentials,
                             CameraSourcePolicy policy,
+                            CameraLiveAvailability liveView,
                             ILogger<CameraStreamSync> logger)
     {
         _scopeFactory = scopeFactory;
         _streamServer = streamServer;
         _credentials = credentials;
         _policy = policy;
+        _liveView = liveView;
         _logger = logger;
     }
 
@@ -85,12 +93,22 @@ public sealed class CameraStreamSync
         {
             await gate.Turn.WaitAsync(cancellationToken).ConfigureAwait(false);
 
+            StreamSync? sync = null;
+
             try
             {
-                return await SyncInTurnAsync(uuid, cancellationToken).ConfigureAwait(false);
+                sync = await SyncInTurnAsync(uuid, cancellationToken).ConfigureAwait(false);
+                return sync;
             }
             finally
             {
+                // Anything but a source left alone may have changed what the stream server holds - a
+                // sync that threw may have written before it did.
+                if (sync?.Outcome != StreamSyncOutcome.Unchanged)
+                {
+                    _liveView.Forget(uuid);
+                }
+
                 gate.Turn.Release();
             }
         }

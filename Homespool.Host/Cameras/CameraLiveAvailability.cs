@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,8 +23,17 @@ namespace Homespool.Host.Cameras;
 /// hardware, so one probe per camera per process is enough - but a probe that gets no answer means
 /// "the camera is off", not "the camera cannot", and is asked again on the next page. Held in memory
 /// rather than on the camera's row, deliberately: a different camera can be put at the same address,
-/// and a stored answer would outlive the hardware it was true about. A source edit calls
-/// <see cref="Forget"/>; a restart forgets everything.
+/// and a stored answer would outlive the hardware it was true about. <see cref="CameraStreamSync"/>
+/// calls <see cref="Forget"/> once the stream server holds a different source; a restart forgets
+/// everything.
+/// </para>
+/// <para>
+/// <b>One probe per camera at a time, and one that straddles a <see cref="Forget"/> is not
+/// remembered.</b> Every ask that finds no answer waits on the same probe, so a camera that is off
+/// costs the stream server one attempt to open it however many pages ask at once. A probe sent
+/// before the stream server's source changed can answer after, with the old hardware's codecs:
+/// <see cref="Forget"/> drops it from the waiting list, the asks already waiting still get its answer,
+/// and nothing remembers it.
 /// </para>
 /// <para>
 /// <b>The candidate address is written once during startup</b> by <see cref="WebRtcConfigurer"/> and
@@ -55,8 +63,14 @@ public sealed class CameraLiveAvailability
 
     private readonly ICameraCodecProbe _probe;
 
+    /// <summary>Guards <see cref="_codecs"/> and <see cref="_probes"/>, which change together.</summary>
+    private readonly Lock _lock = new();
+
     /// <summary>Codecs by camera - only cameras that have actually answered a probe.</summary>
-    private readonly ConcurrentDictionary<Guid, IReadOnlySet<string>> _codecs = new();
+    private readonly Dictionary<Guid, IReadOnlySet<string>> _codecs = [];
+
+    /// <summary>The probe each camera's asks are waiting on, while one is running.</summary>
+    private readonly Dictionary<Guid, Task<IReadOnlySet<string>?>> _probes = [];
 
     public CameraLiveAvailability(ICameraCodecProbe probe)
     {
@@ -119,19 +133,88 @@ public sealed class CameraLiveAvailability
     /// </remarks>
     public async Task<LiveTransport> HowToWatchAsync(Guid cameraUuid, CancellationToken cancellationToken)
     {
-        if (!_codecs.TryGetValue(cameraUuid, out IReadOnlySet<string>? codecs))
-        {
-            codecs = await _probe.ProbeCodecsAsync(cameraUuid, cancellationToken).ConfigureAwait(false);
+        IReadOnlySet<string>? codecs = await AnswerOrProbe(cameraUuid).WaitAsync(cancellationToken)
+                                                                      .ConfigureAwait(false);
 
-            if (codecs is null)
+        return codecs is null ? LiveTransport.None : TransportFor(codecs);
+    }
+
+    /// <summary>
+    /// The remembered codecs, the probe already running for this camera, or a probe started now.
+    /// </summary>
+    private Task<IReadOnlySet<string>?> AnswerOrProbe(Guid cameraUuid)
+    {
+        TaskCompletionSource<IReadOnlySet<string>?> asking;
+
+        lock (_lock)
+        {
+            if (_codecs.TryGetValue(cameraUuid, out IReadOnlySet<string>? codecs))
             {
-                return LiveTransport.None;
+                return Task.FromResult<IReadOnlySet<string>?>(codecs);
             }
 
-            _codecs.TryAdd(cameraUuid, codecs);
+            if (_probes.TryGetValue(cameraUuid, out Task<IReadOnlySet<string>?>? running))
+            {
+                return running;
+            }
+
+            asking = new TaskCompletionSource<IReadOnlySet<string>?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _probes[cameraUuid] = asking.Task;
         }
 
-        return TransportFor(codecs);
+        _ = ProbeAsync(cameraUuid, asking);
+
+        return asking.Task;
+    }
+
+    /// <summary>
+    /// Asks the stream server for this camera's codecs, on behalf of every ask waiting on
+    /// <paramref name="asking"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>On no caller's token</b>, because every ask for this camera is waiting on it and one viewer
+    /// leaving must not cancel it for the others. <see cref="Go2RtcClient.ProbeCodecsAsync"/> has a
+    /// deadline of its own, so it still ends.
+    /// </remarks>
+    private async Task ProbeAsync(Guid cameraUuid, TaskCompletionSource<IReadOnlySet<string>?> asking)
+    {
+        IReadOnlySet<string>? codecs;
+
+        try
+        {
+            codecs = await _probe.ProbeCodecsAsync(cameraUuid, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception e)
+        {
+            Settle(cameraUuid, asking.Task, codecs: null);
+            asking.SetException(e);
+            return;
+        }
+
+        Settle(cameraUuid, asking.Task, codecs);
+        asking.SetResult(codecs);
+    }
+
+    /// <summary>
+    /// Ends this camera's probe and remembers a definite answer - unless <see cref="Forget"/> dropped
+    /// the probe while it ran, in which case the answer may be the previous source's.
+    /// </summary>
+    private void Settle(Guid cameraUuid, Task<IReadOnlySet<string>?> probe, IReadOnlySet<string>? codecs)
+    {
+        lock (_lock)
+        {
+            if (!_probes.TryGetValue(cameraUuid, out Task<IReadOnlySet<string>?>? running) || running != probe)
+            {
+                return;
+            }
+
+            _probes.Remove(cameraUuid);
+
+            if (codecs is not null)
+            {
+                _codecs[cameraUuid] = codecs;
+            }
+        }
     }
 
     /// <summary>
@@ -151,9 +234,14 @@ public sealed class CameraLiveAvailability
     /// </remarks>
     public KnownCodecs? Remembered(Guid cameraUuid)
     {
-        return _codecs.TryGetValue(cameraUuid, out IReadOnlySet<string>? codecs) ?
-            new KnownCodecs(codecs, TransportFor(codecs)) :
-            null;
+        IReadOnlySet<string>? codecs;
+
+        lock (_lock)
+        {
+            codecs = _codecs.GetValueOrDefault(cameraUuid);
+        }
+
+        return codecs is null ? null : new KnownCodecs(codecs, TransportFor(codecs));
     }
 
     private LiveTransport TransportFor(IReadOnlySet<string> codecs)
@@ -172,11 +260,16 @@ public sealed class CameraLiveAvailability
     }
 
     /// <summary>
-    /// Drops what is remembered about this camera. Called when its source changes - the codec that
-    /// was probed belongs to the hardware at the old address.
+    /// Drops what is remembered about this camera, and the probe running for it if there is one.
+    /// Called once the stream server's source for it has changed - the codec that was probed belongs
+    /// to the hardware at the old address.
     /// </summary>
     public void Forget(Guid cameraUuid)
     {
-        _codecs.TryRemove(cameraUuid, out _);
+        lock (_lock)
+        {
+            _codecs.Remove(cameraUuid);
+            _probes.Remove(cameraUuid);
+        }
     }
 }

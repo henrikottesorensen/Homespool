@@ -14,7 +14,8 @@ namespace Homespool.Host.Printing;
 /// with <c>Finished</c> (planner.cpp:801-824). Nothing here has to enumerate them - correlation is
 /// on <c>command_id</c> alone - but callers judging success by event type do. <c>Accepted</c> says
 /// only that the printer took the command: it is the outcome when the command ended without its
-/// answer reaching us, when the connection ended or a reset stopped it first, and for a command whose
+/// answer reaching us, when it was neither answered nor reported running within the response
+/// timeout, when the connection ended or a reset stopped it first, and for a command whose
 /// <see cref="PrusaConnect.Commands.ISendableCommand.AcceptedIsAnswer"/> is true.
 /// </param>
 /// <param name="Reason">

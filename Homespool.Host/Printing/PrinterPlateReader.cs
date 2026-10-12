@@ -5,9 +5,11 @@ using System.Threading.Tasks;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 using Homespool.Host.Exceptions;
 using Homespool.Host.PrintFiles.GCode;
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 using Homespool.Host.PrusaConnect.DTO.EventMessages;
 using Homespool.Model;
@@ -49,17 +51,20 @@ public sealed class PrinterPlateReader
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<PrinterPlateReader> _logger;
+    private readonly IOptionsMonitor<PrusaConnectOptions> _options;
 
     private readonly Lock _gate = new();
     private readonly Dictionary<int, Fetch> _fetches = [];
 
     public PrinterPlateReader(IServiceScopeFactory scopeFactory,
                               TimeProvider timeProvider,
-                              ILogger<PrinterPlateReader> logger)
+                              ILogger<PrinterPlateReader> logger,
+                              IOptionsMonitor<PrusaConnectOptions> options)
     {
         _scopeFactory = scopeFactory;
         _timeProvider = timeProvider;
         _logger = logger;
+        _options = options;
     }
 
     /// <summary>
@@ -106,9 +111,11 @@ public sealed class PrinterPlateReader
     {
         lock (_gate)
         {
+            // A fetch that gave up on its bound ends cancelled rather than faulted, and is retried the
+            // same way.
             if (_fetches.TryGetValue(printerId, out Fetch? existing) &&
                 existing.JobId == jobId &&
-                (!existing.Task.IsFaulted || _timeProvider.GetUtcNow() - existing.StartedAt < RetryAfter))
+                (!(existing.Task.IsFaulted || existing.Task.IsCanceled) || _timeProvider.GetUtcNow() - existing.StartedAt < RetryAfter))
             {
                 return existing.Task;
             }
@@ -132,13 +139,19 @@ public sealed class PrinterPlateReader
         // first wire question.
         await Task.Yield();
 
+        // Nobody waits on a fetch but the views that started it, and they stop waiting after RenderWait.
+        // So it bounds itself: a printer that accepts a question and is still running it a response
+        // timeout later has the fetch fail, to be asked again after RetryAfter - rather than leave a
+        // fetch that never ends cached for this job for good.
+        using CancellationTokenSource bound = new(_options.CurrentValue.CommandResponseTimeout, _timeProvider);
+
         try
         {
             await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
             PrinterCommandService commands = scope.ServiceProvider.GetRequiredService<PrinterCommandService>();
 
             CommandOutcome<JobInfoEventDataDTO>? job =
-                await commands.AskAsync(printerId, new SendJobInfo { JobId = jobId }, caller, CancellationToken.None);
+                await commands.AskAsync(printerId, new SendJobInfo { JobId = jobId }, caller, bound.Token);
 
             if (job?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {
@@ -153,7 +166,7 @@ public sealed class PrinterPlateReader
             }
 
             CommandOutcome<PlateInfoEventDataDTO>? file =
-                await commands.AskAsync(printerId, new SendPlateInfo { Path = path }, caller, CancellationToken.None);
+                await commands.AskAsync(printerId, new SendPlateInfo { Path = path }, caller, bound.Token);
 
             if (file?.EventType is PrinterEventType.Rejected or PrinterEventType.Failed)
             {

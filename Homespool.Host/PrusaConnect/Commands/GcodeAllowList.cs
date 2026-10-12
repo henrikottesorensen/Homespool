@@ -110,8 +110,37 @@ public static class GcodeAllowList
         new(@"^M702 T[0-7] W0$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
     /// <summary>
-    /// Whether <paramref name="body"/> is a gcode body this application is permitted to send.
+    /// The Python SDK's unload, matched as one whole body and admitted for that dialect alone - see
+    /// <see cref="UnloadFilamentAt"/>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Its <c>M109</c> and bare <c>M702</c> are on no other list.</b> On Buddy a bare <c>M702</c> is
+    /// the cold-nozzle unload <see cref="UnloadTool"/> exists to rule out. On an MK3 behind PrusaLink it
+    /// is the only form - that firmware's <c>M702</c> takes only <c>U</c> and <c>Z</c> - and is safe
+    /// <b>only</b> after an <c>M109</c> to the same temperature the nozzle was set to on the line
+    /// before. So the four lines are one shape, with the two temperatures tied by a backreference, and
+    /// none of them is admitted on its own.
+    /// </para>
+    /// <para>
+    /// The last line puts the nozzle back to the target it had, which is what keeps that on the printer
+    /// rather than in this application's memory. Anchored with <c>\z</c>, since <c>$</c> also matches
+    /// before a trailing newline, which would let a fifth line begin.
+    /// </para>
+    /// </remarks>
+    private static readonly Regex SdkUnload =
+        new(@"^M104 S(?<temperature>[1-9][0-9]{0,2})\nM109 S\k<temperature>\nM702\nM104 S(?<after>0|[1-9][0-9]{0,2})\z",
+            RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// Whether <paramref name="body"/> is a gcode body this application is permitted to send to a
+    /// client speaking <paramref name="dialect"/>.
+    /// </summary>
+    /// <param name="body">The gcode, lines separated by <c>\n</c>.</param>
+    /// <param name="dialect">
+    /// What the printer is, or null where that is not known - which admits nothing that is admitted
+    /// for one dialect only.
+    /// </param>
     /// <remarks>
     /// <para>
     /// A body may hold up to <see cref="MaxLines"/> newline-separated lines, and <b>every one</b>
@@ -124,7 +153,7 @@ public static class GcodeAllowList
     /// each is a way to hide a second command from a matcher.
     /// </para>
     /// </remarks>
-    public static bool IsAllowed(string? body)
+    public static bool IsAllowed(string? body, PrinterDialect? dialect = null)
     {
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -142,6 +171,13 @@ public static class GcodeAllowList
         // other spelling, before any splitting could let it ride beside another line - and the string
         // checked is the string sent, so no space or newline around it goes out unseen.
         if (string.Equals(body, FlashFirmware.FlashLine, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // Ordinal and whole, as the flash line is: the shape is the permission, so it is matched on the
+        // body as sent rather than line by line.
+        if (dialect == PrinterDialect.ConnectSdk && IsSdkUnload(body))
         {
             return true;
         }
@@ -177,7 +213,17 @@ public static class GcodeAllowList
             $"M140 S<0-{MaxBedTemperature}> — bed target temperature",
             $"M702 T<0-{UnloadFilament.MaxTools - 1}> W0 — unload one tool, preheating to its own filament type",
             $"{FlashFirmware.FlashLine} — flash the firmware image the firmware flow sent, alone in its frame",
+            $"M104 S<t> / M109 S<t> / M702 / M104 S<0-{MaxNozzleTemperature}>, t in 1-{MaxNozzleTemperature} — the Python SDK's unload, as one body, to that dialect only",
         ];
+    }
+
+    private static bool IsSdkUnload(string body)
+    {
+        Match match = SdkUnload.Match(body);
+
+        return match.Success &&
+               int.Parse(match.Groups["temperature"].Value, CultureInfo.InvariantCulture) <= MaxNozzleTemperature &&
+               int.Parse(match.Groups["after"].Value, CultureInfo.InvariantCulture) <= MaxNozzleTemperature;
     }
 
     private static bool Matches(Regex pattern, string candidate, int maximum)

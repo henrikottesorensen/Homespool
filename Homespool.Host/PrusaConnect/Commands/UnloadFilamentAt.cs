@@ -1,64 +1,88 @@
-using System.Collections.Generic;
+using System;
+using System.Globalization;
+
+using Homespool.Host.Printing;
 
 namespace Homespool.Host.PrusaConnect.Commands;
 
 /// <summary>
-/// Unloads filament at a nozzle temperature this application chooses - <c>UNLOAD_FILAMENT</c>, the
-/// Python SDK's own command (const.py:151), for a printer that cannot say what it has loaded.
+/// Unloads filament on a printer that cannot say what it has loaded - the Python SDK's, an MK3S
+/// behind PrusaLink - at the temperature of the filament somebody names, and leaves the nozzle at the
+/// target it had: <c>M104 S&lt;t&gt;</c>, <c>M109 S&lt;t&gt;</c>, <c>M702</c>, <c>M104 S&lt;before&gt;</c>.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Only the SDK has it.</b> Firmware has no such command and would refuse it as unknown; a Buddy
-/// printer unloads with <see cref="UnloadFilament"/>, at the temperature of the filament it knows it
-/// has. PrusaLink, which drives an MK3S behind the SDK, never reports what is loaded, so the person
-/// unloading has to say, and the temperature comes from that filament's preset.
+/// <b>One gcode body, so the whole unload is the printer's to finish.</b> PrusaLink runs a body line by
+/// line and answers once the last has been confirmed (<c>ExecuteGcode</c>, command_handlers.py:331-397),
+/// so the nozzle is put back even if this application restarts or the connection drops meanwhile. It
+/// refuses the whole body while printing, in attention or in error, before any line runs. Otherwise all
+/// four go onto its serial queue together (<c>enqueue_list_from_str</c>, serial/helpers.py:84-109) and
+/// each is only checked afterwards, so an error on an earlier line does not keep the last one from
+/// reaching the printer.
 /// </para>
 /// <para>
-/// <b>What PrusaLink does with it</b> (<c>UnloadFilament</c>, command_handlers.py:400-474): sets the
-/// bed to <c>bed_temperature</c>, waits with <c>M109</c> only while the nozzle is below 90% of
-/// <c>nozzle_temperature</c>, sets the nozzle to it, then runs <c>M702</c>. It refuses while
-/// printing, in attention or in error, and answers only once the unload is done. The MK3's
-/// <c>M702</c> retracts the filament for somebody to pull out and leaves the heaters as they are
-/// (Prusa-Firmware <c>Marlin_main.cpp:7978-7997</c>, <c>unload_filament</c> in
-/// <c>ultralcd.cpp:4886-4931</c>, at <c>v3.14.1</c>).
+/// <b>Why each line.</b> The MK3's <c>M702</c> takes only <c>U</c> and <c>Z</c>, retracts the filament
+/// for somebody to pull out, and never touches a heater (Prusa-Firmware <c>Marlin_main.cpp:7978-7997</c>,
+/// <c>unload_filament</c> in <c>ultralcd.cpp:4886-4931</c>, at <c>v3.14.1</c>) - so the nozzle is heated
+/// first, and <c>M109</c> waits for it; on the MK3 that wait runs in either direction
+/// (<c>wait_for_heater</c>, <c>Marlin_main.cpp:9277-9290</c>), so a hotter nozzle cools to <c>t</c>
+/// first. The bed is not on any line: an unload has no use for it, and it is left as it is.
 /// </para>
 /// <para>
-/// <b>So the heaters are left as they were found.</b> The bed is sent the target it already has, which
-/// is how it is not heated for an unload - PrusaLink sets the bed to whatever arrives. The nozzle has
-/// to be heated, and is put back to its previous target by <see cref="FollowedBy"/> once the unload ends:
-/// a preheated printer stays preheated, a cold one is cooled down.
+/// <b>The last line is filled in as the command takes the printer's slot</b>, by
+/// <see cref="AsSentWith"/>, from the connection's own knowledge of the heaters. Read any earlier, it
+/// could be stale - a second unload straight after a first could otherwise put back the first one's
+/// unload temperature.
+/// </para>
+/// <para>
+/// <see cref="GcodeAllowList"/> admits this exact body for the SDK's dialect and nowhere else.
 /// </para>
 /// </remarks>
-public sealed class UnloadFilamentAt : ISendableCommand
+public sealed class UnloadFilamentAt : ISendableGcodeCommand
 {
-    /// <summary>Creates the command.</summary>
-    /// <param name="nozzleTemperature">The loaded filament's printing temperature, in °C.</param>
-    /// <param name="bedTarget">The bed's target before the unload, in °C - 0 when it is off.</param>
-    /// <param name="nozzleTarget">The nozzle's target before the unload, in °C - 0 when it is off.</param>
-    public UnloadFilamentAt(int nozzleTemperature, int bedTarget, int nozzleTarget)
+    /// <summary>Creates the command, to be completed by <see cref="AsSentWith"/>.</summary>
+    /// <param name="nozzleTemperature">The named filament's printing temperature, in °C.</param>
+    public UnloadFilamentAt(int nozzleTemperature)
+        : this(nozzleTemperature, nozzleAfterwards: null)
+    {
+    }
+
+    private UnloadFilamentAt(int nozzleTemperature, int? nozzleAfterwards)
     {
         NozzleTemperature = nozzleTemperature;
-        BedTarget = bedTarget;
-        NozzleTarget = nozzleTarget;
+        NozzleAfterwards = nozzleAfterwards;
     }
 
     /// <summary>The nozzle temperature to unload at, in °C.</summary>
     public int NozzleTemperature { get; }
 
-    /// <summary>The bed's target before the unload, which it keeps throughout.</summary>
-    public int BedTarget { get; }
+    /// <summary>
+    /// The nozzle's target before the unload, which it is set back to - null until
+    /// <see cref="AsSentWith"/> has filled it in.
+    /// </summary>
+    public int? NozzleAfterwards { get; }
 
-    /// <summary>The nozzle's target before the unload, which it goes back to afterwards.</summary>
-    public int NozzleTarget { get; }
+    public string WireName => "GCODE";
 
-    public string WireName => "UNLOAD_FILAMENT";
-
-    /// <summary>Both are required: PrusaLink reads each by key, and a missing one fails the command.</summary>
-    public IReadOnlyDictionary<string, object?> Arguments => new Dictionary<string, object?>
+    /// <summary>The four lines, once <see cref="AsSentWith"/> has filled in the last.</summary>
+    /// <exception cref="InvalidOperationException">Read before <see cref="AsSentWith"/> filled it in.</exception>
+    public string Line
     {
-        ["nozzle_temperature"] = NozzleTemperature,
-        ["bed_temperature"] = BedTarget,
-    };
+        get
+        {
+            if (NozzleAfterwards is not int after)
+            {
+                throw new InvalidOperationException("The unload's last line is filled in as it takes the printer's slot.");
+            }
+
+            string temperature = NozzleTemperature.ToString(CultureInfo.InvariantCulture);
+
+            return "M104 S" + temperature + "\n" +
+                   "M109 S" + temperature + "\n" +
+                   "M702\n" +
+                   "M104 S" + after.ToString(CultureInfo.InvariantCulture);
+        }
+    }
 
     /// <summary>
     /// An unload runs for minutes, so its caller is answered when the printer takes it, and says the
@@ -66,6 +90,14 @@ public sealed class UnloadFilamentAt : ISendableCommand
     /// </summary>
     public bool AcceptedIsAnswer => true;
 
-    /// <summary>The nozzle back to the target it had before the unload heated it.</summary>
-    public ISendableCommand FollowedBy => new SetNozzleTemperature(NozzleTarget);
+    /// <summary>The nozzle back at the target it had; the bed untouched.</summary>
+    public HeaterChange? LeavesHeaters => NozzleAfterwards is int after ? new HeaterChange(after, Bed: null) : null;
+
+    /// <summary>Fills in the last line with the nozzle's target as the connection knows it.</summary>
+    public ISendableCommand AsSentWith(HeaterTargets heaters)
+    {
+        ArgumentNullException.ThrowIfNull(heaters);
+
+        return new UnloadFilamentAt(NozzleTemperature, heaters.Nozzle);
+    }
 }

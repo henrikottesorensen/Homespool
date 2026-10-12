@@ -3,6 +3,7 @@ using System.Linq;
 
 using AwesomeAssertions;
 
+using Homespool.Host.PrusaConnect;
 using Homespool.Host.PrusaConnect.Commands;
 
 namespace Homespool.Host.Test;
@@ -269,6 +270,55 @@ public class GcodeAllowListTests
         GcodeAllowList.IsAllowed(UnloadFilament.ForTool(UnloadFilament.MaxTools).Line).Should().BeTrue();
         GcodeAllowList.IsAllowed(new SetTemperatures(230, 85).Line).Should().BeTrue();
         GcodeAllowList.IsAllowed(new FlashFirmware().Line).Should().BeTrue();
+        ISendableGcodeCommand unload = (ISendableGcodeCommand)new UnloadFilamentAt(215).AsSentWith(new Printing.HeaterTargets(Nozzle: 0, Bed: 0));
+
+        GcodeAllowList.IsAllowed(unload.Line, PrinterDialect.ConnectSdk).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The Python SDK's unload is admitted, whole, for that dialect.
+    /// </summary>
+    [Theory]
+    [InlineData("M104 S215\nM109 S215\nM702\nM104 S0")]
+    [InlineData("M104 S285\nM109 S285\nM702\nM104 S230")]
+    public void TheSdkUnloadIsPermittedToTheSdk(string body)
+    {
+        GcodeAllowList.IsAllowed(body, PrinterDialect.ConnectSdk).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// <b>The SDK's unload is refused to anything else.</b> A bare <c>M702</c> on Buddy is the
+    /// cold-nozzle unload the list exists to rule out.
+    /// </summary>
+    [Fact]
+    public void TheSdkUnloadIsRefusedToAnyOtherDialect()
+    {
+        const string body = "M104 S215\nM109 S215\nM702\nM104 S0";
+
+        GcodeAllowList.IsAllowed(body, PrinterDialect.BuddyHttp).Should().BeFalse();
+        GcodeAllowList.IsAllowed(body, PrinterDialect.BuddySocket).Should().BeFalse();
+        GcodeAllowList.IsAllowed(body, dialect: null).Should().BeFalse("a printer not known to be the SDK gets no SDK lines");
+    }
+
+    /// <summary>
+    /// <b>Only the exact shape, even to the SDK</b>: its <c>M109</c> and bare <c>M702</c> are on no list
+    /// of their own, and the wait must be to the temperature just set.
+    /// </summary>
+    [Theory]
+    [InlineData("M702")]
+    [InlineData("M109 S215")]
+    [InlineData("M104 S215\nM109 S200\nM702\nM104 S0")]
+    [InlineData("M104 S215\nM702\nM104 S0")]
+    [InlineData("M104 S215\nM109 S215\nM702")]
+    [InlineData("M104 S0\nM109 S0\nM702\nM104 S0")]
+    [InlineData("M104 S301\nM109 S301\nM702\nM104 S0")]
+    [InlineData("M104 S215\nM109 S215\nM702\nM104 S301")]
+    [InlineData("M104 S215\nM109 S215\nM702 U0\nM104 S0")]
+    [InlineData("M104 S215\nM109 S215\nM702\nM104 S0\n")]
+    [InlineData("M104 S215\nM109 S215\nM702\nM104 S0\nM140 S0")]
+    public void AnythingButTheSdkUnloadsExactShapeIsRefusedToTheSdk(string body)
+    {
+        GcodeAllowList.IsAllowed(body, PrinterDialect.ConnectSdk).Should().BeFalse();
     }
 
     /// <summary>

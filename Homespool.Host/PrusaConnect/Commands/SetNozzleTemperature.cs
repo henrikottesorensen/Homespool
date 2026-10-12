@@ -25,4 +25,7 @@ public class SetNozzleTemperature : ISendableGcodeCommand
     public string WireName => "GCODE";
 
     public string Line => "M104 S" + Temperature.ToString(CultureInfo.InvariantCulture);
+
+    /// <inheritdoc/>
+    public HeaterChange LeavesHeaters => new(Nozzle: Temperature, Bed: null);
 }

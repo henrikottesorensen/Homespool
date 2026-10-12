@@ -43,4 +43,7 @@ public class SetTemperatures : ISendableGcodeCommand
         "M140 S" + BedTemperature.ToString(CultureInfo.InvariantCulture) +
                  "\n" +
                  "M104 S" + NozzleTemperature.ToString(CultureInfo.InvariantCulture);
+
+    /// <inheritdoc/>
+    public HeaterChange LeavesHeaters => new(NozzleTemperature, BedTemperature);
 }

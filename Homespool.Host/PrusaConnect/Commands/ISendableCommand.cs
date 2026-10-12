@@ -81,23 +81,31 @@ public interface ISendableCommand : ICommand
     bool Preempts => false;
 
     /// <summary>
-    /// A command to send once this one has ended, on the printer's behalf rather than a caller's;
-    /// null for all but a handful.
+    /// The command as it goes to the printer, given what the printer's heaters are set to at the moment
+    /// it takes the in-flight slot. Itself for all but a handful.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// For what a printer leaves undone after a command that outlives its caller's wait - an
-    /// unload that heats the nozzle and leaves it hot. It is sent as soon as the command ends, by the
-    /// printer's answer or by its telemetry no longer naming it, ahead of anything a caller sent
-    /// meanwhile; not when the connection ends or a reset preempts the command, as there is then
-    /// nothing to send it to.
-    /// </para>
-    /// <para>
-    /// Nobody awaits its answer, so a refusal is logged as a warning. It needs no capability of its
-    /// own: it carries out the end of a command a caller was allowed to send.
-    /// </para>
+    /// For a command that has to leave a heater as it found it - the Python SDK's unload ends by
+    /// setting the nozzle back. Read anywhere earlier, "as it found it" can be a telemetry interval and
+    /// a database write old, or name a change of this application's own that the printer has not yet
+    /// reported; the connection knows the printer's last word and every heater command of ours it has
+    /// since finished. <paramref name="heaters"/> reads 0 for a target never reported.
     /// </remarks>
-    ISendableCommand? FollowedBy => null;
+    /// <param name="heaters">The printer's heater targets as the connection knows them.</param>
+    ISendableCommand AsSentWith(Printing.HeaterTargets heaters)
+    {
+        return this;
+    }
+
+    /// <summary>
+    /// What this command leaves the heater targets at once the printer has finished it - null for a
+    /// heater it does not set, and for a command that sets none, which is all but a handful.
+    /// </summary>
+    /// <remarks>
+    /// Applied when the printer answers <c>FINISHED</c>, and only then: a refused or failed command may
+    /// have set some of its lines and not others, and the printer's own next report says which.
+    /// </remarks>
+    HeaterChange? LeavesHeaters => null;
 
     /// <summary>
     /// What an account must hold to send this command. <b>Declared by the command rather than passed

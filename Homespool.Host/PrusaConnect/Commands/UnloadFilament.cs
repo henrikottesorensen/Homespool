@@ -105,4 +105,10 @@ public class UnloadFilament : ISendableGcodeCommand
 
         return new UnloadFilament(wireToolNumber - 1);
     }
+
+    /// <summary>
+    /// Both off: firmware's unload ends in <c>CooledDown</c> unconditionally, which sets nozzle, bed and
+    /// fan to zero (<c>M701_2.cpp:212-217</c>).
+    /// </summary>
+    public HeaterChange LeavesHeaters => new(Nozzle: 0, Bed: 0);
 }

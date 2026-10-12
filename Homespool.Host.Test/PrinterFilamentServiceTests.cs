@@ -39,11 +39,12 @@ namespace Homespool.Host.Test;
 /// the protection, and a state nobody thought to test is exactly the way it fails.
 /// </para>
 /// <para>
-/// <b>The command service is null throughout, and that is the mechanism.</b> Nothing here needs a
-/// printer to talk to: an allowed state falls through to the material check and raises
-/// <see cref="FilamentTypeUnknownException"/>, which is a positive signal that the state guard let it
-/// past. A guard that stopped firing would reach the send and fail on the null instead, so a broken
-/// guard cannot look like a pass.
+/// <b>The connection answers nothing usable unless a test says otherwise, and that is the
+/// mechanism.</b> The command service is real - it asks the connection what the printer is - but the
+/// connection is a substitute whose send answers null. So an allowed state falls through to the
+/// material check and raises <see cref="FilamentTypeUnknownException"/>, a positive signal that the
+/// state guard let it past, while a guard that stopped firing would reach the send and fail on the null
+/// instead: a broken guard cannot look like a pass. The tests that unload configure an answer.
 /// </para>
 /// </remarks>
 [SuppressMessage("Reliability", "CA2000:Dispose objects before losing scope",
@@ -446,30 +447,20 @@ public sealed class PrinterFilamentServiceTests : IDisposable
     }
 
     /// <summary>
-    /// A Python-SDK printer unloads the filament the caller names, with its own command, at that
-    /// filament's printing temperature - and leaves the heaters as it found them: the bed keeps its
-    /// target throughout, and the nozzle goes back to its own once the unload ends.
+    /// A Python-SDK printer unloads the filament the caller names, at that filament's printing
+    /// temperature.
     /// </summary>
     /// <remarks>
     /// PrusaLink never reports what is loaded, so the material is null here, as it always is for these
-    /// printers - which on Buddy would be refused as unknown. A target never reported is taken as off.
+    /// printers - which on Buddy would be refused as unknown. The target the nozzle goes back to is the
+    /// connection's to fill in as the command takes the slot, so it is still open here.
     /// </remarks>
-    [Theory]
-    [InlineData(0f, 0f, 0, 0)]
-    [InlineData(230f, 85f, 230, 85)]
-    [InlineData(null, null, 0, 0)]
-    public async Task AnSdkPrinterUnloadsTheChosenFilamentAndLeavesTheHeatersAsTheyWere(float? nozzleTarget,
-                                                                                         float? bedTarget,
-                                                                                         int nozzleAfter,
-                                                                                         int bedThroughout)
+    [Fact]
+    public async Task AnSdkPrinterUnloadsAtTheNamedFilamentsTemperature()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
         IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Idle, material: null, dialect: PrinterDialect.ConnectSdk))!;
         AnswerAccepted(actor);
-        await context.PrinterLiveStates
-                     .ExecuteUpdateAsync(setters => setters.SetProperty(state => state.TargetNozzleTemperature, nozzleTarget)
-                                                           .SetProperty(state => state.TargetBedTemperature, bedTarget),
-                                         TestContext.Current.CancellationToken);
         FilamentPreset petg = FilamentPreset.Find(model: null, "PETG")!;
 
         PrinterFilamentService service = NewService(context);
@@ -477,14 +468,10 @@ public sealed class PrinterFilamentServiceTests : IDisposable
         UnloadOutcome outcome = await service.UnloadAsync(PrinterId, TestCallers.Scoped(1, Capability.ControlPrinter), toolNumber: null,
                                                           petg, CancellationToken.None);
 
-        UnloadFilamentAt sent = (UnloadFilamentAt)SentCommand(actor);
+        UnloadFilamentAt sent = SentCommand(actor).Should().BeOfType<UnloadFilamentAt>().Subject;
 
-        sent.Arguments.Should().BeEquivalentTo(new Dictionary<string, object?>
-        {
-            ["nozzle_temperature"] = petg.NozzleTemperature,
-            ["bed_temperature"] = bedThroughout,
-        });
-        sent.FollowedBy.Should().BeOfType<SetNozzleTemperature>().Which.Temperature.Should().Be(nozzleAfter);
+        sent.NozzleTemperature.Should().Be(petg.NozzleTemperature);
+        sent.NozzleAfterwards.Should().BeNull("the connection fills it in, from what it knows as the command goes out");
         outcome.Material.Should().Be("PETG");
         outcome.NozzleTemperature.Should().Be(petg.NozzleTemperature);
         outcome.Answer!.EventType.Should().Be(PrinterEventType.Accepted);
@@ -494,11 +481,17 @@ public sealed class PrinterFilamentServiceTests : IDisposable
     /// A Python-SDK printer with no filament named is refused as unknown, and nothing is sent: there
     /// is no temperature to unload at.
     /// </summary>
+    /// <remarks>
+    /// <b>Seeded with a reported material on purpose</b>, which no SDK printer sends: a printer that
+    /// names its filament is unloaded at that filament, so a pass here can only come from the SDK path
+    /// refusing - with that path removed the unload would go ahead.
+    /// </remarks>
     [Fact]
     public async Task AnSdkPrinterWithNoFilamentNamedRefusesAsUnknown()
     {
         await using HomespoolDbContext context = await MigratedContextAsync();
-        IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Idle, material: null, dialect: PrinterDialect.ConnectSdk))!;
+        IPrinterConnectionActor actor = (await SeedAsync(context, PrinterStatus.Idle, material: "PLA", dialect: PrinterDialect.ConnectSdk))!;
+        AnswerAccepted(actor);
 
         PrinterFilamentService service = NewService(context);
 

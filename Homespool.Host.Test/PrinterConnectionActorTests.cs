@@ -939,7 +939,8 @@ public class PrinterConnectionActorTests
         uint commandId = CommandIdOf(sentFrames[0]);
 
         await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Accepted), CancellationToken.None);
-        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+        await actor.PostAsync(TelemetryNaming(commandId), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
 
         // Act - a fixed wait, because what is asserted is that nothing happens in it
         await Task.Delay(responseTimeout * 3, TestContext.Current.CancellationToken);
@@ -949,7 +950,7 @@ public class PrinterConnectionActorTests
         CommandSendResult result = await Eventually(sendTask);
 
         // Assert
-        endedMeanwhile.Should().BeFalse("the printer accepted the command, and has not said it ended");
+        endedMeanwhile.Should().BeFalse("the printer accepted the command and reports it running, and has not said it ended");
         result.Outcome.Should().Be(CommandSendOutcome.Completed);
         result.Response!.EventType.Should().Be(PrinterEventType.Finished);
 
@@ -1107,70 +1108,86 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// A command that declares what follows it has that sent the moment it ends, ahead of anything a
-    /// caller sends meanwhile - here the nozzle put back after an unload.
+    /// An accepted command the printer's telemetry has never named is answered as accepted when the
+    /// response timeout runs out - a short command whose answer went missing before any report named
+    /// it - rather than waited on for ever.
     /// </summary>
+    /// <remarks>
+    /// The timeout has to outlast the test posting the <c>ACCEPTED</c>, since its clock starts at the
+    /// send: at 300 ms it ran out first on a machine at a load average of forty, and the command was
+    /// answered as timed out instead.
+    /// </remarks>
     [Fact]
-    public async Task ACommandsFollowUpIsSentWhenItsAnswerArrives()
+    public async Task AnAcceptedCommandNeverReportedRunningIsAnsweredAsAcceptedAtTheResponseTimeout()
     {
         // Arrange
         List<byte[]> sentFrames = [];
-        List<ISendableCommand> sent = [];
-        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), responseTimeout: TimeSpan.FromSeconds(30));
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), responseTimeout: TimeSpan.FromSeconds(3));
 
-        Task<CommandSendResult> unload = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 60), CancellationToken.None);
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
+        await WaitUntilAsync(() => sentFrames.Count == 1);
+
+        // Act
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Accepted), CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
+
+        // Assert
+        result.Outcome.Should().Be(CommandSendOutcome.Completed, "the printer did take it");
+        result.Response!.EventType.Should().Be(PrinterEventType.Accepted);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// Telemetry that does not name an accepted command ends it only once telemetry has named it.
+    /// </summary>
+    /// <remarks>
+    /// The Python SDK builds telemetry on a thread of its own (PrusaLink's <c>TelemetryPasser</c>,
+    /// telemetry_passer.py:96 and 175): one built just before the command was accepted can be queued
+    /// just after the <c>ACCEPTED</c>, and one still naming the previous command can arrive after that
+    /// command's answer, while the next is running.
+    /// </remarks>
+    [Fact]
+    public async Task TelemetryNotNamingACommandEndsItOnlyOnceTelemetryHasNamedIt()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(OpenConnection(sentFrames), sink, responseTimeout: TimeSpan.FromSeconds(30));
+
+        Task<CommandSendResult> sendTask = actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None);
         await WaitUntilAsync(() => sentFrames.Count == 1);
         uint commandId = CommandIdOf(sentFrames[0]);
 
         await actor.PostAsync(EventAnswering(commandId, PrinterEventType.Accepted), CancellationToken.None);
-        await Eventually(unload);
-
-        // Act
-        await actor.PostAsync(EventAnswering(commandId), CancellationToken.None);
-        await WaitUntilAsync(() => sentFrames.Count == 2);
-
-        CommandSendResult meanwhile = await Eventually(actor.SendCommandAsync(new PrusaConnect.Commands.PausePrint(), CancellationToken.None));
-
-        // Assert
-        sent[1].Should().BeOfType<SetNozzleTemperature>().Which.Temperature.Should().Be(60, "the nozzle goes back to the target it had");
-        meanwhile.Outcome.Should().Be(CommandSendOutcome.AlreadyInFlight, "the follow-up holds the slot until the printer answers it");
-
-        actor.Complete();
-        await Eventually(actor.Completion);
-    }
-
-    /// <summary>
-    /// A follow-up is sent when the command ends without its answer reaching us, too: the printer has
-    /// still finished with it.
-    /// </summary>
-    [Fact]
-    public async Task ACommandsFollowUpIsSentWhenTheTelemetryStopsNamingIt()
-    {
-        // Arrange
-        List<byte[]> sentFrames = [];
-        List<ISendableCommand> sent = [];
-        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), responseTimeout: TimeSpan.FromSeconds(30));
-
-        _ = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 0), CancellationToken.None);
-        await WaitUntilAsync(() => sentFrames.Count == 1);
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Accepted), CancellationToken.None);
 
         // Act
         await actor.PostAsync(TelemetryNaming(commandId: null), CancellationToken.None);
-        await WaitUntilAsync(() => sentFrames.Count == 2);
+        await actor.PostAsync(TelemetryNaming(unchecked(commandId - 1)), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 2);
+        bool endedBeforeNamed = sendTask.IsCompleted;
+
+        await actor.PostAsync(TelemetryNaming(commandId), CancellationToken.None);
+        await actor.PostAsync(TelemetryNaming(commandId: null), CancellationToken.None);
+        CommandSendResult result = await Eventually(sendTask);
 
         // Assert
-        sent[1].Should().BeOfType<SetNozzleTemperature>().Which.Temperature.Should().Be(0, "a cold nozzle is cooled down again");
+        endedBeforeNamed.Should().BeFalse("nothing had yet said the printer was running it");
+        result.Response!.EventType.Should().Be(PrinterEventType.Accepted);
 
         actor.Complete();
         await Eventually(actor.Completion);
     }
 
     /// <summary>
-    /// No follow-up when the connection ends while the command runs: there is nothing to send it to.
+    /// A command completed from the heaters gets the target the printer last reported - and 0 for one
+    /// never reported, so an unknown heater is left off rather than hot.
     /// </summary>
-    [Fact]
-    public async Task NoFollowUpIsSentWhenTheConnectionEnds()
+    [Theory]
+    [InlineData(230f, 230)]
+    [InlineData(null, 0)]
+    public async Task ACommandIsCompletedFromTheLastReportedHeaterTargets(float? reported, int after)
     {
         // Arrange
         List<byte[]> sentFrames = [];
@@ -1178,58 +1195,94 @@ public class PrinterConnectionActorTests
         RecordingTelemetrySink sink = new();
         PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink, responseTimeout: TimeSpan.FromSeconds(30));
 
-        _ = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 0), CancellationToken.None);
-        await WaitUntilAsync(() => sentFrames.Count == 1);
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Accepted), CancellationToken.None);
-        await WaitUntilAsync(() => sink.EventCalls.Count == 1);
+        await actor.PostAsync(TelemetryTargeting(nozzle: reported, bed: 60f), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
 
         // Act
-        actor.Complete();
-        await Eventually(actor.Completion);
+        _ = actor.SendCommandAsync(new UnloadFilamentAt(215), CancellationToken.None);
+        await WaitUntilAsync(() => sent.Count == 1);
 
         // Assert
-        sent.Should().ContainSingle();
+        sent[0].Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(after);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
     }
 
     /// <summary>
-    /// A follow-up the printer refuses is logged as a warning, since no caller is there to hear it.
+    /// A heater command of ours, once finished, overtakes the printer's last report; a report still
+    /// carrying the value from before it is the printer not having caught up, and any other value is
+    /// news again.
     /// </summary>
+    /// <remarks>
+    /// The case it closes: a second unload straight after a first, while the printer's reports - every
+    /// two seconds from the MK3 (PrusaLink's <c>M155 S2</c>, auto_telemetry.py:118) - still carry the
+    /// first one's unload temperature, would otherwise set the nozzle back to that.
+    /// </remarks>
     [Fact]
-    public async Task ARefusedFollowUpIsLoggedAsAWarning()
+    public async Task AStaleReportAfterOurOwnHeaterChangeIsIgnoredAndAFreshOneIsNot()
     {
         // Arrange
         List<byte[]> sentFrames = [];
         List<ISendableCommand> sent = [];
-        FakeLogger<PrinterConnectionActor> logger = new();
-        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), responseTimeout: TimeSpan.FromSeconds(30), logger: logger);
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink, responseTimeout: TimeSpan.FromSeconds(30));
 
-        _ = actor.SendCommandAsync(new UnloadFilamentAt(215, bedTarget: 0, nozzleTarget: 0), CancellationToken.None);
-        await WaitUntilAsync(() => sentFrames.Count == 1);
-        uint unloadId = CommandIdOf(sentFrames[0]);
-        await actor.PostAsync(EventAnswering(unloadId, PrinterEventType.Accepted), CancellationToken.None);
-        await actor.PostAsync(EventAnswering(unloadId), CancellationToken.None);
-        await WaitUntilAsync(() => sentFrames.Count == 2);
+        await actor.PostAsync(TelemetryTargeting(nozzle: 215f, bed: 0f), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
+
+        Task<CommandSendResult> cool = actor.SendCommandAsync(new SetNozzleTemperature(0), CancellationToken.None);
+        await WaitUntilAsync(() => sent.Count == 1);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
+        await Eventually(cool);
 
         // Act
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[1]), PrinterEventType.Rejected, reason: "Command error"), CancellationToken.None);
-        await WaitForLogAsync(logger, "sent after the command before it ended");
+        await actor.PostAsync(TelemetryTargeting(nozzle: 215f, bed: 0f), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 2);
+        ISendableCommand afterStale = await SendAndForgetAsync(actor, sent, sentFrames);
+
+        await actor.PostAsync(TelemetryTargeting(nozzle: 200f, bed: 0f), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 3);
+        ISendableCommand afterFresh = await SendAndForgetAsync(actor, sent, sentFrames);
 
         // Assert
-        logger.Collector.GetSnapshot().Should().ContainSingle(record => record.Level == LogLevel.Warning);
+        afterStale.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(0, "215 is the report from before our own change");
+        afterFresh.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(200, "a value it never had is the printer's word");
 
         actor.Complete();
         await Eventually(actor.Completion);
     }
 
-    /// <summary>As <see cref="OpenConnection(List{byte[]})"/>, also keeping each command it was handed.</summary>
+    /// <summary>Sends an unload, answers it, and returns the command as it went out.</summary>
+    private static async Task<ISendableCommand> SendAndForgetAsync(PrinterConnectionActor actor, List<ISendableCommand> sent, List<byte[]> sentFrames)
+    {
+        int before = sent.Count;
+        Task<CommandSendResult> unload = actor.SendCommandAsync(new UnloadFilamentAt(215), CancellationToken.None);
+
+        await WaitUntilAsync(() => sent.Count == before + 1);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[^1]), PrinterEventType.Rejected), CancellationToken.None);
+        await Eventually(unload);
+
+        return sent[^1];
+    }
+
+    private static InboundTelemetryMessage TelemetryTargeting(float? nozzle, float? bed)
+    {
+        return new(DateTimeOffset.UtcNow, new TelemetryDTO { Status = "IDLE", TargetNozzleTemperature = nozzle, TargetBedTemperature = bed });
+    }
+
+    /// <summary>
+    /// As <see cref="OpenConnection(List{byte[]})"/>, also keeping each command it was handed, and
+    /// framing as the Python SDK's connection does - the one dialect an SDK unload may be sent to.
+    /// </summary>
     private static IPrinterConnection RecordingConnection(List<byte[]> sentFrames, List<ISendableCommand> sent)
     {
         IPrinterConnection connection = OpenConnection();
 
         OnSend(connection, call =>
         {
-            sentFrames.Add(FrameOf(call));
             sent.Add((ISendableCommand)call[1]!);
+            sentFrames.Add(CommandWireEncoder.Encode((uint)call[0]!, (ISendableCommand)call[1]!, PrinterDialect.ConnectSdk));
         });
 
         return connection;

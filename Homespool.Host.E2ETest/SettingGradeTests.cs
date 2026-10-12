@@ -68,7 +68,10 @@ public sealed class SettingGradeTests : IAsyncLifetime
 
         using (IServiceScope scope = _factory.Services.CreateScope())
         {
-            result = scope.ServiceProvider.GetRequiredService<SettingsStore>().Save(submitted);
+            result = scope.ServiceProvider.GetRequiredService<SettingsStore>()
+                          .Save(submitted,
+                                [.. EditableSettings.All.Where(setting => setting.NeedsConfirmingToEnable)
+                                                        .Select(setting => setting.Path)]);
         }
 
         // Assert

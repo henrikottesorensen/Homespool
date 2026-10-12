@@ -107,66 +107,88 @@ public sealed class SettingsStore
     /// <returns>Every editable path and its current value.</returns>
     public IReadOnlyDictionary<string, string> Current()
     {
-        Dictionary<string, string> values = [];
-
-        Dictionary<Type, object> bound = [];
-
         using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
 
-        foreach (EditableSetting setting in EditableSettings.All)
-        {
-            if (setting.IsSecret)
-            {
-                values[setting.Path] = HasStoredSecret(saved, setting) ? SecretPlaceholder : string.Empty;
-
-                continue;
-            }
-
-            // Bound, not read raw. Most of these have no entry in appsettings.json at all - their
-            // value is the property initialiser - so asking configuration directly answers null and
-            // the page shows an empty box for a setting that is very much in force. Binding gives
-            // the value the setting resolves to, which is the only one worth showing.
-            if (!bound.TryGetValue(setting.OptionsType, out object? instance))
-            {
-                instance = Candidate(saved, setting.OptionsType, setting.Section, new Dictionary<string, string?>());
-                bound[setting.OptionsType] = instance;
-            }
-
-            object? value = setting.OptionsType.GetProperty(setting.Key)?.GetValue(instance);
-
-            values[setting.Path] = value switch
-            {
-                null => string.Empty,
-                bool flag => flag ? "true" : "false",
-                IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
-                _ => value.ToString() ?? string.Empty,
-            };
-        }
-
-        return values;
+        return ValuesOf(saved);
     }
 
     /// <summary>
-    /// Applies a set of submitted values, writing nothing unless all of them are valid.
+    /// Applies a set of submitted values, writing nothing unless all of them are valid and every
+    /// setting they turn on has been agreed to.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Whether a setting is being turned on is judged here, against what is saved when this save
+    /// runs</b>, because it is the one moment that answer cannot change before the write. Judged
+    /// earlier, a setting another save turned off in between would be turned back on without the
+    /// question being asked.
+    /// </para>
+    /// <para>
+    /// <b>Only the off-to-on transition asks or refuses.</b> A setting already on, or being turned
+    /// off, or absent from the submission, is not a decision anybody needs talking through - and
+    /// asking about the safe direction is how a person learns to click past the question that
+    /// matters.
+    /// </para>
+    /// </remarks>
     /// <param name="submitted">Values keyed by <see cref="EditableSetting.Path"/>.</param>
-    /// <returns>What happened, and any errors keyed by path.</returns>
-    public SettingsSaveResult Save(IReadOnlyDictionary<string, string?> submitted)
+    /// <param name="confirmed">
+    /// The settings whose <see cref="EditableSetting.ConfirmOnEnableKey"/> question has been answered
+    /// yes. One turned on without it is not written, and is named in
+    /// <see cref="SettingsSaveResult.AwaitingConfirmation"/>.
+    /// </param>
+    /// <param name="mayNotTurnOn">
+    /// Settings this caller may not turn on, each with the refusal to report if it tries.
+    /// </param>
+    /// <returns>What happened, any errors keyed by path, and what is waiting to be agreed to.</returns>
+    public SettingsSaveResult Save(IReadOnlyDictionary<string, string?> submitted,
+                                   IReadOnlyCollection<string>? confirmed = null,
+                                   IReadOnlyDictionary<string, string>? mayNotTurnOn = null)
     {
         ArgumentNullException.ThrowIfNull(submitted);
 
         lock (_saving)
         {
-            return SaveUnderLock(submitted);
+            return SaveUnderLock(submitted, confirmed ?? [], mayNotTurnOn ?? new Dictionary<string, string>());
         }
     }
 
-    private SettingsSaveResult SaveUnderLock(IReadOnlyDictionary<string, string?> submitted)
+    private SettingsSaveResult SaveUnderLock(IReadOnlyDictionary<string, string?> submitted,
+                                             IReadOnlyCollection<string> confirmed,
+                                             IReadOnlyDictionary<string, string> mayNotTurnOn)
     {
+        using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
+
+        IReadOnlyDictionary<string, string> before = ValuesOf(saved);
+
+        Dictionary<string, string> refused = new(StringComparer.Ordinal);
+
+        foreach ((string path, string refusal) in mayNotTurnOn)
+        {
+            if (TurnsOn(path, before, submitted))
+            {
+                refused[path] = refusal;
+            }
+        }
+
+        if (refused.Count > 0)
+        {
+            return new SettingsSaveResult(false, refused, [], false);
+        }
+
+        List<EditableSetting> unagreed =
+        [
+            .. EditableSettings.All.Where(setting => setting.NeedsConfirmingToEnable &&
+                                                     TurnsOn(setting.Path, before, submitted) &&
+                                                     !confirmed.Contains(setting.Path, StringComparer.Ordinal)),
+        ];
+
+        if (unagreed.Count > 0)
+        {
+            return new SettingsSaveResult(false, new Dictionary<string, string>(), unagreed, false);
+        }
+
         JsonObject stored = _file.Read();
         Dictionary<string, string?> pending = [];
-
-        using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
 
         foreach (EditableSetting setting in EditableSettings.All)
         {
@@ -202,7 +224,7 @@ public sealed class SettingsStore
 
         if (errors.Count > 0)
         {
-            return new SettingsSaveResult(false, errors);
+            return new SettingsSaveResult(false, errors, [], false);
         }
 
         foreach ((string path, string? value) in pending)
@@ -217,7 +239,111 @@ public sealed class SettingsStore
         // token every IOptionsMonitor is listening on.
         _configuration.Reload();
 
-        return new SettingsSaveResult(true, errors);
+        return new SettingsSaveResult(true, errors, [], ChangedAwaitingRestart(before, submitted));
+    }
+
+    /// <summary>
+    /// Whether this save changed a setting that is only obeyed after a restart.
+    /// </summary>
+    /// <remarks>
+    /// <b>Judged inside the save, between its own before and after</b>, so that another save cannot
+    /// land in between and be reported as this one's. A secret is judged by what was submitted,
+    /// because the saved view answers the placeholder for a stored one before and after alike.
+    /// Anything but the placeholder replaced it - except an empty value where nothing was stored,
+    /// which changed nothing.
+    /// </remarks>
+    private bool ChangedAwaitingRestart(IReadOnlyDictionary<string, string> before,
+                                        IReadOnlyDictionary<string, string?> submitted)
+    {
+        using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
+
+        IReadOnlyDictionary<string, string> after = ValuesOf(saved);
+
+        return EditableSettings.All.Any(setting =>
+        {
+            if (setting.Grade != SettingGrade.Restart)
+            {
+                return false;
+            }
+
+            if (!setting.IsSecret)
+            {
+                return !string.Equals(before.GetValueOrDefault(setting.Path),
+                                      after.GetValueOrDefault(setting.Path),
+                                      StringComparison.Ordinal);
+            }
+
+            return submitted.TryGetValue(setting.Path, out string? typed) &&
+                   typed != SecretPlaceholder &&
+                   !(string.IsNullOrEmpty(typed) && string.IsNullOrEmpty(before.GetValueOrDefault(setting.Path)));
+        });
+    }
+
+    /// <summary>
+    /// Whether the submission turns a setting from off to on.
+    /// </summary>
+    private static bool TurnsOn(string path,
+                                IReadOnlyDictionary<string, string> before,
+                                IReadOnlyDictionary<string, string?> submitted)
+    {
+        return IsOn(submitted.GetValueOrDefault(path)) && !IsOn(before.GetValueOrDefault(path));
+    }
+
+    /// <summary>
+    /// Whether a value counts as switched on.
+    /// </summary>
+    /// <remarks>
+    /// <b>Not every switch is a boolean.</b> Mail is turned on by naming a server, so "on" has to mean
+    /// "carries an answer" rather than "is true" - empty is off for a host exactly as false is off for
+    /// a flag, and both are the state a deployment has without anybody choosing it.
+    /// </remarks>
+    private static bool IsOn(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               !string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The value each editable setting has in <paramref name="saved"/>, as <see cref="Current"/>
+    /// describes.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> ValuesOf(ConfigurationRoot saved)
+    {
+        Dictionary<string, string> values = [];
+
+        Dictionary<Type, object> bound = [];
+
+        foreach (EditableSetting setting in EditableSettings.All)
+        {
+            if (setting.IsSecret)
+            {
+                values[setting.Path] = HasStoredSecret(saved, setting) ? SecretPlaceholder : string.Empty;
+
+                continue;
+            }
+
+            // Bound, not read raw. Most of these have no entry in appsettings.json at all - their
+            // value is the property initialiser - so asking configuration directly answers null and
+            // the page shows an empty box for a setting that is very much in force. Binding gives
+            // the value the setting resolves to, which is the only one worth showing.
+            if (!bound.TryGetValue(setting.OptionsType, out object? instance))
+            {
+                instance = Candidate(saved, setting.OptionsType, setting.Section, new Dictionary<string, string?>());
+                bound[setting.OptionsType] = instance;
+            }
+
+            object? value = setting.OptionsType.GetProperty(setting.Key)?.GetValue(instance);
+
+            values[setting.Path] = value switch
+            {
+                null => string.Empty,
+                bool flag => flag ? "true" : "false",
+                IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
+                _ => value.ToString() ?? string.Empty,
+            };
+        }
+
+        return values;
     }
 
     /// <summary>
@@ -593,8 +719,18 @@ public sealed class SettingsStore
 
 /// <summary>What a save did.</summary>
 /// <param name="Saved">Whether the file was written.</param>
-/// <param name="Errors">Any validation failures, keyed by <see cref="EditableSetting.Path"/>.</param>
-public sealed record SettingsSaveResult(bool Saved, IReadOnlyDictionary<string, string> Errors);
+/// <param name="Errors">
+/// Any refusals and validation failures, keyed by <see cref="EditableSetting.Path"/>.
+/// </param>
+/// <param name="AwaitingConfirmation">
+/// Settings the submission turns on that nobody has agreed to yet. Non-empty means nothing was
+/// written.
+/// </param>
+/// <param name="RestartNeeded">Whether this save changed a setting that is only obeyed after a restart.</param>
+public sealed record SettingsSaveResult(bool Saved,
+                                        IReadOnlyDictionary<string, string> Errors,
+                                        IReadOnlyList<EditableSetting> AwaitingConfirmation,
+                                        bool RestartNeeded);
 
 /// <summary>What a set of submitted values would make of an options section.</summary>
 /// <typeparam name="T">The options type.</typeparam>

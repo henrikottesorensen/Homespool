@@ -22,6 +22,9 @@ namespace Homespool.Host.Test;
 /// </summary>
 public class SettingsStoreTests : IDisposable
 {
+    /// <summary>Naming a mail server turns mail on, which is asked about first.</summary>
+    private static readonly string[] MailConfirmed = ["Smtp:Host"];
+
     private readonly string _directory;
     private readonly SettingsFile _file;
     private readonly SettingsSecretProtector _protector;
@@ -107,6 +110,193 @@ public class SettingsStoreTests : IDisposable
         }
     }
 
+    [Fact]
+    public void ChangingARestartGradeSettingSaysARestartIsNeeded()
+    {
+        (SettingsStore store, _) = Store();
+
+        store.Save(new Dictionary<string, string?> { ["Smtp:FromName"] = "Workshop" })
+             .RestartNeeded
+             .Should()
+             .BeTrue();
+    }
+
+    [Fact]
+    public void ChangingASettingThatAppliesAtOnceDoesNot()
+    {
+        (SettingsStore store, _) = Store();
+
+        store.Save(new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "12" })
+             .RestartNeeded
+             .Should()
+             .BeFalse();
+    }
+
+    [Fact]
+    public void SavingARestartGradeValueUnchangedDoesNot()
+    {
+        (SettingsStore store, _) = Store();
+
+        store.Save(new Dictionary<string, string?> { ["Smtp:FromName"] = "Workshop" });
+
+        store.Save(new Dictionary<string, string?> { ["Smtp:FromName"] = "Workshop" })
+             .RestartNeeded
+             .Should()
+             .BeFalse("the value was already saved");
+    }
+
+    /// <summary>
+    /// A secret reads as the mask before and after alike, so what was submitted decides: anything but
+    /// the mask replaced it, except an empty value where nothing was stored.
+    /// </summary>
+    [Theory]
+    [InlineData(false, "hunter2", true)]
+    [InlineData(true, SettingsStore.SecretPlaceholder, false)]
+    [InlineData(false, "", false)]
+    [InlineData(true, "", true)]
+    public void ASecretNeedsARestartWhenItWasReplaced(bool stored, string submitted, bool restartNeeded)
+    {
+        (SettingsStore store, _) = Store();
+
+        if (stored)
+        {
+            store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = "hunter2" });
+        }
+
+        store.Save(new Dictionary<string, string?> { ["Smtp:Password"] = submitted })
+             .RestartNeeded
+             .Should()
+             .Be(restartNeeded);
+    }
+
+    /// <summary>
+    /// <b>A save reports its own changes, not another's.</b> The second save waits out the first,
+    /// which changed a restart-grade setting; judged outside the lock, the second would compare a
+    /// before taken while the first was still reloading against an after that includes it.
+    /// </summary>
+    [Fact]
+    public async Task ASaveIsNotToldOfARestartAnotherSaveNeeded()
+    {
+        using GatedLayer gate = new();
+        (SettingsStore store, _) = GatedStore(gate);
+
+        (SettingsSaveResult first, SettingsSaveResult second) = await OneWhileTheOtherReloadsAsync(
+            gate,
+            () => store.Save(new Dictionary<string, string?> { ["Smtp:FromName"] = "Workshop" }),
+            () => store.Save(new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "72" }));
+
+        first.RestartNeeded.Should().BeTrue();
+        second.RestartNeeded.Should().BeFalse("the restart-grade change was the other save's");
+    }
+
+    [Fact]
+    public void TurningOnASettingThatAsksWritesNothingUntilAgreed()
+    {
+        (SettingsStore store, _) = Store();
+
+        SettingsSaveResult asked = store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+
+        asked.Saved.Should().BeFalse();
+        asked.Errors.Should().BeEmpty("a question is not a refusal");
+        asked.AwaitingConfirmation.Should().ContainSingle().Which.Path.Should().Be("Cameras:WebRtcStunEnabled");
+        _file.Exists.Should().BeFalse();
+
+        store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" },
+                   ["Cameras:WebRtcStunEnabled"])
+             .Saved
+             .Should()
+             .BeTrue();
+    }
+
+    /// <summary>
+    /// A setting a caller may not turn on is refused only on the way on: already on, or on the way
+    /// off, there is nothing to refuse.
+    /// </summary>
+    [Fact]
+    public void ARefusalAppliesOnlyToTurningItOn()
+    {
+        (SettingsStore store, _) = Store();
+
+        Dictionary<string, string> mayNotTurnOn = new() { ["Security:RequireTwoFactor"] = "refused" };
+
+        SettingsSaveResult refused = store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" },
+                                                ["Security:RequireTwoFactor"],
+                                                mayNotTurnOn);
+
+        refused.Saved.Should().BeFalse();
+        refused.Errors.Should().Equal(mayNotTurnOn);
+
+        store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" }, ["Security:RequireTwoFactor"])
+             .Saved
+             .Should()
+             .BeTrue();
+
+        store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" }, null, mayNotTurnOn)
+             .Saved
+             .Should()
+             .BeTrue("it was already on");
+
+        store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "false" }, null, mayNotTurnOn)
+             .Saved
+             .Should()
+             .BeTrue("turning it off is the safe direction");
+    }
+
+    /// <summary>
+    /// <b>Whether a save turns a setting on is judged against the save it waited for.</b> The first
+    /// turns STUN off; the second, posted with it on, is turning it back on and is asked - where a
+    /// check made before the lock would still have seen it on and written it without the question.
+    /// </summary>
+    [Fact]
+    public async Task TurningOnIsJudgedAfterTheSaveItWaitedFor()
+    {
+        using GatedLayer gate = new();
+        (SettingsStore store, _) = GatedStore(gate);
+
+        store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" }, ["Cameras:WebRtcStunEnabled"])
+             .Saved
+             .Should()
+             .BeTrue();
+
+        (SettingsSaveResult first, SettingsSaveResult second) = await OneWhileTheOtherReloadsAsync(
+            gate,
+            () => store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "false" }),
+            () => store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" }));
+
+        first.Saved.Should().BeTrue();
+        second.Saved.Should().BeFalse();
+        second.AwaitingConfirmation.Should().ContainSingle().Which.Path.Should().Be("Cameras:WebRtcStunEnabled");
+        store.Current()["Cameras:WebRtcStunEnabled"].Should().Be("false");
+    }
+
+    /// <summary>
+    /// The refusal is judged the same way: an administrator without an authenticator cannot switch
+    /// the requirement back on because somebody else's save turned it off a moment before.
+    /// </summary>
+    [Fact]
+    public async Task ARefusalIsJudgedAfterTheSaveItWaitedFor()
+    {
+        using GatedLayer gate = new();
+        (SettingsStore store, _) = GatedStore(gate);
+
+        store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" }, ["Security:RequireTwoFactor"])
+             .Saved
+             .Should()
+             .BeTrue();
+
+        (SettingsSaveResult first, SettingsSaveResult second) = await OneWhileTheOtherReloadsAsync(
+            gate,
+            () => store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "false" }),
+            () => store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" },
+                             ["Security:RequireTwoFactor"],
+                             new Dictionary<string, string> { ["Security:RequireTwoFactor"] = "refused" }));
+
+        first.Saved.Should().BeTrue();
+        second.Saved.Should().BeFalse();
+        second.Errors.Should().ContainKey("Security:RequireTwoFactor");
+        store.Current()["Security:RequireTwoFactor"].Should().Be("false");
+    }
+
     /// <summary>
     /// <b>A restart-grade setting is saved and shown, but not put in force.</b> The page and the
     /// store's own checks read what was saved; the rest of the process keeps the value it started
@@ -117,7 +307,7 @@ public class SettingsStoreTests : IDisposable
     {
         (SettingsStore store, IConfigurationRoot configuration) = Store();
 
-        store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" })
+        store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" }, MailConfirmed)
              .Saved
              .Should()
              .BeTrue();
@@ -136,7 +326,8 @@ public class SettingsStoreTests : IDisposable
         {
             ["Smtp:Host"] = "mail.example.com",
             ["Smtp:Port"] = "70000",
-        });
+        },
+        MailConfirmed);
 
         result.Saved.Should().BeFalse();
         result.Errors.Should().ContainKey("Smtp:Port");
@@ -547,7 +738,8 @@ public class SettingsStoreTests : IDisposable
             ["Smtp:Host"] = "mail.example.com",
             ["Smtp:Port"] = "587",
             ["Smtp:UserName"] = "postmaster",
-        });
+        },
+        MailConfirmed);
 
         result.Saved.Should().BeTrue();
         Saved(configuration, "Smtp:Host").Should().Be("mail.example.com");
@@ -634,7 +826,8 @@ public class SettingsStoreTests : IDisposable
                  ["Smtp:Port"] = "587",
                  ["Smtp:UserName"] = "postmaster",
                  ["Smtp:Password"] = "hunter2",
-             })
+             },
+             MailConfirmed)
              .Saved
              .Should()
              .BeTrue();
@@ -667,6 +860,52 @@ public class SettingsStoreTests : IDisposable
     private string? StoredLifetime()
     {
         return _file.Read()["Invitations"]?["LifetimeHours"]?.GetValue<string>();
+    }
+
+    /// <summary>
+    /// A store whose reload can be held before the settings layer is read again, so a save held there
+    /// has written the file while what is saved still reads as it was.
+    /// </summary>
+    private (SettingsStore store, IConfigurationRoot configuration) GatedStore(GatedLayer gate)
+    {
+        ConfigurationManager configuration = new();
+
+        ((IConfigurationBuilder)configuration).Add(gate);
+        _file.AddTo(configuration);
+
+        return (new SettingsStore(configuration, _file, _protector, TestLocaliser.Shared()), configuration);
+    }
+
+    /// <summary>
+    /// Starts <paramref name="first"/>, holds it inside its reload, starts <paramref name="second"/>
+    /// and lets both finish once the second has been seen to wait.
+    /// </summary>
+    private static async Task<(SettingsSaveResult first, SettingsSaveResult second)> OneWhileTheOtherReloadsAsync(
+        GatedLayer gate,
+        Func<SettingsSaveResult> first,
+        Func<SettingsSaveResult> second)
+    {
+        gate.Close();
+
+        try
+        {
+            Task<SettingsSaveResult> held = Task.Run(first, TestContext.Current.CancellationToken);
+
+            gate.WaitForReload(TimeSpan.FromSeconds(10)).Should().BeTrue("the first save reaches its reload");
+
+            Task<SettingsSaveResult> waiting = Task.Run(second, TestContext.Current.CancellationToken);
+
+            gate.WaitForReload(TimeSpan.FromSeconds(1)).Should().BeFalse("the second save waits for the first");
+
+            gate.Open();
+
+            return (await held.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken),
+                    await waiting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            gate.Open();
+        }
     }
 
     private (SettingsStore store, IConfigurationRoot configuration) Store(IDictionary<string, string?>? beneath = null)

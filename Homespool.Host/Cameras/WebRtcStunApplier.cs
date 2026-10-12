@@ -36,9 +36,9 @@ namespace Homespool.Host.Cameras;
 /// file that does not take the lock registering a stream takes, so a camera saved in the same moment
 /// can be dropped from the file and lost at the restart. The cameras' rows are the truth, and
 /// <see cref="CameraStreamReconciler.ReconcileAsync"/> writes each one back from its row - the same
-/// pass that runs at startup, which already waits out a restarting sidecar. A reconcile that fails is
-/// run again on the next pass, though the choice is by then in force; held in memory only, because
-/// every start runs one anyway.
+/// pass that runs at startup, which already waits out a restarting sidecar. A reconcile that throws,
+/// or gives up on a sidecar that does not answer, is run again on the next pass, though the choice is
+/// by then in force; held in memory only, because every start runs one anyway.
 /// </para>
 /// <para>
 /// <b>Nothing to do without a candidate address.</b> Live view is off then, and the stream server is
@@ -89,7 +89,10 @@ public sealed class WebRtcStunApplier : BackgroundService
     /// Brings the stream server's STUN choice to the saved one, if they differ, and finishes any
     /// reconcile still owed from an earlier write.
     /// </summary>
-    /// <returns>Whether the stream server now holds the saved choice, or has no candidate to hold it with.</returns>
+    /// <returns>
+    /// Whether nothing is left owed: the stream server holds the saved choice, or has no candidate to
+    /// hold it with, and the reconcile after the last write has finished.
+    /// </returns>
     internal async Task<bool> ApplyAsync(CancellationToken cancellationToken)
     {
         string candidate = _availability.Candidate;
@@ -116,7 +119,16 @@ public sealed class WebRtcStunApplier : BackgroundService
 
         if (_reconcileOwed)
         {
-            await _reconciler.ReconcileAsync(cancellationToken).ConfigureAwait(false);
+            // A pass that gave up without throwing - a sidecar slow to come back from the restart -
+            // is owed exactly as one that threw.
+            if (!await _reconciler.ReconcileAsync(cancellationToken).ConfigureAwait(false))
+            {
+                _logger.LogInformation(
+                    "The cameras could not all be written back to the stream server; asking again in {Seconds}s.",
+                    RetryInterval.TotalSeconds);
+
+                return false;
+            }
 
             _reconcileOwed = false;
         }

@@ -116,7 +116,8 @@ public sealed class CameraStreamReconciler : BackgroundService
     {
         try
         {
-            await ReconcileAsync(stoppingToken).ConfigureAwait(false);
+            // What did not finish is logged by the pass itself, and nothing here could retry it.
+            _ = await ReconcileAsync(stoppingToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (!stoppingToken.IsCancellationRequested)
         {
@@ -130,10 +131,20 @@ public sealed class CameraStreamReconciler : BackgroundService
     /// and probe each camera's codecs.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Run at startup, and again by <see cref="WebRtcStunApplier"/> after it has restarted the
     /// sidecar - whose configuration write can drop a stream registered at the same moment.
+    /// </para>
+    /// <para>
+    /// <b>Finished means every camera was answered.</b> A sidecar that never gave a listing, or left a
+    /// camera unanswered after its retry, has not had the pass, and the applier owes it another. A
+    /// source refused on its retry is an answer: the sidecar's refuse-everything moment after a restart
+    /// lasts well under the retry delay, so the refusal is the source's own, and asking again would
+    /// not change it.
+    /// </para>
     /// </remarks>
-    public async Task ReconcileAsync(CancellationToken cancellationToken)
+    /// <returns>Whether the pass finished, as above; <see langword="false"/> if it was stopped by shutdown.</returns>
+    public async Task<bool> ReconcileAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -159,13 +170,13 @@ public sealed class CameraStreamReconciler : BackgroundService
                 if (cameras.Count > 0)
                 {
                     _logger.LogInformation(
-                        "The stream server could not be reached within {Seconds}s of startup; {Count} cameras will be " +
+                        "The stream server could not be reached within {Seconds}s; {Count} cameras will be " +
                         "registered when one is next saved.",
                         ListingPatience.TotalSeconds,
                         cameras.Count);
                 }
 
-                return;
+                return false;
             }
 
             // After the wait for a listing, so a sidecar restarting under the configurer is swept
@@ -183,13 +194,14 @@ public sealed class CameraStreamReconciler : BackgroundService
 
             if (cameras.Count == 0)
             {
-                return;
+                return true;
             }
 
             // Every camera, not only the ones the sidecar is missing: one it holds may hold a source
             // the camera no longer has, or one a rule made since then refuses, and the sidecar's file
             // keeps either across every restart until something writes over it.
             int restored = 0;
+            int unanswered = 0;
             List<Guid> retry = [];
 
             foreach (Guid camera in cameras)
@@ -216,10 +228,15 @@ public sealed class CameraStreamReconciler : BackgroundService
 
                 foreach (Guid camera in retry)
                 {
-                    if ((await _sync.SyncAsync(camera, cancellationToken).ConfigureAwait(false)).Outcome ==
-                        StreamSyncOutcome.Registered)
+                    switch ((await _sync.SyncAsync(camera, cancellationToken).ConfigureAwait(false)).Outcome)
                     {
-                        restored++;
+                        case StreamSyncOutcome.Registered:
+                            restored++;
+                            break;
+
+                        case StreamSyncOutcome.Unavailable:
+                            unanswered++;
+                            break;
                     }
                 }
             }
@@ -247,11 +264,22 @@ public sealed class CameraStreamReconciler : BackgroundService
                 await Task.Delay(ProbeRetryDelay, _time, cancellationToken).ConfigureAwait(false);
                 _ = await _liveView.HowToWatchAsync(camera, cancellationToken).ConfigureAwait(false);
             }
+
+            if (unanswered > 0)
+            {
+                _logger.LogInformation(
+                    "The stream server did not answer for {Count} cameras after a retry; each is written again when " +
+                    "next saved.",
+                    unanswered);
+            }
+
+            return unanswered == 0;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             // Shutting down before the sweep finished. Nothing is half-done: each registration is
             // its own request, and the next start does this again.
+            return false;
         }
     }
 

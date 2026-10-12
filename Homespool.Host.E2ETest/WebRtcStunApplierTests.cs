@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
+using Homespool.Data;
 using Homespool.Host.Accounts;
 using Homespool.Host.Cameras;
 using Homespool.Host.Configuration;
@@ -209,6 +210,38 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// <b>A reconcile that gives up without throwing is owed too.</b> A sidecar slow to come back from
+    /// the restart leaves a camera unanswered through its retry; the pass returns rather than throws,
+    /// and the camera must still be written once the sidecar answers.
+    /// </summary>
+    /// <remarks>
+    /// The camera is written straight to the database while registrations go unanswered, so the
+    /// sidecar does not hold it and only a reconcile can put it there.
+    /// </remarks>
+    [Fact]
+    public async Task AReconcileThatGaveUpOnAnUnansweringSidecarIsRunAgain()
+    {
+        HomespoolFactory factory = Start();
+        _ = await SettledListingsAsync();
+
+        _sidecar.LeaveRegistrationsUnanswered(true);
+        Guid camera = await SeedCameraAsync(factory, "rtsp://192.0.2.20/live");
+
+        Save(factory, new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+        (await EventuallyAsync(() => _sidecar.Restarts == 2)).Should().BeTrue();
+
+        (await EventuallyAsync(() => Registrations(camera) >= 2)).Should().BeTrue("the reconcile tries the camera and then retries it");
+
+        _sidecar.LeaveRegistrationsUnanswered(false);
+
+        // Any save wakes the applier at once, rather than at the end of its retry interval.
+        Save(factory, new Dictionary<string, string?> { ["Invitations:LifetimeHours"] = "12" });
+
+        (await EventuallyAsync(() => _sidecar.Streams.ContainsKey(camera.ToString("D")))).Should().BeTrue(
+            "the reconcile is owed until every camera has been answered");
+    }
+
+    /// <summary>
     /// <b>A failure during a pass costs a retry, never the server.</b> An exception leaving a
     /// background service stops the whole host by default; here every reconcile fails, at startup and
     /// after each change, and Homespool both keeps running and goes on applying the next change.
@@ -328,6 +361,39 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
 
             seen = now;
         }
+    }
+
+    private int Registrations(Guid camera)
+    {
+        string name = $"name={camera:D}";
+
+        return _sidecar.Requests.Count(request => request.StartsWith("PUT /api/streams", StringComparison.Ordinal) &&
+                                                  request.Contains(name, StringComparison.Ordinal));
+    }
+
+    /// <summary>A network camera written straight to the database, past the service and the sidecar.</summary>
+    private static async Task<Guid> SeedCameraAsync(HomespoolFactory factory, string source)
+    {
+        using IServiceScope scope = factory.Services.CreateScope();
+        HomespoolDbContext context = scope.ServiceProvider.GetRequiredService<HomespoolDbContext>();
+
+        Team team = new() { CreatedBy = 1, CreatedAt = DateTimeOffset.UtcNow };
+        context.Teams.Add(team);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        Camera camera = new()
+        {
+            Uuid = Guid.NewGuid(),
+            Source = source,
+            TeamId = team.Id,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+
+        context.Cameras.Add(camera);
+        await context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        return camera.Uuid;
     }
 
     private int Listings()

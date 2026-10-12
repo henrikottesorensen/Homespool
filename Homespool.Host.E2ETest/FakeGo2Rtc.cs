@@ -96,6 +96,7 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
     private int _openMjpegStreams;
     private bool _configurationUnwritable;
     private bool _restartsRefused;
+    private bool _registrationsUnanswered;
     private int _refusedRestarts;
     private CancellationTokenSource _cut = new();
 
@@ -309,6 +310,16 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Makes <c>PUT /api/streams</c> answer 503 and keep nothing, or stops doing so. Not go2rtc's own
+    /// answer: it stands in for a sidecar slow to come back from a restart, which Homespool reads the
+    /// same way - unavailable - while the listing still answers.
+    /// </summary>
+    public void LeaveRegistrationsUnanswered(bool unanswered)
+    {
+        Volatile.Write(ref _registrationsUnanswered, unanswered);
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _stopping.CancelAsync();
@@ -457,6 +468,12 @@ public sealed class FakeGo2Rtc : IAsyncDisposable
 
         if (HttpMethods.IsPut(request.Method) && name is not null && source is not null)
         {
+            if (Volatile.Read(ref _registrationsUnanswered))
+            {
+                await AnswerAsync(context, StatusCodes.Status503ServiceUnavailable, "service unavailable");
+                return;
+            }
+
             bool refused;
             bool unsaved;
 

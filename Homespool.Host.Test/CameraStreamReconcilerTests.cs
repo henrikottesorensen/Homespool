@@ -367,6 +367,100 @@ public sealed class CameraStreamReconcilerTests : IDisposable
         handler.Streams.Should().NotContainKey(camera.ToString("D"));
     }
 
+    /// <summary>
+    /// A pass in which every camera was answered has finished - the case the unfinished ones below
+    /// must not swallow.
+    /// </summary>
+    [Fact]
+    public async Task APassThatReachedEveryCameraHasFinished()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        _ = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new() { RegistrationsToDrop = 1 };
+
+        (await ReconcileAsync(handler)).Should().BeTrue("the camera was answered on its retry");
+    }
+
+    /// <summary>
+    /// A pass that never got a listing has not finished: no camera was written, and the STUN applier
+    /// owes the cameras another one.
+    /// </summary>
+    [Fact]
+    public async Task APassWhoseListingNeverCameHasNotFinished()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        _ = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new() { ListingsToRefuse = int.MaxValue };
+
+        (await ReconcileAsync(handler)).Should().BeFalse("a sidecar that never listed its streams was never asked about a camera");
+    }
+
+    /// <summary>
+    /// A camera the sidecar left unanswered through its retry leaves the pass unfinished.
+    /// </summary>
+    [Fact]
+    public async Task ACameraUnansweredThroughItsRetryLeavesThePassUnfinished()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        _ = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new() { RegistrationsToDrop = int.MaxValue };
+
+        (await ReconcileAsync(handler)).Should().BeFalse("the camera may still be missing from the sidecar");
+    }
+
+    /// <summary>
+    /// A source refused on its retry is an answer, and the pass has finished: the sidecar's
+    /// refuse-everything moment after a restart is over well before the retry, and asking again would
+    /// not change a refusal of the source itself.
+    /// </summary>
+    [Fact]
+    public async Task ASourceRefusedOnItsRetryStillFinishesThePass()
+    {
+        await using HomespoolDbContext context = await MigratedContextAsync();
+
+        _ = await AddCameraAsync(context, "rtsp://192.0.2.10/live");
+
+        using SidecarHandler handler = new() { RegistrationsToRefuse = int.MaxValue };
+
+        (await ReconcileAsync(handler)).Should().BeTrue("the sidecar answered, twice");
+    }
+
+    /// <summary>One pass run directly, as the STUN applier runs it, with the clock moved on until it ends.</summary>
+    private async Task<bool> ReconcileAsync(SidecarHandler handler)
+    {
+        using StreamSyncRig rig = new(_databasePath, handler, policy: null);
+
+        FakeTimeProvider time = new();
+        handler.Clock = time;
+
+        using CameraStreamReconciler reconciler = new(
+            rig.Scopes,
+            rig.Client,
+            rig.Sync,
+            rig.LiveView,
+            time,
+            NullLogger<CameraStreamReconciler>.Instance);
+
+        Task<bool> pass = reconciler.ReconcileAsync(TestContext.Current.CancellationToken);
+
+        // As RunReconcilerAsync: a quarter-second at a time, bounded so a pass that never ends fails.
+        for (int step = 0; step < 2400 && !pass.IsCompleted; step++)
+        {
+            time.Advance(TimeSpan.FromMilliseconds(250));
+            await Task.Delay(1, TestContext.Current.CancellationToken);
+        }
+
+        pass.IsCompleted.Should().BeTrue("a pass ends");
+
+        return await pass;
+    }
+
     private async Task RunReconcilerAsync(SidecarHandler handler, CameraSourcePolicy? policy = null)
     {
         using StreamSyncRig rig = new(_databasePath, handler, policy);

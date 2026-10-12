@@ -15,7 +15,7 @@ using Homespool.Model.Entities;
 namespace Homespool.Host.Test;
 
 /// <summary>
-/// Every enum column holds the member's name, not its position.
+/// Every enum column holds the member's name, not its position, and reads back only that name.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -27,9 +27,15 @@ namespace Homespool.Host.Test;
 /// </para>
 /// <para>
 /// The rule was applied one column at a time and was half-finished for a while, which is the reason
-/// for <see cref="EveryEnumColumnIsStoredAsText"/>: it reads the model rather than a list written by
-/// hand, so a new entity that forgets the conversion fails here instead of being noticed by somebody
-/// reading rows a year later.
+/// for <see cref="EveryEnumColumnIsReadAndWrittenByName"/>: it reads the model rather than a list
+/// written by hand, so a new entity that forgets the conversion fails here instead of being noticed by
+/// somebody reading rows a year later.
+/// </para>
+/// <para>
+/// <b>Text is not enough on its own: the converter has to be <see cref="EnumNameConverter{TEnum}"/>.</b>
+/// EF's own string converter, which <c>HasConversion&lt;string&gt;()</c> selects, also stores the name -
+/// and reads back a different case, a numeral, a comma list or a padded name as some member. The
+/// refusal tests below write those words with raw SQL, which is the only way they can reach a column.
 /// </para>
 /// </remarks>
 public sealed class EnumStorageTests : IDisposable
@@ -52,41 +58,66 @@ public sealed class EnumStorageTests : IDisposable
     /// The invariant, read from the model so it covers columns nobody has written yet.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Driven off <see cref="DbContext.Model"/> rather than a hand-written list, because a hand-written
     /// list is exactly what left four of these as integers for as long as it did. A new enum property
     /// on any entity is covered the moment it exists.
+    /// </para>
+    /// <para>
+    /// <b>Both contexts</b>, because <see cref="TelemetryDbContext"/> builds its own model over the same
+    /// telemetry tables, and in file mode reads the rows the application context wrote.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void EveryEnumColumnIsStoredAsText()
+    public void EveryEnumColumnIsReadAndWrittenByName()
     {
         // Arrange
-        using HomespoolDbContext context = NewContext();
+        using HomespoolDbContext application = NewContext();
+        using TelemetryDbContext telemetry = new(new DbContextOptionsBuilder<TelemetryDbContext>()
+                                                 .UseSqlite($"Data Source={_databasePath}")
+                                                 .Options);
 
         // Act
-        List<string> stored = [];
+        List<string> columns = [];
+        List<string> violations = [];
 
-        foreach (IEntityType entity in context.Model.GetEntityTypes())
+        foreach ((string name, IModel model) in new[] { ("Homespool", application.Model), ("Telemetry", telemetry.Model) })
         {
-            foreach (IProperty property in entity.GetProperties())
+            foreach (IEntityType entity in model.GetEntityTypes())
             {
-                Type bare = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
-
-                if (!bare.IsEnum)
+                foreach (IProperty property in entity.GetProperties())
                 {
-                    continue;
+                    Type bare = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
+
+                    if (!bare.IsEnum)
+                    {
+                        continue;
+                    }
+
+                    string column = $"{name}: {entity.ShortName()}.{property.Name}";
+                    Type expected = typeof(EnumNameConverter<>).MakeGenericType(bare);
+                    Type? converter = property.GetTypeMapping().Converter?.GetType();
+
+                    columns.Add(column);
+
+                    if (converter != expected)
+                    {
+                        violations.Add($"{column} -> {converter?.Name ?? "no converter, so a number"}");
+                    }
                 }
-
-                Type? provider = property.GetTypeMapping().Converter?.ProviderClrType;
-
-                stored.Add($"{entity.ShortName()}.{property.Name} -> {provider?.Name ?? property.ClrType.Name}");
             }
         }
 
         // Assert
-        stored.Should().NotBeEmpty("if this finds nothing, the model is not being built and the test proves nothing");
+        columns.Should().Contain(column => column.StartsWith("Homespool: ", StringComparison.Ordinal),
+                                 "if this finds nothing, the model is not being built and the test proves nothing");
+        columns.Should().Contain(column => column.StartsWith("Telemetry: ", StringComparison.Ordinal),
+                                 "if this finds nothing, the model is not being built and the test proves nothing");
 
-        stored.Should().OnlyContain(line => line.EndsWith(" -> String", StringComparison.Ordinal),
-                                    "an enum stored as a number makes its declaration order part of the schema");
+        violations.Should().BeEmpty(
+            "an enum stored as a number makes its declaration order part of the schema, and EF's own string " +
+            "converter reads a case variant, a numeral or a comma list as some member - configure the column " +
+            "with HasConversion<EnumNameConverter<TEnum>>()");
     }
 
     /// <summary>
@@ -134,6 +165,114 @@ public sealed class EnumStorageTests : IDisposable
         stored.Should().Be($"text {expected}",
                            $"{table}.{column} must hold the member's name - an integer there would make the " +
                            "enum's declaration order part of the schema");
+    }
+
+    /// <summary>
+    /// The member's exact name reads back as that member - the control for the refusals below, so they
+    /// fail for the word and not for the way it was written.
+    /// </summary>
+    [Fact]
+    public async Task AMemberNameInTheColumnReadsAsThatMember()
+    {
+        // Arrange
+        await using HomespoolDbContext context = NewContext();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+        await SeedOneOfEverythingAsync(context);
+        await SetPrinterStatusAsync(context, "Printing");
+
+        // Act
+        await using HomespoolDbContext reader = NewContext();
+
+        Printer printer = await reader.Printers
+                                      .AsNoTracking()
+                                      .SingleAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        printer.Status.Should().Be(PrinterStatus.Printing);
+    }
+
+    /// <summary>
+    /// Anything in an enum column but a member's exact name fails the read, rather than being read as
+    /// some member.
+    /// </summary>
+    /// <remarks>
+    /// Every word here is one EF's own string converter reads as a member or as a value: case ignored,
+    /// a numeral taken as the member carrying it or as a number no member carries, a comma list ORed into
+    /// a third member (<c>Idle</c> 2 and <c>Busy</c> 3 make <c>Busy</c>), padding trimmed, and an empty
+    /// column read as <c>Undefined</c>.
+    /// </remarks>
+    [Theory]
+    [InlineData("printing")]
+    [InlineData("PRINTING")]
+    [InlineData("2")]
+    [InlineData("99")]
+    [InlineData("Idle,Busy")]
+    [InlineData(" Printing")]
+    [InlineData("Printing ")]
+    [InlineData("")]
+    public async Task AnythingButAMemberNameInTheColumnIsRefused(string stored)
+    {
+        // Arrange
+        await using HomespoolDbContext context = NewContext();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+        await SeedOneOfEverythingAsync(context);
+        await SetPrinterStatusAsync(context, stored);
+
+        // Act
+        await using HomespoolDbContext reader = NewContext();
+
+        Func<Task> reading = () => reader.Printers
+                                         .AsNoTracking()
+                                         .SingleAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        await reading.Should()
+                     .ThrowAsync<InvalidOperationException>()
+                     .WithMessage("*not the name of a PrinterStatus member*");
+    }
+
+    /// <summary>
+    /// A value no member carries is refused at the write, and the row keeps what it held.
+    /// </summary>
+    /// <remarks>
+    /// EF's own converter writes such a value as its number, which the reader would then refuse - so a
+    /// write that went through would only hand the failure to whoever reads the row next.
+    /// </remarks>
+    [Fact]
+    public async Task AValueNoMemberCarriesIsNotWritten()
+    {
+        // Arrange
+        await using HomespoolDbContext context = NewContext();
+        await context.Database.MigrateAsync(TestContext.Current.CancellationToken);
+        await SeedOneOfEverythingAsync(context);
+
+        Printer printer = await context.Printers.SingleAsync(TestContext.Current.CancellationToken);
+        printer.Status = (PrinterStatus)99;
+
+        // Act
+        Func<Task> saving = () => context.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+        // Assert
+        (await saving.Should().ThrowAsync<DbUpdateException>())
+            .WithInnerException<InvalidOperationException>()
+            .WithMessage("*PrinterStatus 99 is no member*");
+
+        string stored = await context.Database
+                                     .SqlQuery<string>($"SELECT Status AS Value FROM Printers")
+                                     .SingleAsync(TestContext.Current.CancellationToken);
+
+        stored.Should().Be("Attention", "the refused write must not have reached the row");
+    }
+
+    /// <summary>
+    /// Puts <paramref name="stored"/> into the one printer's status with raw SQL - the only way a word
+    /// that is not a member's name can reach the column.
+    /// </summary>
+    private static async Task SetPrinterStatusAsync(HomespoolDbContext context, string stored)
+    {
+        await context.Database.ExecuteSqlAsync(
+            $"UPDATE \"Printers\" SET \"Status\" = {stored}",
+            TestContext.Current.CancellationToken);
     }
 
     /// <summary>

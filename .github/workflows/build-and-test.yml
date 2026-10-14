@@ -57,7 +57,7 @@ jobs:
       # the runner image, whose Node version is the image's to change, and ESLint refuses one too old.
       # 24 to match NODE_MAJOR in Homespool.Host/Dockerfile. This is the one job that lints; the others
       # build the same scripts and set ESLint off.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
 
@@ -95,7 +95,7 @@ jobs:
       # is diagnosed from its log alone. always(), because a failed run is the one worth reading.
       - name: Keep the test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-unit
           path: TestResults/*.trx
@@ -127,7 +127,7 @@ jobs:
 
       - name: Keep the test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-e2e
           path: TestResults/*.trx
@@ -170,7 +170,7 @@ jobs:
 
       - name: Keep the test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-integration
           path: TestResults/*.trx
@@ -258,7 +258,7 @@ jobs:
 
       - name: Keep the test results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-browser
           path: TestResults/*.trx

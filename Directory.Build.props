@@ -130,7 +130,7 @@ done | tail -n +11 | while read -r old; do rm -f &quot;$old&quot;; done"
             For VSTHRD100, async void, which .editorconfig makes an error; the analyser's other rules
             are off there, each with the count that was measured before it went.
         -->
-        <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.7.23">
+        <PackageReference Include="Microsoft.VisualStudio.Threading.Analyzers" Version="18.12.1">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
@@ -168,7 +168,7 @@ done | tail -n +11 | while read -r old; do rm -f &quot;$old&quot;; done"
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
             <PrivateAssets>all</PrivateAssets>

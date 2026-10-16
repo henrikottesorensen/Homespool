@@ -14,8 +14,8 @@
              that flattened every entry to a string: the level had to be asserted by substring-matching
              the formatted text, and the structured properties the writer actually logs (PrinterId,
              SampleCount, Kind) were discarded before a test could see them. -->
-        <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.10.0" />
-        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
+        <PackageReference Include="Microsoft.Extensions.Diagnostics.Testing" Version="10.11.0" />
+        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.11.0" />
         <!-- Used only for pure interface stubs with no behaviour of their own. Doubles that actually
              simulate something - the parsing tests' raw System.IO.Pipelines.Pipe (so a test can
              split a message mid-UTF8-character), FakeWebSocket, and the MessageDispatcher

@@ -83,4 +83,27 @@ public static class FakePrinterConnections
 
         return false;
     }
+
+    /// <summary>
+    /// Polls a predicate that has to read something asynchronously - a query, a snapshot - so that it
+    /// can be awaited rather than waited on.
+    /// </summary>
+    public static async Task<bool> WaitUntilAsync(Func<Task<bool>> predicate, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        DateTime deadline = DateTime.UtcNow + timeout;
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (await predicate())
+            {
+                return true;
+            }
+
+            await Task.Delay(100);
+        }
+
+        return false;
+    }
 }

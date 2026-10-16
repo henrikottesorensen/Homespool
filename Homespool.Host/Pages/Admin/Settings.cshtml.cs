@@ -145,42 +145,27 @@ public class SettingsModel : PageModel
             return Page();
         }
 
-        IReadOnlyDictionary<string, string> refusals = await RefusalsAsync();
-
-        if (refusals.Count > 0)
-        {
-            Errors = refusals;
-            StatusMessage = _localiser["Settings_NotSaved"];
-            StatusSuccess = false;
-            Sections = Grouped();
-
-            return Page();
-        }
-
-        AwaitingConfirmation = Unagreed();
-
-        if (AwaitingConfirmation.Count > 0)
-        {
-            // Nothing is written on this pass. The submitted values are carried back into the form so
-            // the answer is applied to exactly what was asked about, rather than to whatever the page
-            // looks like by the time somebody agrees.
-            SealForConfirmation();
-            Sections = Grouped();
-
-            return Page();
-        }
-
-        IReadOnlyDictionary<string, string> before = _store.Current();
-
-        SettingsSaveResult result = _store.Save(Values);
+        SettingsSaveResult result = _store.Save(Values, Confirmed, await MayNotTurnOnAsync());
 
         if (result.Saved)
         {
             StatusMessage = _localiser["Settings_Saved"];
             StatusSuccess = true;
-            RestartNeeded = ChangedAwaitingRestart(before);
+            RestartNeeded = result.RestartNeeded;
 
             Load();
+
+            return Page();
+        }
+
+        if (result.AwaitingConfirmation.Count > 0)
+        {
+            // Nothing is written on this pass. The submitted values are carried back into the form so
+            // the answer is applied to exactly what was asked about, rather than to whatever the page
+            // looks like by the time somebody agrees.
+            AwaitingConfirmation = result.AwaitingConfirmation;
+            SealForConfirmation();
+            Sections = Grouped();
 
             return Page();
         }
@@ -285,12 +270,12 @@ public class SettingsModel : PageModel
     }
 
     /// <summary>
-    /// Changes this administrator may not make, whatever they agree to.
+    /// Settings this administrator may not turn on, whatever they agree to, each with its refusal.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Requiring an authenticator is refused unless the person asking already has one</b> (Henrik).
-    /// The requirement applies to the account rather than the session, so an administrator without one
+    /// <b>Requiring an authenticator is refused unless the person asking already has one.</b> The
+    /// requirement applies to the account rather than the session, so an administrator without one
     /// is redirected to enrol before they can reach any page - including this one, and including the
     /// way back. Turning it on would be locking yourself out of the room you are standing in.
     /// </para>
@@ -300,17 +285,17 @@ public class SettingsModel : PageModel
     /// everybody else.
     /// </para>
     /// <para>
+    /// <b>This answers who is asking; the store answers whether the setting is being turned on</b>,
+    /// against what is saved when the save runs, so the refusal applies to the off-to-on transition
+    /// alone. Asking the account is the part that cannot happen inside the save.
+    /// </para>
+    /// <para>
     /// One case, written as one case. A second earns a general shape; one does not.
     /// </para>
     /// </remarks>
-    private async Task<IReadOnlyDictionary<string, string>> RefusalsAsync()
+    private async Task<IReadOnlyDictionary<string, string>> MayNotTurnOnAsync()
     {
         string path = $"{SecurityOptions.SectionName}:{nameof(SecurityOptions.RequireTwoFactor)}";
-
-        if (!IsOn(Values.GetValueOrDefault(path)) || IsOn(_store.Current().GetValueOrDefault(path)))
-        {
-            return new Dictionary<string, string>();
-        }
 
         HSUser? user = await _users.GetUserAsync(User);
 
@@ -323,75 +308,6 @@ public class SettingsModel : PageModel
         {
             [path] = _localiser["Settings_Refuse_Security_RequireTwoFactor"],
         };
-    }
-
-    /// <summary>
-    /// The settings this post turns on that carry a consequence nobody has agreed to yet.
-    /// </summary>
-    /// <remarks>
-    /// <b>Only the off-to-on transition asks.</b> A setting already on, or being turned off, or
-    /// absent from the post, is not a decision anybody needs talking through - and asking about the
-    /// safe direction is how a person learns to click past the question that matters.
-    /// </remarks>
-    private IReadOnlyList<EditableSetting> Unagreed()
-    {
-        IReadOnlyDictionary<string, string> current = _store.Current();
-
-        return
-        [
-            .. EditableSettings.All.Where(
-                setting => setting.NeedsConfirmingToEnable &&
-                           IsOn(Values.GetValueOrDefault(setting.Path)) &&
-                           !IsOn(current.GetValueOrDefault(setting.Path)) &&
-                           !Confirmed.Contains(setting.Path, System.StringComparer.Ordinal)),
-        ];
-    }
-
-    /// <summary>
-    /// Whether the save just made changed a setting that is only obeyed after a restart.
-    /// </summary>
-    /// <remarks>
-    /// <b>A secret is judged by what was typed</b>, because <see cref="SettingsStore.Current"/> answers
-    /// the placeholder for a stored one before and after alike. Anything but the placeholder replaced
-    /// it - except an empty box where nothing was stored, which changed nothing.
-    /// </remarks>
-    /// <param name="before">The values in force before the save.</param>
-    private bool ChangedAwaitingRestart(IReadOnlyDictionary<string, string> before)
-    {
-        IReadOnlyDictionary<string, string> after = _store.Current();
-
-        return EditableSettings.All.Any(setting =>
-        {
-            if (setting.Grade != SettingGrade.Restart)
-            {
-                return false;
-            }
-
-            if (!setting.IsSecret)
-            {
-                return !string.Equals(before.GetValueOrDefault(setting.Path),
-                                      after.GetValueOrDefault(setting.Path),
-                                      System.StringComparison.Ordinal);
-            }
-
-            return Values.TryGetValue(setting.Path, out string? typed) &&
-                   typed != SettingsStore.SecretPlaceholder &&
-                   !(string.IsNullOrEmpty(typed) && string.IsNullOrEmpty(before.GetValueOrDefault(setting.Path)));
-        });
-    }
-
-    /// <summary>
-    /// Whether a value counts as switched on.
-    /// </summary>
-    /// <remarks>
-    /// <b>Not every switch is a boolean.</b> Mail is turned on by naming a server, so "on" has to mean
-    /// "carries an answer" rather than "is true" - empty is off for a host exactly as false is off for
-    /// a flag, and both are the state a deployment has without anybody choosing it.
-    /// </remarks>
-    private static bool IsOn(string? value)
-    {
-        return !string.IsNullOrWhiteSpace(value) &&
-               !string.Equals(value, "false", System.StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

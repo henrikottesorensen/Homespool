@@ -340,7 +340,11 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
     {
         using IServiceScope scope = services.CreateScope();
 
-        scope.ServiceProvider.GetRequiredService<SettingsStore>().Save(values).Saved.Should().BeTrue();
+        scope.ServiceProvider.GetRequiredService<SettingsStore>()
+             .Save(values, ["Cameras:WebRtcStunEnabled"])
+             .Saved
+             .Should()
+             .BeTrue();
     }
 
     /// <summary>The listing count once it has stopped moving for half a second.</summary>

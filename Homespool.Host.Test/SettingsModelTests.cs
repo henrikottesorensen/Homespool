@@ -118,7 +118,7 @@ public class SettingsModelTests : IDisposable
     [Fact]
     public async Task TurningItBackOffIsNeitherRefusedNorAskedAbout()
     {
-        _store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" })
+        _store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" }, ["Security:RequireTwoFactor"])
               .Saved.Should().BeTrue();
 
         (SettingsModel page, _) = await PageAsync(twoFactor: false);
@@ -135,7 +135,8 @@ public class SettingsModelTests : IDisposable
     [Fact]
     public async Task AlreadyOnIsNotAskedAboutAgain()
     {
-        _store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" });
+        _store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" }, ["Security:RequireTwoFactor"])
+              .Saved.Should().BeTrue();
 
         (SettingsModel page, _) = await PageAsync(twoFactor: true);
 
@@ -398,7 +399,8 @@ public class SettingsModelTests : IDisposable
     [Fact]
     public async Task ChangingAnotherMailFieldIsNotAskedAbout()
     {
-        _store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" }).Saved.Should().BeTrue();
+        _store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" }, ["Smtp:Host"])
+              .Saved.Should().BeTrue();
 
         (SettingsModel page, _) = await PageAsync(twoFactor: false);
 
@@ -421,7 +423,8 @@ public class SettingsModelTests : IDisposable
     [Fact]
     public async Task TurningMailOffIsNotAskedAbout()
     {
-        _store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" });
+        _store.Save(new Dictionary<string, string?> { ["Smtp:Host"] = "mail.example.com" }, ["Smtp:Host"])
+              .Saved.Should().BeTrue();
 
         (SettingsModel page, _) = await PageAsync(twoFactor: false);
 
@@ -471,7 +474,8 @@ public class SettingsModelTests : IDisposable
     [Fact]
     public async Task DisallowingStunIsNotAskedAbout()
     {
-        _store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" });
+        _store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" }, ["Cameras:WebRtcStunEnabled"])
+              .Saved.Should().BeTrue();
 
         (SettingsModel page, _) = await PageAsync(twoFactor: false);
 
@@ -520,7 +524,8 @@ public class SettingsModelTests : IDisposable
                   ["Smtp:Host"] = "mail.example.com",
                   ["Smtp:UserName"] = "postmaster",
                   ["Smtp:Password"] = "hunter2",
-              })
+              },
+              ["Smtp:Host"])
               .Saved
               .Should()
               .BeTrue();

@@ -74,6 +74,21 @@ public sealed class SettingsPageTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// Two requests share one store, because the store's lock is what keeps their saves from
+    /// overlapping - a store per request would give each its own.
+    /// </summary>
+    [Fact]
+    public void EveryRequestSavesThroughTheSameStore()
+    {
+        using IServiceScope first = _factory.Services.CreateScope();
+        using IServiceScope second = _factory.Services.CreateScope();
+
+        first.ServiceProvider.GetRequiredService<SettingsStore>()
+             .Should()
+             .BeSameAs(second.ServiceProvider.GetRequiredService<SettingsStore>());
+    }
+
+    /// <summary>
     /// A page that saves and changes nothing is worse than no page, so when a change lands is always
     /// on the page - stated once for the ordinary case, and marked on the exceptions.
     /// </summary>

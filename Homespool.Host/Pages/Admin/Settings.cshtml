@@ -55,9 +55,9 @@
             <input type="hidden" name="Sealed[@pair.Key]" value="@pair.Value" />
         }
 
-        @foreach (EditableSetting setting in Model.AwaitingConfirmation)
+        @foreach (string path in Model.ConfirmedOnAgreeing)
         {
-            <input type="hidden" name="Confirmed" value="@setting.Path" />
+            <input type="hidden" name="Confirmed" value="@path" />
         }
 
         <button type="submit" class="btn btn-warning">@Localiser["Settings_ConfirmButton"]</button>

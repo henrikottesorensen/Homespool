@@ -297,6 +297,99 @@ public class SettingsStoreTests : IDisposable
         store.Current()["Security:RequireTwoFactor"].Should().Be("false");
     }
 
+    [Fact]
+    public void ConfirmingOneSettingDoesNotConfirmAnother()
+    {
+        (SettingsStore store, _) = Store();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?>
+                                               {
+                                                   ["Cameras:WebRtcStunEnabled"] = "true",
+                                                   ["Smtp:Host"] = "mail.example.com",
+                                               },
+                                               ["Cameras:WebRtcStunEnabled"]);
+
+        result.Saved.Should().BeFalse();
+        result.AwaitingConfirmation.Should().ContainSingle().Which.Path.Should().Be("Smtp:Host");
+        _file.Exists.Should().BeFalse("neither is written while one is unanswered");
+    }
+
+    /// <summary>
+    /// <b>An empty value removes the setting from the file, and the layer beneath answers for it.</b>
+    /// Where that layer holds it on, saying nothing turns it on, and is asked about like any other
+    /// way of turning it on.
+    /// </summary>
+    [Theory]
+    [InlineData("Cameras:WebRtcStunEnabled", "true", "false")]
+    [InlineData("Smtp:Host", "mail.example.com", "")]
+    public void AnEmptyValueThatLetsAnOnValueThroughIsAskedAbout(string path, string beneath, string off)
+    {
+        (SettingsStore store, _) = Store(new Dictionary<string, string?> { [path] = beneath });
+
+        store.Save(new Dictionary<string, string?> { [path] = off }).Saved.Should().BeTrue();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?> { [path] = null });
+
+        result.Saved.Should().BeFalse();
+        result.AwaitingConfirmation.Should().ContainSingle().Which.Path.Should().Be(path);
+        store.Current()[path].Should().Be(off);
+    }
+
+    [Fact]
+    public void AnEmptyValueThatLetsAnOnValueThroughIsRefused()
+    {
+        (SettingsStore store, _) = Store(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "true" });
+
+        store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = "false" }).Saved.Should().BeTrue();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?> { ["Security:RequireTwoFactor"] = null },
+                                               ["Security:RequireTwoFactor"],
+                                               new Dictionary<string, string> { ["Security:RequireTwoFactor"] = "refused" });
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Should().ContainKey("Security:RequireTwoFactor");
+        store.Current()["Security:RequireTwoFactor"].Should().Be("false");
+    }
+
+    /// <summary>
+    /// The same removal with nothing on beneath is the safe direction, and goes through unasked.
+    /// </summary>
+    [Fact]
+    public void AnEmptyValueOverNothingOnIsNotAskedAbout()
+    {
+        (SettingsStore store, _) = Store();
+
+        store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" }, ["Cameras:WebRtcStunEnabled"])
+             .Saved
+             .Should()
+             .BeTrue();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = null });
+
+        result.Saved.Should().BeTrue();
+        result.AwaitingConfirmation.Should().BeEmpty();
+        store.Current()["Cameras:WebRtcStunEnabled"].Should().Be("false", "the default is off");
+    }
+
+    /// <summary>
+    /// Nothing is asked about a save that would be refused anyway: the field error comes first.
+    /// </summary>
+    [Fact]
+    public void AValueRefusedOnItsOwnIsReportedBeforeAnythingIsAsked()
+    {
+        (SettingsStore store, _) = Store();
+
+        SettingsSaveResult result = store.Save(new Dictionary<string, string?>
+        {
+            ["Smtp:Host"] = "mail.example.com",
+            ["Smtp:Port"] = "abc",
+        });
+
+        result.Saved.Should().BeFalse();
+        result.Errors.Keys.Should().BeEquivalentTo("Smtp:Port");
+        result.AwaitingConfirmation.Should().BeEmpty();
+    }
+
     /// <summary>
     /// <b>A restart-grade setting is saved and shown, but not put in force.</b> The page and the
     /// store's own checks read what was saved; the rest of the process keeps the value it started

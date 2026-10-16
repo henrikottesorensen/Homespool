@@ -487,6 +487,50 @@ public class SettingsModelTests : IDisposable
         _store.Current()["Cameras:WebRtcStunEnabled"].Should().Be("false");
     }
 
+    /// <summary>
+    /// <b>An answer keeps the answers before it.</b> STUN is on, so a post turning on mail beside it
+    /// asks about mail alone; another save then turns STUN off, so the answer is asked about STUN.
+    /// That answer still agrees to mail, or the two would be asked about in turn for ever.
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerCarriesEveryConfirmationGivenSoFar()
+    {
+        _store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "true" }, ["Cameras:WebRtcStunEnabled"])
+              .Saved.Should().BeTrue();
+
+        (SettingsModel page, _) = await PageAsync(twoFactor: false);
+
+        page.Values = new Dictionary<string, string?>
+        {
+            ["Cameras:WebRtcStunEnabled"] = "true",
+            ["Smtp:Host"] = "mail.example.com",
+        };
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().ContainSingle().Which.Path.Should().Be("Smtp:Host");
+        page.ConfirmedOnAgreeing.Should().Equal("Smtp:Host");
+
+        _store.Save(new Dictionary<string, string?> { ["Cameras:WebRtcStunEnabled"] = "false" }).Saved.Should().BeTrue();
+
+        page.Values = new Dictionary<string, string?>(page.CarriedValues);
+        page.Confirmed = [.. page.ConfirmedOnAgreeing];
+
+        await page.OnPost();
+
+        page.AwaitingConfirmation.Should().ContainSingle().Which.Path.Should().Be("Cameras:WebRtcStunEnabled");
+        page.ConfirmedOnAgreeing.Should().BeEquivalentTo("Smtp:Host", "Cameras:WebRtcStunEnabled");
+
+        page.Values = new Dictionary<string, string?>(page.CarriedValues);
+        page.Confirmed = [.. page.ConfirmedOnAgreeing];
+
+        await page.OnPost();
+
+        page.StatusSuccess.Should().BeTrue("the third answer is the save");
+        _store.Current()["Cameras:WebRtcStunEnabled"].Should().Be("true");
+        _store.Current()["Smtp:Host"].Should().Be("mail.example.com");
+    }
+
     protected virtual void Dispose(bool disposing)
     {
         if (!disposing)

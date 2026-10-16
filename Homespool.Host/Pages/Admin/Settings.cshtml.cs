@@ -97,6 +97,17 @@ public class SettingsModel : PageModel
     public IReadOnlyList<EditableSetting> AwaitingConfirmation { get; private set; } = [];
 
     /// <summary>
+    /// Every setting the answer to the question agrees to: those asked about now, and those agreed to
+    /// on an earlier question about the same submission.
+    /// </summary>
+    /// <remarks>
+    /// <b>Earlier answers are carried, not dropped.</b> The values travel unchanged from one question
+    /// to the next, so an answer still describes them. Dropped, two settings that another save keeps
+    /// turning off would each be asked about in turn, every answer losing the one before.
+    /// </remarks>
+    public IReadOnlyList<string> ConfirmedOnAgreeing { get; private set; } = [];
+
+    /// <summary>
     /// What the confirmation question carries to the answer in the clear: every submitted value
     /// except a typed secret, which travels in <see cref="SealedSecrets"/> instead.
     /// </summary>
@@ -164,6 +175,12 @@ public class SettingsModel : PageModel
             // the answer is applied to exactly what was asked about, rather than to whatever the page
             // looks like by the time somebody agrees.
             AwaitingConfirmation = result.AwaitingConfirmation;
+            ConfirmedOnAgreeing =
+            [
+                .. Confirmed.Where(path => EditableSettings.Find(path)?.NeedsConfirmingToEnable == true)
+                            .Concat(AwaitingConfirmation.Select(setting => setting.Path))
+                            .Distinct(StringComparer.Ordinal),
+            ];
             SealForConfirmation();
             Sections = Grouped();
 

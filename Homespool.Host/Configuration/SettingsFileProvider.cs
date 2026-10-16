@@ -29,7 +29,7 @@ namespace Homespool.Host.Configuration;
 /// <b>Live and deferred settings pass through untouched</b>, which is the reload's whole purpose.
 /// </para>
 /// <para>
-/// <b>What was saved is still available, through <see cref="Saved"/></b> - for the settings page,
+/// <b>What was saved is still available, through <see cref="Saved(IConfigurationRoot)"/></b> - for the settings page,
 /// which shows what was typed, and for checks on what the next start will use. Nothing else should
 /// read it.
 /// </para>
@@ -116,12 +116,56 @@ public sealed class SettingsFileProvider : JsonConfigurationProvider
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
+        return View(configuration, settings => settings._saved);
+    }
+
+    /// <summary>
+    /// The saved view as it would read once <paramref name="changes"/> were written to the file.
+    /// </summary>
+    /// <param name="configuration">The application's configuration.</param>
+    /// <param name="changes">
+    /// Keys and the values a save would write. A null removes the key, so the layers beneath answer
+    /// for it - which is the case this exists for: what a removal leaves in force is not in the
+    /// submission at all.
+    /// </param>
+    /// <returns>The prospective view. Dispose it when done.</returns>
+    public static ConfigurationRoot Saved(IConfigurationRoot configuration, IReadOnlyDictionary<string, string?> changes)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(changes);
+
+        return View(configuration, settings => Changed(settings._saved, changes));
+    }
+
+    private static ConfigurationRoot View(IConfigurationRoot configuration,
+                                          Func<SettingsFileProvider, Dictionary<string, string?>> settingsLayer)
+    {
         return new ConfigurationRoot(
         [
             .. configuration.Providers.Select(layer => layer is SettingsFileProvider settings ?
-                                                  new Fixed(settings._saved) :
+                                                  new Fixed(settingsLayer(settings)) :
                                                   (IConfigurationProvider)new ReadThrough(layer)),
         ]);
+    }
+
+    private static Dictionary<string, string?> Changed(Dictionary<string, string?> saved,
+                                                       IReadOnlyDictionary<string, string?> changes)
+    {
+        Dictionary<string, string?> changed = new(saved, StringComparer.OrdinalIgnoreCase);
+
+        foreach ((string key, string? value) in changes)
+        {
+            if (value is null)
+            {
+                changed.Remove(key);
+            }
+            else
+            {
+                changed[key] = value;
+            }
+        }
+
+        return changed;
     }
 
     private void Apply(Dictionary<string, string?> saved)

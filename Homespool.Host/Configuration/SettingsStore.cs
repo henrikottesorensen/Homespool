@@ -27,7 +27,7 @@ namespace Homespool.Host.Configuration;
 /// </para>
 /// <para>
 /// <b>Everything here reads the configuration as saved</b>, through
-/// <see cref="SettingsFileProvider.Saved"/>, and nothing else in the application should. The
+/// <see cref="SettingsFileProvider.Saved(IConfigurationRoot)"/>, and nothing else in the application should. The
 /// configuration the application runs on holds restart-grade settings at their startup values; read
 /// from that, the page would show a saved value reverting the moment it was saved, and the checks
 /// below would judge a save against settings that are about to stop applying.
@@ -129,6 +129,13 @@ public sealed class SettingsStore
     /// asking about the safe direction is how a person learns to click past the question that
     /// matters.
     /// </para>
+    /// <para>
+    /// <b>"On" is what the setting will read once the save is written, not what was submitted.</b> An
+    /// empty value removes the key from the file, and the layer beneath answers for it from then on -
+    /// so a setting the environment holds on comes back on through a submission that says nothing.
+    /// That needs the submission bound, which is why a value refused on its own is reported before
+    /// anything is asked or refused.
+    /// </para>
     /// </remarks>
     /// <param name="submitted">Values keyed by <see cref="EditableSetting.Path"/>.</param>
     /// <param name="confirmed">
@@ -159,12 +166,29 @@ public sealed class SettingsStore
         using ConfigurationRoot saved = SettingsFileProvider.Saved(_configuration);
 
         IReadOnlyDictionary<string, string> before = ValuesOf(saved);
+        Dictionary<string, string?> pending = Pending(submitted);
+
+        Dictionary<string, string> errors = new(Validate(saved, pending), StringComparer.Ordinal);
+
+        foreach (string path in SecretsThatCannotCarryOver(saved, submitted))
+        {
+            errors[path] = _localiser["Settings_Refuse_SecretNotCarriedOver"];
+        }
+
+        if (errors.Count > 0)
+        {
+            return new SettingsSaveResult(false, errors, [], false);
+        }
+
+        using ConfigurationRoot written = SettingsFileProvider.Saved(_configuration, pending);
+
+        IReadOnlyDictionary<string, string> after = ValuesOf(written);
 
         Dictionary<string, string> refused = new(StringComparer.Ordinal);
 
         foreach ((string path, string refusal) in mayNotTurnOn)
         {
-            if (TurnsOn(path, before, submitted))
+            if (TurnsOn(path, before, after))
             {
                 refused[path] = refusal;
             }
@@ -178,7 +202,7 @@ public sealed class SettingsStore
         List<EditableSetting> unagreed =
         [
             .. EditableSettings.All.Where(setting => setting.NeedsConfirmingToEnable &&
-                                                     TurnsOn(setting.Path, before, submitted) &&
+                                                     TurnsOn(setting.Path, before, after) &&
                                                      !confirmed.Contains(setting.Path, StringComparer.Ordinal)),
         ];
 
@@ -188,6 +212,27 @@ public sealed class SettingsStore
         }
 
         JsonObject stored = _file.Read();
+
+        foreach ((string path, string? value) in pending)
+        {
+            Write(stored, path, value);
+        }
+
+        _file.Write(stored);
+
+        // The layer is registered without a watcher, so this is what makes the write visible - to the
+        // settings that apply without a restart, the layer holding the rest. It also fires the change
+        // token every IOptionsMonitor is listening on.
+        _configuration.Reload();
+
+        return new SettingsSaveResult(true, errors, [], ChangedAwaitingRestart(before, submitted));
+    }
+
+    /// <summary>
+    /// What the submission writes to the file, keyed as stored. A null removes the key.
+    /// </summary>
+    private Dictionary<string, string?> Pending(IReadOnlyDictionary<string, string?> submitted)
+    {
         Dictionary<string, string?> pending = [];
 
         foreach (EditableSetting setting in EditableSettings.All)
@@ -215,31 +260,7 @@ public sealed class SettingsStore
             pending[setting.Path] = value;
         }
 
-        Dictionary<string, string> errors = new(Validate(saved, pending), StringComparer.Ordinal);
-
-        foreach (string path in SecretsThatCannotCarryOver(saved, submitted))
-        {
-            errors[path] = _localiser["Settings_Refuse_SecretNotCarriedOver"];
-        }
-
-        if (errors.Count > 0)
-        {
-            return new SettingsSaveResult(false, errors, [], false);
-        }
-
-        foreach ((string path, string? value) in pending)
-        {
-            Write(stored, path, value);
-        }
-
-        _file.Write(stored);
-
-        // The layer is registered without a watcher, so this is what makes the write visible - to the
-        // settings that apply without a restart, the layer holding the rest. It also fires the change
-        // token every IOptionsMonitor is listening on.
-        _configuration.Reload();
-
-        return new SettingsSaveResult(true, errors, [], ChangedAwaitingRestart(before, submitted));
+        return pending;
     }
 
     /// <summary>
@@ -280,13 +301,13 @@ public sealed class SettingsStore
     }
 
     /// <summary>
-    /// Whether the submission turns a setting from off to on.
+    /// Whether a setting that was off will be on once the save is written.
     /// </summary>
     private static bool TurnsOn(string path,
                                 IReadOnlyDictionary<string, string> before,
-                                IReadOnlyDictionary<string, string?> submitted)
+                                IReadOnlyDictionary<string, string> after)
     {
-        return IsOn(submitted.GetValueOrDefault(path)) && !IsOn(before.GetValueOrDefault(path));
+        return IsOn(after.GetValueOrDefault(path)) && !IsOn(before.GetValueOrDefault(path));
     }
 
     /// <summary>

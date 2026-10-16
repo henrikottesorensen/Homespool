@@ -65,8 +65,9 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private int? _reportedNozzle;
     private int? _reportedBed;
 
-    // When a heater command of ours set each target, as a Stopwatch timestamp, while no report has yet
-    // confirmed or replaced it; null otherwise.
+    // When a heater command of ours last set each target to something the printer had not reported, as a
+    // Stopwatch timestamp. Past UnconfirmedHeaterWindow the last report stands again - which, once one
+    // has arrived since, is the target anyway.
     private long? _nozzleSetAt;
     private long? _bedSetAt;
 
@@ -1433,14 +1434,12 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         {
             _reportedNozzle = nozzle;
             _nozzleTarget = nozzle;
-            _nozzleSetAt = null;
         }
 
         if (WholeDegrees(telemetry.TargetBedTemperature) is int bed)
         {
             _reportedBed = bed;
             _bedTarget = bed;
-            _bedSetAt = null;
         }
     }
 

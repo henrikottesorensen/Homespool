@@ -107,7 +107,8 @@ public class PrinterConnectionActorTests
                                                    TimeSpan? sendTimeout = null,
                                                    ILogger<PrinterConnectionActor>? logger = null,
                                                    ITransferContentStore? contentStore = null,
-                                                   TimeSpan? collectTimeout = null)
+                                                   TimeSpan? collectTimeout = null,
+                                                   TimeSpan? heaterWindow = null)
     {
         return new(printerId, connection, sink ?? Substitute.For<ITelemetrySink>(),
                    logger ?? NullLogger<PrinterConnectionActor>.Instance, responseTimeout ?? TimeSpan.FromSeconds(10),
@@ -115,6 +116,7 @@ public class PrinterConnectionActorTests
         {
             SendTimeout = sendTimeout ?? TimeSpan.FromSeconds(30),
             CollectTimeout = collectTimeout ?? HttpPrinterConnection.IdleWindow,
+            UnconfirmedHeaterWindow = heaterWindow ?? TimeSpan.FromSeconds(10),
         };
     }
 
@@ -1210,17 +1212,86 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// A heater command of ours, once finished, overtakes the printer's last report; a report still
-    /// carrying the value from before it is the printer not having caught up, and any other value is
-    /// news again.
+    /// A heater command of ours, once finished, outranks the printer's last report - but only until
+    /// the window passes with no report confirming it, after which the printer's last word stands again.
     /// </summary>
     /// <remarks>
-    /// The case it closes: a second unload straight after a first, while the printer's reports - every
-    /// two seconds from the MK3 (PrusaLink's <c>M155 S2</c>, auto_telemetry.py:118) - still carry the
-    /// first one's unload temperature, would otherwise set the nozzle back to that.
+    /// <para>
+    /// The second half is the case a review found: we set 215 from a reported 0, somebody sets it back
+    /// to 0 at the panel before the printer's next report, and PrusaLink - which reports a target only
+    /// when it changes - never reports anything. Held for ever, every later unload would put the nozzle
+    /// back to 215.
+    /// </para>
+    /// <para>
+    /// The first half is why it outranks the report at all: a second unload straight after a first,
+    /// before the printer has reported the first one's reset, must not see the first one's unload
+    /// temperature.
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task AStaleReportAfterOurOwnHeaterChangeIsIgnoredAndAFreshOneIsNot()
+    public async Task AnUnconfirmedHeaterChangeOfOursGivesWayToTheLastReportAfterTheWindow()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        RecordingTelemetrySink sink = new();
+
+        // Two seconds, so the half that has to land inside it does on a loaded machine too.
+        TimeSpan window = TimeSpan.FromSeconds(2);
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink,
+                                                responseTimeout: TimeSpan.FromSeconds(30), heaterWindow: window);
+
+        await ReportAsync(actor, sink, nozzle: 0f);
+        await FinishAsync(actor, sent, sentFrames, new SetNozzleTemperature(215));
+
+        // Act
+        ISendableCommand withinWindow = await SendAndForgetAsync(actor, sent, sentFrames);
+
+        await Task.Delay(window * 2, TestContext.Current.CancellationToken);
+        ISendableCommand afterWindow = await SendAndForgetAsync(actor, sent, sentFrames);
+
+        // Assert
+        withinWindow.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(215, "our own change, not yet reported");
+        afterWindow.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(0, "nothing confirmed it, so the printer's last word stands");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A report of the value we set confirms it, and it stands past the window.
+    /// </summary>
+    [Fact]
+    public async Task AReportOfOurOwnHeaterChangeConfirmsIt()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        RecordingTelemetrySink sink = new();
+        TimeSpan window = TimeSpan.FromMilliseconds(300);
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink,
+                                                responseTimeout: TimeSpan.FromSeconds(30), heaterWindow: window);
+
+        await ReportAsync(actor, sink, nozzle: 0f);
+        await FinishAsync(actor, sent, sentFrames, new SetNozzleTemperature(215));
+
+        // Act
+        await ReportAsync(actor, sink, nozzle: 215f);
+        await Task.Delay(window * 2, TestContext.Current.CancellationToken);
+        ISendableCommand unload = await SendAndForgetAsync(actor, sent, sentFrames);
+
+        // Assert
+        unload.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(215);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A report of anything else replaces our change at once: it is the printer's word.
+    /// </summary>
+    [Fact]
+    public async Task AReportOfAnotherValueReplacesOurOwnHeaterChange()
     {
         // Arrange
         List<byte[]> sentFrames = [];
@@ -1228,29 +1299,68 @@ public class PrinterConnectionActorTests
         RecordingTelemetrySink sink = new();
         PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink, responseTimeout: TimeSpan.FromSeconds(30));
 
-        await actor.PostAsync(TelemetryTargeting(nozzle: 215f, bed: 0f), CancellationToken.None);
-        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 1);
-
-        Task<CommandSendResult> cool = actor.SendCommandAsync(new SetNozzleTemperature(0), CancellationToken.None);
-        await WaitUntilAsync(() => sent.Count == 1);
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0])), CancellationToken.None);
-        await Eventually(cool);
+        await ReportAsync(actor, sink, nozzle: 0f);
+        await FinishAsync(actor, sent, sentFrames, new SetNozzleTemperature(215));
 
         // Act
-        await actor.PostAsync(TelemetryTargeting(nozzle: 215f, bed: 0f), CancellationToken.None);
-        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 2);
-        ISendableCommand afterStale = await SendAndForgetAsync(actor, sent, sentFrames);
-
-        await actor.PostAsync(TelemetryTargeting(nozzle: 200f, bed: 0f), CancellationToken.None);
-        await WaitUntilAsync(() => sink.TelemetryCalls.Count == 3);
-        ISendableCommand afterFresh = await SendAndForgetAsync(actor, sent, sentFrames);
+        await ReportAsync(actor, sink, nozzle: 200f);
+        ISendableCommand unload = await SendAndForgetAsync(actor, sent, sentFrames);
 
         // Assert
-        afterStale.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(0, "215 is the report from before our own change");
-        afterFresh.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(200, "a value it never had is the printer's word");
+        unload.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(200);
 
         actor.Complete();
         await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// A heater command the printer refuses changes nothing we know: only <c>FINISHED</c> says its lines
+    /// took.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedHeaterCommandLeavesTheKnownTargetAlone()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink, responseTimeout: TimeSpan.FromSeconds(30));
+
+        await ReportAsync(actor, sink, nozzle: 230f);
+
+        Task<CommandSendResult> cool = actor.SendCommandAsync(new SetNozzleTemperature(0), CancellationToken.None);
+        await WaitUntilAsync(() => sent.Count == 1);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected), CancellationToken.None);
+        await Eventually(cool);
+
+        // Act
+        ISendableCommand unload = await SendAndForgetAsync(actor, sent, sentFrames);
+
+        // Assert
+        unload.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(230);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>Posts a report of the nozzle's target and waits for the actor to have taken it.</summary>
+    private static async Task ReportAsync(PrinterConnectionActor actor, RecordingTelemetrySink sink, float nozzle)
+    {
+        int before = sink.TelemetryCalls.Count;
+
+        await actor.PostAsync(TelemetryTargeting(nozzle, bed: 0f), CancellationToken.None);
+        await WaitUntilAsync(() => sink.TelemetryCalls.Count == before + 1);
+    }
+
+    /// <summary>Sends <paramref name="command"/> and has the printer finish it.</summary>
+    private static async Task FinishAsync(PrinterConnectionActor actor, List<ISendableCommand> sent, List<byte[]> sentFrames, ISendableCommand command)
+    {
+        int before = sent.Count;
+        Task<CommandSendResult> sending = actor.SendCommandAsync(command, CancellationToken.None);
+
+        await WaitUntilAsync(() => sent.Count == before + 1);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[^1])), CancellationToken.None);
+        await Eventually(sending);
     }
 
     /// <summary>Sends an unload, answers it, and returns the command as it went out.</summary>
@@ -1279,10 +1389,11 @@ public class PrinterConnectionActorTests
     {
         IPrinterConnection connection = OpenConnection();
 
+        // The frame first: the tests wait on the command and then read the frame.
         OnSend(connection, call =>
         {
-            sent.Add((ISendableCommand)call[1]!);
             sentFrames.Add(CommandWireEncoder.Encode((uint)call[0]!, (ISendableCommand)call[1]!, PrinterDialect.ConnectSdk));
+            sent.Add((ISendableCommand)call[1]!);
         });
 
         return connection;

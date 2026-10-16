@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -578,10 +579,10 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
         QueueSnapshot? during = null;
 
         await using FakePrinterClient fake = await ConnectAsync(identity, token,
-                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO", _ =>
+                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO", async _ =>
                                                                 {
-                                                                    QueueAPrintAsync(ownerId, printerId).GetAwaiter().GetResult();
-                                                                    during = SnapshotAsync(printerId).GetAwaiter().GetResult();
+                                                                    await QueueAPrintAsync(ownerId, printerId);
+                                                                    during = await SnapshotAsync(printerId);
                                                                 }));
         Task run = fake.RunAsync(TestContext.Current.CancellationToken);
         await WaitForModelAsync(printerId);
@@ -620,9 +621,9 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
         Exception? refused = null;
 
         await using FakePrinterClient fake = await ConnectAsync(identity, token,
-                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO", _ =>
+                                                                new OnCommandPolicy(identity, "SEND_FILE_INFO", async _ =>
                                                                 {
-                                                                    refused = SendAnotherFileAsync(ownerId, printerId).GetAwaiter().GetResult();
+                                                                    refused = await SendAnotherFileAsync(ownerId, printerId);
                                                                 }));
         Task run = fake.RunAsync(TestContext.Current.CancellationToken);
         await WaitForModelAsync(printerId);
@@ -766,13 +767,14 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
     private async Task WaitForModelAsync(int printerId)
     {
         bool idle = await FakePrinterConnections.WaitUntilAsync(
-            () =>
+            async () =>
             {
                 using IServiceScope scope = _factory.Services.CreateScope();
 
-                return PhysicalChangeRules.IsAllowed(scope.ServiceProvider.GetRequiredService<QueueSnapshotReader>()
-                                                          .ReadAsync(printerId, TestContext.Current.CancellationToken)
-                                                          .GetAwaiter().GetResult().Status);
+                QueueSnapshot snapshot = await scope.ServiceProvider.GetRequiredService<QueueSnapshotReader>()
+                                                    .ReadAsync(printerId, TestContext.Current.CancellationToken);
+
+                return PhysicalChangeRules.IsAllowed(snapshot.Status);
             },
             TimeSpan.FromSeconds(30));
 
@@ -947,15 +949,28 @@ public sealed class FirmwareFlashTests : IAsyncLifetime
     }
 
     /// <summary>Answers as firmware does, having first done something when one command arrives.</summary>
-    private sealed class OnCommandPolicy(PrinterIdentity identity, string command, Action<FakeDevice> onCommand) : CommandAnswerPolicy
+    private sealed class OnCommandPolicy(PrinterIdentity identity, string command, Func<FakeDevice, Task> onCommand) : CommandAnswerPolicy
     {
         private readonly FirmwareFaithfulPolicy _firmware = new(identity, TimeProvider.System);
 
+        public OnCommandPolicy(PrinterIdentity identity, string command, Action<FakeDevice> onCommand)
+            : this(identity, command, device =>
+            {
+                onCommand(device);
+
+                return Task.CompletedTask;
+            })
+        {
+        }
+
+        [SuppressMessage("Usage", "VSTHRD002:Avoid problematic synchronous waits",
+                         Justification =
+                             "Answer is the fake printer's synchronous planning hook, and the wait is the point: the printer must not answer until the action has finished, so that it lands while the server waits on that answer.")]
         public override IReadOnlyList<PlannedReply> Answer(ServerCommandFrame frame, FakeDevice device)
         {
             if (frame.TryGetJsonCommandName() == command)
             {
-                onCommand(device);
+                onCommand(device).GetAwaiter().GetResult();
             }
 
             return _firmware.Answer(frame, device);

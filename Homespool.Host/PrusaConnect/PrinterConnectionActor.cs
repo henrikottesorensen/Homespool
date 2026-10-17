@@ -65,11 +65,14 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private int? _reportedNozzle;
     private int? _reportedBed;
 
-    // When a heater command of ours last set each target to something the printer had not reported, as a
-    // Stopwatch timestamp. Past UnconfirmedHeaterWindow the last report stands again - which, once one
-    // has arrived since, is the target anyway.
+    // When a heater command of ours set each target to something the printer had not reported, as a
+    // Stopwatch timestamp, until a report confirms or replaces it; past UnconfirmedHeaterWindow the last
+    // report stands again. With it, what the printer last reported before the change: inside the window a
+    // report of that value is a stale snapshot, not an answer.
     private long? _nozzleSetAt;
     private long? _bedSetAt;
+    private int? _nozzleBefore;
+    private int? _bedBefore;
 
     /// <summary>
     /// The one transfer this printer may have in progress. One, because firmware allocates a single
@@ -270,6 +273,14 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     /// So silence for twice that long means the printer's last report stands: held for ever, a change
     /// undone at the panel would leave every later unload putting the nozzle back to a temperature it
     /// never had. Within it, a second unload straight after a first sees the first one's "before".
+    /// </para>
+    /// <para>
+    /// <b>Inside it, a report of the value from before our change does not end it.</b> PrusaLink's own
+    /// target comes from the MK3's two-second report, and two paths send its whole snapshot without the
+    /// changed-only filter - the five-minute re-send and a renewed connection
+    /// (<c>resend_latest_telemetry</c>, telemetry_passer.py:412-417; prusa_link.py:1089-1091) - so one
+    /// landing in those two seconds carries the old target. Taken as the answer, a cooldown would be
+    /// undone for an unload starting before the next report. Any other value still ends the window.
     /// </para>
     /// </remarks>
     public TimeSpan UnconfirmedHeaterWindow { get; init; } = TimeSpan.FromSeconds(10);
@@ -1422,7 +1433,8 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
 
     /// <summary>
     /// Takes the heater targets a report carries: the printer's word, which confirms a change of ours or
-    /// replaces it.
+    /// replaces it - unless, inside <see cref="UnconfirmedHeaterWindow"/>, it is the value from before
+    /// the change, which a stale snapshot carries. That is still the last report.
     /// </summary>
     /// <remarks>
     /// A report without the field - Buddy's reduced telemetry, or PrusaLink with nothing changed - leaves
@@ -1433,13 +1445,23 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         if (WholeDegrees(telemetry.TargetNozzleTemperature) is int nozzle)
         {
             _reportedNozzle = nozzle;
-            _nozzleTarget = nozzle;
+
+            if (!IsStale(nozzle, _nozzleBefore, _nozzleSetAt))
+            {
+                _nozzleTarget = nozzle;
+                _nozzleSetAt = null;
+            }
         }
 
         if (WholeDegrees(telemetry.TargetBedTemperature) is int bed)
         {
             _reportedBed = bed;
-            _bedTarget = bed;
+
+            if (!IsStale(bed, _bedBefore, _bedSetAt))
+            {
+                _bedTarget = bed;
+                _bedSetAt = null;
+            }
         }
     }
 
@@ -1455,12 +1477,14 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
         {
             _nozzleTarget = nozzle;
             _nozzleSetAt = nozzle == _reportedNozzle ? null : now;
+            _nozzleBefore = _reportedNozzle;
         }
 
         if (change?.Bed is int bed)
         {
             _bedTarget = bed;
             _bedSetAt = bed == _reportedBed ? null : now;
+            _bedBefore = _reportedBed;
         }
     }
 
@@ -1476,6 +1500,19 @@ public sealed class PrinterConnectionActor : IPrinterConnectionActor
     private int? Known(int? target, int? reported, long? setAt)
     {
         return setAt is long at && Stopwatch.GetElapsedTime(at) > UnconfirmedHeaterWindow ? reported : target;
+    }
+
+    /// <summary>
+    /// Whether a report of <paramref name="value"/> is the value from before a change of ours not yet
+    /// confirmed - a snapshot the printer sent before it had caught up.
+    /// </summary>
+    /// <remarks>
+    /// No window here: once <see cref="UnconfirmedHeaterWindow"/> has passed, <see cref="Known"/> hands
+    /// over to the last report, which such a report still is.
+    /// </remarks>
+    private static bool IsStale(int value, int? before, long? setAt)
+    {
+        return setAt is not null && value == before;
     }
 
     private static int? WholeDegrees(float? target)

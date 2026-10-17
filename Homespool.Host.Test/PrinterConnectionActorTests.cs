@@ -1314,11 +1314,13 @@ public class PrinterConnectionActorTests
     }
 
     /// <summary>
-    /// A heater command the printer refuses changes nothing we know: only <c>FINISHED</c> says its lines
-    /// took.
+    /// A heater command the printer refuses, or fails part-way, changes nothing we know: only
+    /// <c>FINISHED</c> says its lines took.
     /// </summary>
-    [Fact]
-    public async Task ARefusedHeaterCommandLeavesTheKnownTargetAlone()
+    [Theory]
+    [InlineData(PrinterEventType.Rejected)]
+    [InlineData(PrinterEventType.Failed)]
+    public async Task ARefusedHeaterCommandLeavesTheKnownTargetAlone(PrinterEventType answer)
     {
         // Arrange
         List<byte[]> sentFrames = [];
@@ -1330,7 +1332,7 @@ public class PrinterConnectionActorTests
 
         Task<CommandSendResult> cool = actor.SendCommandAsync(new SetNozzleTemperature(0), CancellationToken.None);
         await WaitUntilAsync(() => sent.Count == 1);
-        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), PrinterEventType.Rejected), CancellationToken.None);
+        await actor.PostAsync(EventAnswering(CommandIdOf(sentFrames[0]), answer), CancellationToken.None);
         await Eventually(cool);
 
         // Act
@@ -1338,6 +1340,68 @@ public class PrinterConnectionActorTests
 
         // Assert
         unload.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(230);
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// Inside the window, a report of the value from before our change is a stale snapshot, not an
+    /// answer: a cooldown stands for an unload that starts before the printer's next report.
+    /// </summary>
+    /// <remarks>
+    /// PrusaLink takes its own target from the MK3's two-second report and, every five minutes and on a
+    /// renewed connection, sends its whole snapshot regardless of change (<c>resend_latest_telemetry</c>,
+    /// telemetry_passer.py:412-417) - so one sent between our <c>M104</c> and the next report still says
+    /// 215. Taken as the answer, the unload would put the nozzle back to 215.
+    /// </remarks>
+    [Fact]
+    public async Task AStaleReportOfTheValueBeforeOurChangeInsideTheWindowLeavesOurChange()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        RecordingTelemetrySink sink = new();
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink, responseTimeout: TimeSpan.FromSeconds(30));
+
+        await ReportAsync(actor, sink, nozzle: 215f);
+        await FinishAsync(actor, sent, sentFrames, new SetNozzleTemperature(0));
+
+        // Act
+        await ReportAsync(actor, sink, nozzle: 215f);
+        ISendableCommand unload = await SendAndForgetAsync(actor, sent, sentFrames);
+
+        // Assert
+        unload.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(0, "the cooldown, not the snapshot from before it");
+
+        actor.Complete();
+        await Eventually(actor.Completion);
+    }
+
+    /// <summary>
+    /// After the window, a report of the value from before our change is the printer's word again.
+    /// </summary>
+    [Fact]
+    public async Task AReportOfTheValueBeforeOurChangeAfterTheWindowStands()
+    {
+        // Arrange
+        List<byte[]> sentFrames = [];
+        List<ISendableCommand> sent = [];
+        RecordingTelemetrySink sink = new();
+        TimeSpan window = TimeSpan.FromMilliseconds(300);
+        PrinterConnectionActor actor = NewActor(RecordingConnection(sentFrames, sent), sink,
+                                                responseTimeout: TimeSpan.FromSeconds(30), heaterWindow: window);
+
+        await ReportAsync(actor, sink, nozzle: 215f);
+        await FinishAsync(actor, sent, sentFrames, new SetNozzleTemperature(0));
+
+        // Act
+        await Task.Delay(window * 2, TestContext.Current.CancellationToken);
+        await ReportAsync(actor, sink, nozzle: 215f);
+        ISendableCommand unload = await SendAndForgetAsync(actor, sent, sentFrames);
+
+        // Assert
+        unload.Should().BeOfType<UnloadFilamentAt>().Which.NozzleAfterwards.Should().Be(215);
 
         actor.Complete();
         await Eventually(actor.Completion);

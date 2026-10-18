@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 
 using AwesomeAssertions;
@@ -17,10 +16,10 @@ namespace Homespool.Host.Test;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The failure being guarded against is not hypothetical and not rare: regenerating the single
-/// migration in place is this project's convention while pre-release, and a deployed appliance has
-/// met the consequence four times. What the guard buys is not preventing it - only stacking
-/// migrations does that - but making it say what happened and what to run.
+/// The failure being guarded against is a database stamped with an id this build does not carry,
+/// because a newer build migrated it. Stacking migrations (<see cref="MigrationBaselineTests"/>) keeps
+/// an upgrade from ever producing one; what the guard buys for a downgrade is making the failure say
+/// what happened and what to run.
 /// </para>
 /// <para>
 /// So the assertions come in pairs: that it throws on the shape, and that what it throws carries the
@@ -58,8 +57,8 @@ public sealed class MigrationHistoryGuardTests : IDisposable
     }
 
     /// <summary>
-    /// The regenerate-in-place shape, and today's incident: the schema is whatever it is, and the
-    /// stamped id names a migration this build does not have.
+    /// The downgrade shape: the schema is whatever it is, and the stamped id names a migration this
+    /// build does not have.
     /// </summary>
     [Fact]
     public async Task ADatabaseStampedByAnotherBuildIsRefused()
@@ -110,11 +109,11 @@ public sealed class MigrationHistoryGuardTests : IDisposable
     [Fact]
     public async Task TheMessageNamesTheIdsAndTheTool()
     {
-        string carried;
+        List<string> carried;
 
         await using (HomespoolDbContext context = await MigratedContextAsync())
         {
-            carried = context.Database.GetMigrations().Single();
+            carried = [.. context.Database.GetMigrations()];
             await RestampAsync(context, "20260820162112_InitialCreate");
         }
 
@@ -124,7 +123,7 @@ public sealed class MigrationHistoryGuardTests : IDisposable
             Assert.Throws<MigrationHistoryMismatchException>(() => MigrationHistoryGuard.Verify(reopened));
 
         thrown.Message.Should().Contain("20260820162112_InitialCreate", "the operator needs the id that is stamped");
-        thrown.Message.Should().Contain(carried, "and the one this build carries");
+        thrown.Message.Should().ContainAll(carried, "and the ones this build carries");
         thrown.Message.Should().Contain("carry-enrolment.sh", "and the tool that repairs it");
         thrown.Message.Should().Contain(SchemaWriter.Argument, "which needs a reference database first");
         thrown.Message.Should().Contain("DO NOT DELETE", "because deleting it strands the enrolled printer");
@@ -200,10 +199,16 @@ public sealed class MigrationHistoryGuardTests : IDisposable
                 .BeEquivalentTo(["20260820162112_InitialCreate"], "so the database it was pointed at is untouched");
     }
 
+    /// <summary>
+    /// Leaves <paramref name="migrationId"/> as the only stamp, however many migrations the build
+    /// applied - an <c>UPDATE</c> of every row to one id would break the history table's key.
+    /// </summary>
     private static async Task RestampAsync(HomespoolDbContext context, string migrationId)
     {
+        await context.Database.ExecuteSqlRawAsync("DELETE FROM \"__EFMigrationsHistory\";",
+                                                  TestContext.Current.CancellationToken);
         await context.Database.ExecuteSqlAsync(
-            $"UPDATE \"__EFMigrationsHistory\" SET \"MigrationId\" = {migrationId}",
+            $"INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({migrationId}, '10.0.0')",
             TestContext.Current.CancellationToken);
     }
 

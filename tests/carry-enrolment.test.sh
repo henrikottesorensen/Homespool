@@ -648,12 +648,14 @@ if test_case "the 2026-08-21 regeneration, against the schema this build really 
             expected="$(stamp_of "$scratch/reference.sqlite")"
 
             # The appliance's database as it was before the image moved: same schema minus the two
-            # columns commit 8f60c24 added, and stamped with the id it carried.
+            # columns commit 8f60c24 added, and stamped with the id it carried - as its only row,
+            # however many migrations this build applied.
             cp "$scratch/reference.sqlite" "$scratch/old.sqlite"
             sqlite3 "$scratch/old.sqlite" <<'SQL'
 ALTER TABLE "Cameras" DROP COLUMN "CredentialUser";
 ALTER TABLE "Cameras" DROP COLUMN "CredentialSecret";
-UPDATE "__EFMigrationsHistory" SET "MigrationId" = '20260820162112_InitialCreate';
+DELETE FROM "__EFMigrationsHistory";
+INSERT INTO "__EFMigrationsHistory" VALUES ('20260820162112_InitialCreate', '10.0.0');
 SQL
 
             out="$("$script" upgrade "$scratch/old.sqlite" "$scratch/reference.sqlite" 2>&1)"

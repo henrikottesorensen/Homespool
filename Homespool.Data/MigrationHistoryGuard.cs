@@ -16,18 +16,19 @@ namespace Homespool.Data;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This project regenerates its single migration in place while pre-release rather than stacking
-/// migrations, so an upgraded image routinely carries a migration id the deployed database has never
-/// been stamped with. Entity Framework reads that as one pending migration, runs its
-/// <c>CREATE TABLE</c> and dies on <c>table "AspNetRoles" already exists</c> - an exception that
-/// names neither the cause nor the remedy, and which has stranded a real appliance four times.
+/// Migrations stack from 0.1: a newer build carries every id an older one stamped, plus its own, and
+/// Entity Framework applies only the ones after the last stamp. A stamped id this build does not carry
+/// therefore means the database was migrated by a build carrying a migration this one lacks - a newer
+/// release, or a development build - and this start is a downgrade. Entity Framework cannot read that:
+/// it treats this build's own migrations as pending, runs the first one's <c>CREATE TABLE</c> and dies
+/// on <c>table "AspNetRoles" already exists</c> - an exception that names neither the cause nor the
+/// remedy.
 /// </para>
 /// <para>
 /// Both halves of the comparison are already in hand at that moment: the stamped ids come from
 /// <c>__EFMigrationsHistory</c> and the carried ones from the assembly. Making the failure diagnose
-/// itself therefore costs one comparison, and it covers shapes nobody has met yet - a stamped id
-/// from a <i>newer</i> build, on a database rolled forward and then downgraded, reads the same way
-/// here and is equally fatal.
+/// itself therefore costs one comparison. A database stamped with a prefix of what this build carries
+/// is the ordinary upgrade and passes.
 /// </para>
 /// </remarks>
 public static class MigrationHistoryGuard
@@ -88,10 +89,9 @@ something else holds, which is the check that stops a repair racing a restart lo
         List<string> stamped = [.. context.Database.GetAppliedMigrations()];
         List<string> carried = [.. context.Database.GetMigrations()];
 
-        // Ids the database claims to have applied that this build has no migration for. This is the
-        // regenerate-in-place fingerprint: the old id is not "an older version of" the new one, it is
-        // a file that no longer exists, so EF has nothing to compare it against and treats the
-        // replacement as never applied.
+        // Ids the database claims to have applied that this build has no migration for - a newer
+        // build's. EF has nothing to compare such an id against and treats this build's own
+        // migrations as never applied.
         List<string> unknown = [.. stamped.Where(id => !carried.Contains(id, StringComparer.Ordinal))];
 
         if (unknown.Count > 0)
@@ -184,6 +184,10 @@ something else holds, which is the check that stops a repair racing a restart lo
                   stamped in the database:  {Join(stamped)}
                   carried by this build:    {Join(carried)}
                   stamped but not carried:  {Join(unknown)}
+
+                It was migrated by a build carrying a migration this one does not: a newer release, or
+                a development build. Run that build, or a later one, again. Homespool does not migrate
+                a database backwards.
 
                 Starting anyway would apply this build's migration over tables that already exist and
                 fail on the first CREATE TABLE. That is the error this replaces.

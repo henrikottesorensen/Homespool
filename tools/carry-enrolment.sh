@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 #
-# Move an enrolled printer into a current database, or bring an old database forward, so that
-# regenerating the migration does not mean walking to the machine.
+# Move an enrolled printer into a current database, or bring an old database forward, so that a
+# database the startup check refuses does not mean walking to the machine.
 #
-# WHY THIS EXISTS. This project regenerates its single migration in place while it is pre-release,
-# and the database is deleted afterwards. That is cheap until the database has a
-# printer enrolled in it, because re-enrolling is the one thing that cannot be done from a keyboard:
-# both channels need somebody at the printer, reading a code off its screen or carrying a USB key to
-# it. On 2026-08-18 that was somebody 25 km away.
+# WHY THIS EXISTS. Before 0.1 this project regenerated its single migration in place, and the
+# database was deleted afterwards. From 0.1 migrations stack and an upgrade applies them by itself, so
+# this tool is a repair: for a database the startup check refuses all the same. Deleting the database
+# is cheap until it has a printer enrolled in it, because re-enrolling is the one thing that cannot
+# be done from a keyboard: both channels need somebody at the printer, reading a code off its screen
+# or carrying a USB key to it. On 2026-08-18 that was somebody 25 km away.
 #
 # WHAT THE PRINTER ACTUALLY NEEDS. It holds its own fingerprint and token in flash and presents them
 # on every request, so what keeps it enrolled is one row in PrusaConnectAuthentication pointing at

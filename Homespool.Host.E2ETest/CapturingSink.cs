@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 using Serilog.Core;
@@ -60,6 +61,17 @@ public sealed class CapturingSink : ILogEventSink
                .Where(p => p.Key == propertyName)
                .Select(p => p.Value is ScalarValue { Value: string s } ? s : p.Value.ToString())
                .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// The rendered message of every event carrying <paramref name="propertyName"/>: the text a reader
+    /// of the console sees, after every enricher has run.
+    /// </summary>
+    public IReadOnlyList<string> RenderedMessagesWith(string propertyName)
+    {
+        return _events.Where(e => e.Properties.ContainsKey(propertyName))
+                      .Select(e => e.RenderMessage(CultureInfo.InvariantCulture))
+                      .ToList();
     }
 
     /// <summary>

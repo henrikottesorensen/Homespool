@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Threading.Tasks;
 
 using Microsoft.AspNetCore.Identity;
@@ -96,13 +97,40 @@ public static class AdminBootstrap
         // The console/log is the intended delivery channel for this credential (decision 2): it is
         // one-time, ephemeral and never persisted, and printing it is the whole point. This is not the
         // same as leaking a durable secret into logs.
+        //
+        // One line, the token inline and unquoted (:l). Line breaks cannot be carried in a property:
+        // PrintableLogEnricher replaces every control character in one with U+FFFD, so a NewLine
+        // property renders as a quoted replacement character.
         logger.LogWarning(
             "No administrator account exists yet. Complete first-time setup by opening /setup and " +
-            "entering this one-time token:{NewLine}{NewLine}    {SetupToken}{NewLine}{NewLine}" +
-            "The token is held in memory only and is regenerated on every restart; it is never written to disk. " +
-            "This one belongs to the service that started at {StartedAt:O}; disregard any token logged before then.",
-            Environment.NewLine, Environment.NewLine, token, Environment.NewLine, Environment.NewLine,
-            startedAt);
+            "entering this one-time token: {SetupToken:l} - it is held in memory only, regenerated on " +
+            "every restart and never written to disk. This one belongs to the service that started at " +
+            "{StartedAt:O}; disregard any token logged before then.",
+            token, startedAt);
+
+        WritePlainly(token, startedAt);
+    }
+
+    /// <summary>
+    /// The same token, written for a person reading <c>docker compose logs</c>.
+    /// </summary>
+    /// <remarks>
+    /// The console sink writes compact JSON, one event per line, so the logged message reaches the
+    /// operator as a long line in a JSON string. The token is read by eye and typed or pasted into a
+    /// form, so it is also written here on a line of its own, with real line breaks, as the migration
+    /// guard writes its refusal. The logged event stays the record a machine or a test reads.
+    /// </remarks>
+    private static void WritePlainly(string token, DateTime startedAt)
+    {
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("No administrator account exists yet. To finish setting up, open /setup and enter this one-time token:");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine($"    {token}");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "It is held in memory only and replaced on every restart; this one belongs to the service that started at " +
+            startedAt.ToString("O", CultureInfo.InvariantCulture) + ".");
+        Console.Error.WriteLine();
     }
 
     private static string DescribeErrors(IdentityResult result)

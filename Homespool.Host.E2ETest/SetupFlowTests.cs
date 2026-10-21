@@ -163,6 +163,23 @@ public sealed class SetupFlowTests : IAsyncLifetime
         (await userManager.GetUsersInRoleAsync(AdminBootstrap.AdminRole)).Should().BeEmpty();
     }
 
+    /// <summary>
+    /// The token line as the console renders it, after the enricher that replaces unprintable
+    /// characters: the token inline and unquoted, so it can be copied as it stands, and nothing in the
+    /// line that the enricher had to replace.
+    /// </summary>
+    [Fact]
+    public void TheTokenLineRendersTheTokenPlainly()
+    {
+        const char Replaced = (char)0xFFFD;
+        string token = ReadBootstrapTokenFromLog();
+
+        string message = _logs.RenderedMessagesWith("SetupToken").Should().ContainSingle().Subject;
+
+        message.Should().NotContain(Replaced.ToString(), "a line break passed as a property is replaced, and arrives as a quoted U+FFFD");
+        message.Should().Contain($"token: {token} ", "the token stands unquoted in the sentence");
+    }
+
     /// <summary>A wrong token is rejected, and setup stays open for a correct attempt afterwards.</summary>
     [Fact]
     public async Task PostingTheWrongTokenIsRejectedAndSetupStaysOpen()

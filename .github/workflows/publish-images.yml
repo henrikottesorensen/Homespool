@@ -4,8 +4,9 @@
 # Through tools/publish-images.sh, which carries the rules - a clean tree, the full commit's tag
 # first, the version, latest last and only forward, each read back - and has its own suite in
 # build-and-test.yml. Each architecture is built natively on a runner of its own kind, for the reason
-# pi/build.sh refuses an x86 host: the other one would build under emulation. The last job combines
-# them into one tag per version, so an amd64 server and a Pi pull the same name.
+# pi/build.sh refuses an x86 host: the other one would build under emulation. The merge job combines
+# them into one tag per version, so an amd64 server and a Pi pull the same name, and publish-card.yml
+# then builds the Raspberry Pi card from them and attaches it to the release.
 #
 # On `released` only: a pre-release fires `published` but not this. A pre-release made a full release
 # later fires it then. A failed run is retried with "Re-run failed jobs". latest moves only to a
@@ -15,7 +16,8 @@
 #
 # A package GHCR creates on the first push is private whatever the repository is, and an anonymous
 # pull - every card's - is refused until its visibility is changed in the package's settings, once
-# for each of homespool, homespool-proxy and homespool-go2rtc.
+# for each of homespool, homespool-proxy and homespool-go2rtc. Until then the card job fails, and
+# "Re-run failed jobs" builds it once they are public.
 name: publish images
 
 on:
@@ -94,3 +96,14 @@ jobs:
       # The architectures are the matrix's runners, named as the daemon on each reports itself.
       - name: Combine the architectures and move the tags
         run: tools/publish-images.sh --merge amd64 arm64
+
+  # The Raspberry Pi card, built from the images just published and attached to the release. After
+  # the merge, because the card pulls the release's arm64 images under the version tag; and anonymously,
+  # so a package still private fails it here, as it would fail every card's pull.
+  card:
+    needs: merge
+    permissions:
+      contents: write
+    uses: ./.github/workflows/publish-card.yml
+    with:
+      tag: ${{ github.ref_name }}

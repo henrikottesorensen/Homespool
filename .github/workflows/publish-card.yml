@@ -1,0 +1,96 @@
+# Builds the Raspberry Pi card for a release and attaches it to the release, zipped, so a Pi owner can
+# download a card rather than build one.
+#
+# Called by publish-images.yml once the release's images are published, because a card built from a
+# release pulls those images into its Docker store (pi/build.sh, pi/release-images.sh) and refuses
+# when they are missing or private. Also run by hand, for a release published before this workflow
+# existed or a card whose build failed: Actions -> publish card -> Run workflow, with the tag.
+#
+# On an arm64 runner for the reason pi/build.sh refuses an x86 host: the card is arm64 throughout, and
+# would otherwise be built under emulation.
+#
+# Zipped because the card is larger than the 2 GiB a release asset may be. The zip holds the .img to
+# flash; zstd, which pi/build.sh also writes, is kept out of the release because Raspberry Pi Imager's
+# custom-image path writes a .zst as it is rather than decompressing it.
+name: publish card
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: The release's tag, such as v0.1.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release's tag, such as v0.1.0
+        required: true
+        type: string
+
+# Read-only by default, as in build-and-test.yml; the one job widens it to contents, to attach the card.
+permissions:
+  contents: read
+
+# One card per release at a time: a second run would replace the asset the first is uploading.
+concurrency:
+  group: publish-card-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  card:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+
+    steps:
+      # The tag's commit, so tools/release-version.sh names the release and pi/build.sh takes its
+      # release path: published images pulled, nothing built. No credentials left in .git/config:
+      # nothing here pushes to the repository.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ inputs.tag }}
+          persist-credentials: false
+
+      # pi/build.sh builds images from the working tree when HEAD is not a release, and a card built
+      # that way must not be attached to one.
+      - name: Check the tag is a release
+        run: |
+          version="$(tools/release-version.sh)"
+          if [ -z "$version" ] || [ "v$version" != "$TAG" ]; then
+            echo "::error::$TAG is not a v-tag naming a version, such as v0.1.0"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      # The card's work volume, the builder image and the Docker store it fills take several GB, and
+      # how much a runner has free is the runner image's to change. Printed so a failed build says
+      # whether this was why.
+      - name: Free disk space
+        run: df -h /
+
+      - name: Build the card
+        run: pi/build.sh
+
+      - name: Free disk space after the build
+        if: ${{ !cancelled() }}
+        run: df -h /
+
+      # zip is installed when absent: the arm64 runner image is not the x86 one, and its package list
+      # is not promised.
+      - name: Zip the card
+        run: |
+          if ! command -v zip >/dev/null; then
+            sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends zip
+          fi
+          zip -9 -j "$RUNNER_TEMP/homespool-$VERSION-rpi-arm64.zip" pi/work/out/homespool-rpi-arm64.img
+          ls -l "$RUNNER_TEMP/homespool-$VERSION-rpi-arm64.zip"
+
+      # --clobber, so a card built again for the same release replaces the first.
+      - name: Attach it to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$RUNNER_TEMP/homespool-$VERSION-rpi-arm64.zip" --clobber --repo "$GITHUB_REPOSITORY"

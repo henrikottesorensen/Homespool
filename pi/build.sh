@@ -212,10 +212,10 @@ rm -rf "$payload_dir"
 mkdir -p "$payload_dir/nginx" "$payload_dir/go2rtc"
 
 cp "$repo_root/compose.yaml" "$payload_dir/"
-# Naming the registry the card's images are named for, so the .env first boot creates from it does
-# too: the stack then asks for those names, and follows latest there.
-"$pi_dir/release-images.sh" env-example "$card_registry" \
-    "$repo_root/.env.example" "$payload_dir/.env.example"
+# As it is: its REGISTRY is the registry the card's images are named for and it pins no tag, so the
+# .env first boot creates from it asks for those names and follows latest there.
+# tests/pi-release-images.test.sh holds it to card_registry.
+cp "$repo_root/.env.example" "$payload_dir/"
 # The board configures itself with this on first boot, and an operator can re-run it over SSH to add
 # SMTP or repoint PRINTER_HOST later. Mode carried explicitly: systemd ExecStart needs it executable,
 # and cp -a into the image preserves whatever arrives here.

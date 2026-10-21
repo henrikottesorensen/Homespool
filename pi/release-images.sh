@@ -1,19 +1,15 @@
 #!/usr/bin/env bash
 #
 # The published images a card built from a release carries, instead of images built on the machine
-# that made it. pi/build.sh runs it in three steps:
+# that made it. pi/build.sh runs it in two steps:
 #
 #   pi/release-images.sh check <registry> <version> <commit>
-#   pi/release-images.sh env-example <registry> <.env.example> <out>
 #   pi/release-images.sh pull <container> <registry> <version> <commit>
 #
 # check - before the card is built: each of the three images is published under the release's
 #   version with a linux/arm64 image whose revision label is the commit checked out. Read from the
 #   registry, nothing pulled, so a release that was never published, is still private, or was
 #   published from another commit fails in seconds rather than after the root filesystem.
-# env-example - the card's .env.example with REGISTRY set to the registry. First boot creates the
-#   card's .env from it, so the stack asks for the registry's names, follows latest, and the daily
-#   update check compares it with what the registry publishes.
 # pull - into the card's Docker store, through the build daemon running in <container>: each image
 #   pulled for linux/arm64 under the version, its revision checked again, and tagged latest, the tag
 #   the card's compose.yaml asks for when .env pins none.
@@ -36,7 +32,7 @@ die() {
 }
 
 usage() {
-    sed -n '7,9p' "${BASH_SOURCE[0]}" | sed 's/^#  *//' >&2
+    sed -n '6,7p' "${BASH_SOURCE[0]}" | sed 's/^#  *//' >&2
     exit 2
 }
 
@@ -67,17 +63,6 @@ check() {
     done
 }
 
-env_example() {
-    [ $# -eq 3 ] || usage
-    local registry="$1" example="$2" out="$3"
-    # Exactly one empty REGISTRY= line, or what the card would boot with is not what this says.
-    if [ "$(grep -c '^REGISTRY=' "$example")" != 1 ] || ! grep -qx 'REGISTRY=' "$example"; then
-        die "$example does not have exactly one empty REGISTRY= line to set"
-    fi
-    sed "s|^REGISTRY=\$|REGISTRY=$registry|" "$example" > "$out"
-    grep -qx "REGISTRY=$registry" "$out" || die "REGISTRY was not set in $out"
-}
-
 pull() {
     [ $# -eq 4 ] || usage
     local container="$1" registry="$2" version="$3" commit="$4" name reference revision
@@ -101,7 +86,6 @@ mode="$1"
 shift
 case "$mode" in
     check) check "$@" ;;
-    env-example) env_example "$@" ;;
     pull) pull "$@" ;;
     *) usage ;;
 esac

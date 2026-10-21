@@ -211,31 +211,16 @@ if test_case "check: refuses an image the registry does not serve"; then
     assert_not_contains "$output" "is revision" "rather than going on to compare nothing"
 fi
 
-# ---- env-example ----------------------------------------------------------------------------------
+# ---- .env.example ---------------------------------------------------------------------------------
 
-if test_case "env-example: the repository's .env.example gets the registry, and nothing else changes"; then
-    run env-example "$registry" "$repo_root/.env.example" "$scratch/env.example"
-    assert_status "$status" 0 "it is written"
-    assert_equals "$(grep '^REGISTRY=' "$scratch/env.example")" "REGISTRY=$registry" "REGISTRY names the registry"
-    assert_equals "$(diff "$repo_root/.env.example" "$scratch/env.example" | grep -c '^[<>]')" 2 \
-        "one line replaced, no other"
-    assert_equals "$(grep -c '^HOMESPOOL_TAG=' "$scratch/env.example")" 0 "and no tag is pinned, so latest is followed"
-fi
-
-if test_case "env-example: refuses an example whose REGISTRY is already set"; then
-    printf 'TZ=UTC\nREGISTRY=elsewhere.example\n' > "$scratch/in"
-    run env-example "$registry" "$scratch/in" "$scratch/out"
-    assert_status "$status" 1 "a set REGISTRY is refused"
-    assert_contains "$output" "exactly one empty REGISTRY= line" "and says why"
-fi
-
-if test_case "env-example: refuses an example with no REGISTRY line, or two"; then
-    printf 'TZ=UTC\n' > "$scratch/in"
-    run env-example "$registry" "$scratch/in" "$scratch/out"
-    assert_status "$status" 1 "no REGISTRY line is refused"
-    printf 'REGISTRY=\nREGISTRY=\n' > "$scratch/in"
-    run env-example "$registry" "$scratch/in" "$scratch/out"
-    assert_status "$status" 1 "two are refused"
+# A card ships the repository's .env.example as it is, so its REGISTRY is what every card's first
+# boot follows. Held to pi/build.sh's card_registry here, because nothing at build time checks it.
+if test_case ".env.example: names the registry every card's images are named for, and pins no tag"; then
+    card_registry="$(sed -n 's/^card_registry="\(.*\)"$/\1/p' "$repo_root/pi/build.sh")"
+    assert_equals "$(grep -c '^REGISTRY=' "$repo_root/.env.example")" 1 "one REGISTRY line"
+    assert_equals "$(grep '^REGISTRY=' "$repo_root/.env.example")" "REGISTRY=$card_registry" \
+        "naming pi/build.sh's card_registry"
+    assert_equals "$(grep -c '^HOMESPOOL_TAG=' "$repo_root/.env.example")" 0 "and no tag is pinned, so latest is followed"
 fi
 
 # ---- pull -----------------------------------------------------------------------------------------
@@ -294,8 +279,8 @@ if test_case "wiring: pi/build.sh checks, ships and pulls a release, builds anyt
     assert_before 'export REGISTRY="$card_registry"' 'compose.yaml" build --pull' "$scratch/step1" \
         "under GHCR's names, whatever .env says"
     # Unconditional: a line of its own, not indented under either branch.
-    assert_equals "$(grep -c '^"$pi_dir/release-images.sh" env-example "$card_registry"' "$build")" 1 \
-        "every card's .env.example names GHCR"
+    assert_equals "$(grep -c '^cp "$repo_root/.env.example" "$payload_dir/"$' "$build")" 1 \
+        "every card ships the repository's .env.example as it is"
     assert_contains "$(cat "$build")" 'docker save "$card_registry/homespool:latest" "$card_registry/homespool-proxy:latest"' \
         "and a card built here saves the images under those names"
     assert_not_contains "$(cat "$build")" '.env" 2>/dev/null' "the build's .env is not read for a card's names"

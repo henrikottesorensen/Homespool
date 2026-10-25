@@ -10,7 +10,7 @@
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.13" />
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.14" />
         <!-- The browsers themselves are not in the package: install-browsers.sh fetches the builds
              this version drives, and the tests skip until it has run. -->
         <PackageReference Include="Microsoft.Playwright" Version="1.63.0" />

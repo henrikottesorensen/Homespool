@@ -19,18 +19,14 @@
              cryptography, with no BouncyCastle. Three of its defaults are unsafe and are overridden in
              WebPushChannel; read that class before upgrading. -->
         <PackageReference Include="Lib.Net.Http.WebPush" Version="3.3.1" />
-        <PackageReference Include="MailKit" Version="4.18.1" />
-        <!-- MimeKit asks for 10.0.0, which NuGet's audit fails the restore on. The shared framework
-             carries its own copy, and that is what runs, but the audit judges the package graph.
-             Remove once MimeKit asks for 10.0.13 or later. -->
-        <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-        <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.13" />
-        <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.13" />
-        <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.13" />
-        <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
-        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13"/>
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.13">
+        <PackageReference Include="MailKit" Version="4.18.2" />
+        <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.14" />
+        <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.14" />
+        <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.14" />
+        <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.14" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14"/>
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.14" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.14">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>

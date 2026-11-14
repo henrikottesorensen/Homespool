@@ -2,7 +2,7 @@
 # propose the move. Dependabot opens a pull request with the new commit and rewrites the release
 # comment beside it, and the pin changes only when that is merged.
 #
-# Actions only. The container base images float on purpose (see the comment on `certs` in
+# The container base images are not here. They float on purpose (see the comment on `certs` in
 # compose.yaml, and --pull in build.sh): their patch releases are the point, and a digest here would
 # freeze them between pull requests nobody is obliged to merge.
 version: 2
@@ -14,3 +14,42 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  # The packages that are versioned with the .NET runtime, and no others. A runtime patch reaches a
+  # deployment in two halves: the shared framework comes with the base image, which floats, and
+  # these come with the application, which does not move until somebody edits a version. One pull
+  # request for all of them, because they are one release and a graph with some of them a patch
+  # behind the rest is a combination nobody published.
+  #
+  # Every other package stays a decision made by hand: `allow` is the whole list, and a package added
+  # to the solution is not followed until it is added here.
+  - package-ecosystem: nuget
+    # Where Homespool.slnx is: Dependabot finds the projects through the solution.
+    directory: /
+    schedule:
+      # Weekdays. An out-of-band release on a weekend is proposed on the Monday.
+      interval: daily
+    allow:
+      - dependency-name: "Microsoft.AspNetCore.*"
+      - dependency-name: "Microsoft.EntityFrameworkCore"
+      - dependency-name: "Microsoft.EntityFrameworkCore.*"
+      - dependency-name: "Microsoft.Extensions.Identity.Stores"
+    ignore:
+      # Patches only. The next major is a new runtime, taken with the target framework and the base
+      # image together and not one package at a time; there is no minor on this line to take.
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+    groups:
+      dotnet:
+        patterns: ["*"]
+    # Dependabot holds a new version back three days unless told otherwise, against a release that
+    # turns out to be malicious. Not for these: the same publisher's runtime is already running, the
+    # base image having taken it the day it shipped, and the wait would only keep the application's
+    # half of a security release behind the framework's.
+    cooldown:
+      default-days: 3
+      exclude: ["*"]
+    commit-message:
+      prefix: "build(NuGet)"

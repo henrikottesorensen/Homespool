@@ -1,0 +1,45 @@
+# Restores the solution once a day and fails when NuGet's audit knows a vulnerability in any package
+# it resolves, so an advisory is red here the day it is published.
+#
+# build-and-test.yml makes the same check, but only when somebody pushes, and an advisory keeps no
+# such schedule: it is published against a version already in the graph, and nothing in the repository
+# changes. Until the next push the default branch looks green and cannot be built from a clean
+# machine. The audit covers transitive packages, which is where these arrive - a package nobody here
+# references by name, brought in by one that is - and the solution treats its warnings as errors, so
+# the restore itself is the test.
+#
+# On the default branch only, which is where a schedule runs, and a failure is reported to whoever
+# last changed the cron line below. GitHub disables a scheduled workflow in a public repository after
+# sixty days without activity in it; it is switched back on from the Actions tab.
+name: audit packages
+
+on:
+  schedule:
+    # Daily, off the hour: the start of an hour is when every schedule on GitHub fires, and runs
+    # queued then start late or are dropped.
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+# Read-only, as in build-and-test.yml.
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      # Pinned to a commit for the reason build-and-test.yml gives.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          # The newest 10.0, not global.json's floor, as in build-and-test.yml.
+          dotnet-version: '10.0.x'
+
+      # The whole solution, because the test projects' graphs hold packages the application's own does
+      # not. A runner starts with nothing cached; the two flags say so, and make this the command to
+      # run on a machine that does have a cache.
+      - name: Restore
+        run: dotnet restore Homespool.slnx --force --no-http-cache

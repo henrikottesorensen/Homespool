@@ -148,6 +148,10 @@ public sealed class WebRtcStunApplierTests : IAsyncLifetime
 
         (await EventuallyAsync(() => _sidecar.Restarts == 2)).Should().BeTrue("the file already agreed, and is restarted rather than believed");
         _sidecar.ConfigWrites.Should().HaveCount(2, "nothing needed writing again");
+
+        // The sidecar counts a restart while it is still answering it, and Homespool records the choice
+        // and drops the marker only once it has the answer - so the count moving is not yet either.
+        _ = await EventuallyAsync(() => availability.StunInForce is not null && !File.Exists(_marker));
         availability.StunInForce.Should().Be(new WebRtcStunChoice(true, "stun:stun.l.google.com:19302"));
         File.Exists(_marker).Should().BeFalse("the restart it recorded has been made");
     }
